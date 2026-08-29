@@ -56,7 +56,7 @@ jobs:
           sudo apt-get install --yes libfontconfig1-dev libgtk-4-dev libgtksourceview-5-dev libpoppler-glib-dev
 
       - name: Install Rust 1.85
-        uses: dtolnay/rust-toolchain@1.85.0
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Cache Rust build artifacts
         uses: Swatinem/rust-cache@v2
