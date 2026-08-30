@@ -181,13 +181,7 @@ impl Browser {
         let location = self
             .active_location()
             .filter(|current| current.display_path() == input)
-            .unwrap_or_else(|| {
-                if input == "trash:///" {
-                    Location::uri(input)
-                } else {
-                    Location::local(PathBuf::from(input))
-                }
-            });
+            .unwrap_or_else(|| location_from_input(input));
         if location.native_path().is_some() && !location.is_absolute_native() {
             return Err(LocationValidationError::NotAbsolute);
         }
@@ -1209,6 +1203,56 @@ fn deletion_parent_location(location: &Location) -> Option<Location> {
         Some(Location::uri("trash:///"))
     } else {
         location.parent()
+    }
+}
+
+fn location_from_input(input: &str) -> Location {
+    if let Some(uri) = normalize_smb_shorthand(input) {
+        Location::uri(uri)
+    } else if is_uri_like(input) {
+        Location::uri(input.to_owned())
+    } else {
+        Location::local(PathBuf::from(input))
+    }
+}
+
+/// Accepts Windows-style network paths (`\\host\share`, `smb:\\host\share`) and
+/// rewrites them as an `smb://` URI so typing a UNC-style path works like Explorer.
+fn normalize_smb_shorthand(input: &str) -> Option<String> {
+    let host_and_path = if let Some(rest) = input.strip_prefix("\\\\") {
+        rest
+    } else {
+        let after_scheme = input
+            .strip_prefix("smb:")
+            .or_else(|| input.strip_prefix("SMB:"))?;
+        after_scheme.strip_prefix("\\\\")?
+    };
+    if host_and_path.is_empty() {
+        return None;
+    }
+    Some(format!("smb://{}", host_and_path.replace('\\', "/")))
+}
+
+fn is_uri_like(input: &str) -> bool {
+    let Some(scheme_end) = input.find("://") else {
+        return false;
+    };
+    let scheme = &input[..scheme_end];
+    scheme.starts_with(|character: char| character.is_ascii_alphabetic())
+        && scheme.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '+' | '.' | '-')
+        })
+}
+
+fn validate_rename(name: &str) -> Result<(), &'static str> {
+    if name.is_empty() {
+        Err("Enter a file name")
+    } else if name.contains('/') {
+        Err("File names cannot contain /")
+    } else if matches!(name, "." | "..") {
+        Err("That name is reserved")
+    } else {
+        Ok(())
     }
 }
 

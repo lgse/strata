@@ -479,6 +479,36 @@ fn valid_location_input_navigates_through_the_controller() {
 }
 
 #[test]
+fn location_input_accepts_uri_schemes_and_windows_style_smb_paths() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.navigate(Location::local("/fixture"));
+
+    assert_eq!(browser.navigate_input("smb://192.168.1.220/share"), Ok(()));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::uri("smb://192.168.1.220/share"))
+    );
+
+    assert_eq!(browser.navigate_input(r"smb:\\192.168.1.220"), Ok(()));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::uri("smb://192.168.1.220"))
+    );
+
+    assert_eq!(browser.navigate_input(r"\\host\share"), Ok(()));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::uri("smb://host/share"))
+    );
+
+    assert_eq!(browser.navigate_input("network:///"), Ok(()));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::uri("network:///"))
+    );
+}
+
+#[test]
 fn rejected_directory_activation_preserves_navigation_state() {
     let browser = Browser::new(Rc::new(RejectingFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
