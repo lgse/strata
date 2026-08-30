@@ -4,23 +4,30 @@ use std::{
     cell::RefCell,
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
-    process::Command,
     sync::atomic::{AtomicU64, Ordering},
 };
 
-use gdk_pixbuf::prelude::*;
 use gtk::{gdk, gio, glib, prelude::*};
 
-use crate::model::{FileEntry, MetadataValue};
+use crate::{
+    model::{FileEntry, MetadataValue},
+    sandbox::{Cancellation, ParseOperation},
+};
 
 static NEXT_REQUEST: AtomicU64 = AtomicU64::new(1);
 const MAX_CACHE_ENTRIES: usize = 256;
 const MAX_CACHE_BYTES: usize = 64 * 1024 * 1024;
 
 thread_local! {
-    static ACTIVE_REQUESTS: RefCell<HashMap<usize, (u64, glib::WeakRef<gtk::Image>)>> =
+    static ACTIVE_REQUESTS: RefCell<HashMap<usize, ActiveRequest>> =
         RefCell::new(HashMap::new());
     static THUMBNAIL_CACHE: RefCell<ThumbnailCache> = RefCell::new(ThumbnailCache::default());
+}
+
+struct ActiveRequest {
+    id: u64,
+    image: glib::WeakRef<gtk::Image>,
+    cancellation: Cancellation,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -80,7 +87,7 @@ pub(super) fn set_thumbnail_or_icon(
     icon_size: i32,
     thumbnail_size: i32,
 ) {
-    let (image_id, request) = set_fallback_icon(image, fallback_icon, icon_size);
+    let (image_id, request, cancellation) = set_fallback_icon(image, fallback_icon, icon_size);
 
     let Some(path) = entry.location.native_path().map(Path::to_path_buf) else {
         return;
@@ -103,9 +110,11 @@ pub(super) fn set_thumbnail_or_icon(
     let weak_image = glib::WeakRef::new();
     weak_image.set(Some(image));
     glib::MainContext::default().spawn_local(async move {
-        let result =
-            gio::spawn_blocking(move || render_thumbnail(&path, kind, thumbnail_size)).await;
-        let Ok(Some(png)) = result else {
+        let result = gio::spawn_blocking(move || {
+            render_thumbnail(&path, kind, thumbnail_size, &cancellation)
+        })
+        .await;
+        let Ok(Ok(png)) = result else {
             return;
         };
         let bytes = glib::Bytes::from_owned(png);
@@ -114,7 +123,7 @@ pub(super) fn set_thumbnail_or_icon(
             requests
                 .borrow()
                 .get(&image_id)
-                .is_some_and(|active| active.0 == request)
+                .is_some_and(|active| active.id == request)
         });
         if !is_current {
             return;
@@ -150,20 +159,30 @@ pub(super) fn show_fallback_icon(image: &gtk::Image, icon: &str, size: i32) {
     set_fallback_icon(image, icon, size);
 }
 
-fn set_fallback_icon(image: &gtk::Image, icon: &str, size: i32) -> (usize, u64) {
+fn set_fallback_icon(image: &gtk::Image, icon: &str, size: i32) -> (usize, u64, Cancellation) {
     let request = NEXT_REQUEST.fetch_add(1, Ordering::Relaxed);
     let image_id = image.as_ptr() as usize;
     let weak_image = glib::WeakRef::new();
     weak_image.set(Some(image));
+    let cancellation = Cancellation::default();
     ACTIVE_REQUESTS.with(|requests| {
         let mut requests = requests.borrow_mut();
-        requests.retain(|_, (_, image)| image.upgrade().is_some());
-        requests.insert(image_id, (request, weak_image));
+        requests.retain(|_, active| active.image.upgrade().is_some());
+        if let Some(previous) = requests.insert(
+            image_id,
+            ActiveRequest {
+                id: request,
+                image: weak_image,
+                cancellation: cancellation.clone(),
+            },
+        ) {
+            previous.cancellation.cancel();
+        }
     });
     image.set_pixel_size(size);
     image.set_size_request(size, size);
     crate::assets::set_primary_icon(image, icon);
-    (image_id, request)
+    (image_id, request, cancellation)
 }
 
 fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
@@ -183,112 +202,20 @@ fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
     }
 }
 
-fn render_thumbnail(path: &Path, kind: ThumbnailKind, size: i32) -> Option<Vec<u8>> {
-    let render_size = size.clamp(16, 256);
-    match kind {
-        ThumbnailKind::Image => render_pixbuf_thumbnail(path, render_size),
-        ThumbnailKind::RawImage => render_pixbuf_thumbnail(path, render_size)
-            .or_else(|| render_imagemagick_thumbnail(path, render_size))
-            .or_else(|| render_dcraw_thumbnail(path, render_size)),
-        ThumbnailKind::Pdf => render_pdf_thumbnail(path, render_size),
-        ThumbnailKind::Video => render_video_thumbnail(path, render_size),
-    }
-}
-
-fn render_pixbuf_thumbnail(path: &Path, size: i32) -> Option<Vec<u8>> {
-    gdk_pixbuf::Pixbuf::from_file_at_scale(path, size, size, true)
-        .ok()?
-        .save_to_bufferv("png", &[])
-        .ok()
-}
-
-fn render_imagemagick_thumbnail(path: &Path, size: i32) -> Option<Vec<u8>> {
-    for executable in ["magick", "convert"] {
-        let output = Command::new(executable)
-            .arg(path)
-            .args(["-auto-orient", "-thumbnail"])
-            .arg(format!("{size}x{size}"))
-            .arg("png:-")
-            .output();
-        if let Ok(output) = output
-            && output.status.success()
-            && !output.stdout.is_empty()
-        {
-            return Some(output.stdout);
-        }
-    }
-    None
-}
-
-fn render_dcraw_thumbnail(path: &Path, size: i32) -> Option<Vec<u8>> {
-    for executable in ["dcraw_emu", "dcraw"] {
-        let output = Command::new(executable)
-            .args(["-e", "-c"])
-            .arg(path)
-            .output();
-        let Ok(output) = output else {
-            continue;
-        };
-        if !output.status.success() || output.stdout.is_empty() {
-            continue;
-        }
-        let loader = gdk_pixbuf::PixbufLoader::new();
-        if loader.write(&output.stdout).is_err() || loader.close().is_err() {
-            continue;
-        }
-        let Some(pixbuf) = loader.pixbuf() else {
-            continue;
-        };
-        let width = pixbuf.width().max(1);
-        let height = pixbuf.height().max(1);
-        let scale = (f64::from(size) / f64::from(width))
-            .min(f64::from(size) / f64::from(height))
-            .min(1.0);
-        let scaled = pixbuf.scale_simple(
-            (f64::from(width) * scale).round().max(1.0) as i32,
-            (f64::from(height) * scale).round().max(1.0) as i32,
-            gdk_pixbuf::InterpType::Bilinear,
-        )?;
-        if let Ok(png) = scaled.save_to_bufferv("png", &[]) {
-            return Some(png);
-        }
-    }
-    None
-}
-
-fn render_pdf_thumbnail(path: &Path, size: i32) -> Option<Vec<u8>> {
-    let uri = gio::File::for_path(path).uri();
-    let document = poppler::Document::from_file(&uri, None).ok()?;
-    let page = document.page(0)?;
-    let (page_width, page_height) = page.size();
-    if page_width <= 0.0 || page_height <= 0.0 {
-        return None;
-    }
-    let scale = (f64::from(size) / page_width).min(f64::from(size) / page_height);
-    let width = (page_width * scale).ceil().max(1.0) as i32;
-    let height = (page_height * scale).ceil().max(1.0) as i32;
-    let surface = cairo::ImageSurface::create(cairo::Format::ARgb32, width, height).ok()?;
-    let context = cairo::Context::new(&surface).ok()?;
-    context.set_source_rgb(1.0, 1.0, 1.0);
-    context.paint().ok()?;
-    context.scale(scale, scale);
-    page.render(&context);
-    surface.flush();
-    let mut png = Vec::new();
-    surface.write_to_png(&mut png).ok()?;
-    Some(png)
-}
-
-fn render_video_thumbnail(path: &Path, size: i32) -> Option<Vec<u8>> {
-    let output = Command::new("ffmpegthumbnailer")
-        .arg("-i")
-        .arg(path)
-        .args(["-o", "/dev/stdout", "-s"])
-        .arg(size.to_string())
-        .args(["-q", "8"])
-        .output()
-        .ok()?;
-    (output.status.success() && !output.stdout.is_empty()).then_some(output.stdout)
+fn render_thumbnail(
+    path: &Path,
+    kind: ThumbnailKind,
+    size: i32,
+    cancellation: &Cancellation,
+) -> Result<Vec<u8>, String> {
+    let operation = match kind {
+        ThumbnailKind::Image => ParseOperation::ThumbnailImage,
+        ThumbnailKind::RawImage => ParseOperation::ThumbnailRaw,
+        ThumbnailKind::Pdf => ParseOperation::ThumbnailPdf,
+        ThumbnailKind::Video => ParseOperation::ThumbnailVideo,
+    };
+    crate::sandbox::parse(path, operation, size.clamp(16, 256), cancellation)
+        .map(|output| output.png)
 }
 
 #[cfg(test)]

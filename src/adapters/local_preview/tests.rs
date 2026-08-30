@@ -2,10 +2,6 @@
 
 use std::fs;
 
-use gtk::gio::prelude::FileExt;
-
-use super::render_pdf_blocking;
-
 #[test]
 fn renders_requested_pdf_pages_within_the_pixel_budget() {
     let path = std::env::temp_dir().join(format!(
@@ -25,11 +21,22 @@ fn renders_requested_pdf_pages_within_the_pixel_budget() {
     }
     surface.finish();
 
-    let uri = gtk::gio::File::for_path(&path).uri();
-    let (png, page, pages) = render_pdf_blocking(&uri, 1).expect("render second PDF page");
+    let output_directory = path.with_extension("output");
+    fs::create_dir(&output_directory).expect("create output directory");
+    let output = output_directory.join("result.png");
+    crate::sandbox_helper::run(&[
+        "preview-pdf".to_owned(),
+        path.to_string_lossy().into_owned(),
+        output.to_string_lossy().into_owned(),
+        "1".to_owned(),
+    ])
+    .expect("render second PDF page");
+    let png = fs::read(&output).expect("read rendered page");
+    let metadata =
+        fs::read_to_string(output_directory.join("result.meta")).expect("read PDF metadata");
     let _removed = fs::remove_file(path);
+    let _removed = fs::remove_dir_all(output_directory);
 
-    assert_eq!(page, 1);
-    assert_eq!(pages, 2);
+    assert_eq!(metadata, "1 2");
     assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
 }

@@ -58,7 +58,7 @@ Strata is not yet available through Arch's package repositories. Download the ar
 Install the runtime libraries and optional video-thumbnail helper on Arch or Omarchy:
 
 ```bash
-sudo pacman -S --needed fontconfig gtk4 gtksourceview5 poppler-glib ffmpegthumbnailer
+sudo pacman -S --needed bubblewrap fontconfig gtk4 gtksourceview5 poppler-glib ffmpegthumbnailer
 ```
 
 Then verify, extract, and install the downloaded archive (replace the filename with the release you downloaded):
@@ -70,7 +70,7 @@ tar -xzf strata-<version>-<target>.tar.gz
 install -Dm755 strata-<version>-<target>/strata ~/.local/bin/strata
 ```
 
-Ensure `~/.local/bin` is on `PATH`, then run `strata`. Image thumbnails work without `ffmpegthumbnailer`; when that optional program is unavailable, video files fall back to their video icon.
+Ensure `~/.local/bin` is on `PATH`, then run `strata`. Image thumbnails work without `ffmpegthumbnailer`; when that optional program is unavailable, video files fall back to their video icon. Bubblewrap is required: preview parsing fails closed rather than running untrusted native parsers without a sandbox. See [Preview sandbox](docs/preview-sandbox.md) for the providers, permissions, and resource limits.
 
 #### Optional RAW photo thumbnails
 
@@ -186,7 +186,7 @@ The architectural boundaries and performance workflow are documented in [`docs/a
 On Arch Linux:
 
 ```bash
-sudo pacman -S --needed base-devel rust fontconfig gtk4 gtksourceview5 poppler-glib
+sudo pacman -S --needed base-devel rust bubblewrap fontconfig gtk4 gtksourceview5 poppler-glib
 ```
 
 Run Strata:

@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use gtk::{gio, glib, prelude::*};
+use gtk::{glib, prelude::*};
 use sourceview5::prelude::*;
 
 use crate::{
@@ -36,7 +36,6 @@ struct PreviewState {
     modified: gtk::Label,
     content_type: gtk::Label,
     content: gtk::Box,
-    media: RefCell<Option<gtk::Video>>,
     split: RefCell<Option<gtk::Paned>>,
     occupied_width: RefCell<Option<Rc<dyn Fn() -> i32>>>,
     current: RefCell<Option<FileEntry>>,
@@ -116,7 +115,6 @@ impl PreviewDrawer {
             modified,
             content_type,
             content,
-            media: RefCell::new(None),
             split: RefCell::new(None),
             occupied_width: RefCell::new(None),
             current: RefCell::new(None),
@@ -380,27 +378,26 @@ impl PreviewState {
                     self.content.append(&notice);
                 }
             }
-            PreviewContent::Image => {
-                let file = file_for_entry(&preview.entry);
-                let picture = gtk::Picture::for_file(&file);
-                picture.add_css_class("preview-image");
-                picture.set_can_shrink(true);
-                picture.set_content_fit(gtk::ContentFit::Contain);
-                picture.set_hexpand(true);
-                picture.set_vexpand(true);
-                self.content.append(&picture);
+            PreviewContent::Rasterized { png } => {
+                let bytes = glib::Bytes::from_owned(png);
+                match gtk::gdk::Texture::from_bytes(&bytes) {
+                    Ok(texture) => {
+                        let picture = gtk::Picture::for_paintable(&texture);
+                        picture.add_css_class("preview-image");
+                        picture.set_can_shrink(true);
+                        picture.set_content_fit(gtk::ContentFit::Contain);
+                        picture.set_hexpand(true);
+                        picture.set_vexpand(true);
+                        self.content.append(&picture);
+                    }
+                    Err(error) => self.show_message("Preview unavailable", &error.to_string()),
+                }
             }
-            PreviewContent::Media => {
-                let file = file_for_entry(&preview.entry);
-                let video = gtk::Video::new();
-                video.add_css_class("preview-media");
-                video.set_autoplay(false);
-                video.set_loop(false);
-                video.set_file(Some(&file));
-                video.set_hexpand(true);
-                video.set_vexpand(true);
-                self.media.replace(Some(video.clone()));
-                self.content.append(&video);
+            PreviewContent::Image | PreviewContent::Media => {
+                self.show_message(
+                    "Preview unavailable",
+                    "The sandboxed renderer returned no image",
+                );
             }
             PreviewContent::Pdf { png, page, pages } => {
                 self.render_pdf_viewer(preview.entry, png, page, pages);
@@ -681,12 +678,6 @@ impl PreviewState {
     }
 
     fn clear_content(&self) {
-        if let Some(video) = self.media.borrow_mut().take() {
-            if let Some(stream) = video.media_stream() {
-                stream.set_playing(false);
-            }
-            video.set_file(gio::File::NONE);
-        }
         clear_box(&self.content);
     }
 
@@ -822,14 +813,6 @@ fn clear_box(box_: &gtk::Box) {
     while let Some(child) = box_.first_child() {
         box_.remove(&child);
     }
-}
-
-fn file_for_entry(entry: &FileEntry) -> gio::File {
-    entry
-        .location
-        .native_path()
-        .map(gio::File::for_path)
-        .unwrap_or_else(|| gio::File::for_uri(entry.location.uri_value().unwrap_or_default()))
 }
 
 fn metadata_size(entry: &FileEntry) -> String {

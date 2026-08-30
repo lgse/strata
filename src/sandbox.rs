@@ -1,0 +1,246 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+    process::{Command, Stdio},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
+    thread,
+    time::{Duration, Instant},
+};
+
+const WALL_TIME_LIMIT: Duration = Duration::from_secs(12);
+const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
+static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ParseOperation {
+    ThumbnailImage,
+    ThumbnailRaw,
+    ThumbnailPdf,
+    ThumbnailVideo,
+    PreviewImage,
+    PreviewPdf,
+    PreviewMedia,
+}
+
+impl ParseOperation {
+    fn argument(self) -> &'static str {
+        match self {
+            Self::ThumbnailImage => "thumbnail-image",
+            Self::ThumbnailRaw => "thumbnail-raw",
+            Self::ThumbnailPdf => "thumbnail-pdf",
+            Self::ThumbnailVideo => "thumbnail-video",
+            Self::PreviewImage => "preview-image",
+            Self::PreviewPdf => "preview-pdf",
+            Self::PreviewMedia => "preview-media",
+        }
+    }
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct Cancellation(Arc<AtomicBool>);
+
+impl Cancellation {
+    pub(crate) fn cancel(&self) {
+        self.0.store(true, Ordering::Release);
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+}
+
+pub(crate) struct ParseOutput {
+    pub(crate) png: Vec<u8>,
+    pub(crate) page: i32,
+    pub(crate) pages: i32,
+}
+
+pub(crate) fn parse(
+    input: &Path,
+    operation: ParseOperation,
+    value: i32,
+    cancellation: &Cancellation,
+) -> Result<ParseOutput, String> {
+    if cancellation.is_cancelled() {
+        return Err("Preview cancelled".to_owned());
+    }
+    let input = input
+        .canonicalize()
+        .map_err(|error| format!("Unable to open preview input: {error}"))?;
+    if !input.is_file() {
+        return Err("Preview input is not a regular file".to_owned());
+    }
+
+    let output = PrivateOutput::create().map_err(|error| error.to_string())?;
+    let executable = std::env::current_exe()
+        .map_err(|error| format!("Unable to locate the Strata executable: {error}"))?;
+    let mut command = sandbox_command(&executable, &input, output.path(), operation, value);
+    let mut child = command
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
+    let started = Instant::now();
+
+    let status = loop {
+        if cancellation.is_cancelled() {
+            terminate(&mut child);
+            return Err("Preview cancelled".to_owned());
+        }
+        if started.elapsed() >= WALL_TIME_LIMIT {
+            terminate(&mut child);
+            return Err("The preview renderer timed out".to_owned());
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => thread::sleep(Duration::from_millis(20)),
+            Err(error) => {
+                terminate(&mut child);
+                return Err(format!("Unable to monitor the preview renderer: {error}"));
+            }
+        }
+    };
+    if !status.success() {
+        return Err("The sandboxed preview renderer failed".to_owned());
+    }
+
+    let png_path = output.path().join("result.png");
+    let metadata =
+        fs::metadata(&png_path).map_err(|_| "The preview renderer produced no image".to_owned())?;
+    if metadata.len() == 0 || metadata.len() > MAX_OUTPUT_BYTES {
+        return Err("The preview renderer produced an invalid image size".to_owned());
+    }
+    let png = fs::read(png_path).map_err(|error| error.to_string())?;
+    if !png.starts_with(b"\x89PNG\r\n\x1a\n") {
+        return Err("The preview renderer produced invalid image data".to_owned());
+    }
+    let (page, pages) = read_metadata(&output.path().join("result.meta"));
+    Ok(ParseOutput { png, page, pages })
+}
+
+fn sandbox_command(
+    executable: &Path,
+    input: &Path,
+    output: &Path,
+    operation: ParseOperation,
+    value: i32,
+) -> Command {
+    let mut command = Command::new("bwrap");
+    command.args([
+        "--unshare-all",
+        "--die-with-parent",
+        "--new-session",
+        "--clearenv",
+        "--setenv",
+        "PATH",
+        "/usr/bin",
+        "--setenv",
+        "HOME",
+        "/nonexistent",
+        "--setenv",
+        "XDG_CACHE_HOME",
+        "/tmp/cache",
+        "--proc",
+        "/proc",
+        "--dev",
+        "/dev",
+        "--tmpfs",
+        "/tmp",
+        "--dir",
+        "/app",
+        "--dir",
+        "/etc",
+        "--ro-bind",
+        "/usr",
+        "/usr",
+        "--ro-bind-try",
+        "/lib",
+        "/lib",
+        "--ro-bind-try",
+        "/lib64",
+        "/lib64",
+        "--ro-bind-try",
+        "/etc/fonts",
+        "/etc/fonts",
+        "--ro-bind-try",
+        "/etc/ld.so.cache",
+        "/etc/ld.so.cache",
+        "--ro-bind-try",
+        "/etc/ImageMagick-7",
+        "/etc/ImageMagick-7",
+        "--ro-bind-try",
+        "/etc/ImageMagick-6",
+        "/etc/ImageMagick-6",
+        "--ro-bind",
+    ]);
+    command.arg(executable).arg("/app/strata");
+    command.arg("--ro-bind").arg(input).arg("/input");
+    command.arg("--bind").arg(output).arg("/output");
+    command.args([
+        "--",
+        "/usr/bin/prlimit",
+        "--as=536870912",
+        "--cpu=10",
+        "--fsize=33554432",
+        "--nproc=64",
+        "--",
+        "/app/strata",
+        "--preview-helper",
+        operation.argument(),
+        "/input",
+        "/output/result.png",
+    ]);
+    command.arg(value.to_string());
+    command
+}
+
+fn terminate(child: &mut std::process::Child) {
+    // bwrap is the PID-namespace init process. Killing it tears down every process in
+    // the sandbox, including descendants started by ImageMagick or thumbnailers.
+    let _killed = child.kill();
+    let _waited = child.wait();
+}
+
+fn read_metadata(path: &Path) -> (i32, i32) {
+    let Ok(value) = fs::read_to_string(path) else {
+        return (0, 0);
+    };
+    let mut values = value
+        .split_whitespace()
+        .filter_map(|part| part.parse().ok());
+    (values.next().unwrap_or(0), values.next().unwrap_or(0))
+}
+
+struct PrivateOutput(PathBuf);
+
+impl PrivateOutput {
+    fn create() -> io::Result<Self> {
+        use std::os::unix::fs::DirBuilderExt;
+
+        let path = std::env::temp_dir().join(format!(
+            "strata-preview-{}-{}",
+            std::process::id(),
+            NEXT_DIRECTORY.fetch_add(1, Ordering::Relaxed)
+        ));
+        fs::DirBuilder::new().mode(0o700).create(&path)?;
+        Ok(Self(path))
+    }
+
+    fn path(&self) -> &Path {
+        &self.0
+    }
+}
+
+impl Drop for PrivateOutput {
+    fn drop(&mut self) {
+        let _removed = fs::remove_dir_all(&self.0);
+    }
+}
+
+#[cfg(test)]
+mod tests;

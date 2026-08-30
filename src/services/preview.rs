@@ -22,6 +22,7 @@ pub enum PreviewContent {
     Text { content: String, truncated: bool },
     Image,
     Media,
+    Rasterized { png: Vec<u8> },
     Pdf { png: Vec<u8>, page: i32, pages: i32 },
     Unsupported,
 }

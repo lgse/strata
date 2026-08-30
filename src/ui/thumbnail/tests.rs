@@ -1,16 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 use gtk::glib;
 
-use super::{
-    MAX_CACHE_ENTRIES, ThumbnailCache, ThumbnailKey, ThumbnailKind, render_pdf_thumbnail,
-    thumbnail_kind,
-};
+use super::{MAX_CACHE_ENTRIES, ThumbnailCache, ThumbnailKey, ThumbnailKind, thumbnail_kind};
 
 #[test]
 fn recognizes_mainstream_image_and_video_formats() {
@@ -42,27 +36,6 @@ fn recognizes_mainstream_image_and_video_formats() {
         thumbnail_kind(Path::new("clip.ogv")),
         Some(ThumbnailKind::Video)
     );
-}
-
-#[test]
-fn renders_the_first_pdf_page_as_a_bounded_thumbnail() {
-    let path = std::env::temp_dir().join(format!(
-        "strata-thumbnail-{}-{}.pdf",
-        std::process::id(),
-        std::thread::current().name().unwrap_or("test")
-    ));
-    let surface = cairo::PdfSurface::new(612.0, 792.0, &path).expect("create PDF surface");
-    let context = cairo::Context::new(&surface).expect("create PDF context");
-    context.set_source_rgb(0.2, 0.4, 0.8);
-    context.paint().expect("paint PDF page");
-    context.show_page().expect("finish PDF page");
-    drop(context);
-    surface.finish();
-
-    let png = render_pdf_thumbnail(&path, 64).expect("render PDF thumbnail");
-    let _removed = fs::remove_file(path);
-
-    assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
 }
 
 #[test]
