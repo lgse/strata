@@ -201,7 +201,7 @@ fn sandbox_command(
 
 fn terminate(child: &mut std::process::Child) {
     // bwrap is the PID-namespace init process. Killing it tears down every process in
-    // the sandbox, including descendants started by ImageMagick or thumbnailers.
+    // the sandbox, including descendants started by ImageMagick or thumbnail tools.
     let _killed = child.kill();
     let _waited = child.wait();
 }
