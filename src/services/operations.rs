@@ -41,6 +41,13 @@ pub struct CreateDirectoryRequest {
 }
 
 #[derive(Clone, Debug)]
+pub struct CreateFileRequest {
+    pub id: OperationRequestId,
+    pub parent: Location,
+    pub name: String,
+}
+
+#[derive(Clone, Debug)]
 pub struct PasteRequest {
     pub id: OperationRequestId,
     pub destination: Location,
@@ -114,6 +121,11 @@ pub trait OperationProvider {
     fn create_directory(
         &self,
         request: CreateDirectoryRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle;
+    fn create_file(
+        &self,
+        request: CreateFileRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle;
     fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;

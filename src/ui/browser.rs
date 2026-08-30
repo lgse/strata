@@ -60,8 +60,9 @@ struct ColumnView {
     bound_rows: Rc<RefCell<Vec<BoundRow>>>,
     entry_count: Rc<Cell<usize>>,
     spinner: gtk::Spinner,
-    new_folder_row: gtk::Box,
-    new_folder_entry: gtk::Entry,
+    new_entry_row: gtk::Box,
+    new_entry_icon: gtk::Image,
+    new_entry_entry: gtk::Entry,
 }
 
 struct ActiveRename {
@@ -71,8 +72,9 @@ struct ActiveRename {
     spacer: gtk::Box,
 }
 
-struct ActiveNewFolder {
+struct ActiveNewEntry {
     location: Location,
+    is_directory: bool,
     row: gtk::Box,
     field: gtk::Entry,
 }
@@ -214,7 +216,7 @@ pub(super) struct ViewState {
     peek_enabled: Cell<bool>,
     single_click_previews: Cell<bool>,
     active_rename: RefCell<Option<ActiveRename>>,
-    active_new_folder: RefCell<Option<ActiveNewFolder>>,
+    active_new_entry: RefCell<Option<ActiveNewEntry>>,
     delete_progress: RefCell<Option<DeleteProgressView>>,
     pin_handler: RefCell<Option<PinHandler>>,
     browser: Rc<Browser>,
@@ -321,7 +323,7 @@ impl BrowserView {
             peek_enabled: Cell::new(true),
             single_click_previews: Cell::new(true),
             active_rename: RefCell::new(None),
-            active_new_folder: RefCell::new(None),
+            active_new_entry: RefCell::new(None),
             delete_progress: RefCell::new(None),
             pin_handler: RefCell::new(None),
             browser,
@@ -412,8 +414,8 @@ impl BrowserView {
         self.state.cancel_rename()
     }
 
-    pub fn cancel_new_folder(&self) -> bool {
-        self.state.cancel_new_folder() || self.state.mode_views.borrow().cancel_new_folder()
+    pub fn cancel_new_entry(&self) -> bool {
+        self.state.cancel_new_entry() || self.state.mode_views.borrow().cancel_new_folder()
     }
 
     pub fn rename_is_active(&self) -> bool {
@@ -421,8 +423,8 @@ impl BrowserView {
             || self.state.mode_views.borrow().rename_is_active()
     }
 
-    pub fn new_folder_is_active(&self) -> bool {
-        self.state.active_new_folder.borrow().is_some()
+    pub fn new_entry_is_active(&self) -> bool {
+        self.state.active_new_entry.borrow().is_some()
             || self.state.mode_views.borrow().new_folder_is_active()
     }
 
@@ -539,7 +541,7 @@ impl BrowserView {
                 .map(|location| (depth, location))
         }) {
             if mode == BrowserMode::Columns {
-                self.state.begin_new_folder(depth, location);
+                self.state.begin_new_entry(depth, location, true);
             } else {
                 self.state.mode_views.borrow().begin_new_folder(depth);
             }
@@ -693,28 +695,35 @@ impl ViewState {
         }
     }
 
-    fn begin_new_folder(self: &Rc<Self>, depth: usize, location: Location) {
-        self.cancel_new_folder();
+    fn begin_new_entry(self: &Rc<Self>, depth: usize, location: Location, is_directory: bool) {
+        self.cancel_new_entry();
         self.cancel_rename();
         let columns = self.columns.borrow();
         let Some(column) = columns.get(depth) else {
             return;
         };
-        column.new_folder_entry.remove_css_class("error");
-        column.new_folder_entry.set_tooltip_text(None);
-        column.new_folder_entry.set_text("");
-        column.new_folder_row.set_visible(true);
-        self.active_new_folder.replace(Some(ActiveNewFolder {
+        let icon_name = if is_directory {
+            crate::assets::icons::FOLDER
+        } else {
+            crate::assets::icons::DOCUMENTS
+        };
+        crate::assets::set_primary_icon(&column.new_entry_icon, icon_name);
+        column.new_entry_entry.remove_css_class("error");
+        column.new_entry_entry.set_tooltip_text(None);
+        column.new_entry_entry.set_text("");
+        column.new_entry_row.set_visible(true);
+        self.active_new_entry.replace(Some(ActiveNewEntry {
             location,
-            row: column.new_folder_row.clone(),
-            field: column.new_folder_entry.clone(),
+            is_directory,
+            row: column.new_entry_row.clone(),
+            field: column.new_entry_entry.clone(),
         }));
-        column.new_folder_entry.grab_focus();
+        column.new_entry_entry.grab_focus();
     }
 
-    fn submit_new_folder(self: &Rc<Self>, field: &gtk::Entry) {
+    fn submit_new_entry(self: &Rc<Self>, field: &gtk::Entry) {
         if !self
-            .active_new_folder
+            .active_new_entry
             .borrow()
             .as_ref()
             .is_some_and(|active| active.field == *field)
@@ -726,16 +735,20 @@ impl ViewState {
             field.grab_focus();
             return;
         }
-        let Some(active) = self.active_new_folder.take() else {
+        let Some(active) = self.active_new_entry.take() else {
             return;
         };
         active.row.set_visible(false);
         field.set_text("");
-        self.browser.create_directory(active.location, name);
+        if active.is_directory {
+            self.browser.create_directory(active.location, name);
+        } else {
+            self.browser.create_file(active.location, name);
+        }
     }
 
-    fn cancel_new_folder(&self) -> bool {
-        let Some(active) = self.active_new_folder.take() else {
+    fn cancel_new_entry(&self) -> bool {
+        let Some(active) = self.active_new_entry.take() else {
             return false;
         };
         active.field.set_text("");
@@ -2017,7 +2030,7 @@ impl ViewState {
     }
 
     fn begin_rename(self: &Rc<Self>) -> bool {
-        self.cancel_new_folder();
+        self.cancel_new_entry();
         self.sync_mode_selection();
         let Some((depth, source_position, entry)) = self.browser.rename_item() else {
             return false;
@@ -3192,35 +3205,35 @@ impl ViewState {
                 browser.retry_column(depth);
             }
         });
-        let new_folder_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        new_folder_row.add_css_class("file-row");
-        new_folder_row.add_css_class("new-folder-row");
-        new_folder_row.set_visible(false);
-        let new_folder_icon = crate::assets::primary_icon(crate::assets::icons::FOLDER, 17);
-        new_folder_icon.add_css_class("file-icon");
-        let new_folder_entry = gtk::Entry::new();
-        new_folder_entry.add_css_class("inline-rename");
-        new_folder_entry.set_hexpand(true);
-        new_folder_entry.connect_changed(|field| {
+        let new_entry_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        new_entry_row.add_css_class("file-row");
+        new_entry_row.add_css_class("new-entry-row");
+        new_entry_row.set_visible(false);
+        let new_entry_icon = crate::assets::primary_icon(crate::assets::icons::FOLDER, 17);
+        new_entry_icon.add_css_class("file-icon");
+        let new_entry_entry = gtk::Entry::new();
+        new_entry_entry.add_css_class("inline-rename");
+        new_entry_entry.set_hexpand(true);
+        new_entry_entry.connect_changed(|field| {
             update_basename_validation(field);
         });
-        new_folder_row.append(&new_folder_icon);
-        new_folder_row.append(&new_folder_entry);
+        new_entry_row.append(&new_entry_icon);
+        new_entry_row.append(&new_entry_entry);
         let weak_state = Rc::downgrade(self);
-        new_folder_entry.connect_activate(move |field| {
+        new_entry_entry.connect_activate(move |field| {
             if let Some(state) = weak_state.upgrade() {
-                state.submit_new_folder(field);
+                state.submit_new_entry(field);
             }
         });
-        let new_folder_focus = gtk::EventControllerFocus::new();
+        let new_entry_focus = gtk::EventControllerFocus::new();
         let weak_state = Rc::downgrade(self);
-        let field = new_folder_entry.clone();
-        new_folder_focus.connect_leave(move |_| {
+        let field = new_entry_entry.clone();
+        new_entry_focus.connect_leave(move |_| {
             if let Some(state) = weak_state.upgrade() {
-                state.submit_new_folder(&field);
+                state.submit_new_entry(&field);
             }
         });
-        new_folder_entry.add_controller(new_folder_focus);
+        new_entry_entry.add_controller(new_entry_focus);
 
         let presentation = LoadPresentation::new(&scroll, Some(retry));
         install_directory_drop_target(self, &presentation.stack, location.clone());
@@ -3254,7 +3267,7 @@ impl ViewState {
             source_position,
             depth,
         );
-        column.append(&new_folder_row);
+        column.append(&new_entry_row);
         column.append(&presentation.stack);
 
         let shell = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -3324,8 +3337,9 @@ impl ViewState {
             bound_rows,
             entry_count,
             spinner,
-            new_folder_row,
-            new_folder_entry,
+            new_entry_row,
+            new_entry_icon,
+            new_entry_entry,
         });
 
         self.refresh_active_path_rows();
@@ -3546,7 +3560,7 @@ impl ViewState {
             self.hovered_column.set(None);
         }
         self.cancel_rename();
-        self.cancel_new_folder();
+        self.cancel_new_entry();
         self.horizontal_scroll_generation
             .set(self.horizontal_scroll_generation.get().saturating_add(1));
         while self.columns.borrow().len() > len {
@@ -3720,21 +3734,31 @@ pub(super) fn install_folder_context_menu(
     popover.add_css_class("folder-context-popover");
 
     let new_folder = context_menu_option("New Folder", Some("Ctrl+Shift+N"));
+    let new_file = context_menu_option("New File", None);
     let paste = context_menu_option("Paste", Some("Ctrl+V"));
     let select_all = context_menu_option("Select All", Some("Ctrl+A"));
     let properties = context_menu_option("Properties", None);
     content.append(&new_folder);
+    content.append(&new_file);
     content.append(&paste);
     content.append(&select_all);
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     content.append(&properties);
 
-    let pending_new_folder = Rc::new(Cell::new(false));
-    let pending_for_click = pending_new_folder.clone();
+    let pending_new_entry = Rc::new(Cell::new(None));
+    let pending_for_click = pending_new_entry.clone();
     let new_folder_popover = popover.downgrade();
     new_folder.connect_clicked(move |_| {
-        pending_for_click.set(true);
+        pending_for_click.set(Some(true));
         if let Some(popover) = new_folder_popover.upgrade() {
+            popover.popdown();
+        }
+    });
+    let pending_for_click = pending_new_entry.clone();
+    let new_file_popover = popover.downgrade();
+    new_file.connect_clicked(move |_| {
+        pending_for_click.set(Some(false));
+        if let Some(popover) = new_file_popover.upgrade() {
             popover.popdown();
         }
     });
@@ -3742,14 +3766,14 @@ pub(super) fn install_folder_context_menu(
     let folder = location.clone();
     popover.connect_closed(move |popover| {
         popover.unparent();
-        if !pending_new_folder.replace(false) {
+        let Some(is_directory) = pending_new_entry.take() else {
             return;
-        }
+        };
         let weak = weak.clone();
         let folder = folder.clone();
         glib::idle_add_local_once(move || {
             if let Some(state) = weak.upgrade() {
-                state.begin_new_folder(depth, folder);
+                state.begin_new_entry(depth, folder, is_directory);
             }
         });
     });

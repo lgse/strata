@@ -11,10 +11,10 @@ use crate::{
     app::navigation::{EntryInsertion, EntrySplice, NavigationPath, NavigationState},
     model::{FileEntry, Location, SortDirection, SortKey, ViewPreferences},
     services::{
-        CreateDirectoryRequest, DeleteRequest, DirectoryChange, DirectoryEvent, DirectoryRequest,
-        FileSource, LoadHandle, LocationValidationError, OperationEvent, OperationProvider,
-        OperationRequestId, PasteRequest, RenameRequest, RequestId, RestoreRequest,
-        validate_basename,
+        CreateDirectoryRequest, CreateFileRequest, DeleteRequest, DirectoryChange, DirectoryEvent,
+        DirectoryRequest, FileSource, LoadHandle, LocationValidationError, OperationEvent,
+        OperationProvider, OperationRequestId, PasteRequest, RenameRequest, RequestId,
+        RestoreRequest, validate_basename,
     },
 };
 
@@ -622,6 +622,25 @@ impl Browser {
         let request_id = self.begin_operation();
         let load = provider.create_directory(
             CreateDirectoryRequest {
+                id: request_id,
+                parent,
+                name,
+            },
+            self.operation_callback(request_id, false),
+        );
+        self.operation_load.replace(Some(load));
+    }
+
+    pub fn create_file(self: &Rc<Self>, parent: Location, name: String) {
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            self.emit(BrowserEvent::OperationFailed {
+                message: "File operations are unavailable".to_owned(),
+            });
+            return;
+        };
+        let request_id = self.begin_operation();
+        let load = provider.create_file(
+            CreateFileRequest {
                 id: request_id,
                 parent,
                 name,

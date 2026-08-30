@@ -401,13 +401,13 @@ fn install_keyboard_navigation(
         if key == gtk::gdk::Key::F2 && view.begin_rename() {
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::Escape && view.cancel_new_folder() {
+        if key == gtk::gdk::Key::Escape && view.cancel_new_entry() {
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::Escape && view.cancel_rename() {
             return glib::Propagation::Stop;
         }
-        if view.rename_is_active() || view.new_folder_is_active() {
+        if view.rename_is_active() || view.new_entry_is_active() {
             return glib::Propagation::Proceed;
         }
         if key == gtk::gdk::Key::Escape && view.dismiss_focused_filter() {

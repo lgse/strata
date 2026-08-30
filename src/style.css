@@ -1700,7 +1700,7 @@ menubutton.column-header-action > button:focus-visible image {
   font-size: 0.88em;
 }
 
-.new-folder-row {
+.new-entry-row {
   background: alpha(@theme_muted, 0.24);
   border-radius: 6px;
   color: @theme_text;
@@ -1708,7 +1708,7 @@ menubutton.column-header-action > button:focus-visible image {
   padding: 4px;
 }
 
-.new-folder-row .file-icon {
+.new-entry-row .file-icon {
   color: @theme_accent;
 }
 
