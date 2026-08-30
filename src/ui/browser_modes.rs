@@ -61,7 +61,8 @@ struct ActiveModeRename {
     label: gtk::Label,
 }
 
-struct ActiveModeNewFolder {
+struct ActiveModeNewEntry {
+    is_directory: bool,
     field: gtk::Entry,
     placeholder: Option<gtk::StringList>,
     stack: Option<gtk::Stack>,
@@ -89,7 +90,8 @@ struct Pane {
     bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
     filter_entry: Option<gtk::Entry>,
     filter_button: Option<gtk::ToggleButton>,
-    new_folder_placeholder: Option<gtk::StringList>,
+    new_entry_placeholder: Option<gtk::StringList>,
+    new_entry_is_directory: Option<Rc<Cell<bool>>>,
 }
 
 pub struct ModeViews {
@@ -104,7 +106,7 @@ pub struct ModeViews {
     cut_locations: Rc<RefCell<Vec<Location>>>,
     context_state: RefCell<Option<Weak<super::browser::ViewState>>>,
     active_rename: Rc<RefCell<Option<ActiveModeRename>>>,
-    active_new_folder: Rc<RefCell<Option<ActiveModeNewFolder>>>,
+    active_new_entry: Rc<RefCell<Option<ActiveModeNewEntry>>>,
     mode: BrowserMode,
     density: BrowserDensity,
     grid_thumbnail_size: Rc<Cell<i32>>,
@@ -163,7 +165,7 @@ impl ModeViews {
             cut_locations: Rc::new(RefCell::new(Vec::new())),
             context_state: RefCell::new(None),
             active_rename: Rc::new(RefCell::new(None)),
-            active_new_folder: Rc::new(RefCell::new(None)),
+            active_new_entry: Rc::new(RefCell::new(None)),
             mode: BrowserMode::Columns,
             density: BrowserDensity::Compact,
             grid_thumbnail_size: Rc::new(Cell::new(DEFAULT_GRID_THUMBNAIL_SIZE)),
@@ -197,23 +199,23 @@ impl ModeViews {
         self.active_rename.borrow().is_some()
     }
 
-    pub fn new_folder_is_active(&self) -> bool {
-        self.active_new_folder.borrow().is_some()
+    pub fn new_entry_is_active(&self) -> bool {
+        self.active_new_entry.borrow().is_some()
     }
 
-    pub fn cancel_new_folder(&self) -> bool {
-        let Some(active) = self.active_new_folder.take() else {
+    pub fn cancel_new_entry(&self) -> bool {
+        let Some(active) = self.active_new_entry.take() else {
             return false;
         };
         active.field.set_text("");
         active.field.remove_css_class("error");
         active.field.set_tooltip_text(None);
-        finish_mode_new_folder(&active);
+        finish_mode_new_entry(&active);
         true
     }
 
-    pub fn begin_new_folder(&self, depth: usize) -> bool {
-        self.cancel_new_folder();
+    pub fn begin_new_entry(&self, depth: usize, is_directory: bool) -> bool {
+        self.cancel_new_entry();
         self.cancel_rename();
         let pane = match self.mode {
             BrowserMode::Columns => return false,
@@ -226,18 +228,22 @@ impl ModeViews {
         let Some(pane) = pane else {
             return false;
         };
-        let Some(placeholder) = pane.new_folder_placeholder.as_ref() else {
+        let Some(placeholder) = pane.new_entry_placeholder.as_ref() else {
             return false;
         };
+        let Some(entry_kind) = pane.new_entry_is_directory.as_ref() else {
+            return false;
+        };
+        entry_kind.set(is_directory);
         placeholder.splice(0, placeholder.n_items(), &[""]);
         pane.stack.set_visible_child_name("content");
         let bound_items = pane.bound_items.clone();
-        let active = self.active_new_folder.clone();
+        let active = self.active_new_entry.clone();
         let placeholder = placeholder.clone();
         let stack = pane.stack.clone();
         let source_model = pane.model.clone();
         let view = pane.view.clone();
-        view.add_css_class("creating-folder");
+        view.add_css_class("creating-entry");
         if let Ok(grid) = view.clone().downcast::<gtk::GridView>() {
             grid.scroll_to(0, gtk::ListScrollFlags::FOCUS, None);
         } else if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
@@ -256,11 +262,12 @@ impl ModeViews {
             });
             let Some(field) = field else {
                 placeholder.splice(0, placeholder.n_items(), &[]);
-                view.remove_css_class("creating-folder");
+                view.remove_css_class("creating-entry");
                 return;
             };
             field.set_text("");
-            active.replace(Some(ActiveModeNewFolder {
+            active.replace(Some(ActiveModeNewEntry {
+                is_directory,
                 field: field.clone(),
                 placeholder: Some(placeholder),
                 stack: Some(stack),
@@ -394,7 +401,7 @@ impl ModeViews {
     }
 
     pub fn set_mode(&mut self, mode: BrowserMode) {
-        self.cancel_new_folder();
+        self.cancel_new_entry();
         self.cancel_rename();
         self.mode = mode;
         self.stack.set_visible_child_name(match mode {
@@ -453,7 +460,7 @@ impl ModeViews {
                 | BrowserEvent::ColumnsTruncated { .. }
                 | BrowserEvent::ColumnAdded { .. }
         ) {
-            self.cancel_new_folder();
+            self.cancel_new_entry();
         }
         match event {
             BrowserEvent::Reset => {
@@ -482,7 +489,7 @@ impl ModeViews {
                     GridOptions {
                         peek_state: self.context_state.borrow().clone(),
                         thumbnail_size: self.grid_thumbnail_size.clone(),
-                        active_new_folder: self.active_new_folder.clone(),
+                        active_new_entry: self.active_new_entry.clone(),
                     },
                     *depth,
                     &location.display_name(),
@@ -498,7 +505,7 @@ impl ModeViews {
                     self.single_click_previews.clone(),
                     self.transfer_handler.clone(),
                     self.cut_locations.clone(),
-                    self.active_new_folder.clone(),
+                    self.active_new_entry.clone(),
                     *depth,
                     &location.display_name(),
                 );
@@ -705,7 +712,7 @@ impl ModeViews {
             GridOptions {
                 peek_state: self.context_state.borrow().clone(),
                 thumbnail_size: self.grid_thumbnail_size.clone(),
-                active_new_folder: self.active_new_folder.clone(),
+                active_new_entry: self.active_new_entry.clone(),
             },
             depth,
             &snapshot.location.display_name(),
@@ -730,7 +737,7 @@ impl ModeViews {
             self.single_click_previews.clone(),
             self.transfer_handler.clone(),
             self.cut_locations.clone(),
-            self.active_new_folder.clone(),
+            self.active_new_entry.clone(),
             depth,
             &snapshot.location.display_name(),
         );
@@ -752,11 +759,11 @@ fn widget_has_focus(widget: &impl IsA<gtk::Widget>, focused: Option<&gtk::Widget
 struct GridOptions {
     peek_state: Option<Weak<super::browser::ViewState>>,
     thumbnail_size: Rc<Cell<i32>>,
-    active_new_folder: Rc<RefCell<Option<ActiveModeNewFolder>>>,
+    active_new_entry: Rc<RefCell<Option<ActiveModeNewEntry>>>,
 }
 
-fn submit_mode_new_folder(
-    active: &RefCell<Option<ActiveModeNewFolder>>,
+fn submit_mode_new_entry(
+    active: &RefCell<Option<ActiveModeNewEntry>>,
     browser: &Weak<Browser>,
     location: &Option<Location>,
     field: &gtk::Entry,
@@ -776,17 +783,21 @@ fn submit_mode_new_folder(
     let Some(active) = active.take() else {
         return;
     };
-    finish_mode_new_folder(&active);
+    finish_mode_new_entry(&active);
     if let (Some(browser), Some(location)) = (browser.upgrade(), location.clone()) {
-        browser.create_directory(location, name);
+        if active.is_directory {
+            browser.create_directory(location, name);
+        } else {
+            browser.create_file(location, name);
+        }
     }
 }
 
-fn finish_mode_new_folder(active: &ActiveModeNewFolder) {
+fn finish_mode_new_entry(active: &ActiveModeNewEntry) {
     active.field.set_text("");
     active.field.remove_css_class("error");
     active.field.set_tooltip_text(None);
-    active.view.remove_css_class("creating-folder");
+    active.view.remove_css_class("creating-entry");
     if let Some(placeholder) = active.placeholder.as_ref() {
         placeholder.splice(0, placeholder.n_items(), &[]);
     }
@@ -928,7 +939,7 @@ fn build_grid_pane(
 ) -> Pane {
     let controls = grid_controls(&browser, depth, options.thumbnail_size.get());
     let thumbnail_size = options.thumbnail_size;
-    let active_new_folder = options.active_new_folder;
+    let active_new_entry = options.active_new_entry;
     let (pane, content, model, stack, status, spinner) = pane_base(
         title,
         "grid-pane",
@@ -949,9 +960,10 @@ fn build_grid_pane(
         query.is_empty() || item.string().to_lowercase().contains(query.as_str())
     });
     let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
-    let new_folder_placeholder = gtk::StringList::new(&[]);
+    let new_entry_placeholder = gtk::StringList::new(&[]);
+    let new_entry_is_directory = Rc::new(Cell::new(true));
     let flattened_models = gio::ListStore::new::<gio::ListModel>();
-    flattened_models.append(&new_folder_placeholder.clone().upcast::<gio::ListModel>());
+    flattened_models.append(&new_entry_placeholder.clone().upcast::<gio::ListModel>());
     flattened_models.append(&filtered_model.clone().upcast::<gio::ListModel>());
     let view_model = gtk::FlattenListModel::new(Some(flattened_models));
     let selection = gtk::MultiSelection::new(Some(view_model.clone()));
@@ -971,7 +983,7 @@ fn build_grid_pane(
     let filtered_for_setup = view_model.clone().upcast::<gio::ListModel>();
     let transfers_for_setup = transfer_handler.clone();
     let peek_for_setup = options.peek_state;
-    let active_for_setup = active_new_folder.clone();
+    let active_for_setup = active_new_entry.clone();
     let folder_location = browser.location_at(depth);
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -1009,7 +1021,7 @@ fn build_grid_pane(
         let browser_for_submit = browser_for_setup.clone();
         let location_for_submit = folder_location.clone();
         field.connect_activate(move |field| {
-            submit_mode_new_folder(
+            submit_mode_new_entry(
                 &active_for_submit,
                 &browser_for_submit,
                 &location_for_submit,
@@ -1022,7 +1034,7 @@ fn build_grid_pane(
         let location_for_leave = folder_location.clone();
         let field_for_leave = field.clone();
         focus.connect_leave(move |_| {
-            submit_mode_new_folder(
+            submit_mode_new_entry(
                 &active_for_leave,
                 &browser_for_leave,
                 &location_for_leave,
@@ -1074,6 +1086,7 @@ fn build_grid_pane(
     let filtered_for_bind = view_model.clone().upcast::<gio::ListModel>();
     let cuts_for_bind = cut_locations.clone();
     let thumbnail_size_for_bind = thumbnail_size.clone();
+    let entry_kind_for_bind = new_entry_is_directory.clone();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -1117,7 +1130,12 @@ fn build_grid_pane(
             icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
         } else {
             card.remove_css_class("cut-item");
-            crate::assets::set_primary_icon(&icon, crate::assets::icons::FOLDER);
+            let icon_name = if entry_kind_for_bind.get() {
+                crate::assets::icons::FOLDER
+            } else {
+                crate::assets::icons::DOCUMENTS
+            };
+            crate::assets::set_primary_icon(&icon, icon_name);
             icon.set_opacity(1.0);
             label.set_visible(false);
             field.set_visible(true);
@@ -1208,7 +1226,8 @@ fn build_grid_pane(
         bound_items,
         filter_entry: Some(controls.filter_entry),
         filter_button: Some(controls.filter_button),
-        new_folder_placeholder: Some(new_folder_placeholder),
+        new_entry_placeholder: Some(new_entry_placeholder),
+        new_entry_is_directory: Some(new_entry_is_directory),
     }
 }
 
@@ -1478,7 +1497,7 @@ fn build_explorer_pane(
     single_click_previews: Rc<Cell<bool>>,
     transfer_handler: TransferHandlerSlot,
     cut_locations: Rc<RefCell<Vec<Location>>>,
-    active_new_folder: Rc<RefCell<Option<ActiveModeNewFolder>>>,
+    active_new_entry: Rc<RefCell<Option<ActiveModeNewEntry>>>,
     depth: usize,
     title: &str,
 ) -> Pane {
@@ -1512,9 +1531,10 @@ fn build_explorer_pane(
         *filter_query.borrow_mut() = entry.text().to_lowercase();
         filter.changed(gtk::FilterChange::Different);
     });
-    let new_folder_placeholder = gtk::StringList::new(&[]);
+    let new_entry_placeholder = gtk::StringList::new(&[]);
+    let new_entry_is_directory = Rc::new(Cell::new(true));
     let flattened_models = gio::ListStore::new::<gio::ListModel>();
-    flattened_models.append(&new_folder_placeholder.clone().upcast::<gio::ListModel>());
+    flattened_models.append(&new_entry_placeholder.clone().upcast::<gio::ListModel>());
     flattened_models.append(&filtered_model.upcast::<gio::ListModel>());
     let view_model = gtk::FlattenListModel::new(Some(flattened_models));
     let view_model_object = view_model.clone().upcast::<gio::ListModel>();
@@ -1532,7 +1552,7 @@ fn build_explorer_pane(
     let browser_for_setup = Rc::downgrade(&browser);
     let previews_for_setup = single_click_previews.clone();
     let transfers_for_setup = transfer_handler.clone();
-    let active_for_setup = active_new_folder.clone();
+    let active_for_setup = active_new_entry.clone();
     let source_for_setup = model.clone();
     let view_model_for_setup = view_model_object.clone();
     let folder_location = browser.location_at(depth);
@@ -1562,7 +1582,7 @@ fn build_explorer_pane(
         let browser_for_submit = browser_for_setup.clone();
         let location_for_submit = folder_location.clone();
         field.connect_activate(move |field| {
-            submit_mode_new_folder(
+            submit_mode_new_entry(
                 &active_for_submit,
                 &browser_for_submit,
                 &location_for_submit,
@@ -1575,7 +1595,7 @@ fn build_explorer_pane(
         let location_for_leave = folder_location.clone();
         let field_for_leave = field.clone();
         focus.connect_leave(move |_| {
-            submit_mode_new_folder(
+            submit_mode_new_entry(
                 &active_for_leave,
                 &browser_for_leave,
                 &location_for_leave,
@@ -1633,6 +1653,7 @@ fn build_explorer_pane(
     let source_for_bind = model.clone();
     let view_model_for_bind = view_model_object.clone();
     let cuts_for_bind = cut_locations.clone();
+    let entry_kind_for_bind = new_entry_is_directory.clone();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -1686,7 +1707,12 @@ fn build_explorer_pane(
             modified.set_label(&entry_modified(&entry));
         } else {
             row.remove_css_class("cut-item");
-            crate::assets::set_primary_icon(&icon, crate::assets::icons::FOLDER);
+            let icon_name = if entry_kind_for_bind.get() {
+                crate::assets::icons::FOLDER
+            } else {
+                crate::assets::icons::DOCUMENTS
+            };
+            crate::assets::set_primary_icon(&icon, icon_name);
             name.set_visible(false);
             field.set_visible(true);
             size.set_label("");
@@ -1745,7 +1771,8 @@ fn build_explorer_pane(
         bound_items,
         filter_entry: Some(filter_entry),
         filter_button: Some(filter_button),
-        new_folder_placeholder: Some(new_folder_placeholder),
+        new_entry_placeholder: Some(new_entry_placeholder),
+        new_entry_is_directory: Some(new_entry_is_directory),
     }
 }
 

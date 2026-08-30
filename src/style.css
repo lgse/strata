@@ -2212,7 +2212,7 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   outline-offset: -2px;
 }
 
-.file-grid.creating-folder > child:focus-visible .grid-card {
+.file-grid.creating-entry > child:focus-visible .grid-card {
   outline: none;
 }
 

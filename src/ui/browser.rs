@@ -415,7 +415,7 @@ impl BrowserView {
     }
 
     pub fn cancel_new_entry(&self) -> bool {
-        self.state.cancel_new_entry() || self.state.mode_views.borrow().cancel_new_folder()
+        self.state.cancel_new_entry() || self.state.mode_views.borrow().cancel_new_entry()
     }
 
     pub fn rename_is_active(&self) -> bool {
@@ -425,7 +425,7 @@ impl BrowserView {
 
     pub fn new_entry_is_active(&self) -> bool {
         self.state.active_new_entry.borrow().is_some()
-            || self.state.mode_views.borrow().new_folder_is_active()
+            || self.state.mode_views.borrow().new_entry_is_active()
     }
 
     pub fn preview_occupied_width(&self) -> i32 {
@@ -540,11 +540,7 @@ impl BrowserView {
                 .location_at(depth)
                 .map(|location| (depth, location))
         }) {
-            if mode == BrowserMode::Columns {
-                self.state.begin_new_entry(depth, location, true);
-            } else {
-                self.state.mode_views.borrow().begin_new_folder(depth);
-            }
+            self.state.begin_new_entry(depth, location, true);
         }
     }
 
@@ -696,6 +692,13 @@ impl ViewState {
     }
 
     fn begin_new_entry(self: &Rc<Self>, depth: usize, location: Location, is_directory: bool) {
+        if self.mode_views.borrow().mode() != BrowserMode::Columns {
+            self.cancel_new_entry();
+            self.mode_views
+                .borrow()
+                .begin_new_entry(depth, is_directory);
+            return;
+        }
         self.cancel_new_entry();
         self.cancel_rename();
         let columns = self.columns.borrow();
