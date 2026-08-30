@@ -2155,21 +2155,10 @@ impl ViewState {
                 self.browser.focus_active();
             }
             Err(LocationValidationError::NotMounted(location)) => {
-                self.mount_location(location.clone(), move |state, result| {
-                    if mount_result_is_ok(&result) {
-                        state.browser.navigate(location.clone());
-                        state.clear_location_error();
-                        state.location_stack.set_visible_child_name("breadcrumbs");
-                        state.browser.focus_active();
-                    } else if let Err(error) = result {
-                        state.location_entry.add_css_class("error");
-                        state
-                            .location_error
-                            .set_text(&format!("Unable to connect: {error}"));
-                        state.location_error.set_visible(true);
-                        state.location_entry.grab_focus();
-                    }
-                });
+                self.mount_then_navigate(location, MountStrategy::EnclosingVolume);
+            }
+            Err(LocationValidationError::Mountable(location)) => {
+                self.mount_then_navigate(location, MountStrategy::Mountable);
             }
             Err(error) => {
                 self.location_entry.add_css_class("error");
@@ -2185,30 +2174,64 @@ impl ViewState {
         parent_depth: usize,
         error: LocationValidationError,
     ) {
-        if let LocationValidationError::NotMounted(location) = error {
-            self.mount_location(location.clone(), move |state, result| {
-                if mount_result_is_ok(&result) {
-                    state.browser.descend(parent_depth, location.clone());
-                } else if let Err(mount_error) = result {
-                    show_error_dialog(
-                        &state.overlay,
-                        "Unable to connect",
-                        &mount_error.to_string(),
-                    );
-                }
-            });
-        } else {
-            show_error_dialog(
-                &self.overlay,
-                "Unable to open directory",
-                &error.to_string(),
-            );
+        match error {
+            LocationValidationError::NotMounted(location) => {
+                self.mount_then_descend(parent_depth, location, MountStrategy::EnclosingVolume);
+            }
+            LocationValidationError::Mountable(location) => {
+                self.mount_then_descend(parent_depth, location, MountStrategy::Mountable);
+            }
+            error => {
+                show_error_dialog(
+                    &self.overlay,
+                    "Unable to open directory",
+                    &error.to_string(),
+                );
+            }
         }
+    }
+
+    fn mount_then_navigate(self: &Rc<Self>, location: Location, strategy: MountStrategy) {
+        self.mount_location(location.clone(), strategy, move |state, result| {
+            if mount_result_is_ok(&result) {
+                state.browser.navigate(location.clone());
+                state.clear_location_error();
+                state.location_stack.set_visible_child_name("breadcrumbs");
+                state.browser.focus_active();
+            } else if let Err(error) = result {
+                state.location_entry.add_css_class("error");
+                state
+                    .location_error
+                    .set_text(&format!("Unable to connect: {error}"));
+                state.location_error.set_visible(true);
+                state.location_entry.grab_focus();
+            }
+        });
+    }
+
+    fn mount_then_descend(
+        self: &Rc<Self>,
+        parent_depth: usize,
+        location: Location,
+        strategy: MountStrategy,
+    ) {
+        self.mount_location(location.clone(), strategy, move |state, result| {
+            if mount_result_is_ok(&result) {
+                state.browser.descend(parent_depth, location.clone());
+            } else if let Err(mount_error) = result {
+                show_error_dialog(
+                    &state.overlay,
+                    "Unable to connect",
+                    &mount_error.to_string(),
+                );
+            }
+        });
     }
 
     fn mount_location(
         self: &Rc<Self>,
         location: Location,
+        strategy: MountStrategy,
         on_result: impl Fn(&Rc<Self>, Result<(), glib::Error>) + 'static,
     ) {
         let Some(window) = self.overlay.root().and_downcast::<gtk::Window>() else {
@@ -2218,9 +2241,16 @@ impl ViewState {
         let operation = gtk::MountOperation::new(Some(&window));
         let weak = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
-            let result = file
-                .mount_enclosing_volume_future(gio::MountMountFlags::NONE, Some(&operation))
-                .await;
+            let result = match strategy {
+                MountStrategy::EnclosingVolume => {
+                    file.mount_enclosing_volume_future(gio::MountMountFlags::NONE, Some(&operation))
+                        .await
+                }
+                MountStrategy::Mountable => file
+                    .mount_mountable_future(gio::MountMountFlags::NONE, Some(&operation))
+                    .await
+                    .map(|_| ()),
+            };
             if let Some(state) = weak.upgrade() {
                 on_result(&state, result);
             }
@@ -5244,6 +5274,15 @@ fn gio_file_for_location(location: &Location) -> gio::File {
         .native_path()
         .map(gio::File::for_path)
         .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()))
+}
+
+#[derive(Clone, Copy)]
+enum MountStrategy {
+    /// The location itself is accessible but sits on an unmounted volume.
+    EnclosingVolume,
+    /// The location is itself the mountable target (an SMB share, a
+    /// "Connect to Server" bookmark, ...).
+    Mountable,
 }
 
 fn mount_result_is_ok(result: &Result<(), glib::Error>) -> bool {

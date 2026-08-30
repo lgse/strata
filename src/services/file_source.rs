@@ -23,6 +23,7 @@ pub enum LocationValidationError {
     NotDirectory,
     Inaccessible,
     NotMounted(Location),
+    Mountable(Location),
     Unavailable(String),
 }
 
@@ -37,6 +38,7 @@ impl fmt::Display for LocationValidationError {
                 formatter.write_str("You do not have permission to open that location.")
             }
             Self::NotMounted(_) => formatter.write_str("That location is not mounted yet."),
+            Self::Mountable(_) => formatter.write_str("That location needs to be mounted first."),
             Self::Unavailable(message) => {
                 write!(formatter, "Unable to open that location: {message}")
             }

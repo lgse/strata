@@ -51,7 +51,12 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
     let kind = match (info.file_type(), info.is_symlink()) {
         (gio::FileType::Directory, true) => EntryKind::DirectorySymbolicLink,
         (gio::FileType::Regular, true) => EntryKind::FileSymbolicLink,
-        (gio::FileType::Directory, false) => EntryKind::Directory,
+        // GVfs reports unmounted browsable children (an smb:// host's shares, a
+        // "Connect to Server" bookmark, ...) as `Mountable` rather than
+        // `Directory`. Treat them as directories so activation descends into
+        // them (and can trigger the mount-and-retry flow) instead of asking
+        // the desktop to "open" the location in a new application instance.
+        (gio::FileType::Directory | gio::FileType::Mountable, false) => EntryKind::Directory,
         (gio::FileType::Regular, false) => EntryKind::File,
         (gio::FileType::SymbolicLink, _) => EntryKind::SymbolicLink,
         _ => EntryKind::Other,
@@ -108,10 +113,15 @@ impl FileSource for LocalFileSource {
                     LocationValidationError::Unavailable(error.to_string())
                 }
             })?;
-        if info.file_type() != gio::FileType::Directory {
-            return Err(LocationValidationError::NotDirectory);
+        match info.file_type() {
+            gio::FileType::Directory => Ok(()),
+            // A GVfs location can report itself as `Mountable` without GIO
+            // raising `NOT_MOUNTED` for this query specifically; that only
+            // happens when something tries to use its contents. Treat the
+            // type itself as the "needs mounting" signal.
+            gio::FileType::Mountable => Err(LocationValidationError::Mountable(location.clone())),
+            _ => Err(LocationValidationError::NotDirectory),
         }
-        Ok(())
     }
 
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {

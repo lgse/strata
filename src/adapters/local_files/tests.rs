@@ -150,6 +150,20 @@ fn invalid_utf8_names_keep_their_native_bytes() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn unmounted_network_shares_are_treated_as_directories() {
+    let info = gio::FileInfo::new();
+    info.set_file_type(gio::FileType::Mountable);
+    info.set_is_symlink(false);
+    info.set_name("share");
+    info.set_display_name("share");
+
+    let entry = entry_from_info(Location::uri("smb://host/share"), info);
+
+    assert_eq!(entry.kind, EntryKind::Directory);
+    assert!(entry.is_directory());
+}
+
+#[test]
 fn symlink_targets_and_broken_links_are_distinguished() -> Result<(), Box<dyn Error>> {
     use std::os::unix::fs::symlink;
 
