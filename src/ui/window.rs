@@ -787,6 +787,11 @@ impl SidebarState {
             Location::local(home_directory()),
         );
         self.append_trash_place();
+        self.append_place(
+            crate::assets::icons::NETWORK,
+            "Network",
+            Location::uri("network:///"),
+        );
         self.append_separator();
 
         for place in self.place_order.borrow().clone() {

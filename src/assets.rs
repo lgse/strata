@@ -40,6 +40,7 @@ pub mod icons {
     pub const LIST_ACTIVE: &str = "strata-list-active";
     pub const KEYBOARD: &str = "strata-keyboard";
     pub const MONITOR: &str = "strata-monitor";
+    pub const NETWORK: &str = "strata-network";
     pub const PALETTE: &str = "strata-palette";
     pub const PANEL_LEFT: &str = "strata-panel-left-symbolic";
     pub const PENCIL: &str = "strata-pencil";
