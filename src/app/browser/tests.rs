@@ -495,7 +495,7 @@ fn valid_location_input_navigates_through_the_controller() {
 }
 
 #[test]
-fn location_input_accepts_uri_schemes_and_windows_style_smb_paths() {
+fn location_input_accepts_uri_schemes_for_local_and_remote_locations() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.navigate(Location::local("/fixture"));
 
@@ -505,28 +505,10 @@ fn location_input_accepts_uri_schemes_and_windows_style_smb_paths() {
         Some(Location::uri("smb://192.168.1.220/share"))
     );
 
-    assert_eq!(browser.navigate_input(r"smb:\\192.168.1.220"), Ok(()));
+    assert_eq!(browser.navigate_input("sftp://user@host:2222/path"), Ok(()));
     assert_eq!(
         browser.active_location(),
-        Some(Location::uri("smb://192.168.1.220"))
-    );
-
-    assert_eq!(browser.navigate_input(r"\\host\share"), Ok(()));
-    assert_eq!(
-        browser.active_location(),
-        Some(Location::uri("smb://host/share"))
-    );
-
-    assert_eq!(browser.navigate_input("//192.168.1.220"), Ok(()));
-    assert_eq!(
-        browser.active_location(),
-        Some(Location::uri("smb://192.168.1.220"))
-    );
-
-    assert_eq!(browser.navigate_input("//host/share"), Ok(()));
-    assert_eq!(
-        browser.active_location(),
-        Some(Location::uri("smb://host/share"))
+        Some(Location::uri("sftp://user@host:2222/path"))
     );
 
     assert_eq!(browser.navigate_input("/regular/absolute/path"), Ok(()));
@@ -540,6 +522,26 @@ fn location_input_accepts_uri_schemes_and_windows_style_smb_paths() {
         browser.active_location(),
         Some(Location::uri("network:///"))
     );
+}
+
+#[test]
+fn location_input_rejects_unc_and_scp_shorthand_with_a_helpful_message() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.navigate(Location::local("/fixture"));
+
+    for shorthand in [
+        r"\\host\share",
+        r"smb:\\192.168.1.220",
+        "//host/share",
+        "//192.168.1.220",
+        "user@host:path",
+    ] {
+        assert!(matches!(
+            browser.navigate_input(shorthand),
+            Err(LocationValidationError::UnsupportedShorthand(_))
+        ));
+        assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+    }
 }
 
 #[test]

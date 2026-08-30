@@ -25,6 +25,7 @@ pub enum LocationValidationError {
     NotMounted(Location),
     Mountable(Location),
     Unavailable(String),
+    UnsupportedShorthand(String),
 }
 
 impl fmt::Display for LocationValidationError {
@@ -42,6 +43,7 @@ impl fmt::Display for LocationValidationError {
             Self::Unavailable(message) => {
                 write!(formatter, "Unable to open that location: {message}")
             }
+            Self::UnsupportedShorthand(message) => formatter.write_str(message),
         }
     }
 }

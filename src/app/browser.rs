@@ -179,10 +179,20 @@ impl Browser {
             return Err(LocationValidationError::Empty);
         }
 
-        let location = self
+        if let Some(current) = self
             .active_location()
             .filter(|current| current.display_path() == input)
-            .unwrap_or_else(|| location_from_input(input));
+        {
+            self.source.validate_location(&current)?;
+            self.navigate(current);
+            return Ok(());
+        }
+        if let Some(message) = unsupported_shorthand_message(input) {
+            return Err(LocationValidationError::UnsupportedShorthand(
+                message.to_owned(),
+            ));
+        }
+        let location = location_from_input(input);
         if location.native_path().is_some() && !location.is_absolute_native() {
             return Err(LocationValidationError::NotAbsolute);
         }
@@ -1209,36 +1219,50 @@ fn deletion_parent_location(location: &Location) -> Option<Location> {
 }
 
 fn location_from_input(input: &str) -> Location {
-    if let Some(uri) = normalize_smb_shorthand(input) {
-        Location::uri(uri)
-    } else if is_uri_like(input) {
+    if is_uri_like(input) {
         Location::uri(input.to_owned())
     } else {
         Location::local(PathBuf::from(input))
     }
 }
 
-/// Accepts network-style shorthand paths (`\\host\share`, `//host/share`,
-/// `smb:\\host\share`) and rewrites them as an `smb://` URI, so typing a path
-/// the way Explorer (or a plain UNC-with-slashes convention) expects works too.
-/// A single leading `/` is left alone since that is an ordinary absolute path.
-fn normalize_smb_shorthand(input: &str) -> Option<String> {
-    let host_and_path = if let Some(rest) = input.strip_prefix("\\\\") {
-        rest
-    } else if let Some(rest) = input.strip_prefix("//") {
-        rest
+/// UNC paths (`\\host\share`, bare `//host/share`) and SCP-style addresses
+/// (`user@host:path`) are deliberately not accepted as location-bar shorthand
+/// (see lgse/strata#20) so a proper URI (`smb://`, `sftp://`, ...) is always
+/// preserved verbatim rather than being guessed at. Report a clear message
+/// instead of silently treating either as a relative local path.
+fn unsupported_shorthand_message(input: &str) -> Option<&'static str> {
+    let looks_like_unc = input.starts_with("\\\\")
+        || ["smb:", "SMB:"].iter().any(|prefix| {
+            input
+                .strip_prefix(prefix)
+                .is_some_and(|rest| rest.starts_with("\\\\"))
+        });
+    // A bare `//host/share` has no scheme, so it is not a valid URI (unlike
+    // `smb://host/share`, which `is_uri_like` already accepts untouched).
+    let looks_like_bare_network_shorthand = input.starts_with("//") && !is_uri_like(input);
+    if looks_like_unc || looks_like_bare_network_shorthand || looks_like_scp_shorthand(input) {
+        Some(
+            "UNC paths (\\\\host\\share) and SCP-style addresses (user@host:path) aren't \
+             supported. Use a URI instead, such as smb://host/share, sftp://host/path, \
+             ftp://host/path, or dav://host/path.",
+        )
     } else {
-        let after_scheme = input
-            .strip_prefix("smb:")
-            .or_else(|| input.strip_prefix("SMB:"))?;
-        after_scheme
-            .strip_prefix("\\\\")
-            .or_else(|| after_scheme.strip_prefix("//"))?
-    };
-    if host_and_path.is_empty() {
-        return None;
+        None
     }
-    Some(format!("smb://{}", host_and_path.replace('\\', "/")))
+}
+
+fn looks_like_scp_shorthand(input: &str) -> bool {
+    if is_uri_like(input) {
+        return false;
+    }
+    let Some((_user, after_at)) = input.split_once('@') else {
+        return false;
+    };
+    let Some(host) = after_at.split(':').next() else {
+        return false;
+    };
+    !host.is_empty() && after_at.contains(':') && !host.contains('/') && !host.contains('\\')
 }
 
 fn is_uri_like(input: &str) -> bool {
@@ -1250,18 +1274,6 @@ fn is_uri_like(input: &str) -> bool {
         && scheme.chars().all(|character| {
             character.is_ascii_alphanumeric() || matches!(character, '+' | '.' | '-')
         })
-}
-
-fn validate_rename(name: &str) -> Result<(), &'static str> {
-    if name.is_empty() {
-        Err("Enter a file name")
-    } else if name.contains('/') {
-        Err("File names cannot contain /")
-    } else if matches!(name, "." | "..") {
-        Err("That name is reserved")
-    } else {
-        Ok(())
-    }
 }
 
 #[cfg(test)]
