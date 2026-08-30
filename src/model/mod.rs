@@ -71,6 +71,35 @@ impl Location {
         }
     }
 
+    pub fn backend_name(&self) -> String {
+        match &self.kind {
+            LocationKind::Native(_) => "native".into(),
+            LocationKind::Uri(uri) => gio::glib::Uri::parse_scheme(uri)
+                .map(|scheme| scheme.to_string())
+                .unwrap_or_else(|| "uri".into()),
+        }
+    }
+
+    /// Returns a debug-only location with URI user-info, query, and fragment removed.
+    pub fn diagnostic_path(&self) -> String {
+        match &self.kind {
+            LocationKind::Native(path) => path.to_string_lossy().into_owned(),
+            LocationKind::Uri(uri) => gio::glib::Uri::parse(
+                uri,
+                gio::glib::UriFlags::HAS_PASSWORD | gio::glib::UriFlags::HAS_AUTH_PARAMS,
+            )
+            .map(|uri| {
+                uri.to_string_partial(
+                    gio::glib::UriHideFlags::USERINFO
+                        | gio::glib::UriHideFlags::QUERY
+                        | gio::glib::UriHideFlags::FRAGMENT,
+                )
+                .to_string()
+            })
+            .unwrap_or_else(|_| "<invalid-uri>".into()),
+        }
+    }
+
     /// Returns a UTF-8-safe representation without changing the native path.
     pub fn display_path(&self) -> String {
         match &self.kind {

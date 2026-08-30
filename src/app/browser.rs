@@ -13,7 +13,7 @@ use crate::{
     services::{
         CreateDirectoryRequest, CreateFileRequest, DeleteRequest, DirectoryChange, DirectoryEvent,
         DirectoryRequest, FileSource, LoadHandle, LocationValidationError, OperationEvent,
-        OperationProvider, OperationRequestId, PasteRequest, RenameRequest, RequestId,
+        OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRequest, RequestId,
         RestoreRequest, validate_basename,
     },
 };
@@ -632,6 +632,12 @@ impl Browser {
     }
 
     pub fn create_file(self: &Rc<Self>, parent: Location, name: String) {
+        if let Err(message) = validate_basename(&name) {
+            self.emit(BrowserEvent::OperationFailed {
+                message: message.to_owned(),
+            });
+            return;
+        }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::OperationFailed {
                 message: "File operations are unavailable".to_owned(),
@@ -653,11 +659,10 @@ impl Browser {
     pub fn transfer(
         self: &Rc<Self>,
         destination: Location,
-        sources: Vec<Location>,
+        items: Vec<PasteItem>,
         move_sources: bool,
-        overwrite_existing: bool,
     ) {
-        if sources.is_empty() {
+        if items.is_empty() {
             return;
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
@@ -671,9 +676,8 @@ impl Browser {
             PasteRequest {
                 id: request_id,
                 destination,
-                sources,
+                items,
                 move_sources,
-                overwrite_existing,
             },
             self.operation_callback(request_id, false),
         );
@@ -1137,7 +1141,7 @@ impl Browser {
                 if let Some((depth, insertions)) = application {
                     tracing::debug!(
                         request_id = request_id.0,
-                        location = %state.columns[depth].location.display_path(),
+                        location = %state.columns[depth].location.diagnostic_path(),
                         entries = entries.len(),
                         "directory batch accepted"
                     );

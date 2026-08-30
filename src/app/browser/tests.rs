@@ -27,12 +27,25 @@ fn deleted_trash_entries_refresh_the_trash_root() {
 
 #[test]
 fn invalid_new_folder_names_are_rejected_before_an_operation_starts() {
+    assert_invalid_creation_is_rejected(|browser| {
+        browser.create_directory(Location::local("/fixture"), "../escaped".to_owned());
+    });
+}
+
+#[test]
+fn invalid_new_file_names_are_rejected_before_an_operation_starts() {
+    assert_invalid_creation_is_rejected(|browser| {
+        browser.create_file(Location::local("/fixture"), "../escaped".to_owned());
+    });
+}
+
+fn assert_invalid_creation_is_rejected(create: impl FnOnce(&Rc<Browser>)) {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
     let observed = events.clone();
     browser.observe(move |event| observed.borrow_mut().push(event));
 
-    browser.create_directory(Location::local("/fixture"), "../escaped".to_owned());
+    create(&browser);
 
     assert_eq!(browser.current_operation.get(), None);
     assert!(browser.operation_load.borrow().is_none());

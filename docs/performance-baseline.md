@@ -21,6 +21,11 @@ cargo build --release
 RUST_LOG=strata=debug target/release/strata target/fixtures/100000
 ```
 
+Default logs contain request IDs, backend names, counts, and timings without browsed locations.
+`RUST_LOG=strata=debug` explicitly enables diagnostic logging and may include full native paths.
+Remote URI user-info, authentication parameters, queries, and fragments remain redacted at every
+level. Review diagnostic logs before sharing them.
+
 Strata accepts a startup directory on the command line. Structured logs report:
 
 - Time until the application window is presented

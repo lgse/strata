@@ -12,7 +12,8 @@ pub use file_source::{
 };
 pub use operations::{
     CreateDirectoryRequest, CreateFileRequest, DeleteRequest, OperationEvent, OperationProvider,
-    OperationRequestId, PasteRequest, RenameRequest, RestoreRequest, validate_basename,
+    OperationRequestId, PasteItem, PasteRequest, RenameRequest, RestoreRequest, TransferConflict,
+    validate_basename,
 };
 pub use preview::{
     Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,

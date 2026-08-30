@@ -15,8 +15,8 @@ use crate::{
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, SortDirection, SortKey},
     services::{
-        FileSource, OperationProvider, PreviewContent, content_family, has_plain_text_extension,
-        validate_basename,
+        FileSource, OperationProvider, PasteItem, PreviewContent, TransferConflict, content_family,
+        has_plain_text_extension, validate_basename,
     },
 };
 
@@ -771,7 +771,10 @@ impl ViewState {
             if transfer_has_collision(&source, &destination) {
                 collisions.push(source);
             } else {
-                accepted.push(source);
+                accepted.push(PasteItem {
+                    source,
+                    conflict: TransferConflict::FailIfExists,
+                });
             }
         }
         self.resolve_transfer_collisions(
@@ -779,7 +782,6 @@ impl ViewState {
             collisions,
             accepted,
             move_sources,
-            false,
             clear_cut,
         );
     }
@@ -788,17 +790,20 @@ impl ViewState {
         self: &Rc<Self>,
         destination: Location,
         mut collisions: Vec<Location>,
-        accepted: Vec<Location>,
+        accepted: Vec<PasteItem>,
         move_sources: bool,
-        overwrite_existing: bool,
         clear_cut: bool,
     ) {
         if collisions.is_empty() {
             if clear_cut {
-                self.complete_cut_transfer(&accepted);
+                self.complete_cut_transfer(
+                    &accepted
+                        .iter()
+                        .map(|item| item.source.clone())
+                        .collect::<Vec<_>>(),
+                );
             }
-            self.browser
-                .transfer(destination, accepted, move_sources, overwrite_existing);
+            self.browser.transfer(destination, accepted, move_sources);
             return;
         }
         let source = collisions.remove(0);
@@ -908,7 +913,6 @@ impl ViewState {
                 },
                 skipped_accepted.clone(),
                 move_sources,
-                overwrite_existing,
                 clear_cut,
             );
         });
@@ -921,9 +925,15 @@ impl ViewState {
         replace.connect_clicked(move |_| {
             dismiss_modal_layer(&replaced_layer, &replaced_overlay, replaced_root.as_ref());
             let mut accepted = accepted.clone();
-            accepted.push(source.clone());
+            accepted.push(PasteItem {
+                source: source.clone(),
+                conflict: TransferConflict::ReplaceExisting,
+            });
             let remaining = if replace_all.is_active() {
-                accepted.extend(collisions.clone());
+                accepted.extend(collisions.iter().cloned().map(|source| PasteItem {
+                    source,
+                    conflict: TransferConflict::ReplaceExisting,
+                }));
                 Vec::new()
             } else {
                 collisions.clone()
@@ -933,7 +943,6 @@ impl ViewState {
                 remaining,
                 accepted,
                 move_sources,
-                true,
                 clear_cut,
             );
         });
@@ -5300,7 +5309,16 @@ pub(super) fn open_location(location: &Location, parent: &impl IsA<gtk::Widget>)
     let file = gio_file_for_location(location);
     let uri = file.uri();
     if let Err(error) = gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>) {
-        tracing::warn!(location = %location.display_path(), error = %error, "unable to open file");
+        tracing::warn!(
+            backend = %location.backend_name(),
+            error_domain = ?error.domain(),
+            error_code = error.code(),
+            "unable to open file"
+        );
+        tracing::debug!(
+            location = %location.diagnostic_path(),
+            "file open location"
+        );
         show_error_dialog(parent, "Unable to open file", &error.to_string());
     }
 }

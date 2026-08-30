@@ -15,7 +15,7 @@ use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
-        LocationValidationError,
+        LocationValidationError, RequestId,
     },
 };
 
@@ -111,9 +111,8 @@ impl FileSource for LocalFileSource {
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
         let request_id = request.id;
         let location = request.location.clone();
-        let display_location = location.display_path();
         let started = Instant::now();
-        tracing::info!(request_id = request_id.0, location = %display_location, "directory load started");
+        log_directory_load_started(request_id, &location);
 
         let task = glib::MainContext::default().spawn_local(async move {
             let directory = location
@@ -130,7 +129,12 @@ impl FileSource for LocalFileSource {
             {
                 Ok(enumerator) => enumerator,
                 Err(error) => {
-                    tracing::warn!(request_id = request_id.0, error = %error, "directory load failed");
+                    tracing::warn!(
+                        request_id = request_id.0,
+                        error_domain = ?error.domain(),
+                        error_code = error.code(),
+                        "directory load failed"
+                    );
                     emit(DirectoryEvent::Failed {
                         request_id,
                         message: error.to_string(),
@@ -181,7 +185,12 @@ impl FileSource for LocalFileSource {
                         });
                     }
                     Err(error) => {
-                        tracing::warn!(request_id = request_id.0, error = %error, "directory load interrupted");
+                        tracing::warn!(
+                            request_id = request_id.0,
+                            error_domain = ?error.domain(),
+                            error_code = error.code(),
+                            "directory load interrupted"
+                        );
                         emit(DirectoryEvent::Failed {
                             request_id,
                             message: error.to_string(),
@@ -213,9 +222,14 @@ impl FileSource for LocalFileSource {
             Ok(monitor) => monitor,
             Err(error) => {
                 tracing::warn!(
-                    path = %path.display(),
-                    error = %error,
+                    backend = %location.backend_name(),
+                    error_domain = ?error.domain(),
+                    error_code = error.code(),
                     "directory monitoring unavailable"
+                );
+                tracing::debug!(
+                    location = %location.diagnostic_path(),
+                    "directory monitoring location"
                 );
                 return None;
             }
@@ -292,6 +306,19 @@ impl FileSource for LocalFileSource {
             let _cancelled = monitor.cancel();
         }))
     }
+}
+
+fn log_directory_load_started(request_id: RequestId, location: &Location) {
+    tracing::info!(
+        request_id = request_id.0,
+        backend = %location.backend_name(),
+        "directory load started"
+    );
+    tracing::debug!(
+        request_id = request_id.0,
+        location = %location.diagnostic_path(),
+        "directory load location"
+    );
 }
 
 fn merge_pending_change(

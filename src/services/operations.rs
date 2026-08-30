@@ -40,6 +40,18 @@ pub struct CreateDirectoryRequest {
     pub name: String,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum TransferConflict {
+    FailIfExists,
+    ReplaceExisting,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PasteItem {
+    pub source: Location,
+    pub conflict: TransferConflict,
+}
+
 #[derive(Clone, Debug)]
 pub struct CreateFileRequest {
     pub id: OperationRequestId,
@@ -51,9 +63,8 @@ pub struct CreateFileRequest {
 pub struct PasteRequest {
     pub id: OperationRequestId,
     pub destination: Location,
-    pub sources: Vec<Location>,
+    pub items: Vec<PasteItem>,
     pub move_sources: bool,
-    pub overwrite_existing: bool,
 }
 
 #[derive(Clone, Debug)]

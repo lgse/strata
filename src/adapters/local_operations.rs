@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::{future::Future, pin::Pin, rc::Rc};
+use std::{future::Future, io, path::Path, pin::Pin, rc::Rc};
 
 use gtk::{gio, glib, prelude::*};
 
@@ -11,7 +11,8 @@ use crate::{
     model::Location,
     services::{
         CreateDirectoryRequest, CreateFileRequest, DeleteRequest, LoadHandle, OperationEvent,
-        OperationProvider, PasteRequest, RenameRequest, RestoreRequest, validate_basename,
+        OperationProvider, PasteRequest, RenameRequest, RestoreRequest, TransferConflict,
+        validate_basename,
     },
 };
 
@@ -86,6 +87,139 @@ fn copy_recursively(
             copy.await
         }
     })
+}
+
+enum StagedSibling {
+    File(tempfile::TempPath),
+    Directory(tempfile::TempDir),
+}
+
+impl StagedSibling {
+    fn create(parent: &Path, directory: bool) -> io::Result<Self> {
+        let mut builder = tempfile::Builder::new();
+        builder.prefix(".strata-replacement-");
+        if directory {
+            builder.tempdir_in(parent).map(Self::Directory)
+        } else {
+            builder
+                .tempfile_in(parent)
+                .map(tempfile::NamedTempFile::into_temp_path)
+                .map(Self::File)
+        }
+    }
+
+    fn path(&self) -> &Path {
+        match self {
+            Self::File(path) => path,
+            Self::Directory(directory) => directory.path(),
+        }
+    }
+}
+
+fn io_error(error: impl std::fmt::Display) -> glib::Error {
+    glib::Error::new(gio::IOErrorEnum::Failed, &error.to_string())
+}
+
+type StageCopy = Rc<
+    dyn Fn(gio::File, gio::File, bool) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>>,
+>;
+
+async fn replace_local_with(
+    source: gio::File,
+    target: gio::File,
+    move_source: bool,
+    copy_to_stage: StageCopy,
+) -> Result<(), glib::Error> {
+    if source.path().is_none() {
+        return Err(glib::Error::new(
+            gio::IOErrorEnum::NotSupported,
+            "Safe replacement is unavailable for this source",
+        ));
+    }
+    let target_path = target.path().ok_or_else(|| {
+        glib::Error::new(
+            gio::IOErrorEnum::NotSupported,
+            "Safe replacement is unavailable at this destination",
+        )
+    })?;
+    let parent = target_path
+        .parent()
+        .ok_or_else(|| io_error("The destination has no parent directory"))?;
+    let source_type = source
+        .query_info_future(
+            "standard::type",
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            glib::Priority::DEFAULT,
+        )
+        .await?
+        .file_type();
+    let target_type = target
+        .query_info_future(
+            "standard::type",
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            glib::Priority::DEFAULT,
+        )
+        .await?
+        .file_type();
+    let source_is_directory = source_type == gio::FileType::Directory;
+    let target_is_directory = target_type == gio::FileType::Directory;
+    if source_is_directory != target_is_directory {
+        return Err(glib::Error::new(
+            gio::IOErrorEnum::NotSupported,
+            "A file and a folder cannot safely replace one another",
+        ));
+    }
+
+    let staged = StagedSibling::create(parent, source_is_directory).map_err(io_error)?;
+    let staged_file = gio::File::for_path(staged.path());
+    copy_to_stage(source.clone(), staged_file.clone(), source_is_directory).await?;
+
+    let staged_path = staged.path().to_owned();
+    let exchanged = gio::spawn_blocking(move || {
+        rustix::fs::renameat_with(
+            rustix::fs::CWD,
+            &staged_path,
+            rustix::fs::CWD,
+            &target_path,
+            rustix::fs::RenameFlags::EXCHANGE,
+        )
+    })
+    .await
+    .map_err(|_| io_error("The replacement worker stopped unexpectedly"))?;
+    exchanged.map_err(|error| io_error(format!("Could not safely replace the item: {error}")))?;
+
+    permanently_delete(staged_file, target_is_directory).await?;
+    if move_source {
+        permanently_delete(source, source_is_directory).await?;
+    }
+    Ok(())
+}
+
+async fn replace_local(
+    source: gio::File,
+    target: gio::File,
+    move_source: bool,
+) -> Result<(), glib::Error> {
+    replace_local_with(
+        source,
+        target,
+        move_source,
+        Rc::new(|source, staged, directory| {
+            Box::pin(async move {
+                if directory {
+                    copy_recursively(source, staged, true).await
+                } else {
+                    let flags = gio::FileCopyFlags::ALL_METADATA
+                        | gio::FileCopyFlags::NOFOLLOW_SYMLINKS
+                        | gio::FileCopyFlags::OVERWRITE;
+                    let (copy, _progress) =
+                        source.copy_future(&staged, flags, glib::Priority::DEFAULT);
+                    copy.await
+                }
+            })
+        }),
+    )
+    .await
 }
 
 fn permanently_delete(
@@ -247,8 +381,8 @@ impl OperationProvider for LocalOperationProvider {
     fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         let task = glib::MainContext::default().spawn_local(async move {
             let destination = gio_file(&request.destination);
-            for source in &request.sources {
-                let source = gio_file(source);
+            for item in &request.items {
+                let source = gio_file(&item.source);
                 let Some(name) = source.basename() else {
                     emit(OperationEvent::Failed {
                         request_id: request.id,
@@ -260,46 +394,16 @@ impl OperationProvider for LocalOperationProvider {
                 if transfer_is_noop(&source, &destination, &target) {
                     continue;
                 }
-                if request.overwrite_existing && target.query_exists(None::<&gio::Cancellable>) {
-                    let target_type = target
-                        .query_info_future(
-                            "standard::type",
-                            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
-                            glib::Priority::DEFAULT,
-                        )
-                        .await
-                        .map(|info| info.file_type());
-                    let result = match target_type {
-                        Ok(file_type) => {
-                            permanently_delete(
-                                target.clone(),
-                                file_type == gio::FileType::Directory,
-                            )
-                            .await
-                        }
-                        Err(error) => Err(error),
-                    };
-                    if let Err(error) = result {
-                        emit(OperationEvent::Failed {
-                            request_id: request.id,
-                            message: error.to_string(),
-                        });
-                        return;
-                    }
-                }
-                let flags = gio::FileCopyFlags::ALL_METADATA
-                    | gio::FileCopyFlags::NOFOLLOW_SYMLINKS
-                    | if request.overwrite_existing {
-                        gio::FileCopyFlags::OVERWRITE
-                    } else {
-                        gio::FileCopyFlags::NONE
-                    };
-                let result = if request.move_sources {
+                let result = if item.conflict == TransferConflict::ReplaceExisting {
+                    replace_local(source, target, request.move_sources).await
+                } else if request.move_sources {
+                    let flags =
+                        gio::FileCopyFlags::ALL_METADATA | gio::FileCopyFlags::NOFOLLOW_SYMLINKS;
                     let (transfer, _progress) =
                         source.move_future(&target, flags, glib::Priority::DEFAULT);
                     transfer.await
                 } else {
-                    copy_recursively(source, target, request.overwrite_existing).await
+                    copy_recursively(source, target, false).await
                 };
                 if let Err(error) = result {
                     emit(OperationEvent::Failed {
