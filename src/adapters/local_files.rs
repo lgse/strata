@@ -101,7 +101,13 @@ impl FileSource for LocalFileSource {
                 gio::FileQueryInfoFlags::NONE,
                 None::<&gio::Cancellable>,
             )
-            .map_err(|error| LocationValidationError::Unavailable(error.to_string()))?;
+            .map_err(|error| {
+                if error.matches(gio::IOErrorEnum::NotMounted) {
+                    LocationValidationError::NotMounted(location.clone())
+                } else {
+                    LocationValidationError::Unavailable(error.to_string())
+                }
+            })?;
         if info.file_type() != gio::FileType::Directory {
             return Err(LocationValidationError::NotDirectory);
         }

@@ -15,8 +15,8 @@ use crate::{
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, SortDirection, SortKey},
     services::{
-        FileSource, OperationProvider, PasteItem, PreviewContent, TransferConflict, content_family,
-        has_plain_text_extension, validate_basename,
+        FileSource, LocationValidationError, OperationProvider, PasteItem, PreviewContent,
+        TransferConflict, content_family, has_plain_text_extension, validate_basename,
     },
 };
 
@@ -2154,6 +2154,23 @@ impl ViewState {
                 self.location_stack.set_visible_child_name("breadcrumbs");
                 self.browser.focus_active();
             }
+            Err(LocationValidationError::NotMounted(location)) => {
+                self.mount_location(location.clone(), move |state, result| {
+                    if mount_result_is_ok(&result) {
+                        state.browser.navigate(location.clone());
+                        state.clear_location_error();
+                        state.location_stack.set_visible_child_name("breadcrumbs");
+                        state.browser.focus_active();
+                    } else if let Err(error) = result {
+                        state.location_entry.add_css_class("error");
+                        state
+                            .location_error
+                            .set_text(&format!("Unable to connect: {error}"));
+                        state.location_error.set_visible(true);
+                        state.location_entry.grab_focus();
+                    }
+                });
+            }
             Err(error) => {
                 self.location_entry.add_css_class("error");
                 self.location_error.set_text(&error.to_string());
@@ -2161,6 +2178,53 @@ impl ViewState {
                 self.location_entry.grab_focus();
             }
         }
+    }
+
+    fn handle_navigation_rejected(
+        self: &Rc<Self>,
+        parent_depth: usize,
+        error: LocationValidationError,
+    ) {
+        if let LocationValidationError::NotMounted(location) = error {
+            self.mount_location(location.clone(), move |state, result| {
+                if mount_result_is_ok(&result) {
+                    state.browser.descend(parent_depth, location.clone());
+                } else if let Err(mount_error) = result {
+                    show_error_dialog(
+                        &state.overlay,
+                        "Unable to connect",
+                        &mount_error.to_string(),
+                    );
+                }
+            });
+        } else {
+            show_error_dialog(
+                &self.overlay,
+                "Unable to open directory",
+                &error.to_string(),
+            );
+        }
+    }
+
+    fn mount_location(
+        self: &Rc<Self>,
+        location: Location,
+        on_result: impl Fn(&Rc<Self>, Result<(), glib::Error>) + 'static,
+    ) {
+        let Some(window) = self.overlay.root().and_downcast::<gtk::Window>() else {
+            return;
+        };
+        let file = gio_file_for_location(&location);
+        let operation = gtk::MountOperation::new(Some(&window));
+        let weak = Rc::downgrade(self);
+        glib::MainContext::default().spawn_local(async move {
+            let result = file
+                .mount_enclosing_volume_future(gio::MountMountFlags::NONE, Some(&operation))
+                .await;
+            if let Some(state) = weak.upgrade() {
+                on_result(&state, result);
+            }
+        });
     }
 
     fn restore_location_text(&self) {
@@ -2511,8 +2575,11 @@ impl ViewState {
             BrowserEvent::OperationCompletedWithErrors { message } => {
                 show_error_dialog(&self.overlay, "Completed with errors", &message);
             }
-            BrowserEvent::NavigationRejected { message } => {
-                show_error_dialog(&self.overlay, "Unable to open directory", &message);
+            BrowserEvent::NavigationRejected {
+                parent_depth,
+                error,
+            } => {
+                self.handle_navigation_rejected(parent_depth, error);
             }
         }
         self.refresh_active_path_rows();
@@ -5177,6 +5244,13 @@ fn gio_file_for_location(location: &Location) -> gio::File {
         .native_path()
         .map(gio::File::for_path)
         .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()))
+}
+
+fn mount_result_is_ok(result: &Result<(), glib::Error>) -> bool {
+    match result {
+        Ok(()) => true,
+        Err(error) => error.matches(gio::IOErrorEnum::AlreadyMounted),
+    }
 }
 
 fn is_trash_root(location: &Location) -> bool {

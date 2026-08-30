@@ -61,6 +61,8 @@ struct FilePreviewSource;
 
 struct RejectingFileSource;
 
+struct NotMountedFileSource;
+
 struct RetryFileSource {
     attempts: Rc<Cell<usize>>,
 }
@@ -181,6 +183,20 @@ impl FileSource for RetryFileSource {
 impl FileSource for RejectingFileSource {
     fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
         Err(LocationValidationError::Inaccessible)
+    }
+
+    fn enumerate(
+        &self,
+        _request: DirectoryRequest,
+        _emit: Rc<dyn Fn(DirectoryEvent)>,
+    ) -> LoadHandle {
+        LoadHandle::new(|| {})
+    }
+}
+
+impl FileSource for NotMountedFileSource {
+    fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+        Err(LocationValidationError::NotMounted(location.clone()))
     }
 
     fn enumerate(
@@ -501,11 +517,64 @@ fn location_input_accepts_uri_schemes_and_windows_style_smb_paths() {
         Some(Location::uri("smb://host/share"))
     );
 
+    assert_eq!(browser.navigate_input("//192.168.1.220"), Ok(()));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::uri("smb://192.168.1.220"))
+    );
+
+    assert_eq!(browser.navigate_input("//host/share"), Ok(()));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::uri("smb://host/share"))
+    );
+
+    assert_eq!(browser.navigate_input("/regular/absolute/path"), Ok(()));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::local("/regular/absolute/path"))
+    );
+
     assert_eq!(browser.navigate_input("network:///"), Ok(()));
     assert_eq!(
         browser.active_location(),
         Some(Location::uri("network:///"))
     );
+}
+
+#[test]
+fn location_input_reports_the_target_location_when_not_mounted() {
+    let browser = Browser::new(Rc::new(NotMountedFileSource));
+    browser.navigate(Location::local("/fixture"));
+
+    assert_eq!(
+        browser.navigate_input("smb://192.168.1.220/share"),
+        Err(LocationValidationError::NotMounted(Location::uri(
+            "smb://192.168.1.220/share"
+        )))
+    );
+    assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+}
+
+#[test]
+fn descending_into_an_unmounted_location_reports_it_for_retry() {
+    let browser = Browser::new(Rc::new(NotMountedFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event));
+    browser.navigate(Location::local("/fixture"));
+    events.borrow_mut().clear();
+
+    browser.descend(0, Location::uri("smb://192.168.1.220/share"));
+
+    assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::NavigationRejected {
+            parent_depth: 0,
+            error: LocationValidationError::NotMounted(location)
+        } if location == &Location::uri("smb://192.168.1.220/share")
+    )));
 }
 
 #[test]

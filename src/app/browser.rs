@@ -118,7 +118,8 @@ pub enum BrowserEvent {
         message: String,
     },
     NavigationRejected {
-        message: String,
+        parent_depth: usize,
+        error: LocationValidationError,
     },
 }
 
@@ -239,7 +240,8 @@ impl Browser {
         self.close_peek();
         if let Err(error) = self.source.validate_location(&location) {
             self.emit(BrowserEvent::NavigationRejected {
-                message: error.to_string(),
+                parent_depth,
+                error,
             });
             self.focus_active();
             return;
@@ -1216,16 +1218,22 @@ fn location_from_input(input: &str) -> Location {
     }
 }
 
-/// Accepts Windows-style network paths (`\\host\share`, `smb:\\host\share`) and
-/// rewrites them as an `smb://` URI so typing a UNC-style path works like Explorer.
+/// Accepts network-style shorthand paths (`\\host\share`, `//host/share`,
+/// `smb:\\host\share`) and rewrites them as an `smb://` URI, so typing a path
+/// the way Explorer (or a plain UNC-with-slashes convention) expects works too.
+/// A single leading `/` is left alone since that is an ordinary absolute path.
 fn normalize_smb_shorthand(input: &str) -> Option<String> {
     let host_and_path = if let Some(rest) = input.strip_prefix("\\\\") {
+        rest
+    } else if let Some(rest) = input.strip_prefix("//") {
         rest
     } else {
         let after_scheme = input
             .strip_prefix("smb:")
             .or_else(|| input.strip_prefix("SMB:"))?;
-        after_scheme.strip_prefix("\\\\")?
+        after_scheme
+            .strip_prefix("\\\\")
+            .or_else(|| after_scheme.strip_prefix("//"))?
     };
     if host_and_path.is_empty() {
         return None;
