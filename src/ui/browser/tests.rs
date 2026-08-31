@@ -3,17 +3,10 @@
 use super::*;
 
 #[test]
-fn an_empty_name_field_is_not_flagged_as_an_error() {
-    gtk::init().expect("gtk::init");
-    let field = gtk::Entry::new();
-    field.set_text("bad/name");
-    assert!(!update_basename_validation(&field));
-    assert!(field.has_css_class("error"));
-
-    field.set_text("");
-    assert!(!update_basename_validation(&field));
+fn an_empty_name_is_not_flagged_as_an_error() {
+    assert!(basename_field_error("bad/name").is_some());
     assert!(
-        !field.has_css_class("error"),
+        basename_field_error("").is_none(),
         "an empty field is the normal starting state, not a user mistake"
     );
 }
