@@ -29,6 +29,7 @@ pub enum LocationValidationError {
     Mountable(Location),
     Unavailable(String),
     UnsupportedShorthand(String),
+    UnsupportedScheme(String),
     EmbeddedCredential,
     BackendUnavailable(String),
 }
@@ -48,7 +49,9 @@ impl fmt::Display for LocationValidationError {
             Self::Unavailable(message) => {
                 write!(formatter, "Unable to open that location: {message}")
             }
-            Self::UnsupportedShorthand(message) => formatter.write_str(message),
+            Self::UnsupportedShorthand(message) | Self::UnsupportedScheme(message) => {
+                formatter.write_str(message)
+            }
             Self::EmbeddedCredential => formatter.write_str(
                 "Passwords typed into the address bar aren't accepted. Enter the address \
                  without a password, you'll be prompted to sign in securely.",
@@ -146,6 +149,17 @@ impl Drop for LoadHandle {
 
 pub trait FileSource {
     fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError>;
+
+    /// Validates a location without blocking the caller. Providers should override this when
+    /// validation can involve network or removable-media I/O.
+    fn validate_location_async(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Result<(), LocationValidationError>)>,
+    ) -> LoadHandle {
+        emit(self.validate_location(&location));
+        LoadHandle::new(|| {})
+    }
 
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle;
 

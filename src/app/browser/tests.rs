@@ -351,6 +351,31 @@ fn creating_a_directory_on_a_remote_location_refreshes_the_open_column() {
 }
 
 #[test]
+fn renaming_on_a_remote_location_refreshes_the_open_column() {
+    let enumerate_calls = Rc::new(Cell::new(0));
+    let source = CountingFileSource {
+        enumerate_calls: enumerate_calls.clone(),
+    };
+    let browser = Browser::new(Rc::new(source));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::uri("smb://host/share"));
+
+    browser.rename(
+        FileEntry {
+            location: Location::uri("smb://host/share/old-name.txt"),
+            native_name: "old-name.txt".into(),
+            display_name: "old-name.txt".into(),
+            kind: EntryKind::File,
+            size: MetadataValue::Known(1),
+            modified_unix_seconds: MetadataValue::Unknown,
+        },
+        "new-name.txt".to_owned(),
+    );
+
+    assert_eq!(enumerate_calls.get(), 2);
+}
+
+#[test]
 fn creating_a_directory_locally_does_not_trigger_a_redundant_refresh() {
     let enumerate_calls = Rc::new(Cell::new(0));
     let source = CountingFileSource {
@@ -639,6 +664,30 @@ fn location_input_accepts_uri_schemes_for_local_and_remote_locations() {
 }
 
 #[test]
+fn location_input_rejects_unsupported_uri_schemes() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.navigate(Location::local("/fixture"));
+
+    for uri in [
+        "https://example.com/files",
+        "file:///tmp",
+        "custom://host/path",
+    ] {
+        assert!(matches!(
+            browser.navigate_input(uri),
+            Err(LocationValidationError::UnsupportedScheme(_))
+        ));
+        assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+    }
+
+    assert_eq!(browser.navigate_input("SMB://host/share"), Ok(()));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::uri("smb://host/share"))
+    );
+}
+
+#[test]
 fn location_input_rejects_unc_and_scp_shorthand_with_a_helpful_message() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.navigate(Location::local("/fixture"));
@@ -684,14 +733,19 @@ fn location_input_rejects_uris_with_an_embedded_password() {
 #[test]
 fn location_input_reports_the_target_location_when_not_mounted() {
     let browser = Browser::new(Rc::new(NotMountedFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event));
     browser.navigate(Location::local("/fixture"));
+    events.borrow_mut().clear();
 
-    assert_eq!(
-        browser.navigate_input("smb://192.168.1.220/share"),
-        Err(LocationValidationError::NotMounted(Location::uri(
-            "smb://192.168.1.220/share"
-        )))
-    );
+    assert_eq!(browser.navigate_input("smb://192.168.1.220/share"), Ok(()));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::LocationNavigationRejected {
+            error: LocationValidationError::NotMounted(location)
+        } if location == &Location::uri("smb://192.168.1.220/share")
+    )));
     assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
 }
 

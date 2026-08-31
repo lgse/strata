@@ -1500,10 +1500,7 @@ fn parse_pinned_places(contents: &str) -> Vec<(Location, String)> {
             continue;
         }
         let file = gio::File::for_uri(uri);
-        let location = file
-            .path()
-            .map(Location::local)
-            .unwrap_or_else(|| Location::uri(uri));
+        let location = location_for_file(&file);
         if places
             .iter()
             .any(|(existing, _): &(Location, String)| existing == &location)

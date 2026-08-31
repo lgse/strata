@@ -2,6 +2,8 @@
 
 use std::{cmp::Ordering, ffi::OsString, path::PathBuf};
 
+use gio::prelude::*;
+
 /// A browsable destination. Native paths remain byte-safe and URI locations remain explicit.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 enum LocationKind {
@@ -42,9 +44,25 @@ impl Location {
     }
 
     pub fn parent(&self) -> Option<Self> {
-        let path = self.native_path()?;
-        let parent = path.parent()?;
-        (parent != path).then(|| Self::local(parent))
+        match &self.kind {
+            LocationKind::Native(path) => {
+                let parent = path.parent()?;
+                (parent != path).then(|| Self::local(parent))
+            }
+            LocationKind::Uri(uri) if uri == "trash:///" || uri == "network:///" => None,
+            LocationKind::Uri(uri) => {
+                let file = gio::File::for_uri(uri);
+                let parent = file.parent()?;
+                let parent_uri = parent.uri();
+                let canonical = if parent_uri.ends_with("///") {
+                    parent_uri.to_string()
+                } else {
+                    parent_uri.trim_end_matches('/').to_owned()
+                };
+                let location = Self::uri(canonical);
+                (&location != self).then_some(location)
+            }
+        }
     }
 
     pub fn is_absolute_native(&self) -> bool {
@@ -126,10 +144,18 @@ impl Location {
     }
 
     pub fn breadcrumbs(&self) -> Vec<Self> {
-        let Some(path) = self.native_path() else {
-            return vec![self.clone()];
-        };
-        let mut locations: Vec<_> = path.ancestors().map(Self::local).collect();
+        if let Some(path) = self.native_path() {
+            let mut locations: Vec<_> = path.ancestors().map(Self::local).collect();
+            locations.reverse();
+            return locations;
+        }
+        let mut locations = vec![self.clone()];
+        while let Some(parent) = locations.last().and_then(Self::parent) {
+            if locations.contains(&parent) {
+                break;
+            }
+            locations.push(parent);
+        }
         locations.reverse();
         locations
     }

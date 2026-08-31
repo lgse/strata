@@ -12,6 +12,7 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
+    adapters::location_for_file,
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, SortDirection, SortKey},
     services::{
@@ -1041,11 +1042,7 @@ impl ViewState {
             };
             let sources = files
                 .into_iter()
-                .map(|file| {
-                    file.path()
-                        .map(Location::local)
-                        .unwrap_or_else(|| Location::uri(file.uri()))
-                })
+                .map(|file| location_for_file(&file))
                 .collect::<Vec<_>>();
             if let Some(state) = weak.upgrade() {
                 let move_sources = same_locations(&sources, &state.cut_locations.borrow());
@@ -2189,20 +2186,19 @@ impl ViewState {
     }
 
     fn mount_then_navigate(self: &Rc<Self>, location: Location, strategy: MountStrategy) {
-        self.mount_then_navigate_with_credentials(location, strategy, None);
+        self.mount_then_navigate_attempt(location, strategy, false);
     }
 
-    fn mount_then_navigate_with_credentials(
+    fn mount_then_navigate_attempt(
         self: &Rc<Self>,
         location: Location,
         strategy: MountStrategy,
-        credentials: Option<MountCredentials>,
+        authentication_failed: bool,
     ) {
-        let retry_credentials = credentials.clone();
         self.mount_location(
             location.clone(),
             strategy,
-            credentials,
+            authentication_failed,
             move |state, result| {
                 if mount_result_is_ok(&result) {
                     state.browser.navigate(location.clone());
@@ -2210,15 +2206,13 @@ impl ViewState {
                     state.browser.focus_active();
                 } else if let Err(error) = result {
                     if mount_error_is_authentication_failure(&location, &error) {
-                        state.prompt_to_retry_navigation(
-                            location.clone(),
-                            strategy,
-                            retry_credentials.clone(),
-                        );
-                    } else if let Some(message) = mount_failure_message(&location, &error) {
+                        state.mount_then_navigate_attempt(location.clone(), strategy, true);
+                    } else {
                         state.restore_location_text();
                         state.location_stack.set_visible_child_name("breadcrumbs");
-                        show_error_dialog(&state.overlay, "Unable to connect", &message);
+                        if let Some(message) = mount_failure_message(&location, &error) {
+                            show_error_dialog(&state.overlay, "Unable to connect", &message);
+                        }
                     }
                 }
             },
@@ -2231,31 +2225,30 @@ impl ViewState {
         location: Location,
         strategy: MountStrategy,
     ) {
-        self.mount_then_descend_with_credentials(parent_depth, location, strategy, None);
+        self.mount_then_descend_attempt(parent_depth, location, strategy, false);
     }
 
-    fn mount_then_descend_with_credentials(
+    fn mount_then_descend_attempt(
         self: &Rc<Self>,
         parent_depth: usize,
         location: Location,
         strategy: MountStrategy,
-        credentials: Option<MountCredentials>,
+        authentication_failed: bool,
     ) {
-        let retry_credentials = credentials.clone();
         self.mount_location(
             location.clone(),
             strategy,
-            credentials,
+            authentication_failed,
             move |state, result| {
                 if mount_result_is_ok(&result) {
                     state.browser.descend(parent_depth, location.clone());
                 } else if let Err(error) = result {
                     if mount_error_is_authentication_failure(&location, &error) {
-                        state.prompt_to_retry_descend(
+                        state.mount_then_descend_attempt(
                             parent_depth,
                             location.clone(),
                             strategy,
-                            retry_credentials.clone(),
+                            true,
                         );
                     } else if let Some(message) = mount_failure_message(&location, &error) {
                         show_error_dialog(&state.overlay, "Unable to connect", &message);
@@ -2265,75 +2258,11 @@ impl ViewState {
         );
     }
 
-    fn prompt_to_retry_navigation(
-        self: &Rc<Self>,
-        location: Location,
-        strategy: MountStrategy,
-        defaults: Option<MountCredentials>,
-    ) {
-        let weak = Rc::downgrade(self);
-        let prompt_location = location.clone();
-        self.show_mount_retry_prompt(&prompt_location, defaults, move |credentials| {
-            if let Some(state) = weak.upgrade() {
-                state.mount_then_navigate_with_credentials(
-                    location.clone(),
-                    strategy,
-                    Some(credentials),
-                );
-            }
-        });
-    }
-
-    fn prompt_to_retry_descend(
-        self: &Rc<Self>,
-        parent_depth: usize,
-        location: Location,
-        strategy: MountStrategy,
-        defaults: Option<MountCredentials>,
-    ) {
-        let weak = Rc::downgrade(self);
-        let prompt_location = location.clone();
-        self.show_mount_retry_prompt(&prompt_location, defaults, move |credentials| {
-            if let Some(state) = weak.upgrade() {
-                state.mount_then_descend_with_credentials(
-                    parent_depth,
-                    location.clone(),
-                    strategy,
-                    Some(credentials),
-                );
-            }
-        });
-    }
-
-    fn show_mount_retry_prompt(
-        &self,
-        location: &Location,
-        defaults: Option<MountCredentials>,
-        retry: impl Fn(MountCredentials) + 'static,
-    ) {
-        let defaults = defaults.unwrap_or_else(MountCredentials::default_for_prompt);
-        let message = format!("Enter user and password for “{}”.", location.display_path());
-        let flags = gio::AskPasswordFlags::NEED_USERNAME
-            | gio::AskPasswordFlags::NEED_DOMAIN
-            | gio::AskPasswordFlags::NEED_PASSWORD
-            | gio::AskPasswordFlags::SAVING_SUPPORTED
-            | gio::AskPasswordFlags::ANONYMOUS_SUPPORTED;
-        let _prompt = show_authentication_dialog(
-            &self.overlay,
-            None,
-            &message,
-            (&defaults.username, &defaults.domain),
-            flags,
-            true,
-            Some(Rc::new(retry)),
-        );
-    }
-
     fn mount_location(
         self: &Rc<Self>,
         location: Location,
         strategy: MountStrategy,
-        credentials: Option<MountCredentials>,
+        authentication_failed: bool,
         on_result: impl Fn(&Rc<Self>, Result<(), glib::Error>) + 'static,
     ) {
         if self.overlay.root().and_downcast::<gtk::Window>().is_none() {
@@ -2344,16 +2273,9 @@ impl ViewState {
         let prompt_overlay = self.overlay.clone();
         let active_prompt = Rc::new(RefCell::new(None::<gtk::Box>));
         let prompt_for_signal = active_prompt.clone();
-        let supplied_credentials = Rc::new(RefCell::new(credentials));
-        let credentials_for_signal = supplied_credentials.clone();
-        let already_prompted = Cell::new(credentials_for_signal.borrow().is_some());
+        let already_prompted = Cell::new(authentication_failed);
         operation.connect_ask_password(
             move |operation, message, default_user, default_domain, flags| {
-                if let Some(credentials) = credentials_for_signal.borrow_mut().take() {
-                    apply_mount_credentials(operation, &credentials);
-                    operation.reply(gio::MountOperationResult::Handled);
-                    return;
-                }
                 if let Some(previous) = prompt_for_signal.borrow_mut().take() {
                     dismiss_authentication_prompt(&prompt_overlay, &previous);
                 }
@@ -2365,7 +2287,6 @@ impl ViewState {
                     (default_user, default_domain),
                     flags,
                     retry,
-                    None,
                 );
                 prompt_for_signal.replace(prompt);
             },
@@ -2752,6 +2673,17 @@ impl ViewState {
             } => {
                 self.handle_navigation_rejected(parent_depth, error);
             }
+            BrowserEvent::LocationNavigationRejected { error } => match error {
+                LocationValidationError::NotMounted(location) => {
+                    self.mount_then_navigate(location, MountStrategy::EnclosingVolume);
+                }
+                LocationValidationError::Mountable(location) => {
+                    self.mount_then_navigate(location, MountStrategy::Mountable);
+                }
+                error => {
+                    show_error_dialog(&self.overlay, "Unable to open location", &error.to_string())
+                }
+            },
         }
         self.refresh_active_path_rows();
     }
@@ -4807,9 +4739,7 @@ pub(super) fn locations_from_file_list_value(value: &glib::Value) -> Option<Vec<
 }
 
 pub(super) fn location_for_gio_file(file: &gio::File) -> Location {
-    file.path()
-        .map(Location::local)
-        .unwrap_or_else(|| Location::uri(file.uri().as_str()))
+    location_for_file(file)
 }
 
 pub(super) fn file_drag_content(entries: &[FileEntry]) -> Option<gtk::gdk::ContentProvider> {
@@ -5434,8 +5364,6 @@ fn gio_file_for_location(location: &Location) -> gio::File {
         .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()))
 }
 
-type MountCredentialsHandler = Rc<dyn Fn(MountCredentials)>;
-
 const AUTHENTICATION_TEXT_WIDTH_CHARS: i32 = 64;
 
 fn show_authentication_dialog(
@@ -5445,7 +5373,6 @@ fn show_authentication_dialog(
     defaults: (&str, &str),
     flags: gio::AskPasswordFlags,
     authentication_failed: bool,
-    submitted: Option<MountCredentialsHandler>,
 ) -> Option<gtk::Box> {
     let Some(window_overlay) = browser_overlay
         .root()
@@ -5654,8 +5581,6 @@ fn show_authentication_dialog(
         dismiss_modal_layer(&connect_layer, &connect_overlay, connect_root.as_ref());
         if let Some(operation) = connect_operation.as_ref() {
             operation.reply(gio::MountOperationResult::Handled);
-        } else if let Some(submitted) = submitted.as_ref() {
-            submitted(credentials);
         }
     });
 
@@ -5752,18 +5677,6 @@ struct MountCredentials {
     domain: String,
     password: String,
     save: gio::PasswordSave,
-}
-
-impl MountCredentials {
-    fn default_for_prompt() -> Self {
-        Self {
-            anonymous: false,
-            username: glib::user_name().to_string_lossy().into_owned(),
-            domain: "WORKGROUP".to_owned(),
-            password: String::new(),
-            save: gio::PasswordSave::Never,
-        }
-    }
 }
 
 fn apply_mount_credentials(operation: &gio::MountOperation, credentials: &MountCredentials) {

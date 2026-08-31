@@ -54,6 +54,28 @@ pub(crate) fn location_for_file(file: &gio::File) -> Location {
     Location::uri(file.uri())
 }
 
+fn uri_validation_result(
+    location: &Location,
+    result: Result<gio::FileInfo, glib::Error>,
+) -> Result<(), LocationValidationError> {
+    let info = result.map_err(|error| {
+        if error.matches(gio::IOErrorEnum::NotMounted) {
+            LocationValidationError::NotMounted(location.clone())
+        } else if error.matches(gio::IOErrorEnum::NotSupported) {
+            LocationValidationError::BackendUnavailable(backend_unavailable_message(
+                location.uri_value().unwrap_or_default(),
+            ))
+        } else {
+            LocationValidationError::Unavailable(error.to_string())
+        }
+    })?;
+    match info.file_type() {
+        gio::FileType::Directory => Ok(()),
+        gio::FileType::Mountable => Err(LocationValidationError::Mountable(location.clone())),
+        _ => Err(LocationValidationError::NotDirectory),
+    }
+}
+
 fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
     let native_name = info.name().into_os_string();
     let kind = match (info.file_type(), info.is_symlink()) {
@@ -108,32 +130,37 @@ impl FileSource for LocalFileSource {
                 .uri_value()
                 .ok_or_else(|| LocationValidationError::Unavailable("invalid URI".into()))?,
         );
-        let info = file
-            .query_info(
+        uri_validation_result(
+            location,
+            file.query_info(
                 "standard::type",
                 gio::FileQueryInfoFlags::NONE,
                 None::<&gio::Cancellable>,
-            )
-            .map_err(|error| {
-                if error.matches(gio::IOErrorEnum::NotMounted) {
-                    LocationValidationError::NotMounted(location.clone())
-                } else if error.matches(gio::IOErrorEnum::NotSupported) {
-                    LocationValidationError::BackendUnavailable(backend_unavailable_message(
-                        location.uri_value().unwrap_or_default(),
-                    ))
-                } else {
-                    LocationValidationError::Unavailable(error.to_string())
-                }
-            })?;
-        match info.file_type() {
-            gio::FileType::Directory => Ok(()),
-            // A GVfs location can report itself as `Mountable` without GIO
-            // raising `NOT_MOUNTED` for this query specifically; that only
-            // happens when something tries to use its contents. Treat the
-            // type itself as the "needs mounting" signal.
-            gio::FileType::Mountable => Err(LocationValidationError::Mountable(location.clone())),
-            _ => Err(LocationValidationError::NotDirectory),
+            ),
+        )
+    }
+
+    fn validate_location_async(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Result<(), LocationValidationError>)>,
+    ) -> LoadHandle {
+        if location.native_path().is_some() {
+            emit(self.validate_location(&location));
+            return LoadHandle::new(|| {});
         }
+        let file = gio::File::for_uri(location.uri_value().unwrap_or_default());
+        let task = glib::MainContext::default().spawn_local(async move {
+            let result = file
+                .query_info_future(
+                    "standard::type",
+                    gio::FileQueryInfoFlags::NONE,
+                    glib::Priority::DEFAULT,
+                )
+                .await;
+            emit(uri_validation_result(&location, result));
+        });
+        LoadHandle::new(move || task.abort())
     }
 
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
