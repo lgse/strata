@@ -1696,8 +1696,7 @@ impl ViewState {
             .replace(Some(LoadHandle::new(move || task.abort())));
     }
 
-    /// Shows a cancellable "Measuring Trash…" indicator while `load_trash_summary`'s background
-    /// walk runs, since that walk is bounded but can still take a few seconds on a large trash.
+    /// The walk is bounded but can still take a few seconds on a large trash, hence the indicator.
     fn show_trash_loading_indicator(self: &Rc<Self>) {
         self.dismiss_trash_loading();
         let Some(window_overlay) = self
@@ -1759,9 +1758,8 @@ impl ViewState {
         dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
     }
 
-    /// Aborts any in-flight trash measurement and dismisses its loading indicator. Safe to call
-    /// more than once: both the manual cancel path and the async task's own completion call this,
-    /// and whichever runs first leaves the other a no-op.
+    /// Safe to call more than once: whichever of cancel or completion runs first leaves the
+    /// other a no-op.
     fn clear_trash_loading(&self) {
         self.pending_trash_summary.borrow_mut().take();
         self.dismiss_trash_loading();
@@ -5141,25 +5139,18 @@ struct TrashSummary {
     entries: Vec<FileEntry>,
     item_count: usize,
     total_size: u64,
-    /// `true` once measurement stopped short of covering the full trash tree, because it hit
-    /// the entry, depth, or time budget. `item_count`/`total_size` are then a lower bound.
+    /// `true` if measurement did not cover the full trash tree; `item_count`/`total_size` are
+    /// then a lower bound.
     truncated: bool,
 }
 
 const TRASH_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-symlink,standard::size,time::modified";
 
-/// Caps how many entries the recursive measurement below will visit, bounding worst-case time and
-/// I/O when walking into subdirectories of an adversarially large or deeply populated trash tree.
-/// This does not bound `TrashSummary::entries` itself: every top-level entry is always listed
-/// there regardless of budget, since "Empty Trash" deletes exactly that list and truncating it
-/// would silently leave real items behind. Each retained `FileEntry` is roughly 150-300 bytes
-/// including heap data, so `entries` scales with however many top-level items the trash actually
-/// holds, not with this constant.
+/// Bounds recursive measurement into subdirectories, not `TrashSummary::entries` itself: every
+/// top-level entry is always listed there regardless of budget, since "Empty Trash" deletes
+/// exactly that list.
 const MAX_TRASH_ENTRIES: usize = 200_000;
-/// Caps how deep measurement descends, as a defensive backstop against pathologically deep trees.
 const MAX_TRASH_DEPTH: usize = 64;
-/// Caps how long measurement may run before it is reported as truncated, so a single huge trash
-/// tree cannot keep the empty-trash confirmation from appearing.
 const TRASH_TIME_BUDGET: Duration = Duration::from_secs(5);
 
 async fn summarize_trash(root: &gio::File) -> Result<TrashSummary, glib::Error> {
@@ -5194,11 +5185,8 @@ async fn summarize_trash_with_budget(
         }
         for info in children {
             let file = root.child(info.name());
-            // Every top-level entry is always listed here, regardless of budget: "Empty Trash"
-            // deletes exactly this list, so truncating it would silently leave real items behind.
-            // Only the (potentially expensive) recursive measurement below is bounded -- once the
-            // budget is spent, remaining top-level entries are still listed but counted as a
-            // single unmeasured item rather than walked.
+            // Skip only the recursive measurement once over budget; still list this entry (see
+            // MAX_TRASH_ENTRIES) and count it as one unmeasured item.
             if visited.get() >= max_entries || Instant::now() >= deadline {
                 truncated = true;
                 item_count = item_count.saturating_add(1);
@@ -5232,9 +5220,8 @@ async fn summarize_trash_with_budget(
 type TrashMeasurementFuture =
     Pin<Box<dyn Future<Output = Result<(usize, u64, bool), glib::Error>>>>;
 
-/// Measures one trash entry and, for directories, its descendants. `visited` is shared across
-/// the whole walk so the entry budget applies to the tree as a whole rather than per-branch, and
-/// `deadline` is a fixed wall-clock point so the time budget cannot be reset by descending deeper.
+/// `visited` is shared across the whole walk, so the entry budget applies tree-wide rather than
+/// per-branch, and `deadline` is a fixed point so descending deeper can't reset the time budget.
 fn measure_trash_entry(
     file: gio::File,
     info: gio::FileInfo,
@@ -5259,9 +5246,8 @@ fn measure_trash_entry(
             if budget_exhausted {
                 truncated = true;
             } else {
-                // A directory can become unreadable (permissions changed) or disappear (removed
-                // concurrently) between being observed here and being measured. Either failure
-                // degrades this one branch to truncated rather than failing the whole walk.
+                // A directory can become unreadable or disappear before we measure it; degrade
+                // this branch to truncated rather than failing the whole walk.
                 match enumerate_trash_directory(
                     &file,
                     depth,
@@ -5311,9 +5297,6 @@ async fn enumerate_trash_directory(
             break;
         }
         for child in children {
-            // Checked here, not just when a child directory decides whether to recurse: without
-            // this, a directory holding an enormous number of *files* (no further directories to
-            // recurse into) would never trip the budget at all.
             if visited.get() >= max_entries || Instant::now() >= deadline {
                 truncated = true;
                 break 'this_directory;
@@ -5332,10 +5315,8 @@ async fn enumerate_trash_directory(
             size = size.saturating_add(child_size);
             truncated |= child_truncated;
         }
-        // Only the shared global budget being spent should stop scanning further siblings here.
-        // A child reporting `truncated` on its own (it hit the depth cap, or the walker discarded
-        // one of its descendants) is a branch-local condition unrelated to its siblings, so it
-        // must not cut off enumeration of the rest of this directory.
+        // Stop only when the shared budget is actually spent -- a child's own `truncated` (depth
+        // cap, discarded error) is branch-local and must not cut off its unrelated siblings.
         if visited.get() >= max_entries || Instant::now() >= deadline {
             truncated = true;
             break;

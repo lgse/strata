@@ -13,18 +13,11 @@ use std::{
 const RESULT_LIMIT: usize = 100;
 const PUBLISH_INTERVAL: Duration = Duration::from_millis(50);
 
-/// Caps how many entries a single index will retain, bounding worst-case memory use on
-/// adversarially large or unbounded trees (for example a runaway bind mount or `/proc`).
-/// Each `SearchItem` stores a `PathBuf` plus three `String`s (name, lowercased name, lowercased
-/// relative path); `name`/`search_name` are bounded by `NAME_MAX` (255 bytes), but `path` and
-/// `search_path` scale with the full path length, which is not bounded here. For typical paths
-/// (tens of bytes) this is roughly 60-140 MB total; adversarial paths near Linux's `PATH_MAX`
-/// (4096 bytes) could push a fully populated index to on the order of 1.5-2 GB.
+/// Bounds worst-case index memory on an adversarially large tree. Each retained `SearchItem`
+/// stores full path strings, so cost scales with path length, not just entry count: roughly
+/// 60-140 MB at this cap for typical paths, but up to ~1.5-2 GB for paths near `PATH_MAX`.
 const MAX_INDEX_ENTRIES: usize = 200_000;
-/// Caps how deep the walk descends, as a defensive backstop against pathologically deep trees.
 const MAX_INDEX_DEPTH: usize = 64;
-/// Caps how long the initial walk may run before the index is published as truncated, so a
-/// single huge directory cannot keep search results from becoming available.
 const INDEX_TIME_BUDGET: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -41,8 +34,8 @@ pub enum SearchEvent {
         query: String,
         items: Vec<SearchItem>,
         indexing: bool,
-        /// `true` once the index stopped short of covering the full tree, because it hit the
-        /// entry or time budget. Results are still the best matches found so far, not complete.
+        /// `true` if the index does not cover the full tree; results are the best matches found
+        /// so far, not necessarily complete.
         truncated: bool,
     },
 }
@@ -100,10 +93,8 @@ fn index_tree_with_budget(
             let mut progress = WalkProgress::default();
             let mut last_publish = Instant::now();
             let walk_start = Instant::now();
-            // Walk one level past `max_depth` (rather than capping exactly at it) so a directory
-            // sitting at the cap that actually has children yields at least one entry beyond it,
-            // letting the loop below detect and flag depth truncation instead of silently
-            // reporting an index that looks complete.
+            // Walk one level past `max_depth` so a directory at the cap with real children
+            // yields at least one entry beyond it, letting depth truncation be detected below.
             let walker = ignore::WalkBuilder::new(&root)
                 .hidden(true)
                 .follow_links(false)
@@ -120,8 +111,7 @@ fn index_tree_with_budget(
                     Ok(entry) if entry.depth() == 0 => continue,
                     Ok(entry) => entry,
                     Err(_) => {
-                        // An unreadable directory or other walker error also omits part of the
-                        // tree from the index; treat it the same as any other truncation.
+                        // An unreadable directory also omits part of the tree from the index.
                         progress.truncated = true;
                         continue;
                     }
