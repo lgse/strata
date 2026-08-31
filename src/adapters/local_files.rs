@@ -15,7 +15,7 @@ use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
-        LocationValidationError, RequestId,
+        LocationValidationError, RequestId, backend_unavailable_message,
     },
 };
 
@@ -109,6 +109,10 @@ impl FileSource for LocalFileSource {
             .map_err(|error| {
                 if error.matches(gio::IOErrorEnum::NotMounted) {
                     LocationValidationError::NotMounted(location.clone())
+                } else if error.matches(gio::IOErrorEnum::NotSupported) {
+                    LocationValidationError::BackendUnavailable(backend_unavailable_message(
+                        location.uri_value().unwrap_or_default(),
+                    ))
                 } else {
                     LocationValidationError::Unavailable(error.to_string())
                 }

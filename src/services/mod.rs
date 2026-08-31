@@ -9,7 +9,7 @@ mod update_install;
 
 pub use file_source::{
     DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
-    LocationValidationError, RequestId,
+    LocationValidationError, RequestId, backend_unavailable_message, uri_has_embedded_password,
 };
 pub use operations::{
     CreateDirectoryRequest, CreateFileRequest, DeleteRequest, OperationEvent, OperationProvider,

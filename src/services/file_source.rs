@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+#[cfg(test)]
+mod tests;
+
 use std::{fmt, rc::Rc};
 
 use crate::model::{FileEntry, Location};
@@ -26,6 +29,8 @@ pub enum LocationValidationError {
     Mountable(Location),
     Unavailable(String),
     UnsupportedShorthand(String),
+    EmbeddedCredential,
+    BackendUnavailable(String),
 }
 
 impl fmt::Display for LocationValidationError {
@@ -44,8 +49,55 @@ impl fmt::Display for LocationValidationError {
                 write!(formatter, "Unable to open that location: {message}")
             }
             Self::UnsupportedShorthand(message) => formatter.write_str(message),
+            Self::EmbeddedCredential => formatter.write_str(
+                "Passwords typed into the address bar aren't accepted. Enter the address \
+                 without a password, you'll be prompted to sign in securely.",
+            ),
+            Self::BackendUnavailable(message) => formatter.write_str(message),
         }
     }
+}
+
+/// Maps a location's URI scheme to the distribution package that provides its
+/// GVfs backend, for the schemes we currently support connecting to.
+fn backend_package_hint(scheme: &str) -> Option<&'static str> {
+    match scheme.to_ascii_lowercase().as_str() {
+        "smb" => Some("gvfs-smb"),
+        _ => None,
+    }
+}
+
+/// Builds a "this backend isn't installed" message naming the scheme and, when
+/// known, the package that provides it, without repeating the host/share/path.
+pub fn backend_unavailable_message(uri: &str) -> String {
+    let scheme = uri.split("://").next().unwrap_or(uri);
+    match backend_package_hint(scheme) {
+        Some(package) => format!(
+            "The {scheme}:// backend isn't installed. Install the {package} package to \
+             connect to {scheme}:// locations."
+        ),
+        None => format!(
+            "The {scheme}:// backend isn't installed on this system, so {scheme}:// \
+             locations can't be opened."
+        ),
+    }
+}
+
+/// Detects a `user:password@host` (or `user:password@host:port`) userinfo
+/// segment in a URI's authority. Per lgse/strata#20, a URI typed with an
+/// embedded password must never be accepted, stored, or echoed back.
+pub fn uri_has_embedded_password(uri: &str) -> bool {
+    let Some(after_scheme) = uri.split_once("://").map(|(_, rest)| rest) else {
+        return false;
+    };
+    let authority = after_scheme
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or(after_scheme);
+    let Some((userinfo, _host)) = authority.rsplit_once('@') else {
+        return false;
+    };
+    userinfo.contains(':')
 }
 
 #[derive(Clone, Debug)]

@@ -14,7 +14,7 @@ use crate::{
         CreateDirectoryRequest, CreateFileRequest, DeleteRequest, DirectoryChange, DirectoryEvent,
         DirectoryRequest, FileSource, LoadHandle, LocationValidationError, OperationEvent,
         OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRequest, RequestId,
-        RestoreRequest, validate_basename,
+        RestoreRequest, uri_has_embedded_password, validate_basename,
     },
 };
 
@@ -191,6 +191,9 @@ impl Browser {
             return Err(LocationValidationError::UnsupportedShorthand(
                 message.to_owned(),
             ));
+        }
+        if uri_has_embedded_password(input) {
+            return Err(LocationValidationError::EmbeddedCredential);
         }
         let location = location_from_input(input);
         if location.native_path().is_some() && !location.is_absolute_native() {

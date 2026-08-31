@@ -11,6 +11,31 @@ fn file_sizes_use_compact_decimal_units() {
 }
 
 #[test]
+fn cancelling_the_credential_prompt_produces_no_error_message() {
+    let location = Location::uri("smb://host/share");
+    for kind in [gio::IOErrorEnum::Cancelled, gio::IOErrorEnum::FailedHandled] {
+        let error = glib::Error::new(kind, "cancelled by the user");
+        assert_eq!(mount_failure_message(&location, &error), None);
+    }
+}
+
+#[test]
+fn a_missing_backend_reports_which_package_to_install() {
+    let location = Location::uri("smb://host/share");
+    let error = glib::Error::new(gio::IOErrorEnum::NotSupported, "no handler for smb");
+    let message = mount_failure_message(&location, &error).expect("should report a message");
+    assert!(message.contains("gvfs-smb"));
+}
+
+#[test]
+fn a_genuine_mount_failure_still_reports_an_error() {
+    let location = Location::uri("smb://host/share");
+    let error = glib::Error::new(gio::IOErrorEnum::HostNotFound, "no route to host");
+    let message = mount_failure_message(&location, &error).expect("should report a message");
+    assert!(message.contains("no route to host"));
+}
+
+#[test]
 fn inline_rename_selects_the_stem_but_keeps_the_extension() {
     assert_eq!(rename_stem_end("report.txt"), 6);
     assert_eq!(rename_stem_end("archive.tar.gz"), 11);

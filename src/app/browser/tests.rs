@@ -545,6 +545,29 @@ fn location_input_rejects_unc_and_scp_shorthand_with_a_helpful_message() {
 }
 
 #[test]
+fn location_input_rejects_uris_with_an_embedded_password() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.navigate(Location::local("/fixture"));
+
+    for uri in [
+        "smb://user:secret@host/share",
+        "sftp://user:secret@host:2222/path",
+    ] {
+        assert_eq!(
+            browser.navigate_input(uri),
+            Err(LocationValidationError::EmbeddedCredential)
+        );
+        assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+    }
+
+    assert_eq!(
+        browser.navigate_input("smb://user@host/share"),
+        Ok(()),
+        "a bare username without a password must still be accepted"
+    );
+}
+
+#[test]
 fn location_input_reports_the_target_location_when_not_mounted() {
     let browser = Browser::new(Rc::new(NotMountedFileSource));
     browser.navigate(Location::local("/fixture"));
