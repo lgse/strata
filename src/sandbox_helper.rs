@@ -1,9 +1,28 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::{fs, path::Path, process::Command};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+    process::Command,
+    thread,
+    time::{Duration, Instant},
+};
 
 use gdk_pixbuf::prelude::*;
 use gtk::gio;
+
+use crate::sandbox::{gpu_devices, numbered_name};
+
+const HARDWARE_ATTEMPT_TIME_LIMIT: Duration = Duration::from_secs(8);
+const HARDWARE_TOTAL_TIME_LIMIT: Duration = Duration::from_secs(12);
+const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum MediaBackend {
+    VaApi(PathBuf),
+    Vulkan(usize),
+    Software,
+}
 
 pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     let [operation, input, output, value] = arguments else {
@@ -168,57 +187,168 @@ fn render_pdf_surface(
 }
 
 fn render_media_preview(path: &Path, output: &Path) -> Result<(), String> {
-    let status = media_preview_command(path, output)
-        .status()
-        .map_err(|error| error.to_string())?;
-    status
-        .success()
-        .then_some(())
-        .ok_or_else(|| "Unable to normalize media preview".to_owned())
+    let backends = media_backends(&gpu_devices(Path::new("/dev")));
+    let hardware_started = Instant::now();
+    run_media_backends(&backends, |backend| {
+        let mut command = media_command(backend, path, output);
+        if *backend == MediaBackend::Software {
+            return command.status().map(|status| status.success());
+        }
+        let remaining = HARDWARE_TOTAL_TIME_LIMIT.saturating_sub(hardware_started.elapsed());
+        run_command_with_timeout(&mut command, HARDWARE_ATTEMPT_TIME_LIMIT.min(remaining))
+    })
 }
 
-fn media_preview_command(path: &Path, output: &Path) -> Command {
+fn media_backends(devices: &[PathBuf]) -> Vec<MediaBackend> {
+    let mut render_nodes: Vec<_> = devices
+        .iter()
+        .filter(|device| {
+            device
+                .file_name()
+                .is_some_and(|name| numbered_name(name, "renderD"))
+        })
+        .cloned()
+        .collect();
+    render_nodes.sort();
+    let nvidia_devices = devices
+        .iter()
+        .filter(|device| {
+            device
+                .file_name()
+                .is_some_and(|name| numbered_name(name, "nvidia"))
+        })
+        .count();
+    let vulkan_devices = render_nodes.len().max(nvidia_devices);
+    let mut backends = render_nodes
+        .into_iter()
+        .map(MediaBackend::VaApi)
+        .collect::<Vec<_>>();
+    backends.extend((0..vulkan_devices).map(MediaBackend::Vulkan));
+    backends.push(MediaBackend::Software);
+    backends
+}
+
+fn media_command(backend: &MediaBackend, path: &Path, output: &Path) -> Command {
     let mut command = Command::new("ffmpeg");
+    command.args(["-nostdin", "-v", "error"]);
+    match backend {
+        MediaBackend::VaApi(device) => {
+            command
+                .env("MALLOC_ARENA_MAX", "1")
+                .args([
+                    "-threads",
+                    "1",
+                    "-filter_threads",
+                    "1",
+                    "-hwaccel",
+                    "vaapi",
+                    "-hwaccel_device",
+                ])
+                .arg(device)
+                .args(["-hwaccel_output_format", "vaapi"]);
+        }
+        MediaBackend::Vulkan(index) => {
+            command
+                .env("MALLOC_ARENA_MAX", "1")
+                .args(["-threads", "1", "-filter_threads", "1", "-init_hw_device"])
+                .arg(format!("vulkan=vk:{index}"))
+                .args([
+                    "-filter_hw_device",
+                    "vk",
+                    "-hwaccel",
+                    "vulkan",
+                    "-hwaccel_device",
+                    "vk",
+                    "-hwaccel_output_format",
+                    "vulkan",
+                ]);
+        }
+        MediaBackend::Software => {
+            command.args(["-threads", "2"]);
+        }
+    }
     command
-        .args(["-nostdin", "-v", "error", "-threads", "2", "-i"])
+        .arg("-i")
         .arg(path)
-        .args([
-            "-map",
-            "0:v:0",
-            "-map",
-            "0:a:0?",
-            "-sn",
-            "-dn",
-            "-t",
-            "30",
-            "-vf",
-            "scale=w=1280:h=1280:force_original_aspect_ratio=decrease",
-            "-fpsmax",
-            "30",
-            "-c:v",
-            "libvpx",
-            "-threads",
-            "2",
-            "-deadline",
-            "realtime",
-            "-cpu-used",
-            "8",
-            "-b:v",
-            "2M",
-            "-maxrate",
-            "3M",
-            "-bufsize",
-            "4M",
-            "-c:a",
-            "libopus",
-            "-b:a",
-            "96k",
-            "-f",
-            "webm",
-            "-y",
-        ])
-        .arg(output);
+        .args(["-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn", "-t", "30"]);
+    match backend {
+        MediaBackend::VaApi(_) => {
+            command.args([
+                "-vf",
+                "scale_vaapi=w=1280:h=1280:force_original_aspect_ratio=decrease:force_divisible_by=2:format=nv12",
+                "-c:v",
+                "h264_vaapi",
+            ]);
+        }
+        MediaBackend::Vulkan(_) => {
+            command.args([
+                "-vf",
+                "scale_vulkan=w='if(gte(iw,ih),min(1280,trunc(iw/2)*2),-2)':h='if(gte(iw,ih),-2,min(1280,trunc(ih/2)*2))':format=nv12",
+                "-c:v",
+                "h264_vulkan",
+                "-usage",
+                "transcode",
+                "-tune",
+                "ull",
+            ]);
+        }
+        MediaBackend::Software => {
+            command.args([
+                "-vf",
+                "scale=w=1280:h=1280:force_original_aspect_ratio=decrease",
+                "-c:v",
+                "libvpx",
+                "-threads",
+                "2",
+                "-deadline",
+                "realtime",
+                "-cpu-used",
+                "8",
+            ]);
+        }
+    }
+    command.args(["-fpsmax", "30"]);
+    command.args(["-b:v", "2M", "-maxrate", "3M", "-bufsize", "4M"]);
+    match backend {
+        MediaBackend::Software => command.args(["-c:a", "libopus", "-b:a", "96k", "-f", "webm"]),
+        MediaBackend::VaApi(_) | MediaBackend::Vulkan(_) => {
+            command.args(["-c:a", "aac", "-b:a", "96k", "-f", "mp4"])
+        }
+    };
+    command.arg("-y").arg(output);
     command
+}
+
+fn run_media_backends<E>(
+    backends: &[MediaBackend],
+    mut run: impl FnMut(&MediaBackend) -> Result<bool, E>,
+) -> Result<(), String> {
+    for backend in backends {
+        if run(backend).is_ok_and(|success| success) {
+            return Ok(());
+        }
+    }
+    Err("Unable to normalize media preview".to_owned())
+}
+
+fn run_command_with_timeout(command: &mut Command, timeout: Duration) -> io::Result<bool> {
+    if timeout.is_zero() {
+        return Ok(false);
+    }
+    let mut child = command.spawn()?;
+    let deadline = Instant::now() + timeout;
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(status.success());
+        }
+        let remaining = deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Ok(false);
+        }
+        thread::sleep(PROCESS_POLL_INTERVAL.min(remaining));
+    }
 }
 
 fn render_media(path: &Path, size: i32) -> Result<Vec<u8>, String> {

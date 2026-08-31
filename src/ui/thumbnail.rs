@@ -21,13 +21,20 @@ const MAX_CACHE_BYTES: usize = 64 * 1024 * 1024;
 thread_local! {
     static ACTIVE_REQUESTS: RefCell<HashMap<usize, ActiveRequest>> =
         RefCell::new(HashMap::new());
+    static PENDING_THUMBNAILS: RefCell<HashMap<ThumbnailKey, Vec<PendingTarget>>> =
+        RefCell::new(HashMap::new());
     static THUMBNAIL_CACHE: RefCell<ThumbnailCache> = RefCell::new(ThumbnailCache::default());
 }
 
 struct ActiveRequest {
     id: u64,
     image: glib::WeakRef<gtk::Image>,
-    cancellation: Cancellation,
+}
+
+struct PendingTarget {
+    image_id: usize,
+    request: u64,
+    image: glib::WeakRef<gtk::Image>,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -87,19 +94,58 @@ pub(super) fn set_thumbnail_or_icon(
     icon_size: i32,
     thumbnail_size: i32,
 ) {
-    let (image_id, request, cancellation) = set_fallback_icon(image, fallback_icon, icon_size);
-
-    let Some(path) = entry.location.native_path().map(Path::to_path_buf) else {
+    let Some(path) = entry.location.native_path() else {
+        show_fallback_icon(image, fallback_icon, icon_size);
         return;
     };
+    set_thumbnail_for_path(
+        image,
+        path,
+        known_metadata(&entry.modified_unix_seconds),
+        known_metadata(&entry.size),
+        fallback_icon,
+        icon_size,
+        thumbnail_size,
+    );
+}
+
+pub(super) fn set_thumbnail_or_icon_for_path(
+    image: &gtk::Image,
+    path: &Path,
+    fallback_icon: &str,
+    icon_size: i32,
+    thumbnail_size: i32,
+) {
+    set_thumbnail_for_path(
+        image,
+        path,
+        None,
+        None,
+        fallback_icon,
+        icon_size,
+        thumbnail_size,
+    );
+}
+
+fn set_thumbnail_for_path(
+    image: &gtk::Image,
+    path: &Path,
+    modified: Option<i64>,
+    file_size: Option<u64>,
+    fallback_icon: &str,
+    icon_size: i32,
+    thumbnail_size: i32,
+) {
+    let (image_id, request) = set_fallback_icon(image, fallback_icon, icon_size);
+    let path = path.to_path_buf();
     let Some(kind) = thumbnail_kind(&path) else {
         return;
     };
     let thumbnail_size = thumbnail_size.clamp(16, 256);
     let key = ThumbnailKey {
         path: path.clone(),
-        modified: known_metadata(&entry.modified_unix_seconds),
-        file_size: known_metadata(&entry.size),
+        modified,
+        file_size,
         thumbnail_size,
     };
     if let Some(bytes) = THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().get(&key)) {
@@ -109,32 +155,56 @@ pub(super) fn set_thumbnail_or_icon(
 
     let weak_image = glib::WeakRef::new();
     weak_image.set(Some(image));
+    let target = PendingTarget {
+        image_id,
+        request,
+        image: weak_image,
+    };
+    let should_render = PENDING_THUMBNAILS.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        if let Some(targets) = pending.get_mut(&key) {
+            targets.push(target);
+            false
+        } else {
+            pending.insert(key.clone(), vec![target]);
+            true
+        }
+    });
+    if !should_render {
+        return;
+    }
+
     glib::MainContext::default().spawn_local(async move {
+        let cancellation = Cancellation::default();
         let result = gio::spawn_blocking(move || {
             render_thumbnail(&path, kind, thumbnail_size, &cancellation)
         })
         .await;
+        let targets = PENDING_THUMBNAILS
+            .with(|pending| pending.borrow_mut().remove(&key).unwrap_or_default());
         let Ok(Ok(png)) = result else {
             return;
         };
         let bytes = glib::Bytes::from_owned(png);
         THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().insert(key, bytes.clone()));
-        let is_current = ACTIVE_REQUESTS.with(|requests| {
-            requests
-                .borrow()
-                .get(&image_id)
-                .is_some_and(|active| active.id == request)
-        });
-        if !is_current {
-            return;
-        }
-        let Some(image) = weak_image.upgrade() else {
-            ACTIVE_REQUESTS.with(|requests| {
-                requests.borrow_mut().remove(&image_id);
+        for target in targets {
+            let is_current = ACTIVE_REQUESTS.with(|requests| {
+                requests
+                    .borrow()
+                    .get(&target.image_id)
+                    .is_some_and(|active| active.id == target.request)
             });
-            return;
-        };
-        apply_thumbnail(&image, &bytes, thumbnail_size);
+            if !is_current {
+                continue;
+            }
+            let Some(image) = target.image.upgrade() else {
+                ACTIVE_REQUESTS.with(|requests| {
+                    requests.borrow_mut().remove(&target.image_id);
+                });
+                continue;
+            };
+            apply_thumbnail(&image, &bytes, thumbnail_size);
+        }
     });
 }
 
@@ -159,30 +229,26 @@ pub(super) fn show_fallback_icon(image: &gtk::Image, icon: &str, size: i32) {
     set_fallback_icon(image, icon, size);
 }
 
-fn set_fallback_icon(image: &gtk::Image, icon: &str, size: i32) -> (usize, u64, Cancellation) {
+fn set_fallback_icon(image: &gtk::Image, icon: &str, size: i32) -> (usize, u64) {
     let request = NEXT_REQUEST.fetch_add(1, Ordering::Relaxed);
     let image_id = image.as_ptr() as usize;
     let weak_image = glib::WeakRef::new();
     weak_image.set(Some(image));
-    let cancellation = Cancellation::default();
     ACTIVE_REQUESTS.with(|requests| {
         let mut requests = requests.borrow_mut();
         requests.retain(|_, active| active.image.upgrade().is_some());
-        if let Some(previous) = requests.insert(
+        requests.insert(
             image_id,
             ActiveRequest {
                 id: request,
                 image: weak_image,
-                cancellation: cancellation.clone(),
             },
-        ) {
-            previous.cancellation.cancel();
-        }
+        );
     });
     image.set_pixel_size(size);
     image.set_size_request(size, size);
     crate::assets::set_primary_icon(image, icon);
-    (image_id, request, cancellation)
+    (image_id, request)
 }
 
 fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {

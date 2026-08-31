@@ -95,6 +95,7 @@ struct PeekView {
     location: Location,
     presentation: LoadPresentation,
     model: gtk::StringList,
+    entries: Rc<RefCell<Vec<FileEntry>>>,
     entry_count: Rc<Cell<usize>>,
     spinner: gtk::Spinner,
 }
@@ -296,7 +297,12 @@ impl BrowserView {
         location_stack.set_hexpand(true);
         location_stack.set_valign(gtk::Align::Center);
 
-        let browser = Browser::new(source);
+        let preferences = super::theme::ThemeManager::shared();
+        let browser = Browser::with_preferences(source, preferences.sort_preferences());
+        let preferences_for_sorting = preferences.clone();
+        browser.observe_preferences(move |sorting| {
+            preferences_for_sorting.set_sort_preferences(sorting);
+        });
         let mode_views = ModeViews::new(&scroller, browser.clone());
         overlay.set_child(Some(&mode_views.widget()));
         let state = Rc::new(ViewState {
@@ -2069,7 +2075,13 @@ impl ViewState {
         let Some(icon) = row.first_child() else {
             return false;
         };
-        let Some(label) = icon.next_sibling().and_downcast::<gtk::Label>() else {
+        let Some(middle) = icon.next_sibling().and_downcast::<gtk::Overlay>() else {
+            return false;
+        };
+        let Some(editor) = middle.child().and_downcast::<gtk::Box>() else {
+            return false;
+        };
+        let Some(label) = editor.first_child().and_downcast::<gtk::Label>() else {
             return false;
         };
         let Some(field) = label.next_sibling().and_downcast::<gtk::Entry>() else {
@@ -2684,12 +2696,7 @@ impl ViewState {
                     if !entries.is_empty() {
                         peek.presentation.show_content();
                     }
-                    append_entries(
-                        &peek.model,
-                        &peek.entry_count,
-                        entries,
-                        Some(self.peek_behavior.item_limit),
-                    );
+                    append_peek_entries(peek, entries, self.peek_behavior.item_limit);
                 }
             }
             BrowserEvent::PeekFinished => {
@@ -3043,8 +3050,7 @@ impl ViewState {
             let label = gtk::Label::builder()
                 .halign(gtk::Align::Fill)
                 .xalign(0.0)
-                .hexpand(false)
-                .max_width_chars(24)
+                .hexpand(true)
                 .ellipsize(gtk::pango::EllipsizeMode::End)
                 .build();
             let rename = gtk::Entry::new();
@@ -3062,17 +3068,23 @@ impl ViewState {
             });
             let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
             spacer.add_css_class("file-row-spacer");
-            spacer.set_hexpand(true);
+            let editor = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            editor.append(&label);
+            editor.append(&rename);
+            editor.append(&spacer);
             let size = gtk::Label::new(None);
             size.add_css_class("file-size");
+            size.set_halign(gtk::Align::End);
+            size.set_valign(gtk::Align::Center);
             size.set_xalign(1.0);
+            let middle = gtk::Overlay::new();
+            middle.set_hexpand(true);
+            middle.set_child(Some(&editor));
+            middle.add_overlay(&size);
             let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 15);
             chevron.add_css_class("file-chevron");
             row.append(&icon);
-            row.append(&label);
-            row.append(&rename);
-            row.append(&spacer);
-            row.append(&size);
+            row.append(&middle);
             row.append(&chevron);
             let motion = gtk::EventControllerMotion::new();
             let list_item = item.clone();
@@ -3282,7 +3294,13 @@ impl ViewState {
             let Some(icon) = row.first_child().and_downcast::<gtk::Image>() else {
                 return;
             };
-            let Some(label) = icon.next_sibling().and_downcast::<gtk::Label>() else {
+            let Some(middle) = icon.next_sibling().and_downcast::<gtk::Overlay>() else {
+                return;
+            };
+            let Some(editor) = middle.child().and_downcast::<gtk::Box>() else {
+                return;
+            };
+            let Some(label) = editor.first_child().and_downcast::<gtk::Label>() else {
                 return;
             };
             let Some(rename) = label.next_sibling().and_downcast::<gtk::Entry>() else {
@@ -3291,10 +3309,10 @@ impl ViewState {
             let Some(spacer) = rename.next_sibling().and_downcast::<gtk::Box>() else {
                 return;
             };
-            let Some(size) = spacer.next_sibling().and_downcast::<gtk::Label>() else {
+            let Some(size) = middle.last_child().and_downcast::<gtk::Label>() else {
                 return;
             };
-            let Some(chevron) = size.next_sibling().and_downcast::<gtk::Image>() else {
+            let Some(chevron) = middle.next_sibling().and_downcast::<gtk::Image>() else {
                 return;
             };
             label.set_label(model_display_name(&value.string()));
@@ -3775,9 +3793,10 @@ impl ViewState {
         content.append(&header);
 
         let entry_count = Rc::new(Cell::new(0));
+        let entries = Rc::new(RefCell::new(Vec::new()));
         let model = gtk::StringList::new(&[]);
         let selection = gtk::NoSelection::new(Some(model.clone()));
-        let factory = basic_label_factory();
+        let factory = peek_label_factory(entries.clone());
         let list = gtk::ListView::new(Some(selection), Some(factory));
         list.add_css_class("file-list");
         let weak_browser = Rc::downgrade(&self.browser);
@@ -3854,6 +3873,7 @@ impl ViewState {
             location: location.clone(),
             presentation,
             model,
+            entries,
             entry_count,
             spinner,
         }));
@@ -3903,7 +3923,7 @@ impl ViewState {
     }
 }
 
-fn basic_label_factory() -> gtk::SignalListItemFactory {
+fn peek_label_factory(entries: Rc<RefCell<Vec<FileEntry>>>) -> gtk::SignalListItemFactory {
     let factory = gtk::SignalListItemFactory::new();
     factory.connect_setup(|_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -3925,7 +3945,7 @@ fn basic_label_factory() -> gtk::SignalListItemFactory {
         row.append(&chevron);
         item.set_child(Some(&row));
     });
-    factory.connect_bind(|_, item| {
+    factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
         };
@@ -3948,15 +3968,12 @@ fn basic_label_factory() -> gtk::SignalListItemFactory {
         let name = model_display_name(&value);
         let directory = model_is_directory(&value);
         label.set_label(name);
-        crate::assets::set_primary_icon(
-            &icon,
-            if directory {
-                crate::assets::icons::FOLDER
-            } else {
-                icon_for_name(name)
-            },
-        );
-        icon.set_opacity(if directory { 1.0 } else { 0.72 });
+        if let Some(entry) = entries.borrow().get(item.position() as usize) {
+            super::thumbnail::set_thumbnail_or_icon(&icon, entry, entry_icon(entry), 17, 24);
+        } else {
+            super::thumbnail::show_fallback_icon(&icon, icon_for_name(name), 17);
+        }
+        icon.set_opacity(if directory { 1.0 } else { 0.82 });
         chevron.set_visible(directory);
     });
     factory
@@ -5098,15 +5115,12 @@ pub(super) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk::Menu
     button
 }
 
-pub(super) fn column_sort_direction_toggle(
-    browser: &Rc<Browser>,
-    depth: usize,
-) -> gtk::ToggleButton {
+pub(super) fn column_sort_direction_toggle(browser: &Rc<Browser>, depth: usize) -> gtk::Button {
     let direction = browser
         .column_preferences(depth)
         .unwrap_or_default()
         .sort_direction;
-    let button = gtk::ToggleButton::new();
+    let button = gtk::Button::new();
     let icon = crate::assets::text_icon(crate::assets::icons::ARROW_UP_NARROW_WIDE, 16);
     button.set_child(Some(&icon));
     button.add_css_class("column-header-action");
@@ -5142,13 +5156,8 @@ pub(super) fn column_sort_direction_toggle(
     button
 }
 
-fn sync_sort_direction_toggle(
-    button: &gtk::ToggleButton,
-    icon: &gtk::Image,
-    direction: SortDirection,
-) {
+fn sync_sort_direction_toggle(button: &gtk::Button, icon: &gtk::Image, direction: SortDirection) {
     let descending = direction == SortDirection::Descending;
-    button.set_active(descending);
     crate::assets::set_text_icon(
         icon,
         if descending {
@@ -5325,21 +5334,15 @@ fn icon_for_name(name: &str) -> &'static str {
     }
 }
 
-fn append_entries(
-    model: &gtk::StringList,
-    stored_count: &Rc<Cell<usize>>,
-    entries: Vec<FileEntry>,
-    limit: Option<usize>,
-) {
-    let remaining = limit
-        .map(|limit| limit.max(1).saturating_sub(stored_count.get()))
-        .unwrap_or(entries.len());
-    let mut appended = 0;
-    for entry in entries.into_iter().take(remaining) {
-        model.append(&entry_model_value(&entry));
-        appended += 1;
+fn append_peek_entries(peek: &PeekView, entries: Vec<FileEntry>, limit: usize) {
+    let remaining = limit.max(1).saturating_sub(peek.entry_count.get());
+    let entries = entries.into_iter().take(remaining).collect::<Vec<_>>();
+    let values = entries.iter().map(entry_model_value).collect::<Vec<_>>();
+    peek.entry_count.set(peek.entry_count.get() + entries.len());
+    peek.entries.borrow_mut().extend(entries);
+    for value in values {
+        peek.model.append(&value);
     }
-    stored_count.set(stored_count.get() + appended);
 }
 
 fn cancel_source(source: &RefCell<Option<glib::SourceId>>) {

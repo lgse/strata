@@ -21,5 +21,8 @@ pub use preview::{
 };
 pub(crate) use preview::{content_family, has_plain_text_extension};
 pub(crate) use search::{SearchEvent, SearchHandle, SearchItem, index_tree};
-pub(crate) use update_check::{UpdateCheck, check_for_updates};
+pub(crate) use update_check::{
+    ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes, UpdateCheck, check_for_updates,
+    fetch_release_notes,
+};
 pub(crate) use update_install::{UpdateInstall, install_update};

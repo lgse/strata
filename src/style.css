@@ -146,18 +146,25 @@ headerbar menubutton.header-action > button:focus-visible image {
 }
 
 .location-entry,
-.location-entry:focus {
+.location-entry:focus,
+.location-entry:focus-visible,
+.location-entry:focus-within {
   background: @theme_bg;
   border: 1px solid alpha(@theme_border, 0.7);
   box-shadow: none;
   caret-color: @theme_accent;
   color: @theme_text;
   min-height: 22px;
+  outline-color: @theme_accent;
 }
 
-.location-entry:focus {
+.location-entry:focus,
+.location-entry:focus-visible,
+.location-entry:focus-within {
   border-color: @theme_accent;
   box-shadow: 0 0 0 1px alpha(@theme_accent, 0.38);
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
 }
 
 .location-entry placeholder {
@@ -312,6 +319,11 @@ headerbar menubutton.header-action > button:focus-visible image {
   color: @theme_text;
   outline: 1px solid alpha(@theme_accent, 0.72);
   outline-offset: -1px;
+}
+
+.search-result-thumbnail {
+  min-height: 32px;
+  min-width: 32px;
 }
 
 .search-result-name {
@@ -566,7 +578,15 @@ headerbar menubutton.header-action > button:focus-visible image {
 
 .update-dialog-body {
   background: alpha(@theme_bg, 0.3);
-  padding: 20px;
+  padding: 16px 20px;
+}
+
+.update-dialog-notes {
+  background: alpha(@theme_bg, 0.55);
+  border: 1px solid alpha(@theme_border, 0.3);
+  border-radius: 5px;
+  color: @theme_text;
+  padding: 10px;
 }
 
 .update-dialog-progress trough {
@@ -721,6 +741,90 @@ headerbar menubutton.header-action > button:focus-visible image {
 .settings-option-description link:hover,
 .settings-option-description link:active {
   color: @theme_accent;
+}
+
+.release-notes-card {
+  background: alpha(@theme_bg, 0.55);
+  border: 1px solid alpha(@theme_border, 0.24);
+  border-radius: 6px;
+  color: @theme_text;
+  padding: 14px;
+}
+
+.release-notes-card.inline {
+  background: transparent;
+  border: none;
+  border-top: 1px solid alpha(@theme_border, 0.24);
+  border-radius: 0;
+  margin-top: 10px;
+  padding: 12px 0 2px;
+}
+
+.release-notes-title {
+  color: @theme_text;
+  font-weight: 700;
+}
+
+.release-notes-content {
+  color: @theme_dim_text;
+  line-height: 1.3;
+}
+
+.release-notes-heading {
+  color: @theme_dim_text;
+  font-size: 1.08em;
+  font-weight: 700;
+  margin-top: 2px;
+}
+
+.release-notes-heading.level-1 {
+  font-size: 1.18em;
+}
+
+.release-notes-bullet {
+  color: @theme_accent;
+  font-weight: 700;
+  margin-top: 3px;
+}
+
+.release-notes-code {
+  background: alpha(@theme_bg, 0.58);
+  border: 1px solid alpha(@theme_border, 0.24);
+  border-radius: 4px;
+  color: @theme_dim_text;
+  padding: 8px;
+}
+
+.release-notes-rule {
+  background: alpha(@theme_border, 0.4);
+  color: @theme_border;
+  margin: 4px 0;
+}
+
+.release-notes-content link,
+.release-notes-content link:visited,
+.release-notes-content link:hover,
+.release-notes-content link:active {
+  color: @theme_accent;
+}
+
+.release-notes-fallback {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: @theme_accent;
+  padding: 2px 0;
+}
+
+.release-notes-fallback:hover,
+.release-notes-fallback:active,
+.release-notes-fallback:visited {
+  color: @theme_accent;
+}
+
+.release-notes-fallback:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.5);
+  outline-offset: 1px;
 }
 
 .settings-update-progress {
@@ -1999,17 +2103,25 @@ menubutton.column-header-action > button:focus-visible image {
 }
 
 .file-size {
+  background: @theme_bg;
   color: @theme_dim_text;
   font-size: 0.9em;
   opacity: 0;
+  padding-left: 10px;
 }
 
 .file-list row:hover .file-size {
+  background: alpha(@theme_muted, 0.65);
   opacity: 1;
 }
 
-.file-list row:selected .file-size,
+.file-list row:selected .file-size {
+  background: alpha(@theme_muted, 0.65);
+  color: @theme_dim_text;
+}
+
 .file-list .file-row.active-path .file-size {
+  background: @theme_highlight;
   color: @theme_dim_text;
 }
 

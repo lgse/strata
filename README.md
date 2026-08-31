@@ -74,7 +74,7 @@ Strata is not yet available through Arch's package repositories. Download the ar
 Install the runtime libraries and optional video preview tools on Arch or Omarchy:
 
 ```bash
-sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig gtk4 gtksourceview5 poppler-glib
+sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig gst-libav gst-plugins-good gtk4 gtksourceview5 poppler-glib
 ```
 
 Then verify, extract, and install the downloaded archive (replace the filename with the release you downloaded). The `gh attestation` check verifies the archive's signed GitHub Actions provenance:

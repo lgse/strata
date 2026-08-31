@@ -12,6 +12,8 @@ use gtk::{gdk, gio, glib, prelude::*};
 use serde::{Deserialize, Serialize};
 use sourceview5::prelude::BufferExt as _;
 
+use crate::model::{SortDirection, SortKey, ViewPreferences};
+
 thread_local! {
     static SHARED_MANAGER: RefCell<std::rc::Weak<ThemeManager>> = const { RefCell::new(std::rc::Weak::new()) };
     static SOURCE_STYLE_PATH_INSTALLED: Cell<bool> = const { Cell::new(false) };
@@ -79,6 +81,10 @@ struct Preferences {
     browser_mode: String,
     #[serde(default = "default_browser_density")]
     browser_density: String,
+    #[serde(default = "default_sort_key")]
+    sort_key: String,
+    #[serde(default = "default_sort_direction")]
+    sort_direction: String,
     #[serde(default = "default_enabled")]
     check_for_updates: bool,
 }
@@ -92,6 +98,8 @@ impl Default for Preferences {
             search_open_files_directly: false,
             browser_mode: default_browser_mode(),
             browser_density: default_browser_density(),
+            sort_key: default_sort_key(),
+            sort_direction: default_sort_direction(),
             check_for_updates: true,
         }
     }
@@ -107,6 +115,14 @@ fn default_browser_mode() -> String {
 
 fn default_browser_density() -> String {
     "compact".to_owned()
+}
+
+fn default_sort_key() -> String {
+    "name".to_owned()
+}
+
+fn default_sort_direction() -> String {
+    "ascending".to_owned()
 }
 
 pub struct ThemeManager {
@@ -234,6 +250,28 @@ impl ThemeManager {
             super::browser_modes::BrowserDensity::Airy => "airy",
         }
         .to_owned();
+        self.save_preferences();
+    }
+
+    pub fn sort_preferences(&self) -> ViewPreferences {
+        sort_preferences(&self.preferences.borrow())
+    }
+
+    pub fn set_sort_preferences(&self, preferences: ViewPreferences) {
+        let mut stored = self.preferences.borrow_mut();
+        stored.sort_key = match preferences.sort_key {
+            SortKey::Name => "name",
+            SortKey::Size => "size",
+            SortKey::Modified => "modified",
+            SortKey::Type => "type",
+        }
+        .to_owned();
+        stored.sort_direction = match preferences.sort_direction {
+            SortDirection::Ascending => "ascending",
+            SortDirection::Descending => "descending",
+        }
+        .to_owned();
+        drop(stored);
         self.save_preferences();
     }
 
@@ -482,6 +520,26 @@ fn load_custom_themes() -> Vec<Theme> {
 
 fn read_preferences() -> Option<Preferences> {
     toml::from_str(&fs::read_to_string(settings_path()).ok()?).ok()
+}
+
+fn sort_preferences(preferences: &Preferences) -> ViewPreferences {
+    let sort_key = match preferences.sort_key.as_str() {
+        "name" => SortKey::Name,
+        "size" => SortKey::Size,
+        "modified" => SortKey::Modified,
+        "type" => SortKey::Type,
+        _ => return ViewPreferences::default(),
+    };
+    let sort_direction = match preferences.sort_direction.as_str() {
+        "ascending" => SortDirection::Ascending,
+        "descending" => SortDirection::Descending,
+        _ => return ViewPreferences::default(),
+    };
+    ViewPreferences {
+        sort_key,
+        sort_direction,
+        ..ViewPreferences::default()
+    }
 }
 
 fn load_omarchy_theme() -> Option<ThemeTokens> {

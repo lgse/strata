@@ -255,21 +255,23 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     let update_button = sidebar.update_notice.clone();
     let update_area = sidebar.update_area.clone();
     let update_label = sidebar.update_label.clone();
-    let available_update = Rc::new(RefCell::new(None::<(String, String)>));
+    let available_update = Rc::new(RefCell::new(
+        None::<(crate::services::ReleaseMetadata, String)>,
+    ));
     let available_for_click = available_update.clone();
     let update_parent = window.clone().upcast::<gtk::Window>();
     update_button.connect_clicked(move |_| {
-        let Some((version, download_url)) = available_for_click.borrow().clone() else {
+        let Some((release, download_url)) = available_for_click.borrow().clone() else {
             return;
         };
-        super::settings::show_update_dialog(&update_parent, &version, download_url);
+        super::settings::show_update_dialog(&update_parent, &release, download_url);
     });
     let available_for_notice = available_update.clone();
     let update_notice: super::settings::UpdateNoticeHandler = Rc::new(move |release| {
-        if let Some((version, _url, download_url)) = release {
-            update_button.set_tooltip_text(Some(&format!("Install Strata v{version}")));
-            update_label.set_text(&format!("v{version} available"));
-            *available_for_notice.borrow_mut() = Some((version, download_url));
+        if let Some((release, download_url)) = release {
+            update_button.set_tooltip_text(Some(&format!("Install Strata v{}", release.version)));
+            update_label.set_text(&format!("v{} available", release.version));
+            *available_for_notice.borrow_mut() = Some((release, download_url));
             update_area.set_visible(true);
         } else {
             available_for_notice.borrow_mut().take();

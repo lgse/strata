@@ -14,6 +14,7 @@ use std::{
 
 const WALL_TIME_LIMIT: Duration = Duration::from_secs(12);
 const MEDIA_WALL_TIME_LIMIT: Duration = Duration::from_secs(30);
+const ADDRESS_SPACE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
 
@@ -43,7 +44,7 @@ impl ParseOperation {
 
     fn output_name(self) -> &'static str {
         if self == Self::PreviewMedia {
-            "result.webm"
+            "result.media"
         } else {
             "result.png"
         }
@@ -96,7 +97,19 @@ pub(crate) fn parse(
     let output = PrivateOutput::create().map_err(|error| error.to_string())?;
     let executable = std::env::current_exe()
         .map_err(|error| format!("Unable to locate the Strata executable: {error}"))?;
-    let mut command = sandbox_command(&executable, &input, output.path(), operation, value);
+    let devices = if operation == ParseOperation::PreviewMedia {
+        gpu_devices(Path::new("/dev"))
+    } else {
+        Vec::new()
+    };
+    let mut command = sandbox_command(
+        &executable,
+        &input,
+        output.path(),
+        operation,
+        value,
+        &devices,
+    );
     let mut child = command
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -133,8 +146,12 @@ pub(crate) fn parse(
         return Err("The preview renderer produced an invalid output size".to_owned());
     }
     let data = fs::read(result_path).map_err(|error| error.to_string())?;
-    if operation != ParseOperation::PreviewMedia && !data.starts_with(b"\x89PNG\r\n\x1a\n") {
-        return Err("The preview renderer produced invalid image data".to_owned());
+    if !valid_output(operation, &data) {
+        return Err(if operation == ParseOperation::PreviewMedia {
+            "The preview renderer produced invalid media data".to_owned()
+        } else {
+            "The preview renderer produced invalid image data".to_owned()
+        });
     }
     let (page, pages) = read_metadata(&output.path().join("result.meta"));
     Ok(ParseOutput { data, page, pages })
@@ -146,6 +163,7 @@ fn sandbox_command(
     output: &Path,
     operation: ParseOperation,
     value: i32,
+    devices: &[PathBuf],
 ) -> Command {
     let mut command = Command::new("bwrap");
     command.args([
@@ -198,7 +216,18 @@ fn sandbox_command(
     command.arg(executable).arg("/app/strata");
     command.arg("--ro-bind").arg(input).arg("/input");
     command.arg("--bind").arg(output).arg("/output");
-    command.args(["--", "/usr/bin/prlimit", "--as=1342177280"]);
+    if operation == ParseOperation::PreviewMedia {
+        // Hardware media drivers need selected render nodes plus read-only sysfs discovery data.
+        for device in devices {
+            command.arg("--dev-bind-try").arg(device).arg(device);
+        }
+        command.args(["--ro-bind", "/sys", "/sys"]);
+    }
+    command.args([
+        "--",
+        "/usr/bin/prlimit",
+        &format!("--as={ADDRESS_SPACE_LIMIT_BYTES}"),
+    ]);
     if operation != ParseOperation::PreviewMedia {
         command.arg("--cpu=10");
     }
@@ -213,6 +242,44 @@ fn sandbox_command(
     command.arg(format!("/output/{}", operation.output_name()));
     command.arg(value.to_string());
     command
+}
+
+pub(crate) fn gpu_devices(dev: &Path) -> Vec<PathBuf> {
+    let mut devices = Vec::new();
+    if let Ok(entries) = fs::read_dir(dev.join("dri")) {
+        for entry in entries.flatten() {
+            if numbered_name(&entry.file_name(), "renderD") {
+                devices.push(entry.path());
+            }
+        }
+    }
+    if let Ok(entries) = fs::read_dir(dev) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            if name == "nvidiactl" || numbered_name(&name, "nvidia") {
+                devices.push(entry.path());
+            }
+        }
+    }
+    devices.sort();
+    devices
+}
+
+pub(crate) fn numbered_name(name: &std::ffi::OsStr, prefix: &str) -> bool {
+    name.to_str()
+        .and_then(|name| name.strip_prefix(prefix))
+        .is_some_and(|suffix| {
+            !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
+        })
+}
+
+fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
+    if operation == ParseOperation::PreviewMedia {
+        data.starts_with(b"\x1a\x45\xdf\xa3")
+            || data.get(4..8).is_some_and(|signature| signature == b"ftyp")
+    } else {
+        data.starts_with(b"\x89PNG\r\n\x1a\n")
+    }
 }
 
 fn terminate(child: &mut std::process::Child) {

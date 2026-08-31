@@ -79,6 +79,13 @@ pub struct NavigationState {
 }
 
 impl NavigationState {
+    pub fn with_preferences(preferences: ViewPreferences) -> Self {
+        Self {
+            preferences,
+            ..Self::default()
+        }
+    }
+
     pub fn navigate(&mut self, location: Location, request_id: RequestId) {
         self.record_navigation();
         self.restore(NavigationPath::from_locations(vec![location]), [request_id]);
