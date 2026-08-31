@@ -14,8 +14,8 @@ use gtk::{gio, glib, prelude::*};
 static ASYNC_FILE_TEST: Mutex<()> = Mutex::new(());
 
 use super::{
-    LocalOperationProvider, copy_recursively, deletion_error_summary, operation_error_summary,
-    replace_local, replace_local_with, transfer_is_noop, validated_child,
+    LocalOperationProvider, copy_recursively, deletion_error_message, deletion_error_summary,
+    operation_error_summary, replace_local, replace_local_with, transfer_is_noop, validated_child,
 };
 use crate::{
     model::Location,
@@ -42,6 +42,28 @@ fn deletion_error_summaries_are_bounded_and_report_the_failure_count() {
         operation_error_summary(&errors[..1], "restored")
             .starts_with("1 item could not be restored")
     );
+}
+
+#[test]
+fn a_backend_without_trash_support_gets_an_actionable_message() {
+    let error = glib::Error::new(gio::IOErrorEnum::NotSupported, "trash not supported");
+
+    let trash_message = deletion_error_message("share-folder", false, &error);
+    assert!(trash_message.contains("doesn't support Trash"));
+    assert!(trash_message.contains("Delete permanently instead"));
+
+    let permanent_message = deletion_error_message("share-folder", true, &error);
+    assert!(!permanent_message.contains("Trash"));
+    assert!(permanent_message.contains("trash not supported"));
+}
+
+#[test]
+fn other_deletion_failures_keep_the_raw_error() {
+    let error = glib::Error::new(gio::IOErrorEnum::PermissionDenied, "access denied");
+
+    let message = deletion_error_message("secret.txt", false, &error);
+
+    assert_eq!(message, "secret.txt: access denied");
 }
 
 #[test]
