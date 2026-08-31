@@ -9,6 +9,7 @@ mod model;
 mod sandbox;
 mod sandbox_helper;
 mod services;
+mod storage;
 mod ui;
 
 use gtk::{gio, prelude::*};

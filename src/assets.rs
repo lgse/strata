@@ -249,13 +249,12 @@ fn recolor_icon_source(source: &str, color: &str) -> String {
 }
 
 fn write_if_changed(path: &Path, contents: &[u8]) -> io::Result<()> {
-    let is_current = path
-        .metadata()
-        .map(|metadata| metadata.len() == contents.len() as u64)
+    let is_current = fs::symlink_metadata(path)
+        .map(|metadata| metadata.file_type().is_file() && metadata.len() == contents.len() as u64)
         .unwrap_or(false);
 
     if !is_current {
-        fs::write(path, contents)?;
+        crate::storage::atomic_write(path, contents)?;
     }
 
     Ok(())

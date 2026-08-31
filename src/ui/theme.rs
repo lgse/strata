@@ -296,10 +296,9 @@ impl ThemeManager {
             id = format!("{base}-{suffix}");
             suffix += 1;
         }
-        fs::write(
-            directory.join(format!("{id}.toml")),
-            toml::to_string_pretty(&tokens).map_err(io::Error::other)?,
-        )?;
+        let path = directory.join(format!("{id}.toml"));
+        let value = toml::to_string_pretty(&tokens).map_err(io::Error::other)?;
+        crate::storage::atomic_write(&path, value.as_bytes())?;
 
         let mut themes = self.themes.borrow_mut();
         if let Some(theme) = themes
@@ -370,7 +369,7 @@ impl ThemeManager {
             }
             let value =
                 toml::to_string_pretty(&*self.preferences.borrow()).map_err(io::Error::other)?;
-            fs::write(path, value)
+            crate::storage::atomic_write(&path, value.as_bytes())
         })();
         if let Err(error) = result {
             tracing::warn!(%error, "unable to save theme preference");
@@ -563,10 +562,8 @@ pub(super) fn register_source_buffer(buffer: &sourceview5::Buffer) {
 fn install_source_style_scheme(tokens: &ThemeTokens) {
     let directory = glib::user_cache_dir().join("strata").join("source-styles");
     if let Err(error) = fs::create_dir_all(&directory).and_then(|()| {
-        fs::write(
-            directory.join("strata-current.xml"),
-            source_style_scheme_xml(tokens),
-        )
+        let value = source_style_scheme_xml(tokens);
+        crate::storage::atomic_write(&directory.join("strata-current.xml"), value.as_bytes())
     }) {
         tracing::warn!(%error, "unable to write preview syntax style");
         return;

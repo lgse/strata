@@ -2,7 +2,9 @@
 
 use std::path::Path;
 
-use super::{Cancellation, ParseOperation, parse, sandbox_command};
+use super::{
+    Cancellation, MEDIA_WALL_TIME_LIMIT, ParseOperation, WALL_TIME_LIMIT, parse, sandbox_command,
+};
 
 #[test]
 fn sandbox_exposes_only_runtime_input_and_private_output() {
@@ -31,6 +33,26 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
     assert!(!joined.contains("--nproc"));
     assert!(!joined.contains("--ro-bind /home /home"));
     assert!(!joined.contains("--share-net"));
+}
+
+#[test]
+fn media_previews_use_a_longer_wall_timeout_instead_of_a_cpu_limit() {
+    let operation = ParseOperation::PreviewMedia;
+    let command = sandbox_command(
+        Path::new("/tmp/strata"),
+        Path::new("/home/alice/Videos/untrusted.mkv"),
+        Path::new("/tmp/private-output"),
+        operation,
+        0,
+    );
+
+    assert_eq!(operation.wall_time_limit(), MEDIA_WALL_TIME_LIMIT);
+    assert!(MEDIA_WALL_TIME_LIMIT > WALL_TIME_LIMIT);
+    assert!(
+        command
+            .get_args()
+            .all(|argument| !argument.to_string_lossy().starts_with("--cpu="))
+    );
 }
 
 #[test]

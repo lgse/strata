@@ -1536,7 +1536,7 @@ fn save_pinned_places(places: &[(Location, String)]) {
             contents.push_str(&format!("{uri} {label}\n"));
         }
     }
-    let _result = std::fs::write(path, contents);
+    let _result = crate::storage::atomic_write(&path, contents.as_bytes());
 }
 
 fn home_directory() -> PathBuf {

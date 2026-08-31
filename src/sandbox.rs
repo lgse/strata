@@ -13,6 +13,7 @@ use std::{
 };
 
 const WALL_TIME_LIMIT: Duration = Duration::from_secs(12);
+const MEDIA_WALL_TIME_LIMIT: Duration = Duration::from_secs(30);
 const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
 
@@ -45,6 +46,14 @@ impl ParseOperation {
             "result.webm"
         } else {
             "result.png"
+        }
+    }
+
+    fn wall_time_limit(self) -> Duration {
+        if self == Self::PreviewMedia {
+            MEDIA_WALL_TIME_LIMIT
+        } else {
+            WALL_TIME_LIMIT
         }
     }
 }
@@ -100,7 +109,7 @@ pub(crate) fn parse(
             terminate(&mut child);
             return Err("Preview cancelled".to_owned());
         }
-        if started.elapsed() >= WALL_TIME_LIMIT {
+        if started.elapsed() >= operation.wall_time_limit() {
             terminate(&mut child);
             return Err("The preview renderer timed out".to_owned());
         }
@@ -189,11 +198,11 @@ fn sandbox_command(
     command.arg(executable).arg("/app/strata");
     command.arg("--ro-bind").arg(input).arg("/input");
     command.arg("--bind").arg(output).arg("/output");
+    command.args(["--", "/usr/bin/prlimit", "--as=1342177280"]);
+    if operation != ParseOperation::PreviewMedia {
+        command.arg("--cpu=10");
+    }
     command.args([
-        "--",
-        "/usr/bin/prlimit",
-        "--as=1342177280",
-        "--cpu=10",
         "--fsize=33554432",
         "--",
         "/app/strata",

@@ -168,7 +168,18 @@ fn render_pdf_surface(
 }
 
 fn render_media_preview(path: &Path, output: &Path) -> Result<(), String> {
-    let status = Command::new("ffmpeg")
+    let status = media_preview_command(path, output)
+        .status()
+        .map_err(|error| error.to_string())?;
+    status
+        .success()
+        .then_some(())
+        .ok_or_else(|| "Unable to normalize media preview".to_owned())
+}
+
+fn media_preview_command(path: &Path, output: &Path) -> Command {
+    let mut command = Command::new("ffmpeg");
+    command
         .args(["-nostdin", "-v", "error", "-threads", "2", "-i"])
         .arg(path)
         .args([
@@ -181,7 +192,9 @@ fn render_media_preview(path: &Path, output: &Path) -> Result<(), String> {
             "-t",
             "30",
             "-vf",
-            "scale=w='min(1280,iw)':h=-2:force_original_aspect_ratio=decrease",
+            "scale=w=1280:h=1280:force_original_aspect_ratio=decrease",
+            "-fpsmax",
+            "30",
             "-c:v",
             "libvpx",
             "-threads",
@@ -204,13 +217,8 @@ fn render_media_preview(path: &Path, output: &Path) -> Result<(), String> {
             "webm",
             "-y",
         ])
-        .arg(output)
-        .status()
-        .map_err(|error| error.to_string())?;
-    status
-        .success()
-        .then_some(())
-        .ok_or_else(|| "Unable to normalize media preview".to_owned())
+        .arg(output);
+    command
 }
 
 fn render_media(path: &Path, size: i32) -> Result<Vec<u8>, String> {
@@ -228,3 +236,6 @@ fn render_media(path: &Path, size: i32) -> Result<Vec<u8>, String> {
         Err("Unable to render media thumbnail".to_owned())
     }
 }
+
+#[cfg(test)]
+mod tests;
