@@ -179,6 +179,9 @@ impl PreviewDrawer {
     pub fn attach_split(&self, split: &gtk::Paned, occupied_width: Rc<dyn Fn() -> i32>) {
         self.state.split.replace(Some(split.clone()));
         self.state.occupied_width.replace(Some(occupied_width));
+        if !self.state.opened.get() {
+            split.set_end_child(None::<&gtk::Widget>);
+        }
         let weak = Rc::downgrade(&self.state);
         split.add_tick_callback(move |split, _| {
             let Some(state) = weak.upgrade() else {
@@ -227,6 +230,7 @@ impl PreviewState {
             self.pane.set_size_request(0, -1);
             self.revealer.set_reveal_child(true);
             if let Some(split) = self.split.borrow().as_ref() {
+                split.set_end_child(Some(&self.revealer));
                 self.animate_open(split);
             }
         }
@@ -307,6 +311,7 @@ impl PreviewState {
         self.revealer.set_reveal_child(false);
         if let Some(split) = self.split.borrow().as_ref() {
             split.set_position(split.width());
+            split.set_end_child(None::<&gtk::Widget>);
         }
         self.pane.set_size_request(MIN_WIDTH, -1);
     }

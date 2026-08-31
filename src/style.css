@@ -325,6 +325,11 @@ headerbar menubutton.header-action > button:focus-visible image {
   outline-offset: -1px;
 }
 
+.search-result-thumbnail {
+  min-height: 32px;
+  min-width: 32px;
+}
+
 .search-result-name {
   color: @theme_text;
   font-weight: 650;
@@ -1923,17 +1928,25 @@ menubutton.column-header-action > button:focus-visible image {
 }
 
 .file-size {
+  background: @theme_bg;
   color: @theme_dim_text;
   font-size: 0.9em;
   opacity: 0;
+  padding-left: 10px;
 }
 
 .file-list row:hover .file-size {
+  background: alpha(@theme_muted, 0.65);
   opacity: 1;
 }
 
-.file-list row:selected .file-size,
+.file-list row:selected .file-size {
+  background: alpha(@theme_muted, 0.65);
+  color: @theme_dim_text;
+}
+
 .file-list .file-row.active-path .file-size {
+  background: @theme_highlight;
   color: @theme_dim_text;
 }
 
