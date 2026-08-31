@@ -299,7 +299,12 @@ impl BrowserView {
         location_stack.set_hexpand(true);
         location_stack.set_valign(gtk::Align::Center);
 
-        let browser = Browser::new(source);
+        let preferences = super::theme::ThemeManager::shared();
+        let browser = Browser::with_preferences(source, preferences.sort_preferences());
+        let preferences_for_sorting = preferences.clone();
+        browser.observe_preferences(move |sorting| {
+            preferences_for_sorting.set_sort_preferences(sorting);
+        });
         let mode_views = ModeViews::new(&scroller, browser.clone());
         overlay.set_child(Some(&mode_views.widget()));
         let state = Rc::new(ViewState {

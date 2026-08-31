@@ -57,6 +57,8 @@ fn assert_invalid_creation_is_rejected(create: impl FnOnce(&Rc<Browser>)) {
 
 struct FakeFileSource;
 
+struct RestoredSortingSource;
+
 struct FilePreviewSource;
 
 struct RejectingFileSource;
@@ -216,6 +218,31 @@ impl FileSource for FilePreviewSource {
     }
 }
 
+impl FileSource for RestoredSortingSource {
+    fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
+        Ok(())
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        let entry = |name: &str, size| FileEntry {
+            location: Location::local(format!("/fixture/{name}")),
+            native_name: OsString::from(name),
+            display_name: name.to_owned(),
+            kind: EntryKind::File,
+            size: MetadataValue::Known(size),
+            modified_unix_seconds: MetadataValue::Unknown,
+        };
+        emit(DirectoryEvent::Batch {
+            request_id: request.id,
+            entries: vec![entry("small", 5), entry("large", 20)],
+        });
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
 impl FileSource for FakeFileSource {
     fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
         Ok(())
@@ -238,6 +265,37 @@ impl FileSource for FakeFileSource {
         });
         LoadHandle::new(|| {})
     }
+}
+
+#[test]
+fn restored_sorting_applies_to_the_initial_navigation_load() {
+    let browser = Browser::with_preferences(
+        Rc::new(RestoredSortingSource),
+        ViewPreferences {
+            sort_key: SortKey::Size,
+            sort_direction: SortDirection::Descending,
+            ..ViewPreferences::default()
+        },
+    );
+
+    browser.navigate(Location::local("/fixture"));
+
+    let snapshot = browser.column_snapshot(0).expect("initial column");
+    assert_eq!(
+        snapshot
+            .entries
+            .iter()
+            .map(|entry| entry.display_name.as_str())
+            .collect::<Vec<_>>(),
+        ["large", "small"]
+    );
+    assert_eq!(
+        browser
+            .column_preferences(0)
+            .expect("initial column preferences")
+            .sort_key,
+        SortKey::Size
+    );
 }
 
 #[test]

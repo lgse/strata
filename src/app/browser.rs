@@ -123,6 +123,7 @@ pub enum BrowserEvent {
 }
 
 type Observer = Rc<dyn Fn(BrowserEvent)>;
+type PreferencesObserver = Rc<dyn Fn(ViewPreferences)>;
 
 pub struct Browser {
     source: Rc<dyn FileSource>,
@@ -139,13 +140,19 @@ pub struct Browser {
     pending_sort: Cell<Option<(u64, usize)>>,
     preferences: Cell<ViewPreferences>,
     observers: RefCell<Vec<Observer>>,
+    preferences_observers: RefCell<Vec<PreferencesObserver>>,
 }
 
 impl Browser {
+    #[cfg(test)]
     pub fn new(source: Rc<dyn FileSource>) -> Rc<Self> {
+        Self::with_preferences(source, ViewPreferences::default())
+    }
+
+    pub fn with_preferences(source: Rc<dyn FileSource>, preferences: ViewPreferences) -> Rc<Self> {
         Rc::new(Self {
             source,
-            state: RefCell::new(NavigationState::default()),
+            state: RefCell::new(NavigationState::with_preferences(preferences)),
             loads: RefCell::new(Vec::new()),
             monitors: RefCell::new(Vec::new()),
             peek_load: RefCell::new(None),
@@ -156,8 +163,9 @@ impl Browser {
             restoration_operation: Cell::new(false),
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
-            preferences: Cell::new(ViewPreferences::default()),
+            preferences: Cell::new(preferences),
             observers: RefCell::new(Vec::new()),
+            preferences_observers: RefCell::new(Vec::new()),
         })
     }
 
@@ -167,6 +175,12 @@ impl Browser {
 
     pub fn clear_observer(&self) {
         self.observers.borrow_mut().clear();
+    }
+
+    pub fn observe_preferences(&self, observer: impl Fn(ViewPreferences) + 'static) {
+        self.preferences_observers
+            .borrow_mut()
+            .push(Rc::new(observer));
     }
 
     pub fn set_operation_provider(&self, provider: Rc<dyn OperationProvider>) {
@@ -438,8 +452,14 @@ impl Browser {
                     return;
                 };
                 update(&mut preferences);
-                state.set_column_preferences(depth, preferences)
+                let result = state.set_column_preferences(depth, preferences);
+                browser.preferences.set(preferences);
+                result
             };
+            let preferences = browser.preferences.get();
+            for observer in browser.preferences_observers.borrow().iter() {
+                observer(preferences);
+            }
             if let Some((entries, focused, positions)) = result {
                 browser.emit(BrowserEvent::EntriesReplaced { depth, entries });
                 if let Some(focused) = focused {
