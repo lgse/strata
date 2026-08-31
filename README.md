@@ -29,6 +29,8 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
   - [AI-assisted installation](#ai-assisted-installation)
   - [Manual installation](#manual-installation)
 - [Usage and desktop integration](#usage-and-desktop-integration)
+  - [Desktop entry](#desktop-entry)
+  - [Make Strata the Omarchy file manager](#make-strata-the-omarchy-file-manager)
 - [Under the hood](#under-the-hood)
 - [Technical specifications](#technical-specifications)
 - [Development and documentation](#development-and-documentation)
@@ -174,7 +176,45 @@ xdg-mime default io.github.lgse.Strata.desktop inode/directory
 xdg-mime query default inode/directory
 ```
 
-The final command should print `io.github.lgse.Strata.desktop`. Omarchy users can then point their file-manager keybinding at `uwsm app -- strata`; see Omarchy's version-specific keybinding documentation before editing Hyprland configuration.
+The final command should print `io.github.lgse.Strata.desktop`.
+
+### Make Strata the Omarchy file manager
+
+The XDG association above handles folders opened by applications. On current Lua-based Omarchy releases, also override the stock Nautilus shortcuts in `~/.config/hypr/bindings.lua` so Omarchy launches Strata directly.
+
+First inspect the active bindings and back up your user configuration:
+
+```bash
+omarchy menu keybindings --print | grep -i "file manager"
+cp ~/.config/hypr/bindings.lua ~/.config/hypr/bindings.lua.bak.$(date +%s)
+```
+
+Append these overrides to `~/.config/hypr/bindings.lua`:
+
+```lua
+-- Use Strata instead of Nautilus for Omarchy's file-manager shortcuts.
+hl.unbind("SUPER + SHIFT + F")
+hl.unbind("SUPER + ALT + SHIFT + F")
+o.bind("SUPER + SHIFT + F", "File manager", { launch = "strata" })
+o.bind("SUPER + ALT + SHIFT + F", "File manager (cwd)",
+  "uwsm-app -- strata \"$(omarchy-cmd-terminal-cwd)\"")
+```
+
+The stock shortcut is <kbd>Super</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>, not <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd>. To support the Ctrl chord too, first confirm that it is not assigned to another action, then optionally append:
+
+```lua
+o.bind("CTRL + SHIFT + F", "File manager", { launch = "strata" })
+```
+
+Apply and validate the configuration:
+
+```bash
+hyprctl reload
+hyprctl configerrors
+omarchy menu keybindings --print | grep -i "file manager"
+```
+
+`hyprctl configerrors` should produce no errors. These user overrides survive Omarchy updates; do not edit files under `/usr/share/omarchy/`.
 
 ### Network shares
 
