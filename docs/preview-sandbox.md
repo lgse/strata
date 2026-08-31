@@ -21,7 +21,7 @@ Strata starts its own executable in a bubblewrap sandbox. The sandbox has:
 - read-only access to `/usr`, required runtime libraries and font/ImageMagick configuration, the Strata executable, and exactly one canonicalized input file;
 - writable access only to private mode-0700 output and temporary directories;
 - an empty environment with a nonexistent home directory;
-- a 2 GB address-space limit, allowing modern image loaders to start their isolated worker threads, and a 32 MB file-size limit;
+- a 2 GB address-space limit, allowing modern image loaders to start their isolated worker threads, and a 512 MB file-size limit;
 - a 12-second wall-clock limit for image, PDF, and thumbnail rendering, plus a 10-second CPU limit; and
 - a 30-second wall-clock limit for media previews, which have no cumulative CPU limit because FFmpeg uses multiple threads. Hardware attempts are limited to 8 seconds each and 12 seconds collectively so the software fallback retains time to run.
 
