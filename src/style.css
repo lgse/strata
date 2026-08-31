@@ -645,6 +645,11 @@ headerbar menubutton.header-action > button:focus-visible image {
   padding: 18px 12px;
 }
 
+.settings-navigation.compact {
+  min-width: 52px;
+  padding: 12px 8px;
+}
+
 .settings-navigation button {
   background: transparent;
   border: none;
@@ -653,6 +658,10 @@ headerbar menubutton.header-action > button:focus-visible image {
   color: @theme_dim_text;
   min-height: 38px;
   padding: 5px 10px;
+}
+
+.settings-navigation.compact button {
+  padding: 5px 9px;
 }
 
 .settings-navigation button:hover {
@@ -2005,7 +2014,8 @@ menubutton.column-header-action > button:focus-visible image {
   background: transparent;
 }
 
-.theme-grid > flowboxchild {
+.theme-grid > flowboxchild,
+.theme-color-fields > flowboxchild {
   background: transparent;
   padding: 0;
 }
@@ -2157,16 +2167,16 @@ menubutton.column-header-action > button:focus-visible image {
   color: @theme_accent;
 }
 
-.settings-keybindings-scroll,
-.settings-keybindings-scroll viewport {
+.settings-content-scroll,
+.settings-content-scroll viewport {
   background: @theme_surface;
 }
 
-.settings-keybindings-scroll scrollbar {
+.settings-content-scroll scrollbar {
   background: transparent;
 }
 
-.settings-keybindings-scroll scrollbar slider {
+.settings-content-scroll scrollbar slider {
   background: alpha(@theme_border, 0.62);
   border: 3px solid transparent;
   border-radius: 6px;
@@ -2174,8 +2184,8 @@ menubutton.column-header-action > button:focus-visible image {
   min-height: 32px;
 }
 
-.settings-keybindings-scroll scrollbar slider:hover,
-.settings-keybindings-scroll scrollbar slider:active {
+.settings-content-scroll scrollbar slider:hover,
+.settings-content-scroll scrollbar slider:active {
   background: @theme_dim_text;
 }
 

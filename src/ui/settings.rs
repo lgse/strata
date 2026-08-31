@@ -7,12 +7,15 @@ use std::{
     time::Duration,
 };
 
-use gtk::{gdk, glib, prelude::*};
+use gtk::{gdk, glib, prelude::*, subclass::prelude::*};
 
 use crate::{
     assets::icons,
     services::{self, UpdateCheck, UpdateInstall},
 };
+
+#[cfg(test)]
+mod tests;
 
 use super::{
     blur::BlurBin,
@@ -23,6 +26,127 @@ use super::{
 
 type ThemeCards = Rc<RefCell<Vec<(String, gtk::Button, gtk::Image)>>>;
 pub(super) type UpdateNoticeHandler = Rc<dyn Fn(Option<(String, String, String)>)>;
+
+const DIALOG_WIDTH: i32 = 920;
+const DIALOG_HEIGHT: i32 = 620;
+const DIALOG_MARGIN: i32 = 24;
+const COMPACT_NAVIGATION_BREAKPOINT: i32 = 700;
+
+mod responsive_bin {
+    use super::*;
+
+    #[derive(Default)]
+    pub struct ResponsiveBin {
+        pub compact_navigation: Cell<bool>,
+        pub navigation: RefCell<Option<gtk::Box>>,
+        pub navigation_heading: RefCell<Option<gtk::Label>>,
+        pub navigation_labels: RefCell<Vec<gtk::Label>>,
+        pub navigation_contents: RefCell<Vec<gtk::Box>>,
+        pub responsive_flows: RefCell<Vec<(gtk::FlowBox, u32)>>,
+    }
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for ResponsiveBin {
+        const NAME: &'static str = "StrataSettingsResponsiveBin";
+        type Type = super::ResponsiveBin;
+        type ParentType = gtk::Widget;
+    }
+
+    impl ObjectImpl for ResponsiveBin {
+        fn dispose(&self) {
+            while let Some(child) = self.obj().first_child() {
+                child.unparent();
+            }
+        }
+    }
+
+    impl WidgetImpl for ResponsiveBin {
+        fn measure(&self, orientation: gtk::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
+            let natural = match orientation {
+                gtk::Orientation::Horizontal => DIALOG_WIDTH + DIALOG_MARGIN * 2,
+                gtk::Orientation::Vertical => DIALOG_HEIGHT + DIALOG_MARGIN * 2,
+                _ => unreachable!("GTK orientations are horizontal or vertical"),
+            };
+            (1, natural, -1, -1)
+        }
+
+        fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
+            let Some(child) = self.obj().first_child() else {
+                return;
+            };
+            let (child_width, child_height) = responsive_dialog_size(width, height);
+            let compact = uses_compact_navigation(child_width);
+            if self.compact_navigation.replace(compact) != compact {
+                if let Some(navigation) = self.navigation.borrow().as_ref() {
+                    if compact {
+                        navigation.add_css_class("compact");
+                    } else {
+                        navigation.remove_css_class("compact");
+                    }
+                }
+                if let Some(heading) = self.navigation_heading.borrow().as_ref() {
+                    heading.set_visible(!compact);
+                }
+                for label in self.navigation_labels.borrow().iter() {
+                    label.set_visible(!compact);
+                }
+                for content in self.navigation_contents.borrow().iter() {
+                    content.set_halign(if compact {
+                        gtk::Align::Center
+                    } else {
+                        gtk::Align::Fill
+                    });
+                }
+                for (flow, expanded_columns) in self.responsive_flows.borrow().iter() {
+                    flow.set_max_children_per_line(if compact { 1 } else { *expanded_columns });
+                }
+            }
+            let x = ((width - child_width) / 2) as f32;
+            let y = ((height - child_height) / 2) as f32;
+            let transform = gtk::gsk::Transform::new().translate(&gtk::graphene::Point::new(x, y));
+            child.allocate(child_width, child_height, baseline, Some(transform));
+        }
+    }
+}
+
+glib::wrapper! {
+    pub struct ResponsiveBin(ObjectSubclass<responsive_bin::ResponsiveBin>)
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
+}
+
+impl ResponsiveBin {
+    fn new(
+        child: &impl IsA<gtk::Widget>,
+        navigation: &gtk::Box,
+        navigation_heading: &gtk::Label,
+        navigation_labels: Vec<gtk::Label>,
+        navigation_contents: Vec<gtk::Box>,
+        responsive_flows: Vec<(gtk::FlowBox, u32)>,
+    ) -> Self {
+        let bin: Self = glib::Object::new();
+        let imp = bin.imp();
+        imp.navigation.replace(Some(navigation.clone()));
+        imp.navigation_heading
+            .replace(Some(navigation_heading.clone()));
+        imp.navigation_labels.replace(navigation_labels);
+        imp.navigation_contents.replace(navigation_contents);
+        imp.responsive_flows.replace(responsive_flows);
+        child.set_parent(&bin);
+        bin
+    }
+}
+
+fn responsive_dialog_size(width: i32, height: i32) -> (i32, i32) {
+    (
+        DIALOG_WIDTH.min((width - DIALOG_MARGIN * 2).max(1)),
+        DIALOG_HEIGHT.min((height - DIALOG_MARGIN * 2).max(1)),
+    )
+}
+
+fn uses_compact_navigation(dialog_width: i32) -> bool {
+    dialog_width < COMPACT_NAVIGATION_BREAKPOINT
+}
 
 pub fn build_layer(
     browser: &BrowserView,
@@ -42,13 +166,11 @@ pub fn build_layer(
 
     let panel = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     panel.add_css_class("settings-dialog");
-    panel.set_halign(gtk::Align::Center);
-    panel.set_valign(gtk::Align::Center);
-    panel.set_size_request(920, 620);
+    panel.set_overflow(gtk::Overflow::Hidden);
 
     let navigation = gtk::Box::new(gtk::Orientation::Vertical, 5);
     navigation.add_css_class("settings-navigation");
-    append_heading(&navigation, "SETTINGS");
+    let navigation_heading = append_heading(&navigation, "SETTINGS");
 
     let page = gtk::Box::new(gtk::Orientation::Vertical, 0);
     page.add_css_class("settings-page");
@@ -72,6 +194,8 @@ pub fn build_layer(
     let stack = gtk::Stack::builder()
         .transition_type(gtk::StackTransitionType::Crossfade)
         .transition_duration(120)
+        .hhomogeneous(false)
+        .vhomogeneous(false)
         .hexpand(true)
         .vexpand(true)
         .build();
@@ -80,31 +204,47 @@ pub fn build_layer(
         Some("general"),
     );
     stack.add_named(&keybindings_page(), Some("keybindings"));
-    stack.add_named(&theme_page(themes), Some("theme"));
+    let (theme_page, responsive_flows) = theme_page(themes);
+    stack.add_named(&theme_page, Some("theme"));
     stack.add_named(&about_page(), Some("about"));
     page.append(&stack);
 
-    let nav_buttons: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
+    let nav_buttons: Rc<RefCell<Vec<(gtk::Button, gtk::Image, gtk::Image)>>> =
+        Rc::new(RefCell::new(Vec::new()));
+    let mut navigation_labels = Vec::new();
+    let mut navigation_contents = Vec::new();
     for (label, icon, name) in [
         ("General", icons::SLIDERS, "general"),
         ("Keybindings", icons::KEYBOARD, "keybindings"),
         ("Theme & appearance", icons::PALETTE, "theme"),
         ("About", icons::INFO, "about"),
     ] {
-        let button = navigation_button(icon, label);
-        if name == "general" {
+        let active = name == "general";
+        let (button, navigation_label, navigation_content, primary_icon, text_icon) =
+            navigation_button(icon, label, active);
+        navigation_labels.push(navigation_label);
+        navigation_contents.push(navigation_content);
+        if active {
             button.add_css_class("settings-nav-active");
         }
-        nav_buttons.borrow_mut().push(button.clone());
+        nav_buttons
+            .borrow_mut()
+            .push((button.clone(), primary_icon, text_icon));
         let buttons = nav_buttons.clone();
         let stack = stack.clone();
         let title = title.clone();
         let page_title = label.to_owned();
         button.connect_clicked(move |clicked| {
-            for candidate in buttons.borrow().iter() {
-                candidate.remove_css_class("settings-nav-active");
+            for (candidate, primary_icon, text_icon) in buttons.borrow().iter() {
+                let active = candidate == clicked;
+                if active {
+                    candidate.add_css_class("settings-nav-active");
+                } else {
+                    candidate.remove_css_class("settings-nav-active");
+                }
+                primary_icon.set_visible(active);
+                text_icon.set_visible(!active);
             }
-            clicked.add_css_class("settings-nav-active");
             stack.set_visible_child_name(name);
             title.set_text(&page_title);
         });
@@ -113,13 +253,17 @@ pub fn build_layer(
 
     panel.append(&navigation);
     panel.append(&page);
-    let top_spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    top_spacer.set_vexpand(true);
-    let bottom_spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    bottom_spacer.set_vexpand(true);
-    layer.append(&top_spacer);
-    layer.append(&panel);
-    layer.append(&bottom_spacer);
+    let responsive_panel = ResponsiveBin::new(
+        &panel,
+        &navigation,
+        &navigation_heading,
+        navigation_labels,
+        navigation_contents,
+        responsive_flows,
+    );
+    responsive_panel.set_hexpand(true);
+    responsive_panel.set_vexpand(true);
+    layer.append(&responsive_panel);
 
     let hidden_layer = layer.clone();
     let inactive_settings = settings_button.clone();
@@ -227,7 +371,7 @@ fn general_page(
         run_check();
     }
 
-    preferences.upcast()
+    scrollable_page(&preferences, None)
 }
 
 fn update_check_row(
@@ -660,15 +804,7 @@ fn keybindings_page() -> gtk::Widget {
         append_keybinding(&content, label, keys);
     }
 
-    let scroller = gtk::ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .hexpand(true)
-        .vexpand(true)
-        .child(&content)
-        .build();
-    scroller.add_css_class("settings-keybindings-scroll");
-    scroller.upcast()
+    scrollable_page(&content, Some("settings-keybindings-scroll"))
 }
 
 fn about_page() -> gtk::Widget {
@@ -716,7 +852,7 @@ fn about_page() -> gtk::Widget {
     project.append(&repository);
     content.append(&project);
 
-    content.upcast()
+    scrollable_page(&content, None)
 }
 
 fn append_about_detail(container: &gtk::Box, label: &str, value: &str, monospace: bool) {
@@ -750,7 +886,7 @@ fn append_keybinding(content: &gtk::Box, label: &str, keys: &str) {
     content.append(&row);
 }
 
-fn theme_page(manager: Rc<ThemeManager>) -> gtk::Widget {
+fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<(gtk::FlowBox, u32)>) {
     let content = page_content();
     content.add_css_class("theme-page");
 
@@ -789,7 +925,7 @@ fn theme_page(manager: Rc<ThemeManager>) -> gtk::Widget {
         .column_spacing(12)
         .row_spacing(12)
         .max_children_per_line(3)
-        .min_children_per_line(2)
+        .min_children_per_line(1)
         .selection_mode(gtk::SelectionMode::None)
         .homogeneous(true)
         .build();
@@ -801,7 +937,7 @@ fn theme_page(manager: Rc<ThemeManager>) -> gtk::Widget {
         .column_spacing(12)
         .row_spacing(12)
         .max_children_per_line(3)
-        .min_children_per_line(2)
+        .min_children_per_line(1)
         .selection_mode(gtk::SelectionMode::None)
         .homogeneous(true)
         .build();
@@ -827,17 +963,18 @@ fn theme_page(manager: Rc<ThemeManager>) -> gtk::Widget {
     add.set_child(Some(&add_content));
     custom.insert(&add, -1);
 
-    let editor = theme_editor(manager.clone(), custom, follow.clone(), cards.clone());
+    let (editor, editor_fields) = theme_editor(
+        manager.clone(),
+        custom.clone(),
+        follow.clone(),
+        cards.clone(),
+    );
     editor.set_reveal_child(false);
     content.append(&editor);
     let shown_editor = editor.clone();
     add.connect_clicked(move |_| shown_editor.set_reveal_child(true));
 
-    let scroller = gtk::ScrolledWindow::builder()
-        .child(&content)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .build();
+    let scroller = scrollable_page(&content, None);
     let manager_for_follow = manager;
     follow.connect_active_notify(move |toggle| {
         let active = toggle.is_active();
@@ -853,7 +990,10 @@ fn theme_page(manager: Rc<ThemeManager>) -> gtk::Widget {
             check.set_visible(selected);
         }
     });
-    scroller.upcast()
+    (
+        scroller,
+        vec![(packaged, 3), (custom, 3), (editor_fields, 4)],
+    )
 }
 
 fn append_theme_card(
@@ -961,7 +1101,7 @@ fn theme_editor(
     custom: gtk::FlowBox,
     follow: gtk::Switch,
     cards: ThemeCards,
-) -> gtk::Revealer {
+) -> (gtk::Revealer, gtk::FlowBox) {
     let panel = gtk::Box::new(gtk::Orientation::Vertical, 12);
     panel.add_css_class("theme-editor");
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -976,11 +1116,16 @@ fn theme_editor(
     panel.append(&name);
 
     let values = Rc::new(RefCell::new(manager.starter_tokens()));
-    let grid = gtk::Grid::builder()
+    let fields = gtk::FlowBox::builder()
         .column_spacing(18)
         .row_spacing(10)
+        .max_children_per_line(4)
+        .min_children_per_line(1)
+        .selection_mode(gtk::SelectionMode::None)
+        .homogeneous(true)
         .build();
-    for (index, (label_text, field)) in [
+    fields.add_css_class("theme-color-fields");
+    for (label_text, field) in [
         ("Background", ColorField::Background),
         ("Surface", ColorField::Surface),
         ("Text", ColorField::Text),
@@ -990,12 +1135,8 @@ fn theme_editor(
         ("Highlight", ColorField::Highlight),
         ("Border", ColorField::Border),
         ("Dim text", ColorField::DimText),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let row = (index / 4) as i32;
-        let column = ((index % 4) * 2) as i32;
+    ] {
+        let field_row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
         let label = gtk::Label::new(Some(label_text));
         label.set_xalign(0.0);
         let dialog = gtk::ColorDialog::builder()
@@ -1016,10 +1157,11 @@ fn theme_editor(
             );
             manager_for_color.preview(&values_for_color.borrow());
         });
-        grid.attach(&picker, column, row, 1, 1);
-        grid.attach(&label, column + 1, row, 1, 1);
+        field_row.append(&picker);
+        field_row.append(&label);
+        fields.insert(&field_row, -1);
     }
-    panel.append(&grid);
+    panel.append(&fields);
     let error = gtk::Label::new(None);
     error.add_css_class("theme-editor-error");
     error.set_xalign(0.0);
@@ -1070,7 +1212,7 @@ fn theme_editor(
             }
         }
     });
-    revealer
+    (revealer, fields)
 }
 
 #[derive(Clone, Copy)]
@@ -1114,16 +1256,43 @@ impl ColorField {
     }
 }
 
-fn navigation_button(icon: &str, label: &str) -> gtk::Button {
+fn navigation_button(
+    icon: &str,
+    label: &str,
+    active: bool,
+) -> (gtk::Button, gtk::Label, gtk::Box, gtk::Image, gtk::Image) {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    let icon = crate::assets::primary_icon(icon, 18);
-    let label = gtk::Label::new(Some(label));
-    label.set_xalign(0.0);
-    content.append(&icon);
-    content.append(&label);
-    let button = gtk::Button::builder().child(&content).build();
+    let primary_icon = crate::assets::primary_icon(icon, 18);
+    primary_icon.set_visible(active);
+    let text_icon = crate::assets::text_icon(icon, 18);
+    text_icon.set_visible(!active);
+    let text = gtk::Label::new(Some(label));
+    text.set_xalign(0.0);
+    content.append(&primary_icon);
+    content.append(&text_icon);
+    content.append(&text);
+    let button = gtk::Button::builder()
+        .child(&content)
+        .tooltip_text(label)
+        .build();
     button.set_has_frame(false);
-    button
+    (button, text, content, primary_icon, text_icon)
+}
+
+fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
+    content.set_hexpand(true);
+    let scroller = gtk::ScrolledWindow::builder()
+        .child(content)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+    scroller.add_css_class("settings-content-scroll");
+    if let Some(class) = class {
+        scroller.add_css_class(class);
+    }
+    scroller.upcast()
 }
 
 fn page_content() -> gtk::Box {
@@ -1156,11 +1325,12 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
     (row, toggle)
 }
 
-fn append_heading(container: &gtk::Box, text: &str) {
+fn append_heading(container: &gtk::Box, text: &str) -> gtk::Label {
     let heading = gtk::Label::new(Some(text));
     heading.set_xalign(0.0);
     heading.add_css_class("menu-heading");
     container.append(&heading);
+    heading
 }
 
 trait RoundedRectangle {
