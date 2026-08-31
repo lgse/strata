@@ -2,11 +2,6 @@
 
 use super::*;
 
-/// Serializes tests that drive `glib::MainContext::default()` directly, since it is a
-/// process-wide singleton and concurrent access from the test harness's per-test threads panics
-/// with a GLib thread-affinity error. Mirrors `ASYNC_FILE_TEST` in `adapters::local_operations`.
-static ASYNC_FILE_TEST: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 #[test]
 fn global_activity_uses_the_latest_active_label() {
     let mut activity = GlobalActivityState::default();
@@ -508,9 +503,6 @@ fn unique_fixture_root(label: &str) -> std::path::PathBuf {
 
 #[test]
 fn trash_summary_reports_truncated_once_the_entry_budget_is_exceeded() {
-    let _serial = ASYNC_FILE_TEST
-        .lock()
-        .expect("the async test lock should not be poisoned");
     let root = unique_fixture_root("entry-budget");
     std::fs::create_dir_all(root.join("sub")).expect("the trash fixture should be created");
     for index in 0..5 {
@@ -521,7 +513,7 @@ fn trash_summary_reports_truncated_once_the_entry_budget_is_exceeded() {
         .expect("the trash fixture file should be written");
     }
 
-    let summary = glib::MainContext::default().block_on(summarize_trash_with_budget(
+    let summary = glib::MainContext::new().block_on(summarize_trash_with_budget(
         &gio::File::for_path(&root),
         1,
         MAX_TRASH_DEPTH,
@@ -542,15 +534,12 @@ fn trash_summary_reports_truncated_once_the_entry_budget_is_exceeded() {
 
 #[test]
 fn trash_summary_reports_truncated_once_the_time_budget_is_exceeded() {
-    let _serial = ASYNC_FILE_TEST
-        .lock()
-        .expect("the async test lock should not be poisoned");
     let root = unique_fixture_root("time-budget");
     std::fs::create_dir_all(root.join("sub")).expect("the trash fixture should be created");
     std::fs::write(root.join("sub").join("file.txt"), b"content")
         .expect("the trash fixture file should be written");
 
-    let summary = glib::MainContext::default().block_on(summarize_trash_with_budget(
+    let summary = glib::MainContext::new().block_on(summarize_trash_with_budget(
         &gio::File::for_path(&root),
         usize::MAX,
         MAX_TRASH_DEPTH,
@@ -567,15 +556,12 @@ fn trash_summary_reports_truncated_once_the_time_budget_is_exceeded() {
 
 #[test]
 fn trash_summary_does_not_descend_past_the_depth_budget() {
-    let _serial = ASYNC_FILE_TEST
-        .lock()
-        .expect("the async test lock should not be poisoned");
     let root = unique_fixture_root("depth-budget");
     std::fs::create_dir_all(root.join("sub/nested")).expect("the trash fixture should be created");
     std::fs::write(root.join("sub/nested/deep.txt"), b"content")
         .expect("the trash fixture file should be written");
 
-    let summary = glib::MainContext::default().block_on(summarize_trash_with_budget(
+    let summary = glib::MainContext::new().block_on(summarize_trash_with_budget(
         &gio::File::for_path(&root),
         usize::MAX,
         1,
@@ -598,9 +584,6 @@ fn trash_summary_does_not_descend_past_the_depth_budget() {
 fn trash_summary_treats_an_inaccessible_subdirectory_as_truncated_not_fatal() {
     use std::os::unix::fs::PermissionsExt;
 
-    let _serial = ASYNC_FILE_TEST
-        .lock()
-        .expect("the async test lock should not be poisoned");
     let root = unique_fixture_root("inaccessible");
     std::fs::create_dir_all(root.join("blocked")).expect("the trash fixture should be created");
     std::fs::create_dir_all(root.join("visible")).expect("the trash fixture should be created");
@@ -610,7 +593,7 @@ fn trash_summary_treats_an_inaccessible_subdirectory_as_truncated_not_fatal() {
         .expect("the fixture directory's permissions should be restrictable");
     let running_as_root = std::fs::read_dir(root.join("blocked")).is_ok();
 
-    let summary = glib::MainContext::default().block_on(summarize_trash_with_budget(
+    let summary = glib::MainContext::new().block_on(summarize_trash_with_budget(
         &gio::File::for_path(&root),
         MAX_TRASH_ENTRIES,
         MAX_TRASH_DEPTH,
@@ -641,9 +624,6 @@ fn trash_summary_treats_an_inaccessible_subdirectory_as_truncated_not_fatal() {
 
 #[test]
 fn trash_summary_treats_a_directory_removed_before_measurement_as_truncated_not_fatal() {
-    let _serial = ASYNC_FILE_TEST
-        .lock()
-        .expect("the async test lock should not be poisoned");
     let root = unique_fixture_root("changing-tree");
     let vanishing = root.join("vanishing");
     std::fs::create_dir_all(&vanishing).expect("the trash fixture should be created");
@@ -654,7 +634,8 @@ fn trash_summary_treats_a_directory_removed_before_measurement_as_truncated_not_
     // `summarize_trash_with_budget` would, then remove it from under that handle. This models a
     // directory that changes or disappears between being observed and being measured.
     let file = gio::File::for_path(&vanishing);
-    let info = glib::MainContext::default()
+    let context = glib::MainContext::new();
+    let info = context
         .block_on(file.query_info_future(
             TRASH_ATTRIBUTES,
             gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
@@ -663,7 +644,7 @@ fn trash_summary_treats_a_directory_removed_before_measurement_as_truncated_not_
         .expect("querying the fixture directory's info should succeed while it still exists");
     std::fs::remove_dir_all(&vanishing).expect("the fixture directory should be removable");
 
-    let result = glib::MainContext::default().block_on(measure_trash_entry(
+    let result = context.block_on(measure_trash_entry(
         file,
         info,
         0,
@@ -685,9 +666,6 @@ fn trash_summary_treats_a_directory_removed_before_measurement_as_truncated_not_
 
 #[test]
 fn aborting_a_trash_measurement_stops_it_mid_flight() {
-    let _serial = ASYNC_FILE_TEST
-        .lock()
-        .expect("the async test lock should not be poisoned");
     let root = unique_fixture_root("abort-mid-flight");
     std::fs::create_dir_all(&root).expect("the trash fixture should be created");
     // `next_files_future` batches 64 entries at a time, so 200 files force several suspension
@@ -698,10 +676,8 @@ fn aborting_a_trash_measurement_stops_it_mid_flight() {
             .expect("the trash fixture file should be written");
     }
 
-    // Use a dedicated, private main context rather than `MainContext::default()`: `spawn_local`
-    // and manual `iteration()` polling (unlike `block_on`) require this thread to own the
-    // context, and acquiring the process-wide default one here would leave it in a state other
-    // tests' `block_on(default())` calls (from their own freshly spawned test threads) can't use.
+    // `spawn_local` and manual `iteration()` polling (unlike `block_on`) require this thread to
+    // own the context, hence the explicit acquire via `with_thread_default` below.
     let context = glib::MainContext::new();
     let (progress_before_abort, progress_after_abort) = context
         .with_thread_default(|| {
@@ -757,10 +733,7 @@ fn aborting_a_trash_measurement_stops_it_mid_flight() {
 }
 
 #[test]
-fn trash_summary_bounds_a_flat_run_of_top_level_files_with_no_directories_to_recurse_into() {
-    let _serial = ASYNC_FILE_TEST
-        .lock()
-        .expect("the async test lock should not be poisoned");
+fn trash_summary_lists_every_top_level_entry_even_past_the_measurement_budget() {
     let root = unique_fixture_root("flat-entry-budget");
     std::fs::create_dir_all(&root).expect("the trash fixture should be created");
     for index in 0..10 {
@@ -768,9 +741,11 @@ fn trash_summary_bounds_a_flat_run_of_top_level_files_with_no_directories_to_rec
             .expect("the trash fixture file should be written");
     }
 
-    // The budget only ever gated recursion into a directory; a trash root holding nothing but
-    // top-level files (nothing to recurse into) used to sail straight past the entry budget.
-    let summary = glib::MainContext::default().block_on(summarize_trash_with_budget(
+    // "Empty Trash" deletes exactly `summary.entries`, so the entry budget must bound the
+    // (potentially expensive) recursive measurement of each entry's contents without ever
+    // dropping a top-level entry from that deletion worklist -- otherwise emptying the trash
+    // would silently leave real items behind.
+    let summary = glib::MainContext::new().block_on(summarize_trash_with_budget(
         &gio::File::for_path(&root),
         3,
         MAX_TRASH_DEPTH,
@@ -781,12 +756,12 @@ fn trash_summary_bounds_a_flat_run_of_top_level_files_with_no_directories_to_rec
     let summary = summary.expect("a plain directory tree should measure without error");
     assert!(
         summary.truncated,
-        "exceeding the entry budget on flat top-level files should be reported"
+        "exceeding the measurement budget should still be reported"
     );
     assert_eq!(
         summary.entries.len(),
-        3,
-        "top-level enumeration itself should stop once the entry budget is reached, \
-         not just recursion into directories"
+        10,
+        "every top-level entry must be listed regardless of the measurement budget, since \
+         Empty Trash deletes only what is listed here"
     );
 }

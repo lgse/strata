@@ -5148,11 +5148,13 @@ struct TrashSummary {
 
 const TRASH_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-symlink,standard::size,time::modified";
 
-/// Caps how many entries a single measurement will visit, bounding worst-case time and I/O on
-/// an adversarially large or unbounded trash tree. Only top-level entries are retained (as
-/// `FileEntry`, roughly 150-300 bytes each including heap data); descendants are counted and
-/// discarded without being stored. In the worst case (a flat trash with no subdirectories, so
-/// every visited entry is top-level) this bounds `TrashSummary::entries` to roughly 30-60 MB.
+/// Caps how many entries the recursive measurement below will visit, bounding worst-case time and
+/// I/O when walking into subdirectories of an adversarially large or deeply populated trash tree.
+/// This does not bound `TrashSummary::entries` itself: every top-level entry is always listed
+/// there regardless of budget, since "Empty Trash" deletes exactly that list and truncating it
+/// would silently leave real items behind. Each retained `FileEntry` is roughly 150-300 bytes
+/// including heap data, so `entries` scales with however many top-level items the trash actually
+/// holds, not with this constant.
 const MAX_TRASH_ENTRIES: usize = 200_000;
 /// Caps how deep measurement descends, as a defensive backstop against pathologically deep trees.
 const MAX_TRASH_DEPTH: usize = 64;
@@ -5183,7 +5185,7 @@ async fn summarize_trash_with_budget(
     let mut truncated = false;
     let visited = Rc::new(Cell::new(0_usize));
     let deadline = Instant::now() + time_budget;
-    'top_level: loop {
+    loop {
         let children = enumerator
             .next_files_future(64, glib::Priority::DEFAULT)
             .await?;
@@ -5191,14 +5193,18 @@ async fn summarize_trash_with_budget(
             break;
         }
         for info in children {
-            // Checked here, not just when a directory decides whether to recurse: without this,
-            // a trash root holding an enormous number of top-level *files* (no directories to
-            // recurse into) would never trip the budget at all.
+            let file = root.child(info.name());
+            // Every top-level entry is always listed here, regardless of budget: "Empty Trash"
+            // deletes exactly this list, so truncating it would silently leave real items behind.
+            // Only the (potentially expensive) recursive measurement below is bounded -- once the
+            // budget is spent, remaining top-level entries are still listed but counted as a
+            // single unmeasured item rather than walked.
             if visited.get() >= max_entries || Instant::now() >= deadline {
                 truncated = true;
-                break 'top_level;
+                item_count = item_count.saturating_add(1);
+                entries.push(trash_file_entry(file, &info));
+                continue;
             }
-            let file = root.child(info.name());
             let (count, size, entry_truncated) = measure_trash_entry(
                 file.clone(),
                 info.clone(),
