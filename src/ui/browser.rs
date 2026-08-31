@@ -2542,7 +2542,7 @@ impl ViewState {
                     // an in-progress New Folder/File prompt or rename (visible for
                     // slow network directories that stream many batches).
                     if self.active_rename.borrow().is_none()
-                        && self.active_new_folder.borrow().is_none()
+                        && self.active_new_entry.borrow().is_none()
                     {
                         if let Some(focused) = filtered_position_for_source(column, focused) {
                             column
@@ -2558,7 +2558,7 @@ impl ViewState {
             BrowserEvent::FocusChanged { depth, position } => {
                 if let Some(column) = self.columns.borrow().get(depth) {
                     let editing = self.active_rename.borrow().is_some()
-                        || self.active_new_folder.borrow().is_some();
+                        || self.active_new_entry.borrow().is_some();
                     if let Some(filtered_position) =
                         position.and_then(|position| filtered_position_for_source(column, position))
                     {
@@ -5035,25 +5035,31 @@ fn set_cut_path_style(row: &gtk::Box, cut: bool) {
     }
 }
 
+/// Whether a name currently typed into a field should be visually flagged as
+/// an error. An empty name is left unstyled: it's the normal starting state
+/// (opening, cancelling, or succeeding a prompt all clear the field) rather
+/// than a mistake the user made, even though it still can't be submitted.
+/// Kept separate from `update_basename_validation` so it can be unit tested
+/// without constructing a real GTK widget.
+fn basename_field_error(name: &str) -> Option<&'static str> {
+    if name.is_empty() {
+        None
+    } else {
+        validate_basename(name).err()
+    }
+}
+
 /// Validates a name field live as it changes, including the programmatic
-/// clears that happen when a prompt opens, cancels, or succeeds. An empty
-/// field is left unstyled rather than flagged red: it's the normal starting
-/// state, not a mistake the user made, even though it still can't be
-/// submitted (the `false` return still blocks that).
+/// clears that happen when a prompt opens, cancels, or succeeds.
 pub(super) fn update_basename_validation(field: &gtk::Entry) -> bool {
     let text = field.text();
-    if text.is_empty() {
-        field.remove_css_class("error");
-        field.set_tooltip_text(None);
-        return false;
-    }
-    match validate_basename(text.as_str()) {
-        Ok(()) => {
+    match basename_field_error(text.as_str()) {
+        None => {
             field.remove_css_class("error");
             field.set_tooltip_text(None);
-            true
+            !text.is_empty()
         }
-        Err(message) => {
+        Some(message) => {
             field.add_css_class("error");
             field.set_tooltip_text(Some(message));
             false

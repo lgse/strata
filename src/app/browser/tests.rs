@@ -295,6 +295,17 @@ impl OperationProvider for ImmediateOperationProvider {
         LoadHandle::new(|| {})
     }
 
+    fn create_file(
+        &self,
+        request: CreateFileRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        emit(OperationEvent::Created {
+            request_id: request.id,
+        });
+        LoadHandle::new(|| {})
+    }
+
     fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         emit(OperationEvent::Pasted {
             request_id: request.id,

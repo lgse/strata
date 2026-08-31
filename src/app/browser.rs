@@ -655,13 +655,14 @@ impl Browser {
             return;
         };
         let request_id = self.begin_operation();
+        let refresh_parent = parent.clone();
         let load = provider.create_file(
             CreateFileRequest {
                 id: request_id,
                 parent,
                 name,
             },
-            self.operation_callback(request_id, false),
+            self.operation_callback(request_id, false, Some(refresh_parent)),
         );
         self.operation_load.replace(Some(load));
     }
