@@ -3,15 +3,6 @@
 use super::*;
 
 #[test]
-fn an_empty_name_is_not_flagged_as_an_error() {
-    assert!(basename_field_error("bad/name").is_some());
-    assert!(
-        basename_field_error("").is_none(),
-        "an empty field is the normal starting state, not a user mistake"
-    );
-}
-
-#[test]
 fn file_sizes_use_compact_decimal_units() {
     assert_eq!(format_file_size(999), "999 B");
     assert_eq!(format_file_size(1_200), "1.2 kB");

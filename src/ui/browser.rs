@@ -711,9 +711,9 @@ impl ViewState {
             crate::assets::icons::DOCUMENTS
         };
         crate::assets::set_primary_icon(&column.new_entry_icon, icon_name);
+        column.new_entry_entry.set_text("");
         column.new_entry_entry.remove_css_class("error");
         column.new_entry_entry.set_tooltip_text(None);
-        column.new_entry_entry.set_text("");
         column.new_entry_row.set_visible(true);
         self.active_new_entry.replace(Some(ActiveNewEntry {
             location,
@@ -4925,23 +4925,14 @@ fn set_cut_path_style(row: &gtk::Box, cut: bool) {
     }
 }
 
-fn basename_field_error(name: &str) -> Option<&'static str> {
-    if name.is_empty() {
-        None
-    } else {
-        validate_basename(name).err()
-    }
-}
-
 pub(super) fn update_basename_validation(field: &gtk::Entry) -> bool {
-    let text = field.text();
-    match basename_field_error(text.as_str()) {
-        None => {
+    match validate_basename(field.text().as_str()) {
+        Ok(()) => {
             field.remove_css_class("error");
             field.set_tooltip_text(None);
-            !text.is_empty()
+            true
         }
-        Some(message) => {
+        Err(message) => {
             field.add_css_class("error");
             field.set_tooltip_text(Some(message));
             false
