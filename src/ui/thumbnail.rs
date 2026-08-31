@@ -5,6 +5,7 @@ use std::{
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
+    time::{Duration, Instant},
 };
 
 use gtk::{gdk, gio, glib, prelude::*};
@@ -17,24 +18,49 @@ use crate::{
 static NEXT_REQUEST: AtomicU64 = AtomicU64::new(1);
 const MAX_CACHE_ENTRIES: usize = 256;
 const MAX_CACHE_BYTES: usize = 64 * 1024 * 1024;
+const MAX_THUMBNAIL_WORKERS: usize = 1;
+const MAX_QUEUED_THUMBNAILS: usize = 64;
+const FAILED_THUMBNAIL_TTL: Duration = Duration::from_secs(30);
 
 thread_local! {
     static ACTIVE_REQUESTS: RefCell<HashMap<usize, ActiveRequest>> =
         RefCell::new(HashMap::new());
-    static PENDING_THUMBNAILS: RefCell<HashMap<ThumbnailKey, Vec<PendingTarget>>> =
+    static PENDING_THUMBNAILS: RefCell<HashMap<ThumbnailKey, PendingThumbnail>> =
         RefCell::new(HashMap::new());
+    static THUMBNAIL_QUEUE: RefCell<ThumbnailQueue> = RefCell::new(ThumbnailQueue::default());
     static THUMBNAIL_CACHE: RefCell<ThumbnailCache> = RefCell::new(ThumbnailCache::default());
 }
 
 struct ActiveRequest {
     id: u64,
     image: glib::WeakRef<gtk::Image>,
+    deferred: Option<DeferredThumbnail>,
+}
+
+#[derive(Clone)]
+struct DeferredThumbnail {
+    key: ThumbnailKey,
+    kind: ThumbnailKind,
 }
 
 struct PendingTarget {
     image_id: usize,
     request: u64,
     image: glib::WeakRef<gtk::Image>,
+}
+
+struct PendingThumbnail {
+    id: u64,
+    kind: ThumbnailKind,
+    cancellation: Cancellation,
+    targets: Vec<PendingTarget>,
+}
+
+struct ThumbnailJob {
+    id: u64,
+    key: ThumbnailKey,
+    kind: ThumbnailKind,
+    cancellation: Cancellation,
 }
 
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
@@ -47,35 +73,110 @@ struct ThumbnailKey {
 
 #[derive(Default)]
 struct ThumbnailCache {
-    entries: HashMap<ThumbnailKey, glib::Bytes>,
+    entries: HashMap<ThumbnailKey, CachedThumbnail>,
     recent: VecDeque<ThumbnailKey>,
     byte_count: usize,
 }
 
+#[derive(Clone)]
+enum CachedThumbnail {
+    Ready(glib::Bytes),
+    Failed(Instant),
+}
+
+enum CacheHit {
+    Ready(glib::Bytes),
+    Failed,
+}
+
 impl ThumbnailCache {
-    fn get(&mut self, key: &ThumbnailKey) -> Option<glib::Bytes> {
-        let bytes = self.entries.get(key)?.clone();
+    fn get(&mut self, key: &ThumbnailKey) -> Option<CacheHit> {
+        let entry = self.entries.get(key)?.clone();
+        if matches!(entry, CachedThumbnail::Failed(expires) if expires <= Instant::now()) {
+            self.remove(key);
+            return None;
+        }
         self.recent.retain(|candidate| candidate != key);
         self.recent.push_back(key.clone());
-        Some(bytes)
+        Some(match entry {
+            CachedThumbnail::Ready(bytes) => CacheHit::Ready(bytes),
+            CachedThumbnail::Failed(_) => CacheHit::Failed,
+        })
     }
 
     fn insert(&mut self, key: ThumbnailKey, bytes: glib::Bytes) {
-        if let Some(previous) = self.entries.remove(&key) {
-            self.byte_count = self.byte_count.saturating_sub(previous.len());
-        }
-        self.recent.retain(|candidate| candidate != &key);
-        self.byte_count = self.byte_count.saturating_add(bytes.len());
+        self.insert_entry(key, CachedThumbnail::Ready(bytes));
+    }
+
+    fn insert_failure(&mut self, key: ThumbnailKey) {
+        self.insert_entry(
+            key,
+            CachedThumbnail::Failed(Instant::now() + FAILED_THUMBNAIL_TTL),
+        );
+    }
+
+    fn insert_entry(&mut self, key: ThumbnailKey, entry: CachedThumbnail) {
+        self.remove(&key);
+        self.byte_count = self.byte_count.saturating_add(entry.byte_len());
         self.recent.push_back(key.clone());
-        self.entries.insert(key, bytes);
+        self.entries.insert(key, entry);
         while self.entries.len() > MAX_CACHE_ENTRIES || self.byte_count > MAX_CACHE_BYTES {
             let Some(oldest) = self.recent.pop_front() else {
                 break;
             };
             if let Some(removed) = self.entries.remove(&oldest) {
-                self.byte_count = self.byte_count.saturating_sub(removed.len());
+                self.byte_count = self.byte_count.saturating_sub(removed.byte_len());
             }
         }
+    }
+
+    fn remove(&mut self, key: &ThumbnailKey) {
+        if let Some(removed) = self.entries.remove(key) {
+            self.byte_count = self.byte_count.saturating_sub(removed.byte_len());
+        }
+        self.recent.retain(|candidate| candidate != key);
+    }
+}
+
+impl CachedThumbnail {
+    fn byte_len(&self) -> usize {
+        match self {
+            Self::Ready(bytes) => bytes.len(),
+            Self::Failed(_) => 0,
+        }
+    }
+}
+
+#[derive(Default)]
+struct ThumbnailQueue {
+    running: usize,
+    queued: VecDeque<ThumbnailKey>,
+}
+
+impl ThumbnailQueue {
+    fn enqueue(&mut self, key: ThumbnailKey) -> bool {
+        if self.queued.len() >= MAX_QUEUED_THUMBNAILS {
+            return false;
+        }
+        self.queued.push_back(key);
+        true
+    }
+
+    fn begin_next(&mut self) -> Option<ThumbnailKey> {
+        if self.running >= MAX_THUMBNAIL_WORKERS {
+            return None;
+        }
+        let key = self.queued.pop_front()?;
+        self.running += 1;
+        Some(key)
+    }
+
+    fn finish(&mut self) {
+        self.running = self.running.saturating_sub(1);
+    }
+
+    fn cancel(&mut self, key: &ThumbnailKey) {
+        self.queued.retain(|queued| queued != key);
     }
 }
 
@@ -148,64 +249,227 @@ fn set_thumbnail_for_path(
         file_size,
         thumbnail_size,
     };
-    if let Some(bytes) = THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().get(&key)) {
-        apply_thumbnail(image, &bytes, thumbnail_size);
-        return;
+    match THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().get(&key)) {
+        Some(CacheHit::Ready(bytes)) => {
+            apply_thumbnail(image, &bytes, thumbnail_size);
+            return;
+        }
+        Some(CacheHit::Failed) => return,
+        None => {}
     }
 
     let weak_image = glib::WeakRef::new();
     weak_image.set(Some(image));
+    ACTIVE_REQUESTS.with(|requests| {
+        requests.borrow_mut().insert(
+            image_id,
+            ActiveRequest {
+                id: request,
+                image: weak_image.clone(),
+                deferred: None,
+            },
+        );
+    });
     let target = PendingTarget {
         image_id,
         request,
         image: weak_image,
     };
-    let should_render = PENDING_THUMBNAILS.with(|pending| {
-        let mut pending = pending.borrow_mut();
-        if let Some(targets) = pending.get_mut(&key) {
-            targets.push(target);
-            false
-        } else {
-            pending.insert(key.clone(), vec![target]);
-            true
-        }
-    });
-    if !should_render {
-        return;
-    }
+    schedule_or_defer(key, kind, target);
+}
 
-    glib::MainContext::default().spawn_local(async move {
-        let cancellation = Cancellation::default();
-        let result = gio::spawn_blocking(move || {
-            render_thumbnail(&path, kind, thumbnail_size, &cancellation)
-        })
-        .await;
-        let targets = PENDING_THUMBNAILS
-            .with(|pending| pending.borrow_mut().remove(&key).unwrap_or_default());
-        let Ok(Ok(png)) = result else {
-            return;
-        };
-        let bytes = glib::Bytes::from_owned(png);
-        THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().insert(key, bytes.clone()));
-        for target in targets {
-            let is_current = ACTIVE_REQUESTS.with(|requests| {
-                requests
-                    .borrow()
-                    .get(&target.image_id)
-                    .is_some_and(|active| active.id == target.request)
-            });
-            if !is_current {
-                continue;
+fn schedule_or_defer(key: ThumbnailKey, kind: ThumbnailKind, target: PendingTarget) {
+    let image_id = target.image_id;
+    let request = target.request;
+    if schedule_thumbnail(key.clone(), kind, target) {
+        start_thumbnail_jobs();
+    } else {
+        ACTIVE_REQUESTS.with(|requests| {
+            if let Some(active) = requests
+                .borrow_mut()
+                .get_mut(&image_id)
+                .filter(|active| active.id == request)
+            {
+                active.deferred = Some(DeferredThumbnail { key, kind });
             }
-            let Some(image) = target.image.upgrade() else {
-                ACTIVE_REQUESTS.with(|requests| {
-                    requests.borrow_mut().remove(&target.image_id);
-                });
-                continue;
-            };
-            apply_thumbnail(&image, &bytes, thumbnail_size);
+        });
+    }
+}
+
+fn schedule_thumbnail(key: ThumbnailKey, kind: ThumbnailKind, target: PendingTarget) -> bool {
+    PENDING_THUMBNAILS.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        if let Some(pending) = pending.get_mut(&key) {
+            pending.targets.push(target);
+            true
+        } else {
+            let queued = THUMBNAIL_QUEUE.with(|queue| queue.borrow_mut().enqueue(key.clone()));
+            if queued {
+                pending.insert(
+                    key.clone(),
+                    PendingThumbnail {
+                        id: NEXT_REQUEST.fetch_add(1, Ordering::Relaxed),
+                        kind,
+                        cancellation: Cancellation::default(),
+                        targets: vec![target],
+                    },
+                );
+            }
+            queued
+        }
+    })
+}
+
+fn start_thumbnail_jobs() {
+    while let Some(key) = THUMBNAIL_QUEUE.with(|queue| queue.borrow_mut().begin_next()) {
+        let job = PENDING_THUMBNAILS.with(|pending| {
+            pending.borrow().get(&key).map(|pending| ThumbnailJob {
+                id: pending.id,
+                key,
+                kind: pending.kind,
+                cancellation: pending.cancellation.clone(),
+            })
+        });
+        let Some(job) = job else {
+            THUMBNAIL_QUEUE.with(|queue| queue.borrow_mut().finish());
+            continue;
+        };
+        glib::MainContext::default().spawn_local(run_thumbnail_job(job));
+    }
+}
+
+async fn run_thumbnail_job(job: ThumbnailJob) {
+    let job_id = job.id;
+    let key = job.key.clone();
+    let thumbnail_size = key.thumbnail_size;
+    let result = gio::spawn_blocking(move || {
+        render_thumbnail(
+            &job.key.path,
+            job.kind,
+            job.key.thumbnail_size,
+            &job.cancellation,
+        )
+    })
+    .await;
+    let targets = take_pending_targets(&key, job_id);
+    THUMBNAIL_QUEUE.with(|queue| queue.borrow_mut().finish());
+
+    if let Some(targets) = targets {
+        match result {
+            Ok(Ok(png)) => {
+                let bytes = glib::Bytes::from_owned(png);
+                THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().insert(key, bytes.clone()));
+                finish_thumbnail_targets(targets, Some(&bytes), thumbnail_size);
+            }
+            Ok(Err(_)) | Err(_) => {
+                THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().insert_failure(key));
+                finish_thumbnail_targets(targets, None, thumbnail_size);
+            }
+        }
+    }
+    start_thumbnail_jobs();
+    retry_deferred_thumbnails();
+}
+
+fn retry_deferred_thumbnails() {
+    let mut promoted = false;
+    loop {
+        // ponytail: deferred work is bounded by live GTK image widgets; add an explicit cap if a
+        // future non-virtualized producer can create an unbounded number of them.
+        let deferred = ACTIVE_REQUESTS.with(|requests| {
+            let mut requests = requests.borrow_mut();
+            requests.retain(|_, active| active.image.upgrade().is_some());
+            requests
+                .iter()
+                .filter_map(|(image_id, active)| {
+                    active.deferred.as_ref().map(|deferred| {
+                        (*image_id, active.id, active.image.clone(), deferred.clone())
+                    })
+                })
+                .min_by_key(|(_, request, _, _)| *request)
+        });
+        let Some((image_id, request, image, deferred)) = deferred else {
+            break;
+        };
+        if !retry_deferred_thumbnail(image_id, request, image, deferred) {
+            break;
+        }
+        promoted = true;
+    }
+    if promoted {
+        start_thumbnail_jobs();
+    }
+}
+
+fn retry_deferred_thumbnail(
+    image_id: usize,
+    request: u64,
+    image: glib::WeakRef<gtk::Image>,
+    deferred: DeferredThumbnail,
+) -> bool {
+    if !schedule_thumbnail(
+        deferred.key,
+        deferred.kind,
+        PendingTarget {
+            image_id,
+            request,
+            image,
+        },
+    ) {
+        return false;
+    }
+    ACTIVE_REQUESTS.with(|requests| {
+        if let Some(active) = requests
+            .borrow_mut()
+            .get_mut(&image_id)
+            .filter(|active| active.id == request)
+        {
+            active.deferred = None;
         }
     });
+    true
+}
+
+fn take_pending_targets(key: &ThumbnailKey, job_id: u64) -> Option<Vec<PendingTarget>> {
+    PENDING_THUMBNAILS.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        if pending.get(key).is_some_and(|pending| pending.id == job_id) {
+            pending.remove(key).map(|pending| pending.targets)
+        } else {
+            None
+        }
+    })
+}
+
+fn finish_thumbnail_targets(
+    targets: Vec<PendingTarget>,
+    bytes: Option<&glib::Bytes>,
+    thumbnail_size: i32,
+) {
+    for target in targets {
+        let is_current = ACTIVE_REQUESTS.with(|requests| {
+            let mut requests = requests.borrow_mut();
+            if requests
+                .get(&target.image_id)
+                .is_some_and(|active| active.id == target.request)
+            {
+                requests.remove(&target.image_id);
+                true
+            } else {
+                false
+            }
+        });
+        if !is_current {
+            continue;
+        }
+        let Some(bytes) = bytes else {
+            continue;
+        };
+        let Some(image) = target.image.upgrade() else {
+            continue;
+        };
+        apply_thumbnail(&image, bytes, thumbnail_size);
+    }
 }
 
 fn known_metadata<T: Copy>(value: &MetadataValue<T>) -> Option<T> {
@@ -229,26 +493,64 @@ pub(super) fn show_fallback_icon(image: &gtk::Image, icon: &str, size: i32) {
     set_fallback_icon(image, icon, size);
 }
 
+pub(super) fn cancel_list_item_thumbnails(item: &glib::Object) {
+    let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+        return;
+    };
+    if let Some(child) = item.child() {
+        cancel_thumbnails_in(&child);
+    }
+}
+
+pub(super) fn cancel_thumbnails_in(widget: &gtk::Widget) {
+    if let Some(image) = widget.downcast_ref::<gtk::Image>() {
+        cancel_thumbnail(image.as_ptr() as usize);
+    }
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        child = current.next_sibling();
+        cancel_thumbnails_in(&current);
+    }
+}
+
 fn set_fallback_icon(image: &gtk::Image, icon: &str, size: i32) -> (usize, u64) {
     let request = NEXT_REQUEST.fetch_add(1, Ordering::Relaxed);
     let image_id = image.as_ptr() as usize;
-    let weak_image = glib::WeakRef::new();
-    weak_image.set(Some(image));
-    ACTIVE_REQUESTS.with(|requests| {
-        let mut requests = requests.borrow_mut();
-        requests.retain(|_, active| active.image.upgrade().is_some());
-        requests.insert(
-            image_id,
-            ActiveRequest {
-                id: request,
-                image: weak_image,
-            },
-        );
-    });
+    cancel_thumbnail(image_id);
     image.set_pixel_size(size);
     image.set_size_request(size, size);
     crate::assets::set_primary_icon(image, icon);
     (image_id, request)
+}
+
+fn cancel_thumbnail(image_id: usize) {
+    ACTIVE_REQUESTS.with(|requests| {
+        requests.borrow_mut().remove(&image_id);
+    });
+    let cancelled = PENDING_THUMBNAILS.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        let mut cancelled = Vec::new();
+        pending.retain(|key, thumbnail| {
+            thumbnail
+                .targets
+                .retain(|target| target.image_id != image_id);
+            if thumbnail.targets.is_empty() {
+                thumbnail.cancellation.cancel();
+                cancelled.push(key.clone());
+                false
+            } else {
+                true
+            }
+        });
+        cancelled
+    });
+    THUMBNAIL_QUEUE.with(|queue| {
+        let mut queue = queue.borrow_mut();
+        for key in cancelled {
+            queue.cancel(&key);
+        }
+    });
+    retry_deferred_thumbnails();
 }
 
 fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {

@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::{fs, path::Path};
+use std::{
+    fs,
+    path::Path,
+    process::Command,
+    thread,
+    time::{Duration, Instant},
+};
 
 use super::{
-    Cancellation, MEDIA_WALL_TIME_LIMIT, ParseOperation, PrivateOutput, WALL_TIME_LIMIT,
-    gpu_devices, parse, sandbox_command, valid_output,
+    Cancellation, MAX_RASTER_INPUT_BYTES, MEDIA_WALL_TIME_LIMIT, ParseOperation, PrivateOutput,
+    WALL_TIME_LIMIT, gpu_devices, parse, sandbox_command, spawn_renderer, valid_output,
+    wait_for_renderer,
 };
 
 fn limit_from(arguments: &[String], flag: &str) -> u64 {
@@ -43,6 +50,15 @@ fn file_size_limit_holds_a_full_resolution_decoded_frame() {
 
     assert!(file_size >= LARGEST_SUPPORTED_PIXELS * RGBA_CHANNELS);
     assert!(file_size < address_space);
+}
+
+fn png(width: u32, height: u32) -> Vec<u8> {
+    let mut data = b"\x89PNG\r\n\x1a\n".to_vec();
+    data.extend_from_slice(&13u32.to_be_bytes());
+    data.extend_from_slice(b"IHDR");
+    data.extend_from_slice(&width.to_be_bytes());
+    data.extend_from_slice(&height.to_be_bytes());
+    data
 }
 
 #[test]
@@ -180,10 +196,23 @@ fn non_media_sandboxes_never_expose_gpu_devices_or_sysfs() {
 }
 
 #[test]
-fn accepts_only_png_webm_or_mp4_output_signatures() {
+fn accepts_only_bounded_png_webm_or_mp4_outputs() {
+    assert!(valid_output(ParseOperation::ThumbnailImage, &png(256, 256)));
+    assert!(!valid_output(ParseOperation::ThumbnailImage, &png(257, 1)));
     assert!(valid_output(
         ParseOperation::PreviewImage,
-        b"\x89PNG\r\n\x1a\ncontent"
+        &png(1_400, 1_400)
+    ));
+    assert!(!valid_output(ParseOperation::PreviewImage, &png(1_401, 1)));
+    assert!(valid_output(ParseOperation::PreviewPdf, &png(1_400, 1_785)));
+    assert!(!valid_output(
+        ParseOperation::PreviewPdf,
+        &png(1_400, 1_800)
+    ));
+    assert!(!valid_output(ParseOperation::PreviewPdf, &png(0, 100)));
+    assert!(!valid_output(
+        ParseOperation::PreviewImage,
+        b"\x89PNG\r\n\x1a\n"
     ));
     assert!(valid_output(
         ParseOperation::PreviewMedia,
@@ -214,4 +243,99 @@ fn cancelled_requests_fail_without_starting_a_renderer() {
     .expect("cancelled parse must fail");
 
     assert_eq!(error, "Preview cancelled");
+}
+
+#[test]
+fn rejects_oversized_raster_inputs_before_starting_a_renderer() {
+    let directory = PrivateOutput::create().expect("create temporary directory");
+    let input = directory.path().join("oversized.png");
+    fs::File::create(&input)
+        .expect("create sparse input")
+        .set_len(MAX_RASTER_INPUT_BYTES + 1)
+        .expect("size sparse input");
+
+    let error = parse(
+        &input,
+        ParseOperation::ThumbnailImage,
+        64,
+        &Cancellation::default(),
+    )
+    .err()
+    .expect("oversized raster input must fail");
+
+    assert_eq!(error, "Preview input exceeds the supported size limit");
+    assert_eq!(ParseOperation::ThumbnailVideo.input_size_limit(), None);
+}
+
+#[test]
+fn running_thumbnail_process_trees_are_stopped_on_timeout_and_cancellation() {
+    let directory = PrivateOutput::create().expect("create process marker directory");
+    let timeout_marker = directory.path().join("timeout-marker");
+    let mut timeout_command = process_tree_command(&timeout_marker);
+    let mut timed_out = spawn_renderer(&mut timeout_command).expect("start timeout renderer");
+    wait_for_process_marker(&timeout_marker);
+    let started = Instant::now();
+    let error = wait_for_renderer(
+        &mut timed_out,
+        &Cancellation::default(),
+        Duration::from_millis(40),
+    )
+    .expect_err("running renderer must time out");
+    assert_eq!(error, "The preview renderer timed out");
+    assert!(started.elapsed() < Duration::from_secs(2));
+    assert!(timed_out.try_wait().expect("inspect renderer").is_some());
+    assert_process_marker_stopped(&timeout_marker);
+
+    let cancellation_marker = directory.path().join("cancellation-marker");
+    let mut cancellation_command = process_tree_command(&cancellation_marker);
+    let mut cancelled =
+        spawn_renderer(&mut cancellation_command).expect("start cancellable renderer");
+    wait_for_process_marker(&cancellation_marker);
+    let cancellation = Cancellation::default();
+    let cancellation_request = cancellation.clone();
+    let canceller = thread::spawn(move || {
+        thread::sleep(Duration::from_millis(40));
+        cancellation_request.cancel();
+    });
+    let error = wait_for_renderer(&mut cancelled, &cancellation, Duration::from_secs(5))
+        .expect_err("running renderer must be cancelled");
+    canceller.join().expect("join canceller");
+
+    assert_eq!(error, "Preview cancelled");
+    assert!(cancelled.try_wait().expect("inspect renderer").is_some());
+    assert_process_marker_stopped(&cancellation_marker);
+}
+
+fn process_tree_command(marker: &Path) -> Command {
+    let mut command = Command::new("sh");
+    command
+        .args([
+            "-c",
+            "sh -c 'while :; do printf x >> \"$1\"; sleep 0.01; done' writer \"$1\" & wait",
+            "thumbnail-provider",
+        ])
+        .arg(marker);
+    command
+}
+
+fn wait_for_process_marker(marker: &Path) {
+    for _ in 0..50 {
+        if fs::metadata(marker).is_ok_and(|metadata| metadata.len() > 0) {
+            return;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    panic!("thumbnail provider descendant did not start");
+}
+
+fn assert_process_marker_stopped(marker: &Path) {
+    let length = fs::metadata(marker).expect("inspect process marker").len();
+    thread::sleep(Duration::from_millis(80));
+    assert_eq!(
+        fs::metadata(marker)
+            .expect("reinspect process marker")
+            .len(),
+        length,
+        "renderer descendant survived termination"
+    );
 }

@@ -3,7 +3,7 @@
 use std::{
     fs, io,
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Child, Command, ExitStatus, Stdio},
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicU64, Ordering},
@@ -12,11 +12,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+use rustix::process::{Pid, Signal, kill_process_group};
+
 const WALL_TIME_LIMIT: Duration = Duration::from_secs(12);
 const MEDIA_WALL_TIME_LIMIT: Duration = Duration::from_secs(30);
 const ADDRESS_SPACE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const FILE_SIZE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
-const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_RASTER_INPUT_BYTES: u64 = 512 * 1024 * 1024;
+pub(crate) const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -58,6 +61,29 @@ impl ParseOperation {
             WALL_TIME_LIMIT
         }
     }
+
+    fn image_limits(self) -> Option<(u32, u32, u64)> {
+        match self {
+            Self::ThumbnailImage
+            | Self::ThumbnailRaw
+            | Self::ThumbnailPdf
+            | Self::ThumbnailVideo => Some((256, 256, 256 * 256)),
+            Self::PreviewImage => Some((1_400, 1_400, 1_400 * 1_400)),
+            Self::PreviewPdf => Some((1_400, 1_800, 2_500_000)),
+            Self::PreviewMedia => None,
+        }
+    }
+
+    fn input_size_limit(self) -> Option<u64> {
+        match self {
+            Self::ThumbnailImage
+            | Self::ThumbnailRaw
+            | Self::ThumbnailPdf
+            | Self::PreviewImage
+            | Self::PreviewPdf => Some(MAX_RASTER_INPUT_BYTES),
+            Self::ThumbnailVideo | Self::PreviewMedia => None,
+        }
+    }
 }
 
 #[derive(Clone, Default)]
@@ -68,7 +94,7 @@ impl Cancellation {
         self.0.store(true, Ordering::Release);
     }
 
-    fn is_cancelled(&self) -> bool {
+    pub(crate) fn is_cancelled(&self) -> bool {
         self.0.load(Ordering::Acquire)
     }
 }
@@ -91,8 +117,16 @@ pub(crate) fn parse(
     let input = input
         .canonicalize()
         .map_err(|error| format!("Unable to open preview input: {error}"))?;
-    if !input.is_file() {
+    let input_metadata = fs::metadata(&input)
+        .map_err(|error| format!("Unable to inspect preview input: {error}"))?;
+    if !input_metadata.is_file() {
         return Err("Preview input is not a regular file".to_owned());
+    }
+    if operation
+        .input_size_limit()
+        .is_some_and(|limit| input_metadata.len() > limit)
+    {
+        return Err("Preview input exceeds the supported size limit".to_owned());
     }
 
     let output = PrivateOutput::create().map_err(|error| error.to_string())?;
@@ -111,31 +145,10 @@ pub(crate) fn parse(
         value,
         &devices,
     );
-    let mut child = command
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
+    command.stdout(Stdio::null()).stderr(Stdio::null());
+    let mut child = spawn_renderer(&mut command)
         .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
-    let started = Instant::now();
-
-    let status = loop {
-        if cancellation.is_cancelled() {
-            terminate(&mut child);
-            return Err("Preview cancelled".to_owned());
-        }
-        if started.elapsed() >= operation.wall_time_limit() {
-            terminate(&mut child);
-            return Err("The preview renderer timed out".to_owned());
-        }
-        match child.try_wait() {
-            Ok(Some(status)) => break status,
-            Ok(None) => thread::sleep(Duration::from_millis(20)),
-            Err(error) => {
-                terminate(&mut child);
-                return Err(format!("Unable to monitor the preview renderer: {error}"));
-            }
-        }
-    };
+    let status = wait_for_renderer(&mut child, cancellation, operation.wall_time_limit())?;
     if !status.success() {
         return Err("The sandboxed preview renderer failed".to_owned());
     }
@@ -156,6 +169,38 @@ pub(crate) fn parse(
     }
     let (page, pages) = read_metadata(&output.path().join("result.meta"));
     Ok(ParseOutput { data, page, pages })
+}
+
+fn spawn_renderer(command: &mut Command) -> io::Result<Child> {
+    use std::os::unix::process::CommandExt;
+
+    command.process_group(0).spawn()
+}
+
+fn wait_for_renderer(
+    child: &mut Child,
+    cancellation: &Cancellation,
+    wall_time_limit: Duration,
+) -> Result<ExitStatus, String> {
+    let started = Instant::now();
+    loop {
+        if cancellation.is_cancelled() {
+            terminate(child);
+            return Err("Preview cancelled".to_owned());
+        }
+        if started.elapsed() >= wall_time_limit {
+            terminate(child);
+            return Err("The preview renderer timed out".to_owned());
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status),
+            Ok(None) => thread::sleep(Duration::from_millis(20)),
+            Err(error) => {
+                terminate(child);
+                return Err(format!("Unable to monitor the preview renderer: {error}"));
+            }
+        }
+    }
 }
 
 fn sandbox_command(
@@ -279,13 +324,40 @@ fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
         data.starts_with(b"\x1a\x45\xdf\xa3")
             || data.get(4..8).is_some_and(|signature| signature == b"ftyp")
     } else {
-        data.starts_with(b"\x89PNG\r\n\x1a\n")
+        let Some((width, height)) = png_dimensions(data) else {
+            return false;
+        };
+        let Some((max_width, max_height, max_pixels)) = operation.image_limits() else {
+            return false;
+        };
+        width <= max_width
+            && height <= max_height
+            && u64::from(width)
+                .checked_mul(u64::from(height))
+                .is_some_and(|pixels| pixels <= max_pixels)
     }
 }
 
-fn terminate(child: &mut std::process::Child) {
-    // bwrap is the PID-namespace init process. Killing it tears down every process in
-    // the sandbox, including descendants started by ImageMagick or thumbnail tools.
+fn png_dimensions(data: &[u8]) -> Option<(u32, u32)> {
+    if !data.starts_with(b"\x89PNG\r\n\x1a\n")
+        || data.get(8..12)? != 13u32.to_be_bytes()
+        || data.get(12..16)? != b"IHDR"
+    {
+        return None;
+    }
+    let width = u32::from_be_bytes(data.get(16..20)?.try_into().ok()?);
+    let height = u32::from_be_bytes(data.get(20..24)?.try_into().ok()?);
+    (width > 0 && height > 0).then_some((width, height))
+}
+
+fn terminate(child: &mut Child) {
+    if let Ok(raw_pid) = i32::try_from(child.id())
+        && let Some(process_group) = Pid::from_raw(raw_pid)
+    {
+        let _killed = kill_process_group(process_group, Signal::KILL);
+    }
+    // bwrap is also the PID-namespace init process, so descendants that create a new
+    // process group still die with it.
     let _killed = child.kill();
     let _waited = child.wait();
 }

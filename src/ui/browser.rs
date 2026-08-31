@@ -3375,6 +3375,7 @@ impl ViewState {
                 .unwrap_or_default();
             size.set_label(&size_text);
         });
+        factory.connect_unbind(|_, item| super::thumbnail::cancel_list_item_thumbnails(item));
 
         let list = gtk::ListView::new(Some(selection.clone()), Some(factory));
         list.add_css_class("file-list");
@@ -3993,6 +3994,7 @@ fn peek_label_factory(entries: Rc<RefCell<Vec<FileEntry>>>) -> gtk::SignalListIt
         icon.set_opacity(if directory { 1.0 } else { 0.82 });
         chevron.set_visible(directory);
     });
+    factory.connect_unbind(|_, item| super::thumbnail::cancel_list_item_thumbnails(item));
     factory
 }
 

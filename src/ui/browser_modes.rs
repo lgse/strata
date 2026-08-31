@@ -1145,6 +1145,7 @@ fn build_grid_pane(
             field.set_visible(true);
         }
     });
+    factory.connect_unbind(|_, item| super::thumbnail::cancel_list_item_thumbnails(item));
     let view = gtk::GridView::new(Some(selection.clone()), Some(factory));
     view.add_css_class("file-grid");
     view.set_min_columns(1);
@@ -1731,6 +1732,7 @@ fn build_explorer_pane(
             modified.set_label("");
         }
     });
+    factory.connect_unbind(|_, item| super::thumbnail::cancel_list_item_thumbnails(item));
     let view = gtk::ListView::new(Some(selection.clone()), Some(factory));
     view.add_css_class("explorer-list");
     view.set_enable_rubberband(false);

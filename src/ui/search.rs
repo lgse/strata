@@ -2,6 +2,7 @@
 
 use std::{
     cell::{Cell, RefCell},
+    collections::HashSet,
     path::{Path, PathBuf},
     rc::Rc,
     sync::mpsc::TryRecvError,
@@ -23,10 +24,12 @@ struct SearchState {
     layer: gtk::Box,
     field: gtk::Entry,
     list: gtk::ListBox,
+    scroller: gtk::ScrolledWindow,
     results: gtk::Stack,
     status: gtk::Label,
     root: RefCell<PathBuf>,
     visible_results: RefCell<Vec<SearchItem>>,
+    requested_thumbnails: RefCell<HashSet<usize>>,
     search: RefCell<Option<SearchHandle>>,
     generation: Cell<u64>,
     activate: Rc<dyn Fn(SearchItem)>,
@@ -111,10 +114,12 @@ impl SearchDialog {
             layer,
             field,
             list,
+            scroller,
             results,
             status,
             root: RefCell::new(PathBuf::new()),
             visible_results: RefCell::new(Vec::new()),
+            requested_thumbnails: RefCell::new(HashSet::new()),
             search: RefCell::new(None),
             generation: Cell::new(0),
             activate,
@@ -164,6 +169,19 @@ impl SearchDialog {
             glib::Propagation::Proceed
         });
         state.layer.add_controller(keys);
+        let adjustment = state.scroller.vadjustment();
+        let changed = Rc::downgrade(&state);
+        adjustment.connect_changed(move |_| {
+            if let Some(state) = changed.upgrade() {
+                refresh_visible_thumbnails(&state);
+            }
+        });
+        let scrolled = Rc::downgrade(&state);
+        adjustment.connect_value_changed(move |_| {
+            if let Some(state) = scrolled.upgrade() {
+                refresh_visible_thumbnails(&state);
+            }
+        });
 
         Self { state }
     }
@@ -177,7 +195,7 @@ impl SearchDialog {
         let generation = self.state.generation.get();
         self.state.search.borrow_mut().take();
         self.state.root.replace(root.clone());
-        self.state.visible_results.borrow_mut().clear();
+        clear_results(&self.state);
         self.state.field.set_text("");
         self.state.status.set_visible(true);
         self.state.status.set_text("Type to search the whole tree");
@@ -225,10 +243,7 @@ impl SearchDialog {
 }
 
 fn begin_query(state: &Rc<SearchState>, query: &str) {
-    while let Some(child) = state.list.first_child() {
-        state.list.remove(&child);
-    }
-    state.visible_results.borrow_mut().clear();
+    clear_results(state);
     state.results.set_visible_child_name("status");
     if query.trim().is_empty() {
         state.status.set_text(
@@ -243,9 +258,7 @@ fn begin_query(state: &Rc<SearchState>, query: &str) {
 }
 
 fn render_results(state: &Rc<SearchState>, results: Vec<SearchItem>, indexing: bool) {
-    while let Some(child) = state.list.first_child() {
-        state.list.remove(&child);
-    }
+    clear_results(state);
     let root = state.root.borrow();
     for item in &results {
         state.list.append(&result_row(item, &root));
@@ -264,6 +277,12 @@ fn render_results(state: &Rc<SearchState>, results: Vec<SearchItem>, indexing: b
             "No matching files or folders"
         });
     }
+    let weak = Rc::downgrade(state);
+    glib::idle_add_local_once(move || {
+        if let Some(state) = weak.upgrade() {
+            refresh_visible_thumbnails(&state);
+        }
+    });
 }
 
 fn result_row(item: &SearchItem, root: &Path) -> gtk::ListBoxRow {
@@ -277,13 +296,7 @@ fn result_row(item: &SearchItem, root: &Path) -> gtk::ListBoxRow {
         icon.set_pixel_size(19);
         icon.set_size_request(32, 32);
     } else {
-        super::thumbnail::set_thumbnail_or_icon_for_path(
-            &icon,
-            &item.path,
-            crate::assets::icons::DOCUMENTS,
-            19,
-            32,
-        );
+        super::thumbnail::show_fallback_icon(&icon, crate::assets::icons::DOCUMENTS, 19);
     }
     content.append(&icon);
     let labels = gtk::Box::new(gtk::Orientation::Vertical, 2);
@@ -302,6 +315,72 @@ fn result_row(item: &SearchItem, root: &Path) -> gtk::ListBoxRow {
     content.append(&labels);
     row.set_child(Some(&content));
     row
+}
+
+fn refresh_visible_thumbnails(state: &SearchState) {
+    let adjustment = state.scroller.vadjustment();
+    let viewport_top = adjustment.value();
+    let viewport_height = adjustment.page_size();
+    let changes = {
+        let items = state.visible_results.borrow();
+        let mut requested = state.requested_thumbnails.borrow_mut();
+        let mut changes = Vec::new();
+        for (position, item) in items.iter().enumerate() {
+            if item.is_directory {
+                continue;
+            }
+            let Some(row) = i32::try_from(position)
+                .ok()
+                .and_then(|position| state.list.row_at_index(position))
+            else {
+                continue;
+            };
+            let Some(bounds) = row.compute_bounds(&state.list) else {
+                continue;
+            };
+            let visible = intersects_viewport(
+                f64::from(bounds.y()),
+                f64::from(bounds.height()),
+                viewport_top,
+                viewport_height,
+            );
+            let Some(image) = row
+                .child()
+                .and_then(|content| content.first_child())
+                .and_then(|child| child.downcast::<gtk::Image>().ok())
+            else {
+                continue;
+            };
+            if visible && requested.insert(position) {
+                changes.push((image, Some(item.path.clone())));
+            } else if !visible && requested.remove(&position) {
+                changes.push((image, None));
+            }
+        }
+        changes
+    };
+    for (image, path) in changes {
+        if let Some(path) = path {
+            super::thumbnail::set_thumbnail_or_icon_for_path(
+                &image,
+                &path,
+                crate::assets::icons::DOCUMENTS,
+                19,
+                32,
+            );
+        } else {
+            super::thumbnail::show_fallback_icon(&image, crate::assets::icons::DOCUMENTS, 19);
+        }
+    }
+}
+
+fn intersects_viewport(
+    row_top: f64,
+    row_height: f64,
+    viewport_top: f64,
+    viewport_height: f64,
+) -> bool {
+    row_top < viewport_top + viewport_height && row_top + row_height > viewport_top
 }
 
 fn move_selection(state: &SearchState, direction: i32) {
@@ -331,6 +410,19 @@ fn activate_position(state: &Rc<SearchState>, position: i32) {
 fn hide(state: &SearchState) {
     state.generation.set(state.generation.get() + 1);
     state.search.borrow_mut().take();
+    clear_results(state);
     state.layer.set_visible(false);
     (state.dismiss)();
 }
+
+fn clear_results(state: &SearchState) {
+    state.visible_results.borrow_mut().clear();
+    state.requested_thumbnails.borrow_mut().clear();
+    while let Some(child) = state.list.first_child() {
+        super::thumbnail::cancel_thumbnails_in(&child);
+        state.list.remove(&child);
+    }
+}
+
+#[cfg(test)]
+mod tests;
