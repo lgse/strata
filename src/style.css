@@ -2014,7 +2014,8 @@ menubutton.column-header-action > button:focus-visible image {
   background: transparent;
 }
 
-.theme-grid > flowboxchild {
+.theme-grid > flowboxchild,
+.theme-color-fields > flowboxchild {
   background: transparent;
   padding: 0;
 }

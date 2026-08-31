@@ -42,7 +42,7 @@ mod responsive_bin {
         pub navigation_heading: RefCell<Option<gtk::Label>>,
         pub navigation_labels: RefCell<Vec<gtk::Label>>,
         pub navigation_contents: RefCell<Vec<gtk::Box>>,
-        pub theme_grids: RefCell<Vec<gtk::FlowBox>>,
+        pub responsive_flows: RefCell<Vec<(gtk::FlowBox, u32)>>,
     }
 
     #[glib::object_subclass]
@@ -97,8 +97,8 @@ mod responsive_bin {
                         gtk::Align::Fill
                     });
                 }
-                for grid in self.theme_grids.borrow().iter() {
-                    grid.set_max_children_per_line(if compact { 1 } else { 3 });
+                for (flow, expanded_columns) in self.responsive_flows.borrow().iter() {
+                    flow.set_max_children_per_line(if compact { 1 } else { *expanded_columns });
                 }
             }
             let x = ((width - child_width) / 2) as f32;
@@ -122,7 +122,7 @@ impl ResponsiveBin {
         navigation_heading: &gtk::Label,
         navigation_labels: Vec<gtk::Label>,
         navigation_contents: Vec<gtk::Box>,
-        theme_grids: Vec<gtk::FlowBox>,
+        responsive_flows: Vec<(gtk::FlowBox, u32)>,
     ) -> Self {
         let bin: Self = glib::Object::new();
         let imp = bin.imp();
@@ -131,7 +131,7 @@ impl ResponsiveBin {
             .replace(Some(navigation_heading.clone()));
         imp.navigation_labels.replace(navigation_labels);
         imp.navigation_contents.replace(navigation_contents);
-        imp.theme_grids.replace(theme_grids);
+        imp.responsive_flows.replace(responsive_flows);
         child.set_parent(&bin);
         bin
     }
@@ -204,7 +204,7 @@ pub fn build_layer(
         Some("general"),
     );
     stack.add_named(&keybindings_page(), Some("keybindings"));
-    let (theme_page, theme_grids) = theme_page(themes);
+    let (theme_page, responsive_flows) = theme_page(themes);
     stack.add_named(&theme_page, Some("theme"));
     stack.add_named(&about_page(), Some("about"));
     page.append(&stack);
@@ -259,7 +259,7 @@ pub fn build_layer(
         &navigation_heading,
         navigation_labels,
         navigation_contents,
-        theme_grids,
+        responsive_flows,
     );
     responsive_panel.set_hexpand(true);
     responsive_panel.set_vexpand(true);
@@ -886,7 +886,7 @@ fn append_keybinding(content: &gtk::Box, label: &str, keys: &str) {
     content.append(&row);
 }
 
-fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<gtk::FlowBox>) {
+fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<(gtk::FlowBox, u32)>) {
     let content = page_content();
     content.add_css_class("theme-page");
 
@@ -963,7 +963,7 @@ fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<gtk::FlowBox>) {
     add.set_child(Some(&add_content));
     custom.insert(&add, -1);
 
-    let editor = theme_editor(
+    let (editor, editor_fields) = theme_editor(
         manager.clone(),
         custom.clone(),
         follow.clone(),
@@ -990,7 +990,10 @@ fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<gtk::FlowBox>) {
             check.set_visible(selected);
         }
     });
-    (scroller, vec![packaged, custom])
+    (
+        scroller,
+        vec![(packaged, 3), (custom, 3), (editor_fields, 4)],
+    )
 }
 
 fn append_theme_card(
@@ -1098,7 +1101,7 @@ fn theme_editor(
     custom: gtk::FlowBox,
     follow: gtk::Switch,
     cards: ThemeCards,
-) -> gtk::Revealer {
+) -> (gtk::Revealer, gtk::FlowBox) {
     let panel = gtk::Box::new(gtk::Orientation::Vertical, 12);
     panel.add_css_class("theme-editor");
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -1113,11 +1116,16 @@ fn theme_editor(
     panel.append(&name);
 
     let values = Rc::new(RefCell::new(manager.starter_tokens()));
-    let grid = gtk::Grid::builder()
+    let fields = gtk::FlowBox::builder()
         .column_spacing(18)
         .row_spacing(10)
+        .max_children_per_line(4)
+        .min_children_per_line(1)
+        .selection_mode(gtk::SelectionMode::None)
+        .homogeneous(true)
         .build();
-    for (index, (label_text, field)) in [
+    fields.add_css_class("theme-color-fields");
+    for (label_text, field) in [
         ("Background", ColorField::Background),
         ("Surface", ColorField::Surface),
         ("Text", ColorField::Text),
@@ -1127,12 +1135,8 @@ fn theme_editor(
         ("Highlight", ColorField::Highlight),
         ("Border", ColorField::Border),
         ("Dim text", ColorField::DimText),
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        let row = (index / 4) as i32;
-        let column = ((index % 4) * 2) as i32;
+    ] {
+        let field_row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
         let label = gtk::Label::new(Some(label_text));
         label.set_xalign(0.0);
         let dialog = gtk::ColorDialog::builder()
@@ -1153,10 +1157,11 @@ fn theme_editor(
             );
             manager_for_color.preview(&values_for_color.borrow());
         });
-        grid.attach(&picker, column, row, 1, 1);
-        grid.attach(&label, column + 1, row, 1, 1);
+        field_row.append(&picker);
+        field_row.append(&label);
+        fields.insert(&field_row, -1);
     }
-    panel.append(&grid);
+    panel.append(&fields);
     let error = gtk::Label::new(None);
     error.add_css_class("theme-editor-error");
     error.set_xalign(0.0);
@@ -1207,7 +1212,7 @@ fn theme_editor(
             }
         }
     });
-    revealer
+    (revealer, fields)
 }
 
 #[derive(Clone, Copy)]
@@ -1275,6 +1280,7 @@ fn navigation_button(
 }
 
 fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
+    content.set_hexpand(true);
     let scroller = gtk::ScrolledWindow::builder()
         .child(content)
         .hscrollbar_policy(gtk::PolicyType::Never)
