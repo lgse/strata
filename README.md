@@ -1,115 +1,159 @@
+<div align="center">
+
 # Strata
 
-**Navigate every layer.**
+**Navigate every layer.** A fast, keyboard-first file manager for modern Linux desktops.
 
-Strata is an experimental, keyboard-first file manager for Linux. It is designed primarily for Omarchy while remaining portable to other modern Linux environments.
+[![CI](https://github.com/lgse/strata/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lgse/strata/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/lgse/strata?display_name=tag&sort=semver)](https://github.com/lgse/strata/releases/latest)
+[![License: GPL-3.0-or-later](https://img.shields.io/github/license/lgse/strata)](LICENSE)
+[![Linux](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)](#technical-specifications)
 
-## Browser modes
+<a href="docs/assets/strata-demo.mp4">
+<picture>
+  <source media="(prefers-reduced-motion: no-preference)" srcset="docs/assets/strata-demo.gif">
+  <img src="docs/assets/strata-screenshot.png" alt="Strata navigating files in Miller columns, grid, and detailed Explorer views" width="1280">
+</picture>
+</a>
 
-### List
+<sub>The animation respects reduced-motion preferences. Open the image for the high-resolution MP4 or view the [static preview](docs/assets/strata-screenshot.png).</sub>
 
-![Strata List mode showing Miller-column navigation, the places sidebar, and a source-code preview](docs/assets/strata-screenshot.png)
+</div>
 
-### Explorer
+Strata combines spatial Miller-column navigation with familiar Grid and Explorer views, instant fuzzy filename search, rich previews, and native Linux desktop integration. It is designed for Omarchy and works on compatible GTK4 Linux environments.
 
-![Strata Explorer mode showing a detailed, sortable file listing](docs/assets/strata-explorer.png)
+## Contents
 
-### Grid
+- [Features](#features)
+- [Installation](#installation)
+  - [AI-assisted installation](#ai-assisted-installation)
+  - [Manual installation](#manual-installation)
+- [Usage and desktop integration](#usage-and-desktop-integration)
+- [Under the hood](#under-the-hood)
+- [Technical specifications](#technical-specifications)
+- [Development and documentation](#development-and-documentation)
+- [Contributors](#contributors)
+- [License](#license)
 
-![Strata Grid mode showing files and folders as icon tiles](docs/assets/strata-grid.png)
+## Features
 
-## Network shares (SMB)
+- **Three browser modes:** navigable Miller columns, a thumbnail Grid, and a sortable Explorer table.
+- **Keyboard-first control:** Vim-style movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews.
+- **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed.
+- **Rich previews and thumbnails:** bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application.
+- **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
+- **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
+- **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares from the location field.
+- **Adaptive appearance:** compact or airy density, six bundled themes, custom themes, and live Omarchy Quattro theme following.
+- **Updates in the app:** opt-in automatic checks, release notes, verified downloads, and in-place installation for release binaries.
 
-To connect to an SMB share, open the location field with <kbd>Ctrl</kbd>+<kbd>L</kbd>, enter its `smb://` address, and press <kbd>Enter</kbd>.
+## Installation
 
-![Strata location field containing an SMB share address](docs/assets/strata-smb-location.png)
+Strata currently publishes release archives rather than distribution packages. Arch Linux and Omarchy are the primary supported environments; current binaries require **glibc 2.39 or newer** and the runtime libraries listed below.
 
-If the share requires credentials, Strata prompts for the username, domain, password, and preferred password-storage duration.
+### AI-assisted installation
 
-![Strata authentication dialog for an SMB share](docs/assets/strata-smb-authentication.png)
+Give this prompt to a coding agent with terminal access:
 
-SMB access uses the system's GIO and GVfs support. On Arch Linux and Omarchy, install the SMB backend if it is not already available:
+```text
+Install the latest stable Strata release from https://github.com/lgse/strata safely.
+
+Before changing anything:
+1. Confirm this is a glibc-based Linux system with a graphical GTK4 environment.
+2. Detect whether the machine is x86_64 or aarch64 and select only the matching
+   *-unknown-linux-gnu archive from the canonical lgse/strata GitHub release.
+3. Show me the runtime packages you need and ask before using sudo or changing
+   my default file-manager association.
+
+Then:
+- Install the required GTK4, GtkSourceView 5, Poppler GLib, Fontconfig, Bubblewrap,
+  FFmpeg/GStreamer, and desktop-integration runtime dependencies using the system
+  package manager. Add gvfs-smb only if I want SMB support.
+- Download the archive and its matching .sha256 file from the latest GitHub release.
+- Verify the checksum with sha256sum --check and verify GitHub Actions provenance
+  with `gh attestation verify <archive> --repo lgse/strata`. Stop on any failure;
+  never install an unverified binary.
+- Extract it and install `strata` to ~/.local/bin/strata without overwriting an
+  unrelated file. Ensure ~/.local/bin is on PATH.
+- Ask whether I want a per-user desktop entry and inode/directory association;
+  if yes, use application ID io.github.lgse.Strata and refresh the desktop database.
+- Launch `strata`, report its installed version/source release, and verify the
+  desktop association if one was requested. Do not weaken the preview sandbox.
+```
+
+### Manual installation
+
+#### 1. Check the architecture and install dependencies
 
 ```bash
+case "$(uname -m)" in
+  x86_64)  target=x86_64-unknown-linux-gnu ;;
+  aarch64) target=aarch64-unknown-linux-gnu ;;
+  *) echo "Strata has no prebuilt release for $(uname -m)" >&2; exit 1 ;;
+esac
+printf 'Use the %s release archive.\n' "$target"
+getconf GNU_LIBC_VERSION   # must report glibc 2.39 or newer
+```
+
+On Arch Linux or Omarchy:
+
+```bash
+sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
+  gst-libav gst-plugins-good gtk4 gtksourceview5 poppler-glib
+# Optional SMB support:
 sudo pacman -S --needed gvfs-smb
 ```
 
-## Vision
+GTK **4.12 or newer** and glibc **2.39 or newer** are required. Other glibc-based distributions may work when they provide equivalent runtime libraries, but their package names and binary compatibility vary. Systems with an older glibc must [build Strata from source](#development-and-documentation).
 
-- Miller-column navigation
-- Folder peeking on hover
-- Ultra-fast search
-- Rich file previews
-- Collapsible sidebar
-- Compact and airy density modes
-- List, Explorer, and Grid views
-- Omarchy and system theming
-- Complete keyboard navigation
+#### 2. Download and verify
 
-## Documentation
-
-- [Product requirements](docs/prd.md) — product specification
-- [Roadmap](docs/roadmap.md) — milestone sequence and exit criteria
-- [Work breakdown](docs/todo.md) — actionable project checklist
-- [Architecture principles](docs/architecture.md) — boundaries and customization strategy
-- [Prototype design reference](docs/design-reference.md) — visual tokens, motion, and interaction baseline
-- [Themes](docs/themes.md) — custom theme schema and Omarchy Quattro integration
-- [Unsafe code policy](docs/unsafe-code.md) — exception requirements and current inventory
-- [Initial technical direction](docs/technical-direction.md) — original technical assessment
-
-## Technology
-
-- Rust
-- GTK4
-- GIO
-- Native Wayland support
-
-## Install a precompiled release
-
-Strata is not yet available through Arch's package repositories. Download the archive and matching `.sha256` file for your CPU from the [latest release](https://github.com/LGSE/strata/releases/latest):
-
-- `x86_64-unknown-linux-gnu` for Intel and AMD PCs
-- `aarch64-unknown-linux-gnu` for ARM64 PCs
-
-Install the runtime libraries and optional video preview tools on Arch or Omarchy:
-
-```bash
-sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig gst-libav gst-plugins-good gtk4 gtksourceview5 poppler-glib
-```
-
-Then verify, extract, and install the downloaded archive (replace the filename with the release you downloaded). The `gh attestation` check verifies the archive's signed GitHub Actions provenance:
+From the [latest release](https://github.com/lgse/strata/releases/latest), download the `.tar.gz` matching `$target` and its identically named `.sha256` file. Then verify both its digest and signed GitHub Actions provenance:
 
 ```bash
 cd ~/Downloads
-sha256sum --check strata-<version>-<target>.tar.gz.sha256
-gh attestation verify strata-<version>-<target>.tar.gz --repo LGSE/strata
-tar -xzf strata-<version>-<target>.tar.gz
-install -Dm755 strata-<version>-<target>/strata ~/.local/bin/strata
+archive="strata-<version>-${target}.tar.gz"
+sha256sum --check "${archive}.sha256"
+gh attestation verify "$archive" --repo lgse/strata
+tar -xzf "$archive"
 ```
 
-Each archive also contains `SOURCE_COMMIT`, which records the exact commit used for the build.
-
-Ensure `~/.local/bin` is on `PATH`, then run `strata`. Image thumbnails work without `ffmpegthumbnailer`; when `ffmpegthumbnailer` or `ffmpeg` is unavailable, video files fall back to their video icon or an unavailable preview. Bubblewrap is required: preview parsing fails closed rather than running untrusted native parsers without a sandbox. See [Preview sandbox](docs/preview-sandbox.md) for the providers, permissions, and resource limits.
-
-#### Optional RAW photo thumbnails
-
-Strata recognizes common camera RAW formats, including DNG, CR2/CR3, NEF, ARW, RAF, ORF, RW2, PEF, and X3F. RAW decoding is provided by tools already installed on the host rather than bundled into Strata. It tries, in order:
-
-1. an installed GDK Pixbuf loader;
-2. ImageMagick (`magick` or `convert`); and
-3. the LibRaw-compatible `dcraw_emu` or `dcraw` thumbnail extractor.
-
-On Arch or Omarchy, the recommended setup is:
+Both verification commands must succeed. Install the binary and confirm it starts:
 
 ```bash
-sudo pacman -S --needed imagemagick libraw
+install -Dm755 "${archive%.tar.gz}/strata" "$HOME/.local/bin/strata"
+command -v strata
+strata
 ```
 
-Available formats depend on how those host packages were built and on whether a particular camera model is supported. Unsupported or malformed RAW files continue to display the normal image icon.
+If `command -v` fails, add `$HOME/.local/bin` to your shell's `PATH`. Every archive contains `SOURCE_COMMIT`, identifying the exact source revision used by GitHub Actions.
 
-### Desktop integration
+#### 3. Update or uninstall
 
-Create a per-user desktop entry so launchers and `xdg-open` can discover Strata:
+Use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. To remove a per-user installation:
+
+```bash
+rm -f ~/.local/bin/strata \
+  ~/.local/share/applications/io.github.lgse.Strata.desktop
+update-desktop-database ~/.local/share/applications 2>/dev/null || true
+```
+
+User preferences and custom themes remain under the XDG configuration directories so an uninstall does not destroy personal settings.
+
+## Usage and desktop integration
+
+Launch Strata with an optional local directory:
+
+```bash
+strata                 # home directory
+strata ~/Documents     # a specific directory
+```
+
+Useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation.
+
+### Desktop entry
+
+Create a per-user launcher and optionally make Strata the default directory handler:
 
 ```bash
 mkdir -p ~/.local/share/applications
@@ -127,128 +171,75 @@ StartupNotify=true
 EOF
 update-desktop-database ~/.local/share/applications
 xdg-mime default io.github.lgse.Strata.desktop inode/directory
-```
-
-Confirm the association with:
-
-```bash
 xdg-mime query default inode/directory
 ```
 
-It should print `io.github.lgse.Strata.desktop`.
+The final command should print `io.github.lgse.Strata.desktop`. Omarchy users can then point their file-manager keybinding at `uwsm app -- strata`; see Omarchy's version-specific keybinding documentation before editing Hyprland configuration.
 
-### Make Strata the Omarchy file manager
+### Network shares
 
-The XDG association above makes folders opened by desktop applications use Strata. To also replace Omarchy's <kbd>Super</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd> shortcut, use the instructions for your Omarchy generation.
+Press <kbd>Ctrl</kbd>+<kbd>L</kbd>, enter an address such as `smb://server/share`, and press <kbd>Enter</kbd>. Strata uses GIO/GVfs and prompts for credentials when required. Install your distribution's SMB GVfs backend (`gvfs-smb` on Arch) to enable SMB browsing.
 
-#### Omarchy Quattro
+## Under the hood
 
-Add these overrides to `~/.config/hypr/bindings.lua`:
+### Why search stays fast
 
-```lua
-hl.unbind("SUPER + SHIFT + F")
-hl.unbind("SUPER + ALT + SHIFT + F")
-o.bind("SUPER + SHIFT + F", "File manager", "uwsm app -- strata")
-o.bind("SUPER + ALT + SHIFT + F", "File manager (cwd)",
-  "uwsm app -- strata \"$(omarchy-cmd-terminal-cwd)\"")
-```
+Strata walks and indexes the selected directory tree on a background thread, never on GTK's UI thread. Results appear progressively during that walk. Names and relative paths are normalized once as index entries are created, and each query maintains only the best **100** fuzzy-ranked matches instead of sending an unbounded result set to the interface.
 
-Apply and validate the configuration:
+Rapid keystrokes are coalesced to the newest query. During indexing, result publication is throttled to 50 ms intervals; the UI consumes those bounded updates on its own timed loop, keeping rendering aligned with responsive frame-sized work. Exact and contiguous matches, word/path boundaries, and names rank ahead of loose path subsequences.
 
-```bash
-hyprctl reload
-hyprctl configerrors
-```
+The deliberate tradeoff: this is fast **filename and path** search, not file-content or metadata search.
 
-#### Omarchy 3
+### How previews contain untrusted parsers
 
-In `~/.config/hypr/bindings.conf`, replace the existing Nautilus file-manager binding with:
+Files shown while browsing are untrusted. Image, camera RAW, PDF, thumbnail, and media parsing therefore runs out of process through **Bubblewrap**, not inside the main Strata process. Each short-lived helper receives namespace isolation, a minimal read-only runtime, exactly one canonicalized input file, private output and temporary directories, no network, and no capabilities. Memory, CPU/wall time, input, file, and parent-side output limits bound the work.
 
-```ini
-bindd = SUPER SHIFT, F, File manager, exec, uwsm app -- strata
-```
+Only media helpers may receive allowlisted GPU render devices, and only for accelerated transcoding; image, PDF, and thumbnail helpers receive no device mounts. Outputs are normalized and bounded, then checked for expected PNG, MP4, or WebM signatures before use. Cancellation or timeout kills the process group and Bubblewrap PID namespace, tearing down descendants. Missing isolation, crashes, malformed output, timeouts, and permission failures all fail closed to a normal icon or **Preview unavailable**—Strata never silently retries an untrusted native parser without the sandbox.
 
-Optionally add a shortcut that opens the active terminal's working directory:
+Plain-text and source previews are different: they stay in process because they do not invoke a native format parser, and reads are capped at 1 MiB. See [Preview sandbox](docs/preview-sandbox.md) for provider ordering, exact mounts, formats, and resource budgets.
 
-```ini
-bindd = SUPER SHIFT ALT, F, File manager (cwd), exec, uwsm app -- strata "$(omarchy-cmd-terminal-cwd)"
-```
+## Technical specifications
 
-Then run `hyprctl reload` and `hyprctl configerrors`.
+| Area | Details |
+| --- | --- |
+| Platform | 64-bit Linux with glibc 2.39+; designed for Omarchy and Wayland. GTK may use another backend supplied by the host, but Wayland is the primary display stack. |
+| Release architectures | `x86_64-unknown-linux-gnu` and `aarch64-unknown-linux-gnu` |
+| UI and runtime | Rust 2024, GTK 4.12+, GIO/GLib, Cairo, GtkSourceView 5, Poppler GLib, GDK Pixbuf, GStreamer, and Fontconfig |
+| Filesystems | Native Linux paths (including non-UTF-8 names) and GIO/GVfs locations; remote protocol availability depends on installed GVfs backends |
+| Preview boundary | Bubblewrap is mandatory for native parser-backed previews; helpers have no network and fail closed. Plain text is read in process with a 1 MiB cap. |
+| Optional preview tools | `ffmpegthumbnailer`/`ffmpeg` for video; ImageMagick and LibRaw-compatible `dcraw_emu`/`dcraw` expand camera RAW support |
+| Hardware acceleration | Media-only VA-API or Vulkan attempts with software VP8/WebM fallback; GPU and codec support depend on host drivers/plugins |
+| Scale targets | Virtualized browser models and bounded asynchronous updates are tested with deterministic directories up to 100,000 entries |
+| Packaging | Dynamically linked release archive with SHA-256 digest, GitHub build-provenance attestation, and `SOURCE_COMMIT` |
 
-## Technical highlights
+## Development and documentation
 
-Strata is built around a small application model rather than placing filesystem logic in GTK widgets:
-
-- **Native paths stay native.** Invalid UTF-8 names retain their original Linux path bytes and are converted only for display.
-- **Navigation and peeking are separate.** Committed Miller columns participate in history; temporary hover peeks never mutate it.
-- **Filesystem work is cancellable.** Directory requests carry generations, stream bounded batches, and reject stale results after rapid navigation.
-- **Large directories stay virtualized.** Rows render through GTK list models and are exercised against deterministic fixtures containing up to 100,000 entries.
-- **Monitoring is incremental.** Coalesced create, remove, move, and metadata events update sorted columns in place while ambiguous events safely fall back to a rescan.
-- **Selection survives change.** Sorting, monitoring, and reloads preserve selection by native location rather than fragile row index.
-- **Motion avoids layout churn.** Columns reserve their final width before animating, and horizontal reveal targets remain stable during deep navigation.
-- **Failure is explicit.** Loading, empty, unavailable, and error states are distinct, with retry support that does not rewrite navigation history.
-
-The architectural boundaries and performance workflow are documented in [`docs/architecture.md`](docs/architecture.md) and [`docs/performance-baseline.md`](docs/performance-baseline.md).
-
-## Development
-
-### Requirements
-
-- The latest stable Rust release
-- GTK 4.12 or newer
-- GtkSourceView 5
-- Poppler GLib
-- Fontconfig
-- A C toolchain and `pkg-config`
-
-On Arch Linux:
+Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-config`, GTK 4.12+, GtkSourceView 5, Poppler GLib, and Fontconfig. On Arch:
 
 ```bash
 sudo pacman -S --needed base-devel rust bubblewrap fontconfig gtk4 gtksourceview5 poppler-glib
+make start-dev        # rebuild and restart as files change
+./scripts/check.sh    # format, compile, Clippy, tests, and optional policy checks
 ```
 
-Run Strata:
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Deeper references:
 
-```bash
-cargo run
-```
+- [Architecture principles](docs/architecture.md)
+- [Preview sandbox](docs/preview-sandbox.md)
+- [Performance baseline](docs/performance-baseline.md)
+- [Themes and Omarchy integration](docs/themes.md)
+- [Product requirements](docs/prd.md)
+- [Unsafe code policy](docs/unsafe-code.md)
+- [Technical direction](docs/technical-direction.md)
 
-For development, run Strata in auto-reload mode. The app rebuilds and restarts
-when code or bundled assets change. On Arch, Debian/Ubuntu, and Fedora,
-`start-dev` installs missing native dependencies (prompting for `sudo`) and
-installs `cargo-watch` automatically when needed:
+## Contributors
 
-```bash
-make start-dev
-```
+<a href="https://github.com/lgse/strata/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=lgse/strata" alt="Avatars of Strata contributors linked to the contributors graph">
+</a>
 
-Run the standard quality checks:
-
-```bash
-./scripts/check.sh
-```
-
-The script always runs formatting, compilation, Clippy, and tests. It also runs dependency-policy and spelling checks when `cargo-deny` and `typos` are installed. CI runs the complete suite on the latest stable Rust release.
-
-## Creating a release
-
-Maintainers can run the **Release** workflow from GitHub's Actions tab on the default branch and choose a `patch`, `minor`, or `major` version bump. After both Linux targets build successfully, the workflow:
-
-- commits the new version to `Cargo.toml` and `Cargo.lock`;
-- creates an annotated `vX.Y.Z` tag; and
-- publishes x86-64 and ARM64 archives, SHA-256 checksum files, signed build-provenance attestations, and generated release notes.
-
-The final publishing job uses the protected `release` GitHub environment and is the only job granted write permissions. Repository administrators must configure that environment with required reviewers; prevent self-review when a separate maintainer is available to approve releases. The release workflow stops without publishing if the default branch changes while binaries are building. Run it again from the new head in that case.
-
-## Bundled assets
-
-Strata includes a curated Lucide icon subset and the regular JetBrains Mono variable font. See [third-party notices](THIRD_PARTY_LICENSES.md) for versions, modifications, and complete attribution.
-
-## Status
-
-Strata is at the technical-spike stage. The first objective is to validate responsive Miller columns, cancellable hover peeking, incremental directory enumeration, and previews in very large directories.
+This image is generated from GitHub contribution data so new contributors appear without a manual README update. Thank you to everyone who reports issues, improves the documentation, tests releases, and contributes code.
 
 ## License
 
-Strata is licensed under the [GNU General Public License v3.0 or later](LICENSE).
+Strata is free software licensed under **[GPL-3.0-or-later](LICENSE)**. Bundled fonts, icons, and other third-party components retain their own notices in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
