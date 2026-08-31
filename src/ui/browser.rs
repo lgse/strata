@@ -2186,27 +2186,29 @@ impl ViewState {
     }
 
     fn mount_then_navigate(self: &Rc<Self>, location: Location, strategy: MountStrategy) {
-        self.mount_then_navigate_attempt(location, strategy, false);
+        self.mount_then_navigate_attempt(location, strategy, 0);
     }
 
     fn mount_then_navigate_attempt(
         self: &Rc<Self>,
         location: Location,
         strategy: MountStrategy,
-        authentication_failed: bool,
+        attempt: u32,
     ) {
         self.mount_location(
             location.clone(),
             strategy,
-            authentication_failed,
+            attempt > 0,
             move |state, result| {
                 if mount_result_is_ok(&result) {
                     state.browser.navigate(location.clone());
                     state.location_stack.set_visible_child_name("breadcrumbs");
                     state.browser.focus_active();
                 } else if let Err(error) = result {
-                    if mount_error_is_authentication_failure(&location, &error) {
-                        state.mount_then_navigate_attempt(location.clone(), strategy, true);
+                    if should_retry_mount_after_failure(attempt)
+                        && mount_error_is_authentication_failure(&location, &error)
+                    {
+                        state.mount_then_navigate_attempt(location.clone(), strategy, attempt + 1);
                     } else {
                         state.restore_location_text();
                         state.location_stack.set_visible_child_name("breadcrumbs");
@@ -2225,7 +2227,7 @@ impl ViewState {
         location: Location,
         strategy: MountStrategy,
     ) {
-        self.mount_then_descend_attempt(parent_depth, location, strategy, false);
+        self.mount_then_descend_attempt(parent_depth, location, strategy, 0);
     }
 
     fn mount_then_descend_attempt(
@@ -2233,22 +2235,24 @@ impl ViewState {
         parent_depth: usize,
         location: Location,
         strategy: MountStrategy,
-        authentication_failed: bool,
+        attempt: u32,
     ) {
         self.mount_location(
             location.clone(),
             strategy,
-            authentication_failed,
+            attempt > 0,
             move |state, result| {
                 if mount_result_is_ok(&result) {
                     state.browser.descend(parent_depth, location.clone());
                 } else if let Err(error) = result {
-                    if mount_error_is_authentication_failure(&location, &error) {
+                    if should_retry_mount_after_failure(attempt)
+                        && mount_error_is_authentication_failure(&location, &error)
+                    {
                         state.mount_then_descend_attempt(
                             parent_depth,
                             location.clone(),
                             strategy,
-                            true,
+                            attempt + 1,
                         );
                     } else if let Some(message) = mount_failure_message(&location, &error) {
                         show_error_dialog(&state.overlay, "Unable to connect", &message);
@@ -5704,6 +5708,18 @@ fn mount_result_is_ok(result: &Result<(), glib::Error>) -> bool {
         Ok(()) => true,
         Err(error) => error.matches(gio::IOErrorEnum::AlreadyMounted),
     }
+}
+
+const MAX_AUTOMATIC_MOUNT_RETRIES: u32 = 3;
+
+/// Caps how many times a mount is retried automatically after what looks like
+/// an authentication failure. Without this, a backend that rejects every
+/// attempt before the credential prompt is ever answered (for example, a
+/// mount operation that resolves before the user interacts with it) retries
+/// forever, tearing down and rebuilding the dialog on every failure and
+/// making it impossible to type into.
+fn should_retry_mount_after_failure(attempt: u32) -> bool {
+    attempt < MAX_AUTOMATIC_MOUNT_RETRIES
 }
 
 fn mount_error_is_authentication_failure(location: &Location, error: &glib::Error) -> bool {

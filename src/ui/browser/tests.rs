@@ -88,6 +88,15 @@ fn a_genuine_mount_failure_still_reports_an_error() {
 }
 
 #[test]
+fn automatic_mount_retries_after_authentication_failure_are_bounded() {
+    for attempt in 0..MAX_AUTOMATIC_MOUNT_RETRIES {
+        assert!(should_retry_mount_after_failure(attempt));
+    }
+    assert!(!should_retry_mount_after_failure(MAX_AUTOMATIC_MOUNT_RETRIES));
+    assert!(!should_retry_mount_after_failure(MAX_AUTOMATIC_MOUNT_RETRIES + 1));
+}
+
+#[test]
 fn inline_rename_selects_the_stem_but_keeps_the_extension() {
     assert_eq!(rename_stem_end("report.txt"), 6);
     assert_eq!(rename_stem_end("archive.tar.gz"), 11);
