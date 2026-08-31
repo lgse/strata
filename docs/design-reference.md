@@ -4,7 +4,6 @@ The original web prototype is the visual and interaction reference for Strata:
 
 - Repository: <https://github.com/l0gicgate/omarchy-file-explorer-prototype>
 - Reference commit: `afb957925063adc1d9e2d71839ac06006c0675c9`
-- North Star image: [`assets/strata-north-star.png`](assets/strata-north-star.png)
 
 The prototype is a reference, not a native implementation specification. Native behavior, accessibility, performance, and desktop conventions take priority when a direct translation would compromise the product.
 

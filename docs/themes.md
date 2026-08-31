@@ -1,6 +1,6 @@
 # Themes
 
-Strata styles the interface with eight semantic color tokens. Bundled themes are the fallback on any Linux desktop; Azure Glow is the default.
+Strata styles the interface with nine semantic color tokens. Bundled themes are the fallback on any Linux desktop; Azure Glow is the default.
 
 ## Custom theme files
 
@@ -18,6 +18,7 @@ background = "#0c1a2b"
 surface = "#122438"
 text = "#c9deed"
 accent = "#4fd6ff"
+danger = "#ff6b7a"
 muted = "#1e3a52"
 highlight = "#244d68"
 border = "#315b75"

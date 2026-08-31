@@ -9,14 +9,12 @@
 [![License: GPL-3.0-or-later](https://img.shields.io/github/license/lgse/strata)](LICENSE)
 [![Linux](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)](#technical-specifications)
 
-<a href="docs/assets/strata-demo.mp4">
 <picture>
   <source media="(prefers-reduced-motion: no-preference)" srcset="docs/assets/strata-demo.gif">
-  <img src="docs/assets/strata-screenshot.png" alt="Strata navigating files in Miller columns, grid, and detailed Explorer views" width="1280">
+  <img src="docs/assets/strata-columns.png" alt="Strata showing Miller-column navigation, fuzzy search, general settings, and theme selection" width="1280">
 </picture>
-</a>
 
-<sub>The animation respects reduced-motion preferences. Open the image for the high-resolution MP4 or view the [static preview](docs/assets/strata-screenshot.png).</sub>
+<sub>The animation respects reduced-motion preferences. View the [static preview](docs/assets/strata-columns.png).</sub>
 
 </div>
 
@@ -32,6 +30,10 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
   - [Desktop entry](#desktop-entry)
   - [Make Strata the Omarchy file manager](#make-strata-the-omarchy-file-manager)
   - [Network shares](#network-shares)
+- [Theming](#theming)
+  - [Follow Omarchy Quattro](#follow-omarchy-quattro)
+  - [Bundled themes](#bundled-themes)
+  - [Custom themes](#custom-themes)
 - [Under the hood](#under-the-hood)
 - [Technical specifications](#technical-specifications)
 - [Development and documentation](#development-and-documentation)
@@ -220,6 +222,28 @@ omarchy menu keybindings --print | grep -i "file manager"
 ### Network shares
 
 Press <kbd>Ctrl</kbd>+<kbd>L</kbd>, enter an address such as `smb://server/share`, and press <kbd>Enter</kbd>. Strata uses GIO/GVfs and prompts for credentials when required. Install your distribution's SMB GVfs backend (`gvfs-smb` on Arch) to enable SMB browsing.
+
+## Theming
+
+Open **Settings → Theme & appearance** from the gear menu or with <kbd>Ctrl</kbd>+<kbd>,</kbd>. Theme changes apply immediately across the interface.
+
+![Strata Theme and appearance settings showing Omarchy following, six bundled themes, and the Add a theme option](docs/assets/strata-themes.png)
+
+### Follow Omarchy Quattro
+
+On **Omarchy Quattro**, turn on **Follow Omarchy** under **Settings → Theme & appearance**. Strata maps the active Omarchy palette to its semantic colors, monitors the current theme, and updates live whenever Omarchy's theme changes.
+
+This integration supports Omarchy Quattro only. The switch is hidden when Strata cannot find a valid Quattro current-theme state; legacy Omarchy theme layouts are not supported.
+
+### Bundled themes
+
+Choose any included theme from **Settings → Theme & appearance**: Azure Glow, Tokyo Night, Catppuccin, Everforest, Rosé Pine, or Omarchy Light. Selecting a bundled theme turns off Omarchy following and keeps that theme active across restarts.
+
+### Custom themes
+
+Select **Add a theme**, enter a name, and choose the semantic colors for the background, surfaces, text, accent, danger, muted and highlighted elements, borders, and dimmed text. Strata previews edits live and saves completed themes under **Your themes**.
+
+Custom themes are stored as shareable TOML files in `~/.config/strata/themes/`. See [Themes](docs/themes.md) for the schema, file location, and Omarchy color mapping.
 
 ## Under the hood
 

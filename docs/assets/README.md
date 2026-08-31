@@ -1,15 +1,18 @@
-# README demo assets
+# README product assets
 
-The README showcase has three layers:
+The README showcase is built from four high-resolution product screenshots:
 
-- `strata-screenshot.png`, `strata-grid.png`, and `strata-explorer.png` are the high-resolution source captures for the three browser modes.
-- `strata-demo.mp4` is the 1920×1056, 30 fps source demo assembled from those captures. Linking the showcase image opens this high-resolution version.
-- `strata-demo.gif` is the 1280×704, 10 fps, 128-color derivative displayed by GitHub when reduced motion is not requested. The columns capture is the static and reduced-motion fallback.
+- `strata-columns.png` — Miller-column navigation;
+- `strata-search.png` — recursive fuzzy search with thumbnail results;
+- `strata-settings.png` — general preferences; and
+- `strata-themes.png` — Omarchy following, bundled themes, and custom themes.
 
-Run the deterministic generator from the repository root after replacing any source capture:
+`strata-demo.gif` is the 1280×696, 10 fps, 128-color animation displayed by GitHub when reduced motion is not requested. The columns screenshot is its static and reduced-motion fallback.
+
+Run the deterministic generator from the repository root after replacing a source screenshot:
 
 ```bash
 ./scripts/generate-readme-demo.sh
 ```
 
-The script requires FFmpeg with the `libx264` encoder and rebuilds both outputs. Keep the GIF small enough for GitHub loading, inspect text at the rendered README width, and confirm that its final transition loops cleanly into the first frame before committing regenerated assets.
+The script requires FFmpeg. Keep the GIF small enough for GitHub loading, inspect text at the rendered README width, and confirm that its final transition loops cleanly into the first frame before committing regenerated assets.
