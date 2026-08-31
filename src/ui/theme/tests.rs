@@ -1,10 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::{
-    Preferences, blend, is_omarchy_theme_event, slugify, sort_preferences, title_case_slug,
-    tokens_from_quattro,
+    Preferences, blend, builtins, is_omarchy_theme_event, slugify, sort_preferences,
+    title_case_slug, tokens_from_quattro,
 };
 use crate::model::{SortDirection, SortKey, ViewPreferences};
+
+#[test]
+fn packaged_themes_include_0x96f() {
+    let themes = builtins();
+    let theme = themes
+        .iter()
+        .find(|theme| theme.id == "0x96f")
+        .expect("0x96f should be available as a packaged theme");
+
+    assert_eq!(theme.tokens.name, "0x96f");
+    assert!(!theme.custom);
+}
 
 #[test]
 fn names_become_safe_config_file_slugs() {

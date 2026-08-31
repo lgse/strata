@@ -20,11 +20,12 @@ thread_local! {
     static SOURCE_BUFFERS: RefCell<Vec<glib::WeakRef<sourceview5::Buffer>>> = const { RefCell::new(Vec::new()) };
 }
 
-const BUILTIN_THEMES: [(&str, &str); 6] = [
+const BUILTIN_THEMES: [(&str, &str); 7] = [
     (
         "azure-glow",
         include_str!("../../data/themes/azure-glow.toml"),
     ),
+    ("0x96f", include_str!("../../data/themes/0x96f.toml")),
     (
         "tokyo-night",
         include_str!("../../data/themes/tokyo-night.toml"),
