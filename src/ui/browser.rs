@@ -2732,8 +2732,7 @@ impl ViewState {
             let label = gtk::Label::builder()
                 .halign(gtk::Align::Fill)
                 .xalign(0.0)
-                .hexpand(false)
-                .max_width_chars(24)
+                .hexpand(true)
                 .ellipsize(gtk::pango::EllipsizeMode::End)
                 .build();
             let rename = gtk::Entry::new();
@@ -2751,7 +2750,6 @@ impl ViewState {
             });
             let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
             spacer.add_css_class("file-row-spacer");
-            spacer.set_hexpand(true);
             let size = gtk::Label::new(None);
             size.add_css_class("file-size");
             size.set_xalign(1.0);
