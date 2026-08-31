@@ -127,20 +127,14 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     content.set_vexpand(true);
     let sidebar = build_sidebar(browser.clone());
     let weak_sidebar = Rc::downgrade(&sidebar.state);
-    let pinning_sidebar = weak_sidebar.clone();
+    let pinned_places = sidebar.state.pinned_places.clone();
     browser.set_pin_handlers(
         Rc::new(move |location, name| {
-            if let Some(sidebar) = pinning_sidebar.upgrade() {
+            if let Some(sidebar) = weak_sidebar.upgrade() {
                 sidebar.pin_location(location, name);
             }
         }),
-        Rc::new(move |location| {
-            weak_sidebar
-                .upgrade()
-                .map_or(PinStatus::Unavailable, |sidebar| {
-                    sidebar.pin_status(location)
-                })
-        }),
+        Rc::new(move |location| pin_status(&pinned_places.borrow(), location)),
     );
     sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
     content.set_start_child(Some(&sidebar.widget));
@@ -766,7 +760,7 @@ struct SidebarState {
     browser: Rc<Browser>,
     volume_monitor: gio::VolumeMonitor,
     place_order: RefCell<Vec<&'static str>>,
-    pinned_places: RefCell<Vec<(Location, String)>>,
+    pinned_places: Rc<RefCell<Vec<(Location, String)>>>,
     place_rows: RefCell<Vec<(Location, gtk::Button)>>,
 }
 
@@ -860,23 +854,8 @@ impl SidebarState {
         self.sync_active_place();
     }
 
-    fn pin_status(&self, location: &Location) -> PinStatus {
-        if is_standard_place_location(location) {
-            PinStatus::Unavailable
-        } else if self
-            .pinned_places
-            .borrow()
-            .iter()
-            .any(|(pinned, _)| pinned == location)
-        {
-            PinStatus::Pinned
-        } else {
-            PinStatus::Available
-        }
-    }
-
     fn pin_location(self: &Rc<Self>, location: Location, name: String) {
-        if self.pin_status(&location) != PinStatus::Available {
+        if pin_status(&self.pinned_places.borrow(), &location) != PinStatus::Available {
             return;
         }
         self.pinned_places.borrow_mut().push((location, name));
@@ -1280,6 +1259,16 @@ fn reorder_places(order: &mut Vec<&'static str>, source: &str, target: &str, aft
     true
 }
 
+fn pin_status(places: &[(Location, String)], location: &Location) -> PinStatus {
+    if is_standard_place_location(location) {
+        PinStatus::Unavailable
+    } else if places.iter().any(|(pinned, _)| pinned == location) {
+        PinStatus::Pinned
+    } else {
+        PinStatus::Available
+    }
+}
+
 fn remove_pinned_place(places: &mut Vec<(Location, String)>, location: &Location) -> bool {
     let original_len = places.len();
     places.retain(|(pinned, _)| pinned != location);
@@ -1442,7 +1431,7 @@ fn build_sidebar(view: BrowserView) -> SidebarView {
             "pictures",
             "videos",
         ]),
-        pinned_places: RefCell::new(load_pinned_places()),
+        pinned_places: Rc::new(RefCell::new(load_pinned_places())),
         place_rows: RefCell::new(Vec::new()),
     });
 

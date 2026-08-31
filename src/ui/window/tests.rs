@@ -3,8 +3,8 @@
 use std::path::Path;
 
 use super::{
-    is_smb_location, is_standard_place_location, parse_pinned_places, remove_pinned_place,
-    reorder_places, should_show_standard_place,
+    PinStatus, is_smb_location, is_standard_place_location, parse_pinned_places, pin_status,
+    remove_pinned_place, reorder_places, should_show_standard_place,
 };
 
 #[test]
@@ -57,6 +57,28 @@ fn gtk_bookmarks_become_native_and_remote_pinned_places() {
     );
     assert_eq!(places[1].1, "Remote");
     assert_eq!(places.len(), 2);
+}
+
+#[test]
+fn pin_status_distinguishes_available_pinned_and_standard_locations() {
+    let pinned = crate::model::Location::uri("smb://server/share/folder");
+    let places = vec![(pinned.clone(), "Folder".to_owned())];
+
+    assert_eq!(pin_status(&places, &pinned), PinStatus::Pinned);
+    assert_eq!(
+        pin_status(
+            &places,
+            &crate::model::Location::uri("smb://server/share/other")
+        ),
+        PinStatus::Available
+    );
+    assert_eq!(
+        pin_status(
+            &places,
+            &crate::model::Location::local(super::home_directory())
+        ),
+        PinStatus::Unavailable
+    );
 }
 
 #[test]
