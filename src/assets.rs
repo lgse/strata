@@ -38,6 +38,7 @@ pub mod icons {
     pub const HOME: &str = "strata-house";
     pub const LIST: &str = "strata-list";
     pub const LIST_ACTIVE: &str = "strata-list-active";
+    pub const KEY: &str = "strata-key";
     pub const KEYBOARD: &str = "strata-keyboard";
     pub const MONITOR: &str = "strata-monitor";
     pub const NETWORK: &str = "strata-network";
@@ -55,6 +56,7 @@ pub mod icons {
     pub const SLIDERS: &str = "strata-sliders-horizontal";
     pub const TERMINAL: &str = "strata-terminal";
     pub const TRASH: &str = "strata-trash";
+    pub const UNPLUG: &str = "strata-unplug";
     pub const VIDEOS: &str = "strata-video";
     pub const X: &str = "strata-x";
 }

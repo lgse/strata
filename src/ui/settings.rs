@@ -623,6 +623,7 @@ pub(super) fn show_update_dialog(parent: &gtk::Window, version: &str, download_u
     symbol.set_valign(gtk::Align::Center);
     symbol.set_center_widget(Some(&crate::assets::primary_icon(icons::DOWNLOADS, 20)));
     let heading = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    heading.set_valign(gtk::Align::Center);
     let title = gtk::Label::new(Some(&format!("Installing Strata v{version}")));
     title.add_css_class("update-dialog-title");
     title.set_xalign(0.0);

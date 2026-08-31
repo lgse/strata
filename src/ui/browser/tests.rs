@@ -20,6 +20,49 @@ fn an_empty_name_is_not_flagged_as_an_error() {
 }
 
 #[test]
+fn dialog_copy_wraps_at_word_boundaries() {
+    let wrapped = wrap_dialog_text(
+        "Those credentials were not accepted. Check the username and password.",
+        32,
+    );
+    assert_eq!(
+        wrapped,
+        "Those credentials were not\naccepted. Check the username and\npassword."
+    );
+    assert!(wrapped.lines().all(|line| line.chars().count() <= 32));
+}
+
+#[test]
+fn password_storage_selection_maps_to_gio_values() {
+    assert_eq!(password_save_for_selection(0), gio::PasswordSave::Never);
+    assert_eq!(
+        password_save_for_selection(1),
+        gio::PasswordSave::ForSession
+    );
+    assert_eq!(
+        password_save_for_selection(2),
+        gio::PasswordSave::Permanently
+    );
+    assert_eq!(password_save_for_selection(99), gio::PasswordSave::Never);
+}
+
+#[test]
+fn remote_permission_denials_are_treated_as_authentication_failures() {
+    let denied = glib::Error::new(gio::IOErrorEnum::PermissionDenied, "Permission denied");
+    let smb_denied = glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Failed to mount Windows share: Permission denied",
+    );
+    let remote = Location::uri("smb://host/share");
+    assert!(mount_error_is_authentication_failure(&remote, &denied));
+    assert!(mount_error_is_authentication_failure(&remote, &smb_denied,));
+    assert!(!mount_error_is_authentication_failure(
+        &Location::local("/root"),
+        &denied,
+    ));
+}
+
+#[test]
 fn cancelling_the_credential_prompt_produces_no_error_message() {
     let location = Location::uri("smb://host/share");
     for kind in [gio::IOErrorEnum::Cancelled, gio::IOErrorEnum::FailedHandled] {

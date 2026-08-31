@@ -18,7 +18,7 @@ use crate::{
 
 use super::{
     blur::BlurBin,
-    browser::{BrowserView, PeekBehavior},
+    browser::{BrowserView, PeekBehavior, show_error_dialog},
     browser_modes::{BrowserDensity, BrowserMode},
     motion::{animations_enabled, emphasized_deceleration},
     preview::PreviewDrawer,
@@ -824,7 +824,11 @@ impl SidebarState {
             .mounts()
             .into_iter()
             .filter(|mount| !mount.is_shadowed() && mount.volume().is_none())
-            .map(|mount| (mount.name().to_string(), location_for_file(&mount.root())))
+            .map(|mount| {
+                let name = mount.name().to_string();
+                let location = location_for_file(&mount.root());
+                (name, location, mount)
+            })
             .collect();
         if !volumes.is_empty() || !mounts.is_empty() {
             self.append_separator();
@@ -832,8 +836,12 @@ impl SidebarState {
             for volume in volumes {
                 self.append_volume(volume);
             }
-            for (name, location) in mounts {
-                self.append_place(crate::assets::icons::HARD_DRIVE, &name, location);
+            for (name, location, mount) in mounts {
+                if is_smb_location(&location) {
+                    self.append_smb_mount(&name, location, mount);
+                } else {
+                    self.append_place(crate::assets::icons::HARD_DRIVE, &name, location);
+                }
             }
         }
         self.sync_active_place();
@@ -1080,6 +1088,74 @@ impl SidebarState {
         self.widget.append(&row);
     }
 
+    fn append_smb_mount(self: &Rc<Self>, name: &str, location: Location, mount: gio::Mount) {
+        let properties_location = location.clone();
+        let row = self.append_place(crate::assets::icons::NETWORK, name, location);
+        let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        menu.add_css_class("folder-context-menu");
+        let properties = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
+        let disconnect = sidebar_context_option(crate::assets::icons::UNPLUG, "Disconnect", true);
+        disconnect.add_css_class("danger");
+        menu.append(&properties);
+        menu.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        menu.append(&disconnect);
+        let popover = gtk::Popover::builder()
+            .child(&menu)
+            .autohide(true)
+            .has_arrow(false)
+            .build();
+        popover.add_css_class("folder-context-popover");
+        popover.set_parent(&row);
+
+        let properties_popover = popover.downgrade();
+        let properties_view = self.view.clone();
+        properties.connect_clicked(move |_| {
+            if let Some(popover) = properties_popover.upgrade() {
+                popover.popdown();
+            }
+            properties_view.show_location_properties(&properties_location);
+        });
+
+        let disconnect_popover = popover.downgrade();
+        let parent = self.view.widget();
+        disconnect.connect_clicked(move |_| {
+            if let Some(popover) = disconnect_popover.upgrade() {
+                popover.popdown();
+            }
+            let window = parent.root().and_downcast::<gtk::Window>();
+            let operation = gtk::MountOperation::new(window.as_ref());
+            let mount = mount.clone();
+            let error_parent = parent.clone();
+            glib::MainContext::default().spawn_local(async move {
+                if let Err(error) = mount
+                    .unmount_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                    .await
+                    && !error.matches(gio::IOErrorEnum::Cancelled)
+                {
+                    show_error_dialog(&error_parent, "Unable to disconnect", &error.to_string());
+                }
+            });
+        });
+
+        let context = gtk::GestureClick::new();
+        context.set_button(3);
+        let weak_popover = popover.downgrade();
+        context.connect_pressed(move |gesture, _, x, y| {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+            let Some(popover) = weak_popover.upgrade() else {
+                return;
+            };
+            popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
+                x.round() as i32,
+                y.round() as i32,
+                1,
+                1,
+            )));
+            popover.popup();
+        });
+        row.add_controller(context);
+    }
+
     fn append_pinned_place(self: &Rc<Self>, name: &str, location: Location) {
         let row = self.append_place(crate::assets::icons::FOLDER, name, location.clone());
         let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -1186,6 +1262,13 @@ fn remove_pinned_place(places: &mut Vec<(Location, String)>, location: &Location
     let original_len = places.len();
     places.retain(|(pinned, _)| pinned != location);
     places.len() != original_len
+}
+
+fn is_smb_location(location: &Location) -> bool {
+    location.uri_value().is_some_and(|uri| {
+        uri.get(..4)
+            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("smb:"))
+    })
 }
 
 fn is_standard_place_location(location: &Location) -> bool {
