@@ -2072,7 +2072,13 @@ impl ViewState {
         let Some(icon) = row.first_child() else {
             return false;
         };
-        let Some(label) = icon.next_sibling().and_downcast::<gtk::Label>() else {
+        let Some(middle) = icon.next_sibling().and_downcast::<gtk::Overlay>() else {
+            return false;
+        };
+        let Some(editor) = middle.child().and_downcast::<gtk::Box>() else {
+            return false;
+        };
+        let Some(label) = editor.first_child().and_downcast::<gtk::Label>() else {
             return false;
         };
         let Some(field) = label.next_sibling().and_downcast::<gtk::Entry>() else {
@@ -2750,16 +2756,23 @@ impl ViewState {
             });
             let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
             spacer.add_css_class("file-row-spacer");
+            let editor = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+            editor.append(&label);
+            editor.append(&rename);
+            editor.append(&spacer);
             let size = gtk::Label::new(None);
             size.add_css_class("file-size");
+            size.set_halign(gtk::Align::End);
+            size.set_valign(gtk::Align::Center);
             size.set_xalign(1.0);
+            let middle = gtk::Overlay::new();
+            middle.set_hexpand(true);
+            middle.set_child(Some(&editor));
+            middle.add_overlay(&size);
             let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 15);
             chevron.add_css_class("file-chevron");
             row.append(&icon);
-            row.append(&label);
-            row.append(&rename);
-            row.append(&spacer);
-            row.append(&size);
+            row.append(&middle);
             row.append(&chevron);
             let motion = gtk::EventControllerMotion::new();
             let list_item = item.clone();
@@ -2969,7 +2982,13 @@ impl ViewState {
             let Some(icon) = row.first_child().and_downcast::<gtk::Image>() else {
                 return;
             };
-            let Some(label) = icon.next_sibling().and_downcast::<gtk::Label>() else {
+            let Some(middle) = icon.next_sibling().and_downcast::<gtk::Overlay>() else {
+                return;
+            };
+            let Some(editor) = middle.child().and_downcast::<gtk::Box>() else {
+                return;
+            };
+            let Some(label) = editor.first_child().and_downcast::<gtk::Label>() else {
                 return;
             };
             let Some(rename) = label.next_sibling().and_downcast::<gtk::Entry>() else {
@@ -2978,10 +2997,10 @@ impl ViewState {
             let Some(spacer) = rename.next_sibling().and_downcast::<gtk::Box>() else {
                 return;
             };
-            let Some(size) = spacer.next_sibling().and_downcast::<gtk::Label>() else {
+            let Some(size) = middle.last_child().and_downcast::<gtk::Label>() else {
                 return;
             };
-            let Some(chevron) = size.next_sibling().and_downcast::<gtk::Image>() else {
+            let Some(chevron) = middle.next_sibling().and_downcast::<gtk::Image>() else {
                 return;
             };
             label.set_label(model_display_name(&value.string()));
