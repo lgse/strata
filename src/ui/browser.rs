@@ -4925,17 +4925,6 @@ fn set_cut_path_style(row: &gtk::Box, cut: bool) {
     }
 }
 
-/// Validates a name field live as it changes, including the programmatic
-/// clears that happen when a prompt opens, cancels, or succeeds. An empty
-/// field is left unstyled rather than flagged red: it's the normal starting
-/// state, not a mistake the user made, even though it still can't be
-/// submitted (the `false` return still blocks that).
-/// Whether a name currently typed into a field should be visually flagged as
-/// an error. An empty name is left unstyled: it's the normal starting state
-/// (opening, cancelling, or succeeding a prompt all clear the field) rather
-/// than a mistake the user made, even though it still can't be submitted.
-/// Kept separate from `update_basename_validation` so it can be unit tested
-/// without constructing a real GTK widget.
 fn basename_field_error(name: &str) -> Option<&'static str> {
     if name.is_empty() {
         None
