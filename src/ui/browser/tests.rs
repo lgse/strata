@@ -682,3 +682,111 @@ fn trash_summary_treats_a_directory_removed_before_measurement_as_truncated_not_
         "measuring an entry that vanished before recursion should be reported as truncated"
     );
 }
+
+#[test]
+fn aborting_a_trash_measurement_stops_it_mid_flight() {
+    let _serial = ASYNC_FILE_TEST
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let root = unique_fixture_root("abort-mid-flight");
+    std::fs::create_dir_all(&root).expect("the trash fixture should be created");
+    // `next_files_future` batches 64 entries at a time, so 200 files force several suspension
+    // points, giving a real window to observe partial progress before the walk would finish.
+    let total_files = 200;
+    for index in 0..total_files {
+        std::fs::write(root.join(format!("file-{index}.txt")), b"content")
+            .expect("the trash fixture file should be written");
+    }
+
+    // Use a dedicated, private main context rather than `MainContext::default()`: `spawn_local`
+    // and manual `iteration()` polling (unlike `block_on`) require this thread to own the
+    // context, and acquiring the process-wide default one here would leave it in a state other
+    // tests' `block_on(default())` calls (from their own freshly spawned test threads) can't use.
+    let context = glib::MainContext::new();
+    let (progress_before_abort, progress_after_abort) = context
+        .with_thread_default(|| {
+            let info = context
+                .block_on(gio::File::for_path(&root).query_info_future(
+                    TRASH_ATTRIBUTES,
+                    gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                    glib::Priority::DEFAULT,
+                ))
+                .expect("querying the fixture directory's info should succeed");
+
+            let visited = Rc::new(Cell::new(0_usize));
+            let task = context.spawn_local(measure_trash_entry(
+                gio::File::for_path(&root),
+                info,
+                0,
+                visited.clone(),
+                Instant::now() + TRASH_TIME_BUDGET,
+                MAX_TRASH_ENTRIES,
+                MAX_TRASH_DEPTH,
+            ));
+
+            // Drive the loop only until the walk has made some real progress (at least one batch
+            // beyond the root directory itself), then abort immediately -- this is genuinely
+            // mid-flight since one batch (64) is far short of the full tree (1 + 200), regardless
+            // of exactly how many main-loop iterations it took to get there.
+            for _ in 0..1_000 {
+                if visited.get() > 1 {
+                    break;
+                }
+                context.iteration(true);
+            }
+            let progress_before_abort = visited.get();
+
+            task.abort();
+            for _ in 0..20 {
+                context.iteration(false);
+            }
+
+            (progress_before_abort, visited.get())
+        })
+        .expect("a freshly created main context should be acquirable as thread-default");
+    std::fs::remove_dir_all(&root).expect("the trash fixture should be removed");
+
+    assert!(
+        progress_before_abort > 1 && progress_before_abort < 1 + total_files,
+        "the walk should have made partial, not complete, progress before it is aborted"
+    );
+    assert_eq!(
+        progress_after_abort, progress_before_abort,
+        "aborting mid-flight should stop the walk from making any further progress"
+    );
+}
+
+#[test]
+fn trash_summary_bounds_a_flat_run_of_top_level_files_with_no_directories_to_recurse_into() {
+    let _serial = ASYNC_FILE_TEST
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let root = unique_fixture_root("flat-entry-budget");
+    std::fs::create_dir_all(&root).expect("the trash fixture should be created");
+    for index in 0..10 {
+        std::fs::write(root.join(format!("file-{index}.txt")), b"content")
+            .expect("the trash fixture file should be written");
+    }
+
+    // The budget only ever gated recursion into a directory; a trash root holding nothing but
+    // top-level files (nothing to recurse into) used to sail straight past the entry budget.
+    let summary = glib::MainContext::default().block_on(summarize_trash_with_budget(
+        &gio::File::for_path(&root),
+        3,
+        MAX_TRASH_DEPTH,
+        TRASH_TIME_BUDGET,
+    ));
+    std::fs::remove_dir_all(&root).expect("the trash fixture should be removed");
+
+    let summary = summary.expect("a plain directory tree should measure without error");
+    assert!(
+        summary.truncated,
+        "exceeding the entry budget on flat top-level files should be reported"
+    );
+    assert_eq!(
+        summary.entries.len(),
+        3,
+        "top-level enumeration itself should stop once the entry budget is reached, \
+         not just recursion into directories"
+    );
+}

@@ -95,6 +95,12 @@ struct DeleteProgressView {
     status: gtk::Label,
 }
 
+struct TrashLoadingView {
+    layer: gtk::Box,
+    overlay: gtk::Overlay,
+    blurred_root: Option<BlurBin>,
+}
+
 struct PeekView {
     revealer: gtk::Revealer,
     location: Location,
@@ -278,6 +284,7 @@ pub(super) struct ViewState {
     pending_extract_retry: RefCell<Option<(FileEntry, Location)>>,
     pending_navigate: RefCell<Option<Location>>,
     pending_trash_summary: RefCell<Option<LoadHandle>>,
+    trash_loading: RefCell<Option<TrashLoadingView>>,
     browser: Rc<Browser>,
 }
 
@@ -421,6 +428,7 @@ impl BrowserView {
             pending_extract_retry: RefCell::new(None),
             pending_navigate: RefCell::new(None),
             pending_trash_summary: RefCell::new(None),
+            trash_loading: RefCell::new(None),
             browser,
         });
 
@@ -1656,6 +1664,110 @@ impl ViewState {
     }
 
     fn load_trash_summary(self: &Rc<Self>) {
+        self.show_trash_loading_indicator();
+        let weak = Rc::downgrade(self);
+        let task = glib::MainContext::default().spawn_local(async move {
+            let trash = gio::File::for_uri("trash:///");
+            match summarize_trash(&trash).await {
+                Ok(summary) if !summary.entries.is_empty() => {
+                    if let Some(state) = weak.upgrade() {
+                        state.clear_trash_loading();
+                        state.show_empty_trash_confirmation(summary);
+                    }
+                }
+                Ok(_) => {
+                    if let Some(state) = weak.upgrade() {
+                        state.clear_trash_loading();
+                    }
+                }
+                Err(error) => {
+                    if let Some(state) = weak.upgrade() {
+                        state.clear_trash_loading();
+                        show_error_dialog(
+                            &state.overlay,
+                            "Unable to read Trash",
+                            &error.to_string(),
+                        );
+                    }
+                }
+            }
+        });
+        self.pending_trash_summary
+            .replace(Some(LoadHandle::new(move || task.abort())));
+    }
+
+    /// Shows a cancellable "Measuring Trash…" indicator while `load_trash_summary`'s background
+    /// walk runs, since that walk is bounded but can still take a few seconds on a large trash.
+    fn show_trash_loading_indicator(self: &Rc<Self>) {
+        self.dismiss_trash_loading();
+        let Some(window_overlay) = self
+            .overlay
+            .root()
+            .and_downcast::<gtk::Window>()
+            .and_then(|window| window.child())
+            .and_downcast::<gtk::Overlay>()
+        else {
+            return;
+        };
+        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
+        if let Some(root) = blurred_root.as_ref() {
+            root.set_blurred(true);
+        }
+
+        let layout = modal_layout(crate::assets::icons::TRASH, "Measuring Trash…", "", "Empty Trash");
+        layout.set_loading(true, Some("Measuring Trash…"));
+        layout.confirm.set_visible(false);
+        let content = layout.content;
+        let cancel = layout.cancel;
+
+        let layer = modal_layer(&content);
+        window_overlay.add_overlay(&layer);
+        self.trash_loading.replace(Some(TrashLoadingView {
+            layer,
+            overlay: window_overlay,
+            blurred_root,
+        }));
+
+        let weak = Rc::downgrade(self);
+        cancel.connect_clicked(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.clear_trash_loading();
+            }
+        });
+        let escape = gtk::EventControllerKey::new();
+        let weak_escape = Rc::downgrade(self);
+        escape.connect_key_pressed(move |_, key, _, _| {
+            if key == gtk::gdk::Key::Escape {
+                if let Some(state) = weak_escape.upgrade() {
+                    state.clear_trash_loading();
+                }
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        if let Some(view) = self.trash_loading.borrow().as_ref() {
+            view.layer.add_controller(escape);
+        }
+        cancel.grab_focus();
+    }
+
+    fn dismiss_trash_loading(&self) {
+        let Some(view) = self.trash_loading.take() else {
+            return;
+        };
+        dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
+    }
+
+    /// Aborts any in-flight trash measurement and dismisses its loading indicator. Safe to call
+    /// more than once: both the manual cancel path and the async task's own completion call this,
+    /// and whichever runs first leaves the other a no-op.
+    fn clear_trash_loading(&self) {
+        self.pending_trash_summary.borrow_mut().take();
+        self.dismiss_trash_loading();
+    }
+
+    fn show_empty_trash_confirmation(self: &Rc<Self>, summary: TrashSummary) {
         let Some(window_overlay) = self
             .overlay
             .root()
@@ -1673,23 +1785,25 @@ impl ViewState {
         let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
             "Empty Trash?",
-            "Calculating items and size…",
+            &format!(
+                "{}{} · {}{} will be reclaimed",
+                if summary.truncated { "At least " } else { "" },
+                item_count_label(summary.item_count),
+                if summary.truncated { "at least " } else { "" },
+                format_file_size(summary.total_size)
+            ),
             "Empty Trash",
             ModalTone::Danger,
         );
         let explanation = message_dialog_description(
             "Everything in Trash will be permanently deleted. This action cannot be undone.",
         );
-        layout.set_loading(true, Some("Calculating Trash contents…"));
         layout.body.append(&explanation);
-        layout.confirm.set_sensitive(false);
-        let subtitle = layout.subtitle.clone();
-        let loading = layout.loading.clone();
         let content = layout.content;
         let close = layout.close;
         let cancel = layout.cancel;
         let empty = layout.confirm;
-        let entries = Rc::new(RefCell::new(None::<Vec<FileEntry>>));
+        let entries = Rc::new(summary.entries);
 
         let layer = modal_layer(&content);
         window_overlay.add_overlay(&layer);
@@ -1715,12 +1829,9 @@ impl ViewState {
         let empty_entries = entries.clone();
         let browser = self.browser.clone();
         empty.connect_clicked(move |_| {
-            let Some(entries) = empty_entries.borrow().clone() else {
-                return;
-            };
             dismiss_modal_layer(&empty_layer, &empty_overlay, empty_root.as_ref());
-            if !entries.is_empty() {
-                browser.delete(entries, true);
+            if !empty_entries.is_empty() {
+                browser.delete((*empty_entries).clone(), true);
             }
             browser.focus_active();
         });
@@ -1753,50 +1864,6 @@ impl ViewState {
                 window.set_focus_visible(true);
             }
         });
-
-        let result_layer = layer.clone();
-        let result_overlay = window_overlay;
-        let result_root = blurred_root;
-        let result_parent = self.overlay.clone();
-        let weak = Rc::downgrade(self);
-        let task = glib::MainContext::default().spawn_local(async move {
-            let result = summarize_trash(&gio::File::for_uri("trash:///")).await;
-            if let Some(state) = weak.upgrade() {
-                state.pending_trash_summary.borrow_mut().take();
-            }
-            if result_layer.parent().is_none() {
-                return;
-            }
-            loading.stop();
-            loading.set_visible(false);
-            match result {
-                Ok(summary) if summary.entries.is_empty() => {
-                    subtitle.set_text("Trash is empty");
-                    explanation.set_text("There is nothing to delete.");
-                    empty.set_label("Close");
-                    empty.remove_css_class("danger");
-                    entries.replace(Some(Vec::new()));
-                    empty.set_sensitive(true);
-                }
-                Ok(summary) => {
-                    subtitle.set_text(&format!(
-                        "{}{} · {}{} will be reclaimed",
-                        if summary.truncated { "At least " } else { "" },
-                        item_count_label(summary.item_count),
-                        if summary.truncated { "at least " } else { "" },
-                        format_file_size(summary.total_size)
-                    ));
-                    entries.replace(Some(summary.entries));
-                    empty.set_sensitive(true);
-                }
-                Err(error) => {
-                    dismiss_modal_layer(&result_layer, &result_overlay, result_root.as_ref());
-                    show_error_dialog(&result_parent, "Unable to read Trash", &error.to_string());
-                }
-            }
-        });
-        self.pending_trash_summary
-            .replace(Some(LoadHandle::new(move || task.abort())));
     }
 
     fn show_delete_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
@@ -5082,7 +5149,10 @@ struct TrashSummary {
 const TRASH_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-symlink,standard::size,time::modified";
 
 /// Caps how many entries a single measurement will visit, bounding worst-case time and I/O on
-/// an adversarially large or unbounded trash tree.
+/// an adversarially large or unbounded trash tree. Only top-level entries are retained (as
+/// `FileEntry`, roughly 150-300 bytes each including heap data); descendants are counted and
+/// discarded without being stored. In the worst case (a flat trash with no subdirectories, so
+/// every visited entry is top-level) this bounds `TrashSummary::entries` to roughly 30-60 MB.
 const MAX_TRASH_ENTRIES: usize = 200_000;
 /// Caps how deep measurement descends, as a defensive backstop against pathologically deep trees.
 const MAX_TRASH_DEPTH: usize = 64;
@@ -5113,7 +5183,7 @@ async fn summarize_trash_with_budget(
     let mut truncated = false;
     let visited = Rc::new(Cell::new(0_usize));
     let deadline = Instant::now() + time_budget;
-    loop {
+    'top_level: loop {
         let children = enumerator
             .next_files_future(64, glib::Priority::DEFAULT)
             .await?;
@@ -5121,6 +5191,13 @@ async fn summarize_trash_with_budget(
             break;
         }
         for info in children {
+            // Checked here, not just when a directory decides whether to recurse: without this,
+            // a trash root holding an enormous number of top-level *files* (no directories to
+            // recurse into) would never trip the budget at all.
+            if visited.get() >= max_entries || Instant::now() >= deadline {
+                truncated = true;
+                break 'top_level;
+            }
             let file = root.child(info.name());
             let (count, size, entry_truncated) = measure_trash_entry(
                 file.clone(),
@@ -5220,7 +5297,7 @@ async fn enumerate_trash_directory(
     let mut count = 0_usize;
     let mut size = 0_u64;
     let mut truncated = false;
-    loop {
+    'this_directory: loop {
         let children = enumerator
             .next_files_future(64, glib::Priority::DEFAULT)
             .await?;
@@ -5228,6 +5305,13 @@ async fn enumerate_trash_directory(
             break;
         }
         for child in children {
+            // Checked here, not just when a child directory decides whether to recurse: without
+            // this, a directory holding an enormous number of *files* (no further directories to
+            // recurse into) would never trip the budget at all.
+            if visited.get() >= max_entries || Instant::now() >= deadline {
+                truncated = true;
+                break 'this_directory;
+            }
             let (child_count, child_size, child_truncated) = measure_trash_entry(
                 file.child(child.name()),
                 child,

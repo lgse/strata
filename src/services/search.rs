@@ -15,6 +15,9 @@ const PUBLISH_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Caps how many entries a single index will retain, bounding worst-case memory use on
 /// adversarially large or unbounded trees (for example a runaway bind mount or `/proc`).
+/// Each `SearchItem` stores a `PathBuf` plus three `String`s (name, lowercased name, lowercased
+/// relative path), roughly 300-700 bytes per entry including heap data for typical to very long
+/// paths, so this cap bounds worst-case index memory to roughly 60-140 MB.
 const MAX_INDEX_ENTRIES: usize = 200_000;
 /// Caps how deep the walk descends, as a defensive backstop against pathologically deep trees.
 const MAX_INDEX_DEPTH: usize = 64;
