@@ -1226,7 +1226,7 @@ impl SidebarState {
         row.connect_clicked(move |_| {
             select_sidebar_row(&sidebar, &selected_row);
             if let Some(browser) = weak_browser.upgrade() {
-                browser.navigate(location.clone());
+                browser.navigate_location(location.clone());
             }
         });
         self.widget.append(&row);

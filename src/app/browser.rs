@@ -270,6 +270,16 @@ impl Browser {
         }
     }
 
+    /// Navigates directly for native paths and validates URI locations first so mountable
+    /// locations can be mounted by the UI before loading them.
+    pub(crate) fn navigate_location(self: &Rc<Self>, location: Location) {
+        if location.native_path().is_some() {
+            self.navigate(location);
+        } else {
+            self.navigate_validated(location);
+        }
+    }
+
     pub fn navigate(self: &Rc<Self>, location: Location) {
         self.validation_generation
             .set(self.validation_generation.get().saturating_add(1));

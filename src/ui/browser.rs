@@ -1924,8 +1924,8 @@ impl ViewState {
         let rename = properties_action(crate::assets::icons::PENCIL, "Rename");
         rename.set_sensitive(entry.is_some());
         let pin = properties_action(crate::assets::icons::PIN, "Pin");
-        pin.set_sensitive(false);
-        pin.set_tooltip_text(Some("Pinned locations are planned"));
+        let pin_handler = self.pin_handler.borrow().clone();
+        pin.set_sensitive(is_directory && !is_trash_location(&location) && pin_handler.is_some());
         let copy_path = properties_action(crate::assets::icons::COPY, "Copy path");
         actions.append(&open);
         actions.append(&rename);
@@ -1961,6 +1961,17 @@ impl ViewState {
                     state.begin_rename();
                 }
             });
+        });
+        let pinning_layer = layer.clone();
+        let pinning_overlay = window_overlay.clone();
+        let pinning_root = blurred_root.clone();
+        let pinning_location = location.clone();
+        let pinning_name = name.clone();
+        pin.connect_clicked(move |_| {
+            if let Some(handler) = pin_handler.as_ref() {
+                handler(pinning_location.clone(), pinning_name.clone());
+            }
+            dismiss_modal_layer(&pinning_layer, &pinning_overlay, pinning_root.as_ref());
         });
         let copied_location = location.clone();
         copy_path.connect_clicked(move |button| {
