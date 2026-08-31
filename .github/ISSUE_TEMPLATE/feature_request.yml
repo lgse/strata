@@ -1,0 +1,50 @@
+name: Feature request
+description: Suggest an improvement or new capability for Strata
+title: ""
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for suggesting an improvement. Please search existing issues before submitting a new request.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or use case
+      description: What are you trying to accomplish, and why is it important?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Briefly describe how you would like Strata to address the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Describe any workarounds or alternative designs you considered.
+
+  - type: textarea
+    id: visual-context
+    attributes:
+      label: Visual examples
+      description: Drag in mockups, screenshots, or short videos if they help explain the request.
+
+  - type: input
+    id: version
+    attributes:
+      label: Strata version
+      description: Optional. Find this under Settings → Updates, or provide the commit SHA for a source build.
+      placeholder: e.g. 0.5.0 or commit abc1234
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Add any other details or links that may help evaluate the request.

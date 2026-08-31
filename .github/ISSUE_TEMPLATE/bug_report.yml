@@ -1,0 +1,105 @@
+name: Bug report
+description: Report broken or unexpected behavior in Strata
+title: ""
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Strata. Please search existing issues before submitting a new report.
+
+  - type: input
+    id: version
+    attributes:
+      label: Strata version
+      description: Find this under Settings → Updates, or provide the commit SHA for a source build.
+      placeholder: e.g. 0.5.0 or commit abc1234
+    validations:
+      required: true
+
+  - type: dropdown
+    id: installation
+    attributes:
+      label: Installation method
+      options:
+        - GitHub release archive
+        - AUR package
+        - Built from source
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: Linux distribution and desktop environment
+      placeholder: e.g. Arch Linux, Hyprland 0.49
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Briefly describe the problem and its impact.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide the smallest reliable sequence that triggers the problem.
+      placeholder: |
+        1. Open …
+        2. Select …
+        3. Observe …
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect Strata to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or video
+      description: Drag in screenshots or a short recording if they help demonstrate the problem.
+
+  - type: markdown
+    attributes:
+      value: |
+        ### Crash logs
+
+        If Strata crashed, look for its latest systemd-coredump report with:
+
+        ```shell
+        coredumpctl list strata
+        coredumpctl info strata
+        ```
+
+        Additional application messages may be available with:
+
+        ```shell
+        journalctl --user _COMM=strata --since "30 minutes ago"
+        ```
+
+        Paste relevant text below after removing private paths, filenames, hostnames, and secrets. **Do not upload a core dump**: it can contain passwords, tokens, and private document contents.
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste crash details, backtraces, or terminal output here. Leave this empty if no logs are available.
+      render: shell
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Include anything else that may help, such as whether the issue is intermittent or a recent regression.
