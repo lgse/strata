@@ -92,8 +92,12 @@ fn automatic_mount_retries_after_authentication_failure_are_bounded() {
     for attempt in 0..MAX_AUTOMATIC_MOUNT_RETRIES {
         assert!(should_retry_mount_after_failure(attempt));
     }
-    assert!(!should_retry_mount_after_failure(MAX_AUTOMATIC_MOUNT_RETRIES));
-    assert!(!should_retry_mount_after_failure(MAX_AUTOMATIC_MOUNT_RETRIES + 1));
+    assert!(!should_retry_mount_after_failure(
+        MAX_AUTOMATIC_MOUNT_RETRIES
+    ));
+    assert!(!should_retry_mount_after_failure(
+        MAX_AUTOMATIC_MOUNT_RETRIES + 1
+    ));
 }
 
 #[test]
