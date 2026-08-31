@@ -293,9 +293,7 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Dee
 - [Preview sandbox](docs/preview-sandbox.md)
 - [Performance baseline](docs/performance-baseline.md)
 - [Themes and Omarchy integration](docs/themes.md)
-- [Product requirements](docs/prd.md)
 - [Unsafe code policy](docs/unsafe-code.md)
-- [Technical direction](docs/technical-direction.md)
 
 ## Contributors
 

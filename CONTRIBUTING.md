@@ -105,7 +105,7 @@ See [the performance baseline](docs/performance-baseline.md) for recorded result
 - Follow the [unsafe code policy](docs/unsafe-code.md); never use `#[allow(unsafe_code)]`.
 - Preserve licensing and attribution for every new asset and dependency.
 
-See the [architecture principles](docs/architecture.md), [PRD](docs/prd.md), and [work breakdown](docs/todo.md) before making structural changes.
+See the [architecture principles](docs/architecture.md) and [work breakdown](docs/todo.md) before making structural changes.
 
 ## Asset policy
 

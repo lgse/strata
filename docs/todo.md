@@ -1,6 +1,6 @@
 # Strata Work Breakdown
 
-This is the execution checklist derived from the [PRD](prd.md) and [roadmap](roadmap.md). Work top-to-bottom within a milestone unless dependencies indicate otherwise.
+This is the project execution checklist. Work top-to-bottom within a milestone unless dependencies indicate otherwise.
 
 Legend: **P0** blocks the milestone, **P1** is required for its exit criteria, **P2** is polish or follow-up.
 
