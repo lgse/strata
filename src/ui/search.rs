@@ -27,6 +27,7 @@ struct SearchState {
     scroller: gtk::ScrolledWindow,
     results: gtk::Stack,
     status: gtk::Label,
+    truncated_hint: gtk::Label,
     root: RefCell<PathBuf>,
     visible_results: RefCell<Vec<SearchItem>>,
     requested_thumbnails: RefCell<HashSet<usize>>,
@@ -101,6 +102,15 @@ impl SearchDialog {
         open.add_css_class("search-hint");
         footer.append(&navigation);
         footer.append(&open);
+        let truncated_hint = gtk::Label::new(Some(
+            "Search limited to the first results — the tree is very large",
+        ));
+        truncated_hint.add_css_class("search-hint");
+        truncated_hint.add_css_class("search-hint-warning");
+        truncated_hint.set_hexpand(true);
+        truncated_hint.set_halign(gtk::Align::End);
+        truncated_hint.set_visible(false);
+        footer.append(&truncated_hint);
         panel.append(&footer);
         let top_spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
         top_spacer.set_vexpand(true);
@@ -117,6 +127,7 @@ impl SearchDialog {
             scroller,
             results,
             status,
+            truncated_hint,
             root: RefCell::new(PathBuf::new()),
             visible_results: RefCell::new(Vec::new()),
             requested_thumbnails: RefCell::new(HashSet::new()),
@@ -199,6 +210,7 @@ impl SearchDialog {
         self.state.field.set_text("");
         self.state.status.set_visible(true);
         self.state.status.set_text("Type to search the whole tree");
+        self.state.truncated_hint.set_visible(false);
         self.state.layer.set_visible(true);
         self.state.field.grab_focus();
 
@@ -224,10 +236,11 @@ impl SearchDialog {
                 query,
                 items,
                 indexing,
+                truncated,
             }) = latest
                 && query == state.field.text().trim()
             {
-                render_results(&state, items, indexing);
+                render_results(&state, items, indexing, truncated);
             }
             glib::ControlFlow::Continue
         });
@@ -257,7 +270,12 @@ fn begin_query(state: &Rc<SearchState>, query: &str) {
     }
 }
 
-fn render_results(state: &Rc<SearchState>, results: Vec<SearchItem>, indexing: bool) {
+fn render_results(
+    state: &Rc<SearchState>,
+    results: Vec<SearchItem>,
+    indexing: bool,
+    truncated: bool,
+) {
     clear_results(state);
     let root = state.root.borrow();
     for item in &results {
@@ -265,6 +283,7 @@ fn render_results(state: &Rc<SearchState>, results: Vec<SearchItem>, indexing: b
     }
     let has_results = !results.is_empty();
     state.visible_results.replace(results);
+    state.truncated_hint.set_visible(truncated);
     state
         .results
         .set_visible_child_name(if has_results { "results" } else { "status" });
@@ -412,6 +431,7 @@ fn hide(state: &SearchState) {
     state.search.borrow_mut().take();
     clear_results(state);
     state.layer.set_visible(false);
+    state.truncated_hint.set_visible(false);
     (state.dismiss)();
 }
 
