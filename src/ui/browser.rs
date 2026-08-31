@@ -1669,7 +1669,7 @@ impl ViewState {
         let task = glib::MainContext::default().spawn_local(async move {
             let trash = gio::File::for_uri("trash:///");
             match summarize_trash(&trash).await {
-                Ok(summary) if !summary.entries.is_empty() => {
+                Ok(summary) if summary.item_count > 0 => {
                     if let Some(state) = weak.upgrade() {
                         state.clear_trash_loading();
                         state.show_empty_trash_confirmation(summary);
@@ -1801,7 +1801,6 @@ impl ViewState {
         let close = layout.close;
         let cancel = layout.cancel;
         let empty = layout.confirm;
-        let entries = Rc::new(summary.entries);
 
         let layer = modal_layer(&content);
         window_overlay.add_overlay(&layer);
@@ -1824,14 +1823,23 @@ impl ViewState {
         let empty_layer = layer.clone();
         let empty_overlay = window_overlay.clone();
         let empty_root = blurred_root.clone();
-        let empty_entries = entries.clone();
         let browser = self.browser.clone();
+        let error_overlay = self.overlay.clone();
         empty.connect_clicked(move |_| {
             dismiss_modal_layer(&empty_layer, &empty_overlay, empty_root.as_ref());
-            if !empty_entries.is_empty() {
-                browser.delete((*empty_entries).clone(), true);
-            }
             browser.focus_active();
+            let browser = browser.clone();
+            let error_overlay = error_overlay.clone();
+            glib::MainContext::default().spawn_local(async move {
+                match list_trash_top_level_entries(&gio::File::for_uri("trash:///")).await {
+                    Ok(entries) => browser.delete(entries, true),
+                    Err(error) => show_error_dialog(
+                        &error_overlay,
+                        "Unable to read Trash",
+                        &error.to_string(),
+                    ),
+                }
+            });
         });
         let keys = gtk::EventControllerKey::new();
         let escape_layer = layer.clone();
@@ -5136,7 +5144,6 @@ pub(super) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
 }
 
 struct TrashSummary {
-    entries: Vec<FileEntry>,
     item_count: usize,
     total_size: u64,
     /// `true` if measurement did not cover the full trash tree; `item_count`/`total_size` are
@@ -5146,9 +5153,6 @@ struct TrashSummary {
 
 const TRASH_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-symlink,standard::size,time::modified";
 
-/// Bounds recursive measurement into subdirectories, not `TrashSummary::entries` itself: every
-/// top-level entry is always listed there regardless of budget, since "Empty Trash" deletes
-/// exactly that list.
 const MAX_TRASH_ENTRIES: usize = 200_000;
 const MAX_TRASH_DEPTH: usize = 64;
 const TRASH_TIME_BUDGET: Duration = Duration::from_secs(5);
@@ -5170,7 +5174,6 @@ async fn summarize_trash_with_budget(
             glib::Priority::DEFAULT,
         )
         .await?;
-    let mut entries = Vec::new();
     let mut item_count = 0_usize;
     let mut total_size = 0_u64;
     let mut truncated = false;
@@ -5184,18 +5187,14 @@ async fn summarize_trash_with_budget(
             break;
         }
         for info in children {
-            let file = root.child(info.name());
-            // Skip only the recursive measurement once over budget; still list this entry (see
-            // MAX_TRASH_ENTRIES) and count it as one unmeasured item.
             if visited.get() >= max_entries || Instant::now() >= deadline {
                 truncated = true;
                 item_count = item_count.saturating_add(1);
-                entries.push(trash_file_entry(file, &info));
                 continue;
             }
             let (count, size, entry_truncated) = measure_trash_entry(
-                file.clone(),
-                info.clone(),
+                root.child(info.name()),
+                info,
                 0,
                 visited.clone(),
                 deadline,
@@ -5206,15 +5205,40 @@ async fn summarize_trash_with_budget(
             item_count = item_count.saturating_add(count);
             total_size = total_size.saturating_add(size);
             truncated |= entry_truncated;
-            entries.push(trash_file_entry(file, &info));
         }
     }
     Ok(TrashSummary {
-        entries,
         item_count,
         total_size,
         truncated,
     })
+}
+
+/// A plain, non-recursive listing of trash's top-level entries -- unlike `summarize_trash`, this
+/// has no budget, since "Empty Trash" needs every entry to actually empty the trash, and listing
+/// names at one level (no descending into subdirectories) is cheap even for very many entries.
+async fn list_trash_top_level_entries(root: &gio::File) -> Result<Vec<FileEntry>, glib::Error> {
+    let enumerator = root
+        .enumerate_children_future(
+            TRASH_ATTRIBUTES,
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            glib::Priority::DEFAULT,
+        )
+        .await?;
+    let mut entries = Vec::new();
+    loop {
+        let children = enumerator
+            .next_files_future(64, glib::Priority::DEFAULT)
+            .await?;
+        if children.is_empty() {
+            break;
+        }
+        for info in children {
+            let file = root.child(info.name());
+            entries.push(trash_file_entry(file, &info));
+        }
+    }
+    Ok(entries)
 }
 
 type TrashMeasurementFuture =

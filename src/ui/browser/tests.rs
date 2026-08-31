@@ -605,11 +605,6 @@ fn trash_summary_treats_an_inaccessible_subdirectory_as_truncated_not_fatal() {
     let summary = summary.expect(
         "an inaccessible subdirectory should degrade gracefully, not fail the whole measurement",
     );
-    assert_eq!(
-        summary.entries.len(),
-        2,
-        "both the blocked and visible top-level entries should still be listed"
-    );
     if !running_as_root {
         assert!(
             summary.truncated,
@@ -741,28 +736,31 @@ fn trash_summary_lists_every_top_level_entry_even_past_the_measurement_budget() 
             .expect("the trash fixture file should be written");
     }
 
-    // "Empty Trash" deletes exactly `summary.entries`, so the entry budget must bound the
-    // (potentially expensive) recursive measurement of each entry's contents without ever
-    // dropping a top-level entry from that deletion worklist -- otherwise emptying the trash
-    // would silently leave real items behind.
+    // Measurement is bounded and may undercount for display purposes...
     let summary = glib::MainContext::new().block_on(summarize_trash_with_budget(
         &gio::File::for_path(&root),
         3,
         MAX_TRASH_DEPTH,
         TRASH_TIME_BUDGET,
     ));
-    std::fs::remove_dir_all(&root).expect("the trash fixture should be removed");
-
-    let summary = summary.expect("a plain directory tree should measure without error");
     assert!(
-        summary.truncated,
+        summary
+            .expect("a plain directory tree should measure without error")
+            .truncated,
         "exceeding the measurement budget should still be reported"
     );
+
+    // ...but the deletion worklist is a wholly separate, unbounded listing, so "Empty Trash"
+    // still empties everything regardless of what the measurement pass saw.
+    let entries = glib::MainContext::new()
+        .block_on(list_trash_top_level_entries(&gio::File::for_path(&root)))
+        .expect("a plain directory tree should list without error");
+    std::fs::remove_dir_all(&root).expect("the trash fixture should be removed");
+
     assert_eq!(
-        summary.entries.len(),
+        entries.len(),
         10,
-        "every top-level entry must be listed regardless of the measurement budget, since \
-         Empty Trash deletes only what is listed here"
+        "every top-level entry must be listed for deletion, independent of the measurement budget"
     );
 }
 
