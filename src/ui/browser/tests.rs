@@ -88,23 +88,13 @@ fn a_genuine_mount_failure_still_reports_an_error() {
 }
 
 #[test]
-fn authentication_failure_is_retried_only_after_credentials_are_submitted() {
-    for attempt in 0..MAX_AUTOMATIC_MOUNT_RETRIES {
-        assert!(should_retry_mount_after_authentication_failure(
-            attempt, true
-        ));
-        assert!(!should_retry_mount_after_authentication_failure(
-            attempt, false
-        ));
-    }
-    assert!(!should_retry_mount_after_authentication_failure(
-        MAX_AUTOMATIC_MOUNT_RETRIES,
-        true,
-    ));
-    assert!(!should_retry_mount_after_authentication_failure(
-        MAX_AUTOMATIC_MOUNT_RETRIES + 1,
-        true,
-    ));
+fn authentication_failure_without_a_backend_prompt_gets_login_fields() {
+    let location = Location::uri("smb://host/share");
+    let details = MountPromptDetails::fallback(&location);
+    assert!(details.message.contains("smb://host/share"));
+    assert!(details.flags.contains(gio::AskPasswordFlags::NEED_USERNAME));
+    assert!(details.flags.contains(gio::AskPasswordFlags::NEED_DOMAIN));
+    assert!(details.flags.contains(gio::AskPasswordFlags::NEED_PASSWORD));
 }
 
 #[test]
