@@ -161,7 +161,10 @@ fn index_does_not_descend_past_the_depth_budget() {
     drop(search);
     fs::remove_dir_all(&root).expect("the search fixture should be removed");
 
-    let Some(SearchEvent::Results { items, .. }) = event else {
+    let Some(SearchEvent::Results {
+        items, truncated, ..
+    }) = event
+    else {
         panic!("the worker should publish a result for a non-empty query");
     };
     assert!(
@@ -172,4 +175,48 @@ fn index_does_not_descend_past_the_depth_budget() {
         items.iter().all(|item| item.name != "deep-needle.txt"),
         "entries past the depth budget should not be indexed"
     );
+    assert!(
+        truncated,
+        "omitting entries past the depth budget should be reported, not silently look complete"
+    );
+}
+
+#[test]
+fn index_reports_truncated_when_the_walker_discards_an_inaccessible_directory() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = unique_fixture_root("inaccessible");
+    fs::create_dir_all(root.join("blocked")).expect("the search fixture should be created");
+    fs::create_dir_all(root.join("visible")).expect("the search fixture should be created");
+    fs::write(root.join("visible/needle.txt"), b"content")
+        .expect("the search fixture file should be written");
+    fs::set_permissions(root.join("blocked"), fs::Permissions::from_mode(0o000))
+        .expect("the fixture directory's permissions should be restrictable");
+    let running_as_root = fs::read_dir(root.join("blocked")).is_ok();
+
+    let (search, events) =
+        index_tree_with_budget(root.clone(), usize::MAX, 64, Duration::from_secs(10));
+    search.query("needle");
+    let event = wait_for_results(&events);
+
+    drop(search);
+    let _ = fs::set_permissions(root.join("blocked"), fs::Permissions::from_mode(0o755));
+    fs::remove_dir_all(&root).expect("the search fixture should be removed");
+
+    let Some(SearchEvent::Results {
+        items, truncated, ..
+    }) = event
+    else {
+        panic!("the worker should publish a result for a non-empty query");
+    };
+    assert!(
+        items.iter().any(|item| item.name == "needle.txt"),
+        "entries outside the inaccessible directory should still be indexed"
+    );
+    if !running_as_root {
+        assert!(
+            truncated,
+            "an inaccessible directory discarded by the walker should be reported as truncated"
+        );
+    }
 }

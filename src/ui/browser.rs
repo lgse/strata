@@ -5332,7 +5332,12 @@ async fn enumerate_trash_directory(
             size = size.saturating_add(child_size);
             truncated |= child_truncated;
         }
-        if truncated {
+        // Only the shared global budget being spent should stop scanning further siblings here.
+        // A child reporting `truncated` on its own (it hit the depth cap, or the walker discarded
+        // one of its descendants) is a branch-local condition unrelated to its siblings, so it
+        // must not cut off enumeration of the rest of this directory.
+        if visited.get() >= max_entries || Instant::now() >= deadline {
+            truncated = true;
             break;
         }
     }

@@ -16,8 +16,10 @@ const PUBLISH_INTERVAL: Duration = Duration::from_millis(50);
 /// Caps how many entries a single index will retain, bounding worst-case memory use on
 /// adversarially large or unbounded trees (for example a runaway bind mount or `/proc`).
 /// Each `SearchItem` stores a `PathBuf` plus three `String`s (name, lowercased name, lowercased
-/// relative path), roughly 300-700 bytes per entry including heap data for typical to very long
-/// paths, so this cap bounds worst-case index memory to roughly 60-140 MB.
+/// relative path); `name`/`search_name` are bounded by `NAME_MAX` (255 bytes), but `path` and
+/// `search_path` scale with the full path length, which is not bounded here. For typical paths
+/// (tens of bytes) this is roughly 60-140 MB total; adversarial paths near Linux's `PATH_MAX`
+/// (4096 bytes) could push a fully populated index to on the order of 1.5-2 GB.
 const MAX_INDEX_ENTRIES: usize = 200_000;
 /// Caps how deep the walk descends, as a defensive backstop against pathologically deep trees.
 const MAX_INDEX_DEPTH: usize = 64;
@@ -98,20 +100,35 @@ fn index_tree_with_budget(
             let mut progress = WalkProgress::default();
             let mut last_publish = Instant::now();
             let walk_start = Instant::now();
+            // Walk one level past `max_depth` (rather than capping exactly at it) so a directory
+            // sitting at the cap that actually has children yields at least one entry beyond it,
+            // letting the loop below detect and flag depth truncation instead of silently
+            // reporting an index that looks complete.
             let walker = ignore::WalkBuilder::new(&root)
                 .hidden(true)
                 .follow_links(false)
                 .standard_filters(true)
                 .require_git(false)
-                .max_depth(Some(max_depth))
+                .max_depth(Some(max_depth + 1))
                 .build();
 
-            for entry in walker
-                .filter_map(Result::ok)
-                .filter(|entry| entry.depth() > 0)
-            {
+            for result in walker {
                 if worker_cancelled.load(Ordering::Relaxed) {
                     return;
+                }
+                let entry = match result {
+                    Ok(entry) if entry.depth() == 0 => continue,
+                    Ok(entry) => entry,
+                    Err(_) => {
+                        // An unreadable directory or other walker error also omits part of the
+                        // tree from the index; treat it the same as any other truncation.
+                        progress.truncated = true;
+                        continue;
+                    }
+                };
+                if entry.depth() > max_depth {
+                    progress.truncated = true;
+                    continue;
                 }
                 if index.len() >= max_entries || walk_start.elapsed() >= time_budget {
                     progress.truncated = true;
