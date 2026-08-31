@@ -7,12 +7,15 @@ use std::{
     time::Duration,
 };
 
-use gtk::{gdk, glib, prelude::*};
+use gtk::{gdk, glib, prelude::*, subclass::prelude::*};
 
 use crate::{
     assets::icons,
     services::{self, UpdateCheck, UpdateInstall},
 };
+
+#[cfg(test)]
+mod tests;
 
 use super::{
     blur::BlurBin,
@@ -23,6 +26,75 @@ use super::{
 
 type ThemeCards = Rc<RefCell<Vec<(String, gtk::Button, gtk::Image)>>>;
 pub(super) type UpdateNoticeHandler = Rc<dyn Fn(Option<(String, String, String)>)>;
+
+const DIALOG_WIDTH: i32 = 920;
+const DIALOG_HEIGHT: i32 = 620;
+const DIALOG_MARGIN: i32 = 24;
+
+mod responsive_bin {
+    use super::*;
+
+    #[derive(Default)]
+    pub struct ResponsiveBin;
+
+    #[glib::object_subclass]
+    impl ObjectSubclass for ResponsiveBin {
+        const NAME: &'static str = "StrataSettingsResponsiveBin";
+        type Type = super::ResponsiveBin;
+        type ParentType = gtk::Widget;
+    }
+
+    impl ObjectImpl for ResponsiveBin {
+        fn dispose(&self) {
+            while let Some(child) = self.obj().first_child() {
+                child.unparent();
+            }
+        }
+    }
+
+    impl WidgetImpl for ResponsiveBin {
+        fn measure(&self, orientation: gtk::Orientation, _for_size: i32) -> (i32, i32, i32, i32) {
+            let natural = match orientation {
+                gtk::Orientation::Horizontal => DIALOG_WIDTH + DIALOG_MARGIN * 2,
+                gtk::Orientation::Vertical => DIALOG_HEIGHT + DIALOG_MARGIN * 2,
+                _ => unreachable!("GTK orientations are horizontal or vertical"),
+            };
+            (1, natural, -1, -1)
+        }
+
+        fn size_allocate(&self, width: i32, height: i32, baseline: i32) {
+            let Some(child) = self.obj().first_child() else {
+                return;
+            };
+            let (child_width, child_height) = responsive_dialog_size(width, height);
+            let x = ((width - child_width) / 2) as f32;
+            let y = ((height - child_height) / 2) as f32;
+            let transform = gtk::gsk::Transform::new().translate(&gtk::graphene::Point::new(x, y));
+            child.allocate(child_width, child_height, baseline, Some(transform));
+        }
+    }
+}
+
+glib::wrapper! {
+    pub struct ResponsiveBin(ObjectSubclass<responsive_bin::ResponsiveBin>)
+        @extends gtk::Widget,
+        @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;
+}
+
+impl ResponsiveBin {
+    fn new(child: &impl IsA<gtk::Widget>) -> Self {
+        let bin: Self = glib::Object::new();
+        child.set_parent(&bin);
+        bin
+    }
+}
+
+fn responsive_dialog_size(width: i32, height: i32) -> (i32, i32) {
+    (
+        DIALOG_WIDTH.min((width - DIALOG_MARGIN * 2).max(1)),
+        DIALOG_HEIGHT.min((height - DIALOG_MARGIN * 2).max(1)),
+    )
+}
 
 pub fn build_layer(
     browser: &BrowserView,
@@ -42,9 +114,7 @@ pub fn build_layer(
 
     let panel = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     panel.add_css_class("settings-dialog");
-    panel.set_halign(gtk::Align::Center);
-    panel.set_valign(gtk::Align::Center);
-    panel.set_size_request(920, 620);
+    panel.set_overflow(gtk::Overflow::Hidden);
 
     let navigation = gtk::Box::new(gtk::Orientation::Vertical, 5);
     navigation.add_css_class("settings-navigation");
@@ -72,6 +142,8 @@ pub fn build_layer(
     let stack = gtk::Stack::builder()
         .transition_type(gtk::StackTransitionType::Crossfade)
         .transition_duration(120)
+        .hhomogeneous(false)
+        .vhomogeneous(false)
         .hexpand(true)
         .vexpand(true)
         .build();
@@ -113,13 +185,10 @@ pub fn build_layer(
 
     panel.append(&navigation);
     panel.append(&page);
-    let top_spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    top_spacer.set_vexpand(true);
-    let bottom_spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    bottom_spacer.set_vexpand(true);
-    layer.append(&top_spacer);
-    layer.append(&panel);
-    layer.append(&bottom_spacer);
+    let responsive_panel = ResponsiveBin::new(&panel);
+    responsive_panel.set_hexpand(true);
+    responsive_panel.set_vexpand(true);
+    layer.append(&responsive_panel);
 
     let hidden_layer = layer.clone();
     let inactive_settings = settings_button.clone();
@@ -227,7 +296,7 @@ fn general_page(
         run_check();
     }
 
-    preferences.upcast()
+    scrollable_page(&preferences, None)
 }
 
 fn update_check_row(
@@ -660,15 +729,7 @@ fn keybindings_page() -> gtk::Widget {
         append_keybinding(&content, label, keys);
     }
 
-    let scroller = gtk::ScrolledWindow::builder()
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .hexpand(true)
-        .vexpand(true)
-        .child(&content)
-        .build();
-    scroller.add_css_class("settings-keybindings-scroll");
-    scroller.upcast()
+    scrollable_page(&content, Some("settings-keybindings-scroll"))
 }
 
 fn about_page() -> gtk::Widget {
@@ -716,7 +777,7 @@ fn about_page() -> gtk::Widget {
     project.append(&repository);
     content.append(&project);
 
-    content.upcast()
+    scrollable_page(&content, None)
 }
 
 fn append_about_detail(container: &gtk::Box, label: &str, value: &str, monospace: bool) {
@@ -833,11 +894,7 @@ fn theme_page(manager: Rc<ThemeManager>) -> gtk::Widget {
     let shown_editor = editor.clone();
     add.connect_clicked(move |_| shown_editor.set_reveal_child(true));
 
-    let scroller = gtk::ScrolledWindow::builder()
-        .child(&content)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .build();
+    let scroller = scrollable_page(&content, None);
     let manager_for_follow = manager;
     follow.connect_active_notify(move |toggle| {
         let active = toggle.is_active();
@@ -853,7 +910,7 @@ fn theme_page(manager: Rc<ThemeManager>) -> gtk::Widget {
             check.set_visible(selected);
         }
     });
-    scroller.upcast()
+    scroller
 }
 
 fn append_theme_card(
@@ -1124,6 +1181,21 @@ fn navigation_button(icon: &str, label: &str) -> gtk::Button {
     let button = gtk::Button::builder().child(&content).build();
     button.set_has_frame(false);
     button
+}
+
+fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
+    let scroller = gtk::ScrolledWindow::builder()
+        .child(content)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+    scroller.add_css_class("settings-content-scroll");
+    if let Some(class) = class {
+        scroller.add_css_class(class);
+    }
+    scroller.upcast()
 }
 
 fn page_content() -> gtk::Box {

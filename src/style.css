@@ -2157,16 +2157,16 @@ menubutton.column-header-action > button:focus-visible image {
   color: @theme_accent;
 }
 
-.settings-keybindings-scroll,
-.settings-keybindings-scroll viewport {
+.settings-content-scroll,
+.settings-content-scroll viewport {
   background: @theme_surface;
 }
 
-.settings-keybindings-scroll scrollbar {
+.settings-content-scroll scrollbar {
   background: transparent;
 }
 
-.settings-keybindings-scroll scrollbar slider {
+.settings-content-scroll scrollbar slider {
   background: alpha(@theme_border, 0.62);
   border: 3px solid transparent;
   border-radius: 6px;
@@ -2174,8 +2174,8 @@ menubutton.column-header-action > button:focus-visible image {
   min-height: 32px;
 }
 
-.settings-keybindings-scroll scrollbar slider:hover,
-.settings-keybindings-scroll scrollbar slider:active {
+.settings-content-scroll scrollbar slider:hover,
+.settings-content-scroll scrollbar slider:active {
   background: @theme_dim_text;
 }
 
