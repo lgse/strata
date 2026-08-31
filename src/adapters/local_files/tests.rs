@@ -164,6 +164,19 @@ fn unmounted_network_shares_are_treated_as_directories() {
 }
 
 #[test]
+fn native_files_are_located_by_their_real_path() {
+    let file = gio::File::for_path("/tmp");
+    assert_eq!(location_for_file(&file), Location::local("/tmp"));
+}
+
+#[test]
+fn gvfs_backed_files_use_their_uri_even_when_a_fuse_path_exists() {
+    let file = gio::File::for_uri("smb://host/share");
+    assert!(!file.is_native(), "smb:// should never be reported native");
+    assert_eq!(location_for_file(&file), Location::uri(file.uri()));
+}
+
+#[test]
 fn symlink_targets_and_broken_links_are_distinguished() -> Result<(), Box<dyn Error>> {
     use std::os::unix::fs::symlink;
 

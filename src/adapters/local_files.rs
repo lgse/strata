@@ -40,10 +40,18 @@ fn map_validation_error(error: std::io::Error) -> LocationValidationError {
     }
 }
 
-fn location_for_file(file: &gio::File) -> Location {
-    file.path()
-        .map(Location::local)
-        .unwrap_or_else(|| Location::uri(file.uri()))
+/// Builds a `Location` for a `gio::File`, preferring a native path only when
+/// the file is genuinely on a local filesystem. A mounted GVfs backend (SMB,
+/// SFTP, ...) can still return a `.path()` via its FUSE mirror even though the
+/// file isn't native; using that path would leak the mirror's opaque
+/// `/run/user/$UID/gvfs/...` location instead of the clean URI (lgse/strata#5).
+pub(crate) fn location_for_file(file: &gio::File) -> Location {
+    if file.is_native()
+        && let Some(path) = file.path()
+    {
+        return Location::local(path);
+    }
+    Location::uri(file.uri())
 }
 
 fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {

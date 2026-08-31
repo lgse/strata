@@ -11,7 +11,7 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
-    adapters::{LocalFileSource, LocalOperationProvider, LocalPreviewProvider},
+    adapters::{LocalFileSource, LocalOperationProvider, LocalPreviewProvider, location_for_file},
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, MetadataValue},
 };
@@ -824,14 +824,7 @@ impl SidebarState {
             .mounts()
             .into_iter()
             .filter(|mount| !mount.is_shadowed() && mount.volume().is_none())
-            .map(|mount| {
-                let root = mount.root();
-                let location = root
-                    .path()
-                    .map(Location::local)
-                    .unwrap_or_else(|| Location::uri(root.uri()));
-                (mount.name().to_string(), location)
-            })
+            .map(|mount| (mount.name().to_string(), location_for_file(&mount.root())))
             .collect();
         if !volumes.is_empty() || !mounts.is_empty() {
             self.append_separator();
@@ -1044,11 +1037,7 @@ impl SidebarState {
         let row = sidebar_button(crate::assets::icons::HARD_DRIVE, &name);
         row.set_tooltip_text(Some(&name));
         if let Some(mount) = volume.get_mount() {
-            let root = mount.root();
-            let location = root
-                .path()
-                .map(Location::local)
-                .unwrap_or_else(|| Location::uri(root.uri()));
+            let location = location_for_file(&mount.root());
             self.place_rows.borrow_mut().push((location, row.clone()));
         }
         let weak_browser = Rc::downgrade(&self.browser);
@@ -1292,11 +1281,7 @@ fn sidebar_button(icon: &str, name: &str) -> gtk::Button {
 }
 
 fn navigate_to_gio_file(browser: &Rc<Browser>, file: &gio::File) {
-    let location = file
-        .path()
-        .map(Location::local)
-        .unwrap_or_else(|| Location::uri(file.uri()));
-    browser.navigate(location);
+    browser.navigate(location_for_file(file));
 }
 
 fn build_sidebar(view: BrowserView) -> SidebarView {

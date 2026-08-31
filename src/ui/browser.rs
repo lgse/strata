@@ -15,13 +15,9 @@ use crate::{
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, SortDirection, SortKey},
     services::{
-<<<<<<< HEAD
         FileSource, LocationValidationError, OperationProvider, PasteItem, PreviewContent,
-        TransferConflict, content_family, has_plain_text_extension, validate_basename,
-=======
-        FileSource, LocationValidationError, OperationProvider, PreviewContent,
-        backend_unavailable_message, content_family, has_plain_text_extension, validate_basename,
->>>>>>> 5dcc0df (Close lgse/strata#20 gaps: cancel handling, embedded credentials, missing backends)
+        TransferConflict, backend_unavailable_message, content_family, has_plain_text_extension,
+        validate_basename,
     },
 };
 
