@@ -150,10 +150,23 @@ fn invalid_utf8_names_keep_their_native_bytes() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn missing_optional_attributes_use_safe_defaults() {
+    let info = gio::FileInfo::new();
+
+    assert!(!info_is_hidden(&info));
+    assert!(!info_is_symlink(&info));
+
+    info.set_is_hidden(true);
+    info.set_is_symlink(true);
+
+    assert!(info_is_hidden(&info));
+    assert!(info_is_symlink(&info));
+}
+
+#[test]
 fn unmounted_network_shares_are_treated_as_directories() {
     let info = gio::FileInfo::new();
     info.set_file_type(gio::FileType::Mountable);
-    info.set_is_symlink(false);
     info.set_name("share");
     info.set_display_name("share");
 

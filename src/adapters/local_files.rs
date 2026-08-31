@@ -76,9 +76,17 @@ fn uri_validation_result(
     }
 }
 
+fn info_is_hidden(info: &gio::FileInfo) -> bool {
+    info.has_attribute(gio::FILE_ATTRIBUTE_STANDARD_IS_HIDDEN) && info.is_hidden()
+}
+
+fn info_is_symlink(info: &gio::FileInfo) -> bool {
+    info.has_attribute(gio::FILE_ATTRIBUTE_STANDARD_IS_SYMLINK) && info.is_symlink()
+}
+
 fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
     let native_name = info.name().into_os_string();
-    let kind = match (info.file_type(), info.is_symlink()) {
+    let kind = match (info.file_type(), info_is_symlink(&info)) {
         (gio::FileType::Directory, true) => EntryKind::DirectorySymbolicLink,
         (gio::FileType::Regular, true) => EntryKind::FileSymbolicLink,
         // GVfs reports unmounted browsable children (an smb:// host's shares, a
@@ -218,7 +226,7 @@ impl FileSource for LocalFileSource {
                     Ok(files) => {
                         let entries: Vec<_> = files
                             .into_iter()
-                            .filter(|info| request.include_hidden || !info.is_hidden())
+                            .filter(|info| request.include_hidden || !info_is_hidden(info))
                             .map(|info| {
                                 let child = directory.child(info.name());
                                 entry_from_info(location_for_file(&child), info)
@@ -456,7 +464,7 @@ fn query_monitored_entry(
             return;
         }
         match result {
-            Ok(info) if include_hidden || !info.is_hidden() => {
+            Ok(info) if include_hidden || !info_is_hidden(&info) => {
                 let entry = entry_from_info(Location::local(path), info);
                 if let Some(from) = moved_from {
                     notify(DirectoryChange::Move {
