@@ -2537,27 +2537,41 @@ impl ViewState {
                         .filter_map(|position| filtered_position_for_source(column, position))
                         .collect();
                     set_column_selections(column, &filtered_positions);
-                    if let Some(focused) = filtered_position_for_source(column, focused) {
-                        column
-                            .list
-                            .scroll_to(focused, gtk::ListScrollFlags::FOCUS, None);
-                    }
-                    if self.mode_views.borrow().mode() == BrowserMode::Columns {
-                        column.list.grab_focus();
+                    // A background batch delivered for a column that already has a
+                    // selection re-fires this event; don't let it steal focus from
+                    // an in-progress New Folder/File prompt or rename (visible for
+                    // slow network directories that stream many batches).
+                    if self.active_rename.borrow().is_none()
+                        && self.active_new_folder.borrow().is_none()
+                    {
+                        if let Some(focused) = filtered_position_for_source(column, focused) {
+                            column
+                                .list
+                                .scroll_to(focused, gtk::ListScrollFlags::FOCUS, None);
+                        }
+                        if self.mode_views.borrow().mode() == BrowserMode::Columns {
+                            column.list.grab_focus();
+                        }
                     }
                 }
             }
             BrowserEvent::FocusChanged { depth, position } => {
                 if let Some(column) = self.columns.borrow().get(depth) {
+                    let editing = self.active_rename.borrow().is_some()
+                        || self.active_new_folder.borrow().is_some();
                     if let Some(filtered_position) =
                         position.and_then(|position| filtered_position_for_source(column, position))
                     {
                         set_column_selection(column, filtered_position);
-                        column
-                            .list
-                            .scroll_to(filtered_position, gtk::ListScrollFlags::FOCUS, None);
+                        if !editing {
+                            column.list.scroll_to(
+                                filtered_position,
+                                gtk::ListScrollFlags::FOCUS,
+                                None,
+                            );
+                        }
                     }
-                    if self.mode_views.borrow().mode() == BrowserMode::Columns {
+                    if !editing && self.mode_views.borrow().mode() == BrowserMode::Columns {
                         column.list.grab_focus();
                     }
                 }
