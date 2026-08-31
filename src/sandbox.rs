@@ -14,6 +14,7 @@ use std::{
 
 const WALL_TIME_LIMIT: Duration = Duration::from_secs(12);
 const MEDIA_WALL_TIME_LIMIT: Duration = Duration::from_secs(30);
+const ADDRESS_SPACE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
 
@@ -198,7 +199,11 @@ fn sandbox_command(
     command.arg(executable).arg("/app/strata");
     command.arg("--ro-bind").arg(input).arg("/input");
     command.arg("--bind").arg(output).arg("/output");
-    command.args(["--", "/usr/bin/prlimit", "--as=1342177280"]);
+    command.args([
+        "--",
+        "/usr/bin/prlimit",
+        &format!("--as={ADDRESS_SPACE_LIMIT_BYTES}"),
+    ]);
     if operation != ParseOperation::PreviewMedia {
         command.arg("--cpu=10");
     }

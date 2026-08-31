@@ -25,7 +25,7 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
     assert!(joined.contains("--clearenv"));
     assert!(joined.contains("--ro-bind /home/alice/Downloads/untrusted.pdf /input"));
     assert!(joined.contains("--bind /tmp/private-output /output"));
-    assert!(joined.contains("--as=1342177280"));
+    assert!(joined.contains("--as=2147483648"));
     assert!(joined.contains("--cpu=10"));
     assert!(joined.contains("--fsize=33554432"));
     // RLIMIT_NPROC counts every process owned by the host user, not just the
