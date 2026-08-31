@@ -5021,8 +5021,19 @@ fn set_cut_path_style(row: &gtk::Box, cut: bool) {
     }
 }
 
+/// Validates a name field live as it changes, including the programmatic
+/// clears that happen when a prompt opens, cancels, or succeeds. An empty
+/// field is left unstyled rather than flagged red: it's the normal starting
+/// state, not a mistake the user made, even though it still can't be
+/// submitted (the `false` return still blocks that).
 pub(super) fn update_basename_validation(field: &gtk::Entry) -> bool {
-    match validate_basename(field.text().as_str()) {
+    let text = field.text();
+    if text.is_empty() {
+        field.remove_css_class("error");
+        field.set_tooltip_text(None);
+        return false;
+    }
+    match validate_basename(text.as_str()) {
         Ok(()) => {
             field.remove_css_class("error");
             field.set_tooltip_text(None);
