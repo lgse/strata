@@ -15,6 +15,13 @@ use std::{
 const WALL_TIME_LIMIT: Duration = Duration::from_secs(12);
 const MEDIA_WALL_TIME_LIMIT: Duration = Duration::from_secs(30);
 const ADDRESS_SPACE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+// RLIMIT_FSIZE applies to every file the sandbox writes, including the memfd
+// glycin sizes to `width * height * channels` to hold a full-resolution frame
+// while decoding. gdk-pixbuf routes decoding through glycin, so a limit tuned
+// to the output PNG kills the loader with SIGXFSZ on any ordinary phone photo.
+// ADDRESS_SPACE_LIMIT_BYTES remains the memory guard, and MAX_OUTPUT_BYTES
+// bounds the output we are willing to read back.
+const FILE_SIZE_LIMIT_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
 
@@ -231,8 +238,8 @@ fn sandbox_command(
     if operation != ParseOperation::PreviewMedia {
         command.arg("--cpu=10");
     }
+    command.arg(format!("--fsize={FILE_SIZE_LIMIT_BYTES}"));
     command.args([
-        "--fsize=33554432",
         "--",
         "/app/strata",
         "--preview-helper",

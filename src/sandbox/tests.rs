@@ -7,6 +7,44 @@ use super::{
     gpu_devices, parse, sandbox_command, valid_output,
 };
 
+fn limit_from(arguments: &[String], flag: &str) -> u64 {
+    arguments
+        .iter()
+        .find_map(|argument| argument.strip_prefix(flag))
+        .unwrap_or_else(|| panic!("the sandbox must pass {flag}"))
+        .parse()
+        .expect("resource limits must be numeric")
+}
+
+#[test]
+fn file_size_limit_holds_a_full_resolution_decoded_frame() {
+    // gdk-pixbuf decodes through glycin, which sizes a memfd to
+    // `width * height * channels` before scaling down. RLIMIT_FSIZE covers that
+    // buffer too, and exceeding it kills the loader with SIGXFSZ rather than
+    // surfacing an error, so the limit has to clear the largest frame we expect.
+    const LARGEST_SUPPORTED_PIXELS: u64 = 50_000_000;
+    const RGBA_CHANNELS: u64 = 4;
+
+    let command = sandbox_command(
+        Path::new("/tmp/strata"),
+        Path::new("/home/alice/Pictures/photo.jpg"),
+        Path::new("/tmp/private-output"),
+        ParseOperation::ThumbnailImage,
+        256,
+        &[],
+    );
+    let arguments: Vec<_> = command
+        .get_args()
+        .map(|argument| argument.to_string_lossy().into_owned())
+        .collect();
+
+    let file_size = limit_from(&arguments, "--fsize=");
+    let address_space = limit_from(&arguments, "--as=");
+
+    assert!(file_size >= LARGEST_SUPPORTED_PIXELS * RGBA_CHANNELS);
+    assert!(file_size < address_space);
+}
+
 #[test]
 fn sandbox_exposes_only_runtime_input_and_private_output() {
     let command = sandbox_command(
@@ -29,7 +67,7 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
     assert!(joined.contains("--bind /tmp/private-output /output"));
     assert!(joined.contains("--as=2147483648"));
     assert!(joined.contains("--cpu=10"));
-    assert!(joined.contains("--fsize=33554432"));
+    assert!(joined.contains("--fsize=536870912"));
     // RLIMIT_NPROC counts every process owned by the host user, not just the
     // sandbox, and can prevent legitimate media decoders from starting.
     assert!(!joined.contains("--nproc"));
