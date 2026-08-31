@@ -42,6 +42,7 @@ mod responsive_bin {
         pub navigation_heading: RefCell<Option<gtk::Label>>,
         pub navigation_labels: RefCell<Vec<gtk::Label>>,
         pub navigation_contents: RefCell<Vec<gtk::Box>>,
+        pub theme_grids: RefCell<Vec<gtk::FlowBox>>,
     }
 
     #[glib::object_subclass]
@@ -96,6 +97,9 @@ mod responsive_bin {
                         gtk::Align::Fill
                     });
                 }
+                for grid in self.theme_grids.borrow().iter() {
+                    grid.set_max_children_per_line(if compact { 1 } else { 3 });
+                }
             }
             let x = ((width - child_width) / 2) as f32;
             let y = ((height - child_height) / 2) as f32;
@@ -118,6 +122,7 @@ impl ResponsiveBin {
         navigation_heading: &gtk::Label,
         navigation_labels: Vec<gtk::Label>,
         navigation_contents: Vec<gtk::Box>,
+        theme_grids: Vec<gtk::FlowBox>,
     ) -> Self {
         let bin: Self = glib::Object::new();
         let imp = bin.imp();
@@ -126,6 +131,7 @@ impl ResponsiveBin {
             .replace(Some(navigation_heading.clone()));
         imp.navigation_labels.replace(navigation_labels);
         imp.navigation_contents.replace(navigation_contents);
+        imp.theme_grids.replace(theme_grids);
         child.set_parent(&bin);
         bin
     }
@@ -198,11 +204,13 @@ pub fn build_layer(
         Some("general"),
     );
     stack.add_named(&keybindings_page(), Some("keybindings"));
-    stack.add_named(&theme_page(themes), Some("theme"));
+    let (theme_page, theme_grids) = theme_page(themes);
+    stack.add_named(&theme_page, Some("theme"));
     stack.add_named(&about_page(), Some("about"));
     page.append(&stack);
 
-    let nav_buttons: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
+    let nav_buttons: Rc<RefCell<Vec<(gtk::Button, gtk::Image, gtk::Image)>>> =
+        Rc::new(RefCell::new(Vec::new()));
     let mut navigation_labels = Vec::new();
     let mut navigation_contents = Vec::new();
     for (label, icon, name) in [
@@ -211,22 +219,32 @@ pub fn build_layer(
         ("Theme & appearance", icons::PALETTE, "theme"),
         ("About", icons::INFO, "about"),
     ] {
-        let (button, navigation_label, navigation_content) = navigation_button(icon, label);
+        let active = name == "general";
+        let (button, navigation_label, navigation_content, primary_icon, text_icon) =
+            navigation_button(icon, label, active);
         navigation_labels.push(navigation_label);
         navigation_contents.push(navigation_content);
-        if name == "general" {
+        if active {
             button.add_css_class("settings-nav-active");
         }
-        nav_buttons.borrow_mut().push(button.clone());
+        nav_buttons
+            .borrow_mut()
+            .push((button.clone(), primary_icon, text_icon));
         let buttons = nav_buttons.clone();
         let stack = stack.clone();
         let title = title.clone();
         let page_title = label.to_owned();
         button.connect_clicked(move |clicked| {
-            for candidate in buttons.borrow().iter() {
-                candidate.remove_css_class("settings-nav-active");
+            for (candidate, primary_icon, text_icon) in buttons.borrow().iter() {
+                let active = candidate == clicked;
+                if active {
+                    candidate.add_css_class("settings-nav-active");
+                } else {
+                    candidate.remove_css_class("settings-nav-active");
+                }
+                primary_icon.set_visible(active);
+                text_icon.set_visible(!active);
             }
-            clicked.add_css_class("settings-nav-active");
             stack.set_visible_child_name(name);
             title.set_text(&page_title);
         });
@@ -241,6 +259,7 @@ pub fn build_layer(
         &navigation_heading,
         navigation_labels,
         navigation_contents,
+        theme_grids,
     );
     responsive_panel.set_hexpand(true);
     responsive_panel.set_vexpand(true);
@@ -867,7 +886,7 @@ fn append_keybinding(content: &gtk::Box, label: &str, keys: &str) {
     content.append(&row);
 }
 
-fn theme_page(manager: Rc<ThemeManager>) -> gtk::Widget {
+fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<gtk::FlowBox>) {
     let content = page_content();
     content.add_css_class("theme-page");
 
@@ -944,7 +963,12 @@ fn theme_page(manager: Rc<ThemeManager>) -> gtk::Widget {
     add.set_child(Some(&add_content));
     custom.insert(&add, -1);
 
-    let editor = theme_editor(manager.clone(), custom, follow.clone(), cards.clone());
+    let editor = theme_editor(
+        manager.clone(),
+        custom.clone(),
+        follow.clone(),
+        cards.clone(),
+    );
     editor.set_reveal_child(false);
     content.append(&editor);
     let shown_editor = editor.clone();
@@ -966,7 +990,7 @@ fn theme_page(manager: Rc<ThemeManager>) -> gtk::Widget {
             check.set_visible(selected);
         }
     });
-    scroller
+    (scroller, vec![packaged, custom])
 }
 
 fn append_theme_card(
@@ -1227,19 +1251,27 @@ impl ColorField {
     }
 }
 
-fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::Box) {
+fn navigation_button(
+    icon: &str,
+    label: &str,
+    active: bool,
+) -> (gtk::Button, gtk::Label, gtk::Box, gtk::Image, gtk::Image) {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    let icon = crate::assets::primary_icon(icon, 18);
+    let primary_icon = crate::assets::primary_icon(icon, 18);
+    primary_icon.set_visible(active);
+    let text_icon = crate::assets::text_icon(icon, 18);
+    text_icon.set_visible(!active);
     let text = gtk::Label::new(Some(label));
     text.set_xalign(0.0);
-    content.append(&icon);
+    content.append(&primary_icon);
+    content.append(&text_icon);
     content.append(&text);
     let button = gtk::Button::builder()
         .child(&content)
         .tooltip_text(label)
         .build();
     button.set_has_frame(false);
-    (button, text, content)
+    (button, text, content, primary_icon, text_icon)
 }
 
 fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
