@@ -16,8 +16,8 @@ use crate::{
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, SortDirection, SortKey},
     services::{
-        ArchiveFormat, FileSource, LocationValidationError, OperationProvider, PasteItem,
-        PreviewContent, TransferConflict, backend_unavailable_message, content_family,
+        ArchiveFormat, FileSource, LoadHandle, LocationValidationError, OperationProvider,
+        PasteItem, PreviewContent, TransferConflict, backend_unavailable_message, content_family,
         has_plain_text_extension, validate_basename,
     },
 };
@@ -277,6 +277,7 @@ pub(super) struct ViewState {
     pending_select: RefCell<Option<String>>,
     pending_extract_retry: RefCell<Option<(FileEntry, Location)>>,
     pending_navigate: RefCell<Option<Location>>,
+    pending_trash_summary: RefCell<Option<LoadHandle>>,
     browser: Rc<Browser>,
 }
 
@@ -419,6 +420,7 @@ impl BrowserView {
             pending_select: RefCell::new(None),
             pending_extract_retry: RefCell::new(None),
             pending_navigate: RefCell::new(None),
+            pending_trash_summary: RefCell::new(None),
             browser,
         });
 
@@ -1756,8 +1758,12 @@ impl ViewState {
         let result_overlay = window_overlay;
         let result_root = blurred_root;
         let result_parent = self.overlay.clone();
-        glib::MainContext::default().spawn_local(async move {
+        let weak = Rc::downgrade(self);
+        let task = glib::MainContext::default().spawn_local(async move {
             let result = summarize_trash(&gio::File::for_uri("trash:///")).await;
+            if let Some(state) = weak.upgrade() {
+                state.pending_trash_summary.borrow_mut().take();
+            }
             if result_layer.parent().is_none() {
                 return;
             }
@@ -1774,8 +1780,10 @@ impl ViewState {
                 }
                 Ok(summary) => {
                     subtitle.set_text(&format!(
-                        "{} · {} will be reclaimed",
+                        "{}{} · {}{} will be reclaimed",
+                        if summary.truncated { "At least " } else { "" },
                         item_count_label(summary.item_count),
+                        if summary.truncated { "at least " } else { "" },
                         format_file_size(summary.total_size)
                     ));
                     entries.replace(Some(summary.entries));
@@ -1787,6 +1795,8 @@ impl ViewState {
                 }
             }
         });
+        self.pending_trash_summary
+            .replace(Some(LoadHandle::new(move || task.abort())));
     }
 
     fn show_delete_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
@@ -2477,8 +2487,12 @@ impl ViewState {
                 };
                 match summary {
                     Ok(summary) => {
-                        size.set_text(&format_file_size(summary.total_size));
-                        size.set_tooltip_text(Some(&item_count_label(summary.item_count)));
+                        let prefix = if summary.truncated { "≥ " } else { "" };
+                        size.set_text(&format!("{prefix}{}", format_file_size(summary.total_size)));
+                        size.set_tooltip_text(Some(&format!(
+                            "{prefix}{}",
+                            item_count_label(summary.item_count)
+                        )));
                     }
                     Err(_) => size.set_text("Unavailable"),
                 }
@@ -5060,11 +5074,32 @@ struct TrashSummary {
     entries: Vec<FileEntry>,
     item_count: usize,
     total_size: u64,
+    /// `true` once measurement stopped short of covering the full trash tree, because it hit
+    /// the entry, depth, or time budget. `item_count`/`total_size` are then a lower bound.
+    truncated: bool,
 }
 
 const TRASH_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-symlink,standard::size,time::modified";
 
+/// Caps how many entries a single measurement will visit, bounding worst-case time and I/O on
+/// an adversarially large or unbounded trash tree.
+const MAX_TRASH_ENTRIES: usize = 200_000;
+/// Caps how deep measurement descends, as a defensive backstop against pathologically deep trees.
+const MAX_TRASH_DEPTH: usize = 64;
+/// Caps how long measurement may run before it is reported as truncated, so a single huge trash
+/// tree cannot keep the empty-trash confirmation from appearing.
+const TRASH_TIME_BUDGET: Duration = Duration::from_secs(5);
+
 async fn summarize_trash(root: &gio::File) -> Result<TrashSummary, glib::Error> {
+    summarize_trash_with_budget(root, MAX_TRASH_ENTRIES, MAX_TRASH_DEPTH, TRASH_TIME_BUDGET).await
+}
+
+async fn summarize_trash_with_budget(
+    root: &gio::File,
+    max_entries: usize,
+    max_depth: usize,
+    time_budget: Duration,
+) -> Result<TrashSummary, glib::Error> {
     let enumerator = root
         .enumerate_children_future(
             TRASH_ATTRIBUTES,
@@ -5075,6 +5110,9 @@ async fn summarize_trash(root: &gio::File) -> Result<TrashSummary, glib::Error> 
     let mut entries = Vec::new();
     let mut item_count = 0_usize;
     let mut total_size = 0_u64;
+    let mut truncated = false;
+    let visited = Rc::new(Cell::new(0_usize));
+    let deadline = Instant::now() + time_budget;
     loop {
         let children = enumerator
             .next_files_future(64, glib::Priority::DEFAULT)
@@ -5084,9 +5122,19 @@ async fn summarize_trash(root: &gio::File) -> Result<TrashSummary, glib::Error> 
         }
         for info in children {
             let file = root.child(info.name());
-            let (count, size) = measure_trash_entry(file.clone(), info.clone()).await?;
+            let (count, size, entry_truncated) = measure_trash_entry(
+                file.clone(),
+                info.clone(),
+                0,
+                visited.clone(),
+                deadline,
+                max_entries,
+                max_depth,
+            )
+            .await?;
             item_count = item_count.saturating_add(count);
             total_size = total_size.saturating_add(size);
+            truncated |= entry_truncated;
             entries.push(trash_file_entry(file, &info));
         }
     }
@@ -5094,43 +5142,76 @@ async fn summarize_trash(root: &gio::File) -> Result<TrashSummary, glib::Error> 
         entries,
         item_count,
         total_size,
+        truncated,
     })
 }
 
-type TrashMeasurementFuture = Pin<Box<dyn Future<Output = Result<(usize, u64), glib::Error>>>>;
+type TrashMeasurementFuture =
+    Pin<Box<dyn Future<Output = Result<(usize, u64, bool), glib::Error>>>>;
 
-fn measure_trash_entry(file: gio::File, info: gio::FileInfo) -> TrashMeasurementFuture {
+/// Measures one trash entry and, for directories, its descendants. `visited` is shared across
+/// the whole walk so the entry budget applies to the tree as a whole rather than per-branch, and
+/// `deadline` is a fixed wall-clock point so the time budget cannot be reset by descending deeper.
+fn measure_trash_entry(
+    file: gio::File,
+    info: gio::FileInfo,
+    depth: usize,
+    visited: Rc<Cell<usize>>,
+    deadline: Instant,
+    max_entries: usize,
+    max_depth: usize,
+) -> TrashMeasurementFuture {
     Box::pin(async move {
+        visited.set(visited.get() + 1);
         let mut count = 1_usize;
         let mut size = if info.file_type() == gio::FileType::Regular {
             info.size().max(0) as u64
         } else {
             0
         };
+        let mut truncated = false;
         if info.file_type() == gio::FileType::Directory && !info.is_symlink() {
-            let enumerator = file
-                .enumerate_children_future(
-                    TRASH_ATTRIBUTES,
-                    gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
-                    glib::Priority::DEFAULT,
-                )
-                .await?;
-            loop {
-                let children = enumerator
-                    .next_files_future(64, glib::Priority::DEFAULT)
+            let budget_exhausted =
+                depth >= max_depth || visited.get() >= max_entries || Instant::now() >= deadline;
+            if budget_exhausted {
+                truncated = true;
+            } else {
+                let enumerator = file
+                    .enumerate_children_future(
+                        TRASH_ATTRIBUTES,
+                        gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                        glib::Priority::DEFAULT,
+                    )
                     .await?;
-                if children.is_empty() {
-                    break;
-                }
-                for child in children {
-                    let (child_count, child_size) =
-                        measure_trash_entry(file.child(child.name()), child).await?;
-                    count = count.saturating_add(child_count);
-                    size = size.saturating_add(child_size);
+                loop {
+                    let children = enumerator
+                        .next_files_future(64, glib::Priority::DEFAULT)
+                        .await?;
+                    if children.is_empty() {
+                        break;
+                    }
+                    for child in children {
+                        let (child_count, child_size, child_truncated) = measure_trash_entry(
+                            file.child(child.name()),
+                            child,
+                            depth + 1,
+                            visited.clone(),
+                            deadline,
+                            max_entries,
+                            max_depth,
+                        )
+                        .await?;
+                        count = count.saturating_add(child_count);
+                        size = size.saturating_add(child_size);
+                        truncated |= child_truncated;
+                    }
+                    if truncated {
+                        break;
+                    }
                 }
             }
         }
-        Ok((count, size))
+        Ok((count, size, truncated))
     })
 }
 

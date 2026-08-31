@@ -2,6 +2,11 @@
 
 use super::*;
 
+/// Serializes tests that drive `glib::MainContext::default()` directly, since it is a
+/// process-wide singleton and concurrent access from the test harness's per-test threads panics
+/// with a GLib thread-affinity error. Mirrors `ASYNC_FILE_TEST` in `adapters::local_operations`.
+static ASYNC_FILE_TEST: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[test]
 fn global_activity_uses_the_latest_active_label() {
     let mut activity = GlobalActivityState::default();
@@ -490,5 +495,101 @@ fn reveal_target_can_scroll_back_to_an_earlier_column() {
     assert_eq!(
         horizontal_reveal_target(600.0, 900.0, 0.0, 1_500.0, 300.0, 600.0),
         300.0
+    );
+}
+
+fn unique_fixture_root(label: &str) -> std::path::PathBuf {
+    let unique = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .expect("the system clock should be after the Unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("strata-trash-{label}-{unique}"))
+}
+
+#[test]
+fn trash_summary_reports_truncated_once_the_entry_budget_is_exceeded() {
+    let _serial = ASYNC_FILE_TEST
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let root = unique_fixture_root("entry-budget");
+    std::fs::create_dir_all(root.join("sub")).expect("the trash fixture should be created");
+    for index in 0..5 {
+        std::fs::write(
+            root.join("sub").join(format!("file-{index}.txt")),
+            b"content",
+        )
+        .expect("the trash fixture file should be written");
+    }
+
+    let summary = glib::MainContext::default().block_on(summarize_trash_with_budget(
+        &gio::File::for_path(&root),
+        1,
+        MAX_TRASH_DEPTH,
+        TRASH_TIME_BUDGET,
+    ));
+    std::fs::remove_dir_all(&root).expect("the trash fixture should be removed");
+
+    let summary = summary.expect("a plain directory tree should measure without error");
+    assert!(
+        summary.truncated,
+        "exceeding the entry budget should be reported"
+    );
+    assert_eq!(
+        summary.item_count, 1,
+        "measurement should stop counting once the entry budget is reached"
+    );
+}
+
+#[test]
+fn trash_summary_reports_truncated_once_the_time_budget_is_exceeded() {
+    let _serial = ASYNC_FILE_TEST
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let root = unique_fixture_root("time-budget");
+    std::fs::create_dir_all(root.join("sub")).expect("the trash fixture should be created");
+    std::fs::write(root.join("sub").join("file.txt"), b"content")
+        .expect("the trash fixture file should be written");
+
+    let summary = glib::MainContext::default().block_on(summarize_trash_with_budget(
+        &gio::File::for_path(&root),
+        usize::MAX,
+        MAX_TRASH_DEPTH,
+        Duration::from_nanos(1),
+    ));
+    std::fs::remove_dir_all(&root).expect("the trash fixture should be removed");
+
+    let summary = summary.expect("a plain directory tree should measure without error");
+    assert!(
+        summary.truncated,
+        "an exhausted time budget should stop measurement and report truncation"
+    );
+}
+
+#[test]
+fn trash_summary_does_not_descend_past_the_depth_budget() {
+    let _serial = ASYNC_FILE_TEST
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let root = unique_fixture_root("depth-budget");
+    std::fs::create_dir_all(root.join("sub/nested")).expect("the trash fixture should be created");
+    std::fs::write(root.join("sub/nested/deep.txt"), b"content")
+        .expect("the trash fixture file should be written");
+
+    let summary = glib::MainContext::default().block_on(summarize_trash_with_budget(
+        &gio::File::for_path(&root),
+        usize::MAX,
+        1,
+        TRASH_TIME_BUDGET,
+    ));
+    std::fs::remove_dir_all(&root).expect("the trash fixture should be removed");
+
+    let summary = summary.expect("a plain directory tree should measure without error");
+    assert!(
+        summary.truncated,
+        "descending past the depth budget should be reported"
+    );
+    assert_eq!(
+        summary.item_count, 2,
+        "entries past the depth budget should not be counted (root/sub and sub/nested only)"
     );
 }
