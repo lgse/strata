@@ -906,7 +906,7 @@ fn theme_page(manager: Rc<ThemeManager>) -> gtk::Widget {
         .column_spacing(12)
         .row_spacing(12)
         .max_children_per_line(3)
-        .min_children_per_line(2)
+        .min_children_per_line(1)
         .selection_mode(gtk::SelectionMode::None)
         .homogeneous(true)
         .build();
@@ -918,7 +918,7 @@ fn theme_page(manager: Rc<ThemeManager>) -> gtk::Widget {
         .column_spacing(12)
         .row_spacing(12)
         .max_children_per_line(3)
-        .min_children_per_line(2)
+        .min_children_per_line(1)
         .selection_mode(gtk::SelectionMode::None)
         .homogeneous(true)
         .build();
