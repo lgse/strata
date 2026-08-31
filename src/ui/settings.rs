@@ -567,6 +567,7 @@ fn update_check_row(
     let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
     row.add_css_class("settings-option");
     let summary = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    summary.set_vexpand(true);
     let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     copy.set_hexpand(true);
     copy.set_valign(gtk::Align::Center);
@@ -587,7 +588,7 @@ fn update_check_row(
     copy.append(&progress);
     let button = gtk::Button::with_label("Check now");
     button.add_css_class("settings-update-check");
-    button.set_valign(gtk::Align::Start);
+    button.set_valign(gtk::Align::Center);
     summary.append(&copy);
     summary.append(&button);
     row.append(&summary);
