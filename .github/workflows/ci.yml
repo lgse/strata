@@ -8,10 +8,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   quality:
     name: Format, lint, and test
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Check out repository
@@ -33,9 +37,6 @@ jobs:
       - name: Check formatting
         run: cargo fmt --all --check
 
-      - name: Check compilation
-        run: cargo check --all-targets --all-features
-
       - name: Run Clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
@@ -44,7 +45,7 @@ jobs:
 
   dependencies:
     name: Dependency policy
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Check out repository
@@ -57,7 +58,7 @@ jobs:
 
   spelling:
     name: Spelling
-    runs-on: ubuntu-24.04
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Check out repository
