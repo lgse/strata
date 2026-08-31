@@ -198,6 +198,14 @@ impl Default for PeekBehavior {
 }
 
 type PinHandler = Rc<dyn Fn(Location, String)>;
+type PinStatusHandler = Rc<dyn Fn(&Location) -> PinStatus>;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum PinStatus {
+    Available,
+    Pinned,
+    Unavailable,
+}
 
 pub(super) struct ViewState {
     overlay: gtk::Overlay,
@@ -222,6 +230,7 @@ pub(super) struct ViewState {
     active_new_entry: RefCell<Option<ActiveNewEntry>>,
     delete_progress: RefCell<Option<DeleteProgressView>>,
     pin_handler: RefCell<Option<PinHandler>>,
+    pin_status_handler: RefCell<Option<PinStatusHandler>>,
     browser: Rc<Browser>,
 }
 
@@ -328,6 +337,7 @@ impl BrowserView {
             active_new_entry: RefCell::new(None),
             delete_progress: RefCell::new(None),
             pin_handler: RefCell::new(None),
+            pin_status_handler: RefCell::new(None),
             browser,
         });
 
@@ -400,8 +410,9 @@ impl BrowserView {
         self.state.browser.clone()
     }
 
-    pub(super) fn set_pin_handler(&self, handler: PinHandler) {
+    pub(super) fn set_pin_handlers(&self, handler: PinHandler, status_handler: PinStatusHandler) {
         self.state.pin_handler.replace(Some(handler));
+        self.state.pin_status_handler.replace(Some(status_handler));
     }
 
     pub fn set_operation_provider(&self, provider: Rc<dyn OperationProvider>) {
@@ -1898,7 +1909,20 @@ impl ViewState {
             "HIDDEN",
             if name.starts_with('.') { "Yes" } else { "No" },
         );
-        let _pinned = properties_row(&details, "PINNED", "No");
+        let pin_status = self
+            .pin_status_handler
+            .borrow()
+            .as_ref()
+            .map_or(PinStatus::Unavailable, |handler| handler(&location));
+        let _pinned = properties_row(
+            &details,
+            "PINNED",
+            if pin_status == PinStatus::Pinned {
+                "Yes"
+            } else {
+                "No"
+            },
+        );
         content.append(&details);
 
         let permissions = gtk::Box::new(gtk::Orientation::Vertical, 8);
@@ -1925,7 +1949,12 @@ impl ViewState {
         rename.set_sensitive(entry.is_some());
         let pin = properties_action(crate::assets::icons::PIN, "Pin");
         let pin_handler = self.pin_handler.borrow().clone();
-        pin.set_sensitive(is_directory && !is_trash_location(&location) && pin_handler.is_some());
+        pin.set_sensitive(
+            is_directory
+                && !is_trash_location(&location)
+                && pin_handler.is_some()
+                && pin_status == PinStatus::Available,
+        );
         let copy_path = properties_action(crate::assets::icons::COPY, "Copy path");
         actions.append(&open);
         actions.append(&rename);
@@ -4457,6 +4486,13 @@ pub(super) fn install_item_context_menu(
         let entries = state.browser.selected_entries();
         preview.set_visible(entry_supports_quick_preview(&entry));
         pin.set_visible(entry.is_directory() && !is_trash_location(&entry.location));
+        pin.set_sensitive(
+            state
+                .pin_status_handler
+                .borrow()
+                .as_ref()
+                .is_some_and(|handler| handler(&entry.location) == PinStatus::Available),
+        );
         if entries.len() > 1 {
             heading.set_text(&format!("{} items selected", entries.len()));
             summary.set_text(&selected_items_summary(&entries));

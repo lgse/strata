@@ -18,7 +18,7 @@ use crate::{
 
 use super::{
     blur::BlurBin,
-    browser::{BrowserView, PeekBehavior, show_error_dialog},
+    browser::{BrowserView, PeekBehavior, PinStatus, show_error_dialog},
     browser_modes::{BrowserDensity, BrowserMode},
     motion::{animations_enabled, emphasized_deceleration},
     preview::PreviewDrawer,
@@ -127,11 +127,21 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     content.set_vexpand(true);
     let sidebar = build_sidebar(browser.clone());
     let weak_sidebar = Rc::downgrade(&sidebar.state);
-    browser.set_pin_handler(Rc::new(move |location, name| {
-        if let Some(sidebar) = weak_sidebar.upgrade() {
-            sidebar.pin_location(location, name);
-        }
-    }));
+    let pinning_sidebar = weak_sidebar.clone();
+    browser.set_pin_handlers(
+        Rc::new(move |location, name| {
+            if let Some(sidebar) = pinning_sidebar.upgrade() {
+                sidebar.pin_location(location, name);
+            }
+        }),
+        Rc::new(move |location| {
+            weak_sidebar
+                .upgrade()
+                .map_or(PinStatus::Unavailable, |sidebar| {
+                    sidebar.pin_status(location)
+                })
+        }),
+    );
     sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
     content.set_start_child(Some(&sidebar.widget));
     content.set_end_child(Some(&browser.widget()));
@@ -850,14 +860,23 @@ impl SidebarState {
         self.sync_active_place();
     }
 
-    fn pin_location(self: &Rc<Self>, location: Location, name: String) {
-        if is_standard_place_location(&location)
-            || self
-                .pinned_places
-                .borrow()
-                .iter()
-                .any(|(pinned, _)| pinned == &location)
+    fn pin_status(&self, location: &Location) -> PinStatus {
+        if is_standard_place_location(location) {
+            PinStatus::Unavailable
+        } else if self
+            .pinned_places
+            .borrow()
+            .iter()
+            .any(|(pinned, _)| pinned == location)
         {
+            PinStatus::Pinned
+        } else {
+            PinStatus::Available
+        }
+    }
+
+    fn pin_location(self: &Rc<Self>, location: Location, name: String) {
+        if self.pin_status(&location) != PinStatus::Available {
             return;
         }
         self.pinned_places.borrow_mut().push((location, name));

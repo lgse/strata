@@ -692,6 +692,31 @@ fn valid_location_input_navigates_through_the_controller() {
 }
 
 #[test]
+fn sidebar_location_navigation_validates_uris_but_navigates_native_paths_directly() {
+    let remote_browser = Browser::new(Rc::new(NotMountedFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    remote_browser.observe(move |event| observed.borrow_mut().push(event));
+
+    let remote = Location::uri("smb://host/share");
+    remote_browser.navigate_location(remote.clone());
+
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::LocationNavigationRejected {
+            error: LocationValidationError::NotMounted(location)
+        } if location == &remote
+    )));
+    assert_eq!(remote_browser.active_location(), None);
+
+    let native_browser = Browser::new(Rc::new(RejectingFileSource));
+    let native = Location::local("/saved/bookmark");
+    native_browser.navigate_location(native.clone());
+
+    assert_eq!(native_browser.active_location(), Some(native));
+}
+
+#[test]
 fn location_input_accepts_uri_schemes_for_local_and_remote_locations() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.navigate(Location::local("/fixture"));
