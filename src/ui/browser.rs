@@ -4810,15 +4810,12 @@ pub(super) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk::Menu
     button
 }
 
-pub(super) fn column_sort_direction_toggle(
-    browser: &Rc<Browser>,
-    depth: usize,
-) -> gtk::ToggleButton {
+pub(super) fn column_sort_direction_toggle(browser: &Rc<Browser>, depth: usize) -> gtk::Button {
     let direction = browser
         .column_preferences(depth)
         .unwrap_or_default()
         .sort_direction;
-    let button = gtk::ToggleButton::new();
+    let button = gtk::Button::new();
     let icon = crate::assets::text_icon(crate::assets::icons::ARROW_UP_NARROW_WIDE, 16);
     button.set_child(Some(&icon));
     button.add_css_class("column-header-action");
@@ -4854,13 +4851,8 @@ pub(super) fn column_sort_direction_toggle(
     button
 }
 
-fn sync_sort_direction_toggle(
-    button: &gtk::ToggleButton,
-    icon: &gtk::Image,
-    direction: SortDirection,
-) {
+fn sync_sort_direction_toggle(button: &gtk::Button, icon: &gtk::Image, direction: SortDirection) {
     let descending = direction == SortDirection::Descending;
-    button.set_active(descending);
     crate::assets::set_text_icon(
         icon,
         if descending {
