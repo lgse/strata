@@ -2199,14 +2199,16 @@ impl ViewState {
             location.clone(),
             strategy,
             attempt > 0,
-            move |state, result| {
+            move |state, result, credentials_submitted| {
                 if mount_result_is_ok(&result) {
                     state.browser.navigate(location.clone());
                     state.location_stack.set_visible_child_name("breadcrumbs");
                     state.browser.focus_active();
                 } else if let Err(error) = result {
-                    if should_retry_mount_after_failure(attempt)
-                        && mount_error_is_authentication_failure(&location, &error)
+                    if should_retry_mount_after_authentication_failure(
+                        attempt,
+                        credentials_submitted,
+                    ) && mount_error_is_authentication_failure(&location, &error)
                     {
                         state.mount_then_navigate_attempt(location.clone(), strategy, attempt + 1);
                     } else {
@@ -2241,12 +2243,14 @@ impl ViewState {
             location.clone(),
             strategy,
             attempt > 0,
-            move |state, result| {
+            move |state, result, credentials_submitted| {
                 if mount_result_is_ok(&result) {
                     state.browser.descend(parent_depth, location.clone());
                 } else if let Err(error) = result {
-                    if should_retry_mount_after_failure(attempt)
-                        && mount_error_is_authentication_failure(&location, &error)
+                    if should_retry_mount_after_authentication_failure(
+                        attempt,
+                        credentials_submitted,
+                    ) && mount_error_is_authentication_failure(&location, &error)
                     {
                         state.mount_then_descend_attempt(
                             parent_depth,
@@ -2267,7 +2271,7 @@ impl ViewState {
         location: Location,
         strategy: MountStrategy,
         authentication_failed: bool,
-        on_result: impl Fn(&Rc<Self>, Result<(), glib::Error>) + 'static,
+        on_result: impl Fn(&Rc<Self>, Result<(), glib::Error>, bool) + 'static,
     ) {
         if self.overlay.root().and_downcast::<gtk::Window>().is_none() {
             return;
@@ -2278,6 +2282,8 @@ impl ViewState {
         let active_prompt = Rc::new(RefCell::new(None::<gtk::Box>));
         let prompt_for_signal = active_prompt.clone();
         let already_prompted = Cell::new(authentication_failed);
+        let credentials_submitted = Rc::new(Cell::new(false));
+        let submission_for_prompt = credentials_submitted.clone();
         operation.connect_ask_password(
             move |operation, message, default_user, default_domain, flags| {
                 if let Some(previous) = prompt_for_signal.borrow_mut().take() {
@@ -2291,6 +2297,7 @@ impl ViewState {
                     (default_user, default_domain),
                     flags,
                     retry,
+                    submission_for_prompt.clone(),
                 );
                 prompt_for_signal.replace(prompt);
             },
@@ -2312,7 +2319,7 @@ impl ViewState {
                 dismiss_authentication_prompt(&result_overlay, &prompt);
             }
             if let Some(state) = weak.upgrade() {
-                on_result(&state, result);
+                on_result(&state, result, credentials_submitted.get());
             }
         });
     }
@@ -5377,6 +5384,7 @@ fn show_authentication_dialog(
     defaults: (&str, &str),
     flags: gio::AskPasswordFlags,
     authentication_failed: bool,
+    credentials_submitted: Rc<Cell<bool>>,
 ) -> Option<gtk::Box> {
     let Some(window_overlay) = browser_overlay
         .root()
@@ -5568,6 +5576,7 @@ fn show_authentication_dialog(
     let connect_anonymous = anonymous.clone();
     let connect_remember = remember_buttons;
     connect.connect_clicked(move |_| {
+        credentials_submitted.set(true);
         let selected = connect_remember
             .iter()
             .position(gtk::ToggleButton::is_active)
@@ -5712,14 +5721,15 @@ fn mount_result_is_ok(result: &Result<(), glib::Error>) -> bool {
 
 const MAX_AUTOMATIC_MOUNT_RETRIES: u32 = 3;
 
-/// Caps how many times a mount is retried automatically after what looks like
-/// an authentication failure. Without this, a backend that rejects every
-/// attempt before the credential prompt is ever answered (for example, a
-/// mount operation that resolves before the user interacts with it) retries
-/// forever, tearing down and rebuilding the dialog on every failure and
-/// making it impossible to type into.
-fn should_retry_mount_after_failure(attempt: u32) -> bool {
-    attempt < MAX_AUTOMATIC_MOUNT_RETRIES
+/// Retries a completed mount operation only after the user submitted
+/// credentials for that operation. An authentication-looking error before a
+/// reply is a backend failure, not a rejected credential attempt, and retrying
+/// it would tear down and rebuild the prompt without user interaction.
+fn should_retry_mount_after_authentication_failure(
+    attempt: u32,
+    credentials_submitted: bool,
+) -> bool {
+    credentials_submitted && attempt < MAX_AUTOMATIC_MOUNT_RETRIES
 }
 
 fn mount_error_is_authentication_failure(location: &Location, error: &glib::Error) -> bool {
