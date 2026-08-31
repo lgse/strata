@@ -603,7 +603,7 @@ impl Browser {
             return;
         };
         let request_id = self.begin_operation();
-        let emit = self.operation_callback(request_id, true);
+        let emit = self.operation_callback(request_id, true, None);
         let load = provider.rename(
             RenameRequest {
                 id: request_id,
@@ -629,13 +629,14 @@ impl Browser {
             return;
         };
         let request_id = self.begin_operation();
+        let refresh_parent = parent.clone();
         let load = provider.create_directory(
             CreateDirectoryRequest {
                 id: request_id,
                 parent,
                 name,
             },
-            self.operation_callback(request_id, false),
+            self.operation_callback(request_id, false, Some(refresh_parent)),
         );
         self.operation_load.replace(Some(load));
     }
@@ -681,6 +682,7 @@ impl Browser {
             return;
         };
         let request_id = self.begin_operation();
+        let refresh_parent = destination.clone();
         let load = provider.paste(
             PasteRequest {
                 id: request_id,
@@ -688,7 +690,7 @@ impl Browser {
                 items,
                 move_sources,
             },
-            self.operation_callback(request_id, false),
+            self.operation_callback(request_id, false, Some(refresh_parent)),
         );
         self.operation_load.replace(Some(load));
     }
@@ -715,7 +717,7 @@ impl Browser {
                 entries,
                 permanent,
             },
-            self.operation_callback(request_id, false),
+            self.operation_callback(request_id, false, None),
         );
         self.operation_load.replace(Some(load));
     }
@@ -741,7 +743,7 @@ impl Browser {
                 id: request_id,
                 entries,
             },
-            self.operation_callback(request_id, false),
+            self.operation_callback(request_id, false, None),
         );
         self.operation_load.replace(Some(load));
     }
@@ -777,6 +779,7 @@ impl Browser {
         self: &Rc<Self>,
         request_id: OperationRequestId,
         rename: bool,
+        refresh_parent: Option<Location>,
     ) -> Rc<dyn Fn(OperationEvent)> {
         let weak = Rc::downgrade(self);
         Rc::new(move |event| {
@@ -870,10 +873,19 @@ impl Browser {
                     browser.emit(BrowserEvent::OperationCompletedWithErrors { message });
                 }
                 OperationEvent::Renamed { .. } => browser.emit(BrowserEvent::RenameCompleted),
-                OperationEvent::Created { .. }
-                | OperationEvent::Pasted { .. }
-                | OperationEvent::DeleteProgress { .. }
-                | OperationEvent::RestoreProgress { .. } => {}
+                OperationEvent::Created { .. } | OperationEvent::Pasted { .. } => {
+                    // A remote location has no live directory monitor (see
+                    // `FileSource::watch`), so the column that just received a
+                    // new item would otherwise never learn about it. Refresh
+                    // it explicitly rather than leaving the new item invisible
+                    // until the user navigates away and back.
+                    if let Some(parent) = &refresh_parent
+                        && parent.native_path().is_none()
+                    {
+                        browser.refresh_columns_at(parent);
+                    }
+                }
+                OperationEvent::DeleteProgress { .. } | OperationEvent::RestoreProgress { .. } => {}
             }
         })
     }
@@ -1053,6 +1065,24 @@ impl Browser {
             },
             emit,
         )
+    }
+
+    fn refresh_columns_at(self: &Rc<Self>, location: &Location) {
+        let depths = {
+            let state = self.state.borrow();
+            let mut depths = Vec::new();
+            let mut depth = 0;
+            while let Some(open_location) = state.location_at(depth) {
+                if &open_location == location {
+                    depths.push(depth);
+                }
+                depth += 1;
+            }
+            depths
+        };
+        for depth in depths {
+            self.refresh_column(depth);
+        }
     }
 
     fn remove_deleted_locations(self: &Rc<Self>, locations: &[Location]) {

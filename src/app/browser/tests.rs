@@ -256,6 +256,109 @@ impl FileSource for FakeFileSource {
     }
 }
 
+struct CountingFileSource {
+    enumerate_calls: Rc<Cell<usize>>,
+}
+
+impl FileSource for CountingFileSource {
+    fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
+        Ok(())
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        self.enumerate_calls.set(self.enumerate_calls.get() + 1);
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
+struct ImmediateOperationProvider;
+
+impl OperationProvider for ImmediateOperationProvider {
+    fn rename(&self, request: RenameRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        emit(OperationEvent::Renamed {
+            request_id: request.id,
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn create_directory(
+        &self,
+        request: CreateDirectoryRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        emit(OperationEvent::Created {
+            request_id: request.id,
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        emit(OperationEvent::Pasted {
+            request_id: request.id,
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        emit(OperationEvent::Deleted {
+            request_id: request.id,
+            locations: Vec::new(),
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        emit(OperationEvent::Restored {
+            request_id: request.id,
+            locations: Vec::new(),
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
+#[test]
+fn creating_a_directory_on_a_remote_location_refreshes_the_open_column() {
+    let enumerate_calls = Rc::new(Cell::new(0));
+    let source = CountingFileSource {
+        enumerate_calls: enumerate_calls.clone(),
+    };
+    let browser = Browser::new(Rc::new(source));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::uri("smb://host/share"));
+    assert_eq!(enumerate_calls.get(), 1);
+
+    browser.create_directory(Location::uri("smb://host/share"), "New Folder".to_owned());
+
+    assert_eq!(
+        enumerate_calls.get(),
+        2,
+        "a remote column has no live monitor, so it should be refreshed explicitly"
+    );
+}
+
+#[test]
+fn creating_a_directory_locally_does_not_trigger_a_redundant_refresh() {
+    let enumerate_calls = Rc::new(Cell::new(0));
+    let source = CountingFileSource {
+        enumerate_calls: enumerate_calls.clone(),
+    };
+    let browser = Browser::new(Rc::new(source));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::local("/fixture"));
+    assert_eq!(enumerate_calls.get(), 1);
+
+    browser.create_directory(Location::local("/fixture"), "New Folder".to_owned());
+
+    assert_eq!(
+        enumerate_calls.get(),
+        1,
+        "a local column already has a live file monitor; no extra refresh is needed"
+    );
+}
+
 #[test]
 fn navigation_events_are_delivered_to_every_observer() {
     let browser = Browser::new(Rc::new(FakeFileSource));
