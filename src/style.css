@@ -325,6 +325,11 @@ headerbar menubutton.header-action > button:focus-visible image {
   outline-offset: -1px;
 }
 
+.search-result-thumbnail {
+  min-height: 32px;
+  min-width: 32px;
+}
+
 .search-result-name {
   color: @theme_text;
   font-weight: 650;

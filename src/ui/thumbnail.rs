@@ -87,19 +87,58 @@ pub(super) fn set_thumbnail_or_icon(
     icon_size: i32,
     thumbnail_size: i32,
 ) {
-    let (image_id, request, cancellation) = set_fallback_icon(image, fallback_icon, icon_size);
-
-    let Some(path) = entry.location.native_path().map(Path::to_path_buf) else {
+    let Some(path) = entry.location.native_path() else {
+        show_fallback_icon(image, fallback_icon, icon_size);
         return;
     };
+    set_thumbnail_for_path(
+        image,
+        path,
+        known_metadata(&entry.modified_unix_seconds),
+        known_metadata(&entry.size),
+        fallback_icon,
+        icon_size,
+        thumbnail_size,
+    );
+}
+
+pub(super) fn set_thumbnail_or_icon_for_path(
+    image: &gtk::Image,
+    path: &Path,
+    fallback_icon: &str,
+    icon_size: i32,
+    thumbnail_size: i32,
+) {
+    set_thumbnail_for_path(
+        image,
+        path,
+        None,
+        None,
+        fallback_icon,
+        icon_size,
+        thumbnail_size,
+    );
+}
+
+fn set_thumbnail_for_path(
+    image: &gtk::Image,
+    path: &Path,
+    modified: Option<i64>,
+    file_size: Option<u64>,
+    fallback_icon: &str,
+    icon_size: i32,
+    thumbnail_size: i32,
+) {
+    let (image_id, request, cancellation) = set_fallback_icon(image, fallback_icon, icon_size);
+    let path = path.to_path_buf();
     let Some(kind) = thumbnail_kind(&path) else {
         return;
     };
     let thumbnail_size = thumbnail_size.clamp(16, 256);
     let key = ThumbnailKey {
         path: path.clone(),
-        modified: known_metadata(&entry.modified_unix_seconds),
-        file_size: known_metadata(&entry.size),
+        modified,
+        file_size,
         thumbnail_size,
     };
     if let Some(bytes) = THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().get(&key)) {

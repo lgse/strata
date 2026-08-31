@@ -270,14 +270,22 @@ fn result_row(item: &SearchItem, root: &Path) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
     row.add_css_class("search-result");
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    content.append(&crate::assets::primary_icon(
-        if item.is_directory {
-            crate::assets::icons::FOLDER
-        } else {
-            crate::assets::icons::DOCUMENTS
-        },
-        19,
-    ));
+    let icon = gtk::Image::new();
+    icon.add_css_class("search-result-thumbnail");
+    if item.is_directory {
+        crate::assets::set_primary_icon(&icon, crate::assets::icons::FOLDER);
+        icon.set_pixel_size(19);
+        icon.set_size_request(32, 32);
+    } else {
+        super::thumbnail::set_thumbnail_or_icon_for_path(
+            &icon,
+            &item.path,
+            crate::assets::icons::DOCUMENTS,
+            19,
+            32,
+        );
+    }
+    content.append(&icon);
     let labels = gtk::Box::new(gtk::Orientation::Vertical, 2);
     labels.set_hexpand(true);
     let name = gtk::Label::new(Some(&item.name));
