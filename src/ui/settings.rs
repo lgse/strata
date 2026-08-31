@@ -41,6 +41,7 @@ mod responsive_bin {
         pub navigation: RefCell<Option<gtk::Box>>,
         pub navigation_heading: RefCell<Option<gtk::Label>>,
         pub navigation_labels: RefCell<Vec<gtk::Label>>,
+        pub navigation_contents: RefCell<Vec<gtk::Box>>,
     }
 
     #[glib::object_subclass]
@@ -88,6 +89,13 @@ mod responsive_bin {
                 for label in self.navigation_labels.borrow().iter() {
                     label.set_visible(!compact);
                 }
+                for content in self.navigation_contents.borrow().iter() {
+                    content.set_halign(if compact {
+                        gtk::Align::Center
+                    } else {
+                        gtk::Align::Fill
+                    });
+                }
             }
             let x = ((width - child_width) / 2) as f32;
             let y = ((height - child_height) / 2) as f32;
@@ -109,6 +117,7 @@ impl ResponsiveBin {
         navigation: &gtk::Box,
         navigation_heading: &gtk::Label,
         navigation_labels: Vec<gtk::Label>,
+        navigation_contents: Vec<gtk::Box>,
     ) -> Self {
         let bin: Self = glib::Object::new();
         let imp = bin.imp();
@@ -116,6 +125,7 @@ impl ResponsiveBin {
         imp.navigation_heading
             .replace(Some(navigation_heading.clone()));
         imp.navigation_labels.replace(navigation_labels);
+        imp.navigation_contents.replace(navigation_contents);
         child.set_parent(&bin);
         bin
     }
@@ -194,14 +204,16 @@ pub fn build_layer(
 
     let nav_buttons: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
     let mut navigation_labels = Vec::new();
+    let mut navigation_contents = Vec::new();
     for (label, icon, name) in [
         ("General", icons::SLIDERS, "general"),
         ("Keybindings", icons::KEYBOARD, "keybindings"),
         ("Theme & appearance", icons::PALETTE, "theme"),
         ("About", icons::INFO, "about"),
     ] {
-        let (button, navigation_label) = navigation_button(icon, label);
+        let (button, navigation_label, navigation_content) = navigation_button(icon, label);
         navigation_labels.push(navigation_label);
+        navigation_contents.push(navigation_content);
         if name == "general" {
             button.add_css_class("settings-nav-active");
         }
@@ -223,8 +235,13 @@ pub fn build_layer(
 
     panel.append(&navigation);
     panel.append(&page);
-    let responsive_panel =
-        ResponsiveBin::new(&panel, &navigation, &navigation_heading, navigation_labels);
+    let responsive_panel = ResponsiveBin::new(
+        &panel,
+        &navigation,
+        &navigation_heading,
+        navigation_labels,
+        navigation_contents,
+    );
     responsive_panel.set_hexpand(true);
     responsive_panel.set_vexpand(true);
     layer.append(&responsive_panel);
@@ -1210,7 +1227,7 @@ impl ColorField {
     }
 }
 
-fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label) {
+fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::Box) {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let icon = crate::assets::primary_icon(icon, 18);
     let text = gtk::Label::new(Some(label));
@@ -1222,7 +1239,7 @@ fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label) {
         .tooltip_text(label)
         .build();
     button.set_has_frame(false);
-    (button, text)
+    (button, text, content)
 }
 
 fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
