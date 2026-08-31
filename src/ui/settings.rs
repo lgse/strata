@@ -30,12 +30,18 @@ pub(super) type UpdateNoticeHandler = Rc<dyn Fn(Option<(String, String, String)>
 const DIALOG_WIDTH: i32 = 920;
 const DIALOG_HEIGHT: i32 = 620;
 const DIALOG_MARGIN: i32 = 24;
+const COMPACT_NAVIGATION_BREAKPOINT: i32 = 700;
 
 mod responsive_bin {
     use super::*;
 
     #[derive(Default)]
-    pub struct ResponsiveBin;
+    pub struct ResponsiveBin {
+        pub compact_navigation: Cell<bool>,
+        pub navigation: RefCell<Option<gtk::Box>>,
+        pub navigation_heading: RefCell<Option<gtk::Label>>,
+        pub navigation_labels: RefCell<Vec<gtk::Label>>,
+    }
 
     #[glib::object_subclass]
     impl ObjectSubclass for ResponsiveBin {
@@ -67,6 +73,22 @@ mod responsive_bin {
                 return;
             };
             let (child_width, child_height) = responsive_dialog_size(width, height);
+            let compact = uses_compact_navigation(child_width);
+            if self.compact_navigation.replace(compact) != compact {
+                if let Some(navigation) = self.navigation.borrow().as_ref() {
+                    if compact {
+                        navigation.add_css_class("compact");
+                    } else {
+                        navigation.remove_css_class("compact");
+                    }
+                }
+                if let Some(heading) = self.navigation_heading.borrow().as_ref() {
+                    heading.set_visible(!compact);
+                }
+                for label in self.navigation_labels.borrow().iter() {
+                    label.set_visible(!compact);
+                }
+            }
             let x = ((width - child_width) / 2) as f32;
             let y = ((height - child_height) / 2) as f32;
             let transform = gtk::gsk::Transform::new().translate(&gtk::graphene::Point::new(x, y));
@@ -82,8 +104,18 @@ glib::wrapper! {
 }
 
 impl ResponsiveBin {
-    fn new(child: &impl IsA<gtk::Widget>) -> Self {
+    fn new(
+        child: &impl IsA<gtk::Widget>,
+        navigation: &gtk::Box,
+        navigation_heading: &gtk::Label,
+        navigation_labels: Vec<gtk::Label>,
+    ) -> Self {
         let bin: Self = glib::Object::new();
+        let imp = bin.imp();
+        imp.navigation.replace(Some(navigation.clone()));
+        imp.navigation_heading
+            .replace(Some(navigation_heading.clone()));
+        imp.navigation_labels.replace(navigation_labels);
         child.set_parent(&bin);
         bin
     }
@@ -94,6 +126,10 @@ fn responsive_dialog_size(width: i32, height: i32) -> (i32, i32) {
         DIALOG_WIDTH.min((width - DIALOG_MARGIN * 2).max(1)),
         DIALOG_HEIGHT.min((height - DIALOG_MARGIN * 2).max(1)),
     )
+}
+
+fn uses_compact_navigation(dialog_width: i32) -> bool {
+    dialog_width < COMPACT_NAVIGATION_BREAKPOINT
 }
 
 pub fn build_layer(
@@ -118,7 +154,7 @@ pub fn build_layer(
 
     let navigation = gtk::Box::new(gtk::Orientation::Vertical, 5);
     navigation.add_css_class("settings-navigation");
-    append_heading(&navigation, "SETTINGS");
+    let navigation_heading = append_heading(&navigation, "SETTINGS");
 
     let page = gtk::Box::new(gtk::Orientation::Vertical, 0);
     page.add_css_class("settings-page");
@@ -157,13 +193,15 @@ pub fn build_layer(
     page.append(&stack);
 
     let nav_buttons: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
+    let mut navigation_labels = Vec::new();
     for (label, icon, name) in [
         ("General", icons::SLIDERS, "general"),
         ("Keybindings", icons::KEYBOARD, "keybindings"),
         ("Theme & appearance", icons::PALETTE, "theme"),
         ("About", icons::INFO, "about"),
     ] {
-        let button = navigation_button(icon, label);
+        let (button, navigation_label) = navigation_button(icon, label);
+        navigation_labels.push(navigation_label);
         if name == "general" {
             button.add_css_class("settings-nav-active");
         }
@@ -185,7 +223,8 @@ pub fn build_layer(
 
     panel.append(&navigation);
     panel.append(&page);
-    let responsive_panel = ResponsiveBin::new(&panel);
+    let responsive_panel =
+        ResponsiveBin::new(&panel, &navigation, &navigation_heading, navigation_labels);
     responsive_panel.set_hexpand(true);
     responsive_panel.set_vexpand(true);
     layer.append(&responsive_panel);
@@ -1171,16 +1210,19 @@ impl ColorField {
     }
 }
 
-fn navigation_button(icon: &str, label: &str) -> gtk::Button {
+fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label) {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let icon = crate::assets::primary_icon(icon, 18);
-    let label = gtk::Label::new(Some(label));
-    label.set_xalign(0.0);
+    let text = gtk::Label::new(Some(label));
+    text.set_xalign(0.0);
     content.append(&icon);
-    content.append(&label);
-    let button = gtk::Button::builder().child(&content).build();
+    content.append(&text);
+    let button = gtk::Button::builder()
+        .child(&content)
+        .tooltip_text(label)
+        .build();
     button.set_has_frame(false);
-    button
+    (button, text)
 }
 
 fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
@@ -1228,11 +1270,12 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
     (row, toggle)
 }
 
-fn append_heading(container: &gtk::Box, text: &str) {
+fn append_heading(container: &gtk::Box, text: &str) -> gtk::Label {
     let heading = gtk::Label::new(Some(text));
     heading.set_xalign(0.0);
     heading.add_css_class("menu-heading");
     container.append(&heading);
+    heading
 }
 
 trait RoundedRectangle {

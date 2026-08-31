@@ -645,6 +645,11 @@ headerbar menubutton.header-action > button:focus-visible image {
   padding: 18px 12px;
 }
 
+.settings-navigation.compact {
+  min-width: 52px;
+  padding: 12px 8px;
+}
+
 .settings-navigation button {
   background: transparent;
   border: none;
@@ -653,6 +658,10 @@ headerbar menubutton.header-action > button:focus-visible image {
   color: @theme_dim_text;
   min-height: 38px;
   padding: 5px 10px;
+}
+
+.settings-navigation.compact button {
+  padding: 5px 9px;
 }
 
 .settings-navigation button:hover {
