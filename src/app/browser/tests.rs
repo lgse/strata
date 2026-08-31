@@ -63,6 +63,8 @@ struct FilePreviewSource;
 
 struct RejectingFileSource;
 
+struct NotMountedFileSource;
+
 struct RetryFileSource {
     attempts: Rc<Cell<usize>>,
 }
@@ -194,6 +196,20 @@ impl FileSource for RejectingFileSource {
     }
 }
 
+impl FileSource for NotMountedFileSource {
+    fn validate_location(&self, location: &Location) -> Result<(), LocationValidationError> {
+        Err(LocationValidationError::NotMounted(location.clone()))
+    }
+
+    fn enumerate(
+        &self,
+        _request: DirectoryRequest,
+        _emit: Rc<dyn Fn(DirectoryEvent)>,
+    ) -> LoadHandle {
+        LoadHandle::new(|| {})
+    }
+}
+
 impl FileSource for FilePreviewSource {
     fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
         Ok(())
@@ -265,6 +281,145 @@ impl FileSource for FakeFileSource {
         });
         LoadHandle::new(|| {})
     }
+}
+
+struct CountingFileSource {
+    enumerate_calls: Rc<Cell<usize>>,
+}
+
+impl FileSource for CountingFileSource {
+    fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
+        Ok(())
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        self.enumerate_calls.set(self.enumerate_calls.get() + 1);
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
+struct ImmediateOperationProvider;
+
+impl OperationProvider for ImmediateOperationProvider {
+    fn rename(&self, request: RenameRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        emit(OperationEvent::Renamed {
+            request_id: request.id,
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn create_directory(
+        &self,
+        request: CreateDirectoryRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        emit(OperationEvent::Created {
+            request_id: request.id,
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn create_file(
+        &self,
+        request: CreateFileRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        emit(OperationEvent::Created {
+            request_id: request.id,
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        emit(OperationEvent::Pasted {
+            request_id: request.id,
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        emit(OperationEvent::Deleted {
+            request_id: request.id,
+            locations: Vec::new(),
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        emit(OperationEvent::Restored {
+            request_id: request.id,
+            locations: Vec::new(),
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
+#[test]
+fn creating_a_directory_on_a_remote_location_refreshes_the_open_column() {
+    let enumerate_calls = Rc::new(Cell::new(0));
+    let source = CountingFileSource {
+        enumerate_calls: enumerate_calls.clone(),
+    };
+    let browser = Browser::new(Rc::new(source));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::uri("smb://host/share"));
+    assert_eq!(enumerate_calls.get(), 1);
+
+    browser.create_directory(Location::uri("smb://host/share"), "New Folder".to_owned());
+
+    assert_eq!(
+        enumerate_calls.get(),
+        2,
+        "a remote column has no live monitor, so it should be refreshed explicitly"
+    );
+}
+
+#[test]
+fn renaming_on_a_remote_location_refreshes_the_open_column() {
+    let enumerate_calls = Rc::new(Cell::new(0));
+    let source = CountingFileSource {
+        enumerate_calls: enumerate_calls.clone(),
+    };
+    let browser = Browser::new(Rc::new(source));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::uri("smb://host/share"));
+
+    browser.rename(
+        FileEntry {
+            location: Location::uri("smb://host/share/old-name.txt"),
+            native_name: "old-name.txt".into(),
+            display_name: "old-name.txt".into(),
+            kind: EntryKind::File,
+            size: MetadataValue::Known(1),
+            modified_unix_seconds: MetadataValue::Unknown,
+        },
+        "new-name.txt".to_owned(),
+    );
+
+    assert_eq!(enumerate_calls.get(), 2);
+}
+
+#[test]
+fn creating_a_directory_locally_does_not_trigger_a_redundant_refresh() {
+    let enumerate_calls = Rc::new(Cell::new(0));
+    let source = CountingFileSource {
+        enumerate_calls: enumerate_calls.clone(),
+    };
+    let browser = Browser::new(Rc::new(source));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::local("/fixture"));
+    assert_eq!(enumerate_calls.get(), 1);
+
+    browser.create_directory(Location::local("/fixture"), "New Folder".to_owned());
+
+    assert_eq!(
+        enumerate_calls.get(),
+        1,
+        "a local column already has a live file monitor; no extra refresh is needed"
+    );
 }
 
 #[test]
@@ -533,6 +688,143 @@ fn valid_location_input_navigates_through_the_controller() {
         event,
         BrowserEvent::ColumnAdded { depth: 0, location }
             if location == &Location::local("/accepted")
+    )));
+}
+
+#[test]
+fn location_input_accepts_uri_schemes_for_local_and_remote_locations() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.navigate(Location::local("/fixture"));
+
+    assert_eq!(browser.navigate_input("smb://192.168.1.220/share"), Ok(()));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::uri("smb://192.168.1.220/share"))
+    );
+
+    assert_eq!(browser.navigate_input("sftp://user@host:2222/path"), Ok(()));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::uri("sftp://user@host:2222/path"))
+    );
+
+    assert_eq!(browser.navigate_input("/regular/absolute/path"), Ok(()));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::local("/regular/absolute/path"))
+    );
+
+    assert_eq!(browser.navigate_input("network:///"), Ok(()));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::uri("network:///"))
+    );
+}
+
+#[test]
+fn location_input_rejects_unsupported_uri_schemes() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.navigate(Location::local("/fixture"));
+
+    for uri in [
+        "https://example.com/files",
+        "file:///tmp",
+        "custom://host/path",
+    ] {
+        assert!(matches!(
+            browser.navigate_input(uri),
+            Err(LocationValidationError::UnsupportedScheme(_))
+        ));
+        assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+    }
+
+    assert_eq!(browser.navigate_input("SMB://host/share"), Ok(()));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::uri("smb://host/share"))
+    );
+}
+
+#[test]
+fn location_input_rejects_unc_and_scp_shorthand_with_a_helpful_message() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.navigate(Location::local("/fixture"));
+
+    for shorthand in [
+        r"\\host\share",
+        r"smb:\\192.168.1.220",
+        "//host/share",
+        "//192.168.1.220",
+        "user@host:path",
+    ] {
+        assert!(matches!(
+            browser.navigate_input(shorthand),
+            Err(LocationValidationError::UnsupportedShorthand(_))
+        ));
+        assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+    }
+}
+
+#[test]
+fn location_input_rejects_uris_with_an_embedded_password() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.navigate(Location::local("/fixture"));
+
+    for uri in [
+        "smb://user:secret@host/share",
+        "sftp://user:secret@host:2222/path",
+    ] {
+        assert_eq!(
+            browser.navigate_input(uri),
+            Err(LocationValidationError::EmbeddedCredential)
+        );
+        assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+    }
+
+    assert_eq!(
+        browser.navigate_input("smb://user@host/share"),
+        Ok(()),
+        "a bare username without a password must still be accepted"
+    );
+}
+
+#[test]
+fn location_input_reports_the_target_location_when_not_mounted() {
+    let browser = Browser::new(Rc::new(NotMountedFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event));
+    browser.navigate(Location::local("/fixture"));
+    events.borrow_mut().clear();
+
+    assert_eq!(browser.navigate_input("smb://192.168.1.220/share"), Ok(()));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::LocationNavigationRejected {
+            error: LocationValidationError::NotMounted(location)
+        } if location == &Location::uri("smb://192.168.1.220/share")
+    )));
+    assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+}
+
+#[test]
+fn descending_into_an_unmounted_location_reports_it_for_retry() {
+    let browser = Browser::new(Rc::new(NotMountedFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event));
+    browser.navigate(Location::local("/fixture"));
+    events.borrow_mut().clear();
+
+    browser.descend(0, Location::uri("smb://192.168.1.220/share"));
+
+    assert_eq!(browser.active_location(), Some(Location::local("/fixture")));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::NavigationRejected {
+            parent_depth: 0,
+            error: LocationValidationError::NotMounted(location)
+        } if location == &Location::uri("smb://192.168.1.220/share")
     )));
 }
 

@@ -831,6 +831,7 @@ pub(super) fn show_update_dialog(
     symbol.set_valign(gtk::Align::Center);
     symbol.set_center_widget(Some(&crate::assets::primary_icon(icons::DOWNLOADS, 20)));
     let heading = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    heading.set_valign(gtk::Align::Center);
     let title = gtk::Label::new(Some(&format!("Strata v{} is available", release.version)));
     title.add_css_class("update-dialog-title");
     title.set_xalign(0.0);

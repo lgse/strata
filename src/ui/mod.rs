@@ -3,6 +3,7 @@
 mod blur;
 mod browser;
 mod browser_modes;
+mod controls;
 mod motion;
 mod preview;
 mod search;

@@ -30,6 +30,21 @@ fn uri_locations_remain_explicit_and_have_one_breadcrumb() {
 }
 
 #[test]
+fn remote_locations_keep_uri_parents_and_breadcrumbs() {
+    let location = Location::uri("smb://server/share/folder");
+
+    assert_eq!(location.parent(), Some(Location::uri("smb://server/share")));
+    let breadcrumbs = location.breadcrumbs();
+    assert_eq!(breadcrumbs.last(), Some(&location));
+    assert!(breadcrumbs.contains(&Location::uri("smb://server/share")));
+    assert!(
+        breadcrumbs
+            .iter()
+            .all(|crumb| crumb.native_path().is_none())
+    );
+}
+
+#[test]
 fn backend_names_distinguish_native_remote_and_malformed_locations() {
     assert_eq!(
         Location::local("/home/alice/private").backend_name(),

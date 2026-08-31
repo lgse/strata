@@ -14,7 +14,7 @@ use crate::{
         CreateDirectoryRequest, CreateFileRequest, DeleteRequest, DirectoryChange, DirectoryEvent,
         DirectoryRequest, FileSource, LoadHandle, LocationValidationError, OperationEvent,
         OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRequest, RequestId,
-        RestoreRequest, validate_basename,
+        RestoreRequest, uri_has_embedded_password, validate_basename,
     },
 };
 
@@ -118,8 +118,13 @@ pub enum BrowserEvent {
         message: String,
     },
     NavigationRejected {
-        message: String,
+        parent_depth: usize,
+        error: LocationValidationError,
     },
+    LocationNavigationRejected {
+        error: LocationValidationError,
+    },
+    EmptyTrashRequested,
 }
 
 type Observer = Rc<dyn Fn(BrowserEvent)>;
@@ -131,6 +136,8 @@ pub struct Browser {
     loads: RefCell<Vec<LoadHandle>>,
     monitors: RefCell<Vec<Option<LoadHandle>>>,
     peek_load: RefCell<Option<LoadHandle>>,
+    validation_load: RefCell<Option<LoadHandle>>,
+    validation_generation: Cell<u64>,
     operation_provider: RefCell<Option<Rc<dyn OperationProvider>>>,
     operation_load: RefCell<Option<LoadHandle>>,
     current_operation: Cell<Option<OperationRequestId>>,
@@ -156,6 +163,8 @@ impl Browser {
             loads: RefCell::new(Vec::new()),
             monitors: RefCell::new(Vec::new()),
             peek_load: RefCell::new(None),
+            validation_load: RefCell::new(None),
+            validation_generation: Cell::new(0),
             operation_provider: RefCell::new(None),
             operation_load: RefCell::new(None),
             current_operation: Cell::new(None),
@@ -192,22 +201,54 @@ impl Browser {
             return Err(LocationValidationError::Empty);
         }
 
-        let location = self
+        if let Some(message) = unsupported_shorthand_message(input) {
+            return Err(LocationValidationError::UnsupportedShorthand(
+                message.to_owned(),
+            ));
+        }
+        if uri_has_embedded_password(input) {
+            return Err(LocationValidationError::EmbeddedCredential);
+        }
+        if let Some(current) = self
             .active_location()
             .filter(|current| current.display_path() == input)
-            .unwrap_or_else(|| {
-                if input == "trash:///" {
-                    Location::uri(input)
-                } else {
-                    Location::local(PathBuf::from(input))
-                }
-            });
+        {
+            self.navigate_validated(current);
+            return Ok(());
+        }
+        let location = location_from_input(input)?;
         if location.native_path().is_some() && !location.is_absolute_native() {
             return Err(LocationValidationError::NotAbsolute);
         }
-        self.source.validate_location(&location)?;
-        self.navigate(location);
+        if location.native_path().is_some() {
+            self.source.validate_location(&location)?;
+            self.navigate(location);
+        } else {
+            self.navigate_validated(location);
+        }
         Ok(())
+    }
+
+    fn navigate_validated(self: &Rc<Self>, location: Location) {
+        let generation = self.validation_generation.get().saturating_add(1);
+        self.validation_generation.set(generation);
+        self.validation_load.borrow_mut().take();
+        let weak = Rc::downgrade(self);
+        let pending_location = location.clone();
+        let emit = Rc::new(move |result| {
+            let Some(browser) = weak.upgrade() else {
+                return;
+            };
+            if browser.validation_generation.get() != generation {
+                return;
+            }
+            match result {
+                Ok(()) => browser.navigate(pending_location.clone()),
+                Err(error) => browser.emit(BrowserEvent::LocationNavigationRejected { error }),
+            }
+        });
+        let load = self.source.validate_location_async(location, emit);
+        self.validation_load.replace(Some(load));
     }
 
     pub fn active_location(&self) -> Option<Location> {
@@ -230,6 +271,9 @@ impl Browser {
     }
 
     pub fn navigate(self: &Rc<Self>, location: Location) {
+        self.validation_generation
+            .set(self.validation_generation.get().saturating_add(1));
+        self.validation_load.borrow_mut().take();
         if self.active_location().as_ref() == Some(&location) {
             return;
         }
@@ -253,17 +297,57 @@ impl Browser {
     }
 
     pub fn descend(self: &Rc<Self>, parent_depth: usize, location: Location) {
+        self.validation_generation
+            .set(self.validation_generation.get().saturating_add(1));
+        self.validation_load.borrow_mut().take();
         if self.is_open_child(parent_depth, &location) {
             return;
         }
         self.close_peek();
-        if let Err(error) = self.source.validate_location(&location) {
-            self.emit(BrowserEvent::NavigationRejected {
-                message: error.to_string(),
-            });
-            self.focus_active();
+        if location.native_path().is_some() {
+            if let Err(error) = self.source.validate_location(&location) {
+                self.emit(BrowserEvent::NavigationRejected {
+                    parent_depth,
+                    error,
+                });
+                self.focus_active();
+                return;
+            }
+            self.descend_validated(parent_depth, location);
             return;
         }
+
+        let generation = self.validation_generation.get().saturating_add(1);
+        self.validation_generation.set(generation);
+        self.validation_load.borrow_mut().take();
+        let weak = Rc::downgrade(self);
+        let pending_location = location.clone();
+        let parent_location = self.location_at(parent_depth);
+        let emit = Rc::new(move |result| {
+            let Some(browser) = weak.upgrade() else {
+                return;
+            };
+            if browser.validation_generation.get() != generation
+                || browser.location_at(parent_depth) != parent_location
+            {
+                return;
+            }
+            match result {
+                Ok(()) => browser.descend_validated(parent_depth, pending_location.clone()),
+                Err(error) => {
+                    browser.emit(BrowserEvent::NavigationRejected {
+                        parent_depth,
+                        error,
+                    });
+                    browser.focus_active();
+                }
+            }
+        });
+        let load = self.source.validate_location_async(location, emit);
+        self.validation_load.replace(Some(load));
+    }
+
+    fn descend_validated(self: &Rc<Self>, parent_depth: usize, location: Location) {
         let request_id = self.new_request_id();
         if !self
             .state
@@ -614,7 +698,8 @@ impl Browser {
             return;
         };
         let request_id = self.begin_operation();
-        let emit = self.operation_callback(request_id, true);
+        let refresh_locations = entry.location.parent().into_iter().collect();
+        let emit = self.operation_callback(request_id, true, refresh_locations);
         let load = provider.rename(
             RenameRequest {
                 id: request_id,
@@ -640,13 +725,14 @@ impl Browser {
             return;
         };
         let request_id = self.begin_operation();
+        let refresh_parent = parent.clone();
         let load = provider.create_directory(
             CreateDirectoryRequest {
                 id: request_id,
                 parent,
                 name,
             },
-            self.operation_callback(request_id, false),
+            self.operation_callback(request_id, false, vec![refresh_parent]),
         );
         self.operation_load.replace(Some(load));
     }
@@ -665,13 +751,14 @@ impl Browser {
             return;
         };
         let request_id = self.begin_operation();
+        let refresh_parent = parent.clone();
         let load = provider.create_file(
             CreateFileRequest {
                 id: request_id,
                 parent,
                 name,
             },
-            self.operation_callback(request_id, false),
+            self.operation_callback(request_id, false, vec![refresh_parent]),
         );
         self.operation_load.replace(Some(load));
     }
@@ -692,6 +779,14 @@ impl Browser {
             return;
         };
         let request_id = self.begin_operation();
+        let mut refresh_locations = vec![destination.clone()];
+        if move_sources {
+            for parent in items.iter().filter_map(|item| item.source.parent()) {
+                if !refresh_locations.contains(&parent) {
+                    refresh_locations.push(parent);
+                }
+            }
+        }
         let load = provider.paste(
             PasteRequest {
                 id: request_id,
@@ -699,7 +794,7 @@ impl Browser {
                 items,
                 move_sources,
             },
-            self.operation_callback(request_id, false),
+            self.operation_callback(request_id, false, refresh_locations),
         );
         self.operation_load.replace(Some(load));
     }
@@ -726,7 +821,7 @@ impl Browser {
                 entries,
                 permanent,
             },
-            self.operation_callback(request_id, false),
+            self.operation_callback(request_id, false, Vec::new()),
         );
         self.operation_load.replace(Some(load));
     }
@@ -752,7 +847,7 @@ impl Browser {
                 id: request_id,
                 entries,
             },
-            self.operation_callback(request_id, false),
+            self.operation_callback(request_id, false, Vec::new()),
         );
         self.operation_load.replace(Some(load));
     }
@@ -788,6 +883,7 @@ impl Browser {
         self: &Rc<Self>,
         request_id: OperationRequestId,
         rename: bool,
+        refresh_locations: Vec<Location>,
     ) -> Rc<dyn Fn(OperationEvent)> {
         let weak = Rc::downgrade(self);
         Rc::new(move |event| {
@@ -880,11 +976,27 @@ impl Browser {
                     browser.remove_deleted_locations(&restored_locations);
                     browser.emit(BrowserEvent::OperationCompletedWithErrors { message });
                 }
-                OperationEvent::Renamed { .. } => browser.emit(BrowserEvent::RenameCompleted),
-                OperationEvent::Created { .. }
-                | OperationEvent::Pasted { .. }
-                | OperationEvent::DeleteProgress { .. }
-                | OperationEvent::RestoreProgress { .. } => {}
+                OperationEvent::Renamed { .. } => {
+                    browser.emit(BrowserEvent::RenameCompleted);
+                    for location in &refresh_locations {
+                        if location.native_path().is_none() {
+                            browser.refresh_columns_at(location);
+                        }
+                    }
+                }
+                OperationEvent::Created { .. } | OperationEvent::Pasted { .. } => {
+                    // A remote location has no live directory monitor (see
+                    // `FileSource::watch`), so the column that just received a
+                    // new item would otherwise never learn about it. Refresh
+                    // it explicitly rather than leaving the new item invisible
+                    // until the user navigates away and back.
+                    for location in &refresh_locations {
+                        if location.native_path().is_none() {
+                            browser.refresh_columns_at(location);
+                        }
+                    }
+                }
+                OperationEvent::DeleteProgress { .. } | OperationEvent::RestoreProgress { .. } => {}
             }
         })
     }
@@ -906,6 +1018,10 @@ impl Browser {
 
     pub fn open_location(&self, location: Location) {
         self.emit(BrowserEvent::OpenRequested { location });
+    }
+
+    pub fn request_empty_trash(&self) {
+        self.emit(BrowserEvent::EmptyTrashRequested);
     }
 
     pub fn activate(self: &Rc<Self>, depth: usize, position: usize) {
@@ -1064,6 +1180,24 @@ impl Browser {
             },
             emit,
         )
+    }
+
+    fn refresh_columns_at(self: &Rc<Self>, location: &Location) {
+        let depths = {
+            let state = self.state.borrow();
+            let mut depths = Vec::new();
+            let mut depth = 0;
+            while let Some(open_location) = state.location_at(depth) {
+                if &open_location == location {
+                    depths.push(depth);
+                }
+                depth += 1;
+            }
+            depths
+        };
+        for depth in depths {
+            self.refresh_column(depth);
+        }
     }
 
     fn remove_deleted_locations(self: &Rc<Self>, locations: &[Location]) {
@@ -1230,6 +1364,76 @@ fn deletion_parent_location(location: &Location) -> Option<Location> {
     } else {
         location.parent()
     }
+}
+
+fn location_from_input(input: &str) -> Result<Location, LocationValidationError> {
+    if !is_uri_like(input) {
+        return Ok(Location::local(PathBuf::from(input)));
+    }
+    let scheme_end = input.find("://").unwrap_or_default();
+    let scheme = &input[..scheme_end];
+    let normalized = scheme.to_ascii_lowercase();
+    if !matches!(
+        normalized.as_str(),
+        "smb" | "sftp" | "ftp" | "ftps" | "dav" | "davs" | "trash" | "network"
+    ) {
+        return Err(LocationValidationError::UnsupportedScheme(format!(
+            "The {scheme}:// scheme isn't supported. Use an absolute local path or one of: \
+             smb://, sftp://, ftp://, ftps://, dav://, or davs://."
+        )));
+    }
+    let uri = format!("{normalized}{}", &input[scheme_end..]);
+    Ok(Location::uri(uri))
+}
+
+/// UNC paths (`\\host\share`, bare `//host/share`) and SCP-style addresses
+/// (`user@host:path`) are deliberately not accepted as location-bar shorthand
+/// (see lgse/strata#20) so a proper URI (`smb://`, `sftp://`, ...) is always
+/// preserved verbatim rather than being guessed at. Report a clear message
+/// instead of silently treating either as a relative local path.
+fn unsupported_shorthand_message(input: &str) -> Option<&'static str> {
+    let looks_like_unc = input.starts_with("\\\\")
+        || ["smb:", "SMB:"].iter().any(|prefix| {
+            input
+                .strip_prefix(prefix)
+                .is_some_and(|rest| rest.starts_with("\\\\"))
+        });
+    // A bare `//host/share` has no scheme, so it is not a valid URI (unlike
+    // `smb://host/share`, which `is_uri_like` already accepts untouched).
+    let looks_like_bare_network_shorthand = input.starts_with("//") && !is_uri_like(input);
+    if looks_like_unc || looks_like_bare_network_shorthand || looks_like_scp_shorthand(input) {
+        Some(
+            "UNC paths (\\\\host\\share) and SCP-style addresses (user@host:path) aren't \
+             supported. Use a URI instead, such as smb://host/share, sftp://host/path, \
+             ftp://host/path, or dav://host/path.",
+        )
+    } else {
+        None
+    }
+}
+
+fn looks_like_scp_shorthand(input: &str) -> bool {
+    if is_uri_like(input) {
+        return false;
+    }
+    let Some((_user, after_at)) = input.split_once('@') else {
+        return false;
+    };
+    let Some(host) = after_at.split(':').next() else {
+        return false;
+    };
+    !host.is_empty() && after_at.contains(':') && !host.contains('/') && !host.contains('\\')
+}
+
+fn is_uri_like(input: &str) -> bool {
+    let Some(scheme_end) = input.find("://") else {
+        return false;
+    };
+    let scheme = &input[..scheme_end];
+    scheme.starts_with(|character: char| character.is_ascii_alphabetic())
+        && scheme.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '+' | '.' | '-')
+        })
 }
 
 #[cfg(test)]

@@ -15,7 +15,7 @@ use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
-        LocationValidationError, RequestId,
+        LocationValidationError, RequestId, backend_unavailable_message,
     },
 };
 
@@ -40,10 +40,40 @@ fn map_validation_error(error: std::io::Error) -> LocationValidationError {
     }
 }
 
-fn location_for_file(file: &gio::File) -> Location {
-    file.path()
-        .map(Location::local)
-        .unwrap_or_else(|| Location::uri(file.uri()))
+/// Builds a `Location` for a `gio::File`, preferring a native path only when
+/// the file is genuinely on a local filesystem. A mounted GVfs backend (SMB,
+/// SFTP, ...) can still return a `.path()` via its FUSE mirror even though the
+/// file isn't native; using that path would leak the mirror's opaque
+/// `/run/user/$UID/gvfs/...` location instead of the clean URI (lgse/strata#5).
+pub(crate) fn location_for_file(file: &gio::File) -> Location {
+    if file.is_native()
+        && let Some(path) = file.path()
+    {
+        return Location::local(path);
+    }
+    Location::uri(file.uri())
+}
+
+fn uri_validation_result(
+    location: &Location,
+    result: Result<gio::FileInfo, glib::Error>,
+) -> Result<(), LocationValidationError> {
+    let info = result.map_err(|error| {
+        if error.matches(gio::IOErrorEnum::NotMounted) {
+            LocationValidationError::NotMounted(location.clone())
+        } else if error.matches(gio::IOErrorEnum::NotSupported) {
+            LocationValidationError::BackendUnavailable(backend_unavailable_message(
+                location.uri_value().unwrap_or_default(),
+            ))
+        } else {
+            LocationValidationError::Unavailable(error.to_string())
+        }
+    })?;
+    match info.file_type() {
+        gio::FileType::Directory => Ok(()),
+        gio::FileType::Mountable => Err(LocationValidationError::Mountable(location.clone())),
+        _ => Err(LocationValidationError::NotDirectory),
+    }
 }
 
 fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
@@ -51,7 +81,12 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
     let kind = match (info.file_type(), info.is_symlink()) {
         (gio::FileType::Directory, true) => EntryKind::DirectorySymbolicLink,
         (gio::FileType::Regular, true) => EntryKind::FileSymbolicLink,
-        (gio::FileType::Directory, false) => EntryKind::Directory,
+        // GVfs reports unmounted browsable children (an smb:// host's shares, a
+        // "Connect to Server" bookmark, ...) as `Mountable` rather than
+        // `Directory`. Treat them as directories so activation descends into
+        // them (and can trigger the mount-and-retry flow) instead of asking
+        // the desktop to "open" the location in a new application instance.
+        (gio::FileType::Directory | gio::FileType::Mountable, false) => EntryKind::Directory,
         (gio::FileType::Regular, false) => EntryKind::File,
         (gio::FileType::SymbolicLink, _) => EntryKind::SymbolicLink,
         _ => EntryKind::Other,
@@ -95,17 +130,37 @@ impl FileSource for LocalFileSource {
                 .uri_value()
                 .ok_or_else(|| LocationValidationError::Unavailable("invalid URI".into()))?,
         );
-        let info = file
-            .query_info(
+        uri_validation_result(
+            location,
+            file.query_info(
                 "standard::type",
                 gio::FileQueryInfoFlags::NONE,
                 None::<&gio::Cancellable>,
-            )
-            .map_err(|error| LocationValidationError::Unavailable(error.to_string()))?;
-        if info.file_type() != gio::FileType::Directory {
-            return Err(LocationValidationError::NotDirectory);
+            ),
+        )
+    }
+
+    fn validate_location_async(
+        &self,
+        location: Location,
+        emit: Rc<dyn Fn(Result<(), LocationValidationError>)>,
+    ) -> LoadHandle {
+        if location.native_path().is_some() {
+            emit(self.validate_location(&location));
+            return LoadHandle::new(|| {});
         }
-        Ok(())
+        let file = gio::File::for_uri(location.uri_value().unwrap_or_default());
+        let task = glib::MainContext::default().spawn_local(async move {
+            let result = file
+                .query_info_future(
+                    "standard::type",
+                    gio::FileQueryInfoFlags::NONE,
+                    glib::Priority::DEFAULT,
+                )
+                .await;
+            emit(uri_validation_result(&location, result));
+        });
+        LoadHandle::new(move || task.abort())
     }
 
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {

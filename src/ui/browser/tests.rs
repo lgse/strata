@@ -11,6 +11,93 @@ fn file_sizes_use_compact_decimal_units() {
 }
 
 #[test]
+fn an_empty_name_is_not_flagged_as_an_error() {
+    assert!(basename_field_error("bad/name").is_some());
+    assert!(
+        basename_field_error("").is_none(),
+        "an empty field is the normal starting state, not a user mistake"
+    );
+}
+
+#[test]
+fn dialog_copy_wraps_at_word_boundaries() {
+    let wrapped = wrap_dialog_text(
+        "Those credentials were not accepted. Check the username and password.",
+        32,
+    );
+    assert_eq!(
+        wrapped,
+        "Those credentials were not\naccepted. Check the username and\npassword."
+    );
+    assert!(wrapped.lines().all(|line| line.chars().count() <= 32));
+}
+
+#[test]
+fn password_storage_selection_maps_to_gio_values() {
+    assert_eq!(password_save_for_selection(0), gio::PasswordSave::Never);
+    assert_eq!(
+        password_save_for_selection(1),
+        gio::PasswordSave::ForSession
+    );
+    assert_eq!(
+        password_save_for_selection(2),
+        gio::PasswordSave::Permanently
+    );
+    assert_eq!(password_save_for_selection(99), gio::PasswordSave::Never);
+}
+
+#[test]
+fn remote_permission_denials_are_treated_as_authentication_failures() {
+    let denied = glib::Error::new(gio::IOErrorEnum::PermissionDenied, "Permission denied");
+    let smb_denied = glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Failed to mount Windows share: Permission denied",
+    );
+    let remote = Location::uri("smb://host/share");
+    assert!(mount_error_is_authentication_failure(&remote, &denied));
+    assert!(mount_error_is_authentication_failure(&remote, &smb_denied,));
+    assert!(!mount_error_is_authentication_failure(
+        &Location::local("/root"),
+        &denied,
+    ));
+}
+
+#[test]
+fn cancelling_the_credential_prompt_produces_no_error_message() {
+    let location = Location::uri("smb://host/share");
+    for kind in [gio::IOErrorEnum::Cancelled, gio::IOErrorEnum::FailedHandled] {
+        let error = glib::Error::new(kind, "cancelled by the user");
+        assert_eq!(mount_failure_message(&location, &error), None);
+    }
+}
+
+#[test]
+fn a_missing_backend_reports_which_package_to_install() {
+    let location = Location::uri("smb://host/share");
+    let error = glib::Error::new(gio::IOErrorEnum::NotSupported, "no handler for smb");
+    let message = mount_failure_message(&location, &error).expect("should report a message");
+    assert!(message.contains("gvfs-smb"));
+}
+
+#[test]
+fn a_genuine_mount_failure_still_reports_an_error() {
+    let location = Location::uri("smb://host/share");
+    let error = glib::Error::new(gio::IOErrorEnum::HostNotFound, "no route to host");
+    let message = mount_failure_message(&location, &error).expect("should report a message");
+    assert!(message.contains("no route to host"));
+}
+
+#[test]
+fn authentication_failure_without_a_backend_prompt_gets_login_fields() {
+    let location = Location::uri("smb://host/share");
+    let details = MountPromptDetails::fallback(&location);
+    assert!(details.message.contains("smb://host/share"));
+    assert!(details.flags.contains(gio::AskPasswordFlags::NEED_USERNAME));
+    assert!(details.flags.contains(gio::AskPasswordFlags::NEED_DOMAIN));
+    assert!(details.flags.contains(gio::AskPasswordFlags::NEED_PASSWORD));
+}
+
+#[test]
 fn inline_rename_selects_the_stem_but_keeps_the_extension() {
     assert_eq!(rename_stem_end("report.txt"), 6);
     assert_eq!(rename_stem_end("archive.tar.gz"), 11);

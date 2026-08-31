@@ -131,12 +131,11 @@ impl ModeViews {
         explorer_root.add_css_class("mode-explorer");
         explorer_root.set_hexpand(true);
         explorer_root.set_vexpand(true);
-        // Explorer columns have user-resizable fixed widths. Keep their leading edge visible when
-        // the window is narrower than their combined width, and scroll the headings and rows as
-        // one surface instead of letting the stack center and clip the oversized pane.
+        // The explorer pane header belongs to the viewport, while its user-resizable table
+        // columns scroll independently below it.
         let explorer_scroll = gtk::ScrolledWindow::builder()
             .child(&explorer_root)
-            .hscrollbar_policy(gtk::PolicyType::Automatic)
+            .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Never)
             .hexpand(true)
             .vexpand(true)
@@ -909,6 +908,11 @@ fn grid_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> Gr
         crate::assets::icons::PICTURES,
         16,
     )));
+    let empty_trash = super::browser::empty_trash_button(browser);
+    if let Some(location) = browser.location_at(depth) {
+        empty_trash.set_visible(super::browser::is_trash_root(&location));
+    }
+    actions.append(&empty_trash);
     actions.append(&thumbnail_menu);
     actions.append(&super::browser::column_sort_direction_toggle(
         browser, depth,
@@ -1504,6 +1508,11 @@ fn build_explorer_pane(
     let navigation = explorer_navigation(&browser);
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     actions.add_css_class("grid-header-actions");
+    let empty_trash = super::browser::empty_trash_button(&browser);
+    if let Some(location) = browser.location_at(depth) {
+        empty_trash.set_visible(super::browser::is_trash_root(&location));
+    }
+    actions.append(&empty_trash);
     let (filter_entry, filter_revealer, filter_button) =
         filter_controls("Filter explorer (Ctrl+F)");
     actions.append(&filter_button);
@@ -1542,7 +1551,7 @@ fn build_explorer_pane(
     let syncing_selection = Rc::new(Cell::new(false));
 
     let columns = ExplorerColumnLayout::new();
-    content.append(&explorer_headings(&browser, depth, columns.clone()));
+    let headings = explorer_headings(&browser, depth, columns.clone());
 
     let factory = gtk::SignalListItemFactory::new();
     let bound_items: Rc<RefCell<Vec<BoundModeItem>>> = Rc::new(RefCell::new(Vec::new()));
@@ -1571,6 +1580,8 @@ fn build_explorer_pane(
         name.set_xalign(0.0);
         name.set_hexpand(true);
         name.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        // Keep the label's natural width from widening this fixed-width table cell.
+        name.set_max_width_chars(1);
         let field = gtk::Entry::new();
         field.add_css_class("inline-rename");
         field.set_hexpand(true);
@@ -1748,15 +1759,27 @@ fn build_explorer_pane(
     );
     let scroll = gtk::ScrolledWindow::builder()
         .child(&view)
+        .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .build();
-    content.append(&collection_with_marquee(
+    let table = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    table.set_vexpand(true);
+    table.append(&headings);
+    table.append(&collection_with_marquee(
         view.upcast_ref(),
         scroll,
         &selection,
         bound_items.clone(),
         "explorer-row",
     ));
+    let table_scroll = gtk::ScrolledWindow::builder()
+        .child(&table)
+        .hscrollbar_policy(gtk::PolicyType::Automatic)
+        .vscrollbar_policy(gtk::PolicyType::Never)
+        .hexpand(true)
+        .vexpand(true)
+        .build();
+    content.append(&table_scroll);
     Pane {
         depth,
         shell,
@@ -2414,6 +2437,8 @@ fn explorer_metadata_label() -> gtk::Label {
     label.add_css_class("explorer-metadata-cell");
     label.set_xalign(0.0);
     label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    // Metadata must truncate rather than overriding a resized column's width.
+    label.set_max_width_chars(1);
     label
 }
 

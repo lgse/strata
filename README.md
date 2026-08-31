@@ -18,6 +18,22 @@ Strata is an experimental, keyboard-first file manager for Linux. It is designed
 
 ![Strata Grid mode showing files and folders as icon tiles](docs/assets/strata-grid.png)
 
+## Network shares (SMB)
+
+To connect to an SMB share, open the location field with <kbd>Ctrl</kbd>+<kbd>L</kbd>, enter its `smb://` address, and press <kbd>Enter</kbd>.
+
+![Strata location field containing an SMB share address](docs/assets/strata-smb-location.png)
+
+If the share requires credentials, Strata prompts for the username, domain, password, and preferred password-storage duration.
+
+![Strata authentication dialog for an SMB share](docs/assets/strata-smb-authentication.png)
+
+SMB access uses the system's GIO and GVfs support. On Arch Linux and Omarchy, install the SMB backend if it is not already available:
+
+```bash
+sudo pacman -S --needed gvfs-smb
+```
+
 ## Vision
 
 - Miller-column navigation

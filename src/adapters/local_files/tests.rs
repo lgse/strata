@@ -150,6 +150,33 @@ fn invalid_utf8_names_keep_their_native_bytes() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn unmounted_network_shares_are_treated_as_directories() {
+    let info = gio::FileInfo::new();
+    info.set_file_type(gio::FileType::Mountable);
+    info.set_is_symlink(false);
+    info.set_name("share");
+    info.set_display_name("share");
+
+    let entry = entry_from_info(Location::uri("smb://host/share"), info);
+
+    assert_eq!(entry.kind, EntryKind::Directory);
+    assert!(entry.is_directory());
+}
+
+#[test]
+fn native_files_are_located_by_their_real_path() {
+    let file = gio::File::for_path("/tmp");
+    assert_eq!(location_for_file(&file), Location::local("/tmp"));
+}
+
+#[test]
+fn gvfs_backed_files_use_their_uri_even_when_a_fuse_path_exists() {
+    let file = gio::File::for_uri("smb://host/share");
+    assert!(!file.is_native(), "smb:// should never be reported native");
+    assert_eq!(location_for_file(&file), Location::uri(file.uri()));
+}
+
+#[test]
 fn symlink_targets_and_broken_links_are_distinguished() -> Result<(), Box<dyn Error>> {
     use std::os::unix::fs::symlink;
 

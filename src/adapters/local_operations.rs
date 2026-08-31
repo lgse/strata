@@ -278,6 +278,17 @@ fn deletion_error_summary(errors: &[String]) -> String {
     operation_error_summary(errors, "deleted")
 }
 
+/// Backends without Trash support (most remote filesystems, including SMB)
+/// fail a move-to-trash with `NOT_SUPPORTED`. Give an actionable message for
+/// that specific case instead of the raw GIO error text.
+fn deletion_error_message(name: &str, permanent: bool, error: &glib::Error) -> String {
+    if !permanent && error.matches(gio::IOErrorEnum::NotSupported) {
+        format!("{name}: This location doesn't support Trash. Delete permanently instead.")
+    } else {
+        format!("{name}: {error}")
+    }
+}
+
 #[derive(Default)]
 pub struct LocalOperationProvider;
 
@@ -441,7 +452,11 @@ impl OperationProvider for LocalOperationProvider {
                     file.trash_future(glib::Priority::DEFAULT).await
                 };
                 let deleted_location = if let Err(error) = result {
-                    errors.push(format!("{}: {error}", entry.display_name));
+                    errors.push(deletion_error_message(
+                        &entry.display_name,
+                        request.permanent,
+                        &error,
+                    ));
                     None
                 } else {
                     deleted_locations.push(entry.location.clone());

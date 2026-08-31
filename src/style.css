@@ -249,17 +249,6 @@ headerbar menubutton.header-action > button:focus-visible image {
   padding: 0;
 }
 
-.location-entry.error {
-  border-color: @theme_accent;
-  box-shadow: 0 0 0 1px alpha(@theme_accent, 0.45);
-}
-
-.location-error {
-  color: @theme_accent;
-  font-size: 0.82em;
-  margin: 2px 6px 0;
-}
-
 .search-backdrop {
   background: alpha(@theme_bg, 0.58);
 }
@@ -1400,6 +1389,90 @@ menubutton.column-header-action > button:focus-visible image {
   padding: 14px 18px;
 }
 
+.authentication-dialog {
+  min-width: 520px;
+}
+
+.authentication-symbol {
+  background: alpha(@theme_accent, 0.12);
+  border-color: alpha(@theme_accent, 0.34);
+}
+
+.authentication-body {
+  background: alpha(@theme_bg, 0.18);
+}
+
+.authentication-explanation {
+  color: @theme_dim_text;
+}
+
+.authentication-error {
+  background: alpha(@theme_danger, 0.1);
+  border: 1px solid alpha(@theme_danger, 0.5);
+  border-radius: 5px;
+  color: @theme_danger;
+  font-size: 0.82em;
+  padding: 7px 9px;
+}
+
+.segmented-control {
+  border-radius: 5px;
+}
+
+.segmented-control-option {
+  background: alpha(@theme_bg, 0.72);
+  border: 1px solid alpha(@theme_border, 0.54);
+  border-radius: 0;
+  box-shadow: none;
+  color: @theme_dim_text;
+  min-height: 32px;
+  padding: 3px 12px;
+}
+
+.segmented-control-option.first {
+  border-radius: 5px 0 0 5px;
+}
+
+.segmented-control-option.not-first {
+  border-left: none;
+}
+
+.segmented-control-option.last {
+  border-radius: 0 5px 5px 0;
+}
+
+.segmented-control-option:hover {
+  background: alpha(@theme_muted, 0.62);
+  color: @theme_text;
+}
+
+.segmented-control-option:checked {
+  background: alpha(@theme_highlight, 0.82);
+  border-color: @theme_accent;
+  color: @theme_accent;
+}
+
+.segmented-control-option.not-first:checked {
+  border-left: 1px solid @theme_accent;
+}
+
+.segmented-control-option:active {
+  background: alpha(@theme_muted, 0.82);
+  color: @theme_accent;
+}
+
+.segmented-control-option:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.5);
+  outline-offset: -2px;
+}
+
+.authentication-fields .transfer-field:disabled,
+.segmented-control-option:disabled {
+  background: alpha(@theme_muted, 0.3);
+  border-color: alpha(@theme_border, 0.38);
+  color: @theme_dim_text;
+}
+
 .transfer-symbol {
   background: alpha(@theme_highlight, 0.64);
   border: 1px solid alpha(@theme_accent, 0.24);
@@ -1467,9 +1540,12 @@ menubutton.column-header-action > button:focus-visible image {
   padding: 3px 9px;
 }
 
-.transfer-field:focus {
+.transfer-field:focus,
+.transfer-field:focus-visible,
+.transfer-field:focus-within {
   border-color: @theme_accent;
   box-shadow: 0 0 0 1px alpha(@theme_accent, 0.42);
+  outline: none;
 }
 
 .transfer-field.error {

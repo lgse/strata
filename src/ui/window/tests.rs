@@ -3,8 +3,8 @@
 use std::path::Path;
 
 use super::{
-    is_standard_place_location, parse_pinned_places, remove_pinned_place, reorder_places,
-    should_show_standard_place,
+    is_smb_location, is_standard_place_location, parse_pinned_places, remove_pinned_place,
+    reorder_places, should_show_standard_place,
 };
 
 #[test]
@@ -71,6 +71,22 @@ fn pinned_places_can_be_removed_by_location() {
     assert!(remove_pinned_place(&mut places, &removed));
     assert_eq!(places, vec![(retained, "Retained".to_owned())]);
     assert!(!remove_pinned_place(&mut places, &removed));
+}
+
+#[test]
+fn only_smb_locations_are_disconnectable_network_mounts() {
+    assert!(is_smb_location(&crate::model::Location::uri(
+        "smb://server/share"
+    )));
+    assert!(is_smb_location(&crate::model::Location::uri(
+        "SMB://server/share"
+    )));
+    assert!(!is_smb_location(&crate::model::Location::uri(
+        "sftp://server/home"
+    )));
+    assert!(!is_smb_location(&crate::model::Location::local(
+        "/mnt/share"
+    )));
 }
 
 #[test]

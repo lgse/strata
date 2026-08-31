@@ -12,17 +12,20 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
+    adapters::location_for_file,
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, SortDirection, SortKey},
     services::{
-        FileSource, OperationProvider, PasteItem, PreviewContent, TransferConflict, content_family,
-        has_plain_text_extension, validate_basename,
+        FileSource, LocationValidationError, OperationProvider, PasteItem, PreviewContent,
+        TransferConflict, backend_unavailable_message, content_family, has_plain_text_extension,
+        validate_basename,
     },
 };
 
 use super::{
     blur::BlurBin,
     browser_modes::{BrowserDensity, BrowserMode, ModeViews},
+    controls::segmented_control,
     motion::{animations_enabled, emphasized_deceleration},
 };
 
@@ -201,7 +204,6 @@ pub(super) struct ViewState {
     location_stack: gtk::Stack,
     breadcrumbs: gtk::Box,
     location_entry: gtk::Entry,
-    location_error: gtk::Label,
     columns_widget: gtk::Box,
     scroller: gtk::ScrolledWindow,
     mode_views: RefCell<ModeViews>,
@@ -251,10 +253,6 @@ impl BrowserView {
             .tooltip_text("Location (Ctrl+L)")
             .build();
         location_entry.add_css_class("location-entry");
-        let location_error = gtk::Label::new(None);
-        location_error.add_css_class("location-error");
-        location_error.set_visible(false);
-        location_error.set_xalign(0.0);
         let confirm_location = gtk::Button::builder()
             .tooltip_text("Navigate (Enter)")
             .build();
@@ -277,7 +275,6 @@ impl BrowserView {
         entry_row.append(&cancel_location);
         let entry_control = gtk::Box::new(gtk::Orientation::Vertical, 0);
         entry_control.append(&entry_row);
-        entry_control.append(&location_error);
 
         let breadcrumbs = gtk::Box::new(gtk::Orientation::Horizontal, 2);
         breadcrumbs.add_css_class("breadcrumbs");
@@ -313,7 +310,6 @@ impl BrowserView {
             location_stack,
             breadcrumbs,
             location_entry,
-            location_error,
             columns_widget,
             scroller,
             mode_views: RefCell::new(mode_views),
@@ -847,6 +843,7 @@ impl ViewState {
         )));
         let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
         heading.set_hexpand(true);
+        heading.set_valign(gtk::Align::Center);
         let title = gtk::Label::new(Some("File already exists"));
         title.add_css_class("delete-confirmation-title");
         title.set_xalign(0.0);
@@ -1051,11 +1048,7 @@ impl ViewState {
             };
             let sources = files
                 .into_iter()
-                .map(|file| {
-                    file.path()
-                        .map(Location::local)
-                        .unwrap_or_else(|| Location::uri(file.uri()))
-                })
+                .map(|file| location_for_file(&file))
                 .collect::<Vec<_>>();
             if let Some(state) = weak.upgrade() {
                 let move_sources = same_locations(&sources, &state.cut_locations.borrow());
@@ -1106,6 +1099,7 @@ impl ViewState {
         )));
         let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
         heading.set_hexpand(true);
+        heading.set_valign(gtk::Align::Center);
         let title = gtk::Label::new(Some(if move_sources { "Move to" } else { "Copy to" }));
         title.add_css_class("transfer-title");
         title.set_xalign(0.0);
@@ -1408,6 +1402,7 @@ impl ViewState {
         symbol.add_css_class("transfer-symbol");
         symbol.set_center_widget(Some(&crate::assets::primary_icon(icon, 20)));
         let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
+        heading.set_valign(gtk::Align::Center);
         let title = gtk::Label::new(Some(title_text));
         title.add_css_class("transfer-title");
         title.set_xalign(0.0);
@@ -1542,6 +1537,7 @@ impl ViewState {
         )));
         let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
         heading.set_hexpand(true);
+        heading.set_valign(gtk::Align::Center);
         let title = gtk::Label::new(Some("Empty Trash?"));
         title.add_css_class("delete-confirmation-title");
         title.set_xalign(0.0);
@@ -1660,6 +1656,7 @@ impl ViewState {
         symbol.set_center_widget(Some(&symbol_icon));
         let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
         heading.set_hexpand(true);
+        heading.set_valign(gtk::Align::Center);
         let question = gtk::Label::new(Some(&if permanent {
             format!("Permanently delete {}?", item_count_label(count))
         } else {
@@ -1847,6 +1844,7 @@ impl ViewState {
         icon.add_css_class("properties-icon");
         let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
         heading.set_hexpand(true);
+        heading.set_valign(gtk::Align::Center);
         let title = gtk::Label::new(Some(&name));
         title.add_css_class("properties-title");
         title.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
@@ -2145,7 +2143,6 @@ impl ViewState {
     }
 
     fn begin_location_edit(&self) {
-        self.clear_location_error();
         self.location_stack.set_visible_child_name("entry");
         self.location_entry.grab_focus();
         self.location_entry.select_region(0, -1);
@@ -2153,7 +2150,6 @@ impl ViewState {
 
     fn cancel_location_edit(&self) {
         self.restore_location_text();
-        self.clear_location_error();
         self.location_stack.set_visible_child_name("breadcrumbs");
         self.browser.focus_active();
     }
@@ -2162,17 +2158,308 @@ impl ViewState {
         let input = self.location_entry.text();
         match self.browser.navigate_input(input.as_str()) {
             Ok(()) => {
-                self.clear_location_error();
                 self.location_stack.set_visible_child_name("breadcrumbs");
                 self.browser.focus_active();
             }
+            Err(LocationValidationError::NotMounted(location)) => {
+                self.mount_then_navigate(location, MountStrategy::EnclosingVolume);
+            }
+            Err(LocationValidationError::Mountable(location)) => {
+                self.mount_then_navigate(location, MountStrategy::Mountable);
+            }
             Err(error) => {
-                self.location_entry.add_css_class("error");
-                self.location_error.set_text(&error.to_string());
-                self.location_error.set_visible(true);
-                self.location_entry.grab_focus();
+                self.restore_location_text();
+                self.location_stack.set_visible_child_name("breadcrumbs");
+                show_error_dialog(&self.overlay, "Unable to open location", &error.to_string());
             }
         }
+    }
+
+    fn handle_navigation_rejected(
+        self: &Rc<Self>,
+        parent_depth: usize,
+        error: LocationValidationError,
+    ) {
+        match error {
+            LocationValidationError::NotMounted(location) => {
+                self.mount_then_descend(parent_depth, location, MountStrategy::EnclosingVolume);
+            }
+            LocationValidationError::Mountable(location) => {
+                self.mount_then_descend(parent_depth, location, MountStrategy::Mountable);
+            }
+            error => {
+                show_error_dialog(
+                    &self.overlay,
+                    "Unable to open directory",
+                    &error.to_string(),
+                );
+            }
+        }
+    }
+
+    fn mount_then_navigate(self: &Rc<Self>, location: Location, strategy: MountStrategy) {
+        self.mount_then_navigate_with_credentials(location, strategy, None);
+    }
+
+    fn mount_then_navigate_with_credentials(
+        self: &Rc<Self>,
+        location: Location,
+        strategy: MountStrategy,
+        credentials: Option<MountCredentials>,
+    ) {
+        self.mount_location(
+            location.clone(),
+            strategy,
+            credentials,
+            move |state, result, attempted_credentials, prompt_details| {
+                if mount_result_is_ok(&result) {
+                    state.browser.navigate(location.clone());
+                    state.location_stack.set_visible_child_name("breadcrumbs");
+                    state.browser.focus_active();
+                } else if let Err(error) = result {
+                    if mount_error_is_authentication_failure(&location, &error) {
+                        state.prompt_to_retry_navigation(
+                            location.clone(),
+                            strategy,
+                            attempted_credentials,
+                            prompt_details,
+                        );
+                    } else {
+                        state.restore_location_text();
+                        state.location_stack.set_visible_child_name("breadcrumbs");
+                        if let Some(message) = mount_failure_message(&location, &error) {
+                            show_error_dialog(&state.overlay, "Unable to connect", &message);
+                        }
+                    }
+                }
+            },
+        );
+    }
+
+    fn mount_then_descend(
+        self: &Rc<Self>,
+        parent_depth: usize,
+        location: Location,
+        strategy: MountStrategy,
+    ) {
+        self.mount_then_descend_with_credentials(parent_depth, location, strategy, None);
+    }
+
+    fn mount_then_descend_with_credentials(
+        self: &Rc<Self>,
+        parent_depth: usize,
+        location: Location,
+        strategy: MountStrategy,
+        credentials: Option<MountCredentials>,
+    ) {
+        self.mount_location(
+            location.clone(),
+            strategy,
+            credentials,
+            move |state, result, attempted_credentials, prompt_details| {
+                if mount_result_is_ok(&result) {
+                    state.browser.descend(parent_depth, location.clone());
+                } else if let Err(error) = result {
+                    if mount_error_is_authentication_failure(&location, &error) {
+                        state.prompt_to_retry_descend(
+                            parent_depth,
+                            location.clone(),
+                            strategy,
+                            attempted_credentials,
+                            prompt_details,
+                        );
+                    } else if let Some(message) = mount_failure_message(&location, &error) {
+                        show_error_dialog(&state.overlay, "Unable to connect", &message);
+                    }
+                }
+            },
+        );
+    }
+
+    fn prompt_to_retry_navigation(
+        self: &Rc<Self>,
+        location: Location,
+        strategy: MountStrategy,
+        previous_credentials: Option<MountCredentials>,
+        prompt_details: Option<MountPromptDetails>,
+    ) {
+        let weak = Rc::downgrade(self);
+        let cancel_weak = weak.clone();
+        let prompt_location = location.clone();
+        self.show_mount_retry_prompt(
+            &prompt_location,
+            previous_credentials,
+            prompt_details,
+            move |credentials| {
+                if let Some(state) = weak.upgrade() {
+                    state.mount_then_navigate_with_credentials(
+                        location.clone(),
+                        strategy,
+                        Some(credentials),
+                    );
+                }
+            },
+            move || {
+                if let Some(state) = cancel_weak.upgrade() {
+                    state.restore_location_text();
+                    state.location_stack.set_visible_child_name("breadcrumbs");
+                    state.browser.focus_active();
+                }
+            },
+        );
+    }
+
+    fn prompt_to_retry_descend(
+        self: &Rc<Self>,
+        parent_depth: usize,
+        location: Location,
+        strategy: MountStrategy,
+        previous_credentials: Option<MountCredentials>,
+        prompt_details: Option<MountPromptDetails>,
+    ) {
+        let weak = Rc::downgrade(self);
+        let prompt_location = location.clone();
+        self.show_mount_retry_prompt(
+            &prompt_location,
+            previous_credentials,
+            prompt_details,
+            move |credentials| {
+                if let Some(state) = weak.upgrade() {
+                    state.mount_then_descend_with_credentials(
+                        parent_depth,
+                        location.clone(),
+                        strategy,
+                        Some(credentials),
+                    );
+                }
+            },
+            || {},
+        );
+    }
+
+    fn show_mount_retry_prompt(
+        &self,
+        location: &Location,
+        previous_credentials: Option<MountCredentials>,
+        prompt_details: Option<MountPromptDetails>,
+        retry: impl Fn(MountCredentials) + 'static,
+        cancelled: impl Fn() + 'static,
+    ) {
+        let authentication_failed = previous_credentials.is_some();
+        let details = prompt_details.unwrap_or_else(|| MountPromptDetails::fallback(location));
+        let defaults = previous_credentials.unwrap_or_else(|| {
+            let mut defaults = MountCredentials::default_for_prompt();
+            if !details.default_user.is_empty() {
+                defaults.username.clone_from(&details.default_user);
+            }
+            if !details.default_domain.is_empty() {
+                defaults.domain.clone_from(&details.default_domain);
+            }
+            defaults
+        });
+        let _prompt = show_authentication_dialog(
+            &self.overlay,
+            None,
+            &details.message,
+            (&defaults.username, &defaults.domain),
+            details.flags,
+            authentication_failed,
+            MountDialogHandlers {
+                submitted: Some(Rc::new(retry)),
+                cancelled: Some(Rc::new(cancelled)),
+            },
+        );
+    }
+
+    fn mount_location(
+        self: &Rc<Self>,
+        location: Location,
+        strategy: MountStrategy,
+        credentials: Option<MountCredentials>,
+        on_result: impl Fn(
+            &Rc<Self>,
+            Result<(), glib::Error>,
+            Option<MountCredentials>,
+            Option<MountPromptDetails>,
+        ) + 'static,
+    ) {
+        if self.overlay.root().and_downcast::<gtk::Window>().is_none() {
+            return;
+        }
+        let file = gio_file_for_location(&location);
+        let operation = gio::MountOperation::new();
+        let prompt_overlay = self.overlay.clone();
+        let active_prompt = Rc::new(RefCell::new(None::<gtk::Box>));
+        let prompt_for_signal = active_prompt.clone();
+        let prompt_details = Rc::new(RefCell::new(None::<MountPromptDetails>));
+        let details_for_signal = prompt_details.clone();
+        let attempted_credentials = Rc::new(RefCell::new(credentials.clone()));
+        let attempts_for_signal = attempted_credentials.clone();
+        let supplied_credentials = Rc::new(RefCell::new(credentials));
+        let credentials_for_signal = supplied_credentials.clone();
+        let already_prompted = Cell::new(credentials_for_signal.borrow().is_some());
+        operation.connect_ask_password(
+            move |operation, message, default_user, default_domain, flags| {
+                details_for_signal.replace(Some(MountPromptDetails {
+                    message: message.to_owned(),
+                    default_user: default_user.to_owned(),
+                    default_domain: default_domain.to_owned(),
+                    flags,
+                }));
+                if let Some(credentials) = credentials_for_signal.borrow_mut().take() {
+                    apply_mount_credentials(operation, &credentials);
+                    operation.reply(gio::MountOperationResult::Handled);
+                    return;
+                }
+                if let Some(previous) = prompt_for_signal.borrow_mut().take() {
+                    dismiss_authentication_prompt(&prompt_overlay, &previous);
+                }
+                let retry = already_prompted.replace(true);
+                let prompt = show_authentication_dialog(
+                    &prompt_overlay,
+                    Some(operation),
+                    message,
+                    (default_user, default_domain),
+                    flags,
+                    retry,
+                    MountDialogHandlers {
+                        submitted: Some(Rc::new({
+                            let attempts_for_signal = attempts_for_signal.clone();
+                            move |credentials| {
+                                attempts_for_signal.replace(Some(credentials));
+                            }
+                        })),
+                        cancelled: None,
+                    },
+                );
+                prompt_for_signal.replace(prompt);
+            },
+        );
+        let weak = Rc::downgrade(self);
+        let result_overlay = self.overlay.clone();
+        glib::MainContext::default().spawn_local(async move {
+            let result = match strategy {
+                MountStrategy::EnclosingVolume => {
+                    file.mount_enclosing_volume_future(gio::MountMountFlags::NONE, Some(&operation))
+                        .await
+                }
+                MountStrategy::Mountable => file
+                    .mount_mountable_future(gio::MountMountFlags::NONE, Some(&operation))
+                    .await
+                    .map(|_| ()),
+            };
+            if let Some(prompt) = active_prompt.borrow_mut().take() {
+                dismiss_authentication_prompt(&result_overlay, &prompt);
+            }
+            if let Some(state) = weak.upgrade() {
+                on_result(
+                    &state,
+                    result,
+                    attempted_credentials.borrow().clone(),
+                    prompt_details.borrow().clone(),
+                );
+            }
+        });
     }
 
     fn restore_location_text(&self) {
@@ -2275,18 +2562,11 @@ impl ViewState {
         self.location_stack.set_visible_child_name("breadcrumbs");
     }
 
-    fn clear_location_error(&self) {
-        self.location_entry.remove_css_class("error");
-        self.location_error.set_visible(false);
-        self.location_error.set_text("");
-    }
-
     fn handle(self: &Rc<Self>, event: BrowserEvent) {
         self.mode_views.borrow_mut().handle(&event);
         match event {
             BrowserEvent::Reset => {
                 self.truncate(0);
-                self.clear_location_error();
             }
             BrowserEvent::ColumnsTruncated { len } => {
                 self.truncate(len);
@@ -2294,7 +2574,6 @@ impl ViewState {
             }
             BrowserEvent::ColumnAdded { depth, location } => {
                 self.set_location(&location);
-                self.clear_location_error();
                 self.append_column(depth, &location);
             }
             BrowserEvent::EntriesInserted { depth, insertions } => {
@@ -2451,27 +2730,41 @@ impl ViewState {
                         .filter_map(|position| filtered_position_for_source(column, position))
                         .collect();
                     set_column_selections(column, &filtered_positions);
-                    if let Some(focused) = filtered_position_for_source(column, focused) {
-                        column
-                            .list
-                            .scroll_to(focused, gtk::ListScrollFlags::FOCUS, None);
-                    }
-                    if self.mode_views.borrow().mode() == BrowserMode::Columns {
-                        column.list.grab_focus();
+                    // A background batch delivered for a column that already has a
+                    // selection re-fires this event; don't let it steal focus from
+                    // an in-progress New Folder/File prompt or rename (visible for
+                    // slow network directories that stream many batches).
+                    if self.active_rename.borrow().is_none()
+                        && self.active_new_entry.borrow().is_none()
+                    {
+                        if let Some(focused) = filtered_position_for_source(column, focused) {
+                            column
+                                .list
+                                .scroll_to(focused, gtk::ListScrollFlags::FOCUS, None);
+                        }
+                        if self.mode_views.borrow().mode() == BrowserMode::Columns {
+                            column.list.grab_focus();
+                        }
                     }
                 }
             }
             BrowserEvent::FocusChanged { depth, position } => {
                 if let Some(column) = self.columns.borrow().get(depth) {
+                    let editing = self.active_rename.borrow().is_some()
+                        || self.active_new_entry.borrow().is_some();
                     if let Some(filtered_position) =
                         position.and_then(|position| filtered_position_for_source(column, position))
                     {
                         set_column_selection(column, filtered_position);
-                        column
-                            .list
-                            .scroll_to(filtered_position, gtk::ListScrollFlags::FOCUS, None);
+                        if !editing {
+                            column.list.scroll_to(
+                                filtered_position,
+                                gtk::ListScrollFlags::FOCUS,
+                                None,
+                            );
+                        }
                     }
-                    if self.mode_views.borrow().mode() == BrowserMode::Columns {
+                    if !editing && self.mode_views.borrow().mode() == BrowserMode::Columns {
                         column.list.grab_focus();
                     }
                 }
@@ -2518,9 +2811,26 @@ impl ViewState {
             BrowserEvent::OperationCompletedWithErrors { message } => {
                 show_error_dialog(&self.overlay, "Completed with errors", &message);
             }
-            BrowserEvent::NavigationRejected { message } => {
-                show_error_dialog(&self.overlay, "Unable to open directory", &message);
+            BrowserEvent::NavigationRejected {
+                parent_depth,
+                error,
+            } => {
+                self.handle_navigation_rejected(parent_depth, error);
             }
+            BrowserEvent::EmptyTrashRequested => {
+                self.load_trash_summary();
+            }
+            BrowserEvent::LocationNavigationRejected { error } => match error {
+                LocationValidationError::NotMounted(location) => {
+                    self.mount_then_navigate(location, MountStrategy::EnclosingVolume);
+                }
+                LocationValidationError::Mountable(location) => {
+                    self.mount_then_navigate(location, MountStrategy::Mountable);
+                }
+                error => {
+                    show_error_dialog(&self.overlay, "Unable to open location", &error.to_string())
+                }
+            },
         }
         self.refresh_active_path_rows();
     }
@@ -2598,6 +2908,9 @@ impl ViewState {
         header.append(&spinner);
         let header_actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         header_actions.add_css_class("column-header-actions");
+        let empty_trash = empty_trash_button(&self.browser);
+        empty_trash.set_visible(is_trash_root(location));
+        header_actions.append(&empty_trash);
         header_actions.append(&column_sort_direction_toggle(&self.browser, depth));
         header_actions.append(&column_sort_menu(&self.browser, depth));
 
@@ -4586,9 +4899,7 @@ pub(super) fn locations_from_file_list_value(value: &glib::Value) -> Option<Vec<
 }
 
 pub(super) fn location_for_gio_file(file: &gio::File) -> Location {
-    file.path()
-        .map(Location::local)
-        .unwrap_or_else(|| Location::uri(file.uri().as_str()))
+    location_for_file(file)
 }
 
 pub(super) fn file_drag_content(entries: &[FileEntry]) -> Option<gtk::gdk::ContentProvider> {
@@ -4868,6 +5179,25 @@ fn sync_sort_direction_toggle(button: &gtk::Button, icon: &gtk::Image, direction
     }));
 }
 
+pub(super) fn empty_trash_button(browser: &Rc<Browser>) -> gtk::Button {
+    let button = gtk::Button::builder()
+        .tooltip_text("Empty Trash")
+        .visible(false)
+        .build();
+    button.set_child(Some(&crate::assets::text_icon(
+        crate::assets::icons::TRASH,
+        16,
+    )));
+    button.add_css_class("column-header-action");
+    let weak_browser = Rc::downgrade(browser);
+    button.connect_clicked(move |_| {
+        if let Some(browser) = weak_browser.upgrade() {
+            browser.request_empty_trash();
+        }
+    });
+    button
+}
+
 fn column_menu_option(label: &str, selected: bool) -> (gtk::Button, gtk::Image) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let check = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
@@ -4934,14 +5264,31 @@ fn set_cut_path_style(row: &gtk::Box, cut: bool) {
     }
 }
 
+/// Whether a name currently typed into a field should be visually flagged as
+/// an error. An empty name is left unstyled: it's the normal starting state
+/// (opening, cancelling, or succeeding a prompt all clear the field) rather
+/// than a mistake the user made, even though it still can't be submitted.
+/// Kept separate from `update_basename_validation` so it can be unit tested
+/// without constructing a real GTK widget.
+fn basename_field_error(name: &str) -> Option<&'static str> {
+    if name.is_empty() {
+        None
+    } else {
+        validate_basename(name).err()
+    }
+}
+
+/// Validates a name field live as it changes, including the programmatic
+/// clears that happen when a prompt opens, cancels, or succeeds.
 pub(super) fn update_basename_validation(field: &gtk::Entry) -> bool {
-    match validate_basename(field.text().as_str()) {
-        Ok(()) => {
+    let text = field.text();
+    match basename_field_error(text.as_str()) {
+        None => {
             field.remove_css_class("error");
             field.set_tooltip_text(None);
-            true
+            !text.is_empty()
         }
-        Err(message) => {
+        Some(message) => {
             field.add_css_class("error");
             field.set_tooltip_text(Some(message));
             false
@@ -5182,7 +5529,449 @@ fn gio_file_for_location(location: &Location) -> gio::File {
         .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()))
 }
 
-fn is_trash_root(location: &Location) -> bool {
+type MountCredentialsHandler = Rc<dyn Fn(MountCredentials)>;
+type MountCancelledHandler = Rc<dyn Fn()>;
+
+struct MountDialogHandlers {
+    submitted: Option<MountCredentialsHandler>,
+    cancelled: Option<MountCancelledHandler>,
+}
+
+#[derive(Clone)]
+struct MountPromptDetails {
+    message: String,
+    default_user: String,
+    default_domain: String,
+    flags: gio::AskPasswordFlags,
+}
+
+impl MountPromptDetails {
+    fn fallback(location: &Location) -> Self {
+        Self {
+            message: format!("Enter user and password for “{}”.", location.display_path()),
+            default_user: String::new(),
+            default_domain: String::new(),
+            flags: gio::AskPasswordFlags::NEED_USERNAME
+                | gio::AskPasswordFlags::NEED_DOMAIN
+                | gio::AskPasswordFlags::NEED_PASSWORD
+                | gio::AskPasswordFlags::SAVING_SUPPORTED
+                | gio::AskPasswordFlags::ANONYMOUS_SUPPORTED,
+        }
+    }
+}
+
+const AUTHENTICATION_TEXT_WIDTH_CHARS: i32 = 64;
+
+fn show_authentication_dialog(
+    browser_overlay: &gtk::Overlay,
+    operation: Option<&gio::MountOperation>,
+    message: &str,
+    defaults: (&str, &str),
+    flags: gio::AskPasswordFlags,
+    authentication_failed: bool,
+    handlers: MountDialogHandlers,
+) -> Option<gtk::Box> {
+    let MountDialogHandlers {
+        submitted,
+        cancelled,
+    } = handlers;
+    let Some(window_overlay) = browser_overlay
+        .root()
+        .and_downcast::<gtk::Window>()
+        .and_then(|window| window.child())
+        .and_downcast::<gtk::Overlay>()
+    else {
+        if let Some(operation) = operation {
+            operation.reply(gio::MountOperationResult::Unhandled);
+        }
+        return None;
+    };
+    let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
+    if let Some(root) = blurred_root.as_ref() {
+        root.set_blurred(true);
+    }
+
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    content.add_css_class("transfer-dialog");
+    content.add_css_class("authentication-dialog");
+    content.set_halign(gtk::Align::Center);
+    content.set_valign(gtk::Align::Center);
+
+    let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    header.add_css_class("transfer-header");
+    let symbol = gtk::CenterBox::new();
+    symbol.add_css_class("transfer-symbol");
+    symbol.add_css_class("authentication-symbol");
+    symbol.set_center_widget(Some(&crate::assets::primary_icon(
+        crate::assets::icons::KEY,
+        20,
+    )));
+    let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
+    heading.set_hexpand(true);
+    heading.set_valign(gtk::Align::Center);
+    let title = gtk::Label::new(Some("Authentication required"));
+    title.add_css_class("transfer-title");
+    title.set_xalign(0.0);
+    let subtitle = gtk::Label::new(Some("Sign in to access this network location"));
+    subtitle.add_css_class("transfer-subtitle");
+    subtitle.set_xalign(0.0);
+    heading.append(&title);
+    heading.append(&subtitle);
+    let close = gtk::Button::new();
+    close.add_css_class("transfer-close");
+    close.set_tooltip_text(Some("Cancel authentication"));
+    close.set_valign(gtk::Align::Center);
+    close.set_child(Some(&crate::assets::primary_icon(
+        crate::assets::icons::X,
+        16,
+    )));
+    header.append(&symbol);
+    header.append(&heading);
+    header.append(&close);
+    content.append(&header);
+
+    let body = gtk::Box::new(gtk::Orientation::Vertical, 14);
+    body.add_css_class("transfer-body");
+    body.add_css_class("authentication-body");
+    let explanation_text =
+        wrap_dialog_text(message.trim(), AUTHENTICATION_TEXT_WIDTH_CHARS as usize);
+    let explanation = gtk::Label::new(Some(&explanation_text));
+    explanation.add_css_class("authentication-explanation");
+    explanation.set_max_width_chars(AUTHENTICATION_TEXT_WIDTH_CHARS);
+    explanation.set_wrap(true);
+    explanation.set_xalign(0.0);
+    body.append(&explanation);
+    if authentication_failed {
+        let error_text = wrap_dialog_text(
+            "Those credentials weren’t accepted. Check the username, domain, and password, then try again.",
+            AUTHENTICATION_TEXT_WIDTH_CHARS as usize,
+        );
+        let error = gtk::Label::new(Some(&error_text));
+        error.add_css_class("authentication-error");
+        error.set_max_width_chars(AUTHENTICATION_TEXT_WIDTH_CHARS);
+        error.set_wrap(true);
+        error.set_xalign(0.0);
+        body.append(&error);
+    }
+
+    let credentials = gtk::Box::new(gtk::Orientation::Vertical, 10);
+    credentials.add_css_class("authentication-fields");
+
+    let username = gtk::Entry::new();
+    username.add_css_class("transfer-field");
+    username.set_text(defaults.0);
+    if flags.contains(gio::AskPasswordFlags::NEED_USERNAME) {
+        append_authentication_field(&credentials, "Username", &username);
+    }
+
+    let domain = gtk::Entry::new();
+    domain.add_css_class("transfer-field");
+    domain.set_text(defaults.1);
+    if flags.contains(gio::AskPasswordFlags::NEED_DOMAIN) {
+        append_authentication_field(&credentials, "Domain", &domain);
+    }
+
+    let password = gtk::PasswordEntry::new();
+    password.add_css_class("transfer-field");
+    password.set_show_peek_icon(true);
+    if flags.contains(gio::AskPasswordFlags::NEED_PASSWORD) {
+        append_authentication_field(&credentials, "Password", &password);
+    }
+
+    let (connect_as_control, connect_as_buttons) =
+        segmented_control(&["Registered user", "Anonymous"], 0);
+    let anonymous = connect_as_buttons[1].clone();
+    if flags.contains(gio::AskPasswordFlags::ANONYMOUS_SUPPORTED) {
+        let connect_as = gtk::Box::new(gtk::Orientation::Vertical, 7);
+        let label = gtk::Label::new(Some("Connect as"));
+        label.add_css_class("transfer-field-label");
+        label.set_xalign(0.0);
+        connect_as.append(&label);
+        connect_as.append(&connect_as_control);
+        body.append(&connect_as);
+    }
+    body.append(&credentials);
+
+    let (remember, remember_buttons) =
+        segmented_control(&["Don't remember", "Until logout", "Forever"], 0);
+    if flags.contains(gio::AskPasswordFlags::SAVING_SUPPORTED) {
+        let remember_field = gtk::Box::new(gtk::Orientation::Vertical, 5);
+        let label = gtk::Label::new(Some("Password storage"));
+        label.add_css_class("transfer-field-label");
+        label.set_xalign(0.0);
+        remember_field.append(&label);
+        remember_field.append(&remember);
+        body.append(&remember_field);
+    }
+    content.append(&body);
+
+    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    actions.add_css_class("transfer-actions");
+    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    spacer.set_hexpand(true);
+    let cancel = gtk::Button::with_label("Cancel");
+    cancel.add_css_class("transfer-cancel");
+    let connect = gtk::Button::with_label("Connect");
+    connect.add_css_class("transfer-confirm");
+    actions.append(&spacer);
+    actions.append(&cancel);
+    actions.append(&connect);
+    content.append(&actions);
+
+    let credential_widgets = [
+        username.clone().upcast::<gtk::Widget>(),
+        domain.clone().upcast(),
+        password.clone().upcast(),
+        remember.clone().upcast(),
+    ];
+    anonymous.connect_toggled(move |anonymous| {
+        for widget in &credential_widgets {
+            widget.set_sensitive(!anonymous.is_active());
+        }
+    });
+
+    let layer = modal_layer(&content);
+    window_overlay.add_overlay(&layer);
+
+    let cancel_operation = operation.cloned();
+    let cancel_handler = cancelled.clone();
+    let cancel_layer = layer.clone();
+    let cancel_overlay = window_overlay.clone();
+    let cancel_root = blurred_root.clone();
+    cancel.connect_clicked(move |_| {
+        dismiss_modal_layer(&cancel_layer, &cancel_overlay, cancel_root.as_ref());
+        if let Some(operation) = cancel_operation.as_ref() {
+            operation.reply(gio::MountOperationResult::Aborted);
+        } else if let Some(cancelled) = cancel_handler.as_ref() {
+            cancelled();
+        }
+    });
+
+    let close_operation = operation.cloned();
+    let close_handler = cancelled.clone();
+    let close_layer = layer.clone();
+    let close_overlay = window_overlay.clone();
+    let close_root = blurred_root.clone();
+    close.connect_clicked(move |_| {
+        dismiss_modal_layer(&close_layer, &close_overlay, close_root.as_ref());
+        if let Some(operation) = close_operation.as_ref() {
+            operation.reply(gio::MountOperationResult::Aborted);
+        } else if let Some(cancelled) = close_handler.as_ref() {
+            cancelled();
+        }
+    });
+
+    let connect_operation = operation.cloned();
+    let connect_layer = layer.clone();
+    let connect_overlay = window_overlay.clone();
+    let connect_root = blurred_root.clone();
+    let connect_username = username.clone();
+    let connect_domain = domain.clone();
+    let connect_password = password.clone();
+    let connect_anonymous = anonymous.clone();
+    let connect_remember = remember_buttons;
+    connect.connect_clicked(move |_| {
+        let selected = connect_remember
+            .iter()
+            .position(gtk::ToggleButton::is_active)
+            .unwrap_or_default() as u32;
+        let credentials = MountCredentials {
+            anonymous: connect_anonymous.is_active(),
+            username: connect_username.text().to_string(),
+            domain: connect_domain.text().to_string(),
+            password: connect_password.text().to_string(),
+            save: password_save_for_selection(selected),
+        };
+        if let Some(operation) = connect_operation.as_ref() {
+            apply_mount_credentials(operation, &credentials);
+        }
+        dismiss_modal_layer(&connect_layer, &connect_overlay, connect_root.as_ref());
+        if let Some(operation) = connect_operation.as_ref() {
+            operation.reply(gio::MountOperationResult::Handled);
+        }
+        if let Some(submitted) = submitted.as_ref() {
+            submitted(credentials);
+        }
+    });
+
+    for entry in [&username, &domain] {
+        let submit = connect.clone();
+        entry.connect_activate(move |_| submit.emit_clicked());
+    }
+    let submit = connect.clone();
+    password.connect_activate(move |_| submit.emit_clicked());
+
+    let escape = gtk::EventControllerKey::new();
+    let escape_operation = operation.cloned();
+    let escape_handler = cancelled;
+    let escape_layer = layer.clone();
+    let escape_overlay = window_overlay;
+    let escape_root = blurred_root;
+    escape.connect_key_pressed(move |_, key, _, _| {
+        if key != gtk::gdk::Key::Escape {
+            return glib::Propagation::Proceed;
+        }
+        dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
+        if let Some(operation) = escape_operation.as_ref() {
+            operation.reply(gio::MountOperationResult::Aborted);
+        } else if let Some(cancelled) = escape_handler.as_ref() {
+            cancelled();
+        }
+        glib::Propagation::Stop
+    });
+    layer.add_controller(escape);
+
+    if flags.contains(gio::AskPasswordFlags::NEED_USERNAME) && defaults.0.is_empty() {
+        username.grab_focus();
+    } else if flags.contains(gio::AskPasswordFlags::NEED_PASSWORD) {
+        password.grab_focus();
+    } else {
+        connect.grab_focus();
+    }
+    Some(layer)
+}
+
+fn dismiss_authentication_prompt(browser_overlay: &gtk::Overlay, layer: &gtk::Box) {
+    if layer.parent().is_none() {
+        return;
+    }
+    let Some(window_overlay) = browser_overlay
+        .root()
+        .and_downcast::<gtk::Window>()
+        .and_then(|window| window.child())
+        .and_downcast::<gtk::Overlay>()
+    else {
+        return;
+    };
+    let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
+    dismiss_modal_layer(layer, &window_overlay, blurred_root.as_ref());
+}
+
+fn wrap_dialog_text(text: &str, max_chars: usize) -> String {
+    let mut wrapped = String::new();
+    let mut line_chars = 0;
+    for word in text.split_whitespace() {
+        let word_chars = word.chars().count();
+        if line_chars > 0 && line_chars + 1 + word_chars > max_chars {
+            wrapped.push('\n');
+            line_chars = 0;
+        } else if line_chars > 0 {
+            wrapped.push(' ');
+            line_chars += 1;
+        }
+        wrapped.push_str(word);
+        line_chars += word_chars;
+    }
+    wrapped
+}
+
+fn append_authentication_field(fields: &gtk::Box, label_text: &str, field: &impl IsA<gtk::Widget>) {
+    let group = gtk::Box::new(gtk::Orientation::Vertical, 5);
+    let label = gtk::Label::new(Some(label_text));
+    label.add_css_class("transfer-field-label");
+    label.set_xalign(0.0);
+    group.append(&label);
+    group.append(field);
+    fields.append(&group);
+}
+
+fn password_save_for_selection(selected: u32) -> gio::PasswordSave {
+    match selected {
+        1 => gio::PasswordSave::ForSession,
+        2 => gio::PasswordSave::Permanently,
+        _ => gio::PasswordSave::Never,
+    }
+}
+
+#[derive(Clone)]
+struct MountCredentials {
+    anonymous: bool,
+    username: String,
+    domain: String,
+    password: String,
+    save: gio::PasswordSave,
+}
+
+impl MountCredentials {
+    fn default_for_prompt() -> Self {
+        Self {
+            anonymous: false,
+            username: glib::user_name().to_string_lossy().into_owned(),
+            domain: "WORKGROUP".to_owned(),
+            password: String::new(),
+            save: gio::PasswordSave::Never,
+        }
+    }
+}
+
+fn apply_mount_credentials(operation: &gio::MountOperation, credentials: &MountCredentials) {
+    operation.set_anonymous(credentials.anonymous);
+    if credentials.anonymous {
+        return;
+    }
+    operation.set_username(Some(&credentials.username));
+    operation.set_domain(Some(&credentials.domain));
+    operation.set_password(Some(&credentials.password));
+    operation.set_password_save(credentials.save);
+}
+
+#[derive(Clone, Copy)]
+enum MountStrategy {
+    /// The location itself is accessible but sits on an unmounted volume.
+    EnclosingVolume,
+    /// The location is itself the mountable target (an SMB share, a
+    /// "Connect to Server" bookmark, ...).
+    Mountable,
+}
+
+fn mount_result_is_ok(result: &Result<(), glib::Error>) -> bool {
+    match result {
+        Ok(()) => true,
+        Err(error) => error.matches(gio::IOErrorEnum::AlreadyMounted),
+    }
+}
+
+fn mount_error_is_authentication_failure(location: &Location, error: &glib::Error) -> bool {
+    if location.uri_value().is_none() {
+        return false;
+    }
+    if error.matches(gio::IOErrorEnum::PermissionDenied) {
+        return true;
+    }
+
+    // GVfs' SMB backend reports rejected credentials as G_IO_ERROR_FAILED on
+    // some versions, preserving the useful distinction only in its message.
+    let message = error.message().to_ascii_lowercase();
+    [
+        "permission denied",
+        "authentication failed",
+        "logon failure",
+        "invalid credentials",
+    ]
+    .iter()
+    .any(|reason| message.contains(reason))
+}
+
+/// Decides what, if anything, to tell the user about a failed mount attempt.
+/// A user-initiated cancel (the GTK credential dialog's Cancel button, or a
+/// backend that already reported the failure to the operation itself) should
+/// quietly return to the prior state rather than surface an alarming error,
+/// per lgse/strata#20's "cancelling authentication returns to the prior
+/// committed location" requirement.
+fn mount_failure_message(location: &Location, error: &glib::Error) -> Option<String> {
+    if error.matches(gio::IOErrorEnum::Cancelled) || error.matches(gio::IOErrorEnum::FailedHandled)
+    {
+        return None;
+    }
+    if error.matches(gio::IOErrorEnum::NotSupported) {
+        return Some(backend_unavailable_message(
+            location.uri_value().unwrap_or_default(),
+        ));
+    }
+    Some(error.to_string())
+}
+
+pub(super) fn is_trash_root(location: &Location) -> bool {
     location.uri_value() == Some("trash:///")
 }
 
@@ -5333,7 +6122,7 @@ pub(super) fn open_location(location: &Location, parent: &impl IsA<gtk::Widget>)
     }
 }
 
-fn show_error_dialog(parent: &impl IsA<gtk::Widget>, message: &str, detail: &str) {
+pub(super) fn show_error_dialog(parent: &impl IsA<gtk::Widget>, message: &str, detail: &str) {
     let Some(window_overlay) = parent
         .root()
         .and_downcast::<gtk::Window>()
@@ -5364,6 +6153,7 @@ fn show_error_dialog(parent: &impl IsA<gtk::Widget>, message: &str, detail: &str
     )));
     let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
     heading.set_hexpand(true);
+    heading.set_valign(gtk::Align::Center);
     let title = gtk::Label::new(Some(message));
     title.add_css_class("delete-confirmation-title");
     title.set_xalign(0.0);
