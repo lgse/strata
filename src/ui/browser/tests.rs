@@ -593,3 +593,92 @@ fn trash_summary_does_not_descend_past_the_depth_budget() {
         "entries past the depth budget should not be counted (root/sub and sub/nested only)"
     );
 }
+
+#[test]
+fn trash_summary_treats_an_inaccessible_subdirectory_as_truncated_not_fatal() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let _serial = ASYNC_FILE_TEST
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let root = unique_fixture_root("inaccessible");
+    std::fs::create_dir_all(root.join("blocked")).expect("the trash fixture should be created");
+    std::fs::create_dir_all(root.join("visible")).expect("the trash fixture should be created");
+    std::fs::write(root.join("visible/needle.txt"), b"content")
+        .expect("the trash fixture file should be written");
+    std::fs::set_permissions(root.join("blocked"), std::fs::Permissions::from_mode(0o000))
+        .expect("the fixture directory's permissions should be restrictable");
+    let running_as_root = std::fs::read_dir(root.join("blocked")).is_ok();
+
+    let summary = glib::MainContext::default().block_on(summarize_trash_with_budget(
+        &gio::File::for_path(&root),
+        MAX_TRASH_ENTRIES,
+        MAX_TRASH_DEPTH,
+        TRASH_TIME_BUDGET,
+    ));
+    let _ = std::fs::set_permissions(root.join("blocked"), std::fs::Permissions::from_mode(0o755));
+    std::fs::remove_dir_all(&root).expect("the trash fixture should be removed");
+
+    let summary = summary.expect(
+        "an inaccessible subdirectory should degrade gracefully, not fail the whole measurement",
+    );
+    assert_eq!(
+        summary.entries.len(),
+        2,
+        "both the blocked and visible top-level entries should still be listed"
+    );
+    if !running_as_root {
+        assert!(
+            summary.truncated,
+            "the inaccessible branch should be reported as truncated"
+        );
+        assert_eq!(
+            summary.item_count, 3,
+            "blocked (uncounted contents) + visible + needle.txt"
+        );
+    }
+}
+
+#[test]
+fn trash_summary_treats_a_directory_removed_before_measurement_as_truncated_not_fatal() {
+    let _serial = ASYNC_FILE_TEST
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let root = unique_fixture_root("changing-tree");
+    let vanishing = root.join("vanishing");
+    std::fs::create_dir_all(&vanishing).expect("the trash fixture should be created");
+    std::fs::write(vanishing.join("inner.txt"), b"content")
+        .expect("the trash fixture file should be written");
+
+    // Capture the directory's FileInfo the way the parent-level enumeration in
+    // `summarize_trash_with_budget` would, then remove it from under that handle. This models a
+    // directory that changes or disappears between being observed and being measured.
+    let file = gio::File::for_path(&vanishing);
+    let info = glib::MainContext::default()
+        .block_on(file.query_info_future(
+            TRASH_ATTRIBUTES,
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            glib::Priority::DEFAULT,
+        ))
+        .expect("querying the fixture directory's info should succeed while it still exists");
+    std::fs::remove_dir_all(&vanishing).expect("the fixture directory should be removable");
+
+    let result = glib::MainContext::default().block_on(measure_trash_entry(
+        file,
+        info,
+        0,
+        Rc::new(Cell::new(0)),
+        Instant::now() + TRASH_TIME_BUDGET,
+        MAX_TRASH_ENTRIES,
+        MAX_TRASH_DEPTH,
+    ));
+    std::fs::remove_dir_all(&root).expect("the trash fixture root should be removed");
+
+    let (_, _, truncated) = result.expect(
+        "a directory removed after being observed should degrade gracefully, not fail the whole measurement",
+    );
+    assert!(
+        truncated,
+        "measuring an entry that vanished before recursion should be reported as truncated"
+    );
+}

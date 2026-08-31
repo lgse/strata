@@ -5176,43 +5176,77 @@ fn measure_trash_entry(
             if budget_exhausted {
                 truncated = true;
             } else {
-                let enumerator = file
-                    .enumerate_children_future(
-                        TRASH_ATTRIBUTES,
-                        gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
-                        glib::Priority::DEFAULT,
-                    )
-                    .await?;
-                loop {
-                    let children = enumerator
-                        .next_files_future(64, glib::Priority::DEFAULT)
-                        .await?;
-                    if children.is_empty() {
-                        break;
-                    }
-                    for child in children {
-                        let (child_count, child_size, child_truncated) = measure_trash_entry(
-                            file.child(child.name()),
-                            child,
-                            depth + 1,
-                            visited.clone(),
-                            deadline,
-                            max_entries,
-                            max_depth,
-                        )
-                        .await?;
+                // A directory can become unreadable (permissions changed) or disappear (removed
+                // concurrently) between being observed here and being measured. Either failure
+                // degrades this one branch to truncated rather than failing the whole walk.
+                match enumerate_trash_directory(
+                    &file,
+                    depth,
+                    visited.clone(),
+                    deadline,
+                    max_entries,
+                    max_depth,
+                )
+                .await
+                {
+                    Ok((child_count, child_size, child_truncated)) => {
                         count = count.saturating_add(child_count);
                         size = size.saturating_add(child_size);
                         truncated |= child_truncated;
                     }
-                    if truncated {
-                        break;
-                    }
+                    Err(_) => truncated = true,
                 }
             }
         }
         Ok((count, size, truncated))
     })
+}
+
+async fn enumerate_trash_directory(
+    file: &gio::File,
+    depth: usize,
+    visited: Rc<Cell<usize>>,
+    deadline: Instant,
+    max_entries: usize,
+    max_depth: usize,
+) -> Result<(usize, u64, bool), glib::Error> {
+    let enumerator = file
+        .enumerate_children_future(
+            TRASH_ATTRIBUTES,
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            glib::Priority::DEFAULT,
+        )
+        .await?;
+    let mut count = 0_usize;
+    let mut size = 0_u64;
+    let mut truncated = false;
+    loop {
+        let children = enumerator
+            .next_files_future(64, glib::Priority::DEFAULT)
+            .await?;
+        if children.is_empty() {
+            break;
+        }
+        for child in children {
+            let (child_count, child_size, child_truncated) = measure_trash_entry(
+                file.child(child.name()),
+                child,
+                depth + 1,
+                visited.clone(),
+                deadline,
+                max_entries,
+                max_depth,
+            )
+            .await?;
+            count = count.saturating_add(child_count);
+            size = size.saturating_add(child_size);
+            truncated |= child_truncated;
+        }
+        if truncated {
+            break;
+        }
+    }
+    Ok((count, size, truncated))
 }
 
 fn trash_file_entry(file: gio::File, info: &gio::FileInfo) -> FileEntry {
