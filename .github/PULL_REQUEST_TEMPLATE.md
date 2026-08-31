@@ -1,4 +1,4 @@
-## What and why
+## Description
 
 <!-- Briefly describe what changed and why it was needed. -->
 
