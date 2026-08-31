@@ -146,18 +146,25 @@ headerbar menubutton.header-action > button:focus-visible image {
 }
 
 .location-entry,
-.location-entry:focus {
+.location-entry:focus,
+.location-entry:focus-visible,
+.location-entry:focus-within {
   background: @theme_bg;
   border: 1px solid alpha(@theme_border, 0.7);
   box-shadow: none;
   caret-color: @theme_accent;
   color: @theme_text;
   min-height: 22px;
+  outline-color: @theme_accent;
 }
 
-.location-entry:focus {
+.location-entry:focus,
+.location-entry:focus-visible,
+.location-entry:focus-within {
   border-color: @theme_accent;
   box-shadow: 0 0 0 1px alpha(@theme_accent, 0.38);
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
 }
 
 .location-entry placeholder {
