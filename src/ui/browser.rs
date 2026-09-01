@@ -26,8 +26,9 @@ use super::{
     blur::BlurBin,
     browser_modes::{BrowserDensity, BrowserMode, ModeViews},
     controls::{
-        ModalTone, form_check_button, form_entry, form_label, form_password_entry, modal_layout,
-        modal_layout_with_tone, segmented_control,
+        ModalTone, form_check_button, form_entry, form_label, form_password_entry,
+        message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
+        wrap_dialog_text,
     },
     motion::{animations_enabled, emphasized_deceleration},
 };
@@ -1002,21 +1003,17 @@ impl ViewState {
         }
 
         let name = source.display_name();
-        let layout = modal_layout_with_tone(
+        let layout = message_dialog_layout(
             crate::assets::icons::COPY,
             "File already exists",
             &name,
             "Replace",
             ModalTone::Danger,
         );
-        let explanation = gtk::Label::new(Some(&format!(
+        let explanation = message_dialog_description(&format!(
             "An item named “{name}” already exists in {}. Replacing it will overwrite its contents.",
             compact_display_path(&destination)
-        )));
-        explanation.add_css_class("action-dialog-description");
-        explanation.set_max_width_chars(64);
-        explanation.set_wrap(true);
-        explanation.set_xalign(0.0);
+        ));
         layout.body.append(&explanation);
         let apply_all = form_check_button("Apply this choice to all remaining conflicts");
         apply_all.set_visible(!collisions.is_empty());
@@ -1611,7 +1608,7 @@ impl ViewState {
             root.set_blurred(true);
         }
 
-        let layout = modal_layout_with_tone(
+        let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
             "Empty Trash?",
             &format!(
@@ -1622,12 +1619,9 @@ impl ViewState {
             "Empty Trash",
             ModalTone::Danger,
         );
-        let explanation = gtk::Label::new(Some(
+        let explanation = message_dialog_description(
             "Everything in Trash will be permanently deleted. This action cannot be undone.",
-        ));
-        explanation.add_css_class("action-dialog-description");
-        explanation.set_wrap(true);
-        explanation.set_xalign(0.0);
+        );
         layout.body.append(&explanation);
         let content = layout.content;
         let close = layout.close;
@@ -1717,7 +1711,7 @@ impl ViewState {
         } else {
             format!("Move {}", item_count_label(count))
         };
-        let layout = modal_layout_with_tone(
+        let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
             &title,
             &entry_kind_summary(&entries),
@@ -1763,14 +1757,11 @@ impl ViewState {
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
         layout.body.append(&file_scroller);
-        let explanation = gtk::Label::new(Some(if permanent {
+        let explanation = message_dialog_description(if permanent {
             "These items will be permanently deleted. This action cannot be undone."
         } else {
             "The items will be moved to trash. You can restore them later."
-        }));
-        explanation.add_css_class("action-dialog-description");
-        explanation.set_wrap(true);
-        explanation.set_xalign(0.0);
+        });
         layout.body.append(&explanation);
         let content = layout.content;
         let close = layout.close;
@@ -6380,24 +6371,6 @@ fn dismiss_authentication_prompt(browser_overlay: &gtk::Overlay, layer: &gtk::Bo
     dismiss_modal_layer(layer, &window_overlay, blurred_root.as_ref());
 }
 
-fn wrap_dialog_text(text: &str, max_chars: usize) -> String {
-    let mut wrapped = String::new();
-    let mut line_chars = 0;
-    for word in text.split_whitespace() {
-        let word_chars = word.chars().count();
-        if line_chars > 0 && line_chars + 1 + word_chars > max_chars {
-            wrapped.push('\n');
-            line_chars = 0;
-        } else if line_chars > 0 {
-            wrapped.push(' ');
-            line_chars += 1;
-        }
-        wrapped.push_str(word);
-        line_chars += word_chars;
-    }
-    wrapped
-}
-
 fn append_authentication_field(fields: &gtk::Box, label_text: &str, field: &impl IsA<gtk::Widget>) {
     let group = gtk::Box::new(gtk::Orientation::Vertical, 5);
     group.append(&form_label(label_text));
@@ -6666,7 +6639,7 @@ pub(super) fn show_error_dialog(parent: &impl IsA<gtk::Widget>, message: &str, d
         root.set_blurred(true);
     }
 
-    let layout = modal_layout_with_tone(
+    let layout = message_dialog_layout(
         crate::assets::icons::X,
         message,
         if message == "Completed with errors" {
@@ -6678,11 +6651,7 @@ pub(super) fn show_error_dialog(parent: &impl IsA<gtk::Widget>, message: &str, d
         ModalTone::Danger,
     );
     layout.cancel.set_visible(false);
-    let explanation = gtk::Label::new(Some(detail));
-    explanation.add_css_class("action-dialog-description");
-    explanation.set_max_width_chars(64);
-    explanation.set_wrap(true);
-    explanation.set_xalign(0.0);
+    let explanation = message_dialog_description(detail);
     explanation.set_selectable(true);
     layout.body.append(&explanation);
     let content = layout.content;

@@ -34,6 +34,48 @@ pub(super) enum ModalTone {
     Danger,
 }
 
+pub(super) const MESSAGE_DIALOG_WIDTH_CHARS: usize = 64;
+
+pub(super) fn wrap_dialog_text(text: &str, max_chars: usize) -> String {
+    let mut wrapped = String::new();
+    let mut line_chars = 0;
+    for word in text.split_whitespace() {
+        let chunks = word
+            .chars()
+            .collect::<Vec<_>>()
+            .chunks(max_chars.max(1))
+            .map(|chunk| chunk.iter().collect::<String>())
+            .collect::<Vec<_>>();
+        for (index, chunk) in chunks.iter().enumerate() {
+            let chunk_chars = chunk.chars().count();
+            if line_chars > 0 && line_chars + 1 + chunk_chars > max_chars {
+                wrapped.push('\n');
+                line_chars = 0;
+            } else if line_chars > 0 {
+                wrapped.push(' ');
+                line_chars += 1;
+            }
+            wrapped.push_str(chunk);
+            line_chars += chunk_chars;
+            if index + 1 < chunks.len() {
+                wrapped.push('\n');
+                line_chars = 0;
+            }
+        }
+    }
+    wrapped
+}
+
+pub(super) fn message_dialog_description(text: &str) -> gtk::Label {
+    let label = gtk::Label::new(Some(&wrap_dialog_text(text, MESSAGE_DIALOG_WIDTH_CHARS)));
+    label.add_css_class("action-dialog-description");
+    label.set_max_width_chars(MESSAGE_DIALOG_WIDTH_CHARS as i32);
+    label.set_wrap(true);
+    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    label.set_xalign(0.0);
+    label
+}
+
 pub(super) struct ModalLayout {
     pub content: gtk::Box,
     pub body: gtk::Box,
@@ -53,6 +95,30 @@ pub(super) fn modal_layout(
     confirm_label: &str,
 ) -> ModalLayout {
     modal_layout_with_tone(icon, title, subtitle, confirm_label, ModalTone::Accent)
+}
+
+pub(super) fn message_dialog_layout(
+    icon: &str,
+    title: &str,
+    subtitle: &str,
+    confirm_label: &str,
+    tone: ModalTone,
+) -> ModalLayout {
+    let layout = modal_layout_with_tone(
+        icon,
+        &wrap_dialog_text(title, MESSAGE_DIALOG_WIDTH_CHARS),
+        &wrap_dialog_text(subtitle, MESSAGE_DIALOG_WIDTH_CHARS),
+        confirm_label,
+        tone,
+    );
+    layout.content.add_css_class("message-dialog");
+    layout.content.set_size_request(560, -1);
+    for label in [&layout.title, &layout.subtitle] {
+        label.set_max_width_chars(MESSAGE_DIALOG_WIDTH_CHARS as i32);
+        label.set_wrap(true);
+        label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    }
+    layout
 }
 
 pub(super) fn modal_layout_with_tone(

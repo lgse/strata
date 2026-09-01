@@ -33,6 +33,15 @@ fn dialog_copy_wraps_at_word_boundaries() {
 }
 
 #[test]
+fn dialog_copy_wraps_long_paths_without_spaces() {
+    let wrapped = wrap_dialog_text(&"a".repeat(80), 32);
+    assert_eq!(
+        wrapped.lines().map(str::len).collect::<Vec<_>>(),
+        [32, 32, 16]
+    );
+}
+
+#[test]
 fn password_storage_selection_maps_to_gio_values() {
     assert_eq!(password_save_for_selection(0), gio::PasswordSave::Never);
     assert_eq!(
