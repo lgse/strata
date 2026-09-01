@@ -204,6 +204,55 @@ impl Default for PeekBehavior {
 
 type PinHandler = Rc<dyn Fn(Location, String)>;
 type PinStatusHandler = Rc<dyn Fn(&Location) -> PinStatus>;
+type CutObserver = Rc<dyn Fn(&[Location])>;
+
+#[derive(Default)]
+pub(super) struct SharedCutState {
+    locations: RefCell<Vec<Location>>,
+    observers: RefCell<Vec<CutObserver>>,
+}
+
+impl SharedCutState {
+    fn observe(&self, observer: CutObserver) {
+        self.observers.borrow_mut().push(observer);
+    }
+
+    fn replace(&self, locations: Vec<Location>) {
+        self.locations.replace(locations);
+        self.notify();
+    }
+
+    fn clear(&self) {
+        if self.locations.borrow().is_empty() {
+            return;
+        }
+        self.locations.borrow_mut().clear();
+        self.notify();
+    }
+
+    fn remove(&self, transferred: &[Location]) -> Vec<Location> {
+        self.locations
+            .borrow_mut()
+            .retain(|location| !transferred.contains(location));
+        self.notify();
+        self.locations.borrow().clone()
+    }
+
+    fn matches(&self, locations: &[Location]) -> bool {
+        same_locations(locations, &self.locations.borrow())
+    }
+
+    fn contains(&self, location: &Location) -> bool {
+        self.locations.borrow().contains(location)
+    }
+
+    fn notify(&self) {
+        let locations = self.locations.borrow();
+        for observer in self.observers.borrow().iter() {
+            observer(&locations);
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PinStatus {
@@ -260,7 +309,7 @@ pub(super) struct ViewState {
     mode_views: RefCell<ModeViews>,
     columns: RefCell<Vec<ColumnView>>,
     hovered_column: Cell<Option<usize>>,
-    cut_locations: RefCell<Vec<Location>>,
+    cut_state: Rc<SharedCutState>,
     horizontal_scroll_generation: Rc<Cell<u64>>,
     peek: RefCell<Option<PeekView>>,
     pending_peek: RefCell<Option<glib::SourceId>>,
@@ -305,7 +354,11 @@ pub struct BrowserView {
 }
 
 impl BrowserView {
-    pub fn new(source: Rc<dyn FileSource>, peek_behavior: PeekBehavior) -> Self {
+    pub(super) fn new(
+        source: Rc<dyn FileSource>,
+        peek_behavior: PeekBehavior,
+        cut_state: Rc<SharedCutState>,
+    ) -> Self {
         let columns_widget = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         columns_widget.add_css_class("columns");
         columns_widget.set_halign(gtk::Align::Start);
@@ -402,7 +455,7 @@ impl BrowserView {
             mode_views: RefCell::new(mode_views),
             columns: RefCell::new(Vec::new()),
             hovered_column: Cell::new(None),
-            cut_locations: RefCell::new(Vec::new()),
+            cut_state: cut_state.clone(),
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
             peek: RefCell::new(None),
             pending_peek: RefCell::new(None),
@@ -434,6 +487,12 @@ impl BrowserView {
             .mode_views
             .borrow()
             .set_context_state(Rc::downgrade(&state));
+        let weak_state = Rc::downgrade(&state);
+        cut_state.observe(Rc::new(move |locations| {
+            if let Some(state) = weak_state.upgrade() {
+                state.refresh_cut_rows(locations);
+            }
+        }));
 
         // The observer owns the view state while its window is alive. The window clears
         // the observer on destruction to break this deliberate lifecycle cycle.
@@ -479,12 +538,6 @@ impl BrowserView {
 
     pub fn widget(&self) -> gtk::Widget {
         self.state.overlay.clone().upcast()
-    }
-
-    pub fn navigate(&self, path: impl AsRef<Path>) {
-        self.state
-            .browser
-            .navigate(Location::local(path.as_ref().to_path_buf()));
     }
 
     pub fn browser(&self) -> Rc<Browser> {
@@ -1029,7 +1082,7 @@ impl ViewState {
         sources: Vec<Location>,
         move_sources: bool,
     ) {
-        let clear_cut = move_sources && same_locations(&sources, &self.cut_locations.borrow());
+        let clear_cut = move_sources && self.cut_state.matches(&sources);
         let mut accepted = Vec::new();
         let mut collisions = Vec::new();
         for source in sources {
@@ -1191,31 +1244,19 @@ impl ViewState {
 
     fn copy_entries(&self, entries: &[FileEntry]) {
         if set_files_clipboard(entries) {
-            self.clear_cut();
+            self.cut_state.clear();
         }
     }
 
     fn cut_entries(&self, entries: &[FileEntry]) {
         if set_files_clipboard(entries) {
-            self.cut_locations
+            self.cut_state
                 .replace(entries.iter().map(|entry| entry.location.clone()).collect());
-            self.refresh_cut_rows();
         }
-    }
-
-    fn clear_cut(&self) {
-        if self.cut_locations.borrow().is_empty() {
-            return;
-        }
-        self.cut_locations.borrow_mut().clear();
-        self.refresh_cut_rows();
     }
 
     fn complete_cut_transfer(&self, transferred: &[Location]) {
-        self.cut_locations
-            .borrow_mut()
-            .retain(|location| !transferred.contains(location));
-        let remaining = self.cut_locations.borrow().clone();
+        let remaining = self.cut_state.remove(transferred);
         if remaining.is_empty() {
             if let Some(display) = gtk::gdk::Display::default() {
                 let _result = display
@@ -1225,12 +1266,10 @@ impl ViewState {
         } else {
             let _set = set_location_files_clipboard(&remaining);
         }
-        self.refresh_cut_rows();
     }
 
-    fn refresh_cut_rows(&self) {
-        let cut = self.cut_locations.borrow();
-        self.mode_views.borrow().set_cut_locations(&cut);
+    fn refresh_cut_rows(&self, cut: &[Location]) {
+        self.mode_views.borrow().set_cut_locations(cut);
         for (depth, column) in self.columns.borrow().iter().enumerate() {
             column.bound_rows.borrow_mut().retain(|bound| {
                 let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade()) else {
@@ -1271,7 +1310,7 @@ impl ViewState {
                 .map(|file| location_for_file(&file))
                 .collect::<Vec<_>>();
             if let Some(state) = weak.upgrade() {
-                let move_sources = same_locations(&sources, &state.cut_locations.borrow());
+                let move_sources = state.cut_state.matches(&sources);
                 state.start_transfer(destination, sources, move_sources);
             }
         });
@@ -3319,6 +3358,7 @@ impl ViewState {
             BrowserEvent::OperationCompletedWithErrors { message } => {
                 show_error_dialog(&self.overlay, "Completed with errors", &message);
             }
+            BrowserEvent::LocationsInvalidated { .. } => {}
             BrowserEvent::NavigationRejected {
                 parent_depth,
                 error,
@@ -3634,7 +3674,13 @@ impl ViewState {
             let weak_state_for_enter = weak_state.clone();
             let source_for_enter = source_for_hover.clone();
             let filtered_for_enter = filtered_for_hover.clone();
-            motion.connect_enter(move |_, _, _| {
+            motion.connect_enter(move |motion, _, _| {
+                if motion
+                    .current_event_state()
+                    .contains(gtk::gdk::ModifierType::BUTTON1_MASK)
+                {
+                    return;
+                }
                 if let Some(state) = weak_state_for_enter.upgrade() {
                     let source_position = source_position_for_filtered(
                         &source_for_enter,
@@ -3661,6 +3707,7 @@ impl ViewState {
             });
             row.add_controller(motion);
 
+            let pending_click = Rc::new(Cell::new(None::<usize>));
             let drag = gtk::DragSource::builder()
                 .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
                 .build();
@@ -3689,8 +3736,16 @@ impl ViewState {
                 source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);
                 file_drag_content(&entries)
             });
+            let pending_for_drag = pending_click.clone();
+            let weak_state_for_drag_begin = weak_state.clone();
             let dragged_row = row.clone();
-            drag.connect_drag_begin(move |_, _| dragged_row.add_css_class("dragging"));
+            drag.connect_drag_begin(move |_, _| {
+                pending_for_drag.set(None);
+                if let Some(state) = weak_state_for_drag_begin.upgrade() {
+                    state.cancel_peek_for_drag();
+                }
+                dragged_row.add_css_class("dragging");
+            });
             let dragged_row = row.clone();
             drag.connect_drag_end(move |_, _, _| dragged_row.remove_css_class("dragging"));
             row.add_controller(drag);
@@ -3754,7 +3809,9 @@ impl ViewState {
             let weak_state_for_click = weak_state.clone();
             let source_for_click = source_for_hover.clone();
             let filtered_for_click = filtered_for_hover.clone();
+            let pending_for_press = pending_click.clone();
             selection_click.connect_pressed(move |gesture, press_count, _, _| {
+                pending_for_press.set(None);
                 let position = clicked_item.position();
                 if position == gtk::INVALID_LIST_POSITION {
                     return;
@@ -3800,14 +3857,28 @@ impl ViewState {
                     // GtkListView owns double-click activation through its `activate`
                     // signal. This gesture only handles selection and single-click previews;
                     // activating here as well would open files twice.
-                    if should_preview_pointer_press(press_count, control, shift, preserve_group) {
-                        let entry = state.browser.entry_at(depth, source_position);
-                        if entry.as_ref().is_some_and(|entry| {
-                            entry_responds_to_single_click(entry, state.single_click_previews.get())
-                        }) {
-                            state.browser.preview(depth, source_position);
-                        }
+                    let entry = state.browser.entry_at(depth, source_position);
+                    if entry.as_ref().is_some_and(|entry| {
+                        queues_single_click_preview(
+                            press_count,
+                            control,
+                            shift,
+                            preserve_group,
+                            entry,
+                            state.single_click_previews.get(),
+                        )
+                    }) {
+                        pending_for_press.set(Some(source_position));
                     }
+                }
+            });
+            let weak_state_for_release = weak_state.clone();
+            selection_click.connect_released(move |_, _, _, _| {
+                let Some(source_position) = pending_click.take() else {
+                    return;
+                };
+                if let Some(state) = weak_state_for_release.upgrade() {
+                    state.browser.preview(depth, source_position);
                 }
             });
             row.add_controller(selection_click);
@@ -3879,7 +3950,7 @@ impl ViewState {
                 entry.as_ref().is_some_and(|entry| {
                     state
                         .as_ref()
-                        .is_some_and(|state| state.cut_locations.borrow().contains(&entry.location))
+                        .is_some_and(|state| state.cut_state.contains(&entry.location))
                 }),
             );
             if let Some(entry) = entry.as_ref() {
@@ -4312,6 +4383,12 @@ impl ViewState {
             }
         });
         self.pending_close.replace(Some(source));
+    }
+
+    pub(super) fn cancel_peek_for_drag(&self) {
+        cancel_source(&self.pending_peek);
+        cancel_source(&self.pending_close);
+        self.browser.close_peek();
     }
 
     fn append_peek(self: &Rc<Self>, location: &Location) {
@@ -5044,6 +5121,21 @@ fn entry_responds_to_single_click(entry: &FileEntry, previews_enabled: bool) -> 
     entry.is_directory() || (previews_enabled && entry_supports_quick_preview(entry))
 }
 
+fn queues_single_click_preview(
+    press_count: i32,
+    control: bool,
+    shift: bool,
+    preserve_drag_group: bool,
+    entry: &FileEntry,
+    previews_enabled: bool,
+) -> bool {
+    press_count == 1
+        && !control
+        && !shift
+        && !preserve_drag_group
+        && entry_responds_to_single_click(entry, previews_enabled)
+}
+
 pub(super) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
     if !matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink) {
         return false;
@@ -5598,15 +5690,6 @@ fn set_location_files_clipboard(locations: &[Location]) -> bool {
             )))
             .is_ok()
     })
-}
-
-fn should_preview_pointer_press(
-    press_count: i32,
-    control: bool,
-    shift: bool,
-    preserve_group: bool,
-) -> bool {
-    press_count == 1 && !control && !shift && !preserve_group
 }
 
 fn should_preserve_drag_selection(clicked_selected: bool, selected_count: u64) -> bool {

@@ -19,7 +19,7 @@ mod tests;
 
 use super::{
     blur::BlurBin,
-    browser::{BrowserView, dismiss_modal_layer, modal_layer},
+    browser::{dismiss_modal_layer, modal_layer},
     controls::{form_entry, modal_layout, segmented_control},
     motion::set_reduce_motion,
     theme::{Theme, ThemeManager, ThemeTokens},
@@ -150,11 +150,12 @@ fn uses_compact_navigation(dialog_width: i32) -> bool {
 }
 
 pub fn build_layer(
-    browser: &BrowserView,
     settings_button: &gtk::Button,
     root: &BlurBin,
     themes: Rc<ThemeManager>,
     update_notice: UpdateNoticeHandler,
+    set_peek_enabled: Rc<dyn Fn(bool)>,
+    set_single_click_previews: Rc<dyn Fn(bool)>,
 ) -> gtk::Box {
     let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
     layer.add_css_class("app-modal-layer");
@@ -201,7 +202,10 @@ pub fn build_layer(
         .hexpand(true)
         .vexpand(true)
         .build();
-    stack.add_named(&general_page(browser, themes.clone()), Some("general"));
+    stack.add_named(
+        &general_page(themes.clone(), set_peek_enabled, set_single_click_previews),
+        Some("general"),
+    );
     stack.add_named(
         &updates_page(themes.clone(), update_notice),
         Some("updates"),
@@ -294,37 +298,39 @@ fn hide(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin) {
     button.remove_css_class("active");
 }
 
-fn general_page(browser: &BrowserView, manager: Rc<ThemeManager>) -> gtk::Widget {
+fn general_page(
+    manager: Rc<ThemeManager>,
+    set_peek_enabled: Rc<dyn Fn(bool)>,
+    set_single_click_previews: Rc<dyn Fn(bool)>,
+) -> gtk::Widget {
     let preferences = page_content();
     append_heading(&preferences, "BROWSING");
     let peeking_enabled = manager.folder_peeking();
-    browser.set_peek_enabled(peeking_enabled);
+    set_peek_enabled(peeking_enabled);
     let (peeking_row, peeking) = settings_option(
         "Folder peeking",
         "Preview folders automatically while moving through a pane.",
         peeking_enabled,
     );
-    let browser_for_peeking = browser.clone();
     let manager_for_peeking = manager.clone();
     peeking.connect_active_notify(move |toggle| {
         let enabled = toggle.is_active();
-        browser_for_peeking.set_peek_enabled(enabled);
+        set_peek_enabled(enabled);
         manager_for_peeking.set_folder_peeking(enabled);
     });
     preferences.append(&peeking_row);
 
     let single_click_enabled = manager.single_click_previews();
-    browser.set_single_click_previews(single_click_enabled);
+    set_single_click_previews(single_click_enabled);
     let (preview_row, single_click_previews) = settings_option(
         "Single-click file previews",
         "Show a quick preview when selecting a supported file.",
         single_click_enabled,
     );
-    let browser_for_previews = browser.clone();
     let manager_for_previews = manager.clone();
     single_click_previews.connect_active_notify(move |toggle| {
         let enabled = toggle.is_active();
-        browser_for_previews.set_single_click_previews(enabled);
+        set_single_click_previews(enabled);
         manager_for_previews.set_single_click_previews(enabled);
     });
     preferences.append(&preview_row);
@@ -1043,6 +1049,17 @@ fn keybindings_page() -> gtk::Widget {
         ("Cut", "Ctrl + X"),
         ("Copy", "Ctrl + C"),
         ("Paste", "Ctrl + V"),
+    ] {
+        append_keybinding(&content, label, keys);
+    }
+
+    append_heading(&content, "PANE MANAGEMENT");
+    for (label, keys) in [
+        ("Split active pane side by side", "Ctrl + S, V"),
+        ("Split active pane top and bottom", "Ctrl + S, S"),
+        ("Focus a pane", "Ctrl + S, H / J / K / L  or  arrows"),
+        ("Cycle through panes", "Ctrl + S, W"),
+        ("Close active pane", "Ctrl + S, C"),
     ] {
         append_keybinding(&content, label, keys);
     }

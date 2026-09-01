@@ -16,6 +16,26 @@ fn global_activity_uses_the_latest_active_label() {
 }
 
 #[test]
+fn cut_state_is_shared_and_cleared_after_a_cross_pane_move() {
+    let state = SharedCutState::default();
+    let first_updates = Rc::new(Cell::new(0));
+    let second_updates = Rc::new(Cell::new(0));
+    for updates in [&first_updates, &second_updates] {
+        let updates = updates.clone();
+        state.observe(Rc::new(move |_| updates.set(updates.get() + 1)));
+    }
+    let source = Location::local("/fixture/source");
+
+    state.replace(vec![source.clone()]);
+    assert!(state.matches(std::slice::from_ref(&source)));
+    assert!(state.contains(&source));
+    assert!(state.remove(std::slice::from_ref(&source)).is_empty());
+    assert!(!state.contains(&source));
+    assert_eq!(first_updates.get(), 2);
+    assert_eq!(second_updates.get(), 2);
+}
+
+#[test]
 fn file_sizes_use_compact_decimal_units() {
     assert_eq!(format_file_size(999), "999 B");
     assert_eq!(format_file_size(1_200), "1.2 kB");
@@ -398,20 +418,36 @@ fn file_names_map_to_specific_lucide_icons() {
 }
 
 #[test]
-fn pointer_preview_handler_ignores_double_click_activation() {
-    assert!(should_preview_pointer_press(1, false, false, false));
-    assert!(!should_preview_pointer_press(2, false, false, false));
-    assert!(!should_preview_pointer_press(1, true, false, false));
-    assert!(!should_preview_pointer_press(1, false, true, false));
-    assert!(!should_preview_pointer_press(1, false, false, true));
-}
-
-#[test]
 fn pressing_an_item_in_a_multi_selection_preserves_the_drag_group() {
     assert!(should_preserve_drag_selection(true, 2));
     assert!(should_preserve_drag_selection(true, 8));
     assert!(!should_preserve_drag_selection(true, 1));
     assert!(!should_preserve_drag_selection(false, 4));
+}
+
+#[test]
+fn single_click_preview_waits_for_an_unmodified_release_candidate() {
+    let file = FileEntry {
+        location: Location::local("/fixture/notes.txt"),
+        native_name: "notes.txt".into(),
+        display_name: "notes.txt".into(),
+        kind: EntryKind::File,
+        size: crate::model::MetadataValue::Known(1),
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+    };
+
+    assert!(queues_single_click_preview(
+        1, false, false, false, &file, true
+    ));
+    assert!(!queues_single_click_preview(
+        2, false, false, false, &file, true
+    ));
+    assert!(!queues_single_click_preview(
+        1, true, false, false, &file, true
+    ));
+    assert!(!queues_single_click_preview(
+        1, false, false, true, &file, true
+    ));
 }
 
 #[test]

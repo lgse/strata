@@ -156,6 +156,8 @@ strata ~/Documents     # a specific directory
 
 Useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation.
 
+Pane commands use a <kbd>Ctrl</kbd>+<kbd>S</kbd> prefix: press <kbd>V</kbd> to split the active pane side by side, <kbd>S</kbd> to split it top and bottom, <kbd>H</kbd>/<kbd>J</kbd>/<kbd>K</kbd>/<kbd>L</kbd> or the arrow keys to move focus, <kbd>W</kbd> to cycle through panes, and <kbd>C</kbd> to close the active pane. You can nest splits up to four panes, or choose the 2 × 2 preset from the pane menu. The prefix expires after 1.5 seconds and <kbd>Escape</kbd> cancels it.
+
 ### Desktop entry
 
 Create a per-user launcher and optionally make Strata the default directory handler:

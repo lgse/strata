@@ -811,7 +811,8 @@ fn preview_width_for_empty_space(available: i32, occupied: i32) -> i32 {
         .saturating_sub(occupied)
         .saturating_mul(9)
         .saturating_div(10)
-        .max(MIN_WIDTH)
+        .max(available.saturating_div(3))
+        .max(DEFAULT_WIDTH)
 }
 
 fn pdf_zoom_after_scroll(current: f64, dy: f64) -> f64 {

@@ -13,9 +13,10 @@ fn formats_preview_file_sizes() {
 }
 
 #[test]
-fn initial_preview_uses_most_of_the_unoccupied_width() {
+fn initial_preview_uses_empty_space_or_a_responsive_floor() {
     assert_eq!(preview_width_for_empty_space(2_000, 500), 1_350);
-    assert_eq!(preview_width_for_empty_space(700, 650), 280);
+    assert_eq!(preview_width_for_empty_space(2_000, 2_000), 666);
+    assert_eq!(preview_width_for_empty_space(700, 650), 520);
 }
 
 #[test]

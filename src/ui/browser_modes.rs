@@ -41,6 +41,11 @@ impl ExplorerColumnLayout {
 type TransferHandler = Rc<dyn Fn(Location, Vec<Location>, bool)>;
 type TransferHandlerSlot = Rc<RefCell<Option<TransferHandler>>>;
 
+struct DragInteraction {
+    pending_click: Rc<Cell<bool>>,
+    peek_state: Option<Weak<super::browser::ViewState>>,
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum BrowserMode {
     #[default]
@@ -1073,6 +1078,10 @@ fn build_grid_pane(
         item_content.append(&field);
         centered.set_center_widget(Some(&item_content));
         card.append(&centered);
+        let interaction = DragInteraction {
+            pending_click: Rc::new(Cell::new(false)),
+            peek_state: peek_for_setup.clone(),
+        };
         install_preview_click(
             &card,
             item,
@@ -1080,6 +1089,7 @@ fn build_grid_pane(
             previews_for_setup.clone(),
             depth,
             Some((source_for_setup.clone(), filtered_for_setup.clone())),
+            interaction.pending_click.clone(),
         );
         install_modified_selection_click(
             &card,
@@ -1103,6 +1113,7 @@ fn build_grid_pane(
             transfers_for_setup.clone(),
             depth,
             Some((source_for_setup.clone(), filtered_for_setup.clone())),
+            interaction,
         );
         item.set_child(Some(&card));
         register_bound_mode_item(&bound_items_for_setup, item, &card);
@@ -1658,6 +1669,10 @@ fn build_explorer_pane(
         row.append(&size);
         row.append(&kind);
         row.append(&modified);
+        let interaction = DragInteraction {
+            pending_click: Rc::new(Cell::new(false)),
+            peek_state: None,
+        };
         install_preview_click(
             &row,
             item,
@@ -1665,6 +1680,7 @@ fn build_explorer_pane(
             previews_for_setup.clone(),
             depth,
             Some((source_for_setup.clone(), view_model_for_setup.clone())),
+            interaction.pending_click.clone(),
         );
         install_modified_selection_click(
             &row,
@@ -1679,6 +1695,7 @@ fn build_explorer_pane(
             transfers_for_setup.clone(),
             depth,
             Some((source_for_setup.clone(), view_model_for_setup.clone())),
+            interaction,
         );
         item.set_child(Some(&row));
         register_bound_mode_item(&bound_items_for_setup, item, &row);
@@ -2077,7 +2094,13 @@ fn install_grid_peek(
     let entered_item = item.clone();
     let entered_card: gtk::Widget = card.clone().upcast();
     let state_for_enter = state.clone();
-    motion.connect_enter(move |_, _, _| {
+    motion.connect_enter(move |motion, _, _| {
+        if motion
+            .current_event_state()
+            .contains(gtk::gdk::ModifierType::BUTTON1_MASK)
+        {
+            return;
+        }
         let position = entered_item.position();
         if position == gtk::INVALID_LIST_POSITION {
             return;
@@ -2136,6 +2159,7 @@ fn install_explorer_drag_drop(
     transfer_handler: TransferHandlerSlot,
     depth: usize,
     position_map: Option<(gtk::StringList, gio::ListModel)>,
+    interaction: DragInteraction,
 ) {
     let drag = gtk::DragSource::builder()
         .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
@@ -2170,7 +2194,13 @@ fn install_explorer_drag_drop(
         super::browser::file_drag_content(&entries)
     });
     let dragged_row = row.clone();
-    drag.connect_drag_begin(move |_, _| dragged_row.add_css_class("dragging"));
+    drag.connect_drag_begin(move |_, _| {
+        interaction.pending_click.set(false);
+        if let Some(state) = interaction.peek_state.as_ref().and_then(Weak::upgrade) {
+            state.cancel_peek_for_drag();
+        }
+        dragged_row.add_css_class("dragging");
+    });
     let dragged_row = row.clone();
     drag.connect_drag_end(move |_, _, _| dragged_row.remove_css_class("dragging"));
     row.add_controller(drag);
@@ -2321,12 +2351,17 @@ fn install_preview_click(
     enabled: Rc<Cell<bool>>,
     depth: usize,
     position_map: Option<(gtk::StringList, gio::ListModel)>,
+    pending: Rc<Cell<bool>>,
 ) {
     let click = gtk::GestureClick::new();
     click.set_button(1);
+    let pending_for_press = pending.clone();
+    click.connect_pressed(move |_, press_count, _, _| {
+        pending_for_press.set(press_count == 1);
+    });
     let item = item.clone();
     click.connect_released(move |gesture, press_count, _, _| {
-        if press_count != 1 || !enabled.get() {
+        if !pending.replace(false) || press_count != 1 || !enabled.get() {
             return;
         }
         let modifiers = gesture.current_event_state();

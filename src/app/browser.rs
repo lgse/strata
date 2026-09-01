@@ -119,6 +119,9 @@ pub enum BrowserEvent {
     OperationCompletedWithErrors {
         message: String,
     },
+    LocationsInvalidated {
+        locations: Vec<Location>,
+    },
     NavigationRejected {
         parent_depth: usize,
         error: LocationValidationError,
@@ -930,6 +933,7 @@ impl Browser {
             return;
         };
         let request_id = self.begin_operation();
+        let refresh_destination = destination.clone();
         let load = provider.compress(
             CompressRequest {
                 id: request_id,
@@ -939,7 +943,7 @@ impl Browser {
                 format,
                 password,
             },
-            self.operation_callback(request_id, false, Vec::new()),
+            self.operation_callback(request_id, false, vec![refresh_destination]),
         );
         self.operation_load.replace(Some(load));
     }
@@ -957,6 +961,7 @@ impl Browser {
             return;
         };
         let request_id = self.begin_operation();
+        let refresh_destination = destination.clone();
         let load = provider.extract(
             ExtractRequest {
                 id: request_id,
@@ -964,7 +969,7 @@ impl Browser {
                 destination,
                 password,
             },
-            self.operation_callback(request_id, false, Vec::new()),
+            self.operation_callback(request_id, false, vec![refresh_destination]),
         );
         self.operation_load.replace(Some(load));
     }
@@ -1086,6 +1091,7 @@ impl Browser {
                 browser.emit(BrowserEvent::RestorationFinished);
             }
             browser.operation_load.borrow_mut().take();
+            let invalidated_locations = operation_invalidated_locations(&event, &refresh_locations);
             match event {
                 OperationEvent::Failed { message, .. } if rename => {
                     browser.emit(BrowserEvent::RenameFailed { message });
@@ -1151,7 +1157,18 @@ impl Browser {
                 | OperationEvent::ArchiveStarted { .. }
                 | OperationEvent::ArchiveProgress { .. } => {}
             }
+            if !invalidated_locations.is_empty() {
+                browser.emit(BrowserEvent::LocationsInvalidated {
+                    locations: invalidated_locations,
+                });
+            }
         })
+    }
+
+    pub fn invalidate_locations(self: &Rc<Self>, locations: &[Location]) {
+        for location in locations {
+            self.refresh_columns_at(location);
+        }
     }
 
     pub fn preview(self: &Rc<Self>, depth: usize, position: usize) {
@@ -1558,6 +1575,44 @@ fn deletion_parent_location(location: &Location) -> Option<Location> {
     } else {
         location.parent()
     }
+}
+
+fn operation_invalidated_locations(
+    event: &OperationEvent,
+    requested: &[Location],
+) -> Vec<Location> {
+    let completed = match event {
+        OperationEvent::Renamed { .. }
+        | OperationEvent::Created { .. }
+        | OperationEvent::Pasted { .. }
+        | OperationEvent::Compressed { .. }
+        | OperationEvent::Extracted { .. } => return requested.to_vec(),
+        OperationEvent::Deleted { locations, .. } | OperationEvent::Restored { locations, .. } => {
+            locations
+        }
+        OperationEvent::CompletedWithErrors {
+            deleted_locations: locations,
+            ..
+        }
+        | OperationEvent::RestoreCompletedWithErrors {
+            restored_locations: locations,
+            ..
+        } => locations,
+        OperationEvent::DeleteProgress { .. }
+        | OperationEvent::RestoreProgress { .. }
+        | OperationEvent::ArchiveStarted { .. }
+        | OperationEvent::ArchiveProgress { .. }
+        | OperationEvent::Failed { .. } => return Vec::new(),
+    };
+    let mut parents = Vec::new();
+    for location in completed {
+        if let Some(parent) = deletion_parent_location(location)
+            && !parents.contains(&parent)
+        {
+            parents.push(parent);
+        }
+    }
+    parents
 }
 
 fn location_from_input(input: &str) -> Result<Location, LocationValidationError> {

@@ -151,6 +151,109 @@ headerbar menubutton.header-action > button:focus-visible image {
   opacity: 0.42;
 }
 
+.pane-layout-popover contents {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_accent, 0.22);
+  border-radius: 7px;
+  box-shadow: 0 8px 28px alpha(@theme_bg, 0.72);
+  color: @theme_text;
+  padding: 0;
+}
+
+.pane-layout-menu {
+  min-width: 320px;
+  padding: 9px 8px;
+}
+
+.pane-layout-option {
+  background: alpha(@theme_bg, 0.36);
+  border: 1px solid alpha(@theme_border, 0.28);
+  border-radius: 6px;
+  box-shadow: none;
+  color: @theme_text;
+  min-height: 58px;
+  padding: 8px 10px;
+}
+
+.pane-layout-option:hover {
+  background: alpha(@theme_muted, 0.55);
+  border-color: alpha(@theme_accent, 0.5);
+  color: @theme_text;
+}
+
+.pane-layout-option:active {
+  background: alpha(@theme_highlight, 0.76);
+  border-color: @theme_accent;
+  color: @theme_text;
+}
+
+.pane-layout-option.selected {
+  background: alpha(@theme_highlight, 0.62);
+  border-color: alpha(@theme_accent, 0.72);
+  color: @theme_accent;
+}
+
+.pane-layout-option:focus-visible {
+  border-color: @theme_accent;
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.pane-layout-symbol {
+  background: alpha(@theme_accent, 0.1);
+  border: 1px solid alpha(@theme_accent, 0.28);
+  border-radius: 5px;
+  min-height: 38px;
+  min-width: 38px;
+}
+
+.pane-layout-title {
+  color: @theme_text;
+  font-weight: 700;
+}
+
+.pane-layout-description {
+  color: @theme_dim_text;
+  font-size: 0.84em;
+}
+
+.pane-layout-shortcut {
+  color: @theme_accent;
+  font-size: 0.78em;
+}
+
+.pane-workspace,
+.browser-pane {
+  background: @theme_bg;
+}
+
+.pane-workspace.split .browser-pane {
+  opacity: 0.72;
+}
+
+.pane-workspace.split .browser-pane.active-pane {
+  opacity: 1;
+}
+
+.pane-workspace.split .browser-pane.active-pane .column-header,
+.pane-workspace.split .browser-pane.active-pane .mode-pane-header {
+  box-shadow: inset 0 4px 0 0 @theme_accent;
+}
+
+.pane-workspace paned > separator {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.pane-workspace paned.horizontal > separator {
+  border-left: 1px solid alpha(@theme_border, 0.6);
+}
+
+.pane-workspace paned.vertical > separator {
+  border-top: 1px solid alpha(@theme_border, 0.6);
+}
+
 .location-entry,
 .location-entry:focus,
 .location-entry:focus-visible,

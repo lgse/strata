@@ -5,6 +5,7 @@ mod browser;
 mod browser_modes;
 mod controls;
 mod motion;
+mod panes;
 mod preview;
 mod search;
 mod settings;

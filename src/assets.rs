@@ -23,6 +23,7 @@ pub mod icons {
     pub const CHECK_ON_PRIMARY: &str = "strata-check-on-primary";
     pub const CHEVRON_RIGHT: &str = "strata-chevron-right";
     pub const COPY: &str = "strata-copy";
+    pub const COLUMNS_2: &str = "strata-columns-2";
     pub const DOCUMENTS: &str = "strata-file-text";
     pub const DOWNLOADS: &str = "strata-download";
     pub const EYE: &str = "strata-eye";
@@ -35,6 +36,7 @@ pub mod icons {
     pub const INFO: &str = "strata-info";
     pub const FUNNEL: &str = "strata-funnel";
     pub const GRID: &str = "strata-grid";
+    pub const GRID_2X2: &str = "strata-grid-2x2";
     pub const HOME: &str = "strata-house";
     pub const LIST: &str = "strata-list";
     pub const LIST_ACTIVE: &str = "strata-list-active";
@@ -49,10 +51,12 @@ pub mod icons {
     pub const PLUS: &str = "strata-plus";
     pub const PICTURES: &str = "strata-image";
     pub const ROWS: &str = "strata-rows";
+    pub const ROWS_2: &str = "strata-rows-2";
     pub const SCISSORS: &str = "strata-scissors";
     pub const SEARCH: &str = "strata-search";
     pub const SETTINGS: &str = "strata-settings";
     pub const SETTINGS_2: &str = "strata-settings-2";
+    pub const SQUARE: &str = "strata-square";
     pub const SLIDERS: &str = "strata-sliders-horizontal";
     pub const TERMINAL: &str = "strata-terminal";
     pub const TRASH: &str = "strata-trash";

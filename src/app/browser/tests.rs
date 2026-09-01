@@ -439,6 +439,76 @@ fn creating_a_directory_locally_does_not_trigger_a_redundant_refresh() {
 }
 
 #[test]
+fn split_browsers_keep_independent_history_and_clones_start_fresh() {
+    let first = Browser::new(Rc::new(FakeFileSource));
+    first.navigate(Location::local("/fixture"));
+    first.navigate(Location::local("/other"));
+    let second = Browser::new(Rc::new(FakeFileSource));
+    second.navigate(first.active_location().expect("active location"));
+
+    assert!(first.can_go_back());
+    assert!(!second.can_go_back());
+    first.back();
+    assert_eq!(first.active_location(), Some(Location::local("/fixture")));
+    assert_eq!(second.active_location(), Some(Location::local("/other")));
+}
+
+#[test]
+fn completed_operations_can_invalidate_the_same_location_in_another_browser() {
+    let first_calls = Rc::new(Cell::new(0));
+    let second_calls = Rc::new(Cell::new(0));
+    let first = Browser::new(Rc::new(CountingFileSource {
+        enumerate_calls: first_calls.clone(),
+    }));
+    let second = Browser::new(Rc::new(CountingFileSource {
+        enumerate_calls: second_calls.clone(),
+    }));
+    first.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let location = Location::uri("smb://host/share");
+    first.navigate(location.clone());
+    second.navigate(location.clone());
+    let weak_second = Rc::downgrade(&second);
+    first.observe(move |event| {
+        if let BrowserEvent::LocationsInvalidated { locations } = event
+            && let Some(second) = weak_second.upgrade()
+        {
+            second.invalidate_locations(&locations);
+        }
+    });
+
+    first.create_directory(location, "New Folder".to_owned());
+
+    assert_eq!(first_calls.get(), 2);
+    assert_eq!(second_calls.get(), 2);
+}
+
+#[test]
+fn completed_archives_invalidate_the_destination_but_progress_does_not() {
+    let destination = Location::local("/fixture");
+    assert_eq!(
+        operation_invalidated_locations(
+            &OperationEvent::Compressed {
+                request_id: OperationRequestId(1),
+                archive_name: "archive.zip".to_owned(),
+            },
+            std::slice::from_ref(&destination),
+        ),
+        vec![destination]
+    );
+    assert!(
+        operation_invalidated_locations(
+            &OperationEvent::ArchiveProgress {
+                request_id: OperationRequestId(1),
+                completed: 1,
+                total: 2,
+            },
+            &[Location::local("/fixture")],
+        )
+        .is_empty()
+    );
+}
+
+#[test]
 fn restored_sorting_applies_to_the_initial_navigation_load() {
     let browser = Browser::with_preferences(
         Rc::new(RestoredSortingSource),
