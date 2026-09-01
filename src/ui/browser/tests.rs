@@ -728,39 +728,68 @@ fn aborting_a_trash_measurement_stops_it_mid_flight() {
 }
 
 #[test]
-fn trash_summary_lists_every_top_level_entry_even_past_the_measurement_budget() {
-    let root = unique_fixture_root("flat-entry-budget");
+fn trash_summary_stops_enumerating_the_root_once_the_measurement_budget_is_reached() {
+    let root = unique_fixture_root("root-budget-stop");
     std::fs::create_dir_all(&root).expect("the trash fixture should be created");
-    for index in 0..10 {
+    // More than one `next_files_future` batch (64 entries), so a walk that kept fetching
+    // further batches after the budget was spent would still show up as a much larger count.
+    let total_files = 150;
+    for index in 0..total_files {
         std::fs::write(root.join(format!("file-{index}.txt")), b"content")
             .expect("the trash fixture file should be written");
     }
 
-    // Measurement is bounded and may undercount for display purposes...
-    let summary = glib::MainContext::new().block_on(summarize_trash_with_budget(
-        &gio::File::for_path(&root),
-        3,
-        MAX_TRASH_DEPTH,
-        TRASH_TIME_BUDGET,
-    ));
-    assert!(
-        summary
-            .expect("a plain directory tree should measure without error")
-            .truncated,
-        "exceeding the measurement budget should still be reported"
-    );
-
-    // ...but the deletion worklist is a wholly separate, unbounded listing, so "Empty Trash"
-    // still empties everything regardless of what the measurement pass saw.
-    let entries = glib::MainContext::new()
-        .block_on(list_trash_top_level_entries(&gio::File::for_path(&root)))
-        .expect("a plain directory tree should list without error");
+    let max_entries = 5;
+    let summary = glib::MainContext::new()
+        .block_on(summarize_trash_with_budget(
+            &gio::File::for_path(&root),
+            max_entries,
+            MAX_TRASH_DEPTH,
+            TRASH_TIME_BUDGET,
+        ))
+        .expect("a plain directory tree should measure without error");
     std::fs::remove_dir_all(&root).expect("the trash fixture should be removed");
 
+    assert!(
+        summary.truncated,
+        "exceeding the measurement budget should still be reported"
+    );
     assert_eq!(
-        entries.len(),
-        10,
-        "every top-level entry must be listed for deletion, independent of the measurement budget"
+        summary.item_count, max_entries,
+        "root enumeration should stop as soon as the budget is spent, not keep requesting \
+         further `next_files_future` batches for the remaining {total_files} entries"
+    );
+}
+
+#[test]
+fn empty_trash_deletes_every_top_level_entry_in_bounded_batches() {
+    let root = unique_fixture_root("empty-trash-streaming");
+    std::fs::create_dir_all(&root).expect("the trash fixture should be created");
+    // More than one `next_files_future` batch, so this also exercises the batch-to-batch loop.
+    let total_files = 150;
+    for index in 0..total_files {
+        std::fs::write(root.join(format!("file-{index}.txt")), b"content")
+            .expect("the trash fixture file should be written");
+    }
+
+    let last_progress = Rc::new(Cell::new(0_usize));
+    let progress_tick = last_progress.clone();
+    let outcome = glib::MainContext::new()
+        .block_on(empty_trash(&gio::File::for_path(&root), move |processed| {
+            progress_tick.set(processed);
+        }))
+        .expect("a plain directory tree should empty without error");
+    std::fs::remove_dir_all(&root).expect("the trash fixture root should be removed");
+
+    assert_eq!(
+        outcome.deleted, total_files,
+        "every top-level entry must be deleted, independent of any prior measurement budget"
+    );
+    assert_eq!(outcome.failed, 0);
+    assert_eq!(
+        last_progress.get(),
+        total_files,
+        "progress should account for every entry once the walk finishes"
     );
 }
 

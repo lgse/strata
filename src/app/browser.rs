@@ -1347,7 +1347,7 @@ impl Browser {
         )
     }
 
-    fn refresh_columns_at(self: &Rc<Self>, location: &Location) {
+    pub(crate) fn refresh_columns_at(self: &Rc<Self>, location: &Location) {
         let depths = {
             let state = self.state.borrow();
             let mut depths = Vec::new();

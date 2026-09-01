@@ -284,6 +284,7 @@ pub(super) struct ViewState {
     pending_extract_retry: RefCell<Option<(FileEntry, Location)>>,
     pending_navigate: RefCell<Option<Location>>,
     pending_trash_summary: RefCell<Option<LoadHandle>>,
+    pending_empty_trash: RefCell<Option<LoadHandle>>,
     trash_loading: RefCell<Option<TrashLoadingView>>,
     browser: Rc<Browser>,
 }
@@ -428,6 +429,7 @@ impl BrowserView {
             pending_extract_retry: RefCell::new(None),
             pending_navigate: RefCell::new(None),
             pending_trash_summary: RefCell::new(None),
+            pending_empty_trash: RefCell::new(None),
             trash_loading: RefCell::new(None),
             browser,
         });
@@ -1568,6 +1570,7 @@ impl ViewState {
         icon: &str,
         title_text: &str,
         subtitle_text: &str,
+        on_cancel: Rc<dyn Fn()>,
     ) {
         self.dismiss_delete_progress();
         let Some(window_overlay) = self
@@ -1608,13 +1611,13 @@ impl ViewState {
             progress,
             status,
         }));
-        let browser = self.browser.clone();
-        cancel.connect_clicked(move |_| browser.cancel_file_operation());
+        let cancel_action = on_cancel.clone();
+        cancel.connect_clicked(move |_| cancel_action());
         let escape = gtk::EventControllerKey::new();
-        let escape_browser = self.browser.clone();
+        let escape_action = on_cancel;
         escape.connect_key_pressed(move |_, key, _, _| {
             if key == gtk::gdk::Key::Escape {
-                escape_browser.cancel_file_operation();
+                escape_action();
                 glib::Propagation::Stop
             } else {
                 glib::Propagation::Proceed
@@ -1661,6 +1664,36 @@ impl ViewState {
             return;
         };
         dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
+    }
+
+    /// The total item count isn't known upfront -- entries are deleted as they're enumerated,
+    /// one bounded batch at a time -- so this pulses rather than fills to a fraction.
+    fn show_empty_trash_progress(self: &Rc<Self>, on_cancel: Rc<dyn Fn()>) {
+        self.show_file_operation_progress(
+            0,
+            crate::assets::icons::TRASH,
+            "Emptying Trash",
+            "This may take a moment",
+            on_cancel,
+        );
+        self.update_empty_trash_progress(0);
+    }
+
+    fn update_empty_trash_progress(&self, processed: usize) {
+        let progress_view = self.delete_progress.borrow();
+        let Some(view) = progress_view.as_ref() else {
+            return;
+        };
+        view.status
+            .set_text(&format!("{} deleted", item_count_label(processed)));
+        view.progress.pulse();
+    }
+
+    /// Safe to call more than once: whichever of cancel or completion runs first leaves the
+    /// other a no-op.
+    fn clear_empty_trash(&self) {
+        self.pending_empty_trash.borrow_mut().take();
+        self.dismiss_delete_progress();
     }
 
     fn load_trash_summary(self: &Rc<Self>) {
@@ -1847,28 +1880,69 @@ impl ViewState {
         let empty_root = blurred_root.clone();
         let browser = self.browser.clone();
         let error_overlay = self.overlay.clone();
+        let weak_ui = Rc::downgrade(self);
         empty.connect_clicked(move |_| {
             dismiss_modal_layer(&empty_layer, &empty_overlay, empty_root.as_ref());
             browser.focus_active();
-            let browser = browser.clone();
+
+            let cancel_ui = weak_ui.clone();
+            let on_cancel: Rc<dyn Fn()> = Rc::new(move || {
+                if let Some(ui) = cancel_ui.upgrade() {
+                    ui.clear_empty_trash();
+                }
+            });
+            if let Some(ui) = weak_ui.upgrade() {
+                ui.show_empty_trash_progress(on_cancel);
+            }
+
             let error_overlay = error_overlay.clone();
-            glib::MainContext::default().spawn_local(async move {
-                match list_trash_top_level_entries(&gio::File::for_uri("trash:///")).await {
-                    Ok(entries) => browser.delete(entries, true),
+            let progress_ui = weak_ui.clone();
+            let finish_ui = weak_ui.clone();
+            let finish_browser = browser.clone();
+            let task = glib::MainContext::default().spawn_local(async move {
+                let trash = gio::File::for_uri("trash:///");
+                let result = empty_trash(&trash, move |processed| {
+                    if let Some(ui) = progress_ui.upgrade() {
+                        ui.update_empty_trash_progress(processed);
+                    }
+                })
+                .await;
+                if let Some(ui) = finish_ui.upgrade() {
+                    ui.clear_empty_trash();
+                }
+                match result {
+                    Ok(outcome) => {
+                        // A wholesale refresh rather than tracking each deleted location, to
+                        // keep this operation's own state bounded too.
+                        finish_browser.refresh_columns_at(&Location::uri("trash:///"));
+                        if outcome.failed > 0 {
+                            show_error_dialog(
+                                &error_overlay,
+                                "Completed with errors",
+                                &empty_trash_error_summary(&outcome),
+                            );
+                        }
+                    }
                     Err(error) => {
                         tracing::warn!(
                             error_domain = ?error.domain(),
                             error_code = error.code(),
-                            "empty trash listing failed"
+                            "empty trash failed"
                         );
                         show_error_dialog(
                             &error_overlay,
-                            "Unable to read Trash",
+                            "Unable to empty Trash",
                             &error.to_string(),
                         );
                     }
                 }
             });
+            if let Some(ui) = weak_ui.upgrade() {
+                ui.pending_empty_trash.replace(Some(LoadHandle::new(move || {
+                    tracing::debug!("empty trash cancelled");
+                    task.abort();
+                })));
+            }
         });
         let keys = gtk::EventControllerKey::new();
         let escape_layer = layer.clone();
@@ -3400,22 +3474,30 @@ impl ViewState {
                     rename.field.grab_focus();
                 }
             }
-            BrowserEvent::DeletionStarted { total } => self.show_file_operation_progress(
-                total,
-                crate::assets::icons::TRASH,
-                "Deleting items",
-                "This may take a moment",
-            ),
+            BrowserEvent::DeletionStarted { total } => {
+                let browser = self.browser.clone();
+                self.show_file_operation_progress(
+                    total,
+                    crate::assets::icons::TRASH,
+                    "Deleting items",
+                    "This may take a moment",
+                    Rc::new(move || browser.cancel_file_operation()),
+                );
+            }
             BrowserEvent::DeletionProgress { completed, total } => {
                 self.update_delete_progress(completed, total);
             }
             BrowserEvent::DeletionFinished => self.dismiss_delete_progress(),
-            BrowserEvent::RestorationStarted { total } => self.show_file_operation_progress(
-                total,
-                crate::assets::icons::FOLDER,
-                "Restoring items",
-                "Items are being returned to their original locations",
-            ),
+            BrowserEvent::RestorationStarted { total } => {
+                let browser = self.browser.clone();
+                self.show_file_operation_progress(
+                    total,
+                    crate::assets::icons::FOLDER,
+                    "Restoring items",
+                    "Items are being returned to their original locations",
+                    Rc::new(move || browser.cancel_file_operation()),
+                );
+            }
             BrowserEvent::RestorationProgress { completed, total } => {
                 self.update_delete_progress(completed, total);
             }
@@ -5208,7 +5290,7 @@ async fn summarize_trash_with_budget(
     let mut truncated = false;
     let visited = Rc::new(Cell::new(0_usize));
     let deadline = Instant::now() + time_budget;
-    loop {
+    'root: loop {
         let children = enumerator
             .next_files_future(64, glib::Priority::DEFAULT)
             .await?;
@@ -5218,8 +5300,7 @@ async fn summarize_trash_with_budget(
         for info in children {
             if visited.get() >= max_entries || Instant::now() >= deadline {
                 truncated = true;
-                item_count = item_count.saturating_add(1);
-                continue;
+                break 'root;
             }
             let (count, size, entry_truncated) = measure_trash_entry(
                 root.child(info.name()),
@@ -5235,6 +5316,12 @@ async fn summarize_trash_with_budget(
             total_size = total_size.saturating_add(size);
             truncated |= entry_truncated;
         }
+        // Stop only when the shared budget is actually spent -- a child's own `truncated` (depth
+        // cap, discarded error) is branch-local and must not cut off its unrelated siblings.
+        if visited.get() >= max_entries || Instant::now() >= deadline {
+            truncated = true;
+            break;
+        }
     }
     Ok(TrashSummary {
         item_count,
@@ -5243,10 +5330,22 @@ async fn summarize_trash_with_budget(
     })
 }
 
-/// A plain, non-recursive listing of trash's top-level entries -- unlike `summarize_trash`, this
-/// has no budget, since "Empty Trash" needs every entry to actually empty the trash, and listing
-/// names at one level (no descending into subdirectories) is cheap even for very many entries.
-async fn list_trash_top_level_entries(root: &gio::File) -> Result<Vec<FileEntry>, glib::Error> {
+struct EmptyTrashOutcome {
+    deleted: usize,
+    failed: usize,
+    /// Capped at 8 messages regardless of `failed`, so a trash full of failures can't grow this
+    /// without bound.
+    errors: Vec<String>,
+}
+
+/// Empties `root` by enumerating and deleting one batch at a time -- unlike a listing that
+/// collects every top-level entry into a `Vec<FileEntry>` first, no per-entry list is ever
+/// retained here; only a running count and a capped error list, so memory stays flat no matter
+/// how large the trash is.
+async fn empty_trash(
+    root: &gio::File,
+    mut on_progress: impl FnMut(usize),
+) -> Result<EmptyTrashOutcome, glib::Error> {
     let enumerator = root
         .enumerate_children_future(
             TRASH_ATTRIBUTES,
@@ -5254,7 +5353,11 @@ async fn list_trash_top_level_entries(root: &gio::File) -> Result<Vec<FileEntry>
             glib::Priority::DEFAULT,
         )
         .await?;
-    let mut entries = Vec::new();
+    let mut outcome = EmptyTrashOutcome {
+        deleted: 0,
+        failed: 0,
+        errors: Vec::new(),
+    };
     loop {
         let children = enumerator
             .next_files_future(64, glib::Priority::DEFAULT)
@@ -5264,10 +5367,39 @@ async fn list_trash_top_level_entries(root: &gio::File) -> Result<Vec<FileEntry>
         }
         for info in children {
             let file = root.child(info.name());
-            entries.push(trash_file_entry(file, &info));
+            match file.delete_future(glib::Priority::DEFAULT).await {
+                Ok(_) => outcome.deleted += 1,
+                Err(error) => {
+                    outcome.failed += 1;
+                    if outcome.errors.len() < 8 {
+                        outcome
+                            .errors
+                            .push(format!("{}: {error}", info.display_name()));
+                    }
+                }
+            }
         }
+        on_progress(outcome.deleted + outcome.failed);
     }
-    Ok(entries)
+    Ok(outcome)
+}
+
+fn empty_trash_error_summary(outcome: &EmptyTrashOutcome) -> String {
+    let mut summary = format!(
+        "{} could not be deleted. The remaining items were processed.",
+        item_count_label(outcome.failed)
+    );
+    for error in &outcome.errors {
+        summary.push_str("\n\n• ");
+        summary.push_str(error);
+    }
+    if outcome.failed > outcome.errors.len() {
+        summary.push_str(&format!(
+            "\n\n…and {} more",
+            outcome.failed - outcome.errors.len()
+        ));
+    }
+    summary
 }
 
 type TrashMeasurementFuture =
@@ -5376,32 +5508,6 @@ async fn enumerate_trash_directory(
         }
     }
     Ok((count, size, truncated))
-}
-
-fn trash_file_entry(file: gio::File, info: &gio::FileInfo) -> FileEntry {
-    let kind = match (info.file_type(), info.is_symlink()) {
-        (gio::FileType::Directory, true) => EntryKind::DirectorySymbolicLink,
-        (gio::FileType::Regular, true) => EntryKind::FileSymbolicLink,
-        (gio::FileType::Directory, false) => EntryKind::Directory,
-        (gio::FileType::Regular, false) => EntryKind::File,
-        (gio::FileType::SymbolicLink, _) => EntryKind::SymbolicLink,
-        _ => EntryKind::Other,
-    };
-    FileEntry {
-        location: location_for_gio_file(&file),
-        native_name: info.name().into_os_string(),
-        display_name: info.display_name().to_string(),
-        kind,
-        size: if matches!(kind, EntryKind::File | EntryKind::FileSymbolicLink) {
-            crate::model::MetadataValue::Known(info.size().max(0) as u64)
-        } else {
-            crate::model::MetadataValue::Unknown
-        },
-        modified_unix_seconds: info
-            .modification_date_time()
-            .map(|time| crate::model::MetadataValue::Known(time.to_unix()))
-            .unwrap_or(crate::model::MetadataValue::Unavailable),
-    }
 }
 
 fn selected_items_summary(entries: &[FileEntry]) -> String {
