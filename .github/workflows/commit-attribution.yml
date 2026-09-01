@@ -1,0 +1,65 @@
+name: Commit attribution
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  attribution:
+    name: Reject Claude attribution
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+
+    steps:
+      - name: Check pull request commits
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const commits = await github.paginate(github.rest.pulls.listCommits, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100,
+            });
+
+            const claudeName = /\bclaude(?:\s+(?:sonnet|opus|haiku))?\b/i;
+            const anthropicEmail = /@anthropic\.com$/i;
+            const coAuthor = /^\s*co-authored-by:.*(?:\bclaude\b|@anthropic\.com)/im;
+            const claudeMetadata = /^\s*claude-[a-z-]+\s*:/im;
+            const failures = [];
+
+            for (const commit of commits) {
+              const identities = [
+                ["author", commit.commit.author],
+                ["committer", commit.commit.committer],
+              ];
+
+              const reasons = [];
+              for (const [role, identity] of identities) {
+                if (claudeName.test(identity?.name ?? "") ||
+                    anthropicEmail.test(identity?.email ?? "")) {
+                  reasons.push(`${role} identity`);
+                }
+              }
+
+              const message = commit.commit.message;
+              if (coAuthor.test(message)) reasons.push("Co-authored-by trailer");
+              if (claudeMetadata.test(message)) reasons.push("Claude metadata");
+
+              if (reasons.length > 0) {
+                failures.push(`${commit.sha.slice(0, 7)}: ${reasons.join(", ")}`);
+              }
+            }
+
+            if (failures.length > 0) {
+              await core.summary
+                .addHeading("Claude attribution must be removed")
+                .addList(failures)
+                .addRaw("Rewrite the listed commits to remove Claude/Anthropic author or co-author identities and Claude-* metadata, then force-push the pull request branch.")
+                .write();
+
+              core.setFailed(`Claude attribution found in ${failures.length} commit(s): ${failures.join("; ")}`);
+            }
