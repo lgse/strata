@@ -398,6 +398,15 @@ fn file_names_map_to_specific_lucide_icons() {
 }
 
 #[test]
+fn pointer_preview_handler_ignores_double_click_activation() {
+    assert!(should_preview_pointer_press(1, false, false, false));
+    assert!(!should_preview_pointer_press(2, false, false, false));
+    assert!(!should_preview_pointer_press(1, true, false, false));
+    assert!(!should_preview_pointer_press(1, false, true, false));
+    assert!(!should_preview_pointer_press(1, false, false, true));
+}
+
+#[test]
 fn pressing_an_item_in_a_multi_selection_preserves_the_drag_group() {
     assert!(should_preserve_drag_selection(true, 2));
     assert!(should_preserve_drag_selection(true, 8));

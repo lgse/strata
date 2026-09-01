@@ -3797,9 +3797,10 @@ impl ViewState {
                 if let (Some(state), Some(source_position)) =
                     (weak_state_for_click.upgrade(), source_position)
                 {
-                    if press_count == 2 {
-                        state.browser.activate(depth, source_position);
-                    } else if !control && !shift && !preserve_group {
+                    // GtkListView owns double-click activation through its `activate`
+                    // signal. This gesture only handles selection and single-click previews;
+                    // activating here as well would open files twice.
+                    if should_preview_pointer_press(press_count, control, shift, preserve_group) {
                         let entry = state.browser.entry_at(depth, source_position);
                         if entry.as_ref().is_some_and(|entry| {
                             entry_responds_to_single_click(entry, state.single_click_previews.get())
@@ -5597,6 +5598,15 @@ fn set_location_files_clipboard(locations: &[Location]) -> bool {
             )))
             .is_ok()
     })
+}
+
+fn should_preview_pointer_press(
+    press_count: i32,
+    control: bool,
+    shift: bool,
+    preserve_group: bool,
+) -> bool {
+    press_count == 1 && !control && !shift && !preserve_group
 }
 
 fn should_preserve_drag_selection(clicked_selected: bool, selected_count: u64) -> bool {
