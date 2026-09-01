@@ -546,6 +546,206 @@ headerbar menubutton.header-action > button:focus-visible image {
   outline-color: @theme_accent;
 }
 
+.action-dialog {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_accent, 0.22);
+  border-radius: 7px;
+  box-shadow: 0 18px 54px alpha(@theme_bg, 0.72);
+  color: @theme_text;
+  min-width: 480px;
+}
+
+.action-dialog-header {
+  border-bottom: 1px solid alpha(@theme_border, 0.22);
+  min-height: 40px;
+  padding: 14px 20px;
+}
+
+.action-dialog-symbol {
+  background: alpha(@theme_highlight, 0.64);
+  border: 1px solid alpha(@theme_accent, 0.24);
+  border-radius: 6px;
+  min-height: 40px;
+  min-width: 40px;
+}
+
+.action-dialog-title {
+  color: @theme_text;
+  font-size: 1.08em;
+  font-weight: 700;
+}
+
+.action-dialog-subtitle,
+.action-dialog-field-label {
+  color: @theme_dim_text;
+}
+
+.action-dialog-subtitle {
+  font-size: 0.82em;
+}
+
+.action-dialog-field-label {
+  font-size: 0.82em;
+}
+
+.action-dialog-close {
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  box-shadow: none;
+  color: @theme_dim_text;
+  min-height: 28px;
+  min-width: 28px;
+  padding: 4px;
+}
+
+.action-dialog-close:hover {
+  background: alpha(@theme_muted, 0.56);
+  color: @theme_text;
+}
+
+.action-dialog-close:active {
+  background: alpha(@theme_muted, 0.78);
+  color: @theme_accent;
+}
+
+.action-dialog-close:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.52);
+  outline-offset: 1px;
+}
+
+.action-dialog-body {
+  padding: 20px;
+}
+
+.action-dialog-actions {
+  border-top: 1px solid alpha(@theme_border, 0.22);
+  padding: 10px 20px 12px;
+}
+
+.action-dialog-actions button {
+  border-radius: 5px;
+  box-shadow: none;
+  min-height: 26px;
+  padding: 2px 11px;
+}
+
+.action-dialog-cancel {
+  background: transparent;
+  border: 1px solid alpha(@theme_border, 0.54);
+  color: @theme_text;
+}
+
+.action-dialog-cancel:hover {
+  background: alpha(@theme_muted, 0.62);
+  border-color: @theme_text;
+}
+
+.action-dialog-cancel:active {
+  background: alpha(@theme_muted, 0.82);
+  border-color: @theme_accent;
+  color: @theme_accent;
+}
+
+.action-dialog-cancel:focus-visible {
+  border-color: @theme_accent;
+  outline: 2px solid alpha(@theme_accent, 0.5);
+  outline-offset: 1px;
+}
+
+.action-dialog-confirm {
+  background: alpha(@theme_accent, 0.1);
+  border: 1px solid @theme_accent;
+  color: @theme_accent;
+}
+
+.action-dialog-confirm:hover {
+  background: alpha(@theme_accent, 0.18);
+}
+
+.action-dialog-confirm:active {
+  background: alpha(@theme_accent, 0.28);
+}
+
+.action-dialog-confirm:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: 1px;
+}
+
+entry.form-control {
+  background: alpha(@theme_bg, 0.72);
+  border: 1px solid alpha(@theme_border, 0.54);
+  border-radius: 5px;
+  box-shadow: none;
+  caret-color: @theme_accent;
+  color: @theme_text;
+  min-height: 34px;
+  padding: 3px 9px;
+}
+
+entry.form-control:hover {
+  border-color: alpha(@theme_accent, 0.68);
+}
+
+entry.form-control:focus,
+entry.form-control:focus-visible,
+entry.form-control:focus-within {
+  border-color: @theme_accent;
+  box-shadow: 0 0 0 1px alpha(@theme_accent, 0.42);
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+entry.form-control selection {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+entry.form-control.error,
+entry.form-control.error:focus,
+entry.form-control.error:focus-visible,
+entry.form-control.error:focus-within {
+  border-color: @theme_danger;
+  box-shadow: 0 0 0 1px alpha(@theme_danger, 0.4);
+  outline-color: @theme_danger;
+}
+
+entry.form-control:disabled {
+  background: alpha(@theme_muted, 0.3);
+  border-color: alpha(@theme_border, 0.38);
+  color: @theme_dim_text;
+}
+
+dropdown.form-control > button {
+  background: alpha(@theme_bg, 0.72);
+  border: 1px solid alpha(@theme_border, 0.54);
+  border-radius: 5px;
+  box-shadow: none;
+  color: @theme_text;
+  min-height: 34px;
+  padding: 3px 9px;
+}
+
+dropdown.form-control > button:hover {
+  background: alpha(@theme_muted, 0.62);
+  border-color: alpha(@theme_accent, 0.68);
+}
+
+dropdown.form-control:focus > button,
+dropdown.form-control:focus-visible > button,
+dropdown.form-control > button:focus-visible {
+  border-color: @theme_accent;
+  box-shadow: 0 0 0 1px alpha(@theme_accent, 0.42);
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+dropdown.form-control:disabled > button {
+  background: alpha(@theme_muted, 0.3);
+  border-color: alpha(@theme_border, 0.38);
+  color: @theme_dim_text;
+}
+
 .update-dialog {
   color: @theme_text;
   min-width: 500px;
@@ -1471,6 +1671,7 @@ menubutton.column-header-action > button:focus-visible image {
   outline-offset: -2px;
 }
 
+.authentication-fields .form-control:disabled,
 .authentication-fields .transfer-field:disabled,
 .segmented-control-option:disabled {
   background: alpha(@theme_muted, 0.3);

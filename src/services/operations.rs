@@ -80,6 +80,62 @@ pub struct RestoreRequest {
     pub entries: Vec<FileEntry>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ArchiveFormat {
+    Zip,
+    SevenZ,
+    TarGz,
+    Tar,
+}
+
+impl ArchiveFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Zip => "zip",
+            Self::SevenZ => "7z",
+            Self::TarGz => "tar.gz",
+            Self::Tar => "tar",
+        }
+    }
+
+    pub fn supports_password(self) -> bool {
+        matches!(self, Self::Zip | Self::SevenZ)
+    }
+
+    pub fn from_extension(name: &str) -> Option<Self> {
+        let lower = name.to_ascii_lowercase();
+        if lower.ends_with(".tar.gz") || lower.ends_with(".tgz") {
+            Some(Self::TarGz)
+        } else if lower.ends_with(".tar") {
+            Some(Self::Tar)
+        } else if lower.ends_with(".zip") {
+            Some(Self::Zip)
+        } else if lower.ends_with(".7z") {
+            Some(Self::SevenZ)
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct CompressRequest {
+    pub id: OperationRequestId,
+    pub entries: Vec<FileEntry>,
+    pub destination: Location,
+    pub archive_name: String,
+    pub format: ArchiveFormat,
+    pub password: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct ExtractRequest {
+    pub id: OperationRequestId,
+    pub entry: FileEntry,
+    pub destination: Location,
+    pub password: Option<String>,
+}
+
 #[derive(Clone, Debug)]
 pub enum OperationEvent {
     Renamed {
@@ -125,6 +181,23 @@ pub enum OperationEvent {
         request_id: OperationRequestId,
         message: String,
     },
+    Compressed {
+        request_id: OperationRequestId,
+        archive_name: String,
+    },
+    Extracted {
+        request_id: OperationRequestId,
+        first_name: Option<String>,
+    },
+    ArchiveStarted {
+        request_id: OperationRequestId,
+        total: usize,
+    },
+    ArchiveProgress {
+        request_id: OperationRequestId,
+        completed: usize,
+        total: usize,
+    },
 }
 
 pub trait OperationProvider {
@@ -142,4 +215,6 @@ pub trait OperationProvider {
     fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
+    fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
+    fn extract(&self, request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
 }

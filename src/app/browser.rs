@@ -11,10 +11,11 @@ use crate::{
     app::navigation::{EntryInsertion, EntrySplice, NavigationPath, NavigationState},
     model::{FileEntry, Location, SortDirection, SortKey, ViewPreferences},
     services::{
-        CreateDirectoryRequest, CreateFileRequest, DeleteRequest, DirectoryChange, DirectoryEvent,
-        DirectoryRequest, FileSource, LoadHandle, LocationValidationError, OperationEvent,
-        OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRequest, RequestId,
-        RestoreRequest, uri_has_embedded_password, validate_basename,
+        ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
+        DirectoryChange, DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
+        LocationValidationError, OperationEvent, OperationProvider, OperationRequestId, PasteItem,
+        PasteRequest, RenameRequest, RequestId, RestoreRequest, uri_has_embedded_password,
+        validate_basename,
     },
 };
 
@@ -126,6 +127,17 @@ pub enum BrowserEvent {
         error: LocationValidationError,
     },
     EmptyTrashRequested,
+    ArchiveStarted {
+        total: usize,
+    },
+    ArchiveProgress {
+        completed: usize,
+        total: usize,
+    },
+    ArchiveCompleted {
+        select_name: String,
+    },
+    TransferCompleted,
 }
 
 type Observer = Rc<dyn Fn(BrowserEvent)>;
@@ -884,19 +896,78 @@ impl Browser {
         self.operation_load.replace(Some(load));
     }
 
+    pub fn compress(
+        self: &Rc<Self>,
+        entries: Vec<FileEntry>,
+        destination: Location,
+        archive_name: String,
+        format: ArchiveFormat,
+        password: Option<String>,
+    ) {
+        if entries.is_empty() {
+            return;
+        }
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            self.emit(BrowserEvent::OperationFailed {
+                message: "File operations are unavailable".to_owned(),
+            });
+            return;
+        };
+        let request_id = self.begin_operation();
+        let load = provider.compress(
+            CompressRequest {
+                id: request_id,
+                entries,
+                destination,
+                archive_name,
+                format,
+                password,
+            },
+            self.operation_callback(request_id, false, Vec::new()),
+        );
+        self.operation_load.replace(Some(load));
+    }
+
+    pub fn extract(
+        self: &Rc<Self>,
+        entry: FileEntry,
+        destination: Location,
+        password: Option<String>,
+    ) {
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            self.emit(BrowserEvent::OperationFailed {
+                message: "File operations are unavailable".to_owned(),
+            });
+            return;
+        };
+        let request_id = self.begin_operation();
+        let load = provider.extract(
+            ExtractRequest {
+                id: request_id,
+                entry,
+                destination,
+                password,
+            },
+            self.operation_callback(request_id, false, Vec::new()),
+        );
+        self.operation_load.replace(Some(load));
+    }
+
     pub fn cancel_file_operation(&self) {
         let deleting = self.deletion_operation.replace(false);
         let restoring = self.restoration_operation.replace(false);
-        if !deleting && !restoring {
-            return;
-        }
-        self.current_operation.set(None);
+        let had_operation = self.current_operation.replace(None).is_some();
         self.operation_load.borrow_mut().take();
         if deleting {
             self.emit(BrowserEvent::DeletionFinished);
         }
         if restoring {
             self.emit(BrowserEvent::RestorationFinished);
+        }
+        if !deleting && !restoring && had_operation {
+            self.emit(BrowserEvent::ArchiveCompleted {
+                select_name: String::new(),
+            });
         }
     }
 
@@ -932,7 +1003,11 @@ impl Browser {
                 | OperationEvent::CompletedWithErrors { request_id, .. }
                 | OperationEvent::Restored { request_id, .. }
                 | OperationEvent::RestoreCompletedWithErrors { request_id, .. }
-                | OperationEvent::Failed { request_id, .. } => *request_id,
+                | OperationEvent::Failed { request_id, .. }
+                | OperationEvent::Compressed { request_id, .. }
+                | OperationEvent::Extracted { request_id, .. }
+                | OperationEvent::ArchiveStarted { request_id, .. }
+                | OperationEvent::ArchiveProgress { request_id, .. } => *request_id,
             };
             if event_id != request_id || browser.current_operation.get() != Some(event_id) {
                 return;
@@ -971,6 +1046,20 @@ impl Browser {
                         total: *total,
                     });
                 }
+                return;
+            }
+            if let OperationEvent::ArchiveStarted { total, .. } = &event {
+                browser.emit(BrowserEvent::ArchiveStarted { total: *total });
+                return;
+            }
+            if let OperationEvent::ArchiveProgress {
+                completed, total, ..
+            } = &event
+            {
+                browser.emit(BrowserEvent::ArchiveProgress {
+                    completed: *completed,
+                    total: *total,
+                });
                 return;
             }
             browser.current_operation.set(None);
@@ -1016,19 +1105,35 @@ impl Browser {
                         }
                     }
                 }
-                OperationEvent::Created { .. } | OperationEvent::Pasted { .. } => {
-                    // A remote location has no live directory monitor (see
-                    // `FileSource::watch`), so the column that just received a
-                    // new item would otherwise never learn about it. Refresh
-                    // it explicitly rather than leaving the new item invisible
-                    // until the user navigates away and back.
+                OperationEvent::Compressed { archive_name, .. } => {
+                    browser.emit(BrowserEvent::ArchiveCompleted {
+                        select_name: archive_name.clone(),
+                    });
+                }
+                OperationEvent::Extracted { first_name, .. } => {
+                    browser.emit(BrowserEvent::ArchiveCompleted {
+                        select_name: first_name.unwrap_or_default(),
+                    });
+                }
+                OperationEvent::Pasted { .. } => {
+                    browser.emit(BrowserEvent::TransferCompleted);
                     for location in &refresh_locations {
                         if location.native_path().is_none() {
                             browser.refresh_columns_at(location);
                         }
                     }
                 }
-                OperationEvent::DeleteProgress { .. } | OperationEvent::RestoreProgress { .. } => {}
+                OperationEvent::Created { .. } => {
+                    for location in &refresh_locations {
+                        if location.native_path().is_none() {
+                            browser.refresh_columns_at(location);
+                        }
+                    }
+                }
+                OperationEvent::DeleteProgress { .. }
+                | OperationEvent::RestoreProgress { .. }
+                | OperationEvent::ArchiveStarted { .. }
+                | OperationEvent::ArchiveProgress { .. } => {}
             }
         })
     }
@@ -1285,6 +1390,33 @@ impl Browser {
         let handle = self.request_directory(location, request_id);
         if let Some(load) = self.loads.borrow_mut().get_mut(depth) {
             *load = handle;
+        }
+    }
+
+    pub fn reload_active(self: &Rc<Self>) {
+        if let Some(depth) = self.active_depth() {
+            self.refresh_column(depth);
+        }
+    }
+
+    pub fn select_entry_by_name(self: &Rc<Self>, name: &str) {
+        let Some(depth) = self.active_depth() else {
+            return;
+        };
+        let state = self.state.borrow();
+        let Some(column) = state.columns.get(depth) else {
+            return;
+        };
+        let position = column.entries.iter().position(|e| e.display_name == name);
+        drop(state);
+        if let Some(position) = position {
+            self.set_selection(depth, &[position], Some(position));
+            self.emit(BrowserEvent::SelectionSetChanged {
+                depth,
+                positions: vec![position],
+                focused: position,
+                take_focus: true,
+            });
         }
     }
 

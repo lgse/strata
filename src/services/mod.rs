@@ -12,9 +12,9 @@ pub use file_source::{
     LocationValidationError, RequestId, backend_unavailable_message, uri_has_embedded_password,
 };
 pub use operations::{
-    CreateDirectoryRequest, CreateFileRequest, DeleteRequest, OperationEvent, OperationProvider,
-    OperationRequestId, PasteItem, PasteRequest, RenameRequest, RestoreRequest, TransferConflict,
-    validate_basename,
+    ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
+    ExtractRequest, OperationEvent, OperationProvider, OperationRequestId, PasteItem, PasteRequest,
+    RenameRequest, RestoreRequest, TransferConflict, validate_basename,
 };
 pub use preview::{
     Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,

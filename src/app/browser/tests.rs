@@ -5,7 +5,7 @@ use std::{cell::Cell, ffi::OsString};
 use super::*;
 use crate::{
     model::{EntryKind, MetadataValue},
-    services::LoadHandle,
+    services::{CompressRequest, ExtractRequest, LoadHandle},
 };
 
 #[test]
@@ -352,6 +352,22 @@ impl OperationProvider for ImmediateOperationProvider {
         emit(OperationEvent::Restored {
             request_id: request.id,
             locations: Vec::new(),
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        emit(OperationEvent::Compressed {
+            request_id: request.id,
+            archive_name: request.archive_name,
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn extract(&self, request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        emit(OperationEvent::Extracted {
+            request_id: request.id,
+            first_name: None,
         });
         LoadHandle::new(|| {})
     }

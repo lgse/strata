@@ -11,6 +11,7 @@ categories = ["filesystem", "gui"]
 
 [dependencies]
 cairo-rs = { version = "0.21.5", features = ["pdf", "png"] }
+flate2 = "1.1.10"
 fontconfig-sys = { package = "yeslogic-fontconfig-sys", version = "6.0.1" }
 gdk-pixbuf = "0.21.5"
 gio = { version = "0.21.5", features = ["v2_72"] }
@@ -21,12 +22,15 @@ poppler = { package = "poppler-rs", version = "0.25.0" }
 pulldown-cmark = { version = "0.13", default-features = false }
 rustix = { version = "1.1.4", features = ["fs", "process"] }
 serde = { version = "1.0", features = ["derive"] }
+sevenz-rust2 = "0.22.2"
 sourceview5 = { version = "0.10.0", features = ["gtk_v4_12"] }
+tar = "0.4.46"
 tempfile = "3.27.0"
 toml = "0.9"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
 ureq = { version = "3.4", features = ["json"] }
+zip = "8.6.0"
 
 [build-dependencies]
 glib-build-tools = "0.21.0"
