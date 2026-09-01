@@ -33,7 +33,7 @@ The SVGs retain Lucide geometry. Their foreground color was changed from `curren
 - Derived asset: `data/themes/catalog.toml`
 - Full license: [`data/licenses/Tinted-Theming-MIT.txt`](data/licenses/Tinted-Theming-MIT.txt)
 
-Strata's bundled catalog contains curated Base16 palettes. Their Base16 colors are mapped to Strata's semantic UI tokens; the mapping is documented in the generated catalog.
+The bundled catalog contains curated Base16 palettes derived from this project alongside Strata's original themes. The Base16 mapping to Strata's semantic UI tokens is documented in the catalog.
 
 ## Rust dependencies
 

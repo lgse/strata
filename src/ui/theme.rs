@@ -20,34 +20,6 @@ thread_local! {
     static SOURCE_BUFFERS: RefCell<Vec<glib::WeakRef<sourceview5::Buffer>>> = const { RefCell::new(Vec::new()) };
 }
 
-const CORE_THEMES: [(&str, &str); 7] = [
-    (
-        "azure-glow",
-        include_str!("../../data/themes/azure-glow.toml"),
-    ),
-    ("0x96f", include_str!("../../data/themes/0x96f.toml")),
-    (
-        "tokyo-night",
-        include_str!("../../data/themes/tokyo-night.toml"),
-    ),
-    (
-        "catppuccin",
-        include_str!("../../data/themes/catppuccin.toml"),
-    ),
-    (
-        "everforest",
-        include_str!("../../data/themes/everforest.toml"),
-    ),
-    (
-        "rose-pine",
-        include_str!("../../data/themes/rose-pine.toml"),
-    ),
-    (
-        "omarchy-light",
-        include_str!("../../data/themes/omarchy-light.toml"),
-    ),
-];
-
 const THEME_CATALOG: &str = include_str!("../../data/themes/catalog.toml");
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
@@ -478,40 +450,40 @@ fn is_omarchy_theme_event(file: &gio::File) -> bool {
 }
 
 fn builtins() -> Vec<Theme> {
-    let mut themes: Vec<_> = CORE_THEMES
-        .iter()
-        .filter_map(|(id, source)| {
-            toml::from_str(source).ok().map(|tokens| Theme {
-                id: (*id).to_owned(),
-                tokens,
-                custom: false,
-            })
+    let mut themes: Vec<_> = toml::from_str::<ThemeCatalog>(THEME_CATALOG)
+        .map(|catalog| {
+            catalog
+                .themes
+                .into_iter()
+                .map(|theme| Theme {
+                    id: theme.id,
+                    tokens: theme.tokens,
+                    custom: false,
+                })
+                .collect()
         })
-        .collect();
-    if let Ok(catalog) = toml::from_str::<ThemeCatalog>(THEME_CATALOG) {
-        themes.extend(catalog.themes.into_iter().map(|theme| Theme {
-            id: theme.id,
-            tokens: theme.tokens,
-            custom: false,
-        }));
-    }
+        .unwrap_or_default();
     themes.sort_by_key(|theme| theme.tokens.name.to_lowercase());
     themes
 }
 
 fn azure_tokens() -> ThemeTokens {
-    toml::from_str(CORE_THEMES[0].1).unwrap_or_else(|_| ThemeTokens {
-        name: "Azure Glow".to_owned(),
-        background: "#0c1a2b".to_owned(),
-        surface: "#122438".to_owned(),
-        text: "#c9deed".to_owned(),
-        accent: "#4fd6ff".to_owned(),
-        danger: default_danger(),
-        muted: "#1e3a52".to_owned(),
-        highlight: "#244d68".to_owned(),
-        border: "#315b75".to_owned(),
-        dim_text: "#6f8da3".to_owned(),
-    })
+    builtins()
+        .into_iter()
+        .find(|theme| theme.id == "azure-glow")
+        .map(|theme| theme.tokens)
+        .unwrap_or_else(|| ThemeTokens {
+            name: "Azure Glow".to_owned(),
+            background: "#0c1a2b".to_owned(),
+            surface: "#122438".to_owned(),
+            text: "#c9deed".to_owned(),
+            accent: "#4fd6ff".to_owned(),
+            danger: default_danger(),
+            muted: "#1e3a52".to_owned(),
+            highlight: "#244d68".to_owned(),
+            border: "#315b75".to_owned(),
+            dim_text: "#6f8da3".to_owned(),
+        })
 }
 
 fn load_custom_themes() -> Vec<Theme> {

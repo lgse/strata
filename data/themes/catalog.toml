@@ -1,6 +1,20 @@
-# Generated from Tinted Theming's Base16 schemes.
-# Semantic mapping: 00 background, 01 surface, 05 text, 0D accent,
-# 08 danger, 02 muted/highlight, 03 border, and 04 dim text.
+# Bundled Strata theme catalog.
+# Imported Tinted Base16 palettes use this semantic mapping:
+# 00 background, 01 surface, 05 text, 0D accent, 08 danger,
+# 02 muted/highlight, 03 border, and 04 dim text.
+
+[[themes]]
+id = "0x96f"
+name = "0x96f"
+background = "#1e1d1f"
+surface = "#262427"
+text = "#fcfcfc"
+accent = "#a093e2"
+danger = "#ff8787"
+muted = "#0f0e10"
+highlight = "#3b393c"
+border = "#64d2e8"
+dim_text = "#a6a6a5"
 
 [[themes]]
 id = "3024"
@@ -211,6 +225,19 @@ border = "#4A5059"
 dim_text = "#707a8c"
 
 [[themes]]
+id = "azure-glow"
+name = "Azure Glow"
+background = "#03111e"
+surface = "#061a29"
+text = "#b8dbe7"
+accent = "#2ccceb"
+danger = "#e5484d"
+muted = "#0c293d"
+highlight = "#043247"
+border = "#123d52"
+dim_text = "#395a6d"
+
+[[themes]]
 id = "bright"
 name = "Bright"
 background = "#000000"
@@ -222,6 +249,19 @@ muted = "#505050"
 highlight = "#505050"
 border = "#b0b0b0"
 dim_text = "#d0d0d0"
+
+[[themes]]
+id = "catppuccin"
+name = "Catppuccin"
+background = "#1e1e2e"
+surface = "#242438"
+text = "#cdd6f4"
+accent = "#f5c2e7"
+danger = "#e5484d"
+muted = "#313244"
+highlight = "#45475a"
+border = "#585b70"
+dim_text = "#7f849c"
 
 [[themes]]
 id = "catppuccin-frappe"
@@ -404,6 +444,19 @@ muted = "#515151"
 highlight = "#515151"
 border = "#777777"
 dim_text = "#b4b7b4"
+
+[[themes]]
+id = "everforest"
+name = "Everforest"
+background = "#2d353b"
+surface = "#343f44"
+text = "#d3c6aa"
+accent = "#a7c080"
+danger = "#e5484d"
+muted = "#3d484d"
+highlight = "#4f5b58"
+border = "#596763"
+dim_text = "#859289"
 
 [[themes]]
 id = "everforest-dark-hard"
@@ -887,6 +940,19 @@ border = "#65737E"
 dim_text = "#A7ADBA"
 
 [[themes]]
+id = "omarchy-light"
+name = "Omarchy Light"
+background = "#edf2f6"
+surface = "#f8fafc"
+text = "#1f2d38"
+accent = "#007f9d"
+danger = "#e5484d"
+muted = "#d8e2e8"
+highlight = "#b9e1e9"
+border = "#526b7a"
+dim_text = "#526674"
+
+[[themes]]
 id = "one-light"
 name = "One Light"
 background = "#fafafa"
@@ -991,6 +1057,19 @@ border = "#5a647e"
 dim_text = "#d4cfc9"
 
 [[themes]]
+id = "rose-pine"
+name = "Rosé Pine"
+background = "#191724"
+surface = "#1f1d2e"
+text = "#e0def4"
+accent = "#ebbcba"
+danger = "#e5484d"
+muted = "#26233a"
+highlight = "#403d52"
+border = "#524f67"
+dim_text = "#817c9c"
+
+[[themes]]
 id = "rose-pine-dawn"
 name = "Rosé Pine Dawn"
 background = "#faf4ed"
@@ -1067,6 +1146,19 @@ muted = "#444155"
 highlight = "#444155"
 border = "#585858"
 dim_text = "#b8b8b8"
+
+[[themes]]
+id = "tokyo-night"
+name = "Tokyo Night"
+background = "#16161e"
+surface = "#1f2335"
+text = "#c0caf5"
+accent = "#7aa2f7"
+danger = "#e5484d"
+muted = "#292e42"
+highlight = "#33406a"
+border = "#3b4261"
+dim_text = "#737aa2"
 
 [[themes]]
 id = "tokyo-night-moon"
