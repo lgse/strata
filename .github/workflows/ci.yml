@@ -43,8 +43,8 @@ jobs:
       - name: Run tests
         run: cargo test --all-targets --all-features
 
-  dependencies:
-    name: Dependency policy
+  repository-policy:
+    name: Dependency and spelling policy
     runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
@@ -56,13 +56,6 @@ jobs:
         with:
           command: check
 
-  spelling:
-    name: Spelling
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
       - name: Check spelling
+        if: ${{ !cancelled() }}
         uses: crate-ci/typos@4d9c206a77c041268485162b8e2579ad7a5cb9a3 # v1.50.0
