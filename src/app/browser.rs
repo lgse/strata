@@ -687,6 +687,22 @@ impl Browser {
         self.state.borrow().selected_entries()
     }
 
+    pub fn deletion_entries(&self) -> Vec<FileEntry> {
+        let state = self.state.borrow();
+        let selected = state.selected_entries();
+        if !selected.is_empty() {
+            return selected;
+        }
+
+        let Some(parent_depth) = state.active_depth().and_then(|depth| depth.checked_sub(1)) else {
+            return Vec::new();
+        };
+        let Some(position) = state.active_child_position(parent_depth) else {
+            return Vec::new();
+        };
+        state.entry_at(parent_depth, position).into_iter().collect()
+    }
+
     pub fn set_selection(&self, depth: usize, positions: &[usize], focused: Option<usize>) {
         let mut state = self.state.borrow_mut();
         if state.set_selection(depth, positions, focused) {

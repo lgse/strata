@@ -649,6 +649,19 @@ fn navigating_to_the_active_location_is_a_noop() {
 }
 
 #[test]
+fn deletion_targets_the_entered_folder_when_the_child_has_no_selection() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.navigate(Location::local("/fixture"));
+    browser.select(0, 0);
+    browser.descend(0, Location::local("/fixture/child"));
+
+    let entries = browser.deletion_entries();
+
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].location, Location::local("/fixture/child"));
+}
+
+#[test]
 fn completed_deletions_remove_entries_without_reloading_the_column() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.navigate(Location::local("/fixture"));

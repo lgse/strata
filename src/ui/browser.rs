@@ -750,7 +750,8 @@ impl BrowserView {
     }
 
     pub fn confirm_delete(&self, permanent: bool) -> bool {
-        let entries = self.state.browser.selected_entries();
+        self.state.sync_mode_selection();
+        let entries = self.state.browser.deletion_entries();
         if entries.is_empty() {
             return false;
         }
