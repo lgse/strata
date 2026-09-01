@@ -1654,30 +1654,6 @@ impl ViewState {
     }
 
     fn load_trash_summary(self: &Rc<Self>) {
-        let weak = Rc::downgrade(self);
-        glib::MainContext::default().spawn_local(async move {
-            let trash = gio::File::for_uri("trash:///");
-            match summarize_trash(&trash).await {
-                Ok(summary) if !summary.entries.is_empty() => {
-                    if let Some(state) = weak.upgrade() {
-                        state.show_empty_trash_confirmation(summary);
-                    }
-                }
-                Ok(_) => {}
-                Err(error) => {
-                    if let Some(state) = weak.upgrade() {
-                        show_error_dialog(
-                            &state.overlay,
-                            "Unable to read Trash",
-                            &error.to_string(),
-                        );
-                    }
-                }
-            }
-        });
-    }
-
-    fn show_empty_trash_confirmation(self: &Rc<Self>, summary: TrashSummary) {
         let Some(window_overlay) = self
             .overlay
             .root()
@@ -1695,22 +1671,27 @@ impl ViewState {
         let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
             "Empty Trash?",
-            &format!(
-                "{} · {} will be reclaimed",
-                item_count_label(summary.item_count),
-                format_file_size(summary.total_size)
-            ),
+            "Calculating items and size…",
             "Empty Trash",
             ModalTone::Danger,
         );
         let explanation = message_dialog_description(
             "Everything in Trash will be permanently deleted. This action cannot be undone.",
         );
+        let loading = gtk::Spinner::new();
+        loading.add_css_class("message-dialog-loading");
+        loading.set_halign(gtk::Align::Start);
+        loading.set_tooltip_text(Some("Calculating Trash contents…"));
+        loading.start();
+        layout.body.append(&loading);
         layout.body.append(&explanation);
+        layout.confirm.set_sensitive(false);
+        let subtitle = layout.subtitle.clone();
         let content = layout.content;
         let close = layout.close;
         let cancel = layout.cancel;
         let empty = layout.confirm;
+        let entries = Rc::new(RefCell::new(None::<Vec<FileEntry>>));
 
         let layer = modal_layer(&content);
         window_overlay.add_overlay(&layer);
@@ -1733,17 +1714,23 @@ impl ViewState {
         let empty_layer = layer.clone();
         let empty_overlay = window_overlay.clone();
         let empty_root = blurred_root.clone();
+        let empty_entries = entries.clone();
         let browser = self.browser.clone();
         empty.connect_clicked(move |_| {
+            let Some(entries) = empty_entries.borrow().clone() else {
+                return;
+            };
             dismiss_modal_layer(&empty_layer, &empty_overlay, empty_root.as_ref());
-            browser.delete(summary.entries.clone(), true);
+            if !entries.is_empty() {
+                browser.delete(entries, true);
+            }
             browser.focus_active();
         });
         let keys = gtk::EventControllerKey::new();
         let escape_layer = layer.clone();
         let focused_layer = layer.clone();
-        let escape_overlay = window_overlay;
-        let escape_root = blurred_root;
+        let escape_overlay = window_overlay.clone();
+        let escape_root = blurred_root.clone();
         let escape_browser = self.browser.clone();
         keys.connect_key_pressed(move |_, key, _, modifiers| {
             if key == gtk::gdk::Key::Escape {
@@ -1761,10 +1748,47 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
+        let initial_focus = cancel.clone();
         glib::idle_add_local_once(move || {
-            cancel.grab_focus();
-            if let Some(window) = cancel.root().and_downcast::<gtk::Window>() {
+            initial_focus.grab_focus();
+            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
                 window.set_focus_visible(true);
+            }
+        });
+
+        let result_layer = layer.clone();
+        let result_overlay = window_overlay;
+        let result_root = blurred_root;
+        let result_parent = self.overlay.clone();
+        glib::MainContext::default().spawn_local(async move {
+            let result = summarize_trash(&gio::File::for_uri("trash:///")).await;
+            if result_layer.parent().is_none() {
+                return;
+            }
+            loading.stop();
+            loading.set_visible(false);
+            match result {
+                Ok(summary) if summary.entries.is_empty() => {
+                    subtitle.set_text("Trash is empty");
+                    explanation.set_text("There is nothing to delete.");
+                    empty.set_label("Close");
+                    empty.remove_css_class("danger");
+                    entries.replace(Some(Vec::new()));
+                    empty.set_sensitive(true);
+                }
+                Ok(summary) => {
+                    subtitle.set_text(&format!(
+                        "{} · {} will be reclaimed",
+                        item_count_label(summary.item_count),
+                        format_file_size(summary.total_size)
+                    ));
+                    entries.replace(Some(summary.entries));
+                    empty.set_sensitive(true);
+                }
+                Err(error) => {
+                    dismiss_modal_layer(&result_layer, &result_overlay, result_root.as_ref());
+                    show_error_dialog(&result_parent, "Unable to read Trash", &error.to_string());
+                }
             }
         });
     }
