@@ -794,6 +794,66 @@ fn empty_trash_deletes_every_top_level_entry_in_bounded_batches() {
 }
 
 #[test]
+fn aborting_empty_trash_stops_deletion_mid_flight() {
+    let root = unique_fixture_root("abort-empty-trash-mid-flight");
+    std::fs::create_dir_all(&root).expect("the trash fixture should be created");
+    // More than one `next_files_future` batch (64 entries), so aborting after the first batch's
+    // progress callback is genuinely mid-flight, not the whole walk finishing in one step.
+    let total_files = 200;
+    for index in 0..total_files {
+        std::fs::write(root.join(format!("file-{index}.txt")), b"content")
+            .expect("the trash fixture file should be written");
+    }
+
+    let context = glib::MainContext::new();
+    let (progress_before_abort, progress_after_abort) = context
+        .with_thread_default(|| {
+            let progress = Rc::new(Cell::new(0_usize));
+            let progress_tick = progress.clone();
+            let trash_root = gio::File::for_path(&root);
+            let task = context.spawn_local(async move {
+                empty_trash(&trash_root, move |processed| progress_tick.set(processed)).await
+            });
+
+            // Drive the loop only until the first batch has reported progress, then abort
+            // immediately -- with 200 files and a 64-entry batch size, that's genuinely
+            // mid-flight regardless of exactly how many main-loop iterations it took to get there.
+            for _ in 0..1_000 {
+                if progress.get() > 0 {
+                    break;
+                }
+                context.iteration(true);
+            }
+            let progress_before_abort = progress.get();
+
+            task.abort();
+            for _ in 0..20 {
+                context.iteration(false);
+            }
+
+            (progress_before_abort, progress.get())
+        })
+        .expect("a freshly created main context should be acquirable as thread-default");
+    let remaining = std::fs::read_dir(&root)
+        .expect("the fixture root should still exist")
+        .count();
+    std::fs::remove_dir_all(&root).expect("the trash fixture should be removed");
+
+    assert!(
+        progress_before_abort > 0 && progress_before_abort < total_files,
+        "the deletion should have made partial, not complete, progress before it is aborted"
+    );
+    assert_eq!(
+        progress_after_abort, progress_before_abort,
+        "aborting mid-flight should stop the deletion from making any further progress"
+    );
+    assert!(
+        remaining > 0,
+        "aborting mid-flight should leave undeleted entries behind, not finish the walk anyway"
+    );
+}
+
+#[test]
 fn trash_summary_does_not_stop_enumerating_siblings_after_one_branch_is_depth_truncated() {
     let root = unique_fixture_root("sibling-depth-truncation");
     let sibling_count = 80;
