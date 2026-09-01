@@ -20,6 +20,7 @@ mod tests;
 use super::{
     blur::BlurBin,
     browser::{BrowserView, dismiss_modal_layer, modal_layer},
+    controls::{form_entry, modal_layout},
     motion::set_reduce_motion,
     theme::{Theme, ThemeManager, ThemeTokens},
 };
@@ -817,40 +818,18 @@ pub(super) fn show_update_dialog(
         root.set_blurred(true);
     }
 
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    content.add_css_class("transfer-dialog");
-    content.add_css_class("update-dialog");
-    content.set_halign(gtk::Align::Center);
-    content.set_valign(gtk::Align::Center);
-    content.set_size_request(560, -1);
-    let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    header.add_css_class("update-dialog-header");
-    let symbol = gtk::CenterBox::new();
-    symbol.add_css_class("update-dialog-symbol");
-    symbol.set_size_request(40, 40);
-    symbol.set_valign(gtk::Align::Center);
-    symbol.set_center_widget(Some(&crate::assets::primary_icon(icons::DOWNLOADS, 20)));
-    let heading = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    heading.set_valign(gtk::Align::Center);
-    let title = gtk::Label::new(Some(&format!("Strata v{} is available", release.version)));
-    title.add_css_class("update-dialog-title");
-    title.set_xalign(0.0);
-    let subtitle = gtk::Label::new(Some(&format!(
-        "Installed v{}  →  Available v{}",
-        env!("CARGO_PKG_VERSION"),
-        release.version
-    )));
-    subtitle.add_css_class("update-dialog-subtitle");
-    subtitle.set_xalign(0.0);
-    subtitle.set_wrap(true);
-    heading.append(&title);
-    heading.append(&subtitle);
-    header.append(&symbol);
-    header.append(&heading);
-    content.append(&header);
-
-    let body = gtk::Box::new(gtk::Orientation::Vertical, 10);
-    body.add_css_class("update-dialog-body");
+    let layout = modal_layout(
+        icons::DOWNLOADS,
+        &format!("Strata v{} is available", release.version),
+        &format!(
+            "Installed v{}  →  Available v{}",
+            env!("CARGO_PKG_VERSION"),
+            release.version
+        ),
+        "Download update",
+    );
+    layout.content.add_css_class("update-dialog");
+    layout.content.set_size_request(560, -1);
     let notes_heading = gtk::Label::new(Some("What’s new"));
     notes_heading.add_css_class("release-notes-title");
     notes_heading.set_xalign(0.0);
@@ -885,43 +864,62 @@ pub(super) fn show_update_dialog(
     progress.add_css_class("update-dialog-progress");
     progress.set_fraction(0.0);
     progress.set_visible(false);
-    body.append(&notes_heading);
-    body.append(&notes_scroll);
-    body.append(&fallback);
-    body.append(&status);
-    body.append(&progress);
-    content.append(&body);
-
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    actions.add_css_class("update-dialog-actions");
-    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    spacer.set_hexpand(true);
-    let cancel = gtk::Button::with_label("Cancel");
-    cancel.add_css_class("transfer-cancel");
-    let action = gtk::Button::with_label("Download update");
-    action.add_css_class("update-dialog-action");
-    actions.append(&spacer);
-    actions.append(&cancel);
-    actions.append(&action);
-    content.append(&actions);
+    layout.body.append(&notes_heading);
+    layout.body.append(&notes_scroll);
+    layout.body.append(&fallback);
+    layout.body.append(&status);
+    layout.body.append(&progress);
+    let content = layout.content;
+    let close = layout.close;
+    let cancel = layout.cancel;
+    let action = layout.confirm;
 
     let layer = modal_layer(&content);
     window_overlay.add_overlay(&layer);
     action.grab_focus();
 
+    let started = Rc::new(Cell::new(false));
     let cancel_layer = layer.clone();
     let cancel_overlay = window_overlay.clone();
     let cancel_root = blurred_root.clone();
+    let cancel_started = started.clone();
     cancel.connect_clicked(move |_| {
-        dismiss_modal_layer(&cancel_layer, &cancel_overlay, cancel_root.as_ref());
+        if !cancel_started.get() {
+            dismiss_modal_layer(&cancel_layer, &cancel_overlay, cancel_root.as_ref());
+        }
     });
+    let close_layer = layer.clone();
+    let close_overlay = window_overlay.clone();
+    let close_root = blurred_root.clone();
+    let close_started = started.clone();
+    close.connect_clicked(move |_| {
+        if !close_started.get() {
+            dismiss_modal_layer(&close_layer, &close_overlay, close_root.as_ref());
+        }
+    });
+    let escape = gtk::EventControllerKey::new();
+    let escape_layer = layer.clone();
+    let escape_overlay = window_overlay.clone();
+    let escape_root = blurred_root.clone();
+    let escape_started = started.clone();
+    escape.connect_key_pressed(move |_, key, _, _| {
+        if key == gtk::gdk::Key::Escape {
+            if !escape_started.get() {
+                dismiss_modal_layer(&escape_layer, &escape_overlay, escape_root.as_ref());
+            }
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    });
+    layer.add_controller(escape);
 
-    let started = Rc::new(Cell::new(false));
     let installed = Rc::new(Cell::new(false));
     let action_layer = layer.clone();
     let action_overlay = window_overlay.clone();
     let action_root = blurred_root.clone();
     let application = parent.application();
+    let action_close = close.clone();
     action.connect_clicked(move |button| {
         if installed.get() {
             restart(application.as_ref());
@@ -936,6 +934,7 @@ pub(super) fn show_update_dialog(
 
         button.set_sensitive(false);
         cancel.set_sensitive(false);
+        action_close.set_sensitive(false);
         progress.set_visible(true);
         status.set_text("Starting download…");
         let receiver = services::install_update(download_url.clone());
@@ -1354,8 +1353,8 @@ fn theme_editor(
     title.set_hexpand(true);
     header.append(&title);
     panel.append(&header);
-    let name = gtk::Entry::builder().placeholder_text("Theme name").build();
-    name.add_css_class("theme-name");
+    let name = form_entry();
+    name.set_placeholder_text(Some("Theme name"));
     panel.append(&name);
 
     let values = Rc::new(RefCell::new(manager.starter_tokens()));
@@ -1413,9 +1412,9 @@ fn theme_editor(
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     actions.set_halign(gtk::Align::End);
     let cancel = gtk::Button::with_label("Cancel");
-    cancel.add_css_class("theme-editor-cancel");
+    cancel.add_css_class("action-dialog-cancel");
     let save = gtk::Button::with_label("Add theme");
-    save.add_css_class("theme-editor-save");
+    save.add_css_class("action-dialog-confirm");
     actions.append(&cancel);
     actions.append(&save);
     panel.append(&actions);

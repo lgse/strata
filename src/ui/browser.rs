@@ -25,7 +25,10 @@ use crate::{
 use super::{
     blur::BlurBin,
     browser_modes::{BrowserDensity, BrowserMode, ModeViews},
-    controls::{form_entry, form_password_entry, modal_layout, segmented_control},
+    controls::{
+        ModalTone, form_check_button, form_entry, form_label, form_password_entry, modal_layout,
+        modal_layout_with_tone, segmented_control,
+    },
     motion::{animations_enabled, emphasized_deceleration},
 };
 
@@ -999,69 +1002,33 @@ impl ViewState {
         }
 
         let name = source.display_name();
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        content.add_css_class("delete-confirmation");
-        content.add_css_class("delete-confirmation-content");
-        content.set_halign(gtk::Align::Center);
-        content.set_valign(gtk::Align::Center);
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        header.add_css_class("delete-confirmation-header");
-        let symbol = gtk::CenterBox::new();
-        symbol.add_css_class("delete-confirmation-symbol");
-        symbol.set_size_request(40, 40);
-        symbol.set_center_widget(Some(&crate::assets::danger_icon(
+        let layout = modal_layout_with_tone(
             crate::assets::icons::COPY,
-            20,
-        )));
-        let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
-        heading.set_hexpand(true);
-        heading.set_valign(gtk::Align::Center);
-        let title = gtk::Label::new(Some("File already exists"));
-        title.add_css_class("delete-confirmation-title");
-        title.set_xalign(0.0);
-        let subtitle = gtk::Label::new(Some(&name));
-        subtitle.add_css_class("delete-confirmation-subtitle");
-        subtitle.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-        subtitle.set_xalign(0.0);
-        heading.append(&title);
-        heading.append(&subtitle);
-        header.append(&symbol);
-        header.append(&heading);
-        content.append(&header);
-
-        let body = gtk::Box::new(gtk::Orientation::Vertical, 12);
-        body.add_css_class("delete-confirmation-body");
+            "File already exists",
+            &name,
+            "Replace",
+            ModalTone::Danger,
+        );
         let explanation = gtk::Label::new(Some(&format!(
             "An item named “{name}” already exists in {}. Replacing it will overwrite its contents.",
             compact_display_path(&destination)
         )));
-        explanation.add_css_class("delete-confirmation-explanation");
+        explanation.add_css_class("action-dialog-description");
         explanation.set_max_width_chars(64);
         explanation.set_wrap(true);
         explanation.set_xalign(0.0);
-        body.append(&explanation);
-        let apply_all =
-            gtk::CheckButton::with_label("Apply this choice to all remaining conflicts");
-        apply_all.add_css_class("collision-apply-all");
+        layout.body.append(&explanation);
+        let apply_all = form_check_button("Apply this choice to all remaining conflicts");
         apply_all.set_visible(!collisions.is_empty());
-        body.append(&apply_all);
-        content.append(&body);
-
-        let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        actions.add_css_class("delete-confirmation-actions");
-        let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        spacer.set_hexpand(true);
-        let cancel = gtk::Button::with_label("Cancel");
-        cancel.add_css_class("delete-confirmation-cancel");
+        layout.body.append(&apply_all);
         let skip = gtk::Button::with_label("Skip");
-        skip.add_css_class("delete-confirmation-cancel");
-        let replace = gtk::Button::with_label("Replace");
-        replace.add_css_class("delete-confirmation-delete");
-        actions.append(&spacer);
-        actions.append(&cancel);
-        actions.append(&skip);
-        actions.append(&replace);
-        content.append(&actions);
+        skip.add_css_class("action-dialog-cancel");
+        layout
+            .actions
+            .insert_child_after(&skip, Some(&layout.cancel));
+        let content = layout.content;
+        let cancel = layout.cancel;
+        let replace = layout.confirm;
 
         let layer = modal_layer(&content);
         window_overlay.add_overlay(&layer);
@@ -1252,62 +1219,32 @@ impl ViewState {
             .active_location()
             .and_then(|location| location.native_path().map(Path::to_path_buf))
             .unwrap_or_else(glib::home_dir);
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        content.add_css_class("transfer-dialog");
-        content.set_halign(gtk::Align::Center);
-        content.set_valign(gtk::Align::Center);
-
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        header.add_css_class("transfer-header");
-        let symbol = gtk::CenterBox::new();
-        symbol.add_css_class("transfer-symbol");
-        symbol.set_center_widget(Some(&crate::assets::primary_icon(
+        let layout = modal_layout(
             if move_sources {
                 crate::assets::icons::FOLDER
             } else {
                 crate::assets::icons::COPY
             },
-            20,
-        )));
-        let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
-        heading.set_hexpand(true);
-        heading.set_valign(gtk::Align::Center);
-        let title = gtk::Label::new(Some(if move_sources { "Move to" } else { "Copy to" }));
-        title.add_css_class("transfer-title");
-        title.set_xalign(0.0);
-        let subtitle = gtk::Label::new(Some(&format!(
-            "Choose a destination for {}",
-            item_count_label(entries.len())
-        )));
-        subtitle.add_css_class("transfer-subtitle");
-        subtitle.set_xalign(0.0);
-        heading.append(&title);
-        heading.append(&subtitle);
-        let close = gtk::Button::new();
-        close.add_css_class("transfer-close");
-        close.set_tooltip_text(Some("Cancel"));
-        close.set_child(Some(&crate::assets::primary_icon(
-            crate::assets::icons::X,
-            16,
-        )));
-        header.append(&symbol);
-        header.append(&heading);
-        header.append(&close);
-        content.append(&header);
-
-        let body = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        body.add_css_class("transfer-body");
-        let field_label = gtk::Label::new(Some("DESTINATION FOLDER"));
-        field_label.add_css_class("transfer-field-label");
-        field_label.set_xalign(0.0);
-        let field = gtk::Entry::new();
-        field.add_css_class("transfer-field");
+            if move_sources { "Move to" } else { "Copy to" },
+            &format!(
+                "Choose a destination for {}",
+                item_count_label(entries.len())
+            ),
+            if move_sources {
+                "Move here"
+            } else {
+                "Copy here"
+            },
+        );
+        layout.content.add_css_class("wide");
+        let field_label = form_label("Destination folder");
+        let field = form_entry();
         field.set_hexpand(true);
         field.set_placeholder_text(Some("Type a folder path…"));
         field.set_text(&folder_input_path(&base));
         field.set_position(-1);
-        body.append(&field_label);
-        body.append(&field);
+        layout.body.append(&field_label);
+        layout.body.append(&field);
 
         let suggestions = gtk::Box::new(gtk::Orientation::Vertical, 2);
         suggestions.add_css_class("transfer-suggestions");
@@ -1320,31 +1257,18 @@ impl ViewState {
             .propagate_natural_height(true)
             .build();
         suggestion_scroll.add_css_class("transfer-suggestion-scroll");
-        body.append(&suggestion_scroll);
+        layout.body.append(&suggestion_scroll);
         let error = gtk::Label::new(None);
-        error.add_css_class("transfer-error");
+        error.add_css_class("form-message");
+        error.add_css_class("error");
         error.set_wrap(true);
         error.set_xalign(0.0);
         error.set_visible(false);
-        body.append(&error);
-        content.append(&body);
-
-        let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        actions.add_css_class("transfer-actions");
-        let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        spacer.set_hexpand(true);
-        let cancel = gtk::Button::with_label("Cancel");
-        cancel.add_css_class("transfer-cancel");
-        let confirm = gtk::Button::with_label(if move_sources {
-            "Move here"
-        } else {
-            "Copy here"
-        });
-        confirm.add_css_class("transfer-confirm");
-        actions.append(&spacer);
-        actions.append(&cancel);
-        actions.append(&confirm);
-        content.append(&actions);
+        layout.body.append(&error);
+        let content = layout.content;
+        let close = layout.close;
+        let cancel = layout.cancel;
+        let confirm = layout.confirm;
 
         let generation = Rc::new(Cell::new(0_u64));
         let pending_creation = Rc::new(RefCell::new(None::<std::path::PathBuf>));
@@ -1358,8 +1282,8 @@ impl ViewState {
         field.connect_changed(move |field| {
             field.remove_css_class("error");
             suggestions_error.set_visible(false);
-            suggestions_error.remove_css_class("transfer-warning");
-            suggestions_error.add_css_class("transfer-error");
+            suggestions_error.remove_css_class("warning");
+            suggestions_error.add_css_class("error");
             changed_creation.borrow_mut().take();
             changed_confirm.set_label(if move_sources {
                 "Move here"
@@ -1413,8 +1337,8 @@ impl ViewState {
             let path =
                 resolve_destination_path(&confirm_field.text(), &confirm_base, &glib::home_dir());
             if path.exists() && !path.is_dir() {
-                confirm_error.remove_css_class("transfer-warning");
-                confirm_error.add_css_class("transfer-error");
+                confirm_error.remove_css_class("warning");
+                confirm_error.add_css_class("error");
                 confirm_error.set_text("The destination exists, but it is not a folder.");
                 confirm_error.set_visible(true);
                 confirm_field.add_css_class("error");
@@ -1423,8 +1347,8 @@ impl ViewState {
             }
             if !path.exists() && confirm_creation.borrow().as_ref() != Some(&path) {
                 confirm_creation.replace(Some(path.clone()));
-                confirm_error.remove_css_class("transfer-error");
-                confirm_error.add_css_class("transfer-warning");
+                confirm_error.remove_css_class("error");
+                confirm_error.add_css_class("warning");
                 confirm_error.set_text(&format!(
                     "{} does not exist. It will be created before the items are transferred.",
                     compact_native_path(&path)
@@ -1488,8 +1412,8 @@ impl ViewState {
                         created_creating.set(false);
                         created_cancel.set_sensitive(true);
                         created_close.set_sensitive(true);
-                        created_error.remove_css_class("transfer-warning");
-                        created_error.add_css_class("transfer-error");
+                        created_error.remove_css_class("warning");
+                        created_error.add_css_class("error");
                         created_error.set_text(&format!("Unable to create that folder: {error}"));
                         created_error.set_visible(true);
                         created_field.add_css_class("error");
@@ -1506,8 +1430,8 @@ impl ViewState {
                         created_creating.set(false);
                         created_cancel.set_sensitive(true);
                         created_close.set_sensitive(true);
-                        created_error.remove_css_class("transfer-warning");
-                        created_error.add_css_class("transfer-error");
+                        created_error.remove_css_class("warning");
+                        created_error.add_css_class("error");
                         created_error.set_text("Unable to create that folder.");
                         created_error.set_visible(true);
                         created_field.add_css_class("error");
@@ -1569,51 +1493,20 @@ impl ViewState {
             root.set_blurred(true);
         }
 
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        content.add_css_class("transfer-dialog");
-        content.add_css_class("delete-progress-dialog");
-        content.set_halign(gtk::Align::Center);
-        content.set_valign(gtk::Align::Center);
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        header.add_css_class("transfer-header");
-        let symbol = gtk::CenterBox::new();
-        symbol.add_css_class("transfer-symbol");
-        symbol.set_center_widget(Some(&crate::assets::primary_icon(icon, 20)));
-        let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
-        heading.set_valign(gtk::Align::Center);
-        let title = gtk::Label::new(Some(title_text));
-        title.add_css_class("transfer-title");
-        title.set_xalign(0.0);
-        let subtitle = gtk::Label::new(Some(subtitle_text));
-        subtitle.add_css_class("transfer-subtitle");
-        subtitle.set_xalign(0.0);
-        heading.append(&title);
-        heading.append(&subtitle);
-        header.append(&symbol);
-        header.append(&heading);
-        content.append(&header);
-
-        let body = gtk::Box::new(gtk::Orientation::Vertical, 10);
-        body.add_css_class("transfer-body");
+        let layout = modal_layout(icon, title_text, subtitle_text, "Cancel");
+        layout.content.add_css_class("compact");
+        layout.close.set_visible(false);
+        layout.cancel.set_visible(false);
         let status = gtk::Label::new(Some("0%"));
-        status.add_css_class("delete-progress-status");
+        status.add_css_class("modal-progress-status");
         status.set_xalign(0.0);
         let progress = gtk::ProgressBar::new();
-        progress.add_css_class("delete-progress-bar");
+        progress.add_css_class("modal-progress");
         progress.set_fraction(0.0);
-        body.append(&status);
-        body.append(&progress);
-        content.append(&body);
-
-        let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        actions.add_css_class("transfer-actions");
-        let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        spacer.set_hexpand(true);
-        let cancel = gtk::Button::with_label("Cancel");
-        cancel.add_css_class("transfer-cancel");
-        actions.append(&spacer);
-        actions.append(&cancel);
-        content.append(&actions);
+        layout.body.append(&status);
+        layout.body.append(&progress);
+        let content = layout.content;
+        let cancel = layout.confirm;
 
         let layer = modal_layer(&content);
         window_overlay.add_overlay(&layer);
@@ -1718,70 +1611,28 @@ impl ViewState {
             root.set_blurred(true);
         }
 
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        content.add_css_class("delete-confirmation");
-        content.add_css_class("delete-confirmation-content");
-        content.set_halign(gtk::Align::Center);
-        content.set_valign(gtk::Align::Center);
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        header.add_css_class("delete-confirmation-header");
-        let symbol = gtk::CenterBox::new();
-        symbol.add_css_class("delete-confirmation-symbol");
-        symbol.set_size_request(40, 40);
-        symbol.set_center_widget(Some(&crate::assets::danger_icon(
+        let layout = modal_layout_with_tone(
             crate::assets::icons::TRASH,
-            21,
-        )));
-        let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
-        heading.set_hexpand(true);
-        heading.set_valign(gtk::Align::Center);
-        let title = gtk::Label::new(Some("Empty Trash?"));
-        title.add_css_class("delete-confirmation-title");
-        title.set_xalign(0.0);
-        let subtitle = gtk::Label::new(Some(&format!(
-            "{} · {} will be reclaimed",
-            item_count_label(summary.item_count),
-            format_file_size(summary.total_size)
-        )));
-        subtitle.add_css_class("delete-confirmation-subtitle");
-        subtitle.set_xalign(0.0);
-        heading.append(&title);
-        heading.append(&subtitle);
-        let close = gtk::Button::new();
-        close.add_css_class("delete-confirmation-close");
-        close.set_tooltip_text(Some("Cancel"));
-        close.set_child(Some(&crate::assets::primary_icon(
-            crate::assets::icons::X,
-            16,
-        )));
-        header.append(&symbol);
-        header.append(&heading);
-        header.append(&close);
-        content.append(&header);
-
-        let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        body.add_css_class("delete-confirmation-body");
+            "Empty Trash?",
+            &format!(
+                "{} · {} will be reclaimed",
+                item_count_label(summary.item_count),
+                format_file_size(summary.total_size)
+            ),
+            "Empty Trash",
+            ModalTone::Danger,
+        );
         let explanation = gtk::Label::new(Some(
             "Everything in Trash will be permanently deleted. This action cannot be undone.",
         ));
-        explanation.add_css_class("delete-confirmation-explanation");
+        explanation.add_css_class("action-dialog-description");
         explanation.set_wrap(true);
         explanation.set_xalign(0.0);
-        body.append(&explanation);
-        content.append(&body);
-
-        let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        actions.add_css_class("delete-confirmation-actions");
-        let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        spacer.set_hexpand(true);
-        let cancel = gtk::Button::with_label("Cancel");
-        cancel.add_css_class("delete-confirmation-cancel");
-        let empty = gtk::Button::with_label("Empty Trash");
-        empty.add_css_class("delete-confirmation-delete");
-        actions.append(&spacer);
-        actions.append(&cancel);
-        actions.append(&empty);
-        content.append(&actions);
+        layout.body.append(&explanation);
+        let content = layout.content;
+        let close = layout.close;
+        let cancel = layout.cancel;
+        let empty = layout.confirm;
 
         let layer = modal_layer(&content);
         window_overlay.add_overlay(&layer);
@@ -1856,46 +1707,23 @@ impl ViewState {
         }
 
         let count = entries.len();
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        content.add_css_class("delete-confirmation");
-        content.add_css_class("delete-confirmation-content");
-        content.set_halign(gtk::Align::Center);
-        content.set_valign(gtk::Align::Center);
-
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        header.add_css_class("delete-confirmation-header");
-        let symbol = gtk::CenterBox::new();
-        symbol.add_css_class("delete-confirmation-symbol");
-        symbol.set_size_request(40, 40);
-        symbol.set_hexpand(false);
-        let symbol_icon = crate::assets::danger_icon(crate::assets::icons::TRASH, 21);
-        symbol.set_center_widget(Some(&symbol_icon));
-        let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
-        heading.set_hexpand(true);
-        heading.set_valign(gtk::Align::Center);
-        let question = gtk::Label::new(Some(&if permanent {
+        let title = if permanent {
             format!("Permanently delete {}?", item_count_label(count))
         } else {
             format!("Move {} to trash?", item_count_label(count))
-        }));
-        question.add_css_class("delete-confirmation-title");
-        question.set_xalign(0.0);
-        let subtitle = gtk::Label::new(Some(&entry_kind_summary(&entries)));
-        subtitle.add_css_class("delete-confirmation-subtitle");
-        subtitle.set_xalign(0.0);
-        heading.append(&question);
-        heading.append(&subtitle);
-        let close = gtk::Button::new();
-        close.add_css_class("delete-confirmation-close");
-        close.set_tooltip_text(Some("Cancel"));
-        close.set_child(Some(&crate::assets::text_icon(crate::assets::icons::X, 16)));
-        header.append(&symbol);
-        header.append(&heading);
-        header.append(&close);
-        content.append(&header);
-
-        let body = gtk::Box::new(gtk::Orientation::Vertical, 12);
-        body.add_css_class("delete-confirmation-body");
+        };
+        let confirm_label = if permanent {
+            format!("Permanently delete {}", item_count_label(count))
+        } else {
+            format!("Move {}", item_count_label(count))
+        };
+        let layout = modal_layout_with_tone(
+            crate::assets::icons::TRASH,
+            &title,
+            &entry_kind_summary(&entries),
+            &confirm_label,
+            ModalTone::Danger,
+        );
         let files = gtk::Box::new(gtk::Orientation::Vertical, 3);
         files.add_css_class("delete-confirmation-files");
         for entry in &entries {
@@ -1934,38 +1762,20 @@ impl ViewState {
             .propagate_natural_height(true)
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
-        body.append(&file_scroller);
+        layout.body.append(&file_scroller);
         let explanation = gtk::Label::new(Some(if permanent {
             "These items will be permanently deleted. This action cannot be undone."
         } else {
             "The items will be moved to trash. You can restore them later."
         }));
-        explanation.add_css_class("delete-confirmation-explanation");
+        explanation.add_css_class("action-dialog-description");
         explanation.set_wrap(true);
         explanation.set_xalign(0.0);
-        body.append(&explanation);
-        content.append(&body);
-
-        let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        actions.add_css_class("delete-confirmation-actions");
-        let action_spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        action_spacer.set_hexpand(true);
-        let cancel = gtk::Button::with_label("Cancel");
-        cancel.add_css_class("delete-confirmation-cancel");
-        let confirm_label = if permanent {
-            format!("Permanently delete {}", item_count_label(count))
-        } else {
-            format!("Move {}", item_count_label(count))
-        };
-        let confirm_content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        confirm_content.append(&crate::assets::danger_icon(crate::assets::icons::TRASH, 15));
-        confirm_content.append(&gtk::Label::new(Some(&confirm_label)));
-        let confirm = gtk::Button::builder().child(&confirm_content).build();
-        confirm.add_css_class("delete-confirmation-delete");
-        actions.append(&action_spacer);
-        actions.append(&cancel);
-        actions.append(&confirm);
-        content.append(&actions);
+        layout.body.append(&explanation);
+        let content = layout.content;
+        let close = layout.close;
+        let cancel = layout.cancel;
+        let confirm = layout.confirm;
 
         let layer = modal_layer(&content);
         window_overlay.add_overlay(&layer);
@@ -2121,39 +1931,29 @@ impl ViewState {
         let subtitle = entry_kind_summary(&entries);
         let (body, confirm, dismiss) = self.build_archive_modal(&title, &subtitle, "Compress");
 
-        let name_label = gtk::Label::new(Some("Archive name"));
-        name_label.add_css_class("action-dialog-field-label");
-        name_label.set_xalign(0.0);
+        let name_label = form_label("Archive name");
         let name_entry = form_entry();
         name_entry.set_text(&default_name);
         body.append(&name_label);
         body.append(&name_entry);
 
-        let format_label = gtk::Label::new(Some("Format"));
-        format_label.add_css_class("action-dialog-field-label");
-        format_label.set_xalign(0.0);
+        let format_label = form_label("Format");
         let (format_control, format_options) =
             segmented_control(&["ZIP", "7Z", "TAR.GZ", "TAR"], 0);
         let selected_format = Rc::new(Cell::new(ArchiveFormat::Zip));
         body.append(&format_label);
         body.append(&format_control);
 
-        let protection_label = gtk::Label::new(Some("Protection"));
-        protection_label.add_css_class("action-dialog-field-label");
-        protection_label.set_xalign(0.0);
+        let protection_label = form_label("Protection");
         let (protection_control, protection_options) =
             segmented_control(&["No password", "Password protected"], 0);
         let no_password = protection_options[0].clone();
         let password_protected = protection_options[1].clone();
 
-        let password_label = gtk::Label::new(Some("Password"));
-        password_label.add_css_class("action-dialog-field-label");
-        password_label.set_xalign(0.0);
+        let password_label = form_label("Password");
         let password_entry = form_password_entry();
         password_entry.set_show_peek_icon(true);
-        let confirm_label = gtk::Label::new(Some("Confirm password"));
-        confirm_label.add_css_class("action-dialog-field-label");
-        confirm_label.set_xalign(0.0);
+        let confirm_label = form_label("Confirm password");
         let confirm_entry = form_password_entry();
         confirm_entry.set_show_peek_icon(true);
         let password_fields = gtk::Box::new(gtk::Orientation::Vertical, 6);
@@ -2278,9 +2078,7 @@ impl ViewState {
             .unwrap_or_else(glib::home_dir);
         let (body, confirm, dismiss) =
             self.build_archive_modal("Extract to", &entry.display_name, "Extract here");
-        let field_label = gtk::Label::new(Some("Destination folder"));
-        field_label.add_css_class("action-dialog-field-label");
-        field_label.set_xalign(0.0);
+        let field_label = form_label("Destination folder");
         let field = form_entry();
         field.set_hexpand(true);
         field.set_placeholder_text(Some("Type a folder path…"));
@@ -2302,7 +2100,8 @@ impl ViewState {
         suggestion_scroll.add_css_class("transfer-suggestion-scroll");
         body.append(&suggestion_scroll);
         let error = gtk::Label::new(None);
-        error.add_css_class("transfer-error");
+        error.add_css_class("form-message");
+        error.add_css_class("error");
         error.set_wrap(true);
         error.set_xalign(0.0);
         error.set_visible(false);
@@ -2367,9 +2166,7 @@ impl ViewState {
         let (body, confirm, dismiss) =
             self.build_archive_modal("Extract", &entry.display_name, "Extract");
 
-        let password_label = gtk::Label::new(Some("Password"));
-        password_label.add_css_class("action-dialog-field-label");
-        password_label.set_xalign(0.0);
+        let password_label = form_label("Password");
         let password_entry = form_password_entry();
         password_entry.set_show_peek_icon(true);
         body.append(&password_label);
@@ -2411,38 +2208,20 @@ impl ViewState {
             .map(entry_icon)
             .unwrap_or(crate::assets::icons::FOLDER);
 
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        content.add_css_class("properties-dialog");
-        content.add_css_class("properties-content");
-        content.set_halign(gtk::Align::Center);
-        content.set_valign(gtk::Align::Center);
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        header.add_css_class("properties-header");
-        let icon = crate::assets::primary_icon(icon_name, 30);
-        icon.add_css_class("properties-icon");
-        let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
-        heading.set_hexpand(true);
-        heading.set_valign(gtk::Align::Center);
-        let title = gtk::Label::new(Some(&name));
-        title.add_css_class("properties-title");
-        title.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
-        title.set_xalign(0.0);
-        let kind = gtk::Label::new(Some(if is_directory { "Folder" } else { "File" }));
-        kind.add_css_class("properties-kind");
-        kind.set_xalign(0.0);
-        heading.append(&title);
-        heading.append(&kind);
-        let close = gtk::Button::new();
-        close.add_css_class("properties-close");
-        close.set_tooltip_text(Some("Close properties"));
-        close.set_child(Some(&crate::assets::primary_icon(
-            crate::assets::icons::X,
-            15,
-        )));
-        header.append(&icon);
-        header.append(&heading);
-        header.append(&close);
-        content.append(&header);
+        let layout = modal_layout(
+            icon_name,
+            &name,
+            if is_directory { "Folder" } else { "File" },
+            "Close",
+        );
+        layout.content.add_css_class("properties-content");
+        layout
+            .title
+            .set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+        layout.cancel.set_visible(false);
+        layout.confirm.set_visible(false);
+        let kind = layout.subtitle.clone();
+        let close = layout.close.clone();
 
         let details = gtk::Box::new(gtk::Orientation::Vertical, 0);
         details.add_css_class("properties-details");
@@ -2490,7 +2269,7 @@ impl ViewState {
                 "No"
             },
         );
-        content.append(&details);
+        layout.body.append(&details);
 
         let permissions = gtk::Box::new(gtk::Orientation::Vertical, 8);
         permissions.add_css_class("properties-permissions");
@@ -2507,7 +2286,7 @@ impl ViewState {
         let owner = permission_row(&permissions, "Owner");
         let group = permission_row(&permissions, "Group");
         let others = permission_row(&permissions, "Others");
-        content.append(&permissions);
+        layout.body.append(&permissions);
 
         let actions = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         actions.add_css_class("properties-actions");
@@ -2527,7 +2306,8 @@ impl ViewState {
         actions.append(&rename);
         actions.append(&pin);
         actions.append(&copy_path);
-        content.append(&actions);
+        layout.actions.prepend(&actions);
+        let content = layout.content;
 
         let layer = modal_layer(&content);
         window_overlay.add_overlay(&layer);
@@ -6397,48 +6177,14 @@ fn show_authentication_dialog(
         root.set_blurred(true);
     }
 
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    content.add_css_class("transfer-dialog");
-    content.add_css_class("authentication-dialog");
-    content.set_halign(gtk::Align::Center);
-    content.set_valign(gtk::Align::Center);
-
-    let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    header.add_css_class("transfer-header");
-    let symbol = gtk::CenterBox::new();
-    symbol.add_css_class("transfer-symbol");
-    symbol.add_css_class("authentication-symbol");
-    symbol.set_center_widget(Some(&crate::assets::primary_icon(
+    let layout = modal_layout(
         crate::assets::icons::KEY,
-        20,
-    )));
-    let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
-    heading.set_hexpand(true);
-    heading.set_valign(gtk::Align::Center);
-    let title = gtk::Label::new(Some("Authentication required"));
-    title.add_css_class("transfer-title");
-    title.set_xalign(0.0);
-    let subtitle = gtk::Label::new(Some("Sign in to access this network location"));
-    subtitle.add_css_class("transfer-subtitle");
-    subtitle.set_xalign(0.0);
-    heading.append(&title);
-    heading.append(&subtitle);
-    let close = gtk::Button::new();
-    close.add_css_class("transfer-close");
-    close.set_tooltip_text(Some("Cancel authentication"));
-    close.set_valign(gtk::Align::Center);
-    close.set_child(Some(&crate::assets::primary_icon(
-        crate::assets::icons::X,
-        16,
-    )));
-    header.append(&symbol);
-    header.append(&heading);
-    header.append(&close);
-    content.append(&header);
-
-    let body = gtk::Box::new(gtk::Orientation::Vertical, 14);
-    body.add_css_class("transfer-body");
-    body.add_css_class("authentication-body");
+        "Authentication required",
+        "Sign in to access this network location",
+        "Connect",
+    );
+    layout.content.add_css_class("wide");
+    layout.body.add_css_class("authentication-body");
     let explanation_text =
         wrap_dialog_text(message.trim(), AUTHENTICATION_TEXT_WIDTH_CHARS as usize);
     let explanation = gtk::Label::new(Some(&explanation_text));
@@ -6446,7 +6192,7 @@ fn show_authentication_dialog(
     explanation.set_max_width_chars(AUTHENTICATION_TEXT_WIDTH_CHARS);
     explanation.set_wrap(true);
     explanation.set_xalign(0.0);
-    body.append(&explanation);
+    layout.body.append(&explanation);
     if authentication_failed {
         let error_text = wrap_dialog_text(
             "Those credentials weren’t accepted. Check the username, domain, and password, then try again.",
@@ -6457,7 +6203,7 @@ fn show_authentication_dialog(
         error.set_max_width_chars(AUTHENTICATION_TEXT_WIDTH_CHARS);
         error.set_wrap(true);
         error.set_xalign(0.0);
-        body.append(&error);
+        layout.body.append(&error);
     }
 
     let credentials = gtk::Box::new(gtk::Orientation::Vertical, 10);
@@ -6486,40 +6232,24 @@ fn show_authentication_dialog(
     let anonymous = connect_as_buttons[1].clone();
     if flags.contains(gio::AskPasswordFlags::ANONYMOUS_SUPPORTED) {
         let connect_as = gtk::Box::new(gtk::Orientation::Vertical, 7);
-        let label = gtk::Label::new(Some("Connect as"));
-        label.add_css_class("transfer-field-label");
-        label.set_xalign(0.0);
-        connect_as.append(&label);
+        connect_as.append(&form_label("Connect as"));
         connect_as.append(&connect_as_control);
-        body.append(&connect_as);
+        layout.body.append(&connect_as);
     }
-    body.append(&credentials);
+    layout.body.append(&credentials);
 
     let (remember, remember_buttons) =
         segmented_control(&["Don't remember", "Until logout", "Forever"], 0);
     if flags.contains(gio::AskPasswordFlags::SAVING_SUPPORTED) {
         let remember_field = gtk::Box::new(gtk::Orientation::Vertical, 5);
-        let label = gtk::Label::new(Some("Password storage"));
-        label.add_css_class("transfer-field-label");
-        label.set_xalign(0.0);
-        remember_field.append(&label);
+        remember_field.append(&form_label("Password storage"));
         remember_field.append(&remember);
-        body.append(&remember_field);
+        layout.body.append(&remember_field);
     }
-    content.append(&body);
-
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    actions.add_css_class("transfer-actions");
-    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    spacer.set_hexpand(true);
-    let cancel = gtk::Button::with_label("Cancel");
-    cancel.add_css_class("transfer-cancel");
-    let connect = gtk::Button::with_label("Connect");
-    connect.add_css_class("transfer-confirm");
-    actions.append(&spacer);
-    actions.append(&cancel);
-    actions.append(&connect);
-    content.append(&actions);
+    let content = layout.content;
+    let close = layout.close;
+    let cancel = layout.cancel;
+    let connect = layout.confirm;
 
     let credential_widgets = [
         username.clone().upcast::<gtk::Widget>(),
@@ -6670,10 +6400,7 @@ fn wrap_dialog_text(text: &str, max_chars: usize) -> String {
 
 fn append_authentication_field(fields: &gtk::Box, label_text: &str, field: &impl IsA<gtk::Widget>) {
     let group = gtk::Box::new(gtk::Orientation::Vertical, 5);
-    let label = gtk::Label::new(Some(label_text));
-    label.add_css_class("transfer-field-label");
-    label.set_xalign(0.0);
-    group.append(&label);
+    group.append(&form_label(label_text));
     group.append(field);
     fields.append(&group);
 }
@@ -6939,68 +6666,28 @@ pub(super) fn show_error_dialog(parent: &impl IsA<gtk::Widget>, message: &str, d
         root.set_blurred(true);
     }
 
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    content.add_css_class("delete-confirmation");
-    content.add_css_class("delete-confirmation-content");
-    content.set_halign(gtk::Align::Center);
-    content.set_valign(gtk::Align::Center);
-
-    let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    header.add_css_class("delete-confirmation-header");
-    let symbol = gtk::CenterBox::new();
-    symbol.add_css_class("delete-confirmation-symbol");
-    symbol.set_size_request(40, 40);
-    symbol.set_center_widget(Some(&crate::assets::danger_icon(
+    let layout = modal_layout_with_tone(
         crate::assets::icons::X,
-        20,
-    )));
-    let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
-    heading.set_hexpand(true);
-    heading.set_valign(gtk::Align::Center);
-    let title = gtk::Label::new(Some(message));
-    title.add_css_class("delete-confirmation-title");
-    title.set_xalign(0.0);
-    let subtitle = gtk::Label::new(Some(if message == "Completed with errors" {
-        "Some items could not be processed"
-    } else {
-        "The operation could not be completed"
-    }));
-    subtitle.add_css_class("delete-confirmation-subtitle");
-    subtitle.set_xalign(0.0);
-    heading.append(&title);
-    heading.append(&subtitle);
-    let close_icon = gtk::Button::new();
-    close_icon.add_css_class("delete-confirmation-close");
-    close_icon.set_tooltip_text(Some("Close"));
-    close_icon.set_child(Some(&crate::assets::primary_icon(
-        crate::assets::icons::X,
-        16,
-    )));
-    header.append(&symbol);
-    header.append(&heading);
-    header.append(&close_icon);
-    content.append(&header);
-
-    let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    body.add_css_class("delete-confirmation-body");
+        message,
+        if message == "Completed with errors" {
+            "Some items could not be processed"
+        } else {
+            "The operation could not be completed"
+        },
+        "Close",
+        ModalTone::Danger,
+    );
+    layout.cancel.set_visible(false);
     let explanation = gtk::Label::new(Some(detail));
-    explanation.add_css_class("delete-confirmation-explanation");
+    explanation.add_css_class("action-dialog-description");
     explanation.set_max_width_chars(64);
     explanation.set_wrap(true);
     explanation.set_xalign(0.0);
     explanation.set_selectable(true);
-    body.append(&explanation);
-    content.append(&body);
-
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    actions.add_css_class("delete-confirmation-actions");
-    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    spacer.set_hexpand(true);
-    let close = gtk::Button::with_label("Close");
-    close.add_css_class("delete-confirmation-cancel");
-    actions.append(&spacer);
-    actions.append(&close);
-    content.append(&actions);
+    layout.body.append(&explanation);
+    let content = layout.content;
+    let close_icon = layout.close;
+    let close = layout.confirm;
 
     let layer = modal_layer(&content);
     window_overlay.add_overlay(&layer);

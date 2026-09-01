@@ -14,9 +14,32 @@ pub(super) fn form_password_entry() -> gtk::PasswordEntry {
     entry
 }
 
+pub(super) fn form_label(text: &str) -> gtk::Label {
+    let label = gtk::Label::new(Some(text));
+    label.add_css_class("action-dialog-field-label");
+    label.set_xalign(0.0);
+    label
+}
+
+pub(super) fn form_check_button(label: &str) -> gtk::CheckButton {
+    let button = gtk::CheckButton::with_label(label);
+    button.add_css_class("form-check");
+    button
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum ModalTone {
+    #[default]
+    Accent,
+    Danger,
+}
+
 pub(super) struct ModalLayout {
     pub content: gtk::Box,
     pub body: gtk::Box,
+    pub actions: gtk::Box,
+    pub title: gtk::Label,
+    pub subtitle: gtk::Label,
     pub close: gtk::Button,
     pub cancel: gtk::Button,
     pub confirm: gtk::Button,
@@ -29,6 +52,16 @@ pub(super) fn modal_layout(
     subtitle: &str,
     confirm_label: &str,
 ) -> ModalLayout {
+    modal_layout_with_tone(icon, title, subtitle, confirm_label, ModalTone::Accent)
+}
+
+pub(super) fn modal_layout_with_tone(
+    icon: &str,
+    title: &str,
+    subtitle: &str,
+    confirm_label: &str,
+    tone: ModalTone,
+) -> ModalLayout {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.add_css_class("action-dialog");
     content.set_halign(gtk::Align::Center);
@@ -40,9 +73,16 @@ pub(super) fn modal_layout(
 
     let symbol = gtk::CenterBox::new();
     symbol.add_css_class("action-dialog-symbol");
+    if tone == ModalTone::Danger {
+        symbol.add_css_class("danger");
+    }
     symbol.set_size_request(40, 40);
     symbol.set_hexpand(false);
-    symbol.set_center_widget(Some(&crate::assets::primary_icon(icon, 21)));
+    let icon = match tone {
+        ModalTone::Accent => crate::assets::primary_icon(icon, 21),
+        ModalTone::Danger => crate::assets::danger_icon(icon, 21),
+    };
+    symbol.set_center_widget(Some(&icon));
 
     let heading = gtk::Box::new(gtk::Orientation::Vertical, 1);
     heading.add_css_class("action-dialog-heading");
@@ -60,7 +100,7 @@ pub(super) fn modal_layout(
     let close = gtk::Button::new();
     close.add_css_class("action-dialog-close");
     close.set_valign(gtk::Align::Center);
-    close.set_tooltip_text(Some("Cancel"));
+    close.set_tooltip_text(Some("Close dialog"));
     close.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::X,
         16,
@@ -83,6 +123,9 @@ pub(super) fn modal_layout(
     cancel.add_css_class("action-dialog-cancel");
     let confirm = gtk::Button::with_label(confirm_label);
     confirm.add_css_class("action-dialog-confirm");
+    if tone == ModalTone::Danger {
+        confirm.add_css_class("danger");
+    }
     actions.append(&spacer);
     actions.append(&cancel);
     actions.append(&confirm);
@@ -91,6 +134,9 @@ pub(super) fn modal_layout(
     ModalLayout {
         content,
         body,
+        actions,
+        title,
+        subtitle,
         close,
         cancel,
         confirm,

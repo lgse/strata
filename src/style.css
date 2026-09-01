@@ -365,75 +365,11 @@ headerbar menubutton.header-action > button:focus-visible image {
   outline: none;
 }
 
-.delete-confirmation {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_accent, 0.22);
-  border-radius: 7px;
-  box-shadow: 0 18px 54px alpha(@theme_bg, 0.72);
-  color: @theme_text;
-}
 
-.delete-confirmation-content {
-  min-width: 480px;
-}
-
-.delete-confirmation-header {
-  border-bottom: 1px solid alpha(@theme_border, 0.22);
-  padding: 14px 20px;
-}
-
-.delete-confirmation-symbol {
-  background: alpha(@theme_danger, 0.14);
-  border-radius: 6px;
-  min-height: 40px;
-  min-width: 40px;
-}
-
-.delete-confirmation-title {
-  color: @theme_text;
-  font-size: 1.08em;
-  font-weight: 700;
-}
-
-.delete-confirmation-subtitle,
-.delete-confirmation-explanation,
 .delete-confirmation-file-metadata {
   color: @theme_dim_text;
 }
 
-.delete-confirmation-subtitle {
-  font-size: 0.82em;
-}
-
-.delete-confirmation-close {
-  background: transparent;
-  border: none;
-  border-radius: 5px;
-  box-shadow: none;
-  color: @theme_dim_text;
-  min-height: 28px;
-  min-width: 28px;
-  padding: 4px;
-}
-
-.delete-confirmation-close:hover {
-  background: alpha(@theme_muted, 0.56);
-  color: @theme_text;
-}
-
-.delete-confirmation-close:active {
-  background: alpha(@theme_muted, 0.78);
-  color: @theme_accent;
-}
-
-.delete-confirmation-close:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.52);
-  outline-offset: 1px;
-}
-
-.delete-confirmation-body {
-  padding: 20px 20px 10px;
-}
 
 .delete-confirmation-list {
   background: alpha(@theme_highlight, 0.42);
@@ -460,91 +396,6 @@ headerbar menubutton.header-action > button:focus-visible image {
   font-size: 0.82em;
 }
 
-.collision-apply-all {
-  color: @theme_text;
-  padding-top: 2px;
-}
-
-.collision-apply-all check {
-  background: alpha(@theme_bg, 0.72);
-  border: 1px solid alpha(@theme_border, 0.72);
-  border-radius: 4px;
-  color: @theme_bg;
-}
-
-.collision-apply-all:hover check {
-  border-color: @theme_accent;
-}
-
-.collision-apply-all:checked check {
-  background: @theme_accent;
-  border-color: @theme_accent;
-  color: @theme_bg;
-}
-
-.collision-apply-all:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.5);
-  outline-offset: 2px;
-}
-
-.delete-confirmation-actions {
-  border-top: 1px solid alpha(@theme_border, 0.22);
-  padding: 10px 20px 12px;
-}
-
-.delete-confirmation-actions button {
-  border-radius: 5px;
-  box-shadow: none;
-  min-height: 26px;
-  padding: 2px 11px;
-}
-
-.delete-confirmation-cancel {
-  background: transparent;
-  border: 1px solid alpha(@theme_border, 0.54);
-  color: @theme_text;
-}
-
-.delete-confirmation-cancel:hover {
-  background: alpha(@theme_muted, 0.62);
-  border-color: @theme_text;
-  color: @theme_text;
-}
-
-.delete-confirmation-cancel:active {
-  background: alpha(@theme_muted, 0.82);
-  border-color: @theme_accent;
-  color: @theme_accent;
-}
-
-.delete-confirmation-cancel:focus-visible {
-  border-color: @theme_accent;
-  outline: 2px solid alpha(@theme_accent, 0.5);
-  outline-offset: 1px;
-}
-
-.delete-confirmation-delete {
-  background: alpha(@theme_danger, 0.1);
-  border: 1px solid @theme_danger;
-  color: @theme_danger;
-}
-
-.delete-confirmation-delete:hover {
-  background: alpha(@theme_danger, 0.18);
-  border-color: @theme_danger;
-  color: @theme_danger;
-}
-
-.delete-confirmation-delete:active {
-  background: alpha(@theme_danger, 0.28);
-  border-color: @theme_danger;
-  color: @theme_danger;
-}
-
-.delete-confirmation-delete:focus-visible {
-  border-color: @theme_danger;
-  outline-color: @theme_accent;
-}
 
 .action-dialog {
   background: @theme_surface;
@@ -569,6 +420,19 @@ headerbar menubutton.header-action > button:focus-visible image {
   min-width: 40px;
 }
 
+.action-dialog-symbol.danger {
+  background: alpha(@theme_danger, 0.14);
+  border-color: alpha(@theme_danger, 0.32);
+}
+
+.action-dialog.wide {
+  min-width: 520px;
+}
+
+.action-dialog.compact {
+  min-width: 440px;
+}
+
 .action-dialog-title {
   color: @theme_text;
   font-size: 1.08em;
@@ -576,7 +440,9 @@ headerbar menubutton.header-action > button:focus-visible image {
 }
 
 .action-dialog-subtitle,
-.action-dialog-field-label {
+.action-dialog-field-label,
+.action-dialog-description,
+.modal-progress-status {
   color: @theme_dim_text;
 }
 
@@ -633,7 +499,11 @@ headerbar menubutton.header-action > button:focus-visible image {
 .action-dialog-cancel {
   background: transparent;
   border: 1px solid alpha(@theme_border, 0.54);
+  border-radius: 5px;
+  box-shadow: none;
   color: @theme_text;
+  min-height: 26px;
+  padding: 2px 11px;
 }
 
 .action-dialog-cancel:hover {
@@ -656,7 +526,11 @@ headerbar menubutton.header-action > button:focus-visible image {
 .action-dialog-confirm {
   background: alpha(@theme_accent, 0.1);
   border: 1px solid @theme_accent;
+  border-radius: 5px;
+  box-shadow: none;
   color: @theme_accent;
+  min-height: 26px;
+  padding: 2px 11px;
 }
 
 .action-dialog-confirm:hover {
@@ -670,6 +544,98 @@ headerbar menubutton.header-action > button:focus-visible image {
 .action-dialog-confirm:focus-visible {
   outline: 2px solid @theme_accent;
   outline-offset: 1px;
+}
+
+.action-dialog-confirm.danger {
+  background: alpha(@theme_danger, 0.1);
+  border-color: @theme_danger;
+  color: @theme_danger;
+}
+
+.action-dialog-confirm.danger:hover {
+  background: alpha(@theme_danger, 0.18);
+}
+
+.action-dialog-confirm.danger:active {
+  background: alpha(@theme_danger, 0.28);
+}
+
+.action-dialog-confirm.danger:focus-visible {
+  outline-color: @theme_accent;
+}
+
+.action-dialog-cancel:disabled,
+.action-dialog-confirm:disabled,
+.action-dialog-close:disabled {
+  background: alpha(@theme_muted, 0.3);
+  border-color: alpha(@theme_border, 0.38);
+  color: @theme_dim_text;
+  opacity: 0.7;
+}
+
+.form-check {
+  color: @theme_text;
+  padding-top: 2px;
+}
+
+.form-check check {
+  background: alpha(@theme_bg, 0.72);
+  border: 1px solid alpha(@theme_border, 0.72);
+  border-radius: 4px;
+  color: @theme_bg;
+}
+
+.form-check:hover check {
+  border-color: @theme_accent;
+}
+
+.form-check:checked check {
+  background: @theme_accent;
+  border-color: @theme_accent;
+  color: @theme_bg;
+}
+
+.form-check:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: 2px;
+}
+
+.form-check:disabled {
+  color: @theme_dim_text;
+  opacity: 0.7;
+}
+
+.form-message {
+  border-radius: 5px;
+  font-size: 0.82em;
+  padding: 7px 9px;
+}
+
+.form-message.error,
+.authentication-error {
+  background: alpha(@theme_danger, 0.1);
+  border: 1px solid alpha(@theme_danger, 0.5);
+  color: @theme_danger;
+}
+
+.form-message.warning {
+  background: alpha(@theme_accent, 0.1);
+  border: 1px solid alpha(@theme_accent, 0.46);
+  color: @theme_accent;
+}
+
+.modal-progress trough {
+  background: alpha(@theme_bg, 0.72);
+  border: 1px solid alpha(@theme_border, 0.42);
+  border-radius: 5px;
+  min-height: 8px;
+}
+
+.modal-progress progress {
+  background: @theme_accent;
+  border: none;
+  border-radius: 4px;
+  min-height: 8px;
 }
 
 entry.form-control {
@@ -694,6 +660,11 @@ entry.form-control:focus-within {
   box-shadow: 0 0 0 1px alpha(@theme_accent, 0.42);
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
+}
+
+entry.form-control placeholder {
+  color: @theme_dim_text;
+  opacity: 1;
 }
 
 entry.form-control selection {
@@ -751,35 +722,11 @@ dropdown.form-control:disabled > button {
   min-width: 500px;
 }
 
-.update-dialog-header {
-  border-bottom: 1px solid alpha(@theme_border, 0.28);
-  padding: 18px 20px;
-}
 
-.update-dialog-symbol {
-  background: alpha(@theme_accent, 0.12);
-  border: 1px solid alpha(@theme_accent, 0.32);
-  border-radius: 7px;
-  color: @theme_accent;
-  min-height: 40px;
-  min-width: 40px;
-}
-
-.update-dialog-title {
-  color: @theme_text;
-  font-size: 1.05em;
-  font-weight: 700;
-}
-
-.update-dialog-subtitle,
 .update-dialog-status {
   color: @theme_dim_text;
 }
 
-.update-dialog-body {
-  background: alpha(@theme_bg, 0.3);
-  padding: 16px 20px;
-}
 
 .update-dialog-notes {
   background: alpha(@theme_bg, 0.55);
@@ -808,36 +755,6 @@ dropdown.form-control:disabled > button {
   background: @theme_danger;
 }
 
-.update-dialog-actions {
-  border-top: 1px solid alpha(@theme_border, 0.28);
-  padding: 12px 20px;
-}
-
-.update-dialog-action {
-  background: alpha(@theme_accent, 0.12);
-  border: 1px solid alpha(@theme_accent, 0.6);
-  border-radius: 5px;
-  box-shadow: none;
-  color: @theme_accent;
-  min-height: 30px;
-  padding: 4px 14px;
-}
-
-.update-dialog-action:hover {
-  background: alpha(@theme_accent, 0.22);
-  border-color: @theme_accent;
-  color: @theme_accent;
-}
-
-.update-dialog-action:active {
-  background: alpha(@theme_accent, 0.32);
-  color: @theme_accent;
-}
-
-.update-dialog-action:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.5);
-  outline-offset: 1px;
-}
 
 .settings-dialog {
   background: @theme_surface;
@@ -1580,28 +1497,11 @@ menubutton.column-header-action > button:focus-visible image {
   color: @theme_text;
 }
 
-.transfer-dialog {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_accent, 0.34);
-  border-radius: 7px;
-  box-shadow: 0 18px 54px alpha(@theme_bg, 0.76);
-  color: @theme_text;
-  min-width: 500px;
-}
-
-.transfer-header {
-  border-bottom: 1px solid alpha(@theme_border, 0.28);
-  padding: 14px 18px;
-}
 
 .authentication-dialog {
   min-width: 520px;
 }
 
-.authentication-symbol {
-  background: alpha(@theme_accent, 0.12);
-  border-color: alpha(@theme_accent, 0.34);
-}
 
 .authentication-body {
   background: alpha(@theme_bg, 0.18);
@@ -1672,92 +1572,12 @@ menubutton.column-header-action > button:focus-visible image {
 }
 
 .authentication-fields .form-control:disabled,
-.authentication-fields .transfer-field:disabled,
 .segmented-control-option:disabled {
   background: alpha(@theme_muted, 0.3);
   border-color: alpha(@theme_border, 0.38);
   color: @theme_dim_text;
 }
 
-.transfer-symbol {
-  background: alpha(@theme_highlight, 0.64);
-  border: 1px solid alpha(@theme_accent, 0.24);
-  border-radius: 6px;
-  min-height: 40px;
-  min-width: 40px;
-}
-
-.transfer-title {
-  color: @theme_text;
-  font-size: 1.08em;
-  font-weight: 700;
-}
-
-.transfer-subtitle,
-.transfer-field-label {
-  color: @theme_dim_text;
-}
-
-.transfer-subtitle {
-  font-size: 0.82em;
-}
-
-.transfer-close {
-  background: transparent;
-  border: none;
-  border-radius: 5px;
-  box-shadow: none;
-  color: @theme_dim_text;
-  min-height: 28px;
-  min-width: 28px;
-  padding: 4px;
-}
-
-.transfer-close:hover {
-  background: alpha(@theme_muted, 0.56);
-  color: @theme_text;
-}
-
-.transfer-close:active {
-  background: alpha(@theme_muted, 0.78);
-  color: @theme_accent;
-}
-
-.transfer-close:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.52);
-  outline-offset: 1px;
-}
-
-.transfer-body {
-  padding: 18px 20px 16px;
-}
-
-.transfer-field-label {
-  font-size: 0.76em;
-  font-weight: 700;
-}
-
-.transfer-field {
-  background: alpha(@theme_bg, 0.72);
-  border: 1px solid alpha(@theme_border, 0.54);
-  border-radius: 5px;
-  color: @theme_text;
-  min-height: 34px;
-  padding: 3px 9px;
-}
-
-.transfer-field:focus,
-.transfer-field:focus-visible,
-.transfer-field:focus-within {
-  border-color: @theme_accent;
-  box-shadow: 0 0 0 1px alpha(@theme_accent, 0.42);
-  outline: none;
-}
-
-.transfer-field.error {
-  border-color: @theme_danger;
-  box-shadow: 0 0 0 1px alpha(@theme_danger, 0.4);
-}
 
 .transfer-suggestion-scroll,
 .transfer-suggestion-scroll viewport {
@@ -1799,124 +1619,11 @@ menubutton.column-header-action > button:focus-visible image {
   color: @theme_accent;
 }
 
-.transfer-error,
-.transfer-warning {
-  border-radius: 5px;
-  font-size: 0.82em;
-  padding: 7px 9px;
-}
-
-.transfer-error {
-  background: alpha(@theme_danger, 0.1);
-  border: 1px solid alpha(@theme_danger, 0.5);
-  color: @theme_danger;
-}
-
-.transfer-warning {
-  background: alpha(@theme_accent, 0.1);
-  border: 1px solid alpha(@theme_accent, 0.46);
-  color: @theme_accent;
-}
-
-.delete-progress-dialog {
-  min-width: 440px;
-}
-
-.delete-progress-status {
-  color: @theme_dim_text;
-}
-
-.delete-progress-bar trough {
-  background: alpha(@theme_bg, 0.72);
-  border: 1px solid alpha(@theme_border, 0.42);
-  border-radius: 5px;
-  min-height: 8px;
-}
-
-.delete-progress-bar progress {
-  background: @theme_accent;
-  border: none;
-  border-radius: 4px;
-  min-height: 8px;
-}
-
-.transfer-actions {
-  border-top: 1px solid alpha(@theme_border, 0.28);
-  padding: 11px 20px 13px;
-}
-
-.transfer-actions button {
-  border-radius: 5px;
-  box-shadow: none;
-  min-height: 28px;
-  padding: 3px 12px;
-}
-
-.transfer-cancel {
-  background: transparent;
-  border: 1px solid alpha(@theme_border, 0.54);
-  color: @theme_text;
-}
-
-.transfer-cancel:hover {
-  background: alpha(@theme_muted, 0.62);
-  border-color: @theme_text;
-}
-
-.transfer-cancel:active {
-  background: alpha(@theme_muted, 0.82);
-  border-color: @theme_accent;
-  color: @theme_accent;
-}
-
-.transfer-confirm {
-  background: alpha(@theme_accent, 0.14);
-  border: 1px solid @theme_accent;
-  color: @theme_accent;
-}
-
-.transfer-confirm:hover {
-  background: alpha(@theme_accent, 0.22);
-}
-
-.transfer-confirm:active {
-  background: alpha(@theme_accent, 0.32);
-}
-
-.transfer-cancel:focus-visible,
-.transfer-confirm:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.5);
-  outline-offset: 1px;
-}
-
-.properties-dialog {
-  background: @theme_surface;
-  border: 1px solid alpha(@theme_accent, 0.36);
-  border-radius: 7px;
-  box-shadow: 0 18px 54px alpha(@theme_bg, 0.76);
-  color: @theme_text;
-}
-
 .properties-content {
   min-width: 382px;
 }
 
-.properties-header {
-  border-bottom: 1px solid alpha(@theme_border, 0.3);
-  padding: 14px 16px;
-}
 
-.properties-icon {
-  color: @theme_accent;
-}
-
-.properties-title {
-  color: @theme_text;
-  font-size: 1.05em;
-  font-weight: 700;
-}
-
-.properties-kind,
 .properties-row-label,
 .properties-section-title,
 .properties-permission-identity,
@@ -1924,35 +1631,6 @@ menubutton.column-header-action > button:focus-visible image {
   color: @theme_dim_text;
 }
 
-.properties-kind {
-  font-size: 0.82em;
-}
-
-.properties-close {
-  background: transparent;
-  border: none;
-  border-radius: 5px;
-  box-shadow: none;
-  color: @theme_dim_text;
-  min-height: 26px;
-  min-width: 26px;
-  padding: 3px;
-}
-
-.properties-close:hover {
-  background: alpha(@theme_muted, 0.56);
-  color: @theme_text;
-}
-
-.properties-close:active {
-  background: alpha(@theme_muted, 0.78);
-  color: @theme_accent;
-}
-
-.properties-close:focus-visible {
-  outline: 2px solid alpha(@theme_accent, 0.52);
-  outline-offset: 1px;
-}
 
 .properties-details {
   padding: 8px 16px 10px;
@@ -2480,25 +2158,6 @@ menubutton.column-header-action > button:focus-visible image {
   padding: 16px;
 }
 
-.theme-name,
-.theme-name:focus {
-  background: @theme_bg;
-  border: 1px solid alpha(@theme_border, 0.7);
-  box-shadow: none;
-  color: @theme_text;
-  min-height: 30px;
-}
-
-.theme-name:focus {
-  border-color: @theme_accent;
-  box-shadow: 0 0 0 1px alpha(@theme_accent, 0.38);
-}
-
-.theme-name placeholder {
-  color: @theme_dim_text;
-  opacity: 1;
-}
-
 .theme-color-picker,
 .theme-color-picker:hover,
 .theme-color-picker:focus {
@@ -2524,37 +2183,6 @@ menubutton.column-header-action > button:focus-visible image {
   border-color: @theme_accent;
   box-shadow: none;
   padding: 0;
-}
-
-.theme-editor-cancel,
-.theme-editor-save {
-  border-radius: 5px;
-  box-shadow: none;
-  min-height: 30px;
-  padding: 3px 14px;
-}
-
-.theme-editor-cancel {
-  background: @theme_muted;
-  border: 1px solid alpha(@theme_border, 0.7);
-  color: @theme_text;
-}
-
-.theme-editor-cancel:hover {
-  background: @theme_highlight;
-  border-color: @theme_border;
-}
-
-.theme-editor-save {
-  background: @theme_accent;
-  border: 1px solid @theme_accent;
-  color: @theme_bg;
-}
-
-.theme-editor-save:hover {
-  background: @theme_text;
-  border-color: @theme_text;
-  color: @theme_bg;
 }
 
 .theme-editor-error {
