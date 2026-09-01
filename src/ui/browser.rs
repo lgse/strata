@@ -3538,11 +3538,13 @@ impl ViewState {
                 }
             },
             BrowserEvent::ArchiveStarted { total } => {
+                let browser = self.browser.clone();
                 self.show_file_operation_progress(
                     total,
                     crate::assets::icons::FILE_ARCHIVE,
                     "Working",
                     "This may take a moment",
+                    Rc::new(move || browser.cancel_file_operation()),
                 );
             }
             BrowserEvent::ArchiveProgress { completed, total } => {
