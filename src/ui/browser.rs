@@ -1768,7 +1768,12 @@ impl ViewState {
             root.set_blurred(true);
         }
 
-        let layout = modal_layout(crate::assets::icons::TRASH, "Measuring Trash…", "", "Empty Trash");
+        let layout = modal_layout(
+            crate::assets::icons::TRASH,
+            "Measuring Trash…",
+            "",
+            "Empty Trash",
+        );
         layout.set_loading(true, Some("Measuring Trash…"));
         layout.confirm.set_visible(false);
         let content = layout.content;
@@ -1938,10 +1943,11 @@ impl ViewState {
                 }
             });
             if let Some(ui) = weak_ui.upgrade() {
-                ui.pending_empty_trash.replace(Some(LoadHandle::new(move || {
-                    tracing::debug!("empty trash cancelled");
-                    task.abort();
-                })));
+                ui.pending_empty_trash
+                    .replace(Some(LoadHandle::new(move || {
+                        tracing::debug!("empty trash cancelled");
+                        task.abort();
+                    })));
             }
         });
         let keys = gtk::EventControllerKey::new();
