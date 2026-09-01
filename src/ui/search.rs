@@ -23,6 +23,7 @@ pub struct SearchDialog {
 struct SearchState {
     layer: gtk::Box,
     field: gtk::Entry,
+    indexing_spinner: gtk::Spinner,
     list: gtk::ListBox,
     scroller: gtk::ScrolledWindow,
     results: gtk::Stack,
@@ -73,6 +74,12 @@ impl SearchDialog {
             .build();
         field.add_css_class("search-field");
         search_bar.append(&field);
+        let indexing_spinner = gtk::Spinner::new();
+        indexing_spinner.add_css_class("search-indexing-spinner");
+        indexing_spinner.set_tooltip_text(Some("Indexing files…"));
+        indexing_spinner.set_valign(gtk::Align::Center);
+        indexing_spinner.set_visible(false);
+        search_bar.append(&indexing_spinner);
         panel.append(&search_bar);
 
         let status = gtk::Label::new(Some("Type to search the whole tree"));
@@ -101,7 +108,13 @@ impl SearchDialog {
         let footer = gtk::Box::new(gtk::Orientation::Horizontal, 18);
         footer.add_css_class("search-footer");
         let navigation = gtk::Label::new(Some("↑↓  navigate"));
-        let open = gtk::Label::new(Some("↵  open"));
+        let open = gtk::Box::new(gtk::Orientation::Horizontal, 5);
+        open.set_valign(gtk::Align::Center);
+        open.append(&crate::assets::text_icon(
+            crate::assets::icons::CORNER_DOWN_LEFT,
+            13,
+        ));
+        open.append(&gtk::Label::new(Some("open")));
         navigation.add_css_class("search-hint");
         open.add_css_class("search-hint");
         footer.append(&navigation);
@@ -135,6 +148,7 @@ impl SearchDialog {
         let state = Rc::new(SearchState {
             layer,
             field,
+            indexing_spinner,
             list,
             scroller,
             results,
@@ -245,6 +259,8 @@ impl SearchDialog {
         self.state.status.set_visible(true);
         self.state.status.set_text("Type to search the whole tree");
         self.state.truncated_hint.set_visible(false);
+        self.state.indexing_spinner.set_visible(true);
+        self.state.indexing_spinner.start();
         self.state.layer.set_visible(true);
         super::browser::animate_in(&self.state.layer);
         self.state.field.grab_focus();
@@ -273,9 +289,17 @@ impl SearchDialog {
                 indexing,
                 truncated,
             }) = latest
-                && query == state.field.text().trim()
             {
-                render_results(&state, items, indexing, truncated);
+                if indexing {
+                    state.indexing_spinner.set_visible(true);
+                    state.indexing_spinner.start();
+                } else {
+                    state.indexing_spinner.stop();
+                    state.indexing_spinner.set_visible(false);
+                }
+                if !query.is_empty() && query == state.field.text().trim() {
+                    render_results(&state, items, indexing, truncated);
+                }
             }
             glib::ControlFlow::Continue
         });
@@ -466,6 +490,8 @@ fn hide(state: &SearchState) {
     state.search.borrow_mut().take();
     clear_results(state);
     state.truncated_hint.set_visible(false);
+    state.indexing_spinner.stop();
+    state.indexing_spinner.set_visible(false);
     if state.layer.has_css_class("dismissing") {
         return;
     }

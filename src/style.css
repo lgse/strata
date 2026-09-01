@@ -314,6 +314,10 @@ headerbar menubutton.header-action > button:focus-visible image {
   color: @theme_dim_text;
 }
 
+.search-indexing-spinner {
+  color: @theme_accent;
+}
+
 .search-status {
   color: @theme_dim_text;
   padding: 28px 24px;
@@ -380,8 +384,14 @@ headerbar menubutton.header-action > button:focus-visible image {
 }
 
 .search-hint {
-  color: @theme_dim_text;
+  color: @theme_text;
   font-size: 0.78em;
+  opacity: 0.72;
+}
+
+.search-hint-warning {
+  color: @theme_accent;
+  opacity: 0.9;
 }
 
 .settings-backdrop {

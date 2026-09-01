@@ -69,6 +69,29 @@ fn background_index_returns_results_for_queries_received_while_walking() {
     assert!(found, "the worker should publish the matching indexed file");
 }
 
+#[test]
+fn index_reports_completion_before_a_query_is_entered() {
+    let root = unique_fixture_root("empty-query-completion");
+    fs::create_dir_all(&root).expect("the search fixture should be created");
+
+    let (search, events) = index_tree(root.clone());
+    let event = events
+        .recv_timeout(Duration::from_secs(2))
+        .expect("index completion should be published without a query");
+
+    drop(search);
+    fs::remove_dir_all(&root).expect("the search fixture should be removed");
+
+    assert!(matches!(
+        event,
+        SearchEvent::Results {
+            query,
+            indexing: false,
+            ..
+        } if query.is_empty()
+    ));
+}
+
 fn unique_fixture_root(label: &str) -> PathBuf {
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)

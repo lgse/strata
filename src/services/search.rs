@@ -244,9 +244,6 @@ fn insert_match(matches: &mut Vec<(i64, SearchItem)>, score: i64, item: SearchIt
 }
 
 fn publish(sender: &Sender<SearchEvent>, progress: &WalkProgress, indexing: bool) {
-    if progress.query.is_empty() {
-        return;
-    }
     let _sent = sender.send(SearchEvent::Results {
         query: progress.query.clone(),
         items: progress
