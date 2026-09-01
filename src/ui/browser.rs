@@ -1678,15 +1678,11 @@ impl ViewState {
         let explanation = message_dialog_description(
             "Everything in Trash will be permanently deleted. This action cannot be undone.",
         );
-        let loading = gtk::Spinner::new();
-        loading.add_css_class("message-dialog-loading");
-        loading.set_halign(gtk::Align::Start);
-        loading.set_tooltip_text(Some("Calculating Trash contents…"));
-        loading.start();
-        layout.body.append(&loading);
+        layout.set_loading(true, Some("Calculating Trash contents…"));
         layout.body.append(&explanation);
         layout.confirm.set_sensitive(false);
         let subtitle = layout.subtitle.clone();
+        let loading = layout.loading.clone();
         let content = layout.content;
         let close = layout.close;
         let cancel = layout.cancel;

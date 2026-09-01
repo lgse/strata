@@ -630,10 +630,10 @@ headerbar menubutton.header-action > button:focus-visible image {
   color: @theme_accent;
 }
 
-.message-dialog-loading {
+.action-dialog-loading {
   color: @theme_accent;
-  min-height: 20px;
-  min-width: 20px;
+  min-height: 18px;
+  min-width: 18px;
 }
 
 .modal-progress trough {

@@ -82,9 +82,24 @@ pub(super) struct ModalLayout {
     pub actions: gtk::Box,
     pub title: gtk::Label,
     pub subtitle: gtk::Label,
+    pub loading: gtk::Spinner,
     pub close: gtk::Button,
     pub cancel: gtk::Button,
     pub confirm: gtk::Button,
+}
+
+impl ModalLayout {
+    pub fn set_loading(&self, loading: bool, tooltip: Option<&str>) {
+        if loading {
+            self.loading.set_tooltip_text(tooltip.or(Some("Working…")));
+            self.loading.set_visible(true);
+            self.loading.start();
+        } else {
+            self.loading.stop();
+            self.loading.set_visible(false);
+            self.loading.set_tooltip_text(None);
+        }
+    }
 }
 
 /// Builds the shared structure and styling for an action modal.
@@ -163,6 +178,10 @@ pub(super) fn modal_layout_with_tone(
     heading.append(&title);
     heading.append(&subtitle);
 
+    let loading = gtk::Spinner::new();
+    loading.add_css_class("action-dialog-loading");
+    loading.set_visible(false);
+
     let close = gtk::Button::new();
     close.add_css_class("action-dialog-close");
     close.set_valign(gtk::Align::Center);
@@ -174,6 +193,7 @@ pub(super) fn modal_layout_with_tone(
 
     header.append(&symbol);
     header.append(&heading);
+    header.append(&loading);
     header.append(&close);
     content.append(&header);
 
@@ -203,6 +223,7 @@ pub(super) fn modal_layout_with_tone(
         actions,
         title,
         subtitle,
+        loading,
         close,
         cancel,
         confirm,
