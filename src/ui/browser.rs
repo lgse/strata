@@ -1786,7 +1786,7 @@ impl ViewState {
         let layout = modal_layout(
             crate::assets::icons::TRASH,
             "Measuring Trash…",
-            "",
+            "Calculating the number and size of items. This may take a few seconds.",
             "Empty Trash",
         );
         layout.set_loading(true, Some("Measuring Trash…"));
