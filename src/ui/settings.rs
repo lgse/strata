@@ -149,6 +149,10 @@ fn uses_compact_navigation(dialog_width: i32) -> bool {
     dialog_width < COMPACT_NAVIGATION_BREAKPOINT
 }
 
+#[expect(
+    deprecated,
+    reason = "GTK 4.12 deprecated translate_coordinates and allocation without a replacement for click-in-bounds checks"
+)]
 pub fn build_layer(
     browser: &BrowserView,
     settings_button: &gtk::Button,
@@ -265,9 +269,23 @@ pub fn build_layer(
         navigation_contents,
         responsive_flows,
     );
-    responsive_panel.set_hexpand(true);
-    responsive_panel.set_vexpand(true);
-    layer.append(&responsive_panel);
+    responsive_panel.set_hexpand(false);
+    responsive_panel.set_vexpand(false);
+    let top = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    top.set_vexpand(true);
+    let bottom = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    bottom.set_vexpand(true);
+    let left = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    left.set_hexpand(true);
+    let right = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    right.set_hexpand(true);
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    row.append(&left);
+    row.append(&responsive_panel);
+    row.append(&right);
+    layer.append(&top);
+    layer.append(&row);
+    layer.append(&bottom);
 
     let hidden_layer = layer.clone();
     let inactive_settings = settings_button.clone();
@@ -285,13 +303,47 @@ pub fn build_layer(
         gtk::glib::Propagation::Stop
     });
     layer.add_controller(keys);
+
+    let click_layer = layer.clone();
+    let click_dialog = responsive_panel.clone();
+    let click_settings = settings_button.clone();
+    let click_root = root.clone();
+    let click = gtk::GestureClick::new();
+    click.connect_pressed(move |_, _, x, y| {
+        let on_dialog = click_dialog
+            .translate_coordinates(&click_layer, 0.0, 0.0)
+            .is_some_and(|(dx, dy)| {
+                let alloc = click_dialog.allocation();
+                x >= dx
+                    && x < dx + alloc.width() as f64
+                    && y >= dy
+                    && y < dy + alloc.height() as f64
+            });
+        if !on_dialog {
+            hide(&click_layer, &click_settings, &click_root);
+        }
+    });
+    layer.add_controller(click);
     layer
 }
 
 fn hide(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin) {
-    layer.set_visible(false);
-    root.set_blurred(false);
-    button.remove_css_class("active");
+    if layer.has_css_class("dismissing") {
+        return;
+    }
+    layer.add_css_class("dismissing");
+    layer.set_sensitive(false);
+    let layer_for_anim = layer.clone();
+    let layer = layer.clone();
+    let root = root.clone();
+    let button = button.clone();
+    super::browser::animate_out(&layer_for_anim, move || {
+        layer.set_visible(false);
+        layer.remove_css_class("dismissing");
+        layer.set_sensitive(true);
+        root.set_blurred(false);
+        button.remove_css_class("active");
+    });
 }
 
 fn general_page(browser: &BrowserView, manager: Rc<ThemeManager>) -> gtk::Widget {
@@ -880,7 +932,7 @@ pub(super) fn show_update_dialog(
     let cancel = layout.cancel;
     let action = layout.confirm;
 
-    let layer = modal_layer(&content);
+    let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
     window_overlay.add_overlay(&layer);
     action.grab_focus();
 

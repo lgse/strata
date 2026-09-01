@@ -4,9 +4,14 @@
 mod tests;
 
 use std::{
+    ffi::{OsStr, OsString},
     future::Future,
     io,
-    path::Path,
+    os::{
+        fd::{AsFd, OwnedFd},
+        unix::ffi::{OsStrExt, OsStringExt},
+    },
+    path::{Component, Path, PathBuf},
     pin::Pin,
     rc::Rc,
     sync::{
@@ -677,9 +682,8 @@ impl OperationProvider for LocalOperationProvider {
                         .as_deref()
                         .map(sevenz_rust2::Password::from)
                         .unwrap_or_default();
-                    let reader = sevenz_rust2::ArchiveReader::open(&archive_path, pw)
-                        .map_err(|e| e.to_string())?;
-                    extract_7z_from_reader(reader, &dest_dir, &work_progress)
+                    let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
+                    extract_7z_from_reader(file, &dest_dir, pw, &work_progress)
                 }
                 Some(ArchiveFormat::TarGz) => {
                     extract_tar(&archive_path, &dest_dir, true, &work_progress)
@@ -828,36 +832,133 @@ fn compress_tar(
     Ok(())
 }
 
-fn safe_extract_path(dest_dir: &Path, name: &str) -> Result<std::path::PathBuf, String> {
-    let outpath = dest_dir.join(name);
-    if !outpath.starts_with(dest_dir) {
-        return Err(format!("Refusing to extract outside destination: {name}"));
+fn validated_archive_path(name: &str) -> Result<PathBuf, String> {
+    let normalized = name.replace('\\', "/");
+    if normalized.is_empty() || normalized.starts_with('/') {
+        return Err(format!("Refusing unsafe archive path: {name}"));
     }
-    Ok(outpath)
-}
 
-/// Returns a path that doesn't conflict with existing files. If `outpath` exists,
-/// appends " (2)", " (3)", etc. to the stem.
-fn unique_path(outpath: &Path) -> std::path::PathBuf {
-    if !outpath.exists() {
-        return outpath.to_path_buf();
-    }
-    let parent = outpath.parent().unwrap_or(Path::new("."));
-    let stem = outpath
-        .file_stem()
-        .map(|s| s.to_string_lossy().to_string())
-        .unwrap_or_default();
-    let ext = outpath
-        .extension()
-        .map(|e| format!(".{}", e.to_string_lossy()))
-        .unwrap_or_default();
-    for i in 2.. {
-        let candidate = parent.join(format!("{stem} ({i}){ext}"));
-        if !candidate.exists() {
-            return candidate;
+    let mut path = PathBuf::new();
+    for component in normalized.split('/') {
+        match component.as_bytes() {
+            b"" | b"." => {}
+            b".." => return Err(format!("Refusing unsafe archive path: {name}")),
+            bytes if bytes.len() >= 2 && bytes[0].is_ascii_alphabetic() && bytes[1] == b':' => {
+                return Err(format!("Refusing unsafe archive path: {name}"));
+            }
+            _ => path.push(component),
         }
     }
-    outpath.to_path_buf()
+    if path.as_os_str().is_empty() {
+        return Err(format!("Refusing empty archive path: {name}"));
+    }
+    Ok(path)
+}
+
+fn suffixed_name(name: &OsStr, index: u64) -> OsString {
+    let path = Path::new(name);
+    let mut candidate = path.file_stem().unwrap_or(name).as_bytes().to_vec();
+    candidate.extend_from_slice(format!(" ({index})").as_bytes());
+    if let Some(extension) = path.extension() {
+        candidate.push(b'.');
+        candidate.extend_from_slice(extension.as_bytes());
+    }
+    OsString::from_vec(candidate)
+}
+
+struct ExtractionDestination {
+    root: OwnedFd,
+}
+
+impl ExtractionDestination {
+    fn open(path: &Path) -> Result<Self, String> {
+        let root = rustix::fs::open(
+            path,
+            rustix::fs::OFlags::RDONLY
+                | rustix::fs::OFlags::DIRECTORY
+                | rustix::fs::OFlags::NOFOLLOW
+                | rustix::fs::OFlags::CLOEXEC,
+            rustix::fs::Mode::empty(),
+        )
+        .map_err(|error| format!("Could not open extraction destination: {error}"))?;
+        Ok(Self { root })
+    }
+
+    fn available_name<Fd: AsFd>(&self, directory: &Fd, name: &OsStr) -> Result<OsString, String> {
+        for index in 1.. {
+            let candidate = if index == 1 {
+                name.to_owned()
+            } else {
+                suffixed_name(name, index)
+            };
+            match rustix::fs::statat(directory, &candidate, rustix::fs::AtFlags::SYMLINK_NOFOLLOW) {
+                Err(rustix::io::Errno::NOENT) => return Ok(candidate),
+                Err(error) => {
+                    return Err(format!(
+                        "Could not inspect extraction path {}: {error}",
+                        candidate.to_string_lossy()
+                    ));
+                }
+                Ok(stat) => match rustix::fs::FileType::from_raw_mode(stat.st_mode) {
+                    rustix::fs::FileType::RegularFile | rustix::fs::FileType::Directory => {}
+                    _ => {
+                        return Err(format!(
+                            "Refusing to extract over special filesystem object: {}",
+                            candidate.to_string_lossy()
+                        ));
+                    }
+                },
+            }
+        }
+        Err(format!(
+            "Could not find an available extraction name for {}",
+            name.to_string_lossy()
+        ))
+    }
+
+    fn create_directories(&self, path: &Path) -> Result<OwnedFd, String> {
+        let mut directory = self.root.try_clone().map_err(|error| error.to_string())?;
+        for component in path.components() {
+            let Component::Normal(name) = component else {
+                return Err("Invalid internal extraction path".to_owned());
+            };
+            match rustix::fs::mkdirat(&directory, name, rustix::fs::Mode::from_raw_mode(0o777)) {
+                Ok(()) | Err(rustix::io::Errno::EXIST) => {}
+                Err(error) => return Err(error.to_string()),
+            }
+            directory = rustix::fs::openat(
+                &directory,
+                name,
+                rustix::fs::OFlags::RDONLY
+                    | rustix::fs::OFlags::DIRECTORY
+                    | rustix::fs::OFlags::NOFOLLOW
+                    | rustix::fs::OFlags::CLOEXEC,
+                rustix::fs::Mode::empty(),
+            )
+            .map_err(|error| error.to_string())?;
+        }
+        Ok(directory)
+    }
+
+    fn create_file(&self, path: &Path) -> Result<std::fs::File, String> {
+        let parent = self.create_directories(path.parent().unwrap_or_else(|| Path::new("")))?;
+        let name = path
+            .file_name()
+            .ok_or_else(|| "Archive entry has no file name".to_owned())?;
+        let name = self.available_name(&parent, name)?;
+        rustix::fs::openat(
+            parent,
+            name,
+            rustix::fs::OFlags::WRONLY
+                | rustix::fs::OFlags::CREATE
+                | rustix::fs::OFlags::EXCL
+                | rustix::fs::OFlags::NOFOLLOW
+                | rustix::fs::OFlags::CLOEXEC,
+            rustix::fs::Mode::from_raw_mode(0o666),
+        )
+        .map(std::fs::File::from)
+        .map_err(|error| error.to_string())
+    }
 }
 
 /// Counts all files (not directories) under the given paths recursively.
@@ -933,7 +1034,7 @@ fn is_incompressible(path: &Path) -> bool {
 
 /// Tracks renamed top-level entries so child paths follow the rename.
 struct ExtractNameResolver {
-    renames: std::collections::HashMap<String, String>,
+    renames: std::collections::HashMap<OsString, OsString>,
 }
 
 impl ExtractNameResolver {
@@ -943,27 +1044,35 @@ impl ExtractNameResolver {
         }
     }
 
-    /// Resolves an archive entry name to a safe, conflict-free filesystem path.
+    /// Resolves a validated relative entry path to a conflict-free relative path.
     /// If the top-level component already exists, it's renamed to "name (2)", etc.
-    fn resolve(&mut self, dest_dir: &Path, name: &str) -> Result<std::path::PathBuf, String> {
-        let top = name.split('/').next().unwrap_or(name);
-        let rest = &name[top.len()..];
+    fn resolve(
+        &mut self,
+        destination: &ExtractionDestination,
+        path: &Path,
+    ) -> Result<PathBuf, String> {
+        let top = path
+            .components()
+            .next()
+            .and_then(|component| match component {
+                Component::Normal(name) => Some(name),
+                _ => None,
+            })
+            .ok_or_else(|| "Archive entry has no file name".to_owned())?;
         let resolved_top = if let Some(existing) = self.renames.get(top) {
             existing.clone()
-        } else if dest_dir.join(top).exists() {
-            let renamed = unique_path(&dest_dir.join(top));
-            let new_name = renamed
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| top.to_string());
-            self.renames.insert(top.to_string(), new_name.clone());
-            new_name
         } else {
-            self.renames.insert(top.to_string(), top.to_string());
-            top.to_string()
+            let name = destination.available_name(&destination.root, top)?;
+            self.renames.insert(top.to_owned(), name.clone());
+            name
         };
-        let resolved_name = format!("{resolved_top}{rest}");
-        safe_extract_path(dest_dir, &resolved_name)
+        let mut resolved = PathBuf::from(resolved_top);
+        resolved.extend(
+            path.components()
+                .skip(1)
+                .map(|component| component.as_os_str()),
+        );
+        Ok(resolved)
     }
 }
 
@@ -973,6 +1082,7 @@ fn extract_zip_from_archive(
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
 ) -> Result<Option<String>, String> {
+    let destination = ExtractionDestination::open(dest_dir)?;
     let pw_bytes = password.map(|p| p.as_bytes());
     let mut resolver = ExtractNameResolver::new();
     let mut first_name = None;
@@ -981,23 +1091,22 @@ fn extract_zip_from_archive(
         let mut entry = archive
             .by_index_with_options(i, read_options)
             .map_err(|e| e.to_string())?;
-        let name = entry.name().trim_end_matches('/').to_owned();
-        let outpath = resolver.resolve(dest_dir, &name)?;
+        let name = entry.name();
+        entry
+            .enclosed_name()
+            .ok_or_else(|| format!("Refusing unsafe ZIP path: {name}"))?;
+        let path = validated_archive_path(name)?;
+        let outpath = resolver.resolve(&destination, &path)?;
         if first_name.is_none() {
             first_name = outpath
-                .strip_prefix(dest_dir)
-                .ok()
-                .and_then(|p| p.components().next())
+                .components()
+                .next()
                 .map(|c| c.as_os_str().to_string_lossy().to_string());
         }
         if entry.is_dir() {
-            std::fs::create_dir_all(&outpath).map_err(|e| e.to_string())?;
+            destination.create_directories(&outpath)?;
         } else {
-            if let Some(parent) = outpath.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-            }
-            let outpath = unique_path(&outpath);
-            let mut outfile = std::fs::File::create(&outpath).map_err(|e| e.to_string())?;
+            let mut outfile = destination.create_file(&outpath)?;
             copy_with_big_buf(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
         }
         progress.fetch_add(1, Ordering::Relaxed);
@@ -1011,6 +1120,7 @@ fn extract_tar(
     gzip: bool,
     progress: &Arc<AtomicUsize>,
 ) -> Result<Option<String>, String> {
+    let destination = ExtractionDestination::open(dest_dir)?;
     let file = std::fs::File::open(archive_path).map_err(|e| e.to_string())?;
     let reader: Box<dyn std::io::Read> = if gzip {
         Box::new(flate2::read::GzDecoder::new(file))
@@ -1023,23 +1133,18 @@ fn extract_tar(
     for entry in archive.entries().map_err(|e| e.to_string())? {
         let mut entry = entry.map_err(|e| e.to_string())?;
         let name = entry.path().map_err(|e| e.to_string())?;
-        let name = name.to_string_lossy().trim_end_matches('/').to_string();
-        let outpath = resolver.resolve(dest_dir, &name)?;
+        let path = validated_archive_path(&name.to_string_lossy())?;
+        let outpath = resolver.resolve(&destination, &path)?;
         if first_name.is_none() {
             first_name = outpath
-                .strip_prefix(dest_dir)
-                .ok()
-                .and_then(|p| p.components().next())
+                .components()
+                .next()
                 .map(|c| c.as_os_str().to_string_lossy().to_string());
         }
         if entry.header().entry_type().is_dir() {
-            std::fs::create_dir_all(&outpath).map_err(|e| e.to_string())?;
+            destination.create_directories(&outpath)?;
         } else {
-            if let Some(parent) = outpath.parent() {
-                std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-            }
-            let outpath = unique_path(&outpath);
-            let mut outfile = std::fs::File::create(&outpath).map_err(|e| e.to_string())?;
+            let mut outfile = destination.create_file(&outpath)?;
             copy_with_big_buf(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
         }
         progress.fetch_add(1, Ordering::Relaxed);
@@ -1104,45 +1209,47 @@ fn add_path_to_7z(
 }
 
 fn extract_7z_from_reader(
-    mut reader: sevenz_rust2::ArchiveReader<std::fs::File>,
+    reader: std::fs::File,
     dest_dir: &Path,
+    password: sevenz_rust2::Password,
     progress: &Arc<AtomicUsize>,
 ) -> Result<Option<String>, String> {
+    let destination = ExtractionDestination::open(dest_dir)?;
     let resolver = std::cell::RefCell::new(ExtractNameResolver::new());
     let first_name = std::cell::RefCell::new(None::<String>);
-    let dest = dest_dir.to_path_buf();
     let progress = progress.clone();
-    reader
-        .for_each_entries(|entry, reader| {
-            let name = entry.name.trim_end_matches('/');
+    sevenz_rust2::decompress_with_extract_fn_and_password(
+        reader,
+        dest_dir,
+        password,
+        |entry, reader, _safe_path| {
+            let path = validated_archive_path(&entry.name)
+                .map_err(|e| sevenz_rust2::Error::Other(e.into()))?;
             let outpath = resolver
                 .borrow_mut()
-                .resolve(&dest, name)
-                .map_err(|e| sevenz_rust2::Error::Other(e.to_string().into()))?;
+                .resolve(&destination, &path)
+                .map_err(|e| sevenz_rust2::Error::Other(e.into()))?;
             if first_name.borrow().is_none() {
                 *first_name.borrow_mut() = outpath
-                    .strip_prefix(&dest)
-                    .ok()
-                    .and_then(|p| p.components().next())
+                    .components()
+                    .next()
                     .map(|c| c.as_os_str().to_string_lossy().to_string());
             }
             if entry.is_directory {
-                std::fs::create_dir_all(&outpath)
-                    .map_err(|e| sevenz_rust2::Error::Other(e.to_string().into()))?;
+                destination
+                    .create_directories(&outpath)
+                    .map_err(|e| sevenz_rust2::Error::Other(e.into()))?;
             } else {
-                if let Some(parent) = outpath.parent() {
-                    std::fs::create_dir_all(parent)
-                        .map_err(|e| sevenz_rust2::Error::Other(e.to_string().into()))?;
-                }
-                let outpath = unique_path(&outpath);
-                let mut file = std::fs::File::create(&outpath)
-                    .map_err(|e| sevenz_rust2::Error::Other(e.to_string().into()))?;
+                let mut file = destination
+                    .create_file(&outpath)
+                    .map_err(|e| sevenz_rust2::Error::Other(e.into()))?;
                 copy_with_big_buf(reader, &mut file)
                     .map_err(|e| sevenz_rust2::Error::Other(e.to_string().into()))?;
             }
             progress.fetch_add(1, Ordering::Relaxed);
             Ok(false)
-        })
-        .map_err(|e| e.to_string())?;
+        },
+    )
+    .map_err(|e| e.to_string())?;
     Ok(first_name.into_inner())
 }

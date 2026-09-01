@@ -4,8 +4,10 @@ use std::{
     cell::{Cell, RefCell},
     error::Error,
     fs,
+    io::{Cursor, Write},
+    path::Path,
     rc::Rc,
-    sync::Mutex,
+    sync::{Arc, Mutex, atomic::AtomicUsize},
     time::SystemTime,
 };
 
@@ -15,7 +17,8 @@ static ASYNC_FILE_TEST: Mutex<()> = Mutex::new(());
 
 use super::{
     LocalOperationProvider, copy_recursively, deletion_error_message, deletion_error_summary,
-    operation_error_summary, replace_local, replace_local_with, transfer_is_noop, validated_child,
+    extract_7z_from_reader, extract_tar, extract_zip_from_archive, operation_error_summary,
+    replace_local, replace_local_with, transfer_is_noop, validated_archive_path, validated_child,
 };
 use crate::{
     model::Location,
@@ -335,5 +338,203 @@ fn staged_directory_replacement_does_not_merge_old_contents() -> Result<(), Box<
     assert!(!target.join("old").exists());
     assert!(source.exists());
     fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+fn write_zip(path: &Path, entries: &[(&str, &[u8])]) -> Result<(), Box<dyn Error>> {
+    let mut writer = zip::ZipWriter::new(fs::File::create(path)?);
+    for (name, contents) in entries {
+        writer.start_file(*name, zip::write::SimpleFileOptions::default())?;
+        writer.write_all(contents)?;
+    }
+    writer.finish()?;
+    Ok(())
+}
+
+fn append_raw_tar_entry<W: Write>(
+    builder: &mut tar::Builder<W>,
+    name: &str,
+    contents: &[u8],
+) -> Result<(), Box<dyn Error>> {
+    let mut header = tar::Header::new_gnu();
+    header.as_old_mut().name[..name.len()].copy_from_slice(name.as_bytes());
+    header.set_mode(0o644);
+    header.set_size(contents.len() as u64);
+    header.set_entry_type(tar::EntryType::Regular);
+    header.set_cksum();
+    builder.append(&header, contents)?;
+    Ok(())
+}
+
+fn write_tar(path: &Path, name: &str, contents: &[u8], gzip: bool) -> Result<(), Box<dyn Error>> {
+    let file = fs::File::create(path)?;
+    if gzip {
+        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
+            file,
+            flate2::Compression::default(),
+        ));
+        append_raw_tar_entry(&mut builder, name, contents)?;
+        builder.into_inner()?.finish()?;
+    } else {
+        let mut builder = tar::Builder::new(file);
+        append_raw_tar_entry(&mut builder, name, contents)?;
+        builder.finish()?;
+    }
+    Ok(())
+}
+
+fn write_7z(path: &Path, name: &str, contents: &[u8]) -> Result<(), Box<dyn Error>> {
+    let mut writer = sevenz_rust2::ArchiveWriter::create(path)?;
+    writer.push_archive_entry(
+        sevenz_rust2::ArchiveEntry::new_file(name),
+        Some(Cursor::new(contents)),
+    )?;
+    writer.finish()?;
+    Ok(())
+}
+
+fn extract_zip(path: &Path, destination: &Path) -> Result<Option<String>, String> {
+    let file = fs::File::open(path).map_err(|error| error.to_string())?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
+    extract_zip_from_archive(
+        &mut archive,
+        destination,
+        None,
+        &Arc::new(AtomicUsize::new(0)),
+    )
+}
+
+#[test]
+fn archive_paths_must_be_nonempty_confined_relative_paths() -> Result<(), Box<dyn Error>> {
+    for path in [
+        "",
+        ".",
+        "../marker",
+        "safe/../marker",
+        "/tmp/marker",
+        "\\tmp\\marker",
+        "C:\\tmp\\marker",
+        "C:marker",
+        "safe/C:/marker",
+        "\\\\server\\share\\marker",
+        "//server/share/marker",
+    ] {
+        assert!(validated_archive_path(path).is_err(), "accepted {path:?}");
+    }
+    assert_eq!(
+        validated_archive_path("folder/./nested//item.txt")?,
+        Path::new("folder/nested/item.txt")
+    );
+    Ok(())
+}
+
+#[test]
+fn every_archive_format_rejects_parent_traversal() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    let zip_path = root.path().join("malicious.zip");
+    let tar_path = root.path().join("malicious.tar");
+    let tar_gz_path = root.path().join("malicious.tar.gz");
+    let seven_z_path = root.path().join("malicious.7z");
+    write_zip(&zip_path, &[("../zip-marker", b"escaped")])?;
+    write_tar(&tar_path, "../tar-marker", b"escaped", false)?;
+    write_tar(&tar_gz_path, "../tar-gz-marker", b"escaped", true)?;
+    write_7z(&seven_z_path, "../seven-z-marker", b"escaped")?;
+
+    assert!(extract_zip(&zip_path, &destination).is_err());
+    assert!(
+        extract_tar(
+            &tar_path,
+            &destination,
+            false,
+            &Arc::new(AtomicUsize::new(0)),
+        )
+        .is_err()
+    );
+    assert!(
+        extract_tar(
+            &tar_gz_path,
+            &destination,
+            true,
+            &Arc::new(AtomicUsize::new(0)),
+        )
+        .is_err()
+    );
+    assert!(
+        extract_7z_from_reader(
+            fs::File::open(&seven_z_path)?,
+            &destination,
+            sevenz_rust2::Password::empty(),
+            &Arc::new(AtomicUsize::new(0)),
+        )
+        .is_err()
+    );
+
+    for marker in [
+        "zip-marker",
+        "tar-marker",
+        "tar-gz-marker",
+        "seven-z-marker",
+    ] {
+        assert!(!root.path().join(marker).exists(), "created {marker}");
+    }
+    Ok(())
+}
+
+#[test]
+fn extraction_rejects_final_and_intermediate_symlinks() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    let external = root.path().join("external");
+    fs::create_dir(&destination)?;
+    fs::create_dir(&external)?;
+    std::os::unix::fs::symlink(root.path().join("missing"), destination.join("dangling"))?;
+    std::os::unix::fs::symlink(&external, destination.join("redirect"))?;
+    let final_archive = root.path().join("final.zip");
+    let intermediate_archive = root.path().join("intermediate.zip");
+    write_zip(&final_archive, &[("dangling", b"escaped")])?;
+    write_zip(&intermediate_archive, &[("redirect/marker", b"escaped")])?;
+
+    assert!(extract_zip(&final_archive, &destination).is_err());
+    assert!(extract_zip(&intermediate_archive, &destination).is_err());
+    assert!(!root.path().join("missing").exists());
+    assert!(!external.join("marker").exists());
+    Ok(())
+}
+
+#[test]
+fn extraction_supports_nesting_and_regular_conflicts() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    fs::write(destination.join("report.txt"), b"original")?;
+    fs::create_dir(destination.join("existing"))?;
+    fs::write(destination.join("existing/old.txt"), b"old")?;
+    let archive_path = root.path().join("content.zip");
+    write_zip(
+        &archive_path,
+        &[
+            ("folder/nested/item.txt", b"nested"),
+            ("report.txt", b"replacement"),
+            ("existing/new.txt", b"new"),
+        ],
+    )?;
+
+    assert_eq!(
+        extract_zip(&archive_path, &destination)?.as_deref(),
+        Some("folder")
+    );
+    assert_eq!(
+        fs::read(destination.join("folder/nested/item.txt"))?,
+        b"nested"
+    );
+    assert_eq!(fs::read(destination.join("report.txt"))?, b"original");
+    assert_eq!(
+        fs::read(destination.join("report (2).txt"))?,
+        b"replacement"
+    );
+    assert_eq!(fs::read(destination.join("existing/old.txt"))?, b"old");
+    assert_eq!(fs::read(destination.join("existing (2)/new.txt"))?, b"new");
     Ok(())
 }

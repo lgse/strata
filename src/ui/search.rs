@@ -38,6 +38,10 @@ struct SearchState {
 }
 
 impl SearchDialog {
+    #[expect(
+        deprecated,
+        reason = "GTK 4.12 deprecated translate_coordinates and allocation without a replacement for click-in-bounds checks"
+    )]
     pub fn new(activate: Rc<dyn Fn(SearchItem)>, dismiss: Rc<dyn Fn()>) -> Self {
         let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
         layer.add_css_class("search-backdrop");
@@ -116,8 +120,16 @@ impl SearchDialog {
         top_spacer.set_vexpand(true);
         let bottom_spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
         bottom_spacer.set_vexpand(true);
+        let left_spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        left_spacer.set_hexpand(true);
+        let right_spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        right_spacer.set_hexpand(true);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        row.append(&left_spacer);
+        row.append(&panel);
+        row.append(&right_spacer);
         layer.append(&top_spacer);
-        layer.append(&panel);
+        layer.append(&row);
         layer.append(&bottom_spacer);
 
         let state = Rc::new(SearchState {
@@ -180,6 +192,28 @@ impl SearchDialog {
             glib::Propagation::Proceed
         });
         state.layer.add_controller(keys);
+
+        let click_state = Rc::downgrade(&state);
+        let click_panel = panel.clone();
+        let click = gtk::GestureClick::new();
+        click.connect_pressed(move |_, _, x, y| {
+            let Some(state) = click_state.upgrade() else {
+                return;
+            };
+            let on_panel = click_panel
+                .translate_coordinates(&state.layer, 0.0, 0.0)
+                .is_some_and(|(px, py)| {
+                    let alloc = click_panel.allocation();
+                    x >= px
+                        && x < px + alloc.width() as f64
+                        && y >= py
+                        && y < py + alloc.height() as f64
+                });
+            if !on_panel {
+                hide(&state);
+            }
+        });
+        state.layer.add_controller(click);
         let adjustment = state.scroller.vadjustment();
         let changed = Rc::downgrade(&state);
         adjustment.connect_changed(move |_| {
@@ -212,6 +246,7 @@ impl SearchDialog {
         self.state.status.set_text("Type to search the whole tree");
         self.state.truncated_hint.set_visible(false);
         self.state.layer.set_visible(true);
+        super::browser::animate_in(&self.state.layer);
         self.state.field.grab_focus();
 
         let (handle, receiver) = index_tree(root);
@@ -430,9 +465,20 @@ fn hide(state: &SearchState) {
     state.generation.set(state.generation.get() + 1);
     state.search.borrow_mut().take();
     clear_results(state);
-    state.layer.set_visible(false);
     state.truncated_hint.set_visible(false);
-    (state.dismiss)();
+    if state.layer.has_css_class("dismissing") {
+        return;
+    }
+    state.layer.add_css_class("dismissing");
+    state.layer.set_sensitive(false);
+    let layer = state.layer.clone();
+    let dismiss = state.dismiss.clone();
+    super::browser::animate_out(&state.layer, move || {
+        layer.set_visible(false);
+        layer.remove_css_class("dismissing");
+        layer.set_sensitive(true);
+        dismiss();
+    });
 }
 
 fn clear_results(state: &SearchState) {

@@ -48,6 +48,7 @@ headerbar menubutton.header-action > button {
   min-height: 30px;
   min-width: 30px;
   padding: 5px;
+  transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
 headerbar .sidebar-toggle:hover,
@@ -62,6 +63,7 @@ headerbar button.header-action:active,
 headerbar menubutton.header-action > button:active,
 headerbar menubutton.header-action > button:checked {
   background: alpha(@theme_muted, 0.8);
+  transform: scale(0.97);
 }
 
 .header-actions {
@@ -107,9 +109,9 @@ headerbar menubutton.header-action > button:focus-visible image {
 
 .appearance-popover contents {
   background: @theme_surface;
-  border: 1px solid alpha(@theme_accent, 0.22);
-  border-radius: 7px;
-  box-shadow: 0 8px 28px alpha(#000000, 0.45);
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 9px;
+  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
   padding: 0;
 }
 
@@ -140,11 +142,16 @@ headerbar menubutton.header-action > button:focus-visible image {
   margin: 0;
   min-height: 26px;
   padding: 0 8px;
+  transition: background 160ms ease-out, transform 160ms ease-out;
 }
 
 .appearance-option:hover {
   background: alpha(@theme_muted, 0.5);
   color: @theme_text;
+}
+
+.appearance-option:active {
+  transform: scale(0.97);
 }
 
 .appearance-option:disabled {
@@ -190,6 +197,12 @@ headerbar menubutton.header-action > button:focus-visible image {
   min-height: 22px;
   min-width: 22px;
   padding: 2px;
+  transition: transform 160ms ease-out, background 160ms ease-out;
+}
+
+.location-action:active {
+  background: alpha(@theme_muted, 0.78);
+  transform: scale(0.97);
 }
 
 .breadcrumbs {
@@ -201,11 +214,16 @@ headerbar menubutton.header-action > button:focus-visible image {
   color: @theme_dim_text;
   min-height: 22px;
   padding: 0 5px;
+  transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 
 .breadcrumb:hover {
   background: alpha(@theme_muted, 0.62);
   color: @theme_text;
+}
+
+.breadcrumb:not(.current):active {
+  transform: scale(0.97);
 }
 
 .breadcrumb.current:hover {
@@ -233,6 +251,7 @@ headerbar menubutton.header-action > button:focus-visible image {
   min-width: 22px;
   opacity: 0;
   padding: 2px 4px;
+  transition: opacity 160ms ease-out, background 160ms ease-out;
 }
 
 .current-breadcrumb:hover .copy-path,
@@ -257,13 +276,18 @@ headerbar menubutton.header-action > button:focus-visible image {
 
 .search-backdrop {
   background: alpha(@theme_bg, 0.58);
+  transition: opacity 200ms ease-out;
+}
+
+.search-backdrop.modal-hidden {
+  opacity: 0;
 }
 
 .search-dialog {
   background: @theme_surface;
-  border: 1px solid @theme_accent;
+  border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 9px;
-  box-shadow: 0 12px 38px alpha(@theme_bg, 0.82), 0 0 14px alpha(@theme_accent, 0.24);
+  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
   min-height: 452px;
   min-width: 760px;
 }
@@ -309,6 +333,7 @@ headerbar menubutton.header-action > button:focus-visible image {
   border-bottom: 1px solid alpha(@theme_border, 0.28);
   color: @theme_text;
   padding: 0;
+  transition: background 160ms ease-out;
 }
 
 .search-result > box {
@@ -361,14 +386,37 @@ headerbar menubutton.header-action > button:focus-visible image {
 
 .settings-backdrop {
   background: alpha(@theme_bg, 0.82);
+  transition: opacity 200ms ease-out;
+}
+
+.settings-backdrop.modal-hidden {
+  opacity: 0;
 }
 
 .modal-backdrop,
 .modal-backdrop:focus,
 .modal-backdrop:focus-visible,
 .modal-backdrop:focus-within {
-  background: alpha(@theme_bg, 0.08);
+  background: alpha(@theme_bg, 0.55);
   outline: none;
+  transition: opacity 200ms ease-out;
+}
+
+.modal-backdrop.modal-hidden {
+  opacity: 0;
+}
+
+.action-dialog,
+.search-dialog,
+.settings-dialog {
+  transition: opacity 200ms ease-out, transform 200ms ease-out;
+}
+
+.modal-hidden .action-dialog,
+.modal-hidden .search-dialog,
+.modal-hidden .settings-dialog {
+  opacity: 0;
+  transform: scale(0.96);
 }
 
 
@@ -405,9 +453,9 @@ headerbar menubutton.header-action > button:focus-visible image {
 
 .action-dialog {
   background: @theme_surface;
-  border: 1px solid alpha(@theme_accent, 0.22);
-  border-radius: 7px;
-  box-shadow: 0 18px 54px alpha(@theme_bg, 0.72);
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 9px;
+  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
   color: @theme_text;
   min-width: 480px;
 }
@@ -469,6 +517,7 @@ headerbar menubutton.header-action > button:focus-visible image {
   min-height: 28px;
   min-width: 28px;
   padding: 4px;
+  transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 
 .action-dialog-close:hover {
@@ -479,6 +528,7 @@ headerbar menubutton.header-action > button:focus-visible image {
 .action-dialog-close:active {
   background: alpha(@theme_muted, 0.78);
   color: @theme_accent;
+  transform: scale(0.97);
 }
 
 .action-dialog-close:focus-visible {
@@ -510,6 +560,7 @@ headerbar menubutton.header-action > button:focus-visible image {
   color: @theme_text;
   min-height: 26px;
   padding: 2px 11px;
+  transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
 }
 
 .action-dialog-cancel:hover {
@@ -521,6 +572,7 @@ headerbar menubutton.header-action > button:focus-visible image {
   background: alpha(@theme_muted, 0.82);
   border-color: @theme_accent;
   color: @theme_accent;
+  transform: scale(0.97);
 }
 
 .action-dialog-cancel:focus-visible {
@@ -537,6 +589,7 @@ headerbar menubutton.header-action > button:focus-visible image {
   color: @theme_accent;
   min-height: 26px;
   padding: 2px 11px;
+  transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
 .action-dialog-confirm:hover {
@@ -545,6 +598,7 @@ headerbar menubutton.header-action > button:focus-visible image {
 
 .action-dialog-confirm:active {
   background: alpha(@theme_accent, 0.28);
+  transform: scale(0.97);
 }
 
 .action-dialog-confirm:focus-visible {
@@ -564,6 +618,7 @@ headerbar menubutton.header-action > button:focus-visible image {
 
 .action-dialog-confirm.danger:active {
   background: alpha(@theme_danger, 0.28);
+  transform: scale(0.97);
 }
 
 .action-dialog-confirm.danger:focus-visible {
@@ -589,6 +644,7 @@ headerbar menubutton.header-action > button:focus-visible image {
   border: 1px solid alpha(@theme_border, 0.72);
   border-radius: 4px;
   color: @theme_bg;
+  transition: background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
 }
 
 .form-check:hover check {
@@ -707,11 +763,17 @@ dropdown.form-control > button {
   color: @theme_text;
   min-height: 34px;
   padding: 3px 9px;
+  transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out;
 }
 
 dropdown.form-control > button:hover {
   background: alpha(@theme_muted, 0.62);
   border-color: alpha(@theme_accent, 0.68);
+}
+
+dropdown.form-control > button:active {
+  background: alpha(@theme_muted, 0.78);
+  transform: scale(0.97);
 }
 
 dropdown.form-control:focus > button,
@@ -770,9 +832,9 @@ dropdown.form-control:disabled > button {
 
 .settings-dialog {
   background: @theme_surface;
-  border: 1px solid alpha(@theme_accent, 0.22);
-  border-radius: 7px;
-  box-shadow: 0 18px 54px alpha(#000000, 0.6);
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 9px;
+  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
 }
 
 .settings-navigation {
@@ -796,6 +858,7 @@ dropdown.form-control:disabled > button {
   color: @theme_dim_text;
   min-height: 38px;
   padding: 5px 10px;
+  transition: background 160ms ease-out, color 160ms ease-out, transform 160ms ease-out;
 }
 
 .settings-navigation.compact button {
@@ -805,6 +868,10 @@ dropdown.form-control:disabled > button {
 .settings-navigation button:hover {
   background: alpha(@theme_muted, 0.62);
   color: @theme_text;
+}
+
+.settings-navigation button:active {
+  transform: scale(0.97);
 }
 
 .settings-navigation button.settings-nav-active {
@@ -837,10 +904,16 @@ dropdown.form-control:disabled > button {
   min-height: 28px;
   min-width: 28px;
   padding: 4px;
+  transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
 .settings-close:hover {
   background: alpha(@theme_muted, 0.62);
+}
+
+.settings-close:active {
+  background: alpha(@theme_muted, 0.82);
+  transform: scale(0.97);
 }
 
 .settings-preferences {
@@ -943,12 +1016,17 @@ dropdown.form-control:disabled > button {
   box-shadow: none;
   color: @theme_accent;
   padding: 2px 0;
+  transition: transform 160ms ease-out, color 160ms ease-out;
 }
 
 .release-notes-fallback:hover,
-.release-notes-fallback:active,
 .release-notes-fallback:visited {
   color: @theme_accent;
+}
+
+.release-notes-fallback:active {
+  color: @theme_accent;
+  transform: scale(0.97);
 }
 
 .release-notes-fallback:focus-visible {
@@ -987,6 +1065,7 @@ dropdown.form-control:disabled > button {
   color: @theme_accent;
   min-height: 28px;
   padding: 3px 12px;
+  transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
 .settings-update-check:hover {
@@ -999,6 +1078,7 @@ dropdown.form-control:disabled > button {
   background: alpha(@theme_accent, 0.32);
   border-color: @theme_accent;
   color: @theme_accent;
+  transform: scale(0.97);
 }
 
 .settings-update-check:focus-visible {
@@ -1069,6 +1149,7 @@ dropdown.form-control:disabled > button {
   min-height: 42px;
   padding: 4px 14px;
   text-decoration: none;
+  transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 
 .about-repository:hover {
@@ -1079,6 +1160,7 @@ dropdown.form-control:disabled > button {
 .about-repository:active {
   background: alpha(@theme_highlight, 0.72);
   color: @theme_accent;
+  transform: scale(0.97);
 }
 
 .about-repository:focus-visible {
@@ -1092,6 +1174,7 @@ switch {
   box-shadow: none;
   min-height: 22px;
   min-width: 40px;
+  transition: background 160ms ease-out, border-color 160ms ease-out;
 }
 
 switch:checked {
@@ -1106,6 +1189,7 @@ switch:checked slider {
   box-shadow: 0 1px 3px alpha(#000000, 0.4);
   min-height: 18px;
   min-width: 18px;
+  transition: background 160ms ease-out;
 }
 
 .sidebar-shell,
@@ -1131,6 +1215,7 @@ switch:checked slider {
   color: @theme_accent;
   min-height: 38px;
   padding: 4px 13px;
+  transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
 .sidebar-update:hover {
@@ -1141,6 +1226,7 @@ switch:checked slider {
 .sidebar-update:active {
   background: alpha(@theme_muted, 0.56);
   color: @theme_accent;
+  transform: scale(0.97);
 }
 
 .sidebar-update:focus-visible {
@@ -1167,10 +1253,15 @@ switch:checked slider {
   color: @theme_text;
   min-height: 30px;
   padding: 3px 8px;
+  transition: background 160ms ease-out, transform 160ms ease-out;
 }
 
 .sidebar-row:hover {
   background: alpha(@theme_muted, 0.38);
+}
+
+.sidebar-row:active {
+  transform: scale(0.97);
 }
 
 .sidebar-row.active,
@@ -1254,6 +1345,7 @@ paned > separator {
   min-height: 24px;
   min-width: 24px;
   padding: 2px;
+  transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
 }
 
 .preview-header-action:hover {
@@ -1266,6 +1358,7 @@ paned > separator {
   background: alpha(@theme_muted, 0.82);
   border-color: @theme_accent;
   color: @theme_accent;
+  transform: scale(0.97);
 }
 
 .preview-header-action:focus-visible {
@@ -1386,9 +1479,9 @@ paned > separator {
 
 .peek-popover {
   background: @theme_surface;
-  border: 1px solid alpha(@theme_accent, 0.34);
-  border-radius: 6px;
-  box-shadow: 0 12px 32px alpha(#000000, 0.42);
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 9px;
+  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
   color: @theme_text;
   padding: 0;
 }
@@ -1423,15 +1516,20 @@ menubutton.column-header-action > button {
   min-height: 24px;
   min-width: 24px;
   padding: 3px;
+  transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
 button.column-header-action:hover,
-button.column-header-action:active,
 button.column-header-action:checked,
 menubutton.column-header-action > button:hover,
-menubutton.column-header-action > button:active,
 menubutton.column-header-action > button:checked {
   background: alpha(@theme_muted, 0.62);
+}
+
+button.column-header-action:active,
+menubutton.column-header-action > button:active {
+  background: alpha(@theme_muted, 0.78);
+  transform: scale(0.97);
 }
 
 .column-header-action image {
@@ -1481,9 +1579,9 @@ menubutton.column-header-action > button:focus-visible image {
 
 .column-popover contents {
   background: @theme_surface;
-  border: 1px solid alpha(@theme_accent, 0.22);
-  border-radius: 7px;
-  box-shadow: 0 8px 28px alpha(#000000, 0.45);
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 9px;
+  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
   padding: 0;
 }
 
@@ -1506,11 +1604,17 @@ menubutton.column-header-action > button:focus-visible image {
   color: @theme_text;
   min-height: 30px;
   padding: 3px 7px;
+  transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 
 .column-menu-option:hover {
   background: alpha(@theme_muted, 0.5);
   color: @theme_text;
+}
+
+.column-menu-option:active {
+  background: alpha(@theme_muted, 0.78);
+  transform: scale(0.97);
 }
 
 
@@ -1548,6 +1652,7 @@ menubutton.column-header-action > button:focus-visible image {
   color: @theme_dim_text;
   min-height: 32px;
   padding: 3px 12px;
+  transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
 }
 
 .segmented-control-option.first {
@@ -1580,6 +1685,7 @@ menubutton.column-header-action > button:focus-visible image {
 .segmented-control-option:active {
   background: alpha(@theme_muted, 0.82);
   color: @theme_accent;
+  transform: scale(0.97);
 }
 
 .segmented-control-option:focus-visible {
@@ -1621,6 +1727,7 @@ menubutton.column-header-action > button:focus-visible image {
   color: @theme_text;
   min-height: 30px;
   padding: 3px 7px;
+  transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 
 .transfer-suggestion:hover,
@@ -1633,6 +1740,7 @@ menubutton.column-header-action > button:focus-visible image {
 .transfer-suggestion:active {
   background: alpha(@theme_muted, 0.8);
   color: @theme_accent;
+  transform: scale(0.97);
 }
 
 .properties-content {
@@ -1724,6 +1832,7 @@ menubutton.column-header-action > button:focus-visible image {
   color: @theme_text;
   min-height: 28px;
   padding: 3px 9px;
+  transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
 }
 
 .properties-action:hover {
@@ -1736,6 +1845,7 @@ menubutton.column-header-action > button:focus-visible image {
   background: alpha(@theme_muted, 0.78);
   border-color: @theme_accent;
   color: @theme_accent;
+  transform: scale(0.97);
 }
 
 .properties-action:focus-visible {
@@ -1753,9 +1863,9 @@ menubutton.column-header-action > button:focus-visible image {
 
 .folder-context-popover contents {
   background: @theme_surface;
-  border: 1px solid alpha(@theme_accent, 0.24);
-  border-radius: 7px;
-  box-shadow: 0 8px 28px alpha(@theme_bg, 0.72);
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 9px;
+  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
   color: @theme_text;
   padding: 0;
 }
@@ -1799,6 +1909,7 @@ menubutton.column-header-action > button:focus-visible image {
   color: @theme_text;
   min-height: 26px;
   padding: 1px 6px;
+  transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 
 .item-context-option:hover {
@@ -1808,6 +1919,7 @@ menubutton.column-header-action > button:focus-visible image {
 
 .item-context-option:active {
   background: alpha(@theme_muted, 0.78);
+  transform: scale(0.97);
 }
 
 .item-context-option:disabled {
@@ -1838,6 +1950,7 @@ menubutton.column-header-action > button:focus-visible image {
 .item-context-option.danger:active {
   background: alpha(@theme_danger, 0.24);
   color: @theme_danger;
+  transform: scale(0.97);
 }
 
 .item-context-option.danger:focus-visible {
@@ -1858,6 +1971,7 @@ menubutton.column-header-action > button:focus-visible image {
   color: @theme_text;
   min-height: 30px;
   padding: 3px 8px;
+  transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 
 .folder-context-option:hover {
@@ -1867,6 +1981,7 @@ menubutton.column-header-action > button:focus-visible image {
 
 .folder-context-option:active {
   background: alpha(@theme_muted, 0.78);
+  transform: scale(0.97);
 }
 
 .folder-context-option.danger {
@@ -1881,6 +1996,7 @@ menubutton.column-header-action > button:focus-visible image {
 .folder-context-option.danger:active {
   background: alpha(@theme_danger, 0.24);
   color: @theme_danger;
+  transform: scale(0.97);
 }
 
 .folder-context-option.danger:focus-visible {
@@ -1921,6 +2037,7 @@ menubutton.column-header-action > button:focus-visible image {
   border-radius: 6px;
   margin: 1px 8px;
   padding: 0;
+  transition: background 160ms ease-out, color 160ms ease-out;
 }
 
 .file-row {
@@ -2114,11 +2231,16 @@ entry.theme-search {
   min-height: 26px;
   min-width: 26px;
   padding: 4px;
+  transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
 .theme-search-clear:hover,
 .theme-search-clear:active {
   background: alpha(@theme_muted, 0.62);
+}
+
+.theme-search-clear:active {
+  transform: scale(0.97);
 }
 
 .theme-search-clear:focus-visible {
@@ -2233,12 +2355,17 @@ entry.theme-search {
 .add-theme-card {
   border: 1px dashed alpha(@theme_border, 0.75);
   color: @theme_dim_text;
+  transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
 }
 
 .add-theme-card:hover {
   background: alpha(@theme_muted, 0.45);
   border-color: @theme_accent;
   color: @theme_text;
+}
+
+.add-theme-card:active {
+  transform: scale(0.97);
 }
 
 .add-theme-card:focus-visible {
@@ -2275,15 +2402,23 @@ entry.theme-search {
   border: 1px solid alpha(@theme_border, 0.7);
   box-shadow: none;
   padding: 0;
+  transition: transform 160ms ease-out, border-color 160ms ease-out;
 }
 
 .theme-color-picker button:hover,
-.theme-color-picker button:focus,
+.theme-color-picker button:focus {
+  background: transparent;
+  border-color: @theme_accent;
+  box-shadow: none;
+  padding: 0;
+}
+
 .theme-color-picker button:active {
   background: transparent;
   border-color: @theme_accent;
   box-shadow: none;
   padding: 0;
+  transform: scale(0.97);
 }
 
 .theme-editor-error {
@@ -2344,9 +2479,9 @@ entry.theme-search {
 
 .grid-thumbnail-popover contents {
   background: @theme_surface;
-  border: 1px solid alpha(@theme_accent, 0.28);
-  border-radius: 7px;
-  box-shadow: 0 8px 28px alpha(@theme_bg, 0.72);
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 9px;
+  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
   color: @theme_text;
   padding: 14px;
 }
@@ -2395,6 +2530,26 @@ entry.theme-search {
 .grid-thumbnail-scale:active slider {
   background: @theme_highlight;
   border-color: @theme_accent;
+}
+
+menubutton.grid-thumbnail-menu > button {
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  box-shadow: none;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 3px;
+  transition: transform 160ms ease-out, background 160ms ease-out;
+}
+
+menubutton.grid-thumbnail-menu > button:hover {
+  background: alpha(@theme_muted, 0.62);
+}
+
+menubutton.grid-thumbnail-menu > button:active {
+  background: alpha(@theme_muted, 0.82);
+  transform: scale(0.97);
 }
 
 .grid-thumbnail-scale:focus-visible slider,
@@ -2533,6 +2688,7 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   color: @theme_dim_text;
   min-height: 28px;
   padding: 0 12px;
+  transition: background 160ms ease-out, color 160ms ease-out;
 }
 
 .explorer-heading-button:hover {
@@ -2543,6 +2699,7 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
 .explorer-heading-button:active {
   background: alpha(@theme_muted, 0.72);
   color: @theme_accent;
+  transform: scale(0.97);
 }
 
 .explorer-heading-button:focus-visible {
@@ -2573,6 +2730,7 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   min-height: 26px;
   min-width: 26px;
   padding: 3px;
+  transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 
 .explorer-navigation-button image {
@@ -2601,6 +2759,7 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
 .explorer-navigation-button:active {
   background: alpha(@theme_muted, 0.78);
   color: @theme_accent;
+  transform: scale(0.97);
 }
 
 .explorer-navigation-button:focus-visible {
@@ -2612,6 +2771,7 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   background: transparent;
   color: @theme_text;
   outline: none;
+  transition: background 160ms ease-out, color 160ms ease-out;
 }
 
 .explorer-list row:hover {
@@ -2658,4 +2818,10 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   min-height: 38px;
   padding-bottom: 5px;
   padding-top: 5px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 1ms !important;
+  }
 }

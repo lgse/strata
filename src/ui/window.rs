@@ -311,6 +311,25 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     });
     window.add_controller(settings_shortcut);
     window.set_child(Some(&window_overlay));
+    let rename_cancel_view = browser.clone();
+    let rename_cancel = gtk::GestureClick::new();
+    rename_cancel.set_propagation_phase(gtk::PropagationPhase::Capture);
+    rename_cancel.connect_pressed(move |gesture, _, x, y| {
+        if !rename_cancel_view.rename_is_active() {
+            return;
+        }
+        let on_entry = gesture
+            .widget()
+            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
+            .is_some_and(|target| {
+                target.has_css_class("inline-rename")
+                    || target.ancestor(gtk::Entry::static_type()).is_some()
+            });
+        if !on_entry {
+            rename_cancel_view.cancel_rename();
+        }
+    });
+    window.add_controller(rename_cancel);
     install_modal_focus_trap(&window);
     install_keyboard_navigation(&window, &browser, &sidebar, &sidebar_toggle, &preview);
     browser.navigate(location.unwrap_or_else(home_directory));
@@ -855,6 +874,7 @@ fn show_settings(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin) {
     layer.set_visible(true);
     layer.grab_focus();
     button.add_css_class("active");
+    super::browser::animate_in(layer);
 }
 
 fn append_menu_heading(container: &gtk::Box, text: &str) {

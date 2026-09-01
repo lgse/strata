@@ -1123,7 +1123,7 @@ impl ViewState {
         let cancel = layout.cancel;
         let replace = layout.confirm;
 
-        let layer = modal_layer(&content);
+        let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
         let cancel_layer = layer.clone();
         let cancel_overlay = window_overlay.clone();
@@ -1186,19 +1186,24 @@ impl ViewState {
         });
 
         let escape = gtk::EventControllerKey::new();
+        escape.set_propagation_phase(gtk::PropagationPhase::Capture);
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay;
         let escaped_root = blurred_root;
+        let enter_replace = replace.clone();
         escape.connect_key_pressed(move |_, key, _, _| {
             if key == gtk::gdk::Key::Escape {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
+                glib::Propagation::Stop
+            } else if key == gtk::gdk::Key::Return || key == gtk::gdk::Key::KP_Enter {
+                enter_replace.emit_clicked();
                 glib::Propagation::Stop
             } else {
                 glib::Propagation::Proceed
             }
         });
         layer.add_controller(escape);
-        cancel.grab_focus();
+        replace.grab_focus();
     }
 
     fn copy_entries(&self, entries: &[FileEntry]) {
@@ -1391,7 +1396,17 @@ impl ViewState {
             );
         });
 
-        let layer = modal_layer(&content);
+        let initial_text = folder_input_path(&base);
+        let dirty_field = field.clone();
+        let dirty_creating = creating_destination.clone();
+        let layer = modal_layer(
+            &content,
+            &window_overlay,
+            blurred_root.clone(),
+            Some(Rc::new(move || {
+                dirty_creating.get() || dirty_field.text() != initial_text
+            })),
+        );
         window_overlay.add_overlay(&layer);
         let cancel_layer = layer.clone();
         let cancel_overlay = window_overlay.clone();
@@ -1602,7 +1617,7 @@ impl ViewState {
         let content = layout.content;
         let cancel = layout.confirm;
 
-        let layer = modal_layer(&content);
+        let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
         self.delete_progress.replace(Some(DeleteProgressView {
             layer,
@@ -1779,7 +1794,7 @@ impl ViewState {
         let content = layout.content;
         let cancel = layout.cancel;
 
-        let layer = modal_layer(&content);
+        let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
         self.trash_loading.replace(Some(TrashLoadingView {
             layer,
@@ -1862,7 +1877,7 @@ impl ViewState {
         let cancel = layout.cancel;
         let empty = layout.confirm;
 
-        let layer = modal_layer(&content);
+        let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
         let cancel_layer = layer.clone();
         let cancel_overlay = window_overlay.clone();
@@ -2064,7 +2079,7 @@ impl ViewState {
         let cancel = layout.cancel;
         let confirm = layout.confirm;
 
-        let layer = modal_layer(&content);
+        let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
         let cancelled_layer = layer.clone();
         let cancelled_overlay = window_overlay.clone();
@@ -2100,6 +2115,7 @@ impl ViewState {
             browser.focus_active();
         });
         let keys = gtk::EventControllerKey::new();
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay;
         let escaped_root = blurred_root;
@@ -2110,6 +2126,9 @@ impl ViewState {
             if key == gtk::gdk::Key::Escape {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
                 escaped_browser.focus_active();
+                glib::Propagation::Stop
+            } else if key == gtk::gdk::Key::Return || key == gtk::gdk::Key::KP_Enter {
+                focused_confirm.emit_clicked();
                 glib::Propagation::Stop
             } else if !modifiers
                 .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
@@ -2125,11 +2144,7 @@ impl ViewState {
             }
         });
         layer.add_controller(keys);
-        let initial_focus = if permanent {
-            cancel.clone()
-        } else {
-            confirm.clone()
-        };
+        let initial_focus = confirm.clone();
         glib::idle_add_local_once(move || {
             initial_focus.grab_focus();
             if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
@@ -2151,6 +2166,7 @@ impl ViewState {
         title: &str,
         subtitle: &str,
         confirm_label: &str,
+        block_dismiss: Option<Rc<dyn Fn() -> bool>>,
     ) -> (gtk::Box, gtk::Button, Rc<dyn Fn()>) {
         let Some(window_overlay) = self
             .overlay
@@ -2172,7 +2188,12 @@ impl ViewState {
             subtitle,
             confirm_label,
         );
-        let layer = modal_layer(&layout.content);
+        let layer = modal_layer(
+            &layout.content,
+            &window_overlay,
+            blurred_root.clone(),
+            block_dismiss,
+        );
         window_overlay.add_overlay(&layer);
 
         let dismiss: Rc<dyn Fn()> = Rc::new({
@@ -2216,11 +2237,29 @@ impl ViewState {
 
         let title = format!("Compress {}", item_count_label(entries.len()));
         let subtitle = entry_kind_summary(&entries);
-        let (body, confirm, dismiss) = self.build_archive_modal(&title, &subtitle, "Compress");
 
-        let name_label = form_label("Archive name");
         let name_entry = form_entry();
         name_entry.set_text(&default_name);
+        let password_entry = form_password_entry();
+        password_entry.set_show_peek_icon(true);
+        let confirm_entry = form_password_entry();
+        confirm_entry.set_show_peek_icon(true);
+        let compress_default_name = default_name.clone();
+        let dirty_name = name_entry.clone();
+        let dirty_password = password_entry.clone();
+        let dirty_confirm = confirm_entry.clone();
+        let (body, confirm, dismiss) = self.build_archive_modal(
+            &title,
+            &subtitle,
+            "Compress",
+            Some(Rc::new(move || {
+                dirty_name.text() != compress_default_name
+                    || !dirty_password.text().is_empty()
+                    || !dirty_confirm.text().is_empty()
+            })),
+        );
+
+        let name_label = form_label("Archive name");
         body.append(&name_label);
         body.append(&name_entry);
 
@@ -2238,11 +2277,7 @@ impl ViewState {
         let password_protected = protection_options[1].clone();
 
         let password_label = form_label("Password");
-        let password_entry = form_password_entry();
-        password_entry.set_show_peek_icon(true);
         let confirm_label = form_label("Confirm password");
-        let confirm_entry = form_password_entry();
-        confirm_entry.set_show_peek_icon(true);
         let password_fields = gtk::Box::new(gtk::Orientation::Vertical, 6);
         password_fields.append(&password_label);
         password_fields.append(&password_entry);
@@ -2363,14 +2398,20 @@ impl ViewState {
             .parent()
             .and_then(|p| p.native_path().map(Path::to_path_buf))
             .unwrap_or_else(glib::home_dir);
-        let (body, confirm, dismiss) =
-            self.build_archive_modal("Extract to", &entry.display_name, "Extract here");
-        let field_label = form_label("Destination folder");
         let field = form_entry();
         field.set_hexpand(true);
         field.set_placeholder_text(Some("Type a folder path…"));
         field.set_text(&folder_input_path(&base));
         field.set_position(-1);
+        let extract_initial_text = folder_input_path(&base);
+        let dirty_field = field.clone();
+        let (body, confirm, dismiss) = self.build_archive_modal(
+            "Extract to",
+            &entry.display_name,
+            "Extract here",
+            Some(Rc::new(move || dirty_field.text() != extract_initial_text)),
+        );
+        let field_label = form_label("Destination folder");
         body.append(&field_label);
         body.append(&field);
 
@@ -2450,12 +2491,17 @@ impl ViewState {
     }
 
     fn show_extract_password_dialog(self: &Rc<Self>, entry: FileEntry, destination: Location) {
-        let (body, confirm, dismiss) =
-            self.build_archive_modal("Extract", &entry.display_name, "Extract");
-
-        let password_label = form_label("Password");
         let password_entry = form_password_entry();
         password_entry.set_show_peek_icon(true);
+        let dirty_password = password_entry.clone();
+        let (body, confirm, dismiss) = self.build_archive_modal(
+            "Extract",
+            &entry.display_name,
+            "Extract",
+            Some(Rc::new(move || !dirty_password.text().is_empty())),
+        );
+
+        let password_label = form_label("Password");
         body.append(&password_label);
         body.append(&password_entry);
 
@@ -2596,7 +2642,7 @@ impl ViewState {
         layout.actions.prepend(&actions);
         let content = layout.content;
 
-        let layer = modal_layer(&content);
+        let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
         let closing_layer = layer.clone();
         let closing_overlay = window_overlay.clone();
@@ -4374,10 +4420,24 @@ impl ViewState {
         resize.set_button(1);
         let resize_start = Rc::new(Cell::new(COLUMN_WIDTH));
         let pointer_start = Rc::new(Cell::new(None));
+        let last_press = Rc::new(Cell::new(0u64));
         let shell_for_resize_start = shell.clone();
+        let shell_for_autofit = shell.clone();
+        let column_for_autofit = column.clone();
         let resize_start_for_begin = resize_start.clone();
         let pointer_start_for_begin = pointer_start.clone();
+        let last_press_for_begin = last_press.clone();
         resize.connect_drag_begin(move |gesture, _, _| {
+            let now = glib::monotonic_time() as u64;
+            let prev = last_press_for_begin.get();
+            last_press_for_begin.set(now);
+            if now.wrapping_sub(prev) <= 400_000 {
+                let max_natural =
+                    max_child_natural_width(column_for_autofit.upcast_ref::<gtk::Widget>());
+                shell_for_autofit.set_size_request(max_natural.max(COLUMN_WIDTH), -1);
+                gesture.set_state(gtk::EventSequenceState::Denied);
+                return;
+            }
             resize_start_for_begin.set(shell_for_resize_start.width().max(COLUMN_WIDTH));
             if let Some((pointer_x, _)) = gesture.current_event().and_then(|event| event.position())
             {
@@ -6450,6 +6510,20 @@ fn resized_column_width(initial_width: i32, horizontal_offset: f64) -> i32 {
         .max(f64::from(COLUMN_WIDTH)) as i32
 }
 
+pub(super) fn max_child_natural_width(widget: &gtk::Widget) -> i32 {
+    let (_, natural, _, _) = widget.measure(gtk::Orientation::Horizontal, -1);
+    let mut max_natural = natural;
+    let mut child = widget.first_child();
+    while let Some(c) = child {
+        let child_max = max_child_natural_width(&c);
+        if child_max > max_natural {
+            max_natural = child_max;
+        }
+        child = c.next_sibling();
+    }
+    max_natural
+}
+
 fn horizontal_reveal_target(
     current: f64,
     page_size: f64,
@@ -6546,7 +6620,16 @@ fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
     }
 }
 
-pub(super) fn modal_layer(content: &impl IsA<gtk::Widget>) -> gtk::Box {
+#[expect(
+    deprecated,
+    reason = "GTK 4.12 deprecated translate_coordinates and allocation without a replacement for click-in-bounds checks"
+)]
+pub(super) fn modal_layer(
+    content: &impl IsA<gtk::Widget>,
+    overlay: &gtk::Overlay,
+    root: Option<BlurBin>,
+    block_dismiss: Option<Rc<dyn Fn() -> bool>>,
+) -> gtk::Box {
     let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
     layer.add_css_class("app-modal-layer");
     layer.add_css_class("modal-backdrop");
@@ -6559,10 +6642,69 @@ pub(super) fn modal_layer(content: &impl IsA<gtk::Widget>) -> gtk::Box {
     top.set_vexpand(true);
     let bottom = gtk::Box::new(gtk::Orientation::Vertical, 0);
     bottom.set_vexpand(true);
+    let left = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    left.set_hexpand(true);
+    let right = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    right.set_hexpand(true);
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    row.append(&left);
+    row.append(content);
+    row.append(&right);
     layer.append(&top);
-    layer.append(content);
+    layer.append(&row);
     layer.append(&bottom);
+
+    let click = gtk::GestureClick::new();
+    let weak_layer = layer.downgrade();
+    let weak_content = content.downgrade();
+    let overlay = overlay.clone();
+    let root = root.clone();
+    let block = block_dismiss.clone();
+    click.connect_pressed(move |_, _, x, y| {
+        if let Some(block) = block.as_ref()
+            && block()
+        {
+            return;
+        }
+        let Some(layer) = weak_layer.upgrade() else {
+            return;
+        };
+        let Some(content) = weak_content.upgrade() else {
+            return;
+        };
+        let on_dialog = content
+            .translate_coordinates(&layer, 0.0, 0.0)
+            .is_some_and(|(cx, cy)| {
+                let alloc = content.allocation();
+                x >= cx
+                    && x < cx + alloc.width() as f64
+                    && y >= cy
+                    && y < cy + alloc.height() as f64
+            });
+        if !on_dialog {
+            dismiss_modal_layer(&layer, &overlay, root.as_ref());
+        }
+    });
+    layer.add_controller(click);
+    animate_in(&layer);
     layer
+}
+
+pub(super) fn animate_in(layer: &gtk::Box) {
+    layer.remove_css_class("dismissing");
+    layer.set_sensitive(true);
+    layer.add_css_class("modal-hidden");
+    let weak = layer.downgrade();
+    glib::timeout_add_local_once(Duration::from_millis(16), move || {
+        if let Some(layer) = weak.upgrade() {
+            layer.remove_css_class("modal-hidden");
+        }
+    });
+}
+
+pub(super) fn animate_out(layer: &gtk::Box, on_done: impl FnOnce() + 'static) {
+    layer.add_css_class("modal-hidden");
+    glib::timeout_add_local_once(Duration::from_millis(200), on_done);
 }
 
 pub(super) fn dismiss_modal_layer(
@@ -6570,10 +6712,21 @@ pub(super) fn dismiss_modal_layer(
     overlay: &gtk::Overlay,
     root: Option<&BlurBin>,
 ) {
-    overlay.remove_overlay(layer);
-    if let Some(root) = root {
-        root.set_blurred(false);
+    if layer.has_css_class("dismissing") {
+        return;
     }
+    layer.add_css_class("dismissing");
+    layer.set_sensitive(false);
+    let overlay = overlay.clone();
+    let layer_for_anim = layer.clone();
+    let layer = layer.clone();
+    let root = root.cloned();
+    animate_out(&layer_for_anim, move || {
+        overlay.remove_overlay(&layer);
+        if let Some(root) = root {
+            root.set_blurred(false);
+        }
+    });
 }
 
 fn gio_file_for_location(location: &Location) -> gio::File {
@@ -6731,7 +6884,19 @@ fn show_authentication_dialog(
         }
     });
 
-    let layer = modal_layer(&content);
+    let auth_user = username.clone();
+    let auth_domain = domain.clone();
+    let auth_password = password.clone();
+    let layer = modal_layer(
+        &content,
+        &window_overlay,
+        blurred_root.clone(),
+        Some(Rc::new(move || {
+            !auth_user.text().is_empty()
+                || !auth_domain.text().is_empty()
+                || !auth_password.text().is_empty()
+        })),
+    );
     window_overlay.add_overlay(&layer);
 
     let cancel_operation = operation.cloned();
@@ -7135,7 +7300,7 @@ pub(super) fn show_error_dialog(parent: &impl IsA<gtk::Widget>, message: &str, d
     let close_icon = layout.close;
     let close = layout.confirm;
 
-    let layer = modal_layer(&content);
+    let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
     window_overlay.add_overlay(&layer);
     let close_layer = layer.clone();
     let close_overlay = window_overlay.clone();
