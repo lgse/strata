@@ -296,14 +296,19 @@ fn hide(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin) {
 fn general_page(browser: &BrowserView, manager: Rc<ThemeManager>) -> gtk::Widget {
     let preferences = page_content();
     append_heading(&preferences, "BROWSING");
+    let peeking_enabled = manager.folder_peeking();
+    browser.set_peek_enabled(peeking_enabled);
     let (peeking_row, peeking) = settings_option(
         "Folder peeking",
         "Preview folders automatically while moving through a pane.",
-        true,
+        peeking_enabled,
     );
     let browser_for_peeking = browser.clone();
+    let manager_for_peeking = manager.clone();
     peeking.connect_active_notify(move |toggle| {
-        browser_for_peeking.set_peek_enabled(toggle.is_active())
+        let enabled = toggle.is_active();
+        browser_for_peeking.set_peek_enabled(enabled);
+        manager_for_peeking.set_folder_peeking(enabled);
     });
     preferences.append(&peeking_row);
 

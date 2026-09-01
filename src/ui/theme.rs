@@ -74,6 +74,8 @@ struct Preferences {
     mode: String,
     theme: String,
     #[serde(default = "default_enabled")]
+    folder_peeking: bool,
+    #[serde(default = "default_enabled")]
     single_click_previews: bool,
     #[serde(default)]
     search_open_files_directly: bool,
@@ -94,6 +96,7 @@ impl Default for Preferences {
         Self {
             mode: "theme".to_owned(),
             theme: "azure-glow".to_owned(),
+            folder_peeking: true,
             single_click_previews: true,
             search_open_files_directly: false,
             browser_mode: default_browser_mode(),
@@ -190,6 +193,15 @@ impl ThemeManager {
 
     pub fn selected_id(&self) -> String {
         self.preferences.borrow().theme.clone()
+    }
+
+    pub fn folder_peeking(&self) -> bool {
+        self.preferences.borrow().folder_peeking
+    }
+
+    pub fn set_folder_peeking(&self, enabled: bool) {
+        self.preferences.borrow_mut().folder_peeking = enabled;
+        self.save_preferences();
     }
 
     pub fn single_click_previews(&self) -> bool {
