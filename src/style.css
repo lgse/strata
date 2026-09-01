@@ -1175,8 +1175,12 @@ switch:checked slider {
 
 .sidebar-row.active,
 .sidebar-row.active:hover {
-  background: alpha(@theme_highlight, 0.82);
+  background: alpha(@theme_accent, 0.18);
   color: @theme_text;
+}
+
+.sidebar-row.active image {
+  color: @theme_accent;
 }
 
 .sidebar-row.reorderable.dragging {
