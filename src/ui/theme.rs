@@ -20,11 +20,12 @@ thread_local! {
     static SOURCE_BUFFERS: RefCell<Vec<glib::WeakRef<sourceview5::Buffer>>> = const { RefCell::new(Vec::new()) };
 }
 
-const BUILTIN_THEMES: [(&str, &str); 6] = [
+const CORE_THEMES: [(&str, &str); 7] = [
     (
         "azure-glow",
         include_str!("../../data/themes/azure-glow.toml"),
     ),
+    ("0x96f", include_str!("../../data/themes/0x96f.toml")),
     (
         "tokyo-night",
         include_str!("../../data/themes/tokyo-night.toml"),
@@ -47,6 +48,8 @@ const BUILTIN_THEMES: [(&str, &str); 6] = [
     ),
 ];
 
+const THEME_CATALOG: &str = include_str!("../../data/themes/catalog.toml");
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ThemeTokens {
     pub name: String,
@@ -67,6 +70,18 @@ pub struct Theme {
     pub id: String,
     pub tokens: ThemeTokens,
     pub custom: bool,
+}
+
+#[derive(Deserialize)]
+struct ThemeCatalog {
+    themes: Vec<CatalogTheme>,
+}
+
+#[derive(Deserialize)]
+struct CatalogTheme {
+    id: String,
+    #[serde(flatten)]
+    tokens: ThemeTokens,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -463,7 +478,7 @@ fn is_omarchy_theme_event(file: &gio::File) -> bool {
 }
 
 fn builtins() -> Vec<Theme> {
-    BUILTIN_THEMES
+    let mut themes: Vec<_> = CORE_THEMES
         .iter()
         .filter_map(|(id, source)| {
             toml::from_str(source).ok().map(|tokens| Theme {
@@ -472,11 +487,20 @@ fn builtins() -> Vec<Theme> {
                 custom: false,
             })
         })
-        .collect()
+        .collect();
+    if let Ok(catalog) = toml::from_str::<ThemeCatalog>(THEME_CATALOG) {
+        themes.extend(catalog.themes.into_iter().map(|theme| Theme {
+            id: theme.id,
+            tokens: theme.tokens,
+            custom: false,
+        }));
+    }
+    themes.sort_by_key(|theme| theme.tokens.name.to_lowercase());
+    themes
 }
 
 fn azure_tokens() -> ThemeTokens {
-    toml::from_str(BUILTIN_THEMES[0].1).unwrap_or_else(|_| ThemeTokens {
+    toml::from_str(CORE_THEMES[0].1).unwrap_or_else(|_| ThemeTokens {
         name: "Azure Glow".to_owned(),
         background: "#0c1a2b".to_owned(),
         surface: "#122438".to_owned(),

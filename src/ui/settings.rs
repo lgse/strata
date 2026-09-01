@@ -20,7 +20,7 @@ mod tests;
 use super::{
     blur::BlurBin,
     browser::{BrowserView, dismiss_modal_layer, modal_layer},
-    controls::{form_entry, modal_layout},
+    controls::{form_entry, modal_layout, segmented_control},
     motion::set_reduce_motion,
     theme::{Theme, ThemeManager, ThemeTokens},
 };
@@ -29,7 +29,7 @@ type ThemeCards = Rc<RefCell<Vec<(String, gtk::Button, gtk::Image)>>>;
 pub(super) type UpdateNoticeHandler = Rc<dyn Fn(Option<(ReleaseMetadata, String)>)>;
 
 const DIALOG_WIDTH: i32 = 920;
-const DIALOG_HEIGHT: i32 = 620;
+const DIALOG_HEIGHT: i32 = 680;
 const DIALOG_MARGIN: i32 = 24;
 const COMPACT_NAVIGATION_BREAKPOINT: i32 = 700;
 
@@ -157,6 +157,7 @@ pub fn build_layer(
     update_notice: UpdateNoticeHandler,
 ) -> gtk::Box {
     let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    layer.add_css_class("app-modal-layer");
     layer.add_css_class("settings-backdrop");
     layer.set_halign(gtk::Align::Fill);
     layer.set_valign(gtk::Align::Fill);
@@ -1172,7 +1173,59 @@ fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<(gtk::FlowBox, u32
         .homogeneous(true)
         .build();
     packaged.add_css_class("theme-grid");
-    content.append(&packaged);
+    let theme_search = gtk::Entry::new();
+    theme_search.add_css_class("form-control");
+    theme_search.add_css_class("theme-search");
+    theme_search.set_placeholder_text(Some("Search themes"));
+    let search_keys = gtk::EventControllerKey::new();
+    search_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let selected_search = theme_search.downgrade();
+    search_keys.connect_key_pressed(move |_, key, _, modifiers| {
+        if modifiers.contains(gdk::ModifierType::CONTROL_MASK)
+            && matches!(key, gdk::Key::a | gdk::Key::A)
+            && let Some(search) = selected_search.upgrade()
+        {
+            search.select_region(0, -1);
+            return glib::Propagation::Stop;
+        }
+        glib::Propagation::Proceed
+    });
+    theme_search.add_controller(search_keys);
+    let clear_search = gtk::Button::builder()
+        .child(&crate::assets::text_icon(icons::X, 15))
+        .tooltip_text("Clear theme search")
+        .halign(gtk::Align::End)
+        .valign(gtk::Align::Center)
+        .margin_end(6)
+        .visible(false)
+        .build();
+    clear_search.add_css_class("theme-search-clear");
+    clear_search.set_has_frame(false);
+    let search_overlay = gtk::Overlay::new();
+    search_overlay.set_child(Some(&theme_search));
+    search_overlay.add_overlay(&clear_search);
+    content.append(&search_overlay);
+    let cleared_search = theme_search.clone();
+    clear_search.connect_clicked(move |_| {
+        cleared_search.set_text("");
+        cleared_search.grab_focus();
+    });
+    let (appearance_filter, appearance_buttons) = segmented_control(&["All", "Light", "Dark"], 0);
+    appearance_filter.add_css_class("theme-appearance-filter");
+    content.append(&appearance_filter);
+    let catalog_scroll = gtk::ScrolledWindow::builder()
+        .child(&packaged)
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .min_content_height(240)
+        .max_content_height(330)
+        .propagate_natural_height(true)
+        .build();
+    catalog_scroll.add_css_class("theme-catalog-scroll");
+    let catalog_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    catalog_container.add_css_class("theme-catalog-container");
+    catalog_container.append(&catalog_scroll);
+    content.append(&catalog_container);
 
     append_heading(&content, "YOUR THEMES");
     let custom = gtk::FlowBox::builder()
@@ -1187,9 +1240,52 @@ fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<(gtk::FlowBox, u32
     content.append(&custom);
 
     let cards: ThemeCards = Rc::new(RefCell::new(Vec::new()));
+    let mut catalog_cards = Vec::new();
     for theme in manager.themes() {
-        let flow = if theme.custom { &custom } else { &packaged };
-        append_theme_card(flow, theme, &manager, &follow, &cards);
+        let custom_theme = theme.custom;
+        let name = theme.tokens.name.clone();
+        let light = theme_is_light(&theme.tokens);
+        let flow = if custom_theme { &custom } else { &packaged };
+        let child = append_theme_card(flow, theme, &manager, &follow, &cards);
+        if !custom_theme {
+            catalog_cards.push((child, name, light));
+        }
+    }
+    let catalog_cards = Rc::new(catalog_cards);
+    let appearance = Rc::new(Cell::new(ThemeAppearance::All));
+    let filtered_cards = catalog_cards.clone();
+    let filtered_appearance = appearance.clone();
+    let filter_search = theme_search.clone();
+    let apply_catalog_filter: Rc<dyn Fn()> = Rc::new(move || {
+        let query = filter_search.text();
+        let appearance = filtered_appearance.get();
+        for (child, name, light) in filtered_cards.iter() {
+            let appearance_matches = match appearance {
+                ThemeAppearance::All => true,
+                ThemeAppearance::Dark => !light,
+                ThemeAppearance::Light => *light,
+            };
+            child.set_visible(appearance_matches && theme_name_matches(name, &query));
+        }
+    });
+    let search_filter = apply_catalog_filter.clone();
+    theme_search.connect_changed(move |search| {
+        clear_search.set_visible(!search.text().is_empty());
+        search_filter();
+    });
+    for (button, value) in appearance_buttons.into_iter().zip([
+        ThemeAppearance::All,
+        ThemeAppearance::Light,
+        ThemeAppearance::Dark,
+    ]) {
+        let appearance = appearance.clone();
+        let apply_filter = apply_catalog_filter.clone();
+        button.connect_toggled(move |button| {
+            if button.is_active() {
+                appearance.set(value);
+                apply_filter();
+            }
+        });
     }
 
     let add = gtk::Button::new();
@@ -1238,13 +1334,46 @@ fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<(gtk::FlowBox, u32
     )
 }
 
+#[derive(Clone, Copy)]
+enum ThemeAppearance {
+    All,
+    Dark,
+    Light,
+}
+
+fn theme_name_matches(name: &str, query: &str) -> bool {
+    let query = query.trim().to_lowercase();
+    query.is_empty() || name.to_lowercase().contains(&query)
+}
+
+fn theme_is_light(tokens: &ThemeTokens) -> bool {
+    theme_background_is_light(&tokens.background)
+}
+
+fn theme_background_is_light(background: &str) -> bool {
+    let value = background.strip_prefix('#').unwrap_or_default();
+    let Ok(color) = u32::from_str_radix(value, 16) else {
+        return false;
+    };
+    let channel = |shift| {
+        let value = f64::from((color >> shift) & 0xff_u32) / 255.0;
+        if value <= 0.04045 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    let luminance = 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0);
+    luminance > 0.4
+}
+
 fn append_theme_card(
     flow: &gtk::FlowBox,
     theme: Theme,
     manager: &Rc<ThemeManager>,
     follow: &gtk::Switch,
     cards: &ThemeCards,
-) {
+) -> gtk::FlowBoxChild {
     let card = gtk::Button::new();
     card.add_css_class("theme-card");
     card.set_has_frame(false);
@@ -1295,6 +1424,9 @@ fn append_theme_card(
         }
     });
     flow.insert(&card, -1);
+    card.parent()
+        .and_downcast::<gtk::FlowBoxChild>()
+        .expect("FlowBox must wrap inserted theme cards")
 }
 
 fn theme_preview(tokens: &ThemeTokens) -> gtk::DrawingArea {

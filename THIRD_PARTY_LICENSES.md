@@ -24,6 +24,17 @@ The font is distributed unmodified. Strata materializes the embedded font in its
 
 The SVGs retain Lucide geometry. Their foreground color was changed from `currentColor` to GTK's symbolic foreground color so GTK can recolor them according to the active theme.
 
+## Tinted Theming schemes
+
+- Project: <https://github.com/tinted-theming/schemes>
+- Revision: `fdca32a0d14ec80ad83a78a9ccb85592ca6cb9e1`
+- Copyright: Tinted Theming and the scheme authors identified by the upstream files
+- License: MIT
+- Derived asset: `data/themes/catalog.toml`
+- Full license: [`data/licenses/Tinted-Theming-MIT.txt`](data/licenses/Tinted-Theming-MIT.txt)
+
+Strata's bundled catalog contains curated Base16 palettes. Their Base16 colors are mapped to Strata's semantic UI tokens; the mapping is documented in the generated catalog.
+
 ## Rust dependencies
 
 Rust dependency licenses are declared in each package's metadata and are validated in CI with `cargo-deny`. To review the current dependency graph locally, run:
