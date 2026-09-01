@@ -73,6 +73,7 @@ theme = "azure-glow"
     )
     .expect("legacy preferences should remain valid");
 
+    assert!(preferences.folder_peeking);
     assert!(preferences.single_click_previews);
     assert!(!preferences.search_open_files_directly);
     assert_eq!(preferences.browser_mode, "columns");
@@ -116,6 +117,20 @@ fn invalid_sorting_preferences_fall_back_as_a_pair() {
         };
         assert_eq!(sort_preferences(&preferences), ViewPreferences::default());
     }
+}
+
+#[test]
+fn folder_peeking_can_be_disabled_in_preferences() {
+    let preferences: Preferences = toml::from_str(
+        r#"
+mode = "theme"
+theme = "azure-glow"
+folder_peeking = false
+"#,
+    )
+    .expect("preferences should be valid");
+
+    assert!(!preferences.folder_peeking);
 }
 
 #[test]
