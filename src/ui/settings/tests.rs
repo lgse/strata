@@ -4,7 +4,8 @@ use crate::services::{ReleaseMetadata, UpdateCheck};
 
 use super::{
     COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
-    responsive_dialog_size, shows_available_release_notes, uses_compact_navigation,
+    responsive_dialog_size, shows_available_release_notes, theme_background_is_light,
+    theme_name_matches, uses_compact_navigation,
 };
 
 #[test]
@@ -32,6 +33,22 @@ fn settings_dialog_size_stays_valid_at_tiny_allocations() {
 fn settings_navigation_compacts_below_the_breakpoint() {
     assert!(uses_compact_navigation(COMPACT_NAVIGATION_BREAKPOINT - 1));
     assert!(!uses_compact_navigation(COMPACT_NAVIGATION_BREAKPOINT));
+}
+
+#[test]
+fn theme_search_is_case_insensitive_and_ignores_outer_whitespace() {
+    assert!(theme_name_matches("Tokyo Night Storm", " night "));
+    assert!(theme_name_matches("Dracula", "DRAC"));
+    assert!(theme_name_matches("Nord", ""));
+    assert!(!theme_name_matches("Solarized Light", "dark"));
+}
+
+#[test]
+fn theme_appearance_uses_background_luminance() {
+    assert!(theme_background_is_light("#ffffff"));
+    assert!(theme_background_is_light("#efecf4"));
+    assert!(!theme_background_is_light("#1e1d1f"));
+    assert!(!theme_background_is_light("invalid"));
 }
 
 #[test]

@@ -1,10 +1,98 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::collections::HashSet;
+
 use super::{
-    Preferences, blend, is_omarchy_theme_event, slugify, sort_preferences, title_case_slug,
-    tokens_from_quattro,
+    Preferences, Theme, azure_tokens, blend, builtins, is_omarchy_theme_event,
+    merge_builtin_and_custom_themes, slugify, sort_preferences, title_case_slug,
+    tokens_from_quattro, validate_tokens,
 };
 use crate::model::{SortDirection, SortKey, ViewPreferences};
+
+#[test]
+fn bundled_catalog_is_valid_unique_and_alphabetical() {
+    let themes = builtins();
+    assert_eq!(themes.len(), 95);
+
+    let mut ids = HashSet::new();
+    let mut previous_name = String::new();
+    for theme in &themes {
+        assert!(
+            ids.insert(theme.id.as_str()),
+            "bundled theme IDs must be unique"
+        );
+        assert!(
+            validate_tokens(&theme.tokens).is_ok(),
+            "{} must contain valid theme tokens",
+            theme.tokens.name
+        );
+        let name = theme.tokens.name.to_lowercase();
+        assert!(previous_name <= name, "bundled themes must be alphabetical");
+        previous_name = name;
+    }
+
+    for removed in [
+        "apprentice",
+        "brogrammer",
+        "codeschool",
+        "everforest-dark-medium",
+        "everforest-light-soft",
+        "gruvbox-dark-medium",
+        "gruvbox-dark-soft",
+        "gruvbox-light-medium",
+        "gruvbox-light-soft",
+        "jellybeans",
+        "shades-of-purple",
+        "xcode-dusk",
+    ] {
+        assert!(!ids.contains(removed), "{removed} should not be bundled");
+    }
+
+    let theme_0x96f = themes
+        .iter()
+        .find(|theme| theme.id == "0x96f")
+        .expect("0x96f should be bundled");
+    assert_eq!(theme_0x96f.tokens.accent, "#a093e2");
+    assert_eq!(
+        themes
+            .iter()
+            .find(|theme| theme.id == "everforest-light-medium")
+            .map(|theme| theme.tokens.name.as_str()),
+        Some("Everforest Light (Soft)")
+    );
+    assert_eq!(
+        themes
+            .iter()
+            .find(|theme| theme.id == "gruvbox-dark-hard")
+            .map(|theme| theme.tokens.name.as_str()),
+        Some("Gruvbox Dark")
+    );
+    assert_eq!(
+        themes
+            .iter()
+            .find(|theme| theme.id == "gruvbox-light-hard")
+            .map(|theme| theme.tokens.name.as_str()),
+        Some("Gruvbox Light")
+    );
+}
+
+#[test]
+fn custom_themes_replace_bundled_themes_with_the_same_id() {
+    let builtin = Theme {
+        id: "dracula".to_owned(),
+        tokens: azure_tokens(),
+        custom: false,
+    };
+    let mut custom = builtin.clone();
+    custom.tokens.name = "My Dracula".to_owned();
+    custom.custom = true;
+
+    let themes = merge_builtin_and_custom_themes(vec![builtin], vec![custom]);
+
+    assert_eq!(themes.len(), 1);
+    assert!(themes[0].custom);
+    assert_eq!(themes[0].tokens.name, "My Dracula");
+}
 
 #[test]
 fn names_become_safe_config_file_slugs() {

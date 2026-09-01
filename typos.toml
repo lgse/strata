@@ -10,4 +10,6 @@ extend-exclude = [
 Omarchy = "Omarchy"
 Hyprland = "Hyprland"
 JetBrains = "JetBrains"
+Darcula = "Darcula"
+darcula = "darcula"
 Strata = "Strata"
