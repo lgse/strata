@@ -10,7 +10,7 @@ use std::{
     path::Path,
     rc::Rc,
     sync::{
-        Arc, Mutex,
+        Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::SystemTime,
@@ -18,7 +18,7 @@ use std::{
 
 use gtk::{gio, glib, prelude::*};
 
-static ASYNC_FILE_TEST: Mutex<()> = Mutex::new(());
+use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 
 use super::{
     LocalOperationProvider, copy_recursively, deletion_error_message, deletion_error_summary,
@@ -112,7 +112,9 @@ fn transfers_into_the_same_location_or_a_descendant_are_noops() {
 
 #[test]
 fn recursive_copy_preserves_nested_directory_contents() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_nanos();
@@ -148,7 +150,9 @@ fn recursive_copy_preserves_nested_directory_contents() -> Result<(), Box<dyn Er
 
 #[test]
 fn staged_file_replacement_preserves_the_destination_on_disk_full() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_nanos();
@@ -190,7 +194,9 @@ fn staged_file_replacement_preserves_the_destination_on_disk_full() -> Result<()
 #[test]
 fn cancelling_staging_preserves_the_destination_and_cleans_the_partial_copy()
 -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_nanos();
@@ -241,7 +247,9 @@ fn cancelling_staging_preserves_the_destination_and_cleans_the_partial_copy()
 
 #[test]
 fn staged_file_replacement_commits_then_removes_a_moved_source() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_nanos();
@@ -268,7 +276,9 @@ fn staged_file_replacement_commits_then_removes_a_moved_source() -> Result<(), B
 
 #[test]
 fn each_transfer_item_keeps_its_own_conflict_decision() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_nanos();
@@ -321,7 +331,9 @@ fn each_transfer_item_keeps_its_own_conflict_decision() -> Result<(), Box<dyn Er
 
 #[test]
 fn staged_directory_replacement_does_not_merge_old_contents() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_nanos();
@@ -388,7 +400,9 @@ fn compression_stages(destination: &Path) -> Result<Vec<OsString>, Box<dyn Error
 
 #[test]
 fn compression_provider_rejects_escaping_archive_names() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let root = tempfile::tempdir()?;
     let destination = root.path().join("destination");
     let source = root.path().join("source.txt");
@@ -414,7 +428,9 @@ fn compression_provider_rejects_escaping_archive_names() -> Result<(), Box<dyn E
 #[test]
 fn compression_conflict_choices_preserve_or_replace_the_destination() -> Result<(), Box<dyn Error>>
 {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let root = tempfile::tempdir()?;
     let destination = root.path().join("destination");
     let source = root.path().join("source.txt");
@@ -461,7 +477,9 @@ fn compression_conflict_choices_preserve_or_replace_the_destination() -> Result<
 
 #[test]
 fn compression_failure_preserves_an_existing_archive() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let root = tempfile::tempdir()?;
     let destination = root.path().join("destination");
     let missing = root.path().join("missing.txt");
@@ -491,7 +509,9 @@ fn compression_failure_preserves_an_existing_archive() -> Result<(), Box<dyn Err
 
 #[test]
 fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let root = tempfile::tempdir()?;
     let destination = root.path().join("destination");
     let source = root.path().join("source.txt");
@@ -556,7 +576,9 @@ fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn E
 
 #[test]
 fn cancelling_staged_compression_unlinks_the_partial_output() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let root = tempfile::tempdir()?;
     let destination = root.path().to_path_buf();
     let archive = destination.join("existing.zip");

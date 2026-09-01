@@ -13,7 +13,7 @@ use std::{
 use tracing_subscriber::fmt::MakeWriter;
 
 use super::*;
-use crate::model::Location;
+use crate::{model::Location, test_support::ASYNC_MAIN_CONTEXT_DEFAULT};
 
 #[derive(Clone, Default)]
 struct LogWriter(Arc<Mutex<Vec<u8>>>);
@@ -276,4 +276,157 @@ fn permission_errors_are_reported_as_inaccessible() {
         map_validation_error(error),
         LocationValidationError::Inaccessible
     );
+}
+
+fn unique_fixture_root(label: &str) -> std::path::PathBuf {
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .expect("the system clock should be after the Unix epoch")
+        .as_nanos();
+    std::env::temp_dir().join(format!("strata-local-files-{label}-{unique}"))
+}
+
+/// `enumerate()` spawns its work on `glib::MainContext::default()` internally (not whatever
+/// context happens to be thread-default), so it can only be driven via that same shared context
+/// -- a private context pushed as thread-default would never see the spawned task at all. Bridge
+/// the callback-based API into a future with `poll_fn` and drive it with `block_on`. The shared
+/// lock is still required: concurrent `block_on(default())` calls from different test-harness
+/// threads panic with a GLib thread-affinity error, same as concurrent `spawn_local`/`iteration()`
+/// would.
+fn run_enumerate(request: DirectoryRequest) -> Vec<DirectoryEvent> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    glib::MainContext::default().block_on(async move {
+        let events: Rc<RefCell<Vec<DirectoryEvent>>> = Rc::new(RefCell::new(Vec::new()));
+        let waker: Rc<RefCell<Option<std::task::Waker>>> = Rc::new(RefCell::new(None));
+        let collected = events.clone();
+        let collected_waker = waker.clone();
+        let emit: Rc<dyn Fn(DirectoryEvent)> = Rc::new(move |event| {
+            let is_terminal = matches!(
+                event,
+                DirectoryEvent::Finished { .. } | DirectoryEvent::Failed { .. }
+            );
+            collected.borrow_mut().push(event);
+            if is_terminal && let Some(waker) = collected_waker.borrow_mut().take() {
+                waker.wake();
+            }
+        });
+        let handle = LocalFileSource.enumerate(request, emit);
+        std::future::poll_fn(|cx| {
+            let has_terminal_event = events.borrow().iter().any(|event| {
+                matches!(
+                    event,
+                    DirectoryEvent::Finished { .. } | DirectoryEvent::Failed { .. }
+                )
+            });
+            if has_terminal_event {
+                std::task::Poll::Ready(())
+            } else {
+                *waker.borrow_mut() = Some(cx.waker().clone());
+                std::task::Poll::Pending
+            }
+        })
+        .await;
+        drop(handle);
+        events.borrow().clone()
+    })
+}
+
+fn batched_entry_count(events: &[DirectoryEvent]) -> usize {
+    events
+        .iter()
+        .filter_map(|event| match event {
+            DirectoryEvent::Batch { entries, .. } => Some(entries.len()),
+            _ => None,
+        })
+        .sum()
+}
+
+fn finished_truncated(events: &[DirectoryEvent]) -> Option<bool> {
+    events.iter().find_map(|event| match event {
+        DirectoryEvent::Finished { truncated, .. } => Some(*truncated),
+        _ => None,
+    })
+}
+
+#[test]
+fn enumerate_reports_truncated_once_the_entry_budget_is_exceeded() {
+    let root = unique_fixture_root("entry-budget");
+    fs::create_dir_all(&root).expect("the fixture directory should be created");
+    for index in 0..5 {
+        fs::write(root.join(format!("file-{index}.txt")), b"content")
+            .expect("the fixture file should be written");
+    }
+
+    let events = run_enumerate(DirectoryRequest {
+        id: RequestId(1),
+        location: Location::local(&root),
+        batch_size: 2,
+        include_hidden: true,
+        max_entries: 2,
+        time_budget: Duration::from_secs(10),
+    });
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+
+    assert_eq!(
+        finished_truncated(&events),
+        Some(true),
+        "exceeding the entry budget should be reported as truncated"
+    );
+    assert!(
+        batched_entry_count(&events) <= 2,
+        "loading should stop once the entry budget is reached"
+    );
+}
+
+#[test]
+fn enumerate_reports_truncated_once_the_time_budget_is_exceeded() {
+    let root = unique_fixture_root("time-budget");
+    fs::create_dir_all(&root).expect("the fixture directory should be created");
+    fs::write(root.join("needle.txt"), b"content").expect("the fixture file should be written");
+    fs::write(root.join("second.txt"), b"content").expect("the fixture file should be written");
+
+    let events = run_enumerate(DirectoryRequest {
+        id: RequestId(1),
+        location: Location::local(&root),
+        batch_size: 1,
+        include_hidden: true,
+        max_entries: usize::MAX,
+        time_budget: Duration::from_nanos(1),
+    });
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+
+    assert_eq!(
+        finished_truncated(&events),
+        Some(true),
+        "an exhausted time budget should stop the load and report truncation"
+    );
+}
+
+#[test]
+fn enumerate_completes_untruncated_within_budget() {
+    let root = unique_fixture_root("within-budget");
+    fs::create_dir_all(&root).expect("the fixture directory should be created");
+    for index in 0..5 {
+        fs::write(root.join(format!("file-{index}.txt")), b"content")
+            .expect("the fixture file should be written");
+    }
+
+    let events = run_enumerate(DirectoryRequest {
+        id: RequestId(1),
+        location: Location::local(&root),
+        batch_size: 64,
+        include_hidden: true,
+        max_entries: 100,
+        time_budget: Duration::from_secs(10),
+    });
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+
+    assert_eq!(
+        finished_truncated(&events),
+        Some(false),
+        "a directory well within budget should not be reported as truncated"
+    );
+    assert_eq!(batched_entry_count(&events), 5);
 }

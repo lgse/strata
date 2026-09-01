@@ -86,6 +86,7 @@ struct Pane {
     stack: gtk::Stack,
     status: gtk::Label,
     spinner: gtk::Spinner,
+    truncated_hint: gtk::Label,
     view: gtk::Widget,
     bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
     filter_entry: Option<gtk::Entry>,
@@ -576,15 +577,17 @@ impl ModeViews {
             BrowserEvent::ColumnReloaded { depth } => {
                 for pane in self.panes_at(*depth) {
                     pane.model.splice(0, pane.model.n_items(), &[]);
+                    pane.truncated_hint.set_visible(false);
                     pane.spinner.set_visible(true);
                     pane.spinner.start();
                     pane.stack.set_visible_child_name("loading");
                 }
             }
-            BrowserEvent::LoadFinished { depth } => {
+            BrowserEvent::LoadFinished { depth, truncated } => {
                 for pane in self.panes_at(*depth) {
                     pane.spinner.stop();
                     pane.spinner.set_visible(false);
+                    pane.truncated_hint.set_visible(*truncated);
                     show_count(pane);
                 }
             }
@@ -968,7 +971,7 @@ fn build_grid_pane(
     let controls = grid_controls(&browser, depth, options.thumbnail_size.get());
     let thumbnail_size = options.thumbnail_size;
     let active_new_entry = options.active_new_entry;
-    let (pane, content, model, stack, status, spinner) = pane_base(
+    let (pane, content, model, stack, status, spinner, truncated_hint) = pane_base(
         title,
         "grid-pane",
         Some(controls.leading.clone().upcast()),
@@ -1251,6 +1254,7 @@ fn build_grid_pane(
         stack,
         status,
         spinner,
+        truncated_hint,
         view: view.upcast(),
         bound_items,
         filter_entry: Some(controls.filter_entry),
@@ -1563,7 +1567,7 @@ fn build_explorer_pane(
     let (filter_entry, filter_revealer, filter_button) =
         filter_controls("Filter explorer (Ctrl+F)");
     actions.append(&filter_button);
-    let (shell, content, model, stack, status, spinner) = pane_base(
+    let (shell, content, model, stack, status, spinner, truncated_hint) = pane_base(
         title,
         "explorer-pane",
         Some(navigation.upcast()),
@@ -1838,6 +1842,7 @@ fn build_explorer_pane(
         stack,
         status,
         spinner,
+        truncated_hint,
         view: view.upcast(),
         bound_items,
         filter_entry: Some(filter_entry),
@@ -1860,6 +1865,7 @@ fn pane_base(
     gtk::Stack,
     gtk::Label,
     gtk::Spinner,
+    gtk::Label,
 ) {
     let shell = gtk::Box::new(gtk::Orientation::Vertical, 0);
     shell.add_css_class(class);
@@ -1872,10 +1878,17 @@ fn pane_base(
     heading.set_hexpand(true);
     let spinner = gtk::Spinner::new();
     spinner.start();
+    let truncated_hint = gtk::Label::new(Some("Partial"));
+    truncated_hint.add_css_class("column-truncated-hint");
+    truncated_hint.set_tooltip_text(Some(
+        "This directory has more entries than could be loaded; showing a partial listing.",
+    ));
+    truncated_hint.set_visible(false);
     if let Some(leading) = header_leading {
         header.append(&leading);
     }
     header.append(&heading);
+    header.append(&truncated_hint);
     header.append(&spinner);
     if let Some(actions) = header_actions {
         header.append(&actions);
@@ -1899,7 +1912,15 @@ fn pane_base(
     shell.append(&stack);
 
     let model = gtk::StringList::new(&[]);
-    (shell, content, model, stack, status, spinner)
+    (
+        shell,
+        content,
+        model,
+        stack,
+        status,
+        spinner,
+        truncated_hint,
+    )
 }
 
 fn register_bound_mode_item(

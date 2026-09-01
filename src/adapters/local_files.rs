@@ -209,6 +209,7 @@ impl FileSource for LocalFileSource {
                 }
             };
 
+            let deadline = started + request.time_budget;
             let mut total_entries = 0usize;
             let mut first_batch = true;
             loop {
@@ -223,7 +224,10 @@ impl FileSource for LocalFileSource {
                             elapsed_ms = started.elapsed().as_millis() as u64,
                             "directory load finished"
                         );
-                        emit(DirectoryEvent::Finished { request_id });
+                        emit(DirectoryEvent::Finished {
+                            request_id,
+                            truncated: false,
+                        });
                         break;
                     }
                     Ok(files) => {
@@ -249,6 +253,19 @@ impl FileSource for LocalFileSource {
                             request_id,
                             entries,
                         });
+                        if total_entries >= request.max_entries || Instant::now() >= deadline {
+                            tracing::warn!(
+                                request_id = request_id.0,
+                                entries = total_entries,
+                                elapsed_ms = started.elapsed().as_millis() as u64,
+                                "directory load truncated"
+                            );
+                            emit(DirectoryEvent::Finished {
+                                request_id,
+                                truncated: true,
+                            });
+                            break;
+                        }
                     }
                     Err(error) => {
                         tracing::warn!(

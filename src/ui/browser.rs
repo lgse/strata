@@ -69,6 +69,7 @@ struct ColumnView {
     bound_rows: Rc<RefCell<Vec<BoundRow>>>,
     entry_count: Rc<Cell<usize>>,
     spinner: gtk::Spinner,
+    truncated_hint: gtk::Label,
     empty_trash_button: Option<gtk::Button>,
     new_entry_row: gtk::Box,
     new_entry_icon: gtk::Image,
@@ -3559,15 +3560,17 @@ impl ViewState {
                     column.model.splice(0, column.model.n_items(), &[]);
                     column.entry_count.set(0);
                     set_filter_placeholder(column, 0);
+                    column.truncated_hint.set_visible(false);
                     column.spinner.set_visible(true);
                     column.spinner.start();
                     column.presentation.show_loading();
                 }
             }
-            BrowserEvent::LoadFinished { depth } => {
+            BrowserEvent::LoadFinished { depth, truncated } => {
                 if let Some(column) = self.columns.borrow().get(depth) {
                     column.spinner.stop();
                     column.spinner.set_visible(false);
+                    column.truncated_hint.set_visible(truncated);
                     let count = column.entry_count.get();
                     if count == 0 {
                         column.presentation.show_empty();
@@ -3872,7 +3875,14 @@ impl ViewState {
         heading.set_tooltip_text(Some(&location.display_path()));
         let spinner = gtk::Spinner::new();
         spinner.start();
+        let truncated_hint = gtk::Label::new(Some("Partial"));
+        truncated_hint.add_css_class("column-truncated-hint");
+        truncated_hint.set_tooltip_text(Some(
+            "This directory has more entries than could be loaded; showing a partial listing.",
+        ));
+        truncated_hint.set_visible(false);
         header.append(&heading);
+        header.append(&truncated_hint);
         header.append(&spinner);
         let header_actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         header_actions.add_css_class("column-header-actions");
@@ -4668,6 +4678,7 @@ impl ViewState {
             bound_rows,
             entry_count,
             spinner,
+            truncated_hint,
             empty_trash_button: is_trash.then_some(empty_trash),
             new_entry_row,
             new_entry_icon,

@@ -10,6 +10,8 @@ mod sandbox;
 mod sandbox_helper;
 mod services;
 mod storage;
+#[cfg(test)]
+mod test_support;
 mod ui;
 
 use std::{process::Stdio, time::Duration};
