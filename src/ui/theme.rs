@@ -135,8 +135,7 @@ impl ThemeManager {
     }
 
     fn load() -> Rc<Self> {
-        let mut themes = builtins();
-        themes.extend(load_custom_themes());
+        let themes = merge_builtin_and_custom_themes(builtins(), load_custom_themes());
         let omarchy_available = load_omarchy_theme().is_some();
         let mut preferences = read_preferences().unwrap_or_default();
         if !themes.iter().any(|theme| theme.id == preferences.theme) {
@@ -465,6 +464,12 @@ fn builtins() -> Vec<Theme> {
         .unwrap_or_default();
     themes.sort_by_key(|theme| theme.tokens.name.to_lowercase());
     themes
+}
+
+fn merge_builtin_and_custom_themes(mut builtins: Vec<Theme>, custom: Vec<Theme>) -> Vec<Theme> {
+    builtins.retain(|builtin| !custom.iter().any(|theme| theme.id == builtin.id));
+    builtins.extend(custom);
+    builtins
 }
 
 fn azure_tokens() -> ThemeTokens {

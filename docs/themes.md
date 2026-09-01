@@ -27,7 +27,7 @@ border = "#315b75"
 dim_text = "#6f8da3"
 ```
 
-Strata discovers valid `.toml` files in this directory on startup and displays them under **Your themes**.
+Strata discovers valid `.toml` files in this directory on startup and displays them under **Your themes**. If a custom filename matches a bundled theme ID, the custom theme replaces that bundled entry so saved preferences and selection always use the user’s palette.
 
 ## Omarchy Quattro
 

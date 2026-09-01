@@ -3,8 +3,9 @@
 use std::collections::HashSet;
 
 use super::{
-    Preferences, blend, builtins, is_omarchy_theme_event, slugify, sort_preferences,
-    title_case_slug, tokens_from_quattro, validate_tokens,
+    Preferences, Theme, azure_tokens, blend, builtins, is_omarchy_theme_event,
+    merge_builtin_and_custom_themes, slugify, sort_preferences, title_case_slug,
+    tokens_from_quattro, validate_tokens,
 };
 use crate::model::{SortDirection, SortKey, ViewPreferences};
 
@@ -73,6 +74,24 @@ fn bundled_catalog_is_valid_unique_and_alphabetical() {
             .map(|theme| theme.tokens.name.as_str()),
         Some("Gruvbox Light")
     );
+}
+
+#[test]
+fn custom_themes_replace_bundled_themes_with_the_same_id() {
+    let builtin = Theme {
+        id: "dracula".to_owned(),
+        tokens: azure_tokens(),
+        custom: false,
+    };
+    let mut custom = builtin.clone();
+    custom.tokens.name = "My Dracula".to_owned();
+    custom.custom = true;
+
+    let themes = merge_builtin_and_custom_themes(vec![builtin], vec![custom]);
+
+    assert_eq!(themes.len(), 1);
+    assert!(themes[0].custom);
+    assert_eq!(themes[0].tokens.name, "My Dracula");
 }
 
 #[test]
