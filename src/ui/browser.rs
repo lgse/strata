@@ -212,9 +212,47 @@ pub(super) enum PinStatus {
     Unavailable,
 }
 
+#[derive(Default)]
+struct GlobalActivityState {
+    next_id: u64,
+    active: Vec<(u64, String)>,
+}
+
+impl GlobalActivityState {
+    fn begin(&mut self, label: impl Into<String>) -> u64 {
+        self.next_id = self.next_id.saturating_add(1);
+        self.active.push((self.next_id, label.into()));
+        self.next_id
+    }
+
+    fn finish(&mut self, id: u64) {
+        self.active.retain(|(active_id, _)| *active_id != id);
+    }
+
+    fn current_label(&self) -> Option<&str> {
+        self.active.last().map(|(_, label)| label.as_str())
+    }
+}
+
+pub struct GlobalActivity {
+    state: std::rc::Weak<ViewState>,
+    id: u64,
+}
+
+impl Drop for GlobalActivity {
+    fn drop(&mut self) {
+        if let Some(state) = self.state.upgrade() {
+            state.finish_global_activity(self.id);
+        }
+    }
+}
+
 pub(super) struct ViewState {
     overlay: gtk::Overlay,
+    location_control: gtk::Box,
     location_stack: gtk::Stack,
+    global_activity_spinner: gtk::Spinner,
+    global_activity: RefCell<GlobalActivityState>,
     breadcrumbs: gtk::Box,
     location_entry: gtk::Entry,
     columns_widget: gtk::Box,
@@ -329,9 +367,19 @@ impl BrowserView {
         location_stack.add_named(&breadcrumb_scroller, Some("breadcrumbs"));
         location_stack.add_named(&entry_control, Some("entry"));
         location_stack.set_visible_child_name("breadcrumbs");
-        location_stack.add_css_class("location-control");
         location_stack.set_hexpand(true);
         location_stack.set_valign(gtk::Align::Center);
+
+        let global_activity_spinner = gtk::Spinner::new();
+        global_activity_spinner.add_css_class("global-activity-spinner");
+        global_activity_spinner.set_tooltip_text(Some("Working…"));
+        global_activity_spinner.set_visible(false);
+        let location_control = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        location_control.add_css_class("location-control");
+        location_control.set_hexpand(true);
+        location_control.set_valign(gtk::Align::Center);
+        location_control.append(&location_stack);
+        location_control.append(&global_activity_spinner);
 
         let preferences = super::theme::ThemeManager::shared();
         let browser = Browser::with_preferences(source, preferences.sort_preferences());
@@ -343,7 +391,10 @@ impl BrowserView {
         overlay.set_child(Some(&mode_views.widget()));
         let state = Rc::new(ViewState {
             overlay,
+            location_control,
             location_stack,
+            global_activity_spinner,
+            global_activity: RefCell::new(GlobalActivityState::default()),
             breadcrumbs,
             location_entry,
             columns_widget,
@@ -636,7 +687,12 @@ impl BrowserView {
     }
 
     pub fn location_widget(&self) -> gtk::Widget {
-        self.state.location_stack.clone().upcast()
+        self.state.location_control.clone().upcast()
+    }
+
+    /// Shows the shared header spinner until the returned activity guard is dropped.
+    pub fn begin_global_activity(&self, label: impl Into<String>) -> GlobalActivity {
+        self.state.begin_global_activity(label)
     }
 
     pub fn begin_location_edit(&self) {
@@ -846,6 +902,34 @@ impl BrowserView {
 }
 
 impl ViewState {
+    fn begin_global_activity(self: &Rc<Self>, label: impl Into<String>) -> GlobalActivity {
+        let label = label.into();
+        let id = self.global_activity.borrow_mut().begin(label.clone());
+        self.global_activity_spinner.set_tooltip_text(Some(&label));
+        self.global_activity_spinner.set_visible(true);
+        self.global_activity_spinner.start();
+        GlobalActivity {
+            state: Rc::downgrade(self),
+            id,
+        }
+    }
+
+    fn finish_global_activity(&self, id: u64) {
+        let current = {
+            let mut activity = self.global_activity.borrow_mut();
+            activity.finish(id);
+            activity.current_label().map(str::to_owned)
+        };
+        if let Some(label) = current {
+            self.global_activity_spinner.set_tooltip_text(Some(&label));
+        } else {
+            self.global_activity_spinner.stop();
+            self.global_activity_spinner.set_visible(false);
+            self.global_activity_spinner
+                .set_tooltip_text(Some("Working…"));
+        }
+    }
+
     fn sync_mode_selection(&self) {
         let Some((depth, positions)) = self.mode_views.borrow().selected_positions() else {
             return;
@@ -2764,6 +2848,10 @@ impl ViewState {
         if self.overlay.root().and_downcast::<gtk::Window>().is_none() {
             return;
         }
+        let activity = BrowserView {
+            state: self.clone(),
+        }
+        .begin_global_activity("Connecting…");
         let file = gio_file_for_location(&location);
         let operation = gio::MountOperation::new();
         let prompt_overlay = self.overlay.clone();
@@ -2816,6 +2904,7 @@ impl ViewState {
         let weak = Rc::downgrade(self);
         let result_overlay = self.overlay.clone();
         glib::MainContext::default().spawn_local(async move {
+            let _activity = activity;
             let result = match strategy {
                 MountStrategy::EnclosingVolume => {
                     file.mount_enclosing_volume_future(gio::MountMountFlags::NONE, Some(&operation))

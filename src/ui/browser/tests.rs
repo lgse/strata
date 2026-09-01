@@ -3,6 +3,19 @@
 use super::*;
 
 #[test]
+fn global_activity_uses_the_latest_active_label() {
+    let mut activity = GlobalActivityState::default();
+    let connecting = activity.begin("Connecting…");
+    let copying = activity.begin("Copying…");
+    assert_eq!(activity.current_label(), Some("Copying…"));
+
+    activity.finish(copying);
+    assert_eq!(activity.current_label(), Some("Connecting…"));
+    activity.finish(connecting);
+    assert_eq!(activity.current_label(), None);
+}
+
+#[test]
 fn file_sizes_use_compact_decimal_units() {
     assert_eq!(format_file_size(999), "999 B");
     assert_eq!(format_file_size(1_200), "1.2 kB");

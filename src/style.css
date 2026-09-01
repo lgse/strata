@@ -27,6 +27,12 @@ headerbar {
   min-width: 8em;
 }
 
+.global-activity-spinner {
+  color: @theme_accent;
+  min-height: 16px;
+  min-width: 16px;
+}
+
 headerbar .sidebar-toggle {
   color: @theme_accent;
 }
