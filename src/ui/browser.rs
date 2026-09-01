@@ -1716,6 +1716,9 @@ impl ViewState {
         let weak = Rc::downgrade(self);
         let started = Instant::now();
         let task = glib::MainContext::default().spawn_local(async move {
+            // Let GTK paint the loading dialog before beginning a walk whose GIO futures may be
+            // immediately ready for long stretches on a fast local trash backend.
+            glib::timeout_future(Duration::from_millis(16)).await;
             let trash = gio::File::for_uri("trash:///");
             match summarize_trash(&trash).await {
                 Ok(summary) if summary.item_count > 0 => {
@@ -1786,11 +1789,16 @@ impl ViewState {
         let layout = modal_layout(
             crate::assets::icons::TRASH,
             "Measuring Trash…",
-            "Calculating the number and size of items. This may take a few seconds.",
+            "",
             "Empty Trash",
         );
         layout.set_loading(true, Some("Measuring Trash…"));
+        layout.subtitle.set_visible(false);
         layout.confirm.set_visible(false);
+        let explanation = message_dialog_description(
+            "Calculating the number and size of items. This may take a few seconds.",
+        );
+        layout.body.append(&explanation);
         let content = layout.content;
         let cancel = layout.cancel;
 
@@ -5365,6 +5373,7 @@ async fn summarize_trash_with_budget(
         if children.is_empty() {
             break;
         }
+        glib::timeout_future(Duration::from_millis(1)).await;
         for info in children {
             if visited.get() >= max_entries || Instant::now() >= deadline {
                 truncated = true;
@@ -5549,6 +5558,7 @@ async fn enumerate_trash_directory(
         if children.is_empty() {
             break;
         }
+        glib::timeout_future(Duration::from_millis(1)).await;
         for child in children {
             if visited.get() >= max_entries || Instant::now() >= deadline {
                 truncated = true;
