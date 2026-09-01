@@ -47,6 +47,15 @@ Dependencies point inward. A filesystem adapter must not manipulate widgets, and
 
 Models should distinguish “unknown/not loaded” from meaningful empty values.
 
+### Dialogs and form controls
+
+Action dialogs use the modal shell and themed form controls in `ui/controls.rs`. The shell owns
+header alignment, icon bezels, body and action spacing, focus treatment, and semantic accent or
+danger states; dialog-specific code supplies only content and behavior. The search palette remains a
+specialized command interface because its query field and results are one continuous keyboard
+surface. Settings remains a specialized navigable workspace rather than an action dialog. Native
+platform choosers, such as GTK's color dialog, are also kept native.
+
 ### Browser presentation modes
 
 Browser presentations consume the same `BrowserEvent` stream and send intents back to the same
