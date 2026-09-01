@@ -547,6 +547,29 @@ fn pane_resizing_preserves_the_initial_minimum_width() {
 }
 
 #[test]
+fn miller_columns_share_available_width_until_the_minimum() {
+    assert_eq!(adaptive_column_widths(900, &[None]), vec![900]);
+    assert_eq!(adaptive_column_widths(900, &[None, None]), vec![450, 450]);
+    assert_eq!(adaptive_column_widths(901, &[None, None]), vec![451, 450]);
+    assert_eq!(
+        adaptive_column_widths(800, &[None, None, None]),
+        vec![COLUMN_WIDTH, COLUMN_WIDTH, COLUMN_WIDTH]
+    );
+}
+
+#[test]
+fn a_manually_sized_column_opts_out_of_automatic_sharing() {
+    assert_eq!(
+        adaptive_column_widths(900, &[Some(400), None]),
+        vec![400, 500]
+    );
+    assert_eq!(
+        adaptive_column_widths(500, &[Some(400), None]),
+        vec![400, COLUMN_WIDTH]
+    );
+}
+
+#[test]
 fn reveal_target_scrolls_only_enough_to_show_the_new_column() {
     assert_eq!(
         horizontal_reveal_target(0.0, 900.0, 0.0, 1_200.0, 900.0, 1_200.0),
