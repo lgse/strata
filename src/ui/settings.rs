@@ -448,7 +448,11 @@ fn updates_page(
         "Available release",
         "Check for updates to see the latest release notes.",
     );
-    let (update_row, run_check) = update_check_row(
+    let UpdateCheckRow {
+        row: update_row,
+        run_check,
+        install_underway,
+    } = update_check_row(
         manager.clone(),
         update_notice.clone(),
         available_notes.clone(),
@@ -463,7 +467,7 @@ fn updates_page(
     );
     preferences.append(&auto_check_row);
 
-    let channel_row = channel_option(manager.clone(), run_check.clone());
+    let (channel_row, sync_channel_selection) = channel_option(manager.clone());
     channel_row.set_sensitive(auto_check_enabled);
     preferences.append(&channel_row);
     preferences.append(&update_row);
@@ -495,16 +499,42 @@ fn updates_page(
         run_check();
     }
 
-    scrollable_page(&preferences, None)
+    let page = scrollable_page(&preferences, None);
+    // One subscription per settings page, anchored on the page itself: a
+    // channel switched in any window resyncs this selector and re-runs this
+    // window's check, which is also what clears its sidebar update notice.
+    let broadcast_check = run_check.clone();
+    manager.on_release_channel_changed(
+        &page,
+        Rc::new(move || {
+            sync_channel_selection();
+            // An install already under way owns the row, and one already
+            // finished is waiting on a restart; a fresh check would reset
+            // both back to "Check now". The update dialog's listener leaves
+            // those alone for the same reason.
+            if install_underway() {
+                return;
+            }
+            broadcast_check();
+        }),
+    );
+    page
 }
 
 const RELEASE_CHANNEL_TITLE: &str = "Release channel";
 const RELEASE_CHANNEL_DESCRIPTION: &str = "Preview receives alpha, beta, and release-candidate builds. Nightly also receives daily development builds.";
 
-/// A three-way release-channel selector. Changing it persists immediately and
-/// starts a fresh check, so an offer from the previously selected channel is
-/// superseded without waiting for the next automatic check.
-fn channel_option(manager: Rc<ThemeManager>, run_check: Rc<dyn Fn()>) -> gtk::Box {
+/// A three-way release-channel selector. Changing it persists immediately.
+///
+/// The fresh check that a change must trigger comes from the channel-change
+/// broadcast rather than from here, so it reaches every open window instead
+/// of only this one.
+///
+/// Also returns a closure that resyncs the selection from the persisted
+/// channel, for [`updates_page`] to run on that broadcast: the channel can be
+/// switched in another window, and a control left showing the old value would
+/// write it straight back the next time it was touched.
+fn channel_option(manager: Rc<ThemeManager>) -> (gtk::Box, Rc<dyn Fn()>) {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 12);
     row.add_css_class("settings-option");
 
@@ -520,28 +550,56 @@ fn channel_option(manager: Rc<ThemeManager>, run_check: Rc<dyn Fn()>) -> gtk::Bo
     copy.append(&description);
     row.append(&copy);
 
-    let selected = match manager.release_channel() {
-        Channel::Stable => 0,
-        Channel::Preview => 1,
-        Channel::Nightly => 2,
-    };
-    let (control, buttons) = segmented_control(&["Stable", "Preview", "Nightly"], selected);
-    for (button, channel) in
-        buttons
-            .into_iter()
-            .zip([Channel::Stable, Channel::Preview, Channel::Nightly])
-    {
+    let (control, buttons) = segmented_control(
+        &["Stable", "Preview", "Nightly"],
+        channel_index(manager.release_channel()),
+    );
+    // Weak: the broadcast registry holds the sync closure, so capturing the
+    // buttons strongly would keep a closed window's row alive and stop the
+    // subscription from ever being pruned.
+    let weak_buttons: Vec<glib::WeakRef<gtk::ToggleButton>> =
+        buttons.iter().map(|button| button.downgrade()).collect();
+    for (button, channel) in buttons.into_iter().zip(CHANNEL_ORDER) {
         let manager = manager.clone();
-        let run_check = run_check.clone();
         button.connect_active_notify(move |button| {
             if button.is_active() {
                 manager.set_release_channel(channel);
-                run_check();
             }
         });
     }
     row.append(&control);
-    row
+
+    let sync = {
+        let manager = manager.clone();
+        Rc::new(move || {
+            let Some(button) = weak_buttons
+                .get(channel_index(manager.release_channel()))
+                .and_then(glib::WeakRef::upgrade)
+            else {
+                return;
+            };
+            if !button.is_active() {
+                // Emits `notify`, whose handler writes the same channel back;
+                // `set_release_channel` returns early on an unchanged channel,
+                // so this settles rather than looping.
+                button.set_active(true);
+            }
+        }) as Rc<dyn Fn()>
+    };
+
+    (row, sync)
+}
+
+/// The channels the selector offers, in the order its buttons appear.
+const CHANNEL_ORDER: [Channel; 3] = [Channel::Stable, Channel::Preview, Channel::Nightly];
+
+/// The index of `channel` among [`CHANNEL_ORDER`].
+fn channel_index(channel: Channel) -> usize {
+    match channel {
+        Channel::Stable => 0,
+        Channel::Preview => 1,
+        Channel::Nightly => 2,
+    }
 }
 
 fn release_notes_label() -> gtk::Label {
@@ -779,12 +837,21 @@ fn offer_still_eligible(channel: Channel, kind: BuildKind) -> bool {
     }
 }
 
+/// The update-check row, with the handles [`updates_page`] drives it by:
+/// `run_check` starts a fresh check, and `install_underway` reports whether
+/// the row is mid-install or waiting on a restart and so must be left alone.
+struct UpdateCheckRow {
+    row: gtk::Box,
+    run_check: Rc<dyn Fn()>,
+    install_underway: Rc<dyn Fn() -> bool>,
+}
+
 fn update_check_row(
     manager: Rc<ThemeManager>,
     update_notice: UpdateNoticeHandler,
     available_notes: ReleaseNotesCard,
     install_guard: InstallGuard,
-) -> (gtk::Box, Rc<dyn Fn()>) {
+) -> UpdateCheckRow {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
     row.add_css_class("settings-option");
     let summary = gtk::Box::new(gtk::Orientation::Horizontal, 16);
@@ -826,6 +893,18 @@ fn update_check_row(
     let pending_download = Rc::new(RefCell::new(None::<PendingInstall>));
     // Set once an install finishes, so the next click restarts instead of re-checking.
     let installed = Rc::new(Cell::new(false));
+    // Set while an install started from this row is running. Unlike
+    // `checking`, which a newer check is free to supersede, an install owns
+    // this row's status, progress bar, and button until it either fails or
+    // leaves the user waiting on a restart.
+    let installing = Rc::new(Cell::new(false));
+    // Whether this row is mid-install or waiting on a restart, for callers
+    // that must leave it alone rather than restart it from a fresh check.
+    let install_underway: Rc<dyn Fn() -> bool> = Rc::new({
+        let installed = installed.clone();
+        let installing = installing.clone();
+        move || installed.get() || installing.get()
+    });
     // The generation of the most recently started check. Each call to
     // `run_check` captures the next value and compares against this when its
     // result arrives; a mismatch means a newer check (e.g. from a channel
@@ -990,6 +1069,7 @@ fn update_check_row(
             if checking.replace(true) {
                 return;
             }
+            installing.set(true);
             status.set_text(if returns_to_stable {
                 "Downloading stable release…"
             } else {
@@ -1005,6 +1085,7 @@ fn update_check_row(
             let status_for_installed = status.clone();
             let button_for_installed = button.clone();
             let installed_for_installed = installed.clone();
+            let installing_for_failed = installing.clone();
             let checking_for_failed = checking.clone();
             let status_for_failed = status.clone();
             let button_for_failed = button.clone();
@@ -1036,6 +1117,7 @@ fn update_check_row(
                     button_for_failed.set_label("Check now");
                     button_for_failed.set_sensitive(true);
                     checking_for_failed.set(false);
+                    installing_for_failed.set(false);
                 },
             );
             if let Err(request) = started {
@@ -1052,6 +1134,7 @@ fn update_check_row(
                 });
                 button.set_sensitive(true);
                 checking.set(false);
+                installing.set(false);
                 *pending_download.borrow_mut() = Some(PendingInstall {
                     kind: offered_kind,
                     returns_to_stable,
@@ -1062,7 +1145,11 @@ fn update_check_row(
             clicked_check();
         }
     });
-    (row, run_check)
+    UpdateCheckRow {
+        row,
+        run_check,
+        install_underway,
+    }
 }
 
 /// The three non-terminal states [`drive_install`] reports through
@@ -1374,6 +1461,38 @@ pub(super) fn show_update_dialog(
     // the current channel, which turns the action button into a plain Close.
     let withdrawn = Rc::new(Cell::new(false));
     let offered_kind = release.kind;
+    let withdraw: Rc<dyn Fn()> = Rc::new({
+        let withdrawn = withdrawn.clone();
+        let status = status.clone();
+        let action = action.clone();
+        move || {
+            withdrawn.set(true);
+            status.set_text(
+                "This build is no longer offered on your update channel — check for updates again.",
+            );
+            action.set_label("Close");
+        }
+    });
+    // Withdraw as soon as the channel changes, rather than waiting for the
+    // click to discover it: this dialog is opened from the sidebar notice,
+    // whose cached offer survives a switch made anywhere in the process.
+    // Anchored on `layer`, so dismissing the dialog unregisters this.
+    ThemeManager::shared().on_release_channel_changed(&layer, {
+        let withdraw = withdraw.clone();
+        let withdrawn = withdrawn.clone();
+        let started = started.clone();
+        let installed = installed.clone();
+        Rc::new(move || {
+            // An install already under way is not interruptible, and one
+            // already finished is waiting on a restart.
+            if started.get() || installed.get() || withdrawn.get() {
+                return;
+            }
+            if !offer_still_eligible(ThemeManager::shared().release_channel(), offered_kind) {
+                withdraw();
+            }
+        })
+    });
     let action_layer = layer.clone();
     let action_overlay = window_overlay.clone();
     let action_root = blurred_root.clone();
@@ -1396,11 +1515,7 @@ pub(super) fn show_update_dialog(
         // another window. `withdrawn` rather than `started` so Cancel and
         // Escape keep dismissing normally.
         if !offer_still_eligible(ThemeManager::shared().release_channel(), offered_kind) {
-            withdrawn.set(true);
-            status.set_text(
-                "This build is no longer offered on your update channel — check for updates again.",
-            );
-            button.set_label("Close");
+            withdraw();
             return;
         }
         if started.replace(true) {

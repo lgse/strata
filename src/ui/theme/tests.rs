@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::collections::HashSet;
+use std::{cell::RefCell, collections::HashSet};
 
 use super::{
     Preferences, Theme, azure_tokens, blend, builtins, is_omarchy_theme_event,
-    merge_builtin_and_custom_themes, slugify, sort_preferences, title_case_slug,
+    merge_builtin_and_custom_themes, notify_live, slugify, sort_preferences, title_case_slug,
     tokens_from_quattro, validate_tokens,
 };
 use crate::{
@@ -312,4 +312,33 @@ theme = "azure-glow"
         Channel::parse(&preferences.release_channel),
         Channel::Stable
     );
+}
+
+#[test]
+fn a_channel_change_reaches_only_the_views_that_still_exist() {
+    // Each entry is (id, still alive). A view whose window has closed must
+    // not be refreshed -- it would run an update check for widgets nobody
+    // can see -- and must not be kept for the next change either.
+    let ran = RefCell::new(Vec::new());
+    let live = notify_live(
+        vec![(1, true), (2, false), (3, true)],
+        |(_, alive)| *alive,
+        |(id, _)| ran.borrow_mut().push(*id),
+    );
+
+    assert_eq!(ran.into_inner(), vec![1, 3]);
+    assert_eq!(live, vec![(1, true), (3, true)]);
+}
+
+#[test]
+fn a_channel_change_with_no_surviving_views_clears_the_registry() {
+    let ran = RefCell::new(0_u32);
+    let live = notify_live(
+        vec![(1, false)],
+        |(_, alive)| *alive,
+        |_| *ran.borrow_mut() += 1,
+    );
+
+    assert_eq!(ran.into_inner(), 0);
+    assert!(live.is_empty());
 }

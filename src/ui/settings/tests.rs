@@ -5,10 +5,11 @@ use std::rc::Rc;
 use crate::services::{BuildKind, Channel, ReleaseMetadata, UpdateCheck, Version};
 
 use super::{
-    COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
-    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, install_guard, installed_version_status,
-    is_stale_check, offer_still_eligible, responsive_dialog_size, shows_available_release_notes,
-    theme_background_is_light, theme_name_matches, uses_compact_navigation,
+    CHANNEL_ORDER, COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
+    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, channel_index, install_guard,
+    installed_version_status, is_stale_check, offer_still_eligible, responsive_dialog_size,
+    shows_available_release_notes, theme_background_is_light, theme_name_matches,
+    uses_compact_navigation,
 };
 
 #[test]
@@ -155,4 +156,13 @@ fn every_window_installs_behind_one_process_wide_guard() {
         "an install started in one window must be visible in every other"
     );
     first.set(false);
+}
+
+#[test]
+fn the_selector_highlights_the_button_for_the_persisted_channel() {
+    // The broadcast resyncs the selector by index, so an index that does not
+    // match the button order would silently select the wrong channel.
+    for (index, channel) in CHANNEL_ORDER.into_iter().enumerate() {
+        assert_eq!(channel_index(channel), index);
+    }
 }

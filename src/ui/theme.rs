@@ -21,6 +21,54 @@ thread_local! {
     static SHARED_MANAGER: RefCell<std::rc::Weak<ThemeManager>> = const { RefCell::new(std::rc::Weak::new()) };
     static SOURCE_STYLE_PATH_INSTALLED: Cell<bool> = const { Cell::new(false) };
     static SOURCE_BUFFERS: RefCell<Vec<glib::WeakRef<sourceview5::Buffer>>> = const { RefCell::new(Vec::new()) };
+    static CHANNEL_LISTENERS: RefCell<Vec<ChannelListener>> = const { RefCell::new(Vec::new()) };
+}
+
+/// A view that must refresh itself when the release channel changes, and
+/// the widget whose liveness says whether that view still exists.
+///
+/// `anchor` is deliberately a widget the listener does *not* itself hold on
+/// to -- typically the page or modal layer the view sits in. Update views
+/// capture their own widgets strongly (a button's click handler holding a
+/// clone of that button is unavoidable here), so anchoring on one of those
+/// would keep the entry alive for the life of the process and leave closed
+/// windows running update checks forever.
+struct ChannelListener {
+    anchor: glib::WeakRef<gtk::Widget>,
+    refresh: Rc<dyn Fn()>,
+}
+
+/// Runs every listener whose anchor is still alive, and forgets the rest.
+///
+/// The list is taken out of its cell for the duration: a listener is free
+/// to touch a widget whose handler registers another listener, and running
+/// them while holding the borrow would panic.
+fn notify_release_channel_changed() {
+    let taken = CHANNEL_LISTENERS.with(|listeners| std::mem::take(&mut *listeners.borrow_mut()));
+    let mut live = notify_live(
+        taken,
+        |listener| listener.anchor.upgrade().is_some(),
+        |listener| (listener.refresh)(),
+    );
+    CHANNEL_LISTENERS.with(|listeners| {
+        let mut listeners = listeners.borrow_mut();
+        // Anything registered while the listeners ran belongs after them.
+        live.extend(listeners.drain(..));
+        *listeners = live;
+    });
+}
+
+/// Calls `run` on each of `listeners` that `is_live` accepts, and returns
+/// exactly those -- the dead ones are neither run nor kept.
+fn notify_live<T>(listeners: Vec<T>, is_live: impl Fn(&T) -> bool, run: impl Fn(&T)) -> Vec<T> {
+    let live: Vec<T> = listeners
+        .into_iter()
+        .filter(|entry| is_live(entry))
+        .collect();
+    for entry in &live {
+        run(entry);
+    }
+    live
 }
 
 const THEME_CATALOG: &str = include_str!("../../data/themes/catalog.toml");
@@ -251,11 +299,45 @@ impl ThemeManager {
         Channel::parse(&self.preferences.borrow().release_channel)
     }
 
+    /// Persists `channel` and refreshes every registered update view.
+    ///
+    /// Returns early when the channel is unchanged, which is what keeps
+    /// [`Self::on_release_channel_changed`] safe to use for two-way
+    /// binding: a listener that syncs a switch to the new channel makes
+    /// that switch emit its own `notify`, whose handler writes the same
+    /// channel straight back here.
     pub fn set_release_channel(&self, channel: Channel) {
+        if self.release_channel() == channel {
+            return;
+        }
         self.preferences.borrow_mut().release_channel = channel.as_str().to_owned();
         self.save_preferences();
+        notify_release_channel_changed();
     }
 
+    /// Registers `refresh` to run whenever the release channel changes,
+    /// for as long as `anchor` is alive.
+    ///
+    /// The channel preference is process-wide, but an offer produced by a
+    /// check that already finished is not: it stays cached in the view that
+    /// produced it. Without this, switching back to Stable in one window
+    /// left every other window still advertising a preview build until
+    /// something made it check again. See [`ChannelListener`] for what
+    /// `anchor` must be.
+    pub fn on_release_channel_changed(
+        &self,
+        anchor: &impl IsA<gtk::Widget>,
+        refresh: Rc<dyn Fn()>,
+    ) {
+        let weak = glib::WeakRef::new();
+        weak.set(Some(anchor.as_ref()));
+        CHANNEL_LISTENERS.with(|listeners| {
+            listeners.borrow_mut().push(ChannelListener {
+                anchor: weak,
+                refresh,
+            });
+        });
+    }
     pub fn browser_mode(&self) -> super::browser_modes::BrowserMode {
         match self.preferences.borrow().browser_mode.as_str() {
             "grid" => super::browser_modes::BrowserMode::Grid,
