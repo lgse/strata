@@ -1666,10 +1666,24 @@ impl ViewState {
     fn load_trash_summary(self: &Rc<Self>) {
         self.show_trash_loading_indicator();
         let weak = Rc::downgrade(self);
+        let started = Instant::now();
         let task = glib::MainContext::default().spawn_local(async move {
             let trash = gio::File::for_uri("trash:///");
             match summarize_trash(&trash).await {
                 Ok(summary) if summary.item_count > 0 => {
+                    if summary.truncated {
+                        tracing::warn!(
+                            item_count = summary.item_count,
+                            elapsed_ms = started.elapsed().as_millis() as u64,
+                            "trash summary truncated"
+                        );
+                    } else {
+                        tracing::info!(
+                            item_count = summary.item_count,
+                            elapsed_ms = started.elapsed().as_millis() as u64,
+                            "trash summary built"
+                        );
+                    }
                     if let Some(state) = weak.upgrade() {
                         state.clear_trash_loading();
                         state.show_empty_trash_confirmation(summary);
@@ -1681,6 +1695,11 @@ impl ViewState {
                     }
                 }
                 Err(error) => {
+                    tracing::warn!(
+                        error_domain = ?error.domain(),
+                        error_code = error.code(),
+                        "trash summary failed"
+                    );
                     if let Some(state) = weak.upgrade() {
                         state.clear_trash_loading();
                         show_error_dialog(
@@ -1693,7 +1712,10 @@ impl ViewState {
             }
         });
         self.pending_trash_summary
-            .replace(Some(LoadHandle::new(move || task.abort())));
+            .replace(Some(LoadHandle::new(move || {
+                tracing::debug!("trash summary cancelled");
+                task.abort();
+            })));
     }
 
     /// The walk is bounded but can still take a few seconds on a large trash, hence the indicator.
@@ -1833,11 +1855,18 @@ impl ViewState {
             glib::MainContext::default().spawn_local(async move {
                 match list_trash_top_level_entries(&gio::File::for_uri("trash:///")).await {
                     Ok(entries) => browser.delete(entries, true),
-                    Err(error) => show_error_dialog(
-                        &error_overlay,
-                        "Unable to read Trash",
-                        &error.to_string(),
-                    ),
+                    Err(error) => {
+                        tracing::warn!(
+                            error_domain = ?error.domain(),
+                            error_code = error.code(),
+                            "empty trash listing failed"
+                        );
+                        show_error_dialog(
+                            &error_overlay,
+                            "Unable to read Trash",
+                            &error.to_string(),
+                        );
+                    }
                 }
             });
         });

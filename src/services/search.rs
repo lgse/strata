@@ -66,6 +66,7 @@ impl SearchHandle {
 
 impl Drop for SearchHandle {
     fn drop(&mut self) {
+        tracing::debug!("search index cancelled");
         self.cancelled.store(true, Ordering::Relaxed);
     }
 }
@@ -162,6 +163,19 @@ fn index_tree_with_budget(
                 }
             }
 
+            if progress.truncated {
+                tracing::warn!(
+                    entries = index.len(),
+                    elapsed_ms = walk_start.elapsed().as_millis() as u64,
+                    "search index truncated"
+                );
+            } else {
+                tracing::info!(
+                    entries = index.len(),
+                    elapsed_ms = walk_start.elapsed().as_millis() as u64,
+                    "search index built"
+                );
+            }
             publish(&event_sender, &progress, false);
             while !worker_cancelled.load(Ordering::Relaxed) {
                 match command_receiver.recv_timeout(Duration::from_millis(50)) {
