@@ -1,0 +1,32 @@
+pkgbase = strata-preview-bin
+	pkgdesc = A fast, keyboard-first file manager for Linux (preview releases)
+	pkgver = 0.7.1rc2
+	pkgrel = 1
+	url = https://github.com/lgse/strata
+	arch = x86_64
+	arch = aarch64
+	license = GPL-3.0-or-later
+	depends = bubblewrap
+	depends = fontconfig
+	depends = glibc>=2.39
+	depends = gtk4>=4.12
+	depends = gtksourceview5
+	depends = poppler-glib
+	optdepends = ffmpeg: video previews
+	optdepends = ffmpegthumbnailer: video thumbnails
+	optdepends = gst-libav: additional media format playback
+	optdepends = gst-plugins-good: media playback in previews
+	optdepends = gvfs-smb: SMB network locations
+	optdepends = imagemagick: RAW image previews
+	optdepends = libraw: RAW image previews when ImageMagick is unavailable
+	provides = strata
+	conflicts = strata
+	conflicts = strata-bin
+	options = !strip
+	options = !debug
+	source_x86_64 = https://github.com/lgse/strata/releases/download/v0.7.1-rc.2/strata-0.7.1-rc.2-x86_64-unknown-linux-gnu.tar.gz
+	sha256sums_x86_64 = 99422640f13c71f966ae367cd11231921f071e7146307c98256873d83aa425bf
+	source_aarch64 = https://github.com/lgse/strata/releases/download/v0.7.1-rc.2/strata-0.7.1-rc.2-aarch64-unknown-linux-gnu.tar.gz
+	sha256sums_aarch64 = 55b16993a43722c4f13b6afda943c97ad83294911f1b7793e83548a48a06ddd7
+
+pkgname = strata-preview-bin
