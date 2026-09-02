@@ -5352,9 +5352,13 @@ pub(super) fn install_item_context_menu(
     } else {
         "Move to Trash"
     };
-    let move_to_trash =
-        item_context_danger_option(crate::assets::icons::TRASH, delete_label, "Del");
-    move_to_trash.add_css_class("danger");
+    let move_to_trash = if in_trash {
+        let option = item_context_danger_option(crate::assets::icons::TRASH, delete_label, "Del");
+        option.add_css_class("danger");
+        option
+    } else {
+        item_context_option(crate::assets::icons::TRASH, delete_label, "Del")
+    };
     let permanent_delete = item_context_danger_option(
         crate::assets::icons::TRASH,
         "Permanently delete",
@@ -5397,9 +5401,13 @@ pub(super) fn install_item_context_menu(
     let move_multiple = item_context_option(crate::assets::icons::FOLDER, "Move to…", "");
     let copy_to_multiple = item_context_option(crate::assets::icons::COPY, "Copy to…", "");
     let cut_multiple = item_context_option(crate::assets::icons::SCISSORS, "Cut", "Ctrl+X");
-    let trash_multiple =
-        item_context_danger_option(crate::assets::icons::TRASH, delete_label, "Del");
-    trash_multiple.add_css_class("danger");
+    let trash_multiple = if in_trash {
+        let option = item_context_danger_option(crate::assets::icons::TRASH, delete_label, "Del");
+        option.add_css_class("danger");
+        option
+    } else {
+        item_context_option(crate::assets::icons::TRASH, delete_label, "Del")
+    };
     let permanent_delete_multiple = item_context_danger_option(
         crate::assets::icons::TRASH,
         "Permanently delete",
@@ -5605,12 +5613,8 @@ pub(super) fn install_item_context_menu(
         let entries = state.browser.selected_entries();
         preview.set_visible(entry_supports_quick_preview(&entry));
         open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
-        permanent_delete.set_visible(
-            !in_trash && crate::ui::theme::ThemeManager::shared().show_permanent_delete(),
-        );
-        permanent_delete_multiple.set_visible(
-            !in_trash && crate::ui::theme::ThemeManager::shared().show_permanent_delete(),
-        );
+        permanent_delete.set_visible(!in_trash);
+        permanent_delete_multiple.set_visible(!in_trash);
         pin.set_visible(entry.is_directory() && !is_trash_location(&entry.location));
         pin.set_sensitive(
             state
