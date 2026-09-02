@@ -309,6 +309,7 @@ impl FileSource for TrashFileSource {
         });
         emit(DirectoryEvent::Finished {
             request_id: request.id,
+            truncated: false,
         });
         LoadHandle::new(|| {})
     }

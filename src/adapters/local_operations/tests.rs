@@ -341,7 +341,9 @@ fn staged_file_replacement_commits_then_removes_a_moved_source() -> Result<(), B
 #[test]
 fn cancelled_replacement_move_tracks_the_modified_source_and_target_roots()
 -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_nanos();
@@ -850,7 +852,9 @@ fn archive_paths_must_be_nonempty_confined_relative_paths() -> Result<(), Box<dy
 #[test]
 fn cancelling_between_deletions_reports_completed_and_unattempted_items()
 -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_nanos();
@@ -962,7 +966,9 @@ fn every_archive_format_rejects_parent_traversal() -> Result<(), Box<dyn Error>>
 
 #[test]
 fn cancelling_recursive_copy_removes_only_its_staging_output() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_nanos();
@@ -1002,7 +1008,9 @@ fn cancelling_recursive_copy_removes_only_its_staging_output() -> Result<(), Box
 
 #[test]
 fn cancelling_recursive_delete_leaves_the_unfinished_root_in_place() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_nanos();
@@ -1060,7 +1068,9 @@ fn cancelling_recursive_delete_leaves_the_unfinished_root_in_place() -> Result<(
 #[test]
 fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Result<(), Box<dyn Error>>
 {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
         .as_nanos();
@@ -1189,7 +1199,9 @@ fn extraction_supports_nesting_and_regular_conflicts() -> Result<(), Box<dyn Err
 
 #[test]
 fn cancelling_restore_before_io_reports_every_item_as_unattempted() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_FILE_TEST.lock().map_err(|error| error.to_string())?;
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let events = Rc::new(RefCell::new(Vec::new()));
     let emitted = events.clone();
     let entries = vec![file_entry(std::path::Path::new("/fixture/trashed.txt"))];
