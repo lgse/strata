@@ -20,6 +20,19 @@ use crate::{
     },
 };
 
+/// Caps a normal directory load at this project's own documented performance baseline for
+/// 100,000 entries (docs/performance-baseline.md: 3,755 ms, 286 MiB) -- past this, per-batch
+/// merge cost grows enough that browsing stops feeling responsive.
+const MAX_DIRECTORY_ENTRIES: usize = 100_000;
+const DIRECTORY_LOAD_TIME_BUDGET: Duration = Duration::from_secs(10);
+
+/// A hover peek only ever displays a handful of entries (`PeekBehavior::item_limit`), so it
+/// needs far less headroom than a full directory load -- just enough to survive hidden-file
+/// filtering, not enough to enumerate an entire large directory for a preview that discards
+/// nearly all of it.
+const PEEK_MAX_ENTRIES: usize = 64;
+const PEEK_TIME_BUDGET: Duration = Duration::from_secs(3);
+
 #[derive(Clone, Debug)]
 pub struct BrowserColumnSnapshot {
     pub location: Location,
@@ -62,6 +75,7 @@ pub enum BrowserEvent {
     },
     LoadFinished {
         depth: usize,
+        truncated: bool,
     },
     LoadFailed {
         depth: usize,
@@ -466,6 +480,8 @@ impl Browser {
                 location,
                 batch_size: 128,
                 include_hidden: self.preferences.get().show_hidden,
+                max_entries: PEEK_MAX_ENTRIES,
+                time_budget: PEEK_TIME_BUDGET,
             },
             emit,
         );
@@ -1416,6 +1432,8 @@ impl Browser {
                 location,
                 batch_size: 128,
                 include_hidden: self.preferences.get().show_hidden,
+                max_entries: MAX_DIRECTORY_ENTRIES,
+                time_budget: DIRECTORY_LOAD_TIME_BUDGET,
             },
             emit,
         )
@@ -1630,11 +1648,14 @@ impl Browser {
                     self.emit(BrowserEvent::PeekEntriesAdded { entries });
                 }
             }
-            DirectoryEvent::Finished { request_id } => {
+            DirectoryEvent::Finished {
+                request_id,
+                truncated,
+            } => {
                 let mut state = self.state.borrow_mut();
                 if let Some(depth) = state.finish(request_id) {
                     drop(state);
-                    self.emit(BrowserEvent::LoadFinished { depth });
+                    self.emit(BrowserEvent::LoadFinished { depth, truncated });
                 } else if state.finish_peek(request_id) {
                     drop(state);
                     self.emit(BrowserEvent::PeekFinished);

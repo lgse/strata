@@ -182,20 +182,41 @@ impl FileSource for LocalFileSource {
         log_directory_load_started(request_id, &location);
 
         let task = glib::MainContext::default().spawn_local(async move {
+            let deadline = started + request.time_budget;
+            let finish_truncated = |entries: usize, reason: &'static str| {
+                tracing::warn!(
+                    request_id = request_id.0,
+                    entries,
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    reason,
+                    "directory load truncated"
+                );
+                emit(DirectoryEvent::Finished {
+                    request_id,
+                    truncated: true,
+                });
+            };
             let directory = location
                 .native_path()
                 .map(gio::File::for_path)
                 .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()));
-            let enumerator = match directory
-                .enumerate_children_future(
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                finish_truncated(0, "time budget");
+                return;
+            }
+            let enumerator = match glib::future_with_timeout(
+                remaining,
+                directory.enumerate_children_future(
                     ATTRIBUTES,
                     gio::FileQueryInfoFlags::NONE,
                     glib::Priority::DEFAULT,
-                )
-                .await
+                ),
+            )
+            .await
             {
-                Ok(enumerator) => enumerator,
-                Err(error) => {
+                Ok(Ok(enumerator)) => enumerator,
+                Ok(Err(error)) => {
                     tracing::warn!(
                         request_id = request_id.0,
                         error_domain = ?error.domain(),
@@ -208,27 +229,42 @@ impl FileSource for LocalFileSource {
                     });
                     return;
                 }
+                Err(_) => {
+                    finish_truncated(0, "time budget");
+                    return;
+                }
             };
 
             let mut total_entries = 0usize;
             let mut first_batch = true;
             loop {
-                match enumerator
-                    .next_files_future(request.batch_size as i32, glib::Priority::DEFAULT)
-                    .await
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    finish_truncated(total_entries, "time budget");
+                    break;
+                }
+                match glib::future_with_timeout(
+                    remaining,
+                    enumerator
+                        .next_files_future(request.batch_size as i32, glib::Priority::DEFAULT),
+                )
+                .await
                 {
-                    Ok(files) if files.is_empty() => {
+                    Ok(Ok(files)) if files.is_empty() => {
                         tracing::info!(
                             request_id = request_id.0,
                             entries = total_entries,
                             elapsed_ms = started.elapsed().as_millis() as u64,
                             "directory load finished"
                         );
-                        emit(DirectoryEvent::Finished { request_id });
+                        emit(DirectoryEvent::Finished {
+                            request_id,
+                            truncated: false,
+                        });
                         break;
                     }
-                    Ok(files) => {
-                        let entries: Vec<_> = files
+                    Ok(Ok(files)) => {
+                        let mut entries: Vec<_> = files
                             .into_iter()
                             .filter(|info| request.include_hidden || !info_is_hidden(info))
                             .filter_map(|info| {
@@ -236,6 +272,9 @@ impl FileSource for LocalFileSource {
                                 Some(entry_from_info(location_for_file(&child)?, info))
                             })
                             .collect();
+                        let remaining_capacity = request.max_entries.saturating_sub(total_entries);
+                        let entry_budget_exhausted = entries.len() > remaining_capacity;
+                        entries.truncate(remaining_capacity);
                         total_entries += entries.len();
                         if first_batch {
                             tracing::info!(
@@ -250,8 +289,12 @@ impl FileSource for LocalFileSource {
                             request_id,
                             entries,
                         });
+                        if entry_budget_exhausted {
+                            finish_truncated(total_entries, "entry budget");
+                            break;
+                        }
                     }
-                    Err(error) => {
+                    Ok(Err(error)) => {
                         tracing::warn!(
                             request_id = request_id.0,
                             error_domain = ?error.domain(),
@@ -262,6 +305,10 @@ impl FileSource for LocalFileSource {
                             request_id,
                             message: error.to_string(),
                         });
+                        break;
+                    }
+                    Err(_) => {
+                        finish_truncated(total_entries, "time budget");
                         break;
                     }
                 }

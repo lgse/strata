@@ -102,6 +102,7 @@ impl FileSource for WatchingFileSource {
         });
         emit(DirectoryEvent::Finished {
             request_id: request.id,
+            truncated: false,
         });
         LoadHandle::new(|| {})
     }
@@ -176,6 +177,7 @@ impl FileSource for RetryFileSource {
             });
             emit(DirectoryEvent::Finished {
                 request_id: request.id,
+                truncated: false,
             });
         }
         LoadHandle::new(|| {})
@@ -229,6 +231,7 @@ impl FileSource for FilePreviewSource {
         });
         emit(DirectoryEvent::Finished {
             request_id: request.id,
+            truncated: false,
         });
         LoadHandle::new(|| {})
     }
@@ -254,6 +257,7 @@ impl FileSource for RestoredSortingSource {
         });
         emit(DirectoryEvent::Finished {
             request_id: request.id,
+            truncated: false,
         });
         LoadHandle::new(|| {})
     }
@@ -278,6 +282,7 @@ impl FileSource for FakeFileSource {
         });
         emit(DirectoryEvent::Finished {
             request_id: request.id,
+            truncated: false,
         });
         LoadHandle::new(|| {})
     }
@@ -304,6 +309,7 @@ impl FileSource for TrashFileSource {
         });
         emit(DirectoryEvent::Finished {
             request_id: request.id,
+            truncated: false,
         });
         LoadHandle::new(|| {})
     }
@@ -322,6 +328,7 @@ impl FileSource for CountingFileSource {
         self.enumerate_calls.set(self.enumerate_calls.get() + 1);
         emit(DirectoryEvent::Finished {
             request_id: request.id,
+            truncated: false,
         });
         LoadHandle::new(|| {})
     }

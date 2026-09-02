@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::{fmt, rc::Rc};
+use std::{fmt, rc::Rc, time::Duration};
 
 use crate::model::{FileEntry, Location, uri_contains_credentials};
 
@@ -16,6 +16,11 @@ pub struct DirectoryRequest {
     pub location: Location,
     pub batch_size: usize,
     pub include_hidden: bool,
+    /// Caps how many entries a single load will retain/render, bounding worst-case time and
+    /// memory on an adversarially large or unbounded directory.
+    pub max_entries: usize,
+    /// Caps how long a single load may run before it is reported as truncated.
+    pub time_budget: Duration,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -175,6 +180,9 @@ pub enum DirectoryEvent {
     },
     Finished {
         request_id: RequestId,
+        /// `true` if the load stopped short of covering the full directory, because it hit the
+        /// entry or time budget; already-emitted `Batch` entries are then a lower bound.
+        truncated: bool,
     },
     Failed {
         request_id: RequestId,
