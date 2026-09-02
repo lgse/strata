@@ -272,7 +272,7 @@ Plain-text and source previews are different: they stay in process because they 
 | UI and runtime | Rust 2024, GTK 4.12+, GIO/GLib, Cairo, GtkSourceView 5, Poppler GLib, GDK Pixbuf, GStreamer, and Fontconfig |
 | Filesystems | Native Linux paths (including non-UTF-8 names) and GIO/GVfs locations; remote protocol availability depends on installed GVfs backends |
 | Preview boundary | Bubblewrap is mandatory for native parser-backed previews; helpers have no network and fail closed. Plain text is read in process with a 1 MiB cap. |
-| Optional preview tools | `ffmpegthumbnailer`/`ffmpeg` for video; ImageMagick and LibRaw-compatible `dcraw_emu`/`dcraw` expand camera RAW support |
+| Optional preview tools | `ffmpegthumbnailer`/`ffmpeg` for video; ImageMagick and `dcraw`/`simple_dcraw` expand camera RAW support |
 | Hardware acceleration | Media-only VA-API or Vulkan attempts with software VP8/WebM fallback; GPU and codec support depend on host drivers/plugins |
 | Scale targets | Virtualized browser models and bounded asynchronous updates are tested with deterministic directories up to 100,000 entries |
 | Packaging | Dynamically linked release archive with SHA-256 digest, GitHub build-provenance attestation, and `SOURCE_COMMIT` |
