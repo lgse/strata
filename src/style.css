@@ -20,7 +20,7 @@ headerbar {
   border-bottom: 1px solid alpha(@theme_border, 0.6);
   box-shadow: none;
   min-height: 54px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .location-control {
@@ -2249,11 +2249,11 @@ menubutton.column-header-action > button:focus-visible image {
 }
 
 .loading-skeleton {
-  padding: 16px 18px;
+  padding: 8px;
 }
 
 .skeleton-row {
-  background: alpha(@theme_border, 0.12);
+  background: alpha(@theme_border, 0.28);
   border-radius: 4px;
   min-height: 10px;
 }

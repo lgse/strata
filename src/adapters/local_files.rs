@@ -4,7 +4,7 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
     io::ErrorKind,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -20,6 +20,7 @@ use crate::{
 };
 
 const ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,time::modified";
+const MAX_PENDING_MONITOR_CHANGES: usize = 256;
 
 #[derive(Default)]
 pub struct LocalFileSource;
@@ -355,6 +356,9 @@ impl FileSource for LocalFileSource {
         let timeout_for_change = timeout.clone();
         let cancelled_for_change = cancelled.clone();
         monitor.connect_changed(move |_, file, other_file, event| {
+            if pending_for_change.borrow().contains_key(Path::new("")) {
+                return;
+            }
             let path = file.path();
             let other_path = other_file.and_then(gio::File::path);
             let change = match event {
@@ -388,13 +392,9 @@ impl FileSource for LocalFileSource {
                 PendingMonitorChange::Move { to, .. } => to.clone(),
                 PendingMonitorChange::Rescan => PathBuf::new(),
             };
-            pending_for_change
-                .borrow_mut()
-                .entry(key)
-                .and_modify(|pending| {
-                    *pending = merge_pending_change(pending.clone(), change.clone());
-                })
-                .or_insert(change);
+            if !queue_monitor_change(&mut pending_for_change.borrow_mut(), key, change) {
+                return;
+            }
 
             if let Some(source) = timeout_for_change.take() {
                 source.remove();
@@ -432,6 +432,27 @@ fn log_directory_load_started(request_id: RequestId, location: &Location) {
         location = %location.diagnostic_path(),
         "directory load location"
     );
+}
+
+fn queue_monitor_change(
+    pending: &mut HashMap<PathBuf, PendingMonitorChange>,
+    key: PathBuf,
+    change: PendingMonitorChange,
+) -> bool {
+    if pending.contains_key(Path::new("")) {
+        return false;
+    }
+    pending
+        .entry(key)
+        .and_modify(|pending| {
+            *pending = merge_pending_change(pending.clone(), change.clone());
+        })
+        .or_insert(change);
+    if pending.len() > MAX_PENDING_MONITOR_CHANGES {
+        pending.clear();
+        pending.insert(PathBuf::new(), PendingMonitorChange::Rescan);
+    }
+    true
 }
 
 fn merge_pending_change(

@@ -8,6 +8,7 @@
 
 use std::{
     cell::{Cell, RefCell},
+    collections::HashSet,
     rc::{Rc, Weak},
 };
 
@@ -82,6 +83,7 @@ struct Pane {
     model: gtk::StringList,
     selection: gtk::MultiSelection,
     filtered_model: Option<gio::ListModel>,
+    filter_model: Option<gtk::FilterListModel>,
     syncing_selection: Rc<Cell<bool>>,
     stack: gtk::Stack,
     status: gtk::Label,
@@ -105,7 +107,7 @@ pub struct ModeViews {
     browser: Rc<Browser>,
     single_click_previews: Rc<Cell<bool>>,
     transfer_handler: TransferHandlerSlot,
-    cut_locations: Rc<RefCell<Vec<Location>>>,
+    cut_locations: Rc<RefCell<HashSet<Location>>>,
     context_state: RefCell<Option<Weak<super::browser::ViewState>>>,
     active_rename: Rc<RefCell<Option<ActiveModeRename>>>,
     active_new_entry: Rc<RefCell<Option<ActiveModeNewEntry>>>,
@@ -163,7 +165,7 @@ impl ModeViews {
             browser,
             single_click_previews: Rc::new(Cell::new(true)),
             transfer_handler: Rc::new(RefCell::new(None)),
-            cut_locations: Rc::new(RefCell::new(Vec::new())),
+            cut_locations: Rc::new(RefCell::new(HashSet::new())),
             context_state: RefCell::new(None),
             active_rename: Rc::new(RefCell::new(None)),
             active_new_entry: Rc::new(RefCell::new(None)),
@@ -447,7 +449,8 @@ impl ModeViews {
     }
 
     pub fn set_cut_locations(&self, locations: &[Location]) {
-        self.cut_locations.replace(locations.to_vec());
+        self.cut_locations
+            .replace(locations.iter().cloned().collect());
         for pane in self.grid_panes.iter().chain(self.explorer_pane.iter()) {
             refresh_cut_pane(pane, &self.browser, locations);
         }
@@ -538,7 +541,9 @@ impl ModeViews {
                             .collect();
                         pane.model.splice(insertion.position as u32, 0, &values);
                     }
-                    show_count(pane);
+                    if !pane.spinner.is_spinning() {
+                        show_count(pane);
+                    }
                 }
             }
             BrowserEvent::EntriesReplaced { depth, entries } => {
@@ -576,6 +581,11 @@ impl ModeViews {
             }
             BrowserEvent::ColumnReloaded { depth } => {
                 for pane in self.panes_at(*depth) {
+                    pane.syncing_selection.set(true);
+                    pane.selection.set_model(None::<&gio::ListModel>);
+                    if let Some(filtered) = pane.filter_model.as_ref() {
+                        filtered.set_model(None::<&gio::ListModel>);
+                    }
                     pane.model.splice(0, pane.model.n_items(), &[]);
                     pane.truncated_hint.set_visible(false);
                     pane.spinner.set_visible(true);
@@ -585,6 +595,7 @@ impl ModeViews {
             }
             BrowserEvent::LoadFinished { depth, truncated } => {
                 for pane in self.panes_at(*depth) {
+                    reconnect_pane_model(pane);
                     pane.spinner.stop();
                     pane.spinner.set_visible(false);
                     pane.truncated_hint.set_visible(*truncated);
@@ -593,6 +604,7 @@ impl ModeViews {
             }
             BrowserEvent::LoadFailed { depth, message } => {
                 for pane in self.panes_at(*depth) {
+                    reconnect_pane_model(pane);
                     pane.spinner.stop();
                     pane.status
                         .set_label(&format!("Unable to read this directory\n{message}"));
@@ -963,7 +975,7 @@ fn build_grid_pane(
     browser: Rc<Browser>,
     single_click_previews: Rc<Cell<bool>>,
     transfer_handler: TransferHandlerSlot,
-    cut_locations: Rc<RefCell<Vec<Location>>>,
+    cut_locations: Rc<RefCell<HashSet<Location>>>,
     options: GridOptions,
     depth: usize,
     title: &str,
@@ -1250,6 +1262,7 @@ fn build_grid_pane(
         model,
         selection,
         filtered_model: Some(view_model.upcast()),
+        filter_model: Some(filtered_model),
         syncing_selection,
         stack,
         status,
@@ -1549,7 +1562,7 @@ fn build_explorer_pane(
     browser: Rc<Browser>,
     single_click_previews: Rc<Cell<bool>>,
     transfer_handler: TransferHandlerSlot,
-    cut_locations: Rc<RefCell<Vec<Location>>>,
+    cut_locations: Rc<RefCell<HashSet<Location>>>,
     active_new_entry: Rc<RefCell<Option<ActiveModeNewEntry>>>,
     depth: usize,
     title: &str,
@@ -1595,7 +1608,7 @@ fn build_explorer_pane(
     let new_entry_is_directory = Rc::new(Cell::new(true));
     let flattened_models = gio::ListStore::new::<gio::ListModel>();
     flattened_models.append(&new_entry_placeholder.clone().upcast::<gio::ListModel>());
-    flattened_models.append(&filtered_model.upcast::<gio::ListModel>());
+    flattened_models.append(&filtered_model.clone().upcast::<gio::ListModel>());
     let view_model = gtk::FlattenListModel::new(Some(flattened_models));
     let view_model_object = view_model.clone().upcast::<gio::ListModel>();
     let selection = gtk::MultiSelection::new(Some(view_model.clone()));
@@ -1838,6 +1851,7 @@ fn build_explorer_pane(
         model,
         selection,
         filtered_model: Some(view_model_object),
+        filter_model: Some(filtered_model),
         syncing_selection,
         stack,
         status,
@@ -1899,9 +1913,7 @@ fn pane_base(
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.set_hexpand(true);
     content.set_vexpand(true);
-    let loading = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    loading.set_valign(gtk::Align::Center);
-    loading.append(&gtk::Label::new(Some("Loading…")));
+    let loading = super::browser::loading_skeleton();
     let status = gtk::Label::new(Some("This directory is empty"));
     status.add_css_class("status-message");
     status.set_wrap(true);
@@ -2474,6 +2486,21 @@ fn replace_entries(pane: &Pane, entries: &[FileEntry]) {
         .collect();
     pane.model.splice(0, pane.model.n_items(), &values);
     show_count(pane);
+}
+
+fn reconnect_pane_model(pane: &Pane) {
+    if pane.selection.model().is_some() {
+        return;
+    }
+    if let Some(filtered) = pane.filter_model.as_ref() {
+        filtered.set_model(Some(&pane.model));
+    }
+    if let Some(filtered) = pane.filtered_model.as_ref() {
+        pane.selection.set_model(Some(filtered));
+    } else {
+        pane.selection.set_model(Some(&pane.model));
+    }
+    pane.syncing_selection.set(false);
 }
 
 fn show_count(pane: &Pane) {

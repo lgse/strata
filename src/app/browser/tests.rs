@@ -5,7 +5,7 @@ use std::{cell::Cell, ffi::OsString};
 use super::*;
 use crate::{
     model::{EntryKind, MetadataValue},
-    services::{CompressRequest, ExtractRequest, LoadHandle},
+    services::{CancelledOperation, CompressRequest, ExtractRequest, LoadHandle},
 };
 
 #[test]
@@ -288,6 +288,32 @@ impl FileSource for FakeFileSource {
     }
 }
 
+struct TrashFileSource;
+
+impl FileSource for TrashFileSource {
+    fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
+        Ok(())
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        emit(DirectoryEvent::Batch {
+            request_id: request.id,
+            entries: vec![FileEntry {
+                location: Location::uri("trash:///item"),
+                native_name: OsString::from("item"),
+                display_name: "item".into(),
+                kind: EntryKind::File,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Unknown,
+            }],
+        });
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
 struct CountingFileSource {
     enumerate_calls: Rc<Cell<usize>>,
 }
@@ -305,6 +331,144 @@ impl FileSource for CountingFileSource {
         });
         LoadHandle::new(|| {})
     }
+}
+
+#[test]
+fn large_restore_progress_defers_model_removal() {
+    let browser = Browser::new(Rc::new(TrashFileSource));
+    browser.navigate(Location::uri("trash:///"));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event));
+    let request_id = browser.begin_operation();
+    browser.restoration_operation.set(true);
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::RestoreProgress {
+        request_id,
+        completed: 1,
+        total: 3_000,
+        restored_location: Some(Location::uri("trash:///item")),
+    });
+
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::RestorationProgress {
+            completed: 1,
+            total: 3_000,
+        }
+    )));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::EntriesSpliced { .. }))
+    );
+}
+
+#[test]
+fn cancellation_refreshes_an_affected_remote_root_and_its_open_descendants() {
+    let enumerate_calls = Rc::new(Cell::new(0));
+    let browser = Browser::new(Rc::new(CountingFileSource {
+        enumerate_calls: enumerate_calls.clone(),
+    }));
+    let root = Location::uri("smb://host/share");
+    browser.navigate(root.clone());
+    browser.descend(0, Location::uri("smb://host/share/child"));
+    assert_eq!(enumerate_calls.get(), 2);
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event));
+    let cancellations = Rc::new(Cell::new(0));
+    let cancellations_for_handle = cancellations.clone();
+    let request_id = browser.begin_operation();
+    browser.deletion_operation.set(true);
+    browser
+        .operation_load
+        .replace(Some(LoadHandle::new(move || {
+            cancellations_for_handle.set(cancellations_for_handle.get() + 1);
+        })));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    browser.cancel_file_operation();
+
+    assert_eq!(cancellations.get(), 1);
+    assert_eq!(browser.current_operation.get(), Some(request_id));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::DeletionFinished))
+    );
+
+    emit(OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation {
+            completed: vec![Location::uri("smb://host/share/completed")],
+            failed: vec![Location::uri("smb://host/share/interrupted")],
+            not_attempted: vec![Location::uri("smb://host/share/not-attempted")],
+            affected_locations: HashSet::from([root]),
+        },
+    });
+
+    assert_eq!(browser.current_operation.get(), None);
+    assert_eq!(enumerate_calls.get(), 2);
+    let affected_locations = events
+        .borrow()
+        .iter()
+        .find_map(|event| match event {
+            BrowserEvent::OperationCancelled {
+                affected_locations, ..
+            } => Some(affected_locations.clone()),
+            _ => None,
+        })
+        .expect("cancellation event");
+    browser.refresh_after_cancellation(&affected_locations);
+    assert_eq!(enumerate_calls.get(), 4);
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::DeletionFinished))
+    );
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::OperationCancelled {
+            completed: 1,
+            failed: 1,
+            not_attempted: 1,
+            ..
+        }
+    )));
+}
+
+#[test]
+fn transfer_failure_reports_moves_completed_before_the_error() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event));
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(true));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+    let completed = Location::local("/fixture/completed");
+
+    emit(OperationEvent::TransferFailed {
+        request_id,
+        completed_locations: vec![completed.clone()],
+        message: "injected failure".to_owned(),
+    });
+
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::TransferFinished { moved_locations }
+            if moved_locations == std::slice::from_ref(&completed)
+    )));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::OperationFailed { message } if message == "injected failure"
+    )));
 }
 
 struct ImmediateOperationProvider;
@@ -342,6 +506,7 @@ impl OperationProvider for ImmediateOperationProvider {
     fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         emit(OperationEvent::Pasted {
             request_id: request.id,
+            locations: request.items.into_iter().map(|item| item.source).collect(),
         });
         LoadHandle::new(|| {})
     }

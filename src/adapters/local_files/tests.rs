@@ -257,6 +257,30 @@ fn coalescing_preserves_a_move_when_metadata_follows_it() {
 }
 
 #[test]
+fn large_monitor_bursts_collapse_to_one_rescan() {
+    let mut pending = HashMap::new();
+    for index in 0..=MAX_PENDING_MONITOR_CHANGES {
+        let path = PathBuf::from(format!("/fixture/{index}"));
+        assert!(queue_monitor_change(
+            &mut pending,
+            path.clone(),
+            PendingMonitorChange::Upsert(path),
+        ));
+    }
+
+    assert_eq!(pending.len(), 1);
+    assert!(matches!(
+        pending.get(Path::new("")),
+        Some(PendingMonitorChange::Rescan)
+    ));
+    assert!(!queue_monitor_change(
+        &mut pending,
+        "/fixture/ignored".into(),
+        PendingMonitorChange::Remove("/fixture/ignored".into()),
+    ));
+}
+
+#[test]
 fn conflicting_move_events_fall_back_to_a_rescan() {
     let change = merge_pending_change(
         PendingMonitorChange::Move {

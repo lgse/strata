@@ -3,10 +3,20 @@
 use std::path::Path;
 
 use super::{
-    PinStatus, is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location,
-    parse_pinned_places, pin_status, remove_pinned_place, reorder_places, serialize_pinned_places,
-    should_show_standard_place, vim_focus_direction,
+    MouseHistoryAction, PinStatus, is_sidebar_focus_shortcut, is_smb_location,
+    is_standard_place_location, mouse_history_action, parse_pinned_places, pin_status,
+    remove_pinned_place, reorder_places, serialize_pinned_places, should_show_standard_place,
+    vim_focus_direction,
 };
+
+#[test]
+fn mouse_history_buttons_map_to_navigation_actions() {
+    assert_eq!(mouse_history_action(8), Some(MouseHistoryAction::Back));
+    assert_eq!(mouse_history_action(9), Some(MouseHistoryAction::Forward));
+    for button in [1, 2, 3, 4, 5, 6, 7, 10] {
+        assert_eq!(mouse_history_action(button), None);
+    }
+}
 
 #[test]
 fn sidebar_focus_shortcut_requires_control_and_shift() {

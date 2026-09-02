@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::rc::Rc;
+use std::{collections::HashSet, rc::Rc};
 
 use crate::model::{FileEntry, Location};
 
@@ -137,6 +137,14 @@ pub struct ExtractRequest {
     pub password: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct CancelledOperation {
+    pub completed: Vec<Location>,
+    pub failed: Vec<Location>,
+    pub not_attempted: Vec<Location>,
+    pub affected_locations: HashSet<Location>,
+}
+
 #[derive(Clone, Debug)]
 pub enum OperationEvent {
     Renamed {
@@ -147,6 +155,17 @@ pub enum OperationEvent {
     },
     Pasted {
         request_id: OperationRequestId,
+        locations: Vec<Location>,
+    },
+    TransferFailed {
+        request_id: OperationRequestId,
+        completed_locations: Vec<Location>,
+        message: String,
+    },
+    TransferProgress {
+        request_id: OperationRequestId,
+        completed: usize,
+        total: usize,
     },
     DeleteProgress {
         request_id: OperationRequestId,
@@ -177,6 +196,10 @@ pub enum OperationEvent {
         request_id: OperationRequestId,
         restored_locations: Vec<Location>,
         message: String,
+    },
+    Cancelled {
+        request_id: OperationRequestId,
+        result: CancelledOperation,
     },
     Failed {
         request_id: OperationRequestId,

@@ -30,6 +30,20 @@ const SIDEBAR_WIDTH: i32 = 208;
 const MIN_SIDEBAR_WIDTH: i32 = 176;
 const SIDEBAR_TRANSITION: Duration = Duration::from_millis(300);
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MouseHistoryAction {
+    Back,
+    Forward,
+}
+
+fn mouse_history_action(button: u32) -> Option<MouseHistoryAction> {
+    match button {
+        8 => Some(MouseHistoryAction::Back),
+        9 => Some(MouseHistoryAction::Forward),
+        _ => None,
+    }
+}
+
 pub fn present(application: &gtk::Application) {
     present_location(application, None);
 }
@@ -189,6 +203,23 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         Rc::new(move || measured_content.position() + measured_browser.preview_occupied_width()),
     );
     root.append(&preview_split);
+
+    let mouse_history = gtk::GestureClick::new();
+    mouse_history.set_button(0);
+    mouse_history.set_propagation_phase(gtk::PropagationPhase::Bubble);
+    let weak_controller = Rc::downgrade(&controller);
+    mouse_history.connect_pressed(move |gesture, _, _, _| {
+        let Some(browser) = weak_controller.upgrade() else {
+            return;
+        };
+        match mouse_history_action(gesture.current_button()) {
+            Some(MouseHistoryAction::Back) if browser.can_go_back() => browser.back(),
+            Some(MouseHistoryAction::Forward) if browser.can_go_forward() => browser.forward(),
+            _ => return,
+        }
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+    });
+    root.add_controller(mouse_history);
 
     let window_overlay = gtk::Overlay::new();
     let blurred_root = BlurBin::new(&root);

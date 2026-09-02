@@ -331,6 +331,15 @@ fn multi_selection_summary_lists_at_most_three_names() {
         selected_items_summary(&[entry("one"), entry("two"), entry("three"), entry("four")]),
         "one, two, three, …"
     );
+    let summary = selected_items_summary(&[
+        entry("a-very-long-file-name-that-would-expand-the-context-menu"),
+        entry("another-very-long-file-name-that-would-expand-the-menu"),
+    ]);
+    assert_eq!(
+        summary.chars().count(),
+        ITEM_CONTEXT_SUMMARY_MAX_CHARS as usize
+    );
+    assert!(summary.ends_with('…'));
 }
 
 #[test]
@@ -531,6 +540,28 @@ fn cut_clipboard_locations_match_regardless_of_order() {
         &[Location::local("/fixture/first")],
         &[Location::local("/fixture/other")]
     ));
+    assert!(!same_locations(
+        &[
+            Location::local("/fixture/first"),
+            Location::local("/fixture/first")
+        ],
+        &[
+            Location::local("/fixture/first"),
+            Location::local("/fixture/second")
+        ]
+    ));
+}
+
+#[test]
+fn completed_moves_are_removed_from_the_cut_list() {
+    let first = Location::local("/fixture/first");
+    let second = Location::local("/fixture/second");
+    let third = Location::local("/fixture/third");
+    let mut cut = vec![first.clone(), second.clone(), third.clone()];
+
+    retain_untransferred(&mut cut, &[first, third]);
+
+    assert_eq!(cut, vec![second]);
 }
 
 #[test]
