@@ -86,7 +86,7 @@ struct Pane {
     stack: gtk::Stack,
     status: gtk::Label,
     spinner: gtk::Spinner,
-    truncated_hint: gtk::Label,
+    truncated_hint: gtk::Image,
     view: gtk::Widget,
     bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
     filter_entry: Option<gtk::Entry>,
@@ -1865,7 +1865,7 @@ fn pane_base(
     gtk::Stack,
     gtk::Label,
     gtk::Spinner,
-    gtk::Label,
+    gtk::Image,
 ) {
     let shell = gtk::Box::new(gtk::Orientation::Vertical, 0);
     shell.add_css_class(class);
@@ -1873,22 +1873,23 @@ fn pane_base(
     shell.set_vexpand(true);
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     header.add_css_class("mode-pane-header");
+    let heading_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    heading_box.set_hexpand(true);
     let heading = gtk::Label::new(Some(title));
     heading.set_xalign(0.0);
-    heading.set_hexpand(true);
     let spinner = gtk::Spinner::new();
     spinner.start();
-    let truncated_hint = gtk::Label::new(Some("Partial"));
-    truncated_hint.add_css_class("column-truncated-hint");
+    let truncated_hint = crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
     truncated_hint.set_tooltip_text(Some(
         "This directory has more entries than could be loaded; showing a partial listing.",
     ));
     truncated_hint.set_visible(false);
+    heading_box.append(&heading);
+    heading_box.append(&truncated_hint);
     if let Some(leading) = header_leading {
         header.append(&leading);
     }
-    header.append(&heading);
-    header.append(&truncated_hint);
+    header.append(&heading_box);
     header.append(&spinner);
     if let Some(actions) = header_actions {
         header.append(&actions);
