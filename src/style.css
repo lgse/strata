@@ -20,7 +20,7 @@ headerbar {
   border-bottom: 1px solid alpha(@theme_border, 0.6);
   box-shadow: none;
   min-height: 54px;
-  padding: 0 8px;
+  padding: 0;
 }
 
 .location-control {
