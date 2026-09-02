@@ -11,7 +11,10 @@ use gtk::{gdk, glib, prelude::*, subclass::prelude::*};
 
 use crate::{
     assets::icons,
-    services::{self, ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes, UpdateCheck, UpdateInstall},
+    services::{
+        self, InstallSource, ManagedInstall, ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes,
+        UpdateCheck, UpdateInstall,
+    },
 };
 
 #[cfg(test)]
@@ -402,6 +405,9 @@ fn general_page(browser: &BrowserView, manager: Rc<ThemeManager>) -> gtk::Widget
 fn updates_page(manager: Rc<ThemeManager>, update_notice: UpdateNoticeHandler) -> gtk::Widget {
     let preferences = page_content();
     append_heading(&preferences, "UPDATE PREFERENCES");
+    if let Some(managed) = InstallSource::detect().managed() {
+        preferences.append(&managed_install_row(managed));
+    }
     let auto_check_enabled = manager.checks_for_updates();
     let (auto_check_row, auto_check) = settings_option(
         "Automatically check for updates",
@@ -613,6 +619,37 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
     });
 }
 
+/// States that a package manager owns this install and how to update through
+/// it. Shown in place of the in-app install action, which cannot run against
+/// package-owned files.
+fn managed_install_row(managed: &ManagedInstall) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    row.add_css_class("settings-option");
+    let title = gtk::Label::new(Some("Package-managed installation"));
+    title.set_xalign(0.0);
+    title.add_css_class("settings-option-title");
+    let description = gtk::Label::new(Some(&managed_install_summary(managed)));
+    description.set_xalign(0.0);
+    description.set_wrap(true);
+    description.set_selectable(true);
+    description.add_css_class("settings-option-description");
+    row.append(&title);
+    row.append(&description);
+    row
+}
+
+/// The lines of [`managed_install_row`], as plain text so they can be asserted
+/// without constructing widgets.
+fn managed_install_summary(managed: &ManagedInstall) -> String {
+    let mut lines = vec![managed.ownership_summary()];
+    if let Some(channel) = managed.channel() {
+        lines.push(format!("Tracking the {channel} release channel."));
+    }
+    lines.push(managed.update_instruction());
+    lines.extend(managed.alternate_instruction());
+    lines.join("\n")
+}
+
 fn update_check_row(
     update_notice: UpdateNoticeHandler,
     available_notes: ReleaseNotesCard,
@@ -649,6 +686,9 @@ fn update_check_row(
     available_notes.container.set_visible(false);
     row.append(&available_notes.container);
 
+    // A package manager owns the binary on a packaged build, so a found update
+    // is reported but never offered for installation.
+    let package_managed = InstallSource::detect().is_managed();
     let checking = Rc::new(Cell::new(false));
     // Set once a check finds an update this platform can install; consumed by the
     // button's next click instead of re-running a check.
@@ -689,7 +729,7 @@ fn update_check_row(
             glib::timeout_add_local(Duration::from_millis(100), move || {
                 match receiver.try_recv() {
                     Ok(result) => {
-                        status.set_markup(&update_check_message(&result));
+                        status.set_markup(&update_status_markup(&result, InstallSource::detect()));
                         available_notes
                             .container
                             .set_visible(shows_available_release_notes(&result));
@@ -712,7 +752,9 @@ fn update_check_row(
                                 download_url,
                             } => {
                                 show_release_notes(&available_notes, release);
-                                if let Some(download_url) = download_url {
+                                if let Some(download_url) = download_url
+                                    && !package_managed
+                                {
                                     *pending_download.borrow_mut() = Some(download_url.clone());
                                     button.set_label("Install update");
                                 }
@@ -870,6 +912,9 @@ pub(super) fn show_update_dialog(
         root.set_blurred(true);
     }
 
+    // On a packaged build the dialog reports the release and defers to the
+    // package manager; it never downloads over package-owned files.
+    let managed = InstallSource::detect().managed();
     let layout = modal_layout(
         icons::DOWNLOADS,
         &format!("Strata v{} is available", release.version),
@@ -878,7 +923,11 @@ pub(super) fn show_update_dialog(
             env!("CARGO_PKG_VERSION"),
             release.version
         ),
-        "Download update",
+        if managed.is_some() {
+            "Close"
+        } else {
+            "Download update"
+        },
     );
     layout.content.add_css_class("update-dialog");
     layout.content.set_size_request(560, -1);
@@ -906,9 +955,10 @@ pub(super) fn show_update_dialog(
     let fallback = gtk::LinkButton::with_label(&release.url, "View release on GitHub");
     fallback.add_css_class("release-notes-fallback");
     fallback.set_halign(gtk::Align::Start);
-    let status = gtk::Label::new(Some(
-        "Review the release notes before downloading the update.",
-    ));
+    let status = gtk::Label::new(Some(&match managed {
+        Some(managed) => update_dialog_status(managed),
+        None => "Review the release notes before downloading the update.".to_owned(),
+    }));
     status.add_css_class("update-dialog-status");
     status.set_xalign(0.0);
     status.set_wrap(true);
@@ -930,6 +980,7 @@ pub(super) fn show_update_dialog(
     window_overlay.add_overlay(&layer);
     action.grab_focus();
 
+    let dismiss_only = managed.is_some();
     let started = Rc::new(Cell::new(false));
     let cancel_layer = layer.clone();
     let cancel_overlay = window_overlay.clone();
@@ -973,6 +1024,10 @@ pub(super) fn show_update_dialog(
     let application = parent.application();
     let action_close = close.clone();
     action.connect_clicked(move |button| {
+        if dismiss_only {
+            dismiss_modal_layer(&action_layer, &action_overlay, action_root.as_ref());
+            return;
+        }
         if installed.get() {
             restart(application.as_ref());
             button.set_sensitive(false);
@@ -1046,6 +1101,29 @@ pub(super) fn show_update_dialog(
             }
         });
     });
+}
+
+/// The update row's status line: the check result, plus how to update when a
+/// package manager owns the binary and the in-app install action is withheld.
+fn update_status_markup(result: &UpdateCheck, source: &InstallSource) -> String {
+    let message = update_check_message(result);
+    match (source.managed(), result) {
+        (Some(managed), UpdateCheck::Available { .. }) => format!(
+            "{message}\n{}",
+            glib::markup_escape_text(&managed.update_instruction())
+        ),
+        _ => message,
+    }
+}
+
+/// The update dialog's status line on a packaged build, naming the owning
+/// package and the command that updates it.
+fn update_dialog_status(managed: &ManagedInstall) -> String {
+    format!(
+        "{} {}",
+        managed.ownership_summary(),
+        managed.update_instruction()
+    )
 }
 
 fn shows_available_release_notes(result: &UpdateCheck) -> bool {

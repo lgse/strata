@@ -9,6 +9,8 @@ use std::{
     time::Duration,
 };
 
+use crate::services::{InstallSource, ensure_self_managed};
+
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -39,6 +41,12 @@ pub fn install_update(download_url: String) -> Receiver<UpdateInstall> {
 }
 
 fn perform_install(download_url: &str, progress: &Sender<UpdateInstall>) -> Result<(), String> {
+    // Checked before anything is downloaded: a package manager owns
+    // /usr/bin/strata, and replacing it would leave package-owned files modified
+    // behind pacman's back. The Updates page hides the install action for the
+    // same reason; this is the layer that cannot be bypassed.
+    ensure_self_managed(InstallSource::detect())?;
+
     let current_exe = std::env::current_exe().map_err(|error| error.to_string())?;
     let exe_dir = current_exe
         .parent()
