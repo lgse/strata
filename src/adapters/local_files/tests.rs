@@ -364,7 +364,7 @@ fn enumerate_reports_truncated_once_the_entry_budget_is_exceeded() {
         location: Location::local(&root),
         batch_size: 2,
         include_hidden: true,
-        max_entries: 2,
+        max_entries: 3,
         time_budget: Duration::from_secs(10),
     });
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
@@ -374,10 +374,38 @@ fn enumerate_reports_truncated_once_the_entry_budget_is_exceeded() {
         Some(true),
         "exceeding the entry budget should be reported as truncated"
     );
-    assert!(
-        batched_entry_count(&events) <= 2,
-        "loading should stop once the entry budget is reached"
+    assert_eq!(
+        batched_entry_count(&events),
+        3,
+        "loading should retain exactly the configured maximum"
     );
+}
+
+#[test]
+fn enumerate_completes_untruncated_at_the_exact_entry_budget() {
+    let root = unique_fixture_root("exact-entry-budget");
+    fs::create_dir_all(&root).expect("the fixture directory should be created");
+    for index in 0..4 {
+        fs::write(root.join(format!("file-{index}.txt")), b"content")
+            .expect("the fixture file should be written");
+    }
+
+    let events = run_enumerate(DirectoryRequest {
+        id: RequestId(1),
+        location: Location::local(&root),
+        batch_size: 2,
+        include_hidden: true,
+        max_entries: 4,
+        time_budget: Duration::from_secs(10),
+    });
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+
+    assert_eq!(
+        finished_truncated(&events),
+        Some(false),
+        "reaching the entry budget is not truncation when the directory is complete"
+    );
+    assert_eq!(batched_entry_count(&events), 4);
 }
 
 #[test]
