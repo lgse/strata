@@ -128,10 +128,13 @@ fn render_simple_dcraw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
         return Err("simple_dcraw failed".to_owned());
     }
     for thumb in ["/tmp/raw-thumb.thumb.jpg", "/tmp/raw-thumb.thumb.ppm"] {
-        let Ok(data) = fs::read(thumb) else {
+        let Ok(file) = fs::File::open(thumb) else {
             continue;
         };
-        if data.is_empty() || data.len() as u64 > MAX_OUTPUT_BYTES {
+        let Ok(data) = read_limited(file, MAX_OUTPUT_BYTES) else {
+            continue;
+        };
+        if data.is_empty() {
             continue;
         }
         if let Ok(png) = scale_embedded_thumbnail(&data, size) {
@@ -538,31 +541,38 @@ fn render_media(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     }
 }
 
+fn read_limited(reader: impl Read, max_bytes: u64) -> io::Result<Vec<u8>> {
+    let mut data = Vec::new();
+    reader
+        .take(max_bytes.saturating_add(1))
+        .read_to_end(&mut data)?;
+    if data.len() as u64 > max_bytes {
+        return Err(io::Error::other(
+            "Preview provider output exceeded its limit",
+        ));
+    }
+    Ok(data)
+}
+
 fn bounded_output(command: &mut Command, max_bytes: u64) -> io::Result<Output> {
     let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()?;
-    let mut stdout = Vec::new();
     let read = child
         .stdout
         .take()
-        .ok_or_else(|| io::Error::other("Unable to capture provider output"))?
-        .take(max_bytes.saturating_add(1))
-        .read_to_end(&mut stdout);
-    if let Err(error) = read {
-        let _killed = child.kill();
-        let _waited = child.wait();
-        return Err(error);
-    }
-    if stdout.len() as u64 > max_bytes {
-        let _killed = child.kill();
-        let _waited = child.wait();
-        return Err(io::Error::other(
-            "Preview provider output exceeded its limit",
-        ));
-    }
+        .ok_or_else(|| io::Error::other("Unable to capture provider output"))
+        .and_then(|stdout| read_limited(stdout, max_bytes));
+    let stdout = match read {
+        Ok(stdout) => stdout,
+        Err(error) => {
+            let _killed = child.kill();
+            let _waited = child.wait();
+            return Err(error);
+        }
+    };
     let status = child.wait()?;
     Ok(Output {
         status,

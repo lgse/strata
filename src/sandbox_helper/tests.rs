@@ -10,8 +10,8 @@ use gdk_pixbuf::prelude::*;
 
 use super::{
     MediaBackend, bounded_output, bounded_output_with_timeout, bounded_surface_dimensions,
-    media_backends, media_command, render_pixbuf, render_raw, run, run_media_backends,
-    scale_embedded_thumbnail,
+    media_backends, media_command, read_limited, render_pixbuf, render_raw, run,
+    run_media_backends, scale_embedded_thumbnail,
 };
 
 fn arguments(backend: &MediaBackend) -> String {
@@ -146,6 +146,20 @@ fn provider_output_is_bounded_without_buffering_stderr() {
     .expect("discard provider stderr");
     assert_eq!(noisy.stdout, b"ok");
     assert!(noisy.stderr.is_empty());
+}
+
+#[test]
+fn file_reads_stop_before_exceeding_the_output_limit() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let path = directory.path().join("thumb.jpg");
+
+    std::fs::write(&path, b"1234").expect("write exact");
+    let exact = read_limited(std::fs::File::open(&path).expect("open exact"), 4)
+        .expect("read file at the limit");
+    assert_eq!(exact, b"1234");
+
+    std::fs::write(&path, vec![0_u8; 1025]).expect("write oversized");
+    assert!(read_limited(std::fs::File::open(&path).expect("open oversized"), 1024).is_err());
 }
 
 #[test]
