@@ -771,6 +771,17 @@ fn build_appearance_menu(
 ) -> gtk::MenuButton {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.add_css_class("appearance-menu");
+    let popover = gtk::Popover::builder()
+        .has_arrow(false)
+        .halign(gtk::Align::End)
+        .position(gtk::PositionType::Bottom)
+        .build();
+    popover.add_css_class("appearance-popover");
+    let button = gtk::MenuButton::builder()
+        .tooltip_text("Appearance")
+        .popover(&popover)
+        .build();
+    let popover_weak = popover.downgrade();
     append_menu_heading(&content, "VIEW");
     let current_mode = view.view_mode();
     let (list, list_check, _) = appearance_option(
@@ -801,12 +812,16 @@ fn build_appearance_menu(
         let grid_check = grid_check.clone();
         let explorer_check = explorer_check.clone();
         let preferences = preferences.clone();
+        let popover_weak = popover_weak.clone();
         button.connect_clicked(move |_| {
             view.set_view_mode(mode);
             preferences.set_browser_mode(mode);
             list_check.set_visible(mode == BrowserMode::Columns);
             grid_check.set_visible(mode == BrowserMode::Grid);
             explorer_check.set_visible(mode == BrowserMode::Explorer);
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+            }
         });
     }
     content.append(&list);
@@ -834,20 +849,28 @@ fn build_appearance_menu(
         let compact_check = compact_check.clone();
         let airy_check = airy_check.clone();
         let preferences = preferences.clone();
+        let popover_weak = popover_weak.clone();
         compact.connect_clicked(move |_| {
             view.set_density(BrowserDensity::Compact);
             preferences.set_browser_density(BrowserDensity::Compact);
             compact_check.set_visible(true);
             airy_check.set_visible(false);
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+            }
         });
     }
     {
         let view = view.clone();
+        let popover_weak = popover_weak.clone();
         airy.connect_clicked(move |_| {
             view.set_density(BrowserDensity::Airy);
             preferences.set_browser_density(BrowserDensity::Airy);
             compact_check.set_visible(false);
             airy_check.set_visible(true);
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+            }
         });
     }
     content.append(&compact);
@@ -878,24 +901,18 @@ fn build_appearance_menu(
         );
     });
     let weak_controller = Rc::downgrade(controller);
+    let popover_weak = popover_weak.clone();
     hidden.connect_clicked(move |_| {
         if let Some(controller) = weak_controller.upgrade() {
             controller.toggle_hidden();
         }
+        if let Some(popover) = popover_weak.upgrade() {
+            popover.popdown();
+        }
     });
     content.append(&hidden);
 
-    let popover = gtk::Popover::builder()
-        .child(&content)
-        .has_arrow(false)
-        .halign(gtk::Align::End)
-        .position(gtk::PositionType::Bottom)
-        .build();
-    popover.add_css_class("appearance-popover");
-    let button = gtk::MenuButton::builder()
-        .tooltip_text("Appearance")
-        .popover(&popover)
-        .build();
+    popover.set_child(Some(&content));
     let icon = crate::assets::text_icon(crate::assets::icons::LIST, 20);
     button.set_child(Some(&icon));
     button.add_css_class("header-action");
