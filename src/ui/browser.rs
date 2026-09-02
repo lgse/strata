@@ -298,6 +298,7 @@ pub(super) struct ViewState {
     pending_trash_summary: RefCell<Option<LoadHandle>>,
     pending_empty_trash: RefCell<Option<LoadHandle>>,
     trash_loading: RefCell<Option<TrashLoadingView>>,
+    auto_refresh: RefCell<Option<glib::SourceId>>,
     browser: Rc<Browser>,
 }
 
@@ -444,6 +445,7 @@ impl BrowserView {
             pending_trash_summary: RefCell::new(None),
             pending_empty_trash: RefCell::new(None),
             trash_loading: RefCell::new(None),
+            auto_refresh: RefCell::new(None),
             browser,
         });
 
@@ -840,6 +842,14 @@ impl BrowserView {
         launch_terminal(&location, &self.state.overlay);
     }
 
+    pub fn refresh(&self) {
+        self.state.browser.refresh_all();
+    }
+
+    pub fn set_auto_refresh_interval(&self, secs: u32) {
+        self.state.set_auto_refresh_interval(secs);
+    }
+
     pub fn show_location_properties(&self, location: &Location) {
         self.state.show_folder_properties(location);
     }
@@ -976,6 +986,25 @@ impl ViewState {
             self.global_activity_spinner
                 .set_tooltip_text(Some("Working…"));
         }
+    }
+
+    pub(super) fn set_auto_refresh_interval(&self, secs: u32) {
+        if let Some(source) = self.auto_refresh.take() {
+            source.remove();
+        }
+        if secs == 0 {
+            return;
+        }
+        let weak = Rc::downgrade(&self.browser);
+        let source = glib::timeout_add_local(Duration::from_secs(u64::from(secs)), move || {
+            if let Some(browser) = weak.upgrade() {
+                browser.refresh_all();
+                glib::ControlFlow::Continue
+            } else {
+                glib::ControlFlow::Break
+            }
+        });
+        self.auto_refresh.replace(Some(source));
     }
 
     fn sync_mode_selection(&self) {

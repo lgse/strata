@@ -64,6 +64,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     browser.set_view_mode(theme_manager.browser_mode());
     browser.set_density(theme_manager.browser_density());
     browser.set_operation_provider(Rc::new(LocalOperationProvider));
+    browser.set_auto_refresh_interval(theme_manager.auto_refresh_interval());
     let controller = browser.browser();
 
     let preview = PreviewDrawer::new(Rc::new(LocalPreviewProvider));
@@ -113,6 +114,16 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         20,
     )));
     search_button.add_css_class("header-action");
+    let refresh_button = gtk::Button::builder().tooltip_text("Refresh (F5)").build();
+    refresh_button.set_child(Some(&crate::assets::text_icon(
+        crate::assets::icons::REFRESH,
+        20,
+    )));
+    refresh_button.add_css_class("header-action");
+    let refresh_view = browser.clone();
+    refresh_button.connect_clicked(move |_| {
+        refresh_view.refresh();
+    });
     let appearance = build_appearance_menu(&browser, &controller, theme_manager.clone());
     let settings = gtk::Button::builder().tooltip_text("Settings").build();
     settings.set_child(Some(&crate::assets::text_icon(
@@ -128,6 +139,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     let header_actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     header_actions.add_css_class("header-actions");
     header_actions.append(&search_button);
+    header_actions.append(&refresh_button);
     header_actions.append(&appearance);
     header_actions.append(&settings);
     header_actions.append(&close_window);
@@ -303,6 +315,14 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     });
     window.add_action(&terminal_action);
     application.set_accels_for_action("win.open-terminal", &["<Primary>t"]);
+
+    let refresh_view = browser.clone();
+    let refresh_action = gio::SimpleAction::new("refresh", None);
+    refresh_action.connect_activate(move |_, _| {
+        refresh_view.refresh();
+    });
+    window.add_action(&refresh_action);
+    application.set_accels_for_action("win.refresh", &["F5", "<Primary>r"]);
 
     let update_button = sidebar.update_notice.clone();
     let update_area = sidebar.update_area.clone();
@@ -599,6 +619,10 @@ fn install_keyboard_navigation(
             view.open_terminal();
             return glib::Propagation::Stop;
         }
+        if is_refresh_shortcut(key, modifiers) {
+            view.refresh();
+            return glib::Propagation::Stop;
+        }
         let column_popover = focused
             .as_ref()
             .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
@@ -721,6 +745,13 @@ fn is_open_terminal_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierTy
         && !modifiers
             .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
         && matches!(key, gtk::gdk::Key::t | gtk::gdk::Key::T)
+}
+
+fn is_refresh_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    key == gtk::gdk::Key::F5
+        || (modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+            && !modifiers.contains(gtk::gdk::ModifierType::ALT_MASK)
+            && matches!(key, gtk::gdk::Key::r | gtk::gdk::Key::R))
 }
 
 fn is_sidebar_focus_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {

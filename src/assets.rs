@@ -54,6 +54,7 @@ pub mod icons {
     pub const SEARCH: &str = "strata-search";
     pub const SETTINGS: &str = "strata-settings";
     pub const SETTINGS_2: &str = "strata-settings-2";
+    pub const REFRESH: &str = "strata-refresh";
     pub const SLIDERS: &str = "strata-sliders-horizontal";
     pub const TERMINAL: &str = "strata-terminal";
     pub const TRASH: &str = "strata-trash";

@@ -1539,6 +1539,20 @@ impl Browser {
         }
     }
 
+    pub fn refresh_all(self: &Rc<Self>) {
+        let depths: Vec<usize> = {
+            let state = self.state.borrow();
+            (0..state.columns.len()).collect()
+        };
+        if depths.is_empty() {
+            self.reload_active();
+            return;
+        }
+        for depth in depths {
+            self.refresh_column(depth);
+        }
+    }
+
     pub fn select_entries_by_name(self: &Rc<Self>, names: &[String]) {
         let Some(depth) = self.active_depth() else {
             return;

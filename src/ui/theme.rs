@@ -82,6 +82,8 @@ struct Preferences {
     sort_direction: String,
     #[serde(default = "default_enabled")]
     check_for_updates: bool,
+    #[serde(default)]
+    auto_refresh_interval: u32,
 }
 
 impl Default for Preferences {
@@ -100,6 +102,7 @@ impl Default for Preferences {
             sort_key: default_sort_key(),
             sort_direction: default_sort_direction(),
             check_for_updates: true,
+            auto_refresh_interval: 0,
         }
     }
 }
@@ -234,6 +237,15 @@ impl ThemeManager {
 
     pub fn set_checks_for_updates(&self, enabled: bool) {
         self.preferences.borrow_mut().check_for_updates = enabled;
+        self.save_preferences();
+    }
+
+    pub fn auto_refresh_interval(&self) -> u32 {
+        self.preferences.borrow().auto_refresh_interval
+    }
+
+    pub fn set_auto_refresh_interval(&self, secs: u32) {
+        self.preferences.borrow_mut().auto_refresh_interval = secs;
         self.save_preferences();
     }
 
