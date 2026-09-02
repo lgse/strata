@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/logos/strata-tokyo-night.svg" alt="Strata logo" width="160">
+
 # Strata
 
 **Navigate every layer.** A fast, keyboard-first file manager for modern Linux desktops.
