@@ -89,7 +89,7 @@ impl SearchDialog {
         let list = gtk::ListBox::new();
         list.add_css_class("search-results");
         list.set_selection_mode(gtk::SelectionMode::Single);
-        list.set_activate_on_single_click(false);
+        list.set_activate_on_single_click(true);
         let scroller = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
