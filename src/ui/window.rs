@@ -302,7 +302,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         terminal_view.open_terminal();
     });
     window.add_action(&terminal_action);
-    application.set_accels_for_action("win.open-terminal", &["F4", "<Primary><Alt>t"]);
+    application.set_accels_for_action("win.open-terminal", &["<Primary>t"]);
 
     let update_button = sidebar.update_notice.clone();
     let update_area = sidebar.update_area.clone();
@@ -595,7 +595,7 @@ fn install_keyboard_navigation(
             browser.toggle_hidden();
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::F4 {
+        if is_open_terminal_shortcut(key, modifiers) {
             view.open_terminal();
             return glib::Propagation::Stop;
         }
@@ -714,6 +714,13 @@ fn install_keyboard_navigation(
         glib::Propagation::Stop
     });
     window.add_controller(keys);
+}
+
+fn is_open_terminal_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+        && !modifiers
+            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
+        && matches!(key, gtk::gdk::Key::t | gtk::gdk::Key::T)
 }
 
 fn is_sidebar_focus_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {

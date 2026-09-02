@@ -3,10 +3,11 @@
 use std::{
     cell::{Cell, RefCell},
     collections::HashSet,
+    ffi::OsString,
     future::Future,
     path::Path,
     pin::Pin,
-    process::Command,
+    process::{Command, Stdio},
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -817,18 +818,23 @@ impl BrowserView {
     }
 
     pub fn open_terminal(&self) {
-        let mode = self.view_mode();
-        let depth = if mode == BrowserMode::Columns {
-            new_folder_destination_depth(
-                self.state.hovered_column.get(),
-                self.state.focused_column_depth(),
-                self.state.browser.active_depth(),
-                self.state.columns.borrow().len(),
-            )
-        } else {
-            self.state.browser.active_depth()
-        };
-        let Some(location) = depth.and_then(|depth| self.state.browser.location_at(depth)) else {
+        self.state.sync_mode_selection();
+        let selected = self.state.browser.selected_entries();
+        let location = selected_terminal_location(&selected).or_else(|| {
+            let mode = self.view_mode();
+            let depth = if mode == BrowserMode::Columns {
+                new_folder_destination_depth(
+                    self.state.hovered_column.get(),
+                    self.state.focused_column_depth(),
+                    self.state.browser.active_depth(),
+                    self.state.columns.borrow().len(),
+                )
+            } else {
+                self.state.browser.active_depth()
+            };
+            depth.and_then(|depth| self.state.browser.location_at(depth))
+        });
+        let Some(location) = location else {
             return;
         };
         launch_terminal(&location, &self.state.overlay);
@@ -5167,7 +5173,7 @@ pub(super) fn install_folder_context_menu(
     let new_file = context_menu_option("New File", None);
     let paste = context_menu_option("Paste", Some("Ctrl+V"));
     let select_all = context_menu_option("Select All", Some("Ctrl+A"));
-    let open_terminal = context_menu_option("Open in Terminal", Some("F4"));
+    let open_terminal = context_menu_option("Open in Terminal", Some("Ctrl+T"));
     let properties = context_menu_option("Properties", None);
     content.append(&new_folder);
     content.append(&new_file);
@@ -5330,7 +5336,7 @@ pub(super) fn install_item_context_menu(
     let single = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let open = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open", "↵");
     let open_terminal =
-        item_context_option(crate::assets::icons::TERMINAL, "Open in Terminal", "F4");
+        item_context_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
     let preview = item_context_option(crate::assets::icons::EYE, "Quick preview", "Space");
     let restore = item_context_option(crate::assets::icons::FOLDER, "Restore", "");
     restore.set_visible(in_trash);
@@ -7734,6 +7740,19 @@ fn can_open_terminal(location: &Location) -> bool {
     location.native_path().is_some() && !is_trash_location(location)
 }
 
+fn selected_terminal_location(entries: &[FileEntry]) -> Option<Location> {
+    let [entry] = entries else {
+        return None;
+    };
+    entry.is_directory().then(|| entry.location.clone())
+}
+
+fn terminal_directory_argument(path: &Path) -> OsString {
+    let mut argument = OsString::from("--dir=");
+    argument.push(path);
+    argument
+}
+
 pub(super) fn launch_terminal(location: &Location, parent: &impl IsA<gtk::Widget>) {
     let Some(path) = location.native_path() else {
         show_error_dialog(
@@ -7757,7 +7776,10 @@ pub(super) fn launch_terminal(location: &Location, parent: &impl IsA<gtk::Widget
         "opening terminal"
     );
     let result = Command::new("xdg-terminal-exec")
-        .arg(format!("--dir={}", path.display()))
+        .arg(terminal_directory_argument(&path))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn();
     if let Err(error) = result {
         tracing::warn!(%error, "unable to launch terminal");

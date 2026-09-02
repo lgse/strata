@@ -1101,7 +1101,11 @@ fn keybindings_page() -> gtk::Widget {
     }
 
     append_heading(&content, "APPLICATION");
-    for (label, keys) in [("Search", "Ctrl + K"), ("Open settings", "Ctrl + ,")] {
+    for (label, keys) in [
+        ("Search", "Ctrl + K"),
+        ("Open terminal", "Ctrl + T"),
+        ("Open settings", "Ctrl + ,"),
+    ] {
         append_keybinding(&content, label, keys);
     }
 

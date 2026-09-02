@@ -3,10 +3,10 @@
 use std::path::Path;
 
 use super::{
-    MouseHistoryAction, PinStatus, is_sidebar_focus_shortcut, is_smb_location,
-    is_standard_place_location, mouse_history_action, parse_pinned_places, pin_status,
-    remove_pinned_place, reorder_places, serialize_pinned_places, should_show_standard_place,
-    vim_focus_direction,
+    MouseHistoryAction, PinStatus, is_open_terminal_shortcut, is_sidebar_focus_shortcut,
+    is_smb_location, is_standard_place_location, mouse_history_action, parse_pinned_places,
+    pin_status, remove_pinned_place, reorder_places, serialize_pinned_places,
+    should_show_standard_place, vim_focus_direction,
 };
 
 #[test]
@@ -16,6 +16,26 @@ fn mouse_history_buttons_map_to_navigation_actions() {
     for button in [1, 2, 3, 4, 5, 6, 7, 10] {
         assert_eq!(mouse_history_action(button), None);
     }
+}
+
+#[test]
+fn open_terminal_shortcut_requires_only_control() {
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+    let shift = gtk::gdk::ModifierType::SHIFT_MASK;
+    let alt = gtk::gdk::ModifierType::ALT_MASK;
+
+    assert!(is_open_terminal_shortcut(gtk::gdk::Key::t, control));
+    assert!(is_open_terminal_shortcut(gtk::gdk::Key::T, control));
+    assert!(!is_open_terminal_shortcut(
+        gtk::gdk::Key::t,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(!is_open_terminal_shortcut(
+        gtk::gdk::Key::t,
+        control | shift
+    ));
+    assert!(!is_open_terminal_shortcut(gtk::gdk::Key::t, control | alt));
+    assert!(!is_open_terminal_shortcut(gtk::gdk::Key::F4, control));
 }
 
 #[test]
