@@ -54,7 +54,23 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
 
 ## Installation
 
-Strata currently publishes release archives rather than distribution packages. Arch Linux and Omarchy are the primary supported environments; current binaries require **glibc 2.39 or newer** and the runtime libraries listed below.
+Arch Linux and Omarchy are the primary supported environments; current binaries require **glibc 2.39 or newer** and the runtime libraries listed below. Arch users should install from the AUR. Every other platform installs a release archive manually.
+
+### Arch Linux (AUR)
+
+```bash
+paru -S strata-bin        # or: yay -S strata-bin
+```
+
+`strata-bin` installs the stable release; `strata-preview-bin` tracks the newest preview build. Both install the published binary unmodified, along with the launcher and application icon, and either one can be installed at a time.
+
+Update through your AUR helper or `pacman`:
+
+```bash
+sudo pacman -Syu strata-bin
+```
+
+A package-managed install still reports new releases in **Settings → Updates**, but never installs over `/usr/bin/strata`, which pacman owns. Maintainers: see [`docs/packaging.md`](docs/packaging.md).
 
 ### AI-assisted installation
 
@@ -135,7 +151,7 @@ If `command -v` fails, add `$HOME/.local/bin` to your shell's `PATH`. Every arch
 
 #### 3. Update or uninstall
 
-Use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. To remove a per-user installation:
+Use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. In-app updates apply to manual installs only; a package-managed install updates through its package manager. To remove a per-user installation:
 
 ```bash
 rm -f ~/.local/bin/strata \
