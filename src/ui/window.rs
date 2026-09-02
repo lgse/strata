@@ -296,6 +296,14 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     window.add_action(&search_action);
     application.set_accels_for_action("win.search", &["<Control>k"]);
 
+    let terminal_view = browser.clone();
+    let terminal_action = gio::SimpleAction::new("open-terminal", None);
+    terminal_action.connect_activate(move |_, _| {
+        terminal_view.open_terminal();
+    });
+    window.add_action(&terminal_action);
+    application.set_accels_for_action("win.open-terminal", &["F4", "<Primary><Alt>t"]);
+
     let update_button = sidebar.update_notice.clone();
     let update_area = sidebar.update_area.clone();
     let update_label = sidebar.update_label.clone();
@@ -585,6 +593,10 @@ fn install_keyboard_navigation(
         }
         if control && key == gtk::gdk::Key::h {
             browser.toggle_hidden();
+            return glib::Propagation::Stop;
+        }
+        if key == gtk::gdk::Key::F4 {
+            view.open_terminal();
             return glib::Propagation::Stop;
         }
         let column_popover = focused

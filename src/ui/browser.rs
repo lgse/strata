@@ -6,6 +6,7 @@ use std::{
     future::Future,
     path::Path,
     pin::Pin,
+    process::Command,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -812,6 +813,24 @@ impl BrowserView {
         } else if let Some(depth) = self.state.browser.active_depth() {
             self.state.browser.select_all(depth);
         }
+    }
+
+    pub fn open_terminal(&self) {
+        let mode = self.view_mode();
+        let depth = if mode == BrowserMode::Columns {
+            new_folder_destination_depth(
+                self.state.hovered_column.get(),
+                self.state.focused_column_depth(),
+                self.state.browser.active_depth(),
+                self.state.columns.borrow().len(),
+            )
+        } else {
+            self.state.browser.active_depth()
+        };
+        let Some(location) = depth.and_then(|depth| self.state.browser.location_at(depth)) else {
+            return;
+        };
+        launch_terminal(&location, &self.state.overlay);
     }
 
     pub fn show_location_properties(&self, location: &Location) {
@@ -5136,11 +5155,13 @@ pub(super) fn install_folder_context_menu(
     let new_file = context_menu_option("New File", None);
     let paste = context_menu_option("Paste", Some("Ctrl+V"));
     let select_all = context_menu_option("Select All", Some("Ctrl+A"));
+    let open_terminal = context_menu_option("Open in Terminal", Some("F4"));
     let properties = context_menu_option("Properties", None);
     content.append(&new_folder);
     content.append(&new_file);
     content.append(&paste);
     content.append(&select_all);
+    content.append(&open_terminal);
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     content.append(&properties);
 
@@ -5199,12 +5220,24 @@ pub(super) fn install_folder_context_menu(
     });
     let weak = Rc::downgrade(state);
     let properties_popover = popover.downgrade();
+    let properties_location = location.clone();
     properties.connect_clicked(move |_| {
         if let Some(popover) = properties_popover.upgrade() {
             popover.popdown();
         }
         if let Some(state) = weak.upgrade() {
-            state.show_folder_properties(&location);
+            state.show_folder_properties(&properties_location);
+        }
+    });
+    let weak = Rc::downgrade(state);
+    let terminal_popover = popover.downgrade();
+    let terminal_location = location.clone();
+    open_terminal.connect_clicked(move |_| {
+        if let Some(popover) = terminal_popover.upgrade() {
+            popover.popdown();
+        }
+        if let Some(state) = weak.upgrade() {
+            launch_terminal(&terminal_location, &state.overlay);
         }
     });
 
@@ -5228,6 +5261,7 @@ pub(super) fn install_folder_context_menu(
                 .contains_type(gtk::gdk::FileList::static_type())
         }));
         select_all.set_sensitive(selection.n_items() > 0);
+        open_terminal.set_sensitive(can_open_terminal(&location));
         if popover_for_click.parent().is_none()
             && let Some(parent) = gesture.widget()
         {
@@ -5283,6 +5317,8 @@ pub(super) fn install_item_context_menu(
 
     let single = gtk::Box::new(gtk::Orientation::Vertical, 0);
     let open = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open", "↵");
+    let open_terminal =
+        item_context_option(crate::assets::icons::TERMINAL, "Open in Terminal", "F4");
     let preview = item_context_option(crate::assets::icons::EYE, "Quick preview", "Space");
     let restore = item_context_option(crate::assets::icons::FOLDER, "Restore", "");
     restore.set_visible(in_trash);
@@ -5306,6 +5342,7 @@ pub(super) fn install_item_context_menu(
     let extract = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract here", "");
     let extract_to = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract to…", "");
     single.append(&open);
+    single.append(&open_terminal);
     single.append(&preview);
     single.append(&restore);
     single.append(&extract);
@@ -5395,6 +5432,20 @@ pub(super) fn install_item_context_menu(
             && !entry.is_directory()
         {
             state.browser.preview(depth, position);
+        }
+    });
+    let weak = Rc::downgrade(state);
+    let terminal_target = target.clone();
+    let terminal_popover = popover.downgrade();
+    open_terminal.connect_clicked(move |_| {
+        if let Some(popover) = terminal_popover.upgrade() {
+            popover.popdown();
+        }
+        let Some((_, entry)) = terminal_target.borrow().clone() else {
+            return;
+        };
+        if let Some(state) = weak.upgrade() {
+            launch_terminal(&entry.location, &state.overlay);
         }
     });
     let weak = Rc::downgrade(state);
@@ -5519,6 +5570,7 @@ pub(super) fn install_item_context_menu(
         target.replace(Some((resolved_position, entry.clone())));
         let entries = state.browser.selected_entries();
         preview.set_visible(entry_supports_quick_preview(&entry));
+        open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
         pin.set_visible(entry.is_directory() && !is_trash_location(&entry.location));
         pin.set_sensitive(
             state
@@ -7663,6 +7715,41 @@ pub(super) fn open_location(location: &Location, parent: &impl IsA<gtk::Widget>)
             "file open location"
         );
         show_error_dialog(parent, "Unable to open file", &error.to_string());
+    }
+}
+
+fn can_open_terminal(location: &Location) -> bool {
+    location.native_path().is_some() && !is_trash_location(location)
+}
+
+pub(super) fn launch_terminal(location: &Location, parent: &impl IsA<gtk::Widget>) {
+    let Some(path) = location.native_path() else {
+        show_error_dialog(
+            parent,
+            "Unable to open terminal",
+            "This location is not a local folder",
+        );
+        return;
+    };
+    if is_trash_location(location) {
+        show_error_dialog(
+            parent,
+            "Unable to open terminal",
+            "Terminal cannot be opened in Trash",
+        );
+        return;
+    }
+    let path = path.to_path_buf();
+    tracing::debug!(
+        location = %location.diagnostic_path(),
+        "opening terminal"
+    );
+    let result = Command::new("xdg-terminal-exec")
+        .arg(format!("--dir={}", path.display()))
+        .spawn();
+    if let Err(error) = result {
+        tracing::warn!(%error, "unable to launch terminal");
+        show_error_dialog(parent, "Unable to open terminal", &error.to_string());
     }
 }
 
