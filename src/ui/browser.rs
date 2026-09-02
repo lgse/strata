@@ -5355,6 +5355,12 @@ pub(super) fn install_item_context_menu(
     let move_to_trash =
         item_context_danger_option(crate::assets::icons::TRASH, delete_label, "Del");
     move_to_trash.add_css_class("danger");
+    let permanent_delete = item_context_danger_option(
+        crate::assets::icons::TRASH,
+        "Permanently delete",
+        "Shift+Del",
+    );
+    permanent_delete.add_css_class("danger");
     let properties = item_context_option(crate::assets::icons::INFO, "Properties", "Alt+Enter");
     let compress = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
     let extract = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract here", "");
@@ -5380,6 +5386,7 @@ pub(super) fn install_item_context_menu(
     single.append(&properties);
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     single.append(&move_to_trash);
+    single.append(&permanent_delete);
     content.append(&single);
 
     let multiple = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -5393,6 +5400,12 @@ pub(super) fn install_item_context_menu(
     let trash_multiple =
         item_context_danger_option(crate::assets::icons::TRASH, delete_label, "Del");
     trash_multiple.add_css_class("danger");
+    let permanent_delete_multiple = item_context_danger_option(
+        crate::assets::icons::TRASH,
+        "Permanently delete",
+        "Shift+Del",
+    );
+    permanent_delete_multiple.add_css_class("danger");
     let compress_multiple =
         item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
     multiple.append(&restore_multiple);
@@ -5406,6 +5419,7 @@ pub(super) fn install_item_context_menu(
     multiple.append(&compress_multiple);
     multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&trash_multiple);
+    multiple.append(&permanent_delete_multiple);
     multiple.set_visible(false);
     content.append(&multiple);
 
@@ -5527,6 +5541,8 @@ pub(super) fn install_item_context_menu(
     connect_context_copy(&copy_multiple, &popover, state, &target);
     connect_context_trash(&move_to_trash, &popover, state, &target, in_trash);
     connect_context_trash(&trash_multiple, &popover, state, &target, in_trash);
+    connect_context_trash(&permanent_delete, &popover, state, &target, true);
+    connect_context_trash(&permanent_delete_multiple, &popover, state, &target, true);
     connect_context_compress(&compress, &popover, state, &target);
     connect_context_compress(&compress_multiple, &popover, state, &target);
     connect_context_extract(&extract, &popover, state, &target, false);
@@ -5589,6 +5605,12 @@ pub(super) fn install_item_context_menu(
         let entries = state.browser.selected_entries();
         preview.set_visible(entry_supports_quick_preview(&entry));
         open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
+        permanent_delete.set_visible(
+            !in_trash && crate::ui::theme::ThemeManager::shared().show_permanent_delete(),
+        );
+        permanent_delete_multiple.set_visible(
+            !in_trash && crate::ui::theme::ThemeManager::shared().show_permanent_delete(),
+        );
         pin.set_visible(entry.is_directory() && !is_trash_location(&entry.location));
         pin.set_sensitive(
             state

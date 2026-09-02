@@ -392,6 +392,18 @@ fn general_page(browser: &BrowserView, manager: Rc<ThemeManager>) -> gtk::Widget
     });
     preferences.append(&search_open_row);
 
+    let permanent_enabled = manager.show_permanent_delete();
+    let (permanent_row, permanent_toggle) = settings_option(
+        "Show permanently delete",
+        "Show Permanently delete alongside Move to Trash in the context menu. Shift+Delete always works.",
+        permanent_enabled,
+    );
+    let manager_for_permanent = manager.clone();
+    permanent_toggle.connect_active_notify(move |toggle| {
+        manager_for_permanent.set_show_permanent_delete(toggle.is_active());
+    });
+    preferences.append(&permanent_row);
+
     append_heading(&preferences, "MOTION");
     let (motion_row, reduce_motion) = settings_option(
         "Reduce motion",

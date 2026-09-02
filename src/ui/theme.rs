@@ -82,6 +82,8 @@ struct Preferences {
     sort_direction: String,
     #[serde(default = "default_enabled")]
     check_for_updates: bool,
+    #[serde(default)]
+    show_permanent_delete: bool,
 }
 
 impl Default for Preferences {
@@ -100,6 +102,7 @@ impl Default for Preferences {
             sort_key: default_sort_key(),
             sort_direction: default_sort_direction(),
             check_for_updates: true,
+            show_permanent_delete: false,
         }
     }
 }
@@ -234,6 +237,15 @@ impl ThemeManager {
 
     pub fn set_checks_for_updates(&self, enabled: bool) {
         self.preferences.borrow_mut().check_for_updates = enabled;
+        self.save_preferences();
+    }
+
+    pub fn show_permanent_delete(&self) -> bool {
+        self.preferences.borrow().show_permanent_delete
+    }
+
+    pub fn set_show_permanent_delete(&self, enabled: bool) {
+        self.preferences.borrow_mut().show_permanent_delete = enabled;
         self.save_preferences();
     }
 
