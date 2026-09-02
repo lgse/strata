@@ -26,7 +26,8 @@ env:
 jobs:
   prepare:
     name: Determine release version
-    if: github.actor == github.repository_owner
+    # Organization-owned repositories expose the organization, not a human owner.
+    if: github.actor == vars.RELEASE_ACTOR
     runs-on: ubuntu-24.04
     outputs:
       version: ${{ steps.version.outputs.version }}
