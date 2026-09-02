@@ -45,8 +45,10 @@ pub mod icons {
     pub const NETWORK: &str = "strata-network";
     pub const PALETTE: &str = "strata-palette";
     pub const PANEL_LEFT: &str = "strata-panel-left-symbolic";
+    pub const PAUSE: &str = "strata-pause";
     pub const PENCIL: &str = "strata-pencil";
     pub const PIN: &str = "strata-pin";
+    pub const PLAY: &str = "strata-play";
     pub const PLUS: &str = "strata-plus";
     pub const PICTURES: &str = "strata-image";
     pub const ROWS: &str = "strata-rows";
@@ -60,6 +62,8 @@ pub mod icons {
     pub const TRIANGLE_ALERT: &str = "strata-triangle-alert";
     pub const UNPLUG: &str = "strata-unplug";
     pub const VIDEOS: &str = "strata-video";
+    pub const VOLUME_2: &str = "strata-volume-2";
+    pub const VOLUME_X: &str = "strata-volume-x";
     pub const X: &str = "strata-x";
 }
 

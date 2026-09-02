@@ -245,3 +245,33 @@ fn general_preferences_round_trip() {
     assert!(restored.search_open_files_directly);
     assert!(restored.reduce_motion);
 }
+
+#[test]
+fn preview_volume_preferences_round_trip() {
+    let preferences = Preferences {
+        preview_muted: true,
+        preview_volume: 0.3,
+        ..Preferences::default()
+    };
+
+    let serialized = toml::to_string(&preferences).expect("preferences should serialize");
+    let restored: Preferences =
+        toml::from_str(&serialized).expect("preferences should deserialize");
+
+    assert!(restored.preview_muted);
+    assert_eq!(restored.preview_volume, 0.3);
+}
+
+#[test]
+fn legacy_preferences_default_preview_unmuted_at_full_volume() {
+    let preferences: Preferences = toml::from_str(
+        r#"
+mode = "theme"
+theme = "azure-glow"
+"#,
+    )
+    .expect("legacy preferences should remain valid");
+
+    assert!(!preferences.preview_muted);
+    assert_eq!(preferences.preview_volume, 1.0);
+}

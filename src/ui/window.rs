@@ -478,6 +478,24 @@ fn install_keyboard_navigation(
         let alt = modifiers.contains(gtk::gdk::ModifierType::ALT_MASK);
         let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        if preview.has_video()
+            && !alt
+            && !control
+            && !shift
+            && matches!(
+                key,
+                gtk::gdk::Key::space
+                    | gtk::gdk::Key::Up
+                    | gtk::gdk::Key::Down
+                    | gtk::gdk::Key::Left
+                    | gtk::gdk::Key::Right
+                    | gtk::gdk::Key::m
+                    | gtk::gdk::Key::M
+            )
+        {
+            preview.handle_video_key(key);
+            return glib::Propagation::Stop;
+        }
         let focused = gtk::prelude::RootExt::focus(&dialog_parent);
         let sidebar_has_focus = focused.as_ref().is_some_and(|focused| {
             focused == &sidebar_widget || focused.is_ancestor(&sidebar_widget)
