@@ -10,8 +10,8 @@ use std::{
 
 use super::{
     Cancellation, MAX_RASTER_INPUT_BYTES, MEDIA_WALL_TIME_LIMIT, ParseOperation, PrivateOutput,
-    WALL_TIME_LIMIT, gpu_devices, parse, sandbox_command, spawn_renderer, valid_output,
-    wait_for_renderer, wait_for_renderer_output,
+    WALL_TIME_LIMIT, gpu_devices, parse, sandbox_command, sandbox_input_path, spawn_renderer,
+    valid_output, wait_for_renderer, wait_for_renderer_output,
 };
 
 fn limit_from(arguments: &[String], flag: &str) -> u64 {
@@ -79,7 +79,7 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
 
     assert!(joined.contains("--unshare-all"));
     assert!(joined.contains("--clearenv"));
-    assert!(joined.contains("--ro-bind /home/alice/Downloads/untrusted.pdf /input"));
+    assert!(joined.contains("--ro-bind /home/alice/Downloads/untrusted.pdf /input.pdf"));
     assert!(joined.contains("--bind /tmp/private-output /output"));
     assert!(joined.contains("--as=2147483648"));
     assert!(joined.contains("--cpu=10"));
@@ -119,7 +119,21 @@ fn media_previews_use_bounded_streaming_instead_of_driver_wide_resource_limits()
     assert!(!joined.contains("MALLOC_ARENA_MAX"));
     assert!(joined.contains("--size 536870912 --tmpfs /tmp"));
     assert!(!joined.contains("--bind /tmp/private-output /output"));
-    assert!(joined.contains("preview-media /input /dev/stdout"));
+    assert!(joined.contains("preview-media /input.mkv /dev/stdout"));
+}
+
+#[test]
+fn sandbox_input_keeps_a_safe_filename_extension() {
+    assert_eq!(
+        sandbox_input_path(Path::new("/photos/DSC01986.ARW")),
+        "/input.ARW"
+    );
+    assert_eq!(sandbox_input_path(Path::new("/tmp/no-extension")), "/input");
+    assert_eq!(sandbox_input_path(Path::new("/tmp/photo.ar-w")), "/input");
+    assert_eq!(
+        sandbox_input_path(Path::new("/tmp/toolongextension.abcdefghij")),
+        "/input"
+    );
 }
 
 #[test]
@@ -182,7 +196,7 @@ fn media_sandbox_exposes_only_supplied_gpu_devices_and_sysfs() {
     assert!(joined.contains("--ro-bind /sys /sys"));
     assert!(!joined.contains("--cpu=10"));
     assert!(!joined.contains("--bind /tmp/private-output /output"));
-    assert!(joined.contains("preview-media /input /dev/stdout"));
+    assert!(joined.contains("preview-media /input.mkv /dev/stdout"));
 }
 
 #[test]

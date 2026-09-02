@@ -6,9 +6,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+use gdk_pixbuf::prelude::*;
+
 use super::{
     MediaBackend, bounded_output, bounded_output_with_timeout, bounded_surface_dimensions,
-    media_backends, media_command, run_media_backends,
+    media_backends, media_command, run_media_backends, scale_embedded_thumbnail,
 };
 
 fn arguments(backend: &MediaBackend) -> String {
@@ -193,4 +195,22 @@ fn media_commands_select_the_backend_and_preserve_limits() {
         assert!(command.contains("-b:v 2M -maxrate 3M -bufsize 4M"));
         assert!(command.ends_with("pipe:1"));
     }
+}
+
+#[test]
+fn embedded_thumbnails_scale_to_the_requested_size() {
+    let source = gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, 80, 60)
+        .expect("allocate thumbnail");
+    source.fill(0x3366_99ff);
+    let jpeg = source
+        .save_to_bufferv("jpeg", &[])
+        .expect("encode thumbnail");
+
+    let png = scale_embedded_thumbnail(&jpeg, 32).expect("scale thumbnail");
+    let loader = gdk_pixbuf::PixbufLoader::new();
+    loader.write(&png).expect("load scaled png");
+    loader.close().expect("finish scaled png");
+    let scaled = loader.pixbuf().expect("decode scaled png");
+
+    assert_eq!((scaled.width(), scaled.height()), (32, 24));
 }

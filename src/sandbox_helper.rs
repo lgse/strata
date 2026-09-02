@@ -44,7 +44,7 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         "thumbnail-raw" => (render_raw(input, value.clamp(16, 256))?, None),
         "thumbnail-pdf" => (render_pdf_thumbnail(input, value.clamp(16, 256))?, None),
         "thumbnail-video" => (render_media(input, value.clamp(16, 256))?, None),
-        "preview-image" => (render_pixbuf(input, 1400)?, None),
+        "preview-image" => (render_raw(input, 1400)?, None),
         "preview-pdf" => {
             let (png, page, pages) = render_pdf_page(input, value)?;
             (png, Some(format!("{page} {pages}")))
@@ -93,42 +93,77 @@ fn render_imagemagick(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     Err("No RAW image renderer succeeded".to_owned())
 }
 
+// LibRaw's dcraw_emu does not support `-e`; `-c` is a threshold, not stdout.
 fn render_dcraw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
-    for executable in ["dcraw_emu", "dcraw"] {
-        let output = bounded_output(
-            Command::new(executable).args(["-e", "-c"]).arg(path),
-            MAX_OUTPUT_BYTES,
-        );
-        let Ok(output) = output else {
+    let classic = bounded_output(
+        Command::new("dcraw").args(["-e", "-c"]).arg(path),
+        MAX_OUTPUT_BYTES,
+    );
+    if let Ok(output) = classic
+        && output.status.success()
+        && !output.stdout.is_empty()
+        && let Ok(png) = scale_embedded_thumbnail(&output.stdout, size)
+    {
+        return Ok(png);
+    }
+    render_simple_dcraw(path, size)
+}
+
+fn render_simple_dcraw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
+    use std::os::unix::fs::symlink;
+
+    // Writes `<file>.thumb.jpg` next to the input, which is a read-only bind.
+    let staging = Path::new("/tmp/raw-thumb");
+    let _ = fs::remove_file(staging);
+    symlink(path, staging).map_err(|error| error.to_string())?;
+    let status = Command::new("simple_dcraw")
+        .arg("-e")
+        .arg(staging)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map_err(|error| error.to_string())?;
+    if !status.success() {
+        return Err("simple_dcraw failed".to_owned());
+    }
+    for thumb in ["/tmp/raw-thumb.thumb.jpg", "/tmp/raw-thumb.thumb.ppm"] {
+        let Ok(data) = fs::read(thumb) else {
             continue;
         };
-        if !output.status.success() || output.stdout.is_empty() {
+        if data.is_empty() || data.len() as u64 > MAX_OUTPUT_BYTES {
             continue;
         }
-        let loader = gdk_pixbuf::PixbufLoader::new();
-        if loader.write(&output.stdout).is_err() || loader.close().is_err() {
-            continue;
-        }
-        let Some(pixbuf) = loader.pixbuf() else {
-            continue;
-        };
-        let width = pixbuf.width().max(1);
-        let height = pixbuf.height().max(1);
-        let scale = (f64::from(size) / f64::from(width))
-            .min(f64::from(size) / f64::from(height))
-            .min(1.0);
-        let Some(scaled) = pixbuf.scale_simple(
-            (f64::from(width) * scale).round().max(1.0) as i32,
-            (f64::from(height) * scale).round().max(1.0) as i32,
-            gdk_pixbuf::InterpType::Bilinear,
-        ) else {
-            continue;
-        };
-        if let Ok(png) = scaled.save_to_bufferv("png", &[]) {
+        if let Ok(png) = scale_embedded_thumbnail(&data, size) {
             return Ok(png);
         }
     }
-    Err("No embedded RAW thumbnail could be decoded".to_owned())
+    Err("simple_dcraw produced no thumbnail".to_owned())
+}
+
+fn scale_embedded_thumbnail(data: &[u8], size: i32) -> Result<Vec<u8>, String> {
+    let loader = gdk_pixbuf::PixbufLoader::new();
+    loader
+        .write(data)
+        .and_then(|()| loader.close())
+        .map_err(|error| error.to_string())?;
+    let pixbuf = loader
+        .pixbuf()
+        .ok_or_else(|| "Unable to decode embedded RAW thumbnail".to_owned())?;
+    let width = pixbuf.width().max(1);
+    let height = pixbuf.height().max(1);
+    let scale = (f64::from(size) / f64::from(width))
+        .min(f64::from(size) / f64::from(height))
+        .min(1.0);
+    pixbuf
+        .scale_simple(
+            (f64::from(width) * scale).round().max(1.0) as i32,
+            (f64::from(height) * scale).round().max(1.0) as i32,
+            gdk_pixbuf::InterpType::Bilinear,
+        )
+        .ok_or_else(|| "Unable to scale embedded RAW thumbnail".to_owned())?
+        .save_to_bufferv("png", &[])
+        .map_err(|error| error.to_string())
 }
 
 fn render_pdf_thumbnail(path: &Path, size: i32) -> Result<Vec<u8>, String> {
