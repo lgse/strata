@@ -2901,6 +2901,6 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
 
 @media (prefers-reduced-motion: reduce) {
   * {
-    transition-duration: 1ms !important;
+    transition-duration: 1ms;
   }
 }
