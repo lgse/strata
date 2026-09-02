@@ -1779,7 +1779,7 @@ fn build_explorer_pane(
             name.set_label(&entry.display_name);
             size.set_label(&entry_size(&entry));
             kind.set_label(entry_type(&entry));
-            modified.set_label(&entry_modified(&entry));
+            modified.set_label(&crate::util::modified_date(&entry));
         } else {
             row.remove_css_class("cut-item");
             let icon_name = if entry_kind_for_bind.get() {
@@ -2563,17 +2563,6 @@ fn entry_type(entry: &FileEntry) -> &'static str {
         EntryKind::FileSymbolicLink => "File link",
         EntryKind::SymbolicLink => "Broken link",
         EntryKind::Other => "Other",
-    }
-}
-
-fn entry_modified(entry: &FileEntry) -> String {
-    match entry.modified_unix_seconds {
-        MetadataValue::Known(seconds) => glib::DateTime::from_unix_local(seconds)
-            .ok()
-            .and_then(|date| date.format("%Y-%m-%d %H:%M").ok())
-            .map(|value| value.to_string())
-            .unwrap_or_default(),
-        MetadataValue::Unknown | MetadataValue::Unavailable => String::new(),
     }
 }
 

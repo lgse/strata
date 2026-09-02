@@ -2733,7 +2733,7 @@ impl ViewState {
             "MODIFIED",
             &entry
                 .as_ref()
-                .map(metadata_modified)
+                .map(crate::util::modified_date)
                 .unwrap_or_else(|| "—".to_owned()),
         );
         let opens_with = properties_row(&details, "OPENS WITH", "—");
@@ -7611,16 +7611,6 @@ fn compact_native_path(path: &Path) -> String {
         .ok()
         .map(|suffix| format!("~/{}", suffix.to_string_lossy()))
         .unwrap_or_else(|| path.to_string_lossy().into_owned())
-}
-
-fn metadata_modified(entry: &FileEntry) -> String {
-    let crate::model::MetadataValue::Known(seconds) = entry.modified_unix_seconds else {
-        return "—".to_owned();
-    };
-    glib::DateTime::from_unix_local(seconds)
-        .and_then(|date| date.format("%Y-%m-%d %H:%M"))
-        .map(|value| value.to_string())
-        .unwrap_or_else(|_| "—".to_owned())
 }
 
 fn properties_row(parent: &gtk::Box, label: &str, value: &str) -> gtk::Label {
