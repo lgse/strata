@@ -843,7 +843,11 @@ impl BrowserView {
     }
 
     pub fn refresh(&self) {
-        self.state.browser.refresh_all();
+        if self.view_mode() == BrowserMode::Columns {
+            self.state.browser.refresh_all();
+        } else {
+            self.state.browser.reload_active();
+        }
     }
 
     pub fn set_auto_refresh_interval(&self, secs: u32) {
@@ -988,21 +992,35 @@ impl ViewState {
         }
     }
 
-    pub(super) fn set_auto_refresh_interval(&self, secs: u32) {
+    pub(super) fn set_auto_refresh_interval(self: &Rc<Self>, secs: u32) {
         if let Some(source) = self.auto_refresh.take() {
             source.remove();
         }
         if secs == 0 {
             return;
         }
-        let weak = Rc::downgrade(&self.browser);
+        let weak_state = Rc::downgrade(self);
+        let weak_browser = Rc::downgrade(&self.browser);
         let source = glib::timeout_add_local(Duration::from_secs(u64::from(secs)), move || {
-            if let Some(browser) = weak.upgrade() {
-                browser.refresh_all();
-                glib::ControlFlow::Continue
-            } else {
-                glib::ControlFlow::Break
+            let Some(state) = weak_state.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            if state.active_rename.borrow().is_some()
+                || state.active_new_entry.borrow().is_some()
+                || state.mode_views.borrow().rename_is_active()
+                || state.mode_views.borrow().new_entry_is_active()
+            {
+                return glib::ControlFlow::Continue;
             }
+            let Some(browser) = weak_browser.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            if state.mode_views.borrow().mode() == BrowserMode::Columns {
+                browser.refresh_all();
+            } else {
+                browser.reload_active();
+            }
+            glib::ControlFlow::Continue
         });
         self.auto_refresh.replace(Some(source));
     }

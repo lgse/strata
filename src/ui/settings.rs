@@ -420,14 +420,8 @@ fn general_page(browser: &BrowserView, manager: Rc<ThemeManager>) -> gtk::Widget
         let manager = manager.clone();
         let browser = browser.clone();
         let secs = secs[idx];
-        let buttons_clone = buttons.clone();
         button.connect_toggled(move |toggled| {
             if toggled.is_active() {
-                for (other_idx, other) in buttons_clone.iter().enumerate() {
-                    if other_idx != idx {
-                        other.set_active(false);
-                    }
-                }
                 manager.set_auto_refresh_interval(secs);
                 browser.set_auto_refresh_interval(secs);
             }
