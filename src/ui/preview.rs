@@ -38,8 +38,10 @@ struct PreviewState {
     content_type: gtk::Label,
     content: gtk::Box,
     media: RefCell<Option<gtk::MediaStream>>,
+    media_signals: RefCell<Vec<glib::SignalHandlerId>>,
     media_volume_slider: RefCell<Option<gtk::Scale>>,
     media_volume_icon: RefCell<Option<gtk::Image>>,
+    media_volume_save: Rc<RefCell<Option<glib::SourceId>>>,
     split: RefCell<Option<gtk::Paned>>,
     occupied_width: RefCell<Option<Rc<dyn Fn() -> i32>>>,
     current: RefCell<Option<FileEntry>>,
@@ -131,8 +133,10 @@ impl PreviewDrawer {
             content_type,
             content,
             media: RefCell::new(None),
+            media_signals: RefCell::new(Vec::new()),
             media_volume_slider: RefCell::new(None),
             media_volume_icon: RefCell::new(None),
+            media_volume_save: Rc::new(RefCell::new(None)),
             split: RefCell::new(None),
             occupied_width: RefCell::new(None),
             current: RefCell::new(None),
@@ -240,15 +244,18 @@ impl PreviewDrawer {
             gtk::gdk::Key::m | gtk::gdk::Key::M => {
                 let muted = !media.is_muted();
                 if muted {
-                    set_preview_volume(&media, &preferences, &slider, icon, 0.0);
+                    media.set_volume(0.0);
+                    if let Some(slider) = slider.as_ref() {
+                        slider.set_value(0.0);
+                    }
+                    set_preview_mute(&media, icon, &preferences, true);
                 } else {
-                    set_preview_volume(
-                        &media,
-                        &preferences,
-                        &slider,
-                        icon,
-                        preferences.preview_volume().max(0.1),
-                    );
+                    let restored = preferences.preview_volume().max(0.1);
+                    media.set_volume(restored);
+                    if let Some(slider) = slider.as_ref() {
+                        slider.set_value(restored);
+                    }
+                    set_preview_mute(&media, icon, &preferences, false);
                 }
                 true
             }
@@ -909,13 +916,12 @@ impl PreviewState {
 
         bar.append(&play_button);
 
-        let media_for_notify = media.clone();
         let play_button_for_notify = play_button.clone();
         let play_icon_for_notify = play_icon.clone();
         let pause_icon_for_notify = pause_icon.clone();
         let center_for_notify = center_play.clone();
         let media_for_playing = media.clone();
-        media_for_notify.connect_notify_local(Some("playing"), move |_, _| {
+        let handler = media.connect_notify_local(Some("playing"), move |_, _| {
             let playing = media_for_playing.is_playing();
             play_button_for_notify.set_child(Some(if playing {
                 &pause_icon_for_notify
@@ -924,6 +930,7 @@ impl PreviewState {
             }));
             center_for_notify.set_visible(!playing);
         });
+        self.media_signals.borrow_mut().push(handler);
 
         if is_gif {
             self.content.append(&bar);
@@ -986,13 +993,15 @@ impl PreviewState {
         };
         update_time();
         let update_for_timestamp = update_time.clone();
-        media.connect_notify_local(Some("timestamp"), move |_, _| {
+        let handler = media.connect_notify_local(Some("timestamp"), move |_, _| {
             update_for_timestamp();
         });
+        self.media_signals.borrow_mut().push(handler);
         let update_for_duration = update_time.clone();
-        media.connect_notify_local(Some("duration"), move |_, _| {
+        let handler = media.connect_notify_local(Some("duration"), move |_, _| {
             update_for_duration();
         });
+        self.media_signals.borrow_mut().push(handler);
 
         let drag = gtk::GestureDrag::new();
         let seeking_for_begin = seeking.clone();
@@ -1025,15 +1034,14 @@ impl PreviewState {
                     if slider.value() > 0.0 {
                         last_volume.set(slider.value());
                     }
-                    set_preview_volume(&media, &preferences, &Some(slider.clone()), &icon, 0.0);
+                    media.set_volume(0.0);
+                    slider.set_value(0.0);
+                    set_preview_mute(&media, &icon, &preferences, true);
                 } else {
-                    set_preview_volume(
-                        &media,
-                        &preferences,
-                        &Some(slider.clone()),
-                        &icon,
-                        last_volume.get().max(0.1),
-                    );
+                    let restored = last_volume.get().max(0.1);
+                    media.set_volume(restored);
+                    slider.set_value(restored);
+                    set_preview_mute(&media, &icon, &preferences, false);
                 }
                 updating.set(false);
             }
@@ -1048,7 +1056,8 @@ impl PreviewState {
         let preferences_for_volume = preferences.clone();
         let last_volume_for_volume = last_volume.clone();
         let updating_for_volume = updating_slider.clone();
-        let slider_for_volume = volume_slider.clone();
+        let save_slot = self.media_volume_save.clone();
+        let preferences_for_save = preferences.clone();
         volume_slider.connect_value_changed(move |scale| {
             if updating_for_volume.get() {
                 return;
@@ -1057,19 +1066,37 @@ impl PreviewState {
             if volume > 0.0 {
                 last_volume_for_volume.set(volume);
             }
-            set_preview_volume(
-                &media_for_volume,
-                &preferences_for_volume,
-                &Some(slider_for_volume.clone()),
-                &icon_for_volume,
-                volume,
-            );
+            media_for_volume.set_volume(volume);
+            let muted = volume == 0.0;
+            if media_for_volume.is_muted() != muted {
+                set_preview_mute(
+                    &media_for_volume,
+                    &icon_for_volume,
+                    &preferences_for_volume,
+                    muted,
+                );
+            }
+            if let Some(prev) = save_slot.borrow_mut().take() {
+                prev.remove();
+            }
+            let prefs = preferences_for_save.clone();
+            let id =
+                glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
+                    prefs.set_preview_volume(volume);
+                });
+            save_slot.borrow_mut().replace(id);
         });
     }
 
     fn clear_content(&self) {
         if let Some(stream) = self.media.borrow_mut().take() {
+            for handler in self.media_signals.borrow_mut().drain(..) {
+                stream.disconnect(handler);
+            }
             stream.set_playing(false);
+        }
+        if let Some(id) = self.media_volume_save.borrow_mut().take() {
+            id.remove();
         }
         self.media_volume_slider.replace(None);
         self.media_volume_icon.replace(None);
