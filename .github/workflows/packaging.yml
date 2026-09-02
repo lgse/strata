@@ -1,0 +1,78 @@
+name: Packaging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/**'
+      - 'scripts/update_aur.py'
+      - '.github/workflows/packaging.yml'
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - 'scripts/update_aur.py'
+      - '.github/workflows/packaging.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  arch:
+    name: Build and inspect the Arch packages
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:base-devel
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install packaging tools
+        run: pacman -Syu --noconfirm --needed namcap
+
+      # makepkg refuses to run as root, and --syncdeps shells out to pacman.
+      - name: Create an unprivileged build user
+        run: |
+          useradd --create-home builder
+          printf 'builder ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builder
+          chown -R builder .
+
+      - name: Build the packages
+        run: |
+          for package in strata-bin strata-preview-bin; do
+            echo "::group::makepkg $package"
+            su builder -c "cd packaging/aur/$package && makepkg --cleanbuild --syncdeps --noconfirm"
+            echo "::endgroup::"
+          done
+
+      - name: Check the packages with namcap
+        run: |
+          for package in strata-bin strata-preview-bin; do
+            echo "::group::namcap $package"
+            su builder -c "cd packaging/aur/$package && namcap PKGBUILD"
+            su builder -c "cd packaging/aur/$package && namcap ./*.pkg.tar.zst"
+            echo "::endgroup::"
+          done
+
+      - name: Verify the installed paths and packaging marker
+        run: |
+          for package in strata-bin strata-preview-bin; do
+            archive=$(echo packaging/aur/"$package"/*.pkg.tar.zst)
+            bsdtar -tf "$archive" | grep -qx 'usr/bin/strata'
+            bsdtar -xOf "$archive" usr/share/strata/install-source.toml \
+              | grep -qx "package = \"$package\""
+          done
+
+      - name: Confirm packaging does not modify the published binary
+        run: |
+          archive=$(echo packaging/aur/strata-bin/*.pkg.tar.zst)
+          packaged=$(bsdtar -xOf "$archive" usr/bin/strata | sha256sum | cut -d' ' -f1)
+          upstream=$(tar -xOzf packaging/aur/strata-bin/strata-*.tar.gz --wildcards '*/strata' | sha256sum | cut -d' ' -f1)
+          if [[ "$packaged" != "$upstream" ]]; then
+            echo "The packaged binary differs from the published release artifact, which breaks provenance verification." >&2
+            exit 1
+          fi
