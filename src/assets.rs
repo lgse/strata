@@ -100,6 +100,10 @@ pub fn register_icon_theme() {
     if let Some(display) = gdk::Display::default() {
         gtk::IconTheme::for_display(&display).add_resource_path("/io/github/lgse/Strata/icons");
     }
+    // Desktop shells resolve the window icon by matching the application ID to a
+    // desktop entry, but GTK also needs the name to expose the bundled icon on its
+    // own surfaces and on compositors that accept a toplevel icon.
+    gtk::Window::set_default_icon_name(crate::APPLICATION_ID);
 }
 
 pub fn primary_icon(name: &str, pixel_size: i32) -> gtk::Image {

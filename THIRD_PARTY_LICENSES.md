@@ -19,10 +19,12 @@ The font is distributed unmodified. Strata materializes the embedded font in its
 - Version: 1.35.0
 - Copyright: Lucide Contributors and Feather Icons contributors
 - License: ISC
-- Included assets: curated and namespaced SVG icons under `data/icons/`
+- Included assets: curated and namespaced SVG icons under `data/icons/`, and the application icon `data/icons/scalable/apps/io.github.lgse.Strata.svg`
 - Full license: [`data/licenses/Lucide-ISC.txt`](data/licenses/Lucide-ISC.txt)
 
 The SVGs retain Lucide geometry. Their foreground color was changed from `currentColor` to GTK's symbolic foreground color so GTK can recolor them according to the active theme.
+
+The application icon composes the unmodified Lucide `layers` glyph, uniformly scaled and centered, over a rounded backdrop original to Strata. Desktop shells render application icons outside Strata's own theming, so that icon carries fixed colors instead of semantic theme colors.
 
 ## Tinted Theming schemes
 

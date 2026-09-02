@@ -9,7 +9,11 @@ use std::{
     time::Duration,
 };
 
+use gtk::glib;
+
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
+const DESKTOP_ENTRY: &str = "io.github.lgse.Strata.desktop";
+const APPLICATION_ICON: &str = "io.github.lgse.Strata.svg";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UpdateInstall {
@@ -83,7 +87,88 @@ fn try_install(
     fs::rename(&staged, current_exe)
         .map_err(|error| format!("Could not replace the installed binary: {error}"))?;
 
+    if let Some(package_dir) = binary_path.parent() {
+        refresh_desktop_metadata(package_dir, current_exe, &glib::user_data_dir());
+    }
+
     Ok(())
+}
+
+/// Rewrites an already installed desktop entry and application icon from the
+/// downloaded archive so an in-app update cannot leave desktop metadata stale.
+/// Absent metadata is never created: a user who did not install a launcher does
+/// not gain one from an update. Failures are reported but never fail the update,
+/// which has already replaced the binary.
+fn refresh_desktop_metadata(package_dir: &Path, executable: &Path, data_home: &Path) {
+    let entry_path = data_home.join("applications").join(DESKTOP_ENTRY);
+    if !entry_path.is_file() {
+        return;
+    }
+
+    if let Err(error) = write_desktop_entry(package_dir, executable, &entry_path) {
+        tracing::warn!("could not refresh the desktop entry: {error}");
+    }
+    if let Err(error) = write_application_icon(package_dir, data_home) {
+        tracing::warn!("could not refresh the application icon: {error}");
+    }
+
+    let _refreshed =
+        run(Command::new("update-desktop-database").arg(data_home.join("applications")));
+}
+
+fn write_desktop_entry(
+    package_dir: &Path,
+    executable: &Path,
+    entry_path: &Path,
+) -> Result<(), String> {
+    let staged_entry = package_dir.join(DESKTOP_ENTRY);
+    if !staged_entry.is_file() {
+        return Err(format!("the archive contains no {DESKTOP_ENTRY}"));
+    }
+    let template = fs::read_to_string(&staged_entry).map_err(|error| error.to_string())?;
+    fs::write(entry_path, desktop_entry_with_exec(&template, executable))
+        .map_err(|error| error.to_string())
+}
+
+fn write_application_icon(package_dir: &Path, data_home: &Path) -> Result<(), String> {
+    let staged_icon = package_dir.join(APPLICATION_ICON);
+    if !staged_icon.is_file() {
+        return Err(format!("the archive contains no {APPLICATION_ICON}"));
+    }
+    let icon_dir = data_home.join("icons/hicolor/scalable/apps");
+    fs::create_dir_all(&icon_dir).map_err(|error| error.to_string())?;
+    fs::copy(&staged_icon, icon_dir.join(APPLICATION_ICON))
+        .map(|_copied| ())
+        .map_err(|error| error.to_string())
+}
+
+/// Points the packaged entry's `Exec` line at the running install path, keeping
+/// the packaged field codes so the entry still receives directory arguments.
+fn desktop_entry_with_exec(template: &str, executable: &Path) -> String {
+    let program = executable.display().to_string();
+    let program = if program.contains(char::is_whitespace) {
+        format!("\"{program}\"")
+    } else {
+        program
+    };
+
+    let mut entry = String::with_capacity(template.len() + program.len());
+    for line in template.lines() {
+        match line.strip_prefix("Exec=") {
+            Some(command) => {
+                let field_codes = command.split_once(' ').map_or("", |(_program, rest)| rest);
+                entry.push_str("Exec=");
+                entry.push_str(&program);
+                if !field_codes.is_empty() {
+                    entry.push(' ');
+                    entry.push_str(field_codes);
+                }
+            }
+            None => entry.push_str(line),
+        }
+        entry.push('\n');
+    }
+    entry
 }
 
 fn download_to_file(
