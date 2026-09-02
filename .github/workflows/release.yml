@@ -12,6 +12,21 @@ on:
           - patch
           - minor
           - major
+      mode:
+        description: Release channel to publish
+        required: true
+        default: stable
+        type: choice
+        options:
+          - stable
+          - alpha
+          - beta
+          - rc
+          - nightly
+      source:
+        description: PR number, branch, tag, or commit to publish (prereleases only; blank uses main)
+        required: false
+        type: string
 
 concurrency:
   group: release
@@ -32,6 +47,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       source_sha: ${{ steps.source.outputs.sha }}
+      checkout_ref: ${{ steps.source.outputs.checkout_ref }}
 
     steps:
       - name: Require the default branch
@@ -48,41 +64,70 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0
 
-      - name: Record source commit
+      - name: Resolve source commit
         id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          MODE: ${{ inputs.mode }}
+          SOURCE: ${{ inputs.source }}
+        run: |
+          if [[ "$MODE" == "stable" && -n "$SOURCE" ]]; then
+            echo "Stable releases must use the current default-branch tip." >&2
+            exit 1
+          fi
+
+          if [[ -z "$SOURCE" ]]; then
+            sha="$(git rev-parse HEAD)"
+            checkout_ref="$sha"
+          elif [[ "$SOURCE" =~ ^[0-9]+$ ]]; then
+            checkout_ref="refs/pull/${SOURCE}/head"
+            git fetch --no-tags origin "$checkout_ref"
+            sha="$(git rev-parse FETCH_HEAD)"
+          else
+            git fetch --no-tags origin "$SOURCE"
+            sha="$(git rev-parse FETCH_HEAD)"
+            checkout_ref="$sha"
+          fi
+
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "checkout_ref=$checkout_ref" >> "$GITHUB_OUTPUT"
 
       - name: Calculate version
         id: version
         env:
           BUMP: ${{ inputs.bump }}
+          MODE: ${{ inputs.mode }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
-          python3 - <<'PY'
-          import os
-          import pathlib
-          import re
+          current_version="$(git show "$SOURCE_SHA:Cargo.toml" | grep -m1 -oP '^version = "\K\d+\.\d+\.\d+(?=")')"
+          tags="$(git tag -l 'v*')"
+          version="$(python3 scripts/release_version.py \
+            --current-version "$current_version" \
+            --bump "$BUMP" \
+            --mode "$MODE" \
+            --date "$(date --utc +%Y%m%d)" \
+            --tags "$tags")"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
-          manifest = pathlib.Path("Cargo.toml").read_text()
-          match = re.search(r'^version = "(\d+)\.(\d+)\.(\d+)"$', manifest, re.MULTILINE)
-          if match is None:
-              raise SystemExit("Cargo.toml must contain a plain major.minor.patch package version")
-
-          major, minor, patch = map(int, match.groups())
-          bump = os.environ["BUMP"]
-          if bump == "major":
-              major, minor, patch = major + 1, 0, 0
-          elif bump == "minor":
-              minor, patch = minor + 1, 0
-          elif bump == "patch":
-              patch += 1
-          else:
-              raise SystemExit(f"unsupported version bump: {bump}")
-
-          version = f"{major}.{minor}.{patch}"
-          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
-              output.write(f"version={version}\n")
-          PY
+      - name: Guard against superseding an untested RC
+        if: inputs.mode == 'stable'
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          # VERSION is the plain core version for a stable release. If an RC
+          # already exists for this core version, a stable release must not
+          # silently supersede it unless the RC's commit is already part of
+          # this release's history -- otherwise a stable tag could publish
+          # over an RC whose changes were never folded in and never tested
+          # as stable.
+          for tag in $(git tag -l "v${VERSION}-rc.*"); do
+            if ! git merge-base --is-ancestor "$tag" "$SOURCE_SHA"; then
+              echo "Tag $tag targets a commit not reachable from $SOURCE_SHA (the release source). A stable release must not silently supersede an untested RC." >&2
+              exit 1
+            fi
+          done
 
   build:
     name: Build ${{ matrix.target }}
@@ -101,13 +146,36 @@ jobs:
       - name: Check out source commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.prepare.outputs.source_sha }}
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
           persist-credentials: false
+
+      - name: Verify source commit
+        env:
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
       - name: Set release version
         env:
+          MODE: ${{ inputs.mode }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
+          if [[ "$MODE" != "stable" ]]; then
+            # Fail closed when targeting source older than release-channel
+            # support; otherwise the archive tag and binary identity diverge.
+            if ! grep -q 'STRATA_RELEASE_TAG' build.rs; then
+              echo "The selected source does not support prerelease build metadata." >&2
+              exit 1
+            fi
+
+            # Prerelease identity is injected at build time instead of being
+            # written into Cargo.toml, which remains the stable version line.
+            {
+              echo "STRATA_RELEASE_TAG=v${VERSION}"
+              echo "STRATA_BUILD_KIND=${MODE}"
+            } >> "$GITHUB_ENV"
+            exit 0
+          fi
+
           python3 - <<'PY'
           import os
           import pathlib
@@ -196,9 +264,14 @@ jobs:
       - name: Check out source commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.prepare.outputs.source_sha }}
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
           fetch-depth: 0
           ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+
+      - name: Verify source commit
+        env:
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
       - name: Download binaries
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
@@ -214,9 +287,27 @@ jobs:
       - name: Commit version and push tag
         env:
           BRANCH: ${{ github.event.repository.default_branch }}
+          MODE: ${{ inputs.mode }}
           SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [[ "$MODE" != "stable" ]]; then
+            # A prerelease run tags the source commit but never pushes a
+            # version-bump commit to the default branch.
+            git fetch origin --tags
+            if git rev-parse "v$VERSION" >/dev/null 2>&1; then
+              echo "Tag v$VERSION already exists." >&2
+              exit 1
+            fi
+
+            git tag -a "v$VERSION" -m "Strata v$VERSION"
+            git push origin "v$VERSION"
+            exit 0
+          fi
+
           git fetch origin "$BRANCH" --tags
           if [[ "$(git rev-parse "origin/$BRANCH")" != "$SOURCE_SHA" ]]; then
             echo "The default branch changed while release binaries were building. Run the workflow again." >&2
@@ -244,8 +335,6 @@ jobs:
               path.write_text(text)
           PY
 
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add Cargo.toml Cargo.lock
           git commit -m "chore: release v$VERSION"
           git tag -a "v$VERSION" -m "Strata v$VERSION"
@@ -254,5 +343,13 @@ jobs:
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          MODE: ${{ inputs.mode }}
           VERSION: ${{ needs.prepare.outputs.version }}
-        run: gh release create "v$VERSION" dist/* --verify-tag --generate-notes --title "Strata v$VERSION"
+        run: |
+          if [[ "$MODE" != "stable" ]]; then
+            # --prerelease keeps /releases/latest pointing at the last final
+            # release, which is the endpoint a Stable user polls.
+            gh release create "v$VERSION" dist/* --verify-tag --generate-notes --prerelease --title "Strata v$VERSION"
+          else
+            gh release create "v$VERSION" dist/* --verify-tag --generate-notes --title "Strata v$VERSION"
+          fi
