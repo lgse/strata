@@ -16,7 +16,7 @@ Exactly these forms are valid release tags. The self-updater rejects anything el
 
 `N` is always a positive integer and is compared numerically. The leading `v` is optional in the parser but always present in published tags. At an equal core version, builds order as `nightly < alpha < beta < rc < stable`.
 
-The in-app **Preview** channel receives alpha, beta, RC, and stable releases. The **Nightly** channel additionally receives nightly builds. Strata does not yet publish nightlies automatically; that requires a scheduled workflow and an explicit next target version.
+The in-app **Preview** channel receives alpha, beta, RC, and stable releases. The **Nightly** channel additionally receives nightly builds. All prerelease kinds, including nightlies, are published manually through the Release workflow.
 
 ## Publishing a stable release
 
@@ -28,14 +28,17 @@ Run the **Release** workflow from GitHub's Actions tab on the default branch, ch
 
 ## Cutting and promoting prereleases
 
-Run the same workflow manually with `mode` set to `alpha`, `beta`, or `rc`. The workflow:
+Run the same workflow manually with `mode` set to `alpha`, `beta`, `rc`, or `nightly`. For a prerelease, the optional `source` input accepts a pull-request number, branch, tag, or commit; leaving it blank uses the current default-branch tip. The workflow:
 
-- computes the next core version from `bump`, then scans existing tags of that stage and picks the next ordinal;
+- resolves and records the exact source commit before building;
+- computes the next core version from `bump`;
+- gives alpha, beta, and RC builds the next numeric ordinal for their stage;
+- gives nightlies a UTC-dated suffix, adding `.N` for repeated same-day runs;
 - never touches `Cargo.toml` or `Cargo.lock`, and never pushes a version commit -- it tags the source commit directly;
 - injects the exact tag and build kind at compile time; and
 - publishes a GitHub prerelease, keeping `/releases/latest` pointed at the last stable release.
 
-RC publication is intentionally manual. To promote a validated RC line to stable, run the workflow again with `mode: stable` and the same `bump` level. The resulting stable tag supersedes the prerelease line; the guard blocks promotion when an RC commit is not reachable from the stable source.
+RC and nightly publication are intentionally manual. To promote a validated RC line to stable, run the workflow again with `mode: stable` and the same `bump` level. The resulting stable tag supersedes the prerelease line; the guard blocks promotion when an RC commit is not reachable from the stable source.
 
 ## Version calculation
 
@@ -65,7 +68,10 @@ Cases covered:
 | RC after an existing RC | `0.5.0`, `patch`, `rc`, tags include `v0.5.1-rc.1` | `0.5.1-rc.2` |
 | RC ordinal is numeric, not lexicographic | `0.5.0`, `patch`, `rc`, tags include `v0.5.1-rc.1` .. `v0.5.1-rc.10` | `0.5.1-rc.11` |
 | RC tag collision (defense in depth) | computed tag already present | rejected |
-| Unrelated tags ignored | tags for other cores, or other build kinds (stable, nightly) mixed in | ignored |
+| First nightly for a date | `0.7.0`, `minor`, `nightly`, date `20260904` | `0.8.0-nightly.20260904` |
+| Repeated same-day nightly | tags end at `v0.8.0-nightly.20260904.2` | `0.8.0-nightly.20260904.3` |
+| Invalid nightly calendar date | date `20260230` | rejected |
+| Unrelated tags ignored | tags for other cores or build kinds mixed in | ignored |
 
 ## Known limitation
 

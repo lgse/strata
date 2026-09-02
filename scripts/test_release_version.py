@@ -21,6 +21,7 @@ from release_version import (
     compute_next_version,
     ensure_tag_available,
     next_prerelease_ordinal,
+    nightly_version,
     split_tags,
 )
 
@@ -133,6 +134,52 @@ class PrereleaseOrdinalTests(unittest.TestCase):
         )
 
 
+class NightlyVersionTests(unittest.TestCase):
+    def test_first_nightly_uses_the_utc_date_without_a_suffix(self) -> None:
+        self.assertEqual(
+            compute_next_version("0.7.0", "minor", "nightly", [], "20260904"),
+            "0.8.0-nightly.20260904",
+        )
+
+    def test_repeated_same_day_nightlies_get_numeric_suffixes(self) -> None:
+        tags = [
+            "v0.8.0-nightly.20260904",
+            "v0.8.0-nightly.20260904.1",
+            "v0.8.0-nightly.20260904.2",
+        ]
+        self.assertEqual(
+            compute_next_version(
+                "0.7.0", "minor", "nightly", tags, "20260904"
+            ),
+            "0.8.0-nightly.20260904.3",
+        )
+
+    def test_other_dates_and_cores_do_not_affect_the_suffix(self) -> None:
+        self.assertEqual(
+            nightly_version(
+                "0.8.0",
+                "20260904",
+                [
+                    "v0.8.0-nightly.20260903.9",
+                    "v0.9.0-nightly.20260904.9",
+                ],
+            ),
+            "0.8.0-nightly.20260904",
+        )
+
+    def test_nightly_requires_a_real_calendar_date(self) -> None:
+        for release_date in ["", "20261301", "20260230", "2026-09-04"]:
+            with self.subTest(release_date=release_date):
+                with self.assertRaises(VersionError):
+                    compute_next_version(
+                        "0.7.0", "minor", "nightly", [], release_date
+                    )
+
+    def test_nightly_requires_the_date_argument(self) -> None:
+        with self.assertRaises(VersionError):
+            compute_next_version("0.7.0", "minor", "nightly", [])
+
+
 class TagCollisionTests(unittest.TestCase):
     """Rejection when the computed tag already exists, mirroring the
     stable guard. RC's `N = max + 1` scan can never organically reproduce
@@ -159,7 +206,7 @@ class InputValidationTests(unittest.TestCase):
 
     def test_rejects_unsupported_mode(self) -> None:
         with self.assertRaises(VersionError):
-            compute_next_version("0.5.0", "patch", "nightly", [])
+            compute_next_version("0.5.0", "patch", "canary", [])
 
     def test_rejects_unsupported_prerelease_kind(self) -> None:
         with self.assertRaises(VersionError):

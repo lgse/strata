@@ -6,9 +6,12 @@ use std::{
     time::{Duration, Instant},
 };
 
+use gdk_pixbuf::prelude::*;
+
 use super::{
     MediaBackend, bounded_output, bounded_output_with_timeout, bounded_surface_dimensions,
-    media_backends, media_command, run_media_backends,
+    media_backends, media_command, read_limited, render_pixbuf, render_raw, run,
+    run_media_backends, scale_embedded_thumbnail,
 };
 
 fn arguments(backend: &MediaBackend) -> String {
@@ -146,6 +149,20 @@ fn provider_output_is_bounded_without_buffering_stderr() {
 }
 
 #[test]
+fn file_reads_stop_before_exceeding_the_output_limit() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let path = directory.path().join("thumb.jpg");
+
+    std::fs::write(&path, b"1234").expect("write exact");
+    let exact = read_limited(std::fs::File::open(&path).expect("open exact"), 4)
+        .expect("read file at the limit");
+    assert_eq!(exact, b"1234");
+
+    std::fs::write(&path, vec![0_u8; 1025]).expect("write oversized");
+    assert!(read_limited(std::fs::File::open(&path).expect("open oversized"), 1024).is_err());
+}
+
+#[test]
 fn media_commands_select_the_backend_and_preserve_limits() {
     for backend in [
         MediaBackend::VaApi("/dev/dri/renderD129".into()),
@@ -192,5 +209,48 @@ fn media_commands_select_the_backend_and_preserve_limits() {
         assert!(command.contains("-fpsmax 30"));
         assert!(command.contains("-b:v 2M -maxrate 3M -bufsize 4M"));
         assert!(command.ends_with("pipe:1"));
+    }
+}
+
+#[test]
+fn embedded_thumbnails_scale_to_the_requested_size() {
+    let source = gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, 80, 60)
+        .expect("allocate thumbnail");
+    source.fill(0x3366_99ff);
+    let jpeg = source
+        .save_to_bufferv("jpeg", &[])
+        .expect("encode thumbnail");
+
+    let png = scale_embedded_thumbnail(&jpeg, 32).expect("scale thumbnail");
+    let loader = gdk_pixbuf::PixbufLoader::new();
+    loader.write(&png).expect("load scaled png");
+    loader.close().expect("finish scaled png");
+    let scaled = loader.pixbuf().expect("decode scaled png");
+
+    assert_eq!((scaled.width(), scaled.height()), (32, 24));
+}
+
+#[test]
+fn preview_image_uses_raw_fallbacks() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let input = directory.path().join("photo.ARW");
+    let output = directory.path().join("result.png");
+    std::fs::write(&input, b"not a camera file").expect("write stub");
+
+    let pixbuf = render_pixbuf(&input, 1400).expect_err("stub must fail pixbuf");
+    let raw = render_raw(&input, 1400);
+    let preview = run(&[
+        "preview-image".into(),
+        input.to_string_lossy().into_owned(),
+        output.to_string_lossy().into_owned(),
+        "1400".into(),
+    ]);
+
+    match raw {
+        Ok(_) => preview.expect("preview-image should use RAW fallbacks"),
+        Err(raw) => {
+            assert_ne!(pixbuf, raw);
+            assert_eq!(preview.expect_err("stub should fail RAW fallbacks"), raw);
+        }
     }
 }

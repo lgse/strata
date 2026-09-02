@@ -5,11 +5,11 @@ This is the only non-trivial logic in the release workflow, extracted so it
 can be unit tested (see `scripts/test_release_version.py`) rather than living
 as an inline, untestable Python heredoc.
 
-Stable, alpha, beta, and RC publication modes are supported. Stable bumps the
-core `major.minor.patch` version from `Cargo.toml`. Each prerelease mode bumps
-the same core, scans tags for its own `<kind>.<N>` suffix, and picks the next
-numeric ordinal. Prerelease identity stays out of `Cargo.toml` and is injected
-at build time.
+Stable, alpha, beta, RC, and nightly publication modes are supported. Stable
+bumps the core `major.minor.patch` version from `Cargo.toml`. Staged
+prereleases use numeric ordinals. Nightlies use the supplied UTC date and add
+a numeric suffix only when another nightly already exists for that date.
+Prerelease identity stays out of `Cargo.toml` and is injected at build time.
 
 The script prints the resulting version (without a leading `v`) to stdout on
 success, e.g. `0.5.1` or `0.5.0-rc.1`. On failure it prints a message to
@@ -19,13 +19,14 @@ stderr and exits non-zero.
 from __future__ import annotations
 
 import argparse
+import datetime
 import re
 import sys
 
 CORE_PATTERN = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 
 BUMP_LEVELS = ("major", "minor", "patch")
-MODES = ("stable", "alpha", "beta", "rc")
+MODES = ("stable", "alpha", "beta", "rc", "nightly")
 
 
 class VersionError(ValueError):
@@ -82,6 +83,32 @@ def next_prerelease_ordinal(
     return highest + 1
 
 
+def nightly_version(core: str, release_date: str, existing_tags: list[str]) -> str:
+    """Builds a dated nightly version, disambiguating repeated same-day runs."""
+    try:
+        parsed_date = datetime.datetime.strptime(release_date, "%Y%m%d")
+    except ValueError as error:
+        raise VersionError(
+            f"nightly date must be a valid YYYYMMDD date: {release_date!r}"
+        ) from error
+    if parsed_date.strftime("%Y%m%d") != release_date:
+        raise VersionError(
+            f"nightly date must be a valid YYYYMMDD date: {release_date!r}"
+        )
+
+    base = f"{core}-nightly.{release_date}"
+    prefix = f"v{base}"
+    suffixes = [0]
+    for tag in existing_tags:
+        if tag == prefix:
+            suffixes.append(0)
+        elif tag.startswith(f"{prefix}.") and tag[len(prefix) + 1 :].isdigit():
+            suffixes.append(int(tag[len(prefix) + 1 :]))
+    if len(suffixes) == 1:
+        return base
+    return f"{base}.{max(suffixes) + 1}"
+
+
 def ensure_tag_available(tag: str, existing_tags: list[str]) -> None:
     """Fails if `tag` is already present in `existing_tags`.
 
@@ -93,7 +120,11 @@ def ensure_tag_available(tag: str, existing_tags: list[str]) -> None:
 
 
 def compute_next_version(
-    current_version: str, bump: str, mode: str, existing_tags: list[str]
+    current_version: str,
+    bump: str,
+    mode: str,
+    existing_tags: list[str],
+    release_date: str | None = None,
 ) -> str:
     """Computes the next release version, without a leading `v`.
 
@@ -111,8 +142,13 @@ def compute_next_version(
         ensure_tag_available(tag, existing_tags)
         return core
 
-    ordinal = next_prerelease_ordinal(core, mode, existing_tags)
-    version = f"{core}-{mode}.{ordinal}"
+    if mode == "nightly":
+        if release_date is None:
+            raise VersionError("nightly mode requires a release date")
+        version = nightly_version(core, release_date, existing_tags)
+    else:
+        ordinal = next_prerelease_ordinal(core, mode, existing_tags)
+        version = f"{core}-{mode}.{ordinal}"
     ensure_tag_available(f"v{version}", existing_tags)
     return version
 
@@ -127,6 +163,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--bump", required=True, choices=BUMP_LEVELS)
     parser.add_argument("--mode", required=True, choices=MODES)
     parser.add_argument(
+        "--date",
+        help="UTC release date as YYYYMMDD (required for nightly mode)",
+    )
+    parser.add_argument(
         "--tags",
         default="",
         help="every existing tag, whitespace-separated (e.g. `git tag -l 'v*'` output)",
@@ -138,7 +178,11 @@ def main(argv: list[str]) -> int:
     args = parse_args(argv)
     try:
         version = compute_next_version(
-            args.current_version, args.bump, args.mode, split_tags(args.tags)
+            args.current_version,
+            args.bump,
+            args.mode,
+            split_tags(args.tags),
+            args.date,
         )
     except VersionError as error:
         print(f"error: {error}", file=sys.stderr)

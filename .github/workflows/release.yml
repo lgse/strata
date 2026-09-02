@@ -22,6 +22,11 @@ on:
           - alpha
           - beta
           - rc
+          - nightly
+      source:
+        description: PR number, branch, tag, or commit to publish (prereleases only; blank uses main)
+        required: false
+        type: string
 
 concurrency:
   group: release
@@ -42,6 +47,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       source_sha: ${{ steps.source.outputs.sha }}
+      checkout_ref: ${{ steps.source.outputs.checkout_ref }}
 
     steps:
       - name: Require the default branch
@@ -60,22 +66,47 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
 
-      - name: Record source commit
+      - name: Resolve source commit
         id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        env:
+          MODE: ${{ inputs.mode }}
+          SOURCE: ${{ inputs.source }}
+        run: |
+          if [[ "$MODE" == "stable" && -n "$SOURCE" ]]; then
+            echo "Stable releases must use the current default-branch tip." >&2
+            exit 1
+          fi
+
+          if [[ -z "$SOURCE" ]]; then
+            sha="$(git rev-parse HEAD)"
+            checkout_ref="$sha"
+          elif [[ "$SOURCE" =~ ^[0-9]+$ ]]; then
+            checkout_ref="refs/pull/${SOURCE}/head"
+            git fetch --no-tags origin "$checkout_ref"
+            sha="$(git rev-parse FETCH_HEAD)"
+          else
+            git fetch --no-tags origin "$SOURCE"
+            sha="$(git rev-parse FETCH_HEAD)"
+            checkout_ref="$sha"
+          fi
+
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "checkout_ref=$checkout_ref" >> "$GITHUB_OUTPUT"
 
       - name: Calculate version
         id: version
         env:
           BUMP: ${{ inputs.bump }}
           MODE: ${{ inputs.mode }}
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
         run: |
-          current_version="$(grep -m1 -oP '^version = "\K\d+\.\d+\.\d+(?=")' Cargo.toml)"
+          current_version="$(git show "$SOURCE_SHA:Cargo.toml" | grep -m1 -oP '^version = "\K\d+\.\d+\.\d+(?=")')"
           tags="$(git tag -l 'v*')"
           version="$(python3 scripts/release_version.py \
             --current-version "$current_version" \
             --bump "$BUMP" \
             --mode "$MODE" \
+            --date "$(date --utc +%Y%m%d)" \
             --tags "$tags")"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
@@ -115,8 +146,13 @@ jobs:
       - name: Check out source commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.prepare.outputs.source_sha }}
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
           persist-credentials: false
+
+      - name: Verify source commit
+        env:
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
       - name: Set release version
         env:
@@ -124,6 +160,13 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
           if [[ "$MODE" != "stable" ]]; then
+            # Fail closed when targeting source older than release-channel
+            # support; otherwise the archive tag and binary identity diverge.
+            if ! grep -q 'STRATA_RELEASE_TAG' build.rs; then
+              echo "The selected source does not support prerelease build metadata." >&2
+              exit 1
+            fi
+
             # Prerelease identity is injected at build time instead of being
             # written into Cargo.toml, which remains the stable version line.
             {
@@ -221,9 +264,14 @@ jobs:
       - name: Check out source commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ needs.prepare.outputs.source_sha }}
+          ref: ${{ needs.prepare.outputs.checkout_ref }}
           fetch-depth: 0
           ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
+
+      - name: Verify source commit
+        env:
+          SOURCE_SHA: ${{ needs.prepare.outputs.source_sha }}
+        run: test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
 
       - name: Download binaries
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0

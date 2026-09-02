@@ -362,8 +362,9 @@ fn sandbox_command(
         "/etc/ImageMagick-6",
         "--ro-bind",
     ]);
+    let sandbox_input = sandbox_input_path(input);
     command.arg(executable).arg("/app/strata");
-    command.arg("--ro-bind").arg(input).arg("/input");
+    command.arg("--ro-bind").arg(input).arg(&sandbox_input);
     if operation != ParseOperation::PreviewMedia {
         command.arg("--bind").arg(output).arg("/output");
     }
@@ -391,7 +392,7 @@ fn sandbox_command(
         "/app/strata",
         "--preview-helper",
         operation.argument(),
-        "/input",
+        &sandbox_input,
     ]);
     if operation == ParseOperation::PreviewMedia {
         command.arg("/dev/stdout");
@@ -400,6 +401,18 @@ fn sandbox_command(
     }
     command.arg(value.to_string());
     command
+}
+
+fn sandbox_input_path(input: &Path) -> String {
+    match input.extension().and_then(|extension| extension.to_str()) {
+        Some(extension)
+            if (1..=8).contains(&extension.len())
+                && extension.bytes().all(|byte| byte.is_ascii_alphanumeric()) =>
+        {
+            format!("/input.{extension}")
+        }
+        _ => "/input".to_owned(),
+    }
 }
 
 pub(crate) fn gpu_devices(dev: &Path) -> Vec<PathBuf> {
