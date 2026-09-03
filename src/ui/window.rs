@@ -114,16 +114,6 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         20,
     )));
     search_button.add_css_class("header-action");
-    let refresh_button = gtk::Button::builder().tooltip_text("Refresh (F5)").build();
-    refresh_button.set_child(Some(&crate::assets::text_icon(
-        crate::assets::icons::REFRESH,
-        20,
-    )));
-    refresh_button.add_css_class("header-action");
-    let refresh_view = browser.clone();
-    refresh_button.connect_clicked(move |_| {
-        refresh_view.refresh();
-    });
     let appearance = build_appearance_menu(&browser, &controller, theme_manager.clone());
     let settings = gtk::Button::builder().tooltip_text("Settings").build();
     settings.set_child(Some(&crate::assets::text_icon(
@@ -139,7 +129,6 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     let header_actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     header_actions.add_css_class("header-actions");
     header_actions.append(&search_button);
-    header_actions.append(&refresh_button);
     header_actions.append(&appearance);
     header_actions.append(&settings);
     header_actions.append(&close_window);

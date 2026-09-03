@@ -4011,6 +4011,7 @@ impl ViewState {
         empty_trash.set_visible(is_trash);
         empty_trash.set_sensitive(false);
         header_actions.append(&empty_trash);
+        header_actions.append(&pane_refresh_button(&self.browser, depth));
         header_actions.append(&column_sort_direction_toggle(&self.browser, depth));
         header_actions.append(&column_sort_menu(&self.browser, depth));
 
@@ -5220,12 +5221,14 @@ pub(super) fn install_folder_context_menu(
     let new_file = context_menu_option("New File", None);
     let paste = context_menu_option("Paste", Some("Ctrl+V"));
     let select_all = context_menu_option("Select All", Some("Ctrl+A"));
+    let refresh = context_menu_option("Refresh", Some("F5"));
     let open_terminal = context_menu_option("Open in Terminal", Some("Ctrl+T"));
     let properties = context_menu_option("Properties", None);
     content.append(&new_folder);
     content.append(&new_file);
     content.append(&paste);
     content.append(&select_all);
+    content.append(&refresh);
     content.append(&open_terminal);
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     content.append(&properties);
@@ -5281,6 +5284,16 @@ pub(super) fn install_folder_context_menu(
         }
         if let Some(state) = weak.upgrade() {
             state.select_all(depth);
+        }
+    });
+    let weak = Rc::downgrade(state);
+    let refresh_popover = popover.downgrade();
+    refresh.connect_clicked(move |_| {
+        if let Some(popover) = refresh_popover.upgrade() {
+            popover.popdown();
+        }
+        if let Some(state) = weak.upgrade() {
+            state.browser.retry_column(depth);
         }
     });
     let weak = Rc::downgrade(state);
@@ -6575,6 +6588,22 @@ fn context_menu_option(label: &str, accelerator: Option<&str>) -> gtk::Button {
         row.append(&shortcut);
     }
     button.set_child(Some(&row));
+    button
+}
+
+pub(super) fn pane_refresh_button(browser: &Rc<Browser>, depth: usize) -> gtk::Button {
+    let button = gtk::Button::builder().tooltip_text("Refresh (F5)").build();
+    button.set_child(Some(&crate::assets::text_icon(
+        crate::assets::icons::REFRESH,
+        16,
+    )));
+    button.add_css_class("column-header-action");
+    let weak_browser = Rc::downgrade(browser);
+    button.connect_clicked(move |_| {
+        if let Some(browser) = weak_browser.upgrade() {
+            browser.retry_column(depth);
+        }
+    });
     button
 }
 

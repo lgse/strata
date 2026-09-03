@@ -951,6 +951,7 @@ fn grid_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> Gr
     empty_trash.set_visible(is_trash);
     empty_trash.set_sensitive(false);
     actions.append(&empty_trash);
+    actions.append(&super::browser::pane_refresh_button(browser, depth));
     actions.append(&thumbnail_menu);
     actions.append(&super::browser::column_sort_direction_toggle(
         browser, depth,
@@ -1577,6 +1578,7 @@ fn build_explorer_pane(
     empty_trash.set_visible(is_trash);
     empty_trash.set_sensitive(false);
     actions.append(&empty_trash);
+    actions.append(&super::browser::pane_refresh_button(&browser, depth));
     let (filter_entry, filter_revealer, filter_button) =
         filter_controls("Filter explorer (Ctrl+F)");
     actions.append(&filter_button);
