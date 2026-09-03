@@ -31,8 +31,8 @@ use super::{
     browser_modes::{BrowserDensity, BrowserMode, ClickActivation, ClickCount, ModeViews},
     controls::{
         ModalTone, form_check_button, form_entry, form_label, form_password_entry, menu_option,
-        message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
-        wrap_dialog_text,
+        message_dialog_description, message_dialog_layout, modal_layout, modal_layout_with_tone,
+        segmented_control, wrap_dialog_text,
     },
     motion::{animations_enabled, emphasized_deceleration},
 };
@@ -3284,26 +3284,24 @@ impl ViewState {
             location.clone(),
             strategy,
             credentials,
-            move |state, result, attempted_credentials, prompt_details| {
-                if mount_result_is_ok(&result) {
+            move |state, outcome| match outcome {
+                MountOutcome::Mounted => {
                     state.browser.navigate(location.clone());
                     state.location_stack.set_visible_child_name("breadcrumbs");
                     state.browser.focus_active();
-                } else if let Err(error) = result {
-                    if mount_error_is_authentication_failure(&location, &error) {
-                        state.prompt_to_retry_navigation(
-                            location.clone(),
-                            strategy,
-                            attempted_credentials,
-                            prompt_details,
-                        );
-                    } else {
-                        state.restore_location_text();
-                        state.location_stack.set_visible_child_name("breadcrumbs");
-                        if let Some(message) = mount_failure_message(&location, &error) {
-                            show_error_dialog(&state.overlay, "Unable to connect", &message);
-                        }
-                    }
+                }
+                MountOutcome::NeedsCredentials { attempted, details } => {
+                    state.prompt_to_retry_navigation(location.clone(), strategy, attempted, details)
+                }
+                MountOutcome::Cancelled => {
+                    state.restore_location_text();
+                    state.location_stack.set_visible_child_name("breadcrumbs");
+                    state.browser.focus_active();
+                }
+                MountOutcome::Failed(message) => {
+                    state.restore_location_text();
+                    state.location_stack.set_visible_child_name("breadcrumbs");
+                    show_error_dialog(&state.overlay, "Unable to connect", &message);
                 }
             },
         );
@@ -3329,21 +3327,19 @@ impl ViewState {
             location.clone(),
             strategy,
             credentials,
-            move |state, result, attempted_credentials, prompt_details| {
-                if mount_result_is_ok(&result) {
-                    state.browser.descend(parent_depth, location.clone());
-                } else if let Err(error) = result {
-                    if mount_error_is_authentication_failure(&location, &error) {
-                        state.prompt_to_retry_descend(
-                            parent_depth,
-                            location.clone(),
-                            strategy,
-                            attempted_credentials,
-                            prompt_details,
-                        );
-                    } else if let Some(message) = mount_failure_message(&location, &error) {
-                        show_error_dialog(&state.overlay, "Unable to connect", &message);
-                    }
+            move |state, outcome| match outcome {
+                MountOutcome::Mounted => state.browser.descend(parent_depth, location.clone()),
+                MountOutcome::NeedsCredentials { attempted, details } => state
+                    .prompt_to_retry_descend(
+                        parent_depth,
+                        location.clone(),
+                        strategy,
+                        attempted,
+                        details,
+                    ),
+                MountOutcome::Cancelled => {}
+                MountOutcome::Failed(message) => {
+                    show_error_dialog(&state.overlay, "Unable to connect", &message);
                 }
             },
         );
@@ -3421,7 +3417,7 @@ impl ViewState {
         let authentication_failed = previous_credentials.is_some();
         let details = prompt_details.unwrap_or_else(|| MountPromptDetails::fallback(location));
         let defaults = previous_credentials.unwrap_or_else(|| {
-            let mut defaults = MountCredentials::default_for_prompt();
+            let mut defaults = MountCredentials::default_for_prompt(details.flags);
             if !details.default_user.is_empty() {
                 defaults.username.clone_from(&details.default_user);
             }
@@ -3449,49 +3445,49 @@ impl ViewState {
         location: Location,
         strategy: MountStrategy,
         credentials: Option<MountCredentials>,
-        on_result: impl Fn(
-            &Rc<Self>,
-            Result<(), glib::Error>,
-            Option<MountCredentials>,
-            Option<MountPromptDetails>,
-        ) + 'static,
+        on_result: impl Fn(&Rc<Self>, MountOutcome) + 'static,
     ) {
         if self.overlay.root().and_downcast::<gtk::Window>().is_none() {
             return;
         }
+        log_mount_started(&location, strategy);
         let activity = BrowserView {
             state: self.clone(),
         }
         .begin_global_activity("Connecting…");
         let file = gio_file_for_location(&location);
         let operation = gio::MountOperation::new();
-        let prompt_overlay = self.overlay.clone();
+        let attempt = Rc::new(RefCell::new(MountAttempt::new(credentials)));
         let active_prompt = Rc::new(RefCell::new(None::<gtk::Box>));
+
+        let prompt_overlay = self.overlay.clone();
         let prompt_for_signal = active_prompt.clone();
-        let prompt_details = Rc::new(RefCell::new(None::<MountPromptDetails>));
-        let details_for_signal = prompt_details.clone();
-        let attempted_credentials = Rc::new(RefCell::new(credentials.clone()));
-        let attempts_for_signal = attempted_credentials.clone();
-        let supplied_credentials = Rc::new(RefCell::new(credentials));
-        let credentials_for_signal = supplied_credentials.clone();
-        let already_prompted = Cell::new(credentials_for_signal.borrow().is_some());
+        let attempt_for_password = attempt.clone();
         operation.connect_ask_password(
             move |operation, message, default_user, default_domain, flags| {
-                details_for_signal.replace(Some(MountPromptDetails {
-                    message: message.to_owned(),
-                    default_user: default_user.to_owned(),
-                    default_domain: default_domain.to_owned(),
-                    flags,
-                }));
-                if let Some(credentials) = credentials_for_signal.borrow_mut().take() {
-                    apply_mount_credentials(operation, &credentials);
-                    operation.reply(gio::MountOperationResult::Handled);
-                    return;
-                }
+                let request = attempt_for_password
+                    .borrow_mut()
+                    .ask_password(MountPromptDetails {
+                        message: message.to_owned(),
+                        default_user: default_user.to_owned(),
+                        default_domain: default_domain.to_owned(),
+                        flags,
+                    });
+                let retry = match request {
+                    PasswordRequest::Reply => {
+                        if let Some(credentials) =
+                            attempt_for_password.borrow().attempted.as_ref().cloned()
+                        {
+                            apply_mount_credentials(operation, &credentials);
+                        }
+                        operation.reply(gio::MountOperationResult::Handled);
+                        return;
+                    }
+                    PasswordRequest::Ask { retry } => retry,
+                };
                 if let Some(previous) = prompt_for_signal.borrow_mut().take() {
                     dismiss_authentication_prompt(&prompt_overlay, &previous);
                 }
-                let retry = already_prompted.replace(true);
                 let prompt = show_authentication_dialog(
                     &prompt_overlay,
                     Some(operation),
@@ -3501,10 +3497,8 @@ impl ViewState {
                     retry,
                     MountDialogHandlers {
                         submitted: Some(Rc::new({
-                            let attempts_for_signal = attempts_for_signal.clone();
-                            move |credentials| {
-                                attempts_for_signal.replace(Some(credentials));
-                            }
+                            let attempt = attempt_for_password.clone();
+                            move |credentials| attempt.borrow_mut().submitted(credentials)
                         })),
                         cancelled: None,
                     },
@@ -3512,6 +3506,38 @@ impl ViewState {
                 prompt_for_signal.replace(prompt);
             },
         );
+        let question_overlay = self.overlay.clone();
+        let question_prompt = active_prompt.clone();
+        let attempt_for_question = attempt.clone();
+        // `ask-question` carries a GStrv, which gir cannot wrap, so the backend's
+        // trust decisions are taken from the raw signal rather than dropped.
+        operation.connect_local("ask-question", false, move |values| {
+            let operation = values
+                .first()
+                .and_then(|value| value.get::<gio::MountOperation>().ok())?;
+            let message = values
+                .get(1)
+                .and_then(|value| value.get::<String>().ok())
+                .unwrap_or_default();
+            let choices = values
+                .get(2)
+                .and_then(|value| value.get::<Vec<String>>().ok())
+                .unwrap_or_default();
+            let details = MountQuestionDetails { message, choices };
+            attempt_for_question
+                .borrow_mut()
+                .ask_question(details.clone());
+            if let Some(previous) = question_prompt.borrow_mut().take() {
+                dismiss_authentication_prompt(&question_overlay, &previous);
+            }
+            let prompt = show_mount_question_dialog(&question_overlay, &operation, &details, {
+                let attempt = attempt_for_question.clone();
+                move |decision| attempt.borrow_mut().decide(decision)
+            });
+            question_prompt.replace(prompt);
+            None
+        });
+
         let weak = Rc::downgrade(self);
         let result_overlay = self.overlay.clone();
         glib::MainContext::default().spawn_local(async move {
@@ -3526,16 +3552,13 @@ impl ViewState {
                     .await
                     .map(|_| ()),
             };
+            log_mount_finished(&location, &result);
             if let Some(prompt) = active_prompt.borrow_mut().take() {
                 dismiss_authentication_prompt(&result_overlay, &prompt);
             }
             if let Some(state) = weak.upgrade() {
-                on_result(
-                    &state,
-                    result,
-                    attempted_credentials.borrow().clone(),
-                    prompt_details.borrow().clone(),
-                );
+                let outcome = attempt.borrow().outcome(&location, result);
+                on_result(&state, outcome);
             }
         });
     }
@@ -7562,16 +7585,86 @@ struct MountPromptDetails {
 impl MountPromptDetails {
     fn fallback(location: &Location) -> Self {
         Self {
-            message: format!("Enter user and password for “{}”.", location.display_path()),
+            message: format!("Enter your credentials for “{}”.", location.display_path()),
             default_user: String::new(),
             default_domain: String::new(),
-            flags: gio::AskPasswordFlags::NEED_USERNAME
-                | gio::AskPasswordFlags::NEED_DOMAIN
-                | gio::AskPasswordFlags::NEED_PASSWORD
-                | gio::AskPasswordFlags::SAVING_SUPPORTED
-                | gio::AskPasswordFlags::ANONYMOUS_SUPPORTED,
+            flags: fallback_ask_password_flags(location),
         }
     }
+}
+
+/// Chooses which credential fields to offer when a mount fails before the
+/// backend ever asked for any, so an SFTP retry does not present SMB's domain
+/// and anonymous options.
+fn fallback_ask_password_flags(location: &Location) -> gio::AskPasswordFlags {
+    let mut flags = gio::AskPasswordFlags::NEED_USERNAME
+        | gio::AskPasswordFlags::NEED_PASSWORD
+        | gio::AskPasswordFlags::SAVING_SUPPORTED;
+    match location_scheme(location).as_str() {
+        "smb" => {
+            flags |=
+                gio::AskPasswordFlags::NEED_DOMAIN | gio::AskPasswordFlags::ANONYMOUS_SUPPORTED;
+        }
+        "ftp" | "ftps" => flags |= gio::AskPasswordFlags::ANONYMOUS_SUPPORTED,
+        _ => {}
+    }
+    flags
+}
+
+fn location_scheme(location: &Location) -> String {
+    location
+        .uri_value()
+        .and_then(|uri| uri.split("://").next())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+}
+
+/// SFTP asks for an encrypted key's passphrase through the same password
+/// prompt, so the secret field is labelled from the backend's own wording.
+fn password_field_label(message: &str) -> &'static str {
+    if message.to_ascii_lowercase().contains("passphrase") {
+        "Passphrase"
+    } else {
+        "Password"
+    }
+}
+
+fn authentication_dialog_heading(message: &str) -> (&'static str, &'static str) {
+    if password_field_label(message) == "Passphrase" {
+        (
+            "Passphrase required",
+            "Unlock the key this connection needs",
+        )
+    } else {
+        (
+            "Authentication required",
+            "Sign in to access this network location",
+        )
+    }
+}
+
+/// Names only the fields the prompt is actually showing, so an SFTP retry does
+/// not tell the user to check a domain it never asked for.
+fn authentication_failure_hint(flags: gio::AskPasswordFlags, secret_label: &str) -> String {
+    let mut fields: Vec<String> = Vec::new();
+    if flags.contains(gio::AskPasswordFlags::NEED_USERNAME) {
+        fields.push("username".to_owned());
+    }
+    if flags.contains(gio::AskPasswordFlags::NEED_DOMAIN) {
+        fields.push("domain".to_owned());
+    }
+    if flags.contains(gio::AskPasswordFlags::NEED_PASSWORD) {
+        fields.push(secret_label.to_ascii_lowercase());
+    }
+    let Some(last) = fields.pop() else {
+        return "That attempt wasn’t accepted. Try again.".to_owned();
+    };
+    let listed = if fields.is_empty() {
+        last
+    } else {
+        format!("{} and {last}", fields.join(", "))
+    };
+    format!("That attempt wasn’t accepted. Check the {listed}, then try again.")
 }
 
 const AUTHENTICATION_TEXT_WIDTH_CHARS: i32 = 64;
@@ -7605,12 +7698,9 @@ fn show_authentication_dialog(
         root.set_blurred(true);
     }
 
-    let layout = modal_layout(
-        crate::assets::icons::KEY,
-        "Authentication required",
-        "Sign in to access this network location",
-        "Connect",
-    );
+    let secret_label = password_field_label(message);
+    let (heading, subheading) = authentication_dialog_heading(message);
+    let layout = modal_layout(crate::assets::icons::KEY, heading, subheading, "Connect");
     layout.content.add_css_class("wide");
     layout.body.add_css_class("authentication-body");
     let explanation_text =
@@ -7623,7 +7713,7 @@ fn show_authentication_dialog(
     layout.body.append(&explanation);
     if authentication_failed {
         let error_text = wrap_dialog_text(
-            "Those credentials weren’t accepted. Check the username, domain, and password, then try again.",
+            &authentication_failure_hint(flags, secret_label),
             AUTHENTICATION_TEXT_WIDTH_CHARS as usize,
         );
         let error = gtk::Label::new(Some(&error_text));
@@ -7652,7 +7742,7 @@ fn show_authentication_dialog(
     let password = form_password_entry();
     password.set_show_peek_icon(true);
     if flags.contains(gio::AskPasswordFlags::NEED_PASSWORD) {
-        append_authentication_field(&credentials, "Password", &password);
+        append_authentication_field(&credentials, secret_label, &password);
     }
 
     let (connect_as_control, connect_as_buttons) =
@@ -7862,11 +7952,15 @@ struct MountCredentials {
 }
 
 impl MountCredentials {
-    fn default_for_prompt() -> Self {
+    fn default_for_prompt(flags: gio::AskPasswordFlags) -> Self {
         Self {
             anonymous: false,
             username: glib::user_name().to_string_lossy().into_owned(),
-            domain: "WORKGROUP".to_owned(),
+            domain: if flags.contains(gio::AskPasswordFlags::NEED_DOMAIN) {
+                "WORKGROUP".to_owned()
+            } else {
+                String::new()
+            },
             password: String::new(),
             save: gio::PasswordSave::Never,
         }
@@ -7886,6 +7980,337 @@ fn apply_mount_credentials(operation: &gio::MountOperation, credentials: &MountC
     operation.set_password_save(credentials.save);
 }
 
+/// A `GMountOperation::ask-question` request: a trust decision the backend
+/// refuses to make on its own, such as an unrecognized or changed SSH host key.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MountQuestionDetails {
+    message: String,
+    choices: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MountQuestionKind {
+    UnknownHostKey,
+    ChangedHostKey,
+    Other,
+}
+
+impl MountQuestionKind {
+    fn classify(message: &str) -> Self {
+        let message = message.to_ascii_lowercase();
+        let about_host_key = ["host key", "identity of the remote computer", "fingerprint"]
+            .iter()
+            .any(|marker| message.contains(marker));
+        if !about_host_key {
+            return Self::Other;
+        }
+        if ["changed", "man-in-the-middle", "nasty", "eavesdropping"]
+            .iter()
+            .any(|marker| message.contains(marker))
+        {
+            Self::ChangedHostKey
+        } else {
+            Self::UnknownHostKey
+        }
+    }
+
+    fn heading(self) -> (&'static str, &'static str) {
+        match self {
+            Self::UnknownHostKey => (
+                "Unrecognized host key",
+                "This computer has not been verified before",
+            ),
+            Self::ChangedHostKey => (
+                "Host key changed",
+                "This computer is not presenting the key it used before",
+            ),
+            Self::Other => (
+                "Confirmation required",
+                "The connection needs a decision before it can continue",
+            ),
+        }
+    }
+
+    fn tone(self) -> ModalTone {
+        match self {
+            Self::ChangedHostKey => ModalTone::Danger,
+            Self::UnknownHostKey | Self::Other => ModalTone::Accent,
+        }
+    }
+
+    fn icon(self) -> &'static str {
+        match self {
+            Self::ChangedHostKey => crate::assets::icons::TRIANGLE_ALERT,
+            Self::UnknownHostKey | Self::Other => crate::assets::icons::KEY,
+        }
+    }
+}
+
+/// Recognizes the choice that declines, so it can be the focused default. A
+/// trust decision is never pre-selected in the accepting direction.
+fn choice_declines(label: &str) -> bool {
+    let label = label.to_ascii_lowercase();
+    ["cancel", "abort", "no", "don't", "do not", "reject", "deny"]
+        .iter()
+        .any(|marker| label.contains(marker))
+}
+
+fn safest_choice(choices: &[String]) -> usize {
+    choices
+        .iter()
+        .position(|choice| choice_declines(choice))
+        .unwrap_or_else(|| choices.len().saturating_sub(1))
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MountQuestionDecision {
+    Chose(usize),
+    Declined,
+}
+
+fn show_mount_question_dialog(
+    browser_overlay: &gtk::Overlay,
+    operation: &gio::MountOperation,
+    details: &MountQuestionDetails,
+    decided: impl Fn(MountQuestionDecision) + 'static,
+) -> Option<gtk::Box> {
+    if details.choices.is_empty() {
+        operation.reply(gio::MountOperationResult::Aborted);
+        decided(MountQuestionDecision::Declined);
+        return None;
+    }
+    let Some(window_overlay) = browser_overlay
+        .root()
+        .and_downcast::<gtk::Window>()
+        .and_then(|window| window.child())
+        .and_downcast::<gtk::Overlay>()
+    else {
+        operation.reply(gio::MountOperationResult::Aborted);
+        decided(MountQuestionDecision::Declined);
+        return None;
+    };
+    let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
+    if let Some(root) = blurred_root.as_ref() {
+        root.set_blurred(true);
+    }
+
+    let kind = MountQuestionKind::classify(&details.message);
+    let (heading, subheading) = kind.heading();
+    let layout = modal_layout_with_tone(kind.icon(), heading, subheading, "Continue", kind.tone());
+    layout.content.add_css_class("wide");
+    layout.body.add_css_class("authentication-body");
+    let explanation = gtk::Label::new(Some(&wrap_dialog_text(
+        details.message.trim(),
+        AUTHENTICATION_TEXT_WIDTH_CHARS as usize,
+    )));
+    explanation.add_css_class("authentication-explanation");
+    explanation.set_max_width_chars(AUTHENTICATION_TEXT_WIDTH_CHARS);
+    explanation.set_selectable(true);
+    explanation.set_wrap(true);
+    explanation.set_xalign(0.0);
+    layout.body.append(&explanation);
+
+    // The backend owns the wording of every option, so the stock Cancel and
+    // Continue buttons are replaced by one button per offered choice.
+    while let Some(child) = layout.actions.first_child() {
+        layout.actions.remove(&child);
+    }
+    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    spacer.set_hexpand(true);
+    layout.actions.append(&spacer);
+
+    let content = layout.content;
+    let layer = modal_layer(
+        &content,
+        &window_overlay,
+        blurred_root.clone(),
+        Some(Rc::new(|| true)),
+    );
+    window_overlay.add_overlay(&layer);
+    let decided = Rc::new(decided);
+    let answered = Rc::new(Cell::new(false));
+
+    let default_choice = safest_choice(&details.choices);
+    let mut default_button = None;
+    for (index, choice) in details.choices.iter().enumerate() {
+        let button = gtk::Button::with_label(choice);
+        if choice_declines(choice) {
+            button.add_css_class("action-dialog-cancel");
+        } else {
+            button.add_css_class("action-dialog-confirm");
+            if kind.tone() == ModalTone::Danger {
+                button.add_css_class("danger");
+            }
+        }
+        let operation = operation.clone();
+        let decided = decided.clone();
+        let answered = answered.clone();
+        let layer = layer.clone();
+        let overlay = window_overlay.clone();
+        let root = blurred_root.clone();
+        button.connect_clicked(move |_| {
+            if answered.replace(true) {
+                return;
+            }
+            dismiss_modal_layer(&layer, &overlay, root.as_ref());
+            operation.set_choice(index as i32);
+            operation.reply(gio::MountOperationResult::Handled);
+            decided(MountQuestionDecision::Chose(index));
+        });
+        layout.actions.append(&button);
+        if index == default_choice {
+            default_button = Some(button);
+        }
+    }
+
+    let decline = {
+        let operation = operation.clone();
+        let decided = decided.clone();
+        let answered = answered.clone();
+        let layer = layer.clone();
+        let overlay = window_overlay.clone();
+        let root = blurred_root.clone();
+        Rc::new(move || {
+            if answered.replace(true) {
+                return;
+            }
+            dismiss_modal_layer(&layer, &overlay, root.as_ref());
+            operation.reply(gio::MountOperationResult::Aborted);
+            decided(MountQuestionDecision::Declined);
+        })
+    };
+
+    let close_decline = decline.clone();
+    layout.close.connect_clicked(move |_| close_decline());
+
+    let escape = gtk::EventControllerKey::new();
+    escape.connect_key_pressed(move |_, key, _, _| {
+        if key != gtk::gdk::Key::Escape {
+            return glib::Propagation::Proceed;
+        }
+        decline();
+        glib::Propagation::Stop
+    });
+    layer.add_controller(escape);
+
+    if let Some(button) = default_button {
+        button.grab_focus();
+    }
+    Some(layer)
+}
+
+/// How a finished mount attempt should be reported to the caller.
+enum MountOutcome {
+    Mounted,
+    /// The user backed out, so the browser returns to where it already was.
+    Cancelled,
+    NeedsCredentials {
+        attempted: Option<MountCredentials>,
+        details: Option<MountPromptDetails>,
+    },
+    Failed(String),
+}
+
+/// What a backend password request should do, given what the attempt has
+/// already asked the user.
+#[derive(Debug, Eq, PartialEq)]
+enum PasswordRequest {
+    /// Credentials the user already supplied are replayed without a prompt.
+    Reply,
+    /// The user must be asked; `retry` marks a second or later request, which
+    /// only happens after the backend rejected the previous answer.
+    Ask { retry: bool },
+}
+
+/// Tracks what a single mount attempt has already asked the user, so the
+/// credential prompt is shown once per backend request rather than looping.
+#[derive(Default)]
+struct MountAttempt {
+    supplied: Option<MountCredentials>,
+    attempted: Option<MountCredentials>,
+    prompted: bool,
+    details: Option<MountPromptDetails>,
+    question: Option<MountQuestionDetails>,
+    declined: bool,
+}
+
+impl MountAttempt {
+    fn new(credentials: Option<MountCredentials>) -> Self {
+        Self {
+            prompted: credentials.is_some(),
+            supplied: credentials.clone(),
+            attempted: credentials,
+            ..Self::default()
+        }
+    }
+
+    fn ask_password(&mut self, details: MountPromptDetails) -> PasswordRequest {
+        self.details = Some(details);
+        if self.supplied.take().is_some() {
+            return PasswordRequest::Reply;
+        }
+        PasswordRequest::Ask {
+            retry: std::mem::replace(&mut self.prompted, true),
+        }
+    }
+
+    fn submitted(&mut self, credentials: MountCredentials) {
+        self.attempted = Some(credentials);
+    }
+
+    fn ask_question(&mut self, details: MountQuestionDetails) {
+        self.question = Some(details);
+    }
+
+    fn decide(&mut self, decision: MountQuestionDecision) {
+        self.declined = decision == MountQuestionDecision::Declined;
+    }
+
+    fn outcome(&self, location: &Location, result: Result<(), glib::Error>) -> MountOutcome {
+        let error = match result {
+            Ok(()) => return MountOutcome::Mounted,
+            Err(error) if error.matches(gio::IOErrorEnum::AlreadyMounted) => {
+                return MountOutcome::Mounted;
+            }
+            Err(error) => error,
+        };
+        if self.declined {
+            return MountOutcome::Cancelled;
+        }
+        if mount_error_is_authentication_failure(location, &error) {
+            return MountOutcome::NeedsCredentials {
+                attempted: self.attempted.clone(),
+                details: self.details.clone(),
+            };
+        }
+        match mount_failure_message(location, &error) {
+            Some(message) => MountOutcome::Failed(message),
+            None => MountOutcome::Cancelled,
+        }
+    }
+}
+
+fn log_mount_started(location: &Location, strategy: MountStrategy) {
+    tracing::info!(
+        backend = %location.backend_name(),
+        strategy = strategy.name(),
+        "mount requested"
+    );
+    tracing::debug!(location = %location.diagnostic_path(), "mount location");
+}
+
+fn log_mount_finished(location: &Location, result: &Result<(), glib::Error>) {
+    match result {
+        Ok(()) => tracing::info!(backend = %location.backend_name(), "mount finished"),
+        Err(error) => tracing::info!(
+            backend = %location.backend_name(),
+            error_domain = ?error.domain(),
+            error_code = error.code(),
+            "mount failed"
+        ),
+    }
+}
+
 #[derive(Clone, Copy)]
 enum MountStrategy {
     /// The location itself is accessible but sits on an unmounted volume.
@@ -7895,15 +8320,20 @@ enum MountStrategy {
     Mountable,
 }
 
-fn mount_result_is_ok(result: &Result<(), glib::Error>) -> bool {
-    match result {
-        Ok(()) => true,
-        Err(error) => error.matches(gio::IOErrorEnum::AlreadyMounted),
+impl MountStrategy {
+    fn name(self) -> &'static str {
+        match self {
+            Self::EnclosingVolume => "enclosing-volume",
+            Self::Mountable => "mountable",
+        }
     }
 }
 
 fn mount_error_is_authentication_failure(location: &Location, error: &glib::Error) -> bool {
     if location.uri_value().is_none() {
+        return false;
+    }
+    if mount_error_is_host_key_rejection(error) {
         return false;
     }
     if error.matches(gio::IOErrorEnum::PermissionDenied) {
@@ -7916,8 +8346,26 @@ fn mount_error_is_authentication_failure(location: &Location, error: &glib::Erro
     [
         "permission denied",
         "authentication failed",
+        "authentication required",
+        "auth fail",
         "logon failure",
         "invalid credentials",
+        "too many authentication failures",
+    ]
+    .iter()
+    .any(|reason| message.contains(reason))
+}
+
+/// Host-key problems reach us as generic failures whose message is the only
+/// signal. They must not be replayed as rejected credentials, or declining a
+/// key would immediately reopen the sign-in prompt.
+fn mount_error_is_host_key_rejection(error: &glib::Error) -> bool {
+    let message = error.message().to_ascii_lowercase();
+    [
+        "host key",
+        "host identification",
+        "fingerprint",
+        "known_hosts",
     ]
     .iter()
     .any(|reason| message.contains(reason))
@@ -7939,7 +8387,80 @@ fn mount_failure_message(location: &Location, error: &glib::Error) -> Option<Str
             location.uri_value().unwrap_or_default(),
         ));
     }
-    Some(error.to_string())
+    if mount_error_is_host_key_rejection(error) {
+        return Some(
+            "The remote computer’s host key could not be verified, so the connection was \
+             refused. Confirm the new key with whoever runs the server and remove the stale \
+             entry from your known_hosts file before trying again."
+                .to_owned(),
+        );
+    }
+    if let Some(message) = transport_failure_message(error) {
+        return Some(message);
+    }
+    Some(sanitize_failure_message(&error.to_string()))
+}
+
+/// Turns the transport failures a remote mount can hit into guidance the user
+/// can act on, instead of the backend's own terse wording.
+fn transport_failure_message(error: &glib::Error) -> Option<String> {
+    if error.matches(gio::IOErrorEnum::HostNotFound) {
+        return Some(
+            "That host couldn’t be found. Check the address for typos and confirm the name \
+             resolves on this network."
+                .to_owned(),
+        );
+    }
+    if error.matches(gio::IOErrorEnum::ConnectionRefused) {
+        return Some(
+            "The host refused the connection. Check that the service is running and that you \
+             used the right port."
+                .to_owned(),
+        );
+    }
+    if error.matches(gio::IOErrorEnum::TimedOut) {
+        return Some(
+            "The connection timed out. Check that the host is reachable and that a firewall \
+             isn’t blocking the port."
+                .to_owned(),
+        );
+    }
+    if error.matches(gio::IOErrorEnum::HostUnreachable)
+        || error.matches(gio::IOErrorEnum::NetworkUnreachable)
+    {
+        return Some(
+            "That host is unreachable from this network. Check your connection, then try again."
+                .to_owned(),
+        );
+    }
+    None
+}
+
+/// Strips URI user-info secrets from a backend message, so a password typed
+/// into the address bar cannot resurface in an error dialog.
+fn sanitize_failure_message(message: &str) -> String {
+    message
+        .split_inclusive(char::is_whitespace)
+        .map(|token| {
+            let Some((scheme, rest)) = token.split_once("://") else {
+                return token.to_owned();
+            };
+            let authority_end = rest.find('/').unwrap_or(rest.len());
+            let Some(userinfo_end) = rest[..authority_end].rfind('@') else {
+                return token.to_owned();
+            };
+            let user = rest[..userinfo_end]
+                .split([':', ';'])
+                .next()
+                .unwrap_or_default();
+            let remainder = &rest[userinfo_end + 1..];
+            if user.is_empty() {
+                format!("{scheme}://{remainder}")
+            } else {
+                format!("{scheme}://{user}@{remainder}")
+            }
+        })
+        .collect()
 }
 
 pub(super) fn is_trash_root(location: &Location) -> bool {

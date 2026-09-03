@@ -152,9 +152,9 @@ fn a_missing_backend_reports_which_package_to_install() {
 #[test]
 fn a_genuine_mount_failure_still_reports_an_error() {
     let location = Location::uri("smb://host/share");
-    let error = glib::Error::new(gio::IOErrorEnum::HostNotFound, "no route to host");
+    let error = glib::Error::new(gio::IOErrorEnum::Failed, "the server gave up");
     let message = mount_failure_message(&location, &error).expect("should report a message");
-    assert!(message.contains("no route to host"));
+    assert!(message.contains("the server gave up"));
 }
 
 #[test]
@@ -1273,4 +1273,351 @@ fn pinning_requires_an_available_non_trash_directory() {
     assert!(!can_pin_entry(&directory, PinStatus::Unavailable));
     assert!(!can_pin_entry(&file, PinStatus::Available));
     assert!(!can_pin_entry(&trash_directory, PinStatus::Available));
+}
+
+#[test]
+fn a_missing_sftp_backend_names_candidate_packages_without_claiming_one_is_universal() {
+    let location = Location::uri("sftp://host.example/home/user");
+    let error = glib::Error::new(gio::IOErrorEnum::NotSupported, "no handler for sftp");
+    let message = mount_failure_message(&location, &error).expect("should report a message");
+    assert!(message.contains("sftp://"));
+    assert!(message.contains("gvfs-backends"));
+    assert!(message.contains("distribution"));
+}
+
+#[test]
+fn transport_failures_map_to_guidance_the_user_can_act_on() {
+    let location = Location::uri("sftp://host.example:2222/home/user");
+    for (kind, expected) in [
+        (gio::IOErrorEnum::HostNotFound, "couldn’t be found"),
+        (gio::IOErrorEnum::ConnectionRefused, "right port"),
+        (gio::IOErrorEnum::TimedOut, "timed out"),
+        (gio::IOErrorEnum::HostUnreachable, "unreachable"),
+        (gio::IOErrorEnum::NetworkUnreachable, "unreachable"),
+    ] {
+        let error = glib::Error::new(kind, "sftp backend said so");
+        let message =
+            mount_failure_message(&location, &error).expect("transport failures are reportable");
+        assert!(
+            message.contains(expected),
+            "{kind:?} produced {message:?}, expected it to mention {expected:?}"
+        );
+        assert!(!message.contains("sftp backend said so"));
+    }
+}
+
+#[test]
+fn a_rejected_host_key_is_reported_rather_than_replayed_as_bad_credentials() {
+    let location = Location::uri("sftp://host.example/home/user");
+    let error = glib::Error::new(
+        gio::IOErrorEnum::Failed,
+        "Host key verification failed. Permission denied",
+    );
+
+    assert!(mount_error_is_host_key_rejection(&error));
+    assert!(!mount_error_is_authentication_failure(&location, &error));
+    let message = mount_failure_message(&location, &error).expect("should report a message");
+    assert!(message.contains("known_hosts"));
+}
+
+#[test]
+fn sftp_authentication_failures_are_still_recognized() {
+    let location = Location::uri("sftp://host.example/home/user");
+    for message in [
+        "Permission denied (publickey,password)",
+        "Authentication failed",
+        "Too many authentication failures",
+    ] {
+        let error = glib::Error::new(gio::IOErrorEnum::Failed, message);
+        assert!(
+            mount_error_is_authentication_failure(&location, &error),
+            "{message:?} should ask for credentials again"
+        );
+    }
+}
+
+#[test]
+fn failure_messages_never_echo_a_password_typed_into_the_address_bar() {
+    let sanitized = sanitize_failure_message(
+        "Unable to mount sftp://alice:hunter2@host.example/home/alice now",
+    );
+
+    assert!(!sanitized.contains("hunter2"));
+    assert!(sanitized.contains("sftp://alice@host.example/home/alice"));
+    assert!(sanitized.contains("Unable to mount"));
+    assert!(sanitized.ends_with(" now"));
+}
+
+#[test]
+fn an_sftp_fallback_prompt_drops_the_smb_only_fields() {
+    let flags =
+        MountPromptDetails::fallback(&Location::uri("sftp://host.example:2222/home/user")).flags;
+
+    assert!(flags.contains(gio::AskPasswordFlags::NEED_USERNAME));
+    assert!(flags.contains(gio::AskPasswordFlags::NEED_PASSWORD));
+    assert!(!flags.contains(gio::AskPasswordFlags::NEED_DOMAIN));
+    assert!(!flags.contains(gio::AskPasswordFlags::ANONYMOUS_SUPPORTED));
+    assert!(
+        MountCredentials::default_for_prompt(flags)
+            .domain
+            .is_empty()
+    );
+}
+
+#[test]
+fn retry_copy_names_only_the_fields_the_prompt_is_showing() {
+    let smb = gio::AskPasswordFlags::NEED_USERNAME
+        | gio::AskPasswordFlags::NEED_DOMAIN
+        | gio::AskPasswordFlags::NEED_PASSWORD;
+    assert_eq!(
+        authentication_failure_hint(smb, "Password"),
+        "That attempt wasn’t accepted. Check the username, domain and password, then try again."
+    );
+
+    let passphrase = gio::AskPasswordFlags::NEED_PASSWORD;
+    assert_eq!(
+        authentication_failure_hint(passphrase, "Passphrase"),
+        "That attempt wasn’t accepted. Check the passphrase, then try again."
+    );
+    assert_eq!(
+        authentication_failure_hint(gio::AskPasswordFlags::empty(), "Password"),
+        "That attempt wasn’t accepted. Try again."
+    );
+}
+
+#[test]
+fn an_encrypted_key_prompt_asks_for_a_passphrase_not_a_password() {
+    let passphrase = "Enter passphrase for key '/home/user/.ssh/id_ed25519':";
+    assert_eq!(password_field_label(passphrase), "Passphrase");
+    assert_eq!(
+        authentication_dialog_heading(passphrase).0,
+        "Passphrase required"
+    );
+
+    let password = "Password required for share on host";
+    assert_eq!(password_field_label(password), "Password");
+    assert_eq!(
+        authentication_dialog_heading(password).0,
+        "Authentication required"
+    );
+}
+
+#[test]
+fn supplied_credentials_answer_the_backend_once_and_are_never_re_prompted() {
+    let credentials = MountCredentials {
+        anonymous: false,
+        username: "alice".to_owned(),
+        domain: String::new(),
+        password: "secret".to_owned(),
+        save: gio::PasswordSave::Never,
+    };
+    let mut attempt = MountAttempt::new(Some(credentials));
+    let details = MountPromptDetails::fallback(&Location::uri("sftp://host.example/home/alice"));
+
+    assert_eq!(
+        attempt.ask_password(details.clone()),
+        PasswordRequest::Reply,
+        "credentials from the address bar answer the first request without a dialog"
+    );
+    assert_eq!(
+        attempt.ask_password(details),
+        PasswordRequest::Ask { retry: true },
+        "a second request means they were rejected, so the prompt opens in retry mode"
+    );
+}
+
+#[test]
+fn an_unprompted_attempt_asks_before_it_retries() {
+    let mut attempt = MountAttempt::new(None);
+    let details = MountPromptDetails::fallback(&Location::uri("sftp://host.example/home/alice"));
+
+    assert_eq!(
+        attempt.ask_password(details.clone()),
+        PasswordRequest::Ask { retry: false }
+    );
+    assert_eq!(
+        attempt.ask_password(details),
+        PasswordRequest::Ask { retry: true }
+    );
+}
+
+#[test]
+fn a_rejected_password_carries_the_last_attempt_into_the_retry_prompt() {
+    let location = Location::uri("sftp://host.example/home/alice");
+    let mut attempt = MountAttempt::new(None);
+    attempt.ask_password(MountPromptDetails::fallback(&location));
+    attempt.submitted(MountCredentials {
+        anonymous: false,
+        username: "alice".to_owned(),
+        domain: String::new(),
+        password: "wrong".to_owned(),
+        save: gio::PasswordSave::Never,
+    });
+
+    let outcome = attempt.outcome(
+        &location,
+        Err(glib::Error::new(
+            gio::IOErrorEnum::Failed,
+            "Permission denied (publickey,password)",
+        )),
+    );
+    let MountOutcome::NeedsCredentials { attempted, details } = outcome else {
+        panic!("a rejected password should reopen the prompt");
+    };
+    assert_eq!(attempted.expect("last attempt is kept").username, "alice");
+    assert!(details.is_some());
+}
+
+#[test]
+fn an_already_mounted_location_counts_as_mounted() {
+    let attempt = MountAttempt::new(None);
+    let location = Location::uri("sftp://host.example/home/alice");
+    assert!(matches!(
+        attempt.outcome(
+            &location,
+            Err(glib::Error::new(
+                gio::IOErrorEnum::AlreadyMounted,
+                "already mounted",
+            )),
+        ),
+        MountOutcome::Mounted
+    ));
+}
+
+#[test]
+fn a_cancelled_prompt_ends_the_attempt_without_an_error_dialog() {
+    let attempt = MountAttempt::new(None);
+    let location = Location::uri("sftp://host.example/home/alice");
+    for kind in [gio::IOErrorEnum::Cancelled, gio::IOErrorEnum::FailedHandled] {
+        assert!(
+            matches!(
+                attempt.outcome(&location, Err(glib::Error::new(kind, "cancelled"))),
+                MountOutcome::Cancelled
+            ),
+            "{kind:?} is the user backing out, not a failure"
+        );
+    }
+}
+
+#[test]
+fn host_key_questions_are_classified_from_the_backend_wording() {
+    assert_eq!(
+        MountQuestionKind::classify(
+            "The identity of the remote computer is not known. Its host key fingerprint is \
+             SHA256:abc. Are you sure you want to continue connecting?"
+        ),
+        MountQuestionKind::UnknownHostKey
+    );
+    assert_eq!(
+        MountQuestionKind::classify(
+            "WARNING: The host key for host.example has changed. Someone could be eavesdropping \
+             on you right now (man-in-the-middle attack)."
+        ),
+        MountQuestionKind::ChangedHostKey
+    );
+    assert_eq!(
+        MountQuestionKind::classify("Replace the existing file?"),
+        MountQuestionKind::Other
+    );
+    assert_eq!(
+        MountQuestionKind::ChangedHostKey.tone(),
+        crate::ui::controls::ModalTone::Danger
+    );
+}
+
+#[test]
+fn a_trust_decision_never_defaults_to_accepting() {
+    let choices = ["Log In Anyway".to_owned(), "Cancel".to_owned()];
+    assert_eq!(safest_choice(&choices), 1);
+    assert!(choice_declines("Cancel"));
+    assert!(!choice_declines("Log In Anyway"));
+
+    let unlabelled = ["Continue".to_owned(), "Accept and remember".to_owned()];
+    assert_eq!(
+        safest_choice(&unlabelled),
+        1,
+        "with nothing recognizable to decline, the last choice is focused, never the first"
+    );
+    assert_eq!(safest_choice(&[]), 0);
+}
+
+#[test]
+fn declining_a_host_key_ends_the_attempt_instead_of_asking_to_sign_in_again() {
+    let location = Location::uri("sftp://host.example/home/alice");
+    let mut attempt = MountAttempt::new(None);
+    attempt.ask_question(MountQuestionDetails {
+        message: "The identity of the remote computer is not known.".to_owned(),
+        choices: vec!["Log In Anyway".to_owned(), "Cancel".to_owned()],
+    });
+    attempt.decide(MountQuestionDecision::Declined);
+
+    let outcome = attempt.outcome(
+        &location,
+        Err(glib::Error::new(
+            gio::IOErrorEnum::PermissionDenied,
+            "Permission denied",
+        )),
+    );
+    assert!(
+        matches!(outcome, MountOutcome::Cancelled),
+        "the user already answered, so the browser returns to where it was"
+    );
+}
+
+#[test]
+fn accepting_a_host_key_lets_the_attempt_report_its_real_result() {
+    let location = Location::uri("sftp://host.example/home/alice");
+    let mut attempt = MountAttempt::new(None);
+    attempt.ask_question(MountQuestionDetails {
+        message: "The identity of the remote computer is not known.".to_owned(),
+        choices: vec!["Log In Anyway".to_owned(), "Cancel".to_owned()],
+    });
+    attempt.decide(MountQuestionDecision::Chose(0));
+
+    assert!(matches!(
+        attempt.outcome(&location, Ok(())),
+        MountOutcome::Mounted
+    ));
+    assert!(matches!(
+        attempt.outcome(
+            &location,
+            Err(glib::Error::new(
+                gio::IOErrorEnum::PermissionDenied,
+                "Permission denied",
+            )),
+        ),
+        MountOutcome::NeedsCredentials { .. }
+    ));
+}
+
+#[test]
+fn mount_logging_respects_default_and_diagnostic_privacy() {
+    let location = Location::uri("sftp://alice:hunter2@host.example:2222/home/alice");
+    let output = crate::test_support::capture_logs(|| {
+        log_mount_started(&location, MountStrategy::EnclosingVolume);
+        log_mount_finished(
+            &location,
+            &Err(glib::Error::new(
+                gio::IOErrorEnum::Failed,
+                "Permission denied for alice@host.example",
+            )),
+        );
+    });
+
+    for message in ["mount requested", "mount failed"] {
+        let event = crate::test_support::captured_event(&output, message);
+        assert_eq!(event.split_whitespace().next(), Some("INFO"));
+        assert!(event.contains("backend=sftp"));
+        for secret in ["alice", "hunter2", "host.example", "/home/alice"] {
+            assert!(
+                !event.contains(secret),
+                "{message:?} leaked {secret:?}: {event}"
+            );
+        }
+    }
+
+    let diagnostic = crate::test_support::captured_event(&output, "mount location");
+    assert_eq!(diagnostic.split_whitespace().next(), Some("DEBUG"));
+    assert!(diagnostic.contains("sftp://host.example:2222/home/alice"));
+    assert!(!diagnostic.contains("hunter2"));
 }

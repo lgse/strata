@@ -4,62 +4,23 @@ use std::{
     error::Error,
     ffi::OsString,
     fs,
-    io::{ErrorKind, Write},
+    io::ErrorKind,
     os::unix::ffi::{OsStrExt, OsStringExt},
-    sync::{Arc, Mutex, MutexGuard},
     time::SystemTime,
 };
 
-use tracing_subscriber::fmt::MakeWriter;
-
 use super::*;
-use crate::{model::Location, test_support::ASYNC_MAIN_CONTEXT_DEFAULT};
-
-#[derive(Clone, Default)]
-struct LogWriter(Arc<Mutex<Vec<u8>>>);
-
-struct LogWriterGuard<'a>(MutexGuard<'a, Vec<u8>>);
-
-impl Write for LogWriterGuard<'_> {
-    fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        self.0.write(buffer)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        self.0.flush()
-    }
-}
-
-impl<'a> MakeWriter<'a> for LogWriter {
-    type Writer = LogWriterGuard<'a>;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        LogWriterGuard(self.0.lock().unwrap_or_else(|error| error.into_inner()))
-    }
-}
-
-impl LogWriter {
-    fn output(&self) -> String {
-        let output = self.0.lock().unwrap_or_else(|error| error.into_inner());
-        String::from_utf8_lossy(&output).into_owned()
-    }
-}
+use crate::{
+    model::Location,
+    test_support::{ASYNC_MAIN_CONTEXT_DEFAULT, capture_logs},
+};
 
 fn capture_directory_start_logs(locations: &[(RequestId, &Location)]) -> String {
-    let writer = LogWriter::default();
-    let subscriber = tracing_subscriber::fmt()
-        .with_ansi(false)
-        .without_time()
-        .with_max_level(tracing::Level::DEBUG)
-        .with_writer(writer.clone())
-        .finish();
-
-    tracing::subscriber::set_global_default(subscriber)
-        .expect("the logging subscriber should only be installed once");
-    for (request_id, location) in locations {
-        log_directory_load_started(*request_id, location);
-    }
-    writer.output()
+    capture_logs(|| {
+        for (request_id, location) in locations {
+            log_directory_load_started(*request_id, location);
+        }
+    })
 }
 
 fn captured_event<'a>(output: &'a str, request_id: RequestId, message: &str) -> &'a str {

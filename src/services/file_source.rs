@@ -67,27 +67,31 @@ impl fmt::Display for LocationValidationError {
     }
 }
 
-/// Maps a location's URI scheme to the distribution package that provides its
-/// GVfs backend, for the schemes we currently support connecting to.
+/// Names the packages a URI scheme's GVfs backend is commonly shipped in.
+/// Distributions split GVfs differently, so this lists the usual candidates
+/// rather than asserting one universal package name.
 fn backend_package_hint(scheme: &str) -> Option<&'static str> {
     match scheme.to_ascii_lowercase().as_str() {
-        "smb" => Some("gvfs-smb"),
+        "smb" => Some("gvfs-smb or gvfs-backends"),
+        "sftp" | "ftp" | "ftps" | "dav" | "davs" => Some("gvfs or gvfs-backends"),
         _ => None,
     }
 }
 
 /// Builds a "this backend isn't installed" message naming the scheme and, when
-/// known, the package that provides it, without repeating the host/share/path.
+/// known, the packages that usually provide it, without repeating the
+/// host/share/path.
 pub fn backend_unavailable_message(uri: &str) -> String {
     let scheme = uri.split("://").next().unwrap_or(uri);
     match backend_package_hint(scheme) {
-        Some(package) => format!(
-            "The {scheme}:// backend isn't installed. Install the {package} package to \
-             connect to {scheme}:// locations."
+        Some(packages) => format!(
+            "The {scheme}:// backend isn't installed. Install your distribution's GVfs \
+             {scheme} backend, commonly packaged as {packages}, then try again."
         ),
         None => format!(
             "The {scheme}:// backend isn't installed on this system, so {scheme}:// \
-             locations can't be opened."
+             locations can't be opened. Install the matching GVfs backend from your \
+             distribution, then try again."
         ),
     }
 }
