@@ -40,6 +40,8 @@ use super::{
 const COLUMN_WIDTH: i32 = 300;
 const COLUMN_OFFSET: i32 = 24;
 const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
+const PEEK_WIDTH: i32 = 256;
+const PEEK_GAP: f32 = 8.0;
 
 #[derive(Clone)]
 struct LoadPresentation {
@@ -114,6 +116,11 @@ struct TrashLoadingView {
     layer: gtk::Box,
     overlay: gtk::Overlay,
     blurred_root: Option<BlurBin>,
+}
+
+struct PeekAnchor {
+    widget: gtk::Widget,
+    origin_depth: usize,
 }
 
 struct PeekView {
@@ -291,7 +298,7 @@ pub(super) struct ViewState {
     peek: RefCell<Option<PeekView>>,
     pending_peek: RefCell<Option<glib::SourceId>>,
     pending_close: RefCell<Option<glib::SourceId>>,
-    peek_anchor: RefCell<Option<gtk::Widget>>,
+    peek_anchor: RefCell<Option<PeekAnchor>>,
     peek_behavior: PeekBehavior,
     peek_enabled: Cell<bool>,
     single_click_previews: Cell<bool>,
@@ -4917,7 +4924,10 @@ impl ViewState {
         {
             return;
         }
-        self.peek_anchor.replace(Some(anchor));
+        self.peek_anchor.replace(Some(PeekAnchor {
+            widget: anchor,
+            origin_depth,
+        }));
 
         let weak_state = Rc::downgrade(self);
         let source = glib::timeout_add_local_once(self.peek_behavior.open_delay, move || {
@@ -4950,9 +4960,30 @@ impl ViewState {
             self.browser.close_peek();
             return;
         };
+        let Some(row_bounds) = anchor.widget.compute_bounds(&self.overlay) else {
+            self.browser.close_peek();
+            return;
+        };
+        let Some(column_bounds) = self
+            .columns
+            .borrow()
+            .get(anchor.origin_depth)
+            .and_then(|column| column.shell.compute_bounds(&self.overlay))
+        else {
+            self.browser.close_peek();
+            return;
+        };
+        let Some(placement) = peek_horizontal_placement(
+            column_bounds.x(),
+            column_bounds.width(),
+            self.overlay.width() as f32,
+        ) else {
+            self.browser.close_peek();
+            return;
+        };
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        content.set_size_request(256, -1);
+        content.set_size_request(PEEK_WIDTH, -1);
         content.set_overflow(gtk::Overflow::Hidden);
 
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -5014,26 +5045,13 @@ impl ViewState {
         });
         content.add_controller(click);
 
-        let Some(bounds) = anchor.compute_bounds(&self.overlay) else {
-            self.browser.close_peek();
-            return;
-        };
         content.add_css_class("peek-popover");
-        let gap = 8.0;
-        let right = bounds.x() + bounds.width() + gap;
-        let left = (bounds.x() - 260.0).max(0.0);
-        let positioned_right = right + 256.0 <= self.overlay.width() as f32;
-        let x = if positioned_right { right } else { left };
         let transition_duration = self
             .peek_behavior
             .fade_duration
             .as_millis()
             .min(u128::from(u32::MAX)) as u32;
-        let transition_type = if positioned_right {
-            gtk::RevealerTransitionType::SlideRight
-        } else {
-            gtk::RevealerTransitionType::SlideLeft
-        };
+        let transition_type = peek_transition(placement.side);
         let revealer = gtk::Revealer::builder()
             .child(&content)
             .transition_type(transition_type)
@@ -5041,8 +5059,8 @@ impl ViewState {
             .reveal_child(false)
             .halign(gtk::Align::Start)
             .valign(gtk::Align::Start)
-            .margin_start(x.round() as i32)
-            .margin_top(bounds.y().round().max(0.0) as i32)
+            .margin_start(placement.x.round() as i32)
+            .margin_top(row_bounds.y().round().max(0.0) as i32)
             .build();
         self.overlay.add_overlay(&revealer);
         self.peek.replace(Some(PeekView {
@@ -7144,6 +7162,45 @@ fn icon_for_name(name: &str) -> &'static str {
         ) => crate::assets::icons::FILE_CODE,
         _ => crate::assets::icons::DOCUMENTS,
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PeekSide {
+    Left,
+    Right,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PeekPlacement {
+    x: f32,
+    side: PeekSide,
+}
+
+fn peek_transition(side: PeekSide) -> gtk::RevealerTransitionType {
+    match side {
+        PeekSide::Left => gtk::RevealerTransitionType::SlideLeft,
+        PeekSide::Right => gtk::RevealerTransitionType::SlideRight,
+    }
+}
+
+fn peek_horizontal_placement(
+    source_x: f32,
+    source_width: f32,
+    viewport_width: f32,
+) -> Option<PeekPlacement> {
+    let right = source_x + source_width + PEEK_GAP;
+    if right + PEEK_WIDTH as f32 <= viewport_width {
+        return Some(PeekPlacement {
+            x: right,
+            side: PeekSide::Right,
+        });
+    }
+
+    let left = source_x - PEEK_GAP - PEEK_WIDTH as f32;
+    (left >= 0.0).then_some(PeekPlacement {
+        x: left,
+        side: PeekSide::Left,
+    })
 }
 
 fn append_peek_entries(peek: &PeekView, entries: Vec<FileEntry>, limit: usize) {

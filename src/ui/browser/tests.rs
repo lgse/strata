@@ -198,6 +198,52 @@ fn delete_confirmation_labels_distinguish_files_and_folders() {
 }
 
 #[test]
+fn folder_peek_prefers_space_to_the_right_of_its_source_column() {
+    assert_eq!(
+        peek_horizontal_placement(100.0, 300.0, 800.0),
+        Some(PeekPlacement {
+            x: 408.0,
+            side: PeekSide::Right,
+        })
+    );
+}
+
+#[test]
+fn folder_peek_uses_the_left_only_when_it_fits_outside_the_source_column() {
+    assert_eq!(
+        peek_horizontal_placement(300.0, 300.0, 700.0),
+        Some(PeekPlacement {
+            x: 36.0,
+            side: PeekSide::Left,
+        })
+    );
+    assert_eq!(peek_horizontal_placement(200.0, 300.0, 700.0), None);
+}
+
+#[test]
+fn folder_peek_animation_moves_toward_its_placement_side() {
+    assert_eq!(
+        peek_transition(PeekSide::Left),
+        gtk::RevealerTransitionType::SlideLeft
+    );
+    assert_eq!(
+        peek_transition(PeekSide::Right),
+        gtk::RevealerTransitionType::SlideRight
+    );
+}
+
+#[test]
+fn folder_peek_accepts_an_exact_viewport_fit() {
+    assert_eq!(
+        peek_horizontal_placement(0.0, 300.0, 564.0),
+        Some(PeekPlacement {
+            x: 308.0,
+            side: PeekSide::Right,
+        })
+    );
+}
+
+#[test]
 fn small_operations_delay_progress_while_large_or_unbounded_operations_show_it_immediately() {
     assert!(!should_show_progress_immediately(1));
     assert!(!should_show_progress_immediately(
