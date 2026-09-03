@@ -1283,21 +1283,35 @@ switch:checked slider {
   border-right: 1px solid alpha(@theme_border, 0.6);
 }
 
-.sidebar-scroll scrollbar.vertical,
-.sidebar-scroll scrollbar.vertical:hover,
-.sidebar-scroll scrollbar.vertical.hovering,
-.sidebar-scroll scrollbar.vertical.dragging {
+.fixed-scrollbar scrollbar,
+.fixed-scrollbar scrollbar:hover,
+.fixed-scrollbar scrollbar.hovering,
+.fixed-scrollbar scrollbar.dragging {
   background: transparent;
   border: none;
-  min-width: 5px;
   padding: 0;
   transition: none;
 }
 
-.sidebar-scroll scrollbar.vertical > range > trough > slider {
+.fixed-scrollbar scrollbar.vertical {
+  min-width: 5px;
+}
+
+.fixed-scrollbar scrollbar.horizontal {
+  min-height: 5px;
+}
+
+.fixed-scrollbar scrollbar > range > trough > slider {
   border-width: 1px;
   margin: 0;
+}
+
+.fixed-scrollbar scrollbar.vertical > range > trough > slider {
   min-width: 3px;
+}
+
+.fixed-scrollbar scrollbar.horizontal > range > trough > slider {
+  min-height: 3px;
 }
 
 .sidebar {

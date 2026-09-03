@@ -185,6 +185,7 @@ impl ModeViews {
             .hexpand(true)
             .vexpand(true)
             .build();
+        grid_scroll.add_css_class("fixed-scrollbar");
 
         let explorer_root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         explorer_root.add_css_class("mode-explorer");
@@ -1366,6 +1367,7 @@ fn build_grid_pane(
         .child(&view)
         .vexpand(true)
         .build();
+    scroll.add_css_class("fixed-scrollbar");
     let (collection, marquee) = collection_with_marquee(
         view.upcast_ref(),
         scroll,
@@ -1972,6 +1974,7 @@ fn build_explorer_pane(
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .build();
+    scroll.add_css_class("fixed-scrollbar");
     let table = gtk::Box::new(gtk::Orientation::Vertical, 0);
     table.set_vexpand(true);
     table.append(&headings);
@@ -1992,6 +1995,7 @@ fn build_explorer_pane(
         .hexpand(true)
         .vexpand(true)
         .build();
+    table_scroll.add_css_class("fixed-scrollbar");
     content.append(&table_scroll);
     Pane {
         depth,

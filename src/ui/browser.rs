@@ -343,6 +343,7 @@ impl BrowserView {
             .hexpand(true)
             .vexpand(true)
             .build();
+        scroller.add_css_class("fixed-scrollbar");
         let overlay = gtk::Overlay::new();
 
         let location_entry = gtk::Entry::builder()
@@ -4588,6 +4589,7 @@ impl ViewState {
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
             .build();
+        scroll.add_css_class("fixed-scrollbar");
         let rows_for_marquee = bound_rows.clone();
         let marquee = super::marquee::install(super::marquee::MarqueeSetup {
             view: list.clone().upcast(),

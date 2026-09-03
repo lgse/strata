@@ -1816,6 +1816,7 @@ fn build_sidebar(view: BrowserView, theme_manager: Rc<super::theme::ThemeManager
         .vexpand(true)
         .build();
     scroller.add_css_class("sidebar-scroll");
+    scroller.add_css_class("fixed-scrollbar");
 
     let update_content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let dot = gtk::Label::new(Some("●"));
