@@ -80,6 +80,8 @@ struct Preferences {
     browser_mode: String,
     #[serde(default = "default_browser_density")]
     browser_density: String,
+    #[serde(default = "default_sidebar_order")]
+    sidebar_order: Vec<String>,
     #[serde(default)]
     show_hidden: bool,
     #[serde(default = "default_enabled")]
@@ -109,6 +111,7 @@ impl Default for Preferences {
             reduce_motion: false,
             browser_mode: default_browser_mode(),
             browser_density: default_browser_density(),
+            sidebar_order: default_sidebar_order(),
             show_hidden: false,
             folders_first: true,
             sort_key: default_sort_key(),
@@ -138,6 +141,16 @@ fn default_video_preview_backend() -> String {
 
 fn default_browser_density() -> String {
     "compact".to_owned()
+}
+
+fn default_sidebar_order() -> Vec<String> {
+    vec![
+        "desktop".to_owned(),
+        "documents".to_owned(),
+        "downloads".to_owned(),
+        "pictures".to_owned(),
+        "videos".to_owned(),
+    ]
 }
 
 fn default_sort_key() -> String {
@@ -347,6 +360,15 @@ impl ThemeManager {
             super::browser_modes::BrowserDensity::Airy => "airy",
         }
         .to_owned();
+        self.save_preferences();
+    }
+
+    pub fn sidebar_order(&self) -> Vec<String> {
+        self.preferences.borrow().sidebar_order.clone()
+    }
+
+    pub fn set_sidebar_order(&self, order: Vec<String>) {
+        self.preferences.borrow_mut().sidebar_order = order;
         self.save_preferences();
     }
 

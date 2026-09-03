@@ -30,6 +30,7 @@ const SIDEBAR_WIDTH: i32 = 208;
 const MIN_SIDEBAR_WIDTH: i32 = 176;
 const SIDEBAR_TRANSITION: Duration = Duration::from_millis(300);
 const PINNED_DRAG_PREFIX: &str = "pinned:";
+const STANDARD_PLACE_IDS: &[&str] = &["desktop", "documents", "downloads", "pictures", "videos"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum MouseHistoryAction {
@@ -155,7 +156,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     content.set_resize_start_child(false);
     content.set_position(SIDEBAR_WIDTH);
     content.set_vexpand(true);
-    let sidebar = build_sidebar(browser.clone());
+    let sidebar = build_sidebar(browser.clone(), theme_manager.clone());
     let weak_sidebar = Rc::downgrade(&sidebar.state);
     let pinned_places = sidebar.state.pinned_places.clone();
     browser.set_pin_handlers(
@@ -1035,6 +1036,7 @@ struct SidebarState {
     view: BrowserView,
     browser: Rc<Browser>,
     volume_monitor: gio::VolumeMonitor,
+    theme_manager: Rc<super::theme::ThemeManager>,
     place_order: RefCell<Vec<&'static str>>,
     pinned_places: Rc<RefCell<Vec<(Location, String)>>>,
     place_rows: RefCell<Vec<(Location, gtk::Button)>>,
@@ -1328,6 +1330,13 @@ impl SidebarState {
     fn reorder_place(self: &Rc<Self>, source: &str, target: &str, after: bool) {
         let changed = reorder_places(&mut self.place_order.borrow_mut(), source, target, after);
         if changed {
+            let order = self
+                .place_order
+                .borrow()
+                .iter()
+                .map(|place| (*place).to_owned())
+                .collect();
+            self.theme_manager.set_sidebar_order(order);
             self.rebuild();
         }
     }
@@ -1662,6 +1671,25 @@ fn should_show_standard_place(id: &str, path: &std::path::Path, home: &std::path
     id != "desktop" || path != home
 }
 
+fn resolve_place_order(persisted: &[String]) -> Vec<&'static str> {
+    let mut order: Vec<&'static str> = Vec::new();
+    for id in persisted {
+        if let Some(canonical) = STANDARD_PLACE_IDS
+            .iter()
+            .find(|&&known| known == id.as_str())
+            && !order.contains(canonical)
+        {
+            order.push(*canonical);
+        }
+    }
+    for &id in STANDARD_PLACE_IDS {
+        if !order.contains(&id) {
+            order.push(id);
+        }
+    }
+    order
+}
+
 fn standard_place(id: &str) -> Option<(&'static str, &'static str, glib::UserDirectory)> {
     match id {
         "desktop" => Some((
@@ -1753,7 +1781,7 @@ fn sidebar_update_label(release: &ReleaseMetadata) -> String {
     }
 }
 
-fn build_sidebar(view: BrowserView) -> SidebarView {
+fn build_sidebar(view: BrowserView, theme_manager: Rc<super::theme::ThemeManager>) -> SidebarView {
     let widget = gtk::Box::new(gtk::Orientation::Vertical, 2);
     widget.add_css_class("sidebar");
     let scroller = gtk::ScrolledWindow::builder()
@@ -1794,18 +1822,14 @@ fn build_sidebar(view: BrowserView) -> SidebarView {
     shell.append(&scroller);
     shell.append(&update_area);
     let volume_monitor = gio::VolumeMonitor::get();
+    let place_order = resolve_place_order(&theme_manager.sidebar_order());
     let state = Rc::new(SidebarState {
         widget,
         browser: view.browser(),
         view,
         volume_monitor,
-        place_order: RefCell::new(vec![
-            "desktop",
-            "documents",
-            "downloads",
-            "pictures",
-            "videos",
-        ]),
+        theme_manager,
+        place_order: RefCell::new(place_order),
         pinned_places: Rc::new(RefCell::new(load_pinned_places())),
         place_rows: RefCell::new(Vec::new()),
     });

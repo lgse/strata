@@ -5,10 +5,11 @@ use std::path::Path;
 use crate::services::{BuildKind, ReleaseMetadata};
 
 use super::{
-    MouseHistoryAction, PinStatus, is_open_terminal_shortcut, is_sidebar_focus_shortcut,
-    is_smb_location, is_standard_place_location, mouse_history_action, parse_pinned_drag_source,
-    parse_pinned_places, pin_status, remove_pinned_place, reorder_pinned_places, reorder_places,
-    serialize_pinned_places, should_show_standard_place, sidebar_update_label, vim_focus_direction,
+    MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, is_open_terminal_shortcut,
+    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location, mouse_history_action,
+    parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
+    reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
+    should_show_standard_place, sidebar_update_label, standard_place, vim_focus_direction,
 };
 
 fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
@@ -135,6 +136,56 @@ fn invalid_place_reorders_leave_the_order_unchanged() {
     assert!(!reorder_places(&mut places, "desktop", "missing", false));
     assert!(!reorder_places(&mut places, "desktop", "desktop", false));
     assert_eq!(places, original);
+}
+
+fn persisted_order(ids: &[&str]) -> Vec<String> {
+    ids.iter().map(|id| (*id).to_owned()).collect()
+}
+
+#[test]
+fn every_reorderable_place_id_is_a_known_standard_place() {
+    for id in STANDARD_PLACE_IDS {
+        assert!(
+            standard_place(id).is_some(),
+            "{id} must be a standard place"
+        );
+    }
+}
+
+#[test]
+fn a_persisted_place_order_is_restored_exactly() {
+    let order = resolve_place_order(&persisted_order(&["videos", "downloads", "desktop"]));
+    assert_eq!(
+        order,
+        vec!["videos", "downloads", "desktop", "documents", "pictures"]
+    );
+}
+
+#[test]
+fn unknown_persisted_place_ids_are_dropped() {
+    let order = resolve_place_order(&persisted_order(&["desktop", "archive", "videos"]));
+    assert_eq!(
+        order,
+        vec!["desktop", "videos", "documents", "downloads", "pictures"]
+    );
+}
+
+#[test]
+fn missing_places_are_appended_in_default_order() {
+    let order = resolve_place_order(&persisted_order(&["pictures"]));
+    assert_eq!(
+        order,
+        vec!["pictures", "desktop", "documents", "downloads", "videos"]
+    );
+}
+
+#[test]
+fn duplicate_persisted_place_ids_are_deduplicated() {
+    let order = resolve_place_order(&persisted_order(&["desktop", "desktop", "videos"]));
+    assert_eq!(
+        order,
+        vec!["desktop", "videos", "documents", "downloads", "pictures"]
+    );
 }
 
 fn pinned(paths: &[&str]) -> Vec<(crate::model::Location, String)> {

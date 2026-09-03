@@ -371,3 +371,39 @@ fn video_preview_backends_round_trip_and_invalid_values_fall_back() {
         MediaPreviewBackend::Automatic
     );
 }
+
+#[test]
+fn sidebar_order_defaults_to_the_canonical_place_list() {
+    let preferences = Preferences::default();
+    assert_eq!(
+        preferences.sidebar_order,
+        ["desktop", "documents", "downloads", "pictures", "videos"]
+    );
+}
+
+#[test]
+fn sidebar_order_round_trips_through_toml() {
+    let preferences = Preferences {
+        sidebar_order: vec!["videos".to_owned(), "desktop".to_owned()],
+        ..Preferences::default()
+    };
+    let serialized = toml::to_string(&preferences).expect("preferences should serialize");
+    let restored: Preferences =
+        toml::from_str(&serialized).expect("preferences should deserialize");
+    assert_eq!(restored.sidebar_order, ["videos", "desktop"]);
+}
+
+#[test]
+fn legacy_preferences_without_sidebar_order_default_to_the_canonical_list() {
+    let preferences: Preferences = toml::from_str(
+        r#"
+mode = "theme"
+theme = "azure-glow"
+"#,
+    )
+    .expect("legacy preferences without sidebar_order should remain valid");
+    assert_eq!(
+        preferences.sidebar_order,
+        ["desktop", "documents", "downloads", "pictures", "videos"]
+    );
+}
