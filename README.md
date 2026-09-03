@@ -51,7 +51,7 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
 - **Rich previews and thumbnails:** bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
 - **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
-- **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares from the location field.
+- **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares and SFTP servers from the location field, with explicit host-key decisions.
 - **Adaptive appearance:** compact or airy density, six bundled themes, custom themes, and live Omarchy Quattro theme following.
 - **Updates in the app:** opt-in automatic checks, release notes, verified downloads, and in-place installation for release binaries.
 
@@ -232,7 +232,9 @@ omarchy menu keybindings --print | grep -i "file manager"
 
 ### Network shares
 
-Press <kbd>Ctrl</kbd>+<kbd>L</kbd>, enter an address such as `smb://server/share`, and press <kbd>Enter</kbd>. Strata uses GIO/GVfs and prompts for credentials when required. Install your distribution's SMB GVfs backend (`gvfs-smb` on Arch) to enable SMB browsing.
+Press <kbd>Ctrl</kbd>+<kbd>L</kbd>, enter an address such as `smb://server/share` or `sftp://user@host:2222/path`, and press <kbd>Enter</kbd>. Strata uses GIO/GVfs and prompts for credentials when required. Remote protocols need their GVfs backend installed; distributions split these up differently, so check yours for the SMB backend (`gvfs-smb` on Arch) and the SFTP backend (part of `gvfs` on Arch, `gvfs-backends` on Debian and Ubuntu).
+
+SFTP accepts password and SSH-key authentication, asks for an encrypted key's passphrase, and always makes you decide about an unrecognized or changed host key. See [docs/remote-sftp.md](docs/remote-sftp.md), which also documents `scripts/sftp-fixture.sh`, a disposable OpenSSH server for testing.
 
 ## Theming
 
