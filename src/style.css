@@ -1283,6 +1283,15 @@ switch:checked slider {
   border-right: 1px solid alpha(@theme_border, 0.6);
 }
 
+.sidebar-scroll scrollbar.vertical {
+  min-width: 10px;
+}
+
+.sidebar-scroll scrollbar.vertical slider {
+  margin: 3px;
+  min-width: 4px;
+}
+
 .sidebar {
   background: @theme_surface;
   padding: 8px 7px;
