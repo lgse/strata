@@ -19,7 +19,8 @@ use crate::{
     model::{FileEntry, Location, MetadataValue, SortDirection, SortKey},
 };
 
-const EXPLORER_COLUMN_WIDTHS: [i32; 4] = [600, 90, 120, 150];
+const EXPLORER_COLUMN_WIDTHS: [i32; 4] = [160, 90, 120, 150];
+const EXPLORER_COLUMN_MIN_WIDTHS: [i32; 4] = [160, 70, 80, 110];
 const DEFAULT_GRID_THUMBNAIL_SIZE: i32 = 64;
 const MIN_GRID_THUMBNAIL_SIZE: i32 = 64;
 const MAX_GRID_THUMBNAIL_SIZE: i32 = 256;
@@ -28,6 +29,7 @@ const MAX_GRID_THUMBNAIL_SIZE: i32 = 256;
 struct ExplorerColumnLayout {
     widths: Rc<Vec<Cell<i32>>>,
     cells: Rc<Vec<RefCell<Vec<glib::WeakRef<gtk::Widget>>>>>,
+    name_manually_resized: Rc<Cell<bool>>,
 }
 
 impl ExplorerColumnLayout {
@@ -35,6 +37,7 @@ impl ExplorerColumnLayout {
         Self {
             widths: Rc::new(EXPLORER_COLUMN_WIDTHS.into_iter().map(Cell::new).collect()),
             cells: Rc::new((0..4).map(|_| RefCell::new(Vec::new())).collect()),
+            name_manually_resized: Rc::new(Cell::new(false)),
         }
     }
 }
@@ -1433,7 +1436,8 @@ fn register_explorer_column_cell(
     widget: &impl IsA<gtk::Widget>,
 ) {
     widget.set_width_request(columns.widths[index].get());
-    widget.set_hexpand(false);
+    // Until the user resizes it, Name absorbs space left after the fixed metadata columns.
+    widget.set_hexpand(index == 0 && !columns.name_manually_resized.get());
     let weak = glib::WeakRef::new();
     weak.set(Some(widget.upcast_ref()));
     columns.cells[index].borrow_mut().push(weak);
@@ -1441,11 +1445,17 @@ fn register_explorer_column_cell(
 
 fn set_explorer_column_width(columns: &ExplorerColumnLayout, index: usize, width: i32) {
     columns.widths[index].set(width);
+    if index == 0 {
+        columns.name_manually_resized.set(true);
+    }
     columns.cells[index].borrow_mut().retain(|weak| {
         let Some(widget) = weak.upgrade() else {
             return false;
         };
         widget.set_width_request(width);
+        if index == 0 {
+            widget.set_hexpand(false);
+        }
         true
     });
 }
@@ -1483,7 +1493,11 @@ fn column_resize_handle(
                 .map(|widget| super::browser::max_child_natural_width(&widget))
                 .max()
                 .unwrap_or(initial_width);
-            set_explorer_column_width(&columns_for_autofit, index, natural.max(64));
+            set_explorer_column_width(
+                &columns_for_autofit,
+                index,
+                explorer_column_width(index, natural),
+            );
             gesture.set_state(gtk::EventSequenceState::Denied);
             return;
         }
@@ -1492,7 +1506,7 @@ fn column_resize_handle(
             .iter()
             .find_map(glib::WeakRef::upgrade)
             .map_or(initial_width, |widget| widget.width());
-        starting_for_begin.set(width.max(64));
+        starting_for_begin.set(explorer_column_width(index, width));
         pointer_for_begin.set(
             gesture
                 .current_event()
@@ -1512,10 +1526,18 @@ fn column_resize_handle(
             .zip(pointer_x)
             .map_or(fallback_offset_x, |(start, current)| current - start);
         let width = (f64::from(starting_width.get()) + offset_x).round() as i32;
-        set_explorer_column_width(&columns_for_update, index, width.max(64));
+        set_explorer_column_width(
+            &columns_for_update,
+            index,
+            explorer_column_width(index, width),
+        );
     });
     handle.add_controller(resize);
     handle
+}
+
+fn explorer_column_width(index: usize, width: i32) -> i32 {
+    width.max(EXPLORER_COLUMN_MIN_WIDTHS[index])
 }
 
 fn explorer_navigation(browser: &Rc<Browser>) -> gtk::Box {
@@ -2575,3 +2597,6 @@ fn bitset_positions(bitset: &gtk::Bitset) -> Vec<usize> {
         .map(|position| position as usize)
         .collect()
 }
+
+#[cfg(test)]
+mod tests;
