@@ -1261,3 +1261,57 @@ fn failure_messages_never_echo_a_password_typed_into_the_address_bar() {
     assert!(sanitized.contains("Unable to mount"));
     assert!(sanitized.ends_with(" now"));
 }
+
+#[test]
+fn an_sftp_fallback_prompt_drops_the_smb_only_fields() {
+    let flags =
+        MountPromptDetails::fallback(&Location::uri("sftp://host.example:2222/home/user")).flags;
+
+    assert!(flags.contains(gio::AskPasswordFlags::NEED_USERNAME));
+    assert!(flags.contains(gio::AskPasswordFlags::NEED_PASSWORD));
+    assert!(!flags.contains(gio::AskPasswordFlags::NEED_DOMAIN));
+    assert!(!flags.contains(gio::AskPasswordFlags::ANONYMOUS_SUPPORTED));
+    assert!(
+        MountCredentials::default_for_prompt(flags)
+            .domain
+            .is_empty()
+    );
+}
+
+#[test]
+fn retry_copy_names_only_the_fields_the_prompt_is_showing() {
+    let smb = gio::AskPasswordFlags::NEED_USERNAME
+        | gio::AskPasswordFlags::NEED_DOMAIN
+        | gio::AskPasswordFlags::NEED_PASSWORD;
+    assert_eq!(
+        authentication_failure_hint(smb, "Password"),
+        "That attempt wasn’t accepted. Check the username, domain and password, then try again."
+    );
+
+    let passphrase = gio::AskPasswordFlags::NEED_PASSWORD;
+    assert_eq!(
+        authentication_failure_hint(passphrase, "Passphrase"),
+        "That attempt wasn’t accepted. Check the passphrase, then try again."
+    );
+    assert_eq!(
+        authentication_failure_hint(gio::AskPasswordFlags::empty(), "Password"),
+        "That attempt wasn’t accepted. Try again."
+    );
+}
+
+#[test]
+fn an_encrypted_key_prompt_asks_for_a_passphrase_not_a_password() {
+    let passphrase = "Enter passphrase for key '/home/user/.ssh/id_ed25519':";
+    assert_eq!(password_field_label(passphrase), "Passphrase");
+    assert_eq!(
+        authentication_dialog_heading(passphrase).0,
+        "Passphrase required"
+    );
+
+    let password = "Password required for share on host";
+    assert_eq!(password_field_label(password), "Password");
+    assert_eq!(
+        authentication_dialog_heading(password).0,
+        "Authentication required"
+    );
+}

@@ -3414,7 +3414,7 @@ impl ViewState {
         let authentication_failed = previous_credentials.is_some();
         let details = prompt_details.unwrap_or_else(|| MountPromptDetails::fallback(location));
         let defaults = previous_credentials.unwrap_or_else(|| {
-            let mut defaults = MountCredentials::default_for_prompt();
+            let mut defaults = MountCredentials::default_for_prompt(details.flags);
             if !details.default_user.is_empty() {
                 defaults.username.clone_from(&details.default_user);
             }
@@ -7465,16 +7465,86 @@ struct MountPromptDetails {
 impl MountPromptDetails {
     fn fallback(location: &Location) -> Self {
         Self {
-            message: format!("Enter user and password for “{}”.", location.display_path()),
+            message: format!("Enter your credentials for “{}”.", location.display_path()),
             default_user: String::new(),
             default_domain: String::new(),
-            flags: gio::AskPasswordFlags::NEED_USERNAME
-                | gio::AskPasswordFlags::NEED_DOMAIN
-                | gio::AskPasswordFlags::NEED_PASSWORD
-                | gio::AskPasswordFlags::SAVING_SUPPORTED
-                | gio::AskPasswordFlags::ANONYMOUS_SUPPORTED,
+            flags: fallback_ask_password_flags(location),
         }
     }
+}
+
+/// Chooses which credential fields to offer when a mount fails before the
+/// backend ever asked for any, so an SFTP retry does not present SMB's domain
+/// and anonymous options.
+fn fallback_ask_password_flags(location: &Location) -> gio::AskPasswordFlags {
+    let mut flags = gio::AskPasswordFlags::NEED_USERNAME
+        | gio::AskPasswordFlags::NEED_PASSWORD
+        | gio::AskPasswordFlags::SAVING_SUPPORTED;
+    match location_scheme(location).as_str() {
+        "smb" => {
+            flags |=
+                gio::AskPasswordFlags::NEED_DOMAIN | gio::AskPasswordFlags::ANONYMOUS_SUPPORTED;
+        }
+        "ftp" | "ftps" => flags |= gio::AskPasswordFlags::ANONYMOUS_SUPPORTED,
+        _ => {}
+    }
+    flags
+}
+
+fn location_scheme(location: &Location) -> String {
+    location
+        .uri_value()
+        .and_then(|uri| uri.split("://").next())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+}
+
+/// SFTP asks for an encrypted key's passphrase through the same password
+/// prompt, so the secret field is labelled from the backend's own wording.
+fn password_field_label(message: &str) -> &'static str {
+    if message.to_ascii_lowercase().contains("passphrase") {
+        "Passphrase"
+    } else {
+        "Password"
+    }
+}
+
+fn authentication_dialog_heading(message: &str) -> (&'static str, &'static str) {
+    if password_field_label(message) == "Passphrase" {
+        (
+            "Passphrase required",
+            "Unlock the key this connection needs",
+        )
+    } else {
+        (
+            "Authentication required",
+            "Sign in to access this network location",
+        )
+    }
+}
+
+/// Names only the fields the prompt is actually showing, so an SFTP retry does
+/// not tell the user to check a domain it never asked for.
+fn authentication_failure_hint(flags: gio::AskPasswordFlags, secret_label: &str) -> String {
+    let mut fields: Vec<String> = Vec::new();
+    if flags.contains(gio::AskPasswordFlags::NEED_USERNAME) {
+        fields.push("username".to_owned());
+    }
+    if flags.contains(gio::AskPasswordFlags::NEED_DOMAIN) {
+        fields.push("domain".to_owned());
+    }
+    if flags.contains(gio::AskPasswordFlags::NEED_PASSWORD) {
+        fields.push(secret_label.to_ascii_lowercase());
+    }
+    let Some(last) = fields.pop() else {
+        return "That attempt wasn’t accepted. Try again.".to_owned();
+    };
+    let listed = if fields.is_empty() {
+        last
+    } else {
+        format!("{} and {last}", fields.join(", "))
+    };
+    format!("That attempt wasn’t accepted. Check the {listed}, then try again.")
 }
 
 const AUTHENTICATION_TEXT_WIDTH_CHARS: i32 = 64;
@@ -7508,12 +7578,9 @@ fn show_authentication_dialog(
         root.set_blurred(true);
     }
 
-    let layout = modal_layout(
-        crate::assets::icons::KEY,
-        "Authentication required",
-        "Sign in to access this network location",
-        "Connect",
-    );
+    let secret_label = password_field_label(message);
+    let (heading, subheading) = authentication_dialog_heading(message);
+    let layout = modal_layout(crate::assets::icons::KEY, heading, subheading, "Connect");
     layout.content.add_css_class("wide");
     layout.body.add_css_class("authentication-body");
     let explanation_text =
@@ -7526,7 +7593,7 @@ fn show_authentication_dialog(
     layout.body.append(&explanation);
     if authentication_failed {
         let error_text = wrap_dialog_text(
-            "Those credentials weren’t accepted. Check the username, domain, and password, then try again.",
+            &authentication_failure_hint(flags, secret_label),
             AUTHENTICATION_TEXT_WIDTH_CHARS as usize,
         );
         let error = gtk::Label::new(Some(&error_text));
@@ -7555,7 +7622,7 @@ fn show_authentication_dialog(
     let password = form_password_entry();
     password.set_show_peek_icon(true);
     if flags.contains(gio::AskPasswordFlags::NEED_PASSWORD) {
-        append_authentication_field(&credentials, "Password", &password);
+        append_authentication_field(&credentials, secret_label, &password);
     }
 
     let (connect_as_control, connect_as_buttons) =
@@ -7765,11 +7832,15 @@ struct MountCredentials {
 }
 
 impl MountCredentials {
-    fn default_for_prompt() -> Self {
+    fn default_for_prompt(flags: gio::AskPasswordFlags) -> Self {
         Self {
             anonymous: false,
             username: glib::user_name().to_string_lossy().into_owned(),
-            domain: "WORKGROUP".to_owned(),
+            domain: if flags.contains(gio::AskPasswordFlags::NEED_DOMAIN) {
+                "WORKGROUP".to_owned()
+            } else {
+                String::new()
+            },
             password: String::new(),
             save: gio::PasswordSave::Never,
         }
