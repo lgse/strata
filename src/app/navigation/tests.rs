@@ -515,6 +515,39 @@ fn batches_are_merged_into_one_global_sort_order() {
 }
 
 #[test]
+fn names_are_sorted_case_insensitively() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/apple", "apple"),
+            named_entry("/fixture/Banana", "Banana"),
+            named_entry("/fixture/cherry", "cherry"),
+            named_entry("/fixture/Date", "Date"),
+        ],
+    );
+
+    assert_eq!(
+        state.columns[0]
+            .entries
+            .iter()
+            .map(|entry| entry.display_name.as_str())
+            .collect::<Vec<_>>(),
+        ["apple", "Banana", "cherry", "Date"]
+    );
+}
+
+#[test]
+fn names_that_differ_only_by_case_have_a_deterministic_order() {
+    assert_eq!(compare_display_names("file", "FILE"), Ordering::Greater);
+    assert_eq!(
+        compare_display_names("Straße", "STRASSE"),
+        Ordering::Greater
+    );
+}
+
+#[test]
 fn changing_sort_preferences_preserves_the_selected_entry() {
     let mut state = NavigationState::default();
     state.navigate(location("/fixture"), RequestId(1));
