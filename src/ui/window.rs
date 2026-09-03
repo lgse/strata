@@ -1812,7 +1812,6 @@ fn build_sidebar(view: BrowserView, theme_manager: Rc<super::theme::ThemeManager
         .child(&widget)
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .overlay_scrolling(false)
         .width_request(SIDEBAR_WIDTH)
         .vexpand(true)
         .build();
