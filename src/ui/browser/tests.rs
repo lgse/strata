@@ -1315,3 +1315,100 @@ fn an_encrypted_key_prompt_asks_for_a_passphrase_not_a_password() {
         "Authentication required"
     );
 }
+
+#[test]
+fn supplied_credentials_answer_the_backend_once_and_are_never_re_prompted() {
+    let credentials = MountCredentials {
+        anonymous: false,
+        username: "alice".to_owned(),
+        domain: String::new(),
+        password: "secret".to_owned(),
+        save: gio::PasswordSave::Never,
+    };
+    let mut attempt = MountAttempt::new(Some(credentials));
+    let details = MountPromptDetails::fallback(&Location::uri("sftp://host.example/home/alice"));
+
+    assert_eq!(
+        attempt.ask_password(details.clone()),
+        PasswordRequest::Reply,
+        "credentials from the address bar answer the first request without a dialog"
+    );
+    assert_eq!(
+        attempt.ask_password(details),
+        PasswordRequest::Ask { retry: true },
+        "a second request means they were rejected, so the prompt opens in retry mode"
+    );
+}
+
+#[test]
+fn an_unprompted_attempt_asks_before_it_retries() {
+    let mut attempt = MountAttempt::new(None);
+    let details = MountPromptDetails::fallback(&Location::uri("sftp://host.example/home/alice"));
+
+    assert_eq!(
+        attempt.ask_password(details.clone()),
+        PasswordRequest::Ask { retry: false }
+    );
+    assert_eq!(
+        attempt.ask_password(details),
+        PasswordRequest::Ask { retry: true }
+    );
+}
+
+#[test]
+fn a_rejected_password_carries_the_last_attempt_into_the_retry_prompt() {
+    let location = Location::uri("sftp://host.example/home/alice");
+    let mut attempt = MountAttempt::new(None);
+    attempt.ask_password(MountPromptDetails::fallback(&location));
+    attempt.submitted(MountCredentials {
+        anonymous: false,
+        username: "alice".to_owned(),
+        domain: String::new(),
+        password: "wrong".to_owned(),
+        save: gio::PasswordSave::Never,
+    });
+
+    let outcome = attempt.outcome(
+        &location,
+        Err(glib::Error::new(
+            gio::IOErrorEnum::Failed,
+            "Permission denied (publickey,password)",
+        )),
+    );
+    let MountOutcome::NeedsCredentials { attempted, details } = outcome else {
+        panic!("a rejected password should reopen the prompt");
+    };
+    assert_eq!(attempted.expect("last attempt is kept").username, "alice");
+    assert!(details.is_some());
+}
+
+#[test]
+fn an_already_mounted_location_counts_as_mounted() {
+    let attempt = MountAttempt::new(None);
+    let location = Location::uri("sftp://host.example/home/alice");
+    assert!(matches!(
+        attempt.outcome(
+            &location,
+            Err(glib::Error::new(
+                gio::IOErrorEnum::AlreadyMounted,
+                "already mounted",
+            )),
+        ),
+        MountOutcome::Mounted
+    ));
+}
+
+#[test]
+fn a_cancelled_prompt_ends_the_attempt_without_an_error_dialog() {
+    let attempt = MountAttempt::new(None);
+    let location = Location::uri("sftp://host.example/home/alice");
+    for kind in [gio::IOErrorEnum::Cancelled, gio::IOErrorEnum::FailedHandled] {
+        assert!(
+            matches!(
+                attempt.outcome(&location, Err(glib::Error::new(kind, "cancelled"))),
+                MountOutcome::Cancelled
+            ),
+            "{kind:?} is the user backing out, not a failure"
+        );
+    }
+}

@@ -3277,26 +3277,24 @@ impl ViewState {
             location.clone(),
             strategy,
             credentials,
-            move |state, result, attempted_credentials, prompt_details| {
-                if mount_result_is_ok(&result) {
+            move |state, outcome| match outcome {
+                MountOutcome::Mounted => {
                     state.browser.navigate(location.clone());
                     state.location_stack.set_visible_child_name("breadcrumbs");
                     state.browser.focus_active();
-                } else if let Err(error) = result {
-                    if mount_error_is_authentication_failure(&location, &error) {
-                        state.prompt_to_retry_navigation(
-                            location.clone(),
-                            strategy,
-                            attempted_credentials,
-                            prompt_details,
-                        );
-                    } else {
-                        state.restore_location_text();
-                        state.location_stack.set_visible_child_name("breadcrumbs");
-                        if let Some(message) = mount_failure_message(&location, &error) {
-                            show_error_dialog(&state.overlay, "Unable to connect", &message);
-                        }
-                    }
+                }
+                MountOutcome::NeedsCredentials { attempted, details } => {
+                    state.prompt_to_retry_navigation(location.clone(), strategy, attempted, details)
+                }
+                MountOutcome::Cancelled => {
+                    state.restore_location_text();
+                    state.location_stack.set_visible_child_name("breadcrumbs");
+                    state.browser.focus_active();
+                }
+                MountOutcome::Failed(message) => {
+                    state.restore_location_text();
+                    state.location_stack.set_visible_child_name("breadcrumbs");
+                    show_error_dialog(&state.overlay, "Unable to connect", &message);
                 }
             },
         );
@@ -3322,21 +3320,19 @@ impl ViewState {
             location.clone(),
             strategy,
             credentials,
-            move |state, result, attempted_credentials, prompt_details| {
-                if mount_result_is_ok(&result) {
-                    state.browser.descend(parent_depth, location.clone());
-                } else if let Err(error) = result {
-                    if mount_error_is_authentication_failure(&location, &error) {
-                        state.prompt_to_retry_descend(
-                            parent_depth,
-                            location.clone(),
-                            strategy,
-                            attempted_credentials,
-                            prompt_details,
-                        );
-                    } else if let Some(message) = mount_failure_message(&location, &error) {
-                        show_error_dialog(&state.overlay, "Unable to connect", &message);
-                    }
+            move |state, outcome| match outcome {
+                MountOutcome::Mounted => state.browser.descend(parent_depth, location.clone()),
+                MountOutcome::NeedsCredentials { attempted, details } => state
+                    .prompt_to_retry_descend(
+                        parent_depth,
+                        location.clone(),
+                        strategy,
+                        attempted,
+                        details,
+                    ),
+                MountOutcome::Cancelled => {}
+                MountOutcome::Failed(message) => {
+                    show_error_dialog(&state.overlay, "Unable to connect", &message);
                 }
             },
         );
@@ -3442,12 +3438,7 @@ impl ViewState {
         location: Location,
         strategy: MountStrategy,
         credentials: Option<MountCredentials>,
-        on_result: impl Fn(
-            &Rc<Self>,
-            Result<(), glib::Error>,
-            Option<MountCredentials>,
-            Option<MountPromptDetails>,
-        ) + 'static,
+        on_result: impl Fn(&Rc<Self>, MountOutcome) + 'static,
     ) {
         if self.overlay.root().and_downcast::<gtk::Window>().is_none() {
             return;
@@ -3458,33 +3449,37 @@ impl ViewState {
         .begin_global_activity("Connecting…");
         let file = gio_file_for_location(&location);
         let operation = gio::MountOperation::new();
-        let prompt_overlay = self.overlay.clone();
+        let attempt = Rc::new(RefCell::new(MountAttempt::new(credentials)));
         let active_prompt = Rc::new(RefCell::new(None::<gtk::Box>));
+
+        let prompt_overlay = self.overlay.clone();
         let prompt_for_signal = active_prompt.clone();
-        let prompt_details = Rc::new(RefCell::new(None::<MountPromptDetails>));
-        let details_for_signal = prompt_details.clone();
-        let attempted_credentials = Rc::new(RefCell::new(credentials.clone()));
-        let attempts_for_signal = attempted_credentials.clone();
-        let supplied_credentials = Rc::new(RefCell::new(credentials));
-        let credentials_for_signal = supplied_credentials.clone();
-        let already_prompted = Cell::new(credentials_for_signal.borrow().is_some());
+        let attempt_for_password = attempt.clone();
         operation.connect_ask_password(
             move |operation, message, default_user, default_domain, flags| {
-                details_for_signal.replace(Some(MountPromptDetails {
-                    message: message.to_owned(),
-                    default_user: default_user.to_owned(),
-                    default_domain: default_domain.to_owned(),
-                    flags,
-                }));
-                if let Some(credentials) = credentials_for_signal.borrow_mut().take() {
-                    apply_mount_credentials(operation, &credentials);
-                    operation.reply(gio::MountOperationResult::Handled);
-                    return;
-                }
+                let request = attempt_for_password
+                    .borrow_mut()
+                    .ask_password(MountPromptDetails {
+                        message: message.to_owned(),
+                        default_user: default_user.to_owned(),
+                        default_domain: default_domain.to_owned(),
+                        flags,
+                    });
+                let retry = match request {
+                    PasswordRequest::Reply => {
+                        if let Some(credentials) =
+                            attempt_for_password.borrow().attempted.as_ref().cloned()
+                        {
+                            apply_mount_credentials(operation, &credentials);
+                        }
+                        operation.reply(gio::MountOperationResult::Handled);
+                        return;
+                    }
+                    PasswordRequest::Ask { retry } => retry,
+                };
                 if let Some(previous) = prompt_for_signal.borrow_mut().take() {
                     dismiss_authentication_prompt(&prompt_overlay, &previous);
                 }
-                let retry = already_prompted.replace(true);
                 let prompt = show_authentication_dialog(
                     &prompt_overlay,
                     Some(operation),
@@ -3494,10 +3489,8 @@ impl ViewState {
                     retry,
                     MountDialogHandlers {
                         submitted: Some(Rc::new({
-                            let attempts_for_signal = attempts_for_signal.clone();
-                            move |credentials| {
-                                attempts_for_signal.replace(Some(credentials));
-                            }
+                            let attempt = attempt_for_password.clone();
+                            move |credentials| attempt.borrow_mut().submitted(credentials)
                         })),
                         cancelled: None,
                     },
@@ -3523,12 +3516,8 @@ impl ViewState {
                 dismiss_authentication_prompt(&result_overlay, &prompt);
             }
             if let Some(state) = weak.upgrade() {
-                on_result(
-                    &state,
-                    result,
-                    attempted_credentials.borrow().clone(),
-                    prompt_details.borrow().clone(),
-                );
+                let outcome = attempt.borrow().outcome(&location, result);
+                on_result(&state, outcome);
             }
         });
     }
@@ -7860,6 +7849,84 @@ fn apply_mount_credentials(operation: &gio::MountOperation, credentials: &MountC
     operation.set_password_save(credentials.save);
 }
 
+/// How a finished mount attempt should be reported to the caller.
+enum MountOutcome {
+    Mounted,
+    /// The user backed out, so the browser returns to where it already was.
+    Cancelled,
+    NeedsCredentials {
+        attempted: Option<MountCredentials>,
+        details: Option<MountPromptDetails>,
+    },
+    Failed(String),
+}
+
+/// What a backend password request should do, given what the attempt has
+/// already asked the user.
+#[derive(Debug, Eq, PartialEq)]
+enum PasswordRequest {
+    /// Credentials the user already supplied are replayed without a prompt.
+    Reply,
+    /// The user must be asked; `retry` marks a second or later request, which
+    /// only happens after the backend rejected the previous answer.
+    Ask { retry: bool },
+}
+
+/// Tracks what a single mount attempt has already asked the user, so the
+/// credential prompt is shown once per backend request rather than looping.
+#[derive(Default)]
+struct MountAttempt {
+    supplied: Option<MountCredentials>,
+    attempted: Option<MountCredentials>,
+    prompted: bool,
+    details: Option<MountPromptDetails>,
+}
+
+impl MountAttempt {
+    fn new(credentials: Option<MountCredentials>) -> Self {
+        Self {
+            prompted: credentials.is_some(),
+            supplied: credentials.clone(),
+            attempted: credentials,
+            ..Self::default()
+        }
+    }
+
+    fn ask_password(&mut self, details: MountPromptDetails) -> PasswordRequest {
+        self.details = Some(details);
+        if self.supplied.take().is_some() {
+            return PasswordRequest::Reply;
+        }
+        PasswordRequest::Ask {
+            retry: std::mem::replace(&mut self.prompted, true),
+        }
+    }
+
+    fn submitted(&mut self, credentials: MountCredentials) {
+        self.attempted = Some(credentials);
+    }
+
+    fn outcome(&self, location: &Location, result: Result<(), glib::Error>) -> MountOutcome {
+        let error = match result {
+            Ok(()) => return MountOutcome::Mounted,
+            Err(error) if error.matches(gio::IOErrorEnum::AlreadyMounted) => {
+                return MountOutcome::Mounted;
+            }
+            Err(error) => error,
+        };
+        if mount_error_is_authentication_failure(location, &error) {
+            return MountOutcome::NeedsCredentials {
+                attempted: self.attempted.clone(),
+                details: self.details.clone(),
+            };
+        }
+        match mount_failure_message(location, &error) {
+            Some(message) => MountOutcome::Failed(message),
+            None => MountOutcome::Cancelled,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 enum MountStrategy {
     /// The location itself is accessible but sits on an unmounted volume.
@@ -7867,13 +7934,6 @@ enum MountStrategy {
     /// The location is itself the mountable target (an SMB share, a
     /// "Connect to Server" bookmark, ...).
     Mountable,
-}
-
-fn mount_result_is_ok(result: &Result<(), glib::Error>) -> bool {
-    match result {
-        Ok(()) => true,
-        Err(error) => error.matches(gio::IOErrorEnum::AlreadyMounted),
-    }
 }
 
 fn mount_error_is_authentication_failure(location: &Location, error: &glib::Error) -> bool {
