@@ -29,6 +29,7 @@ use super::{
 const SIDEBAR_WIDTH: i32 = 208;
 const MIN_SIDEBAR_WIDTH: i32 = 176;
 const SIDEBAR_TRANSITION: Duration = Duration::from_millis(300);
+const PINNED_DRAG_PREFIX: &str = "pinned:";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum MouseHistoryAction {
@@ -1089,14 +1090,15 @@ impl SidebarState {
             .pinned_places
             .borrow()
             .iter()
-            .filter(|(location, _)| !is_standard_place_location(location))
-            .cloned()
+            .enumerate()
+            .filter(|(_, (location, _))| !is_standard_place_location(location))
+            .map(|(index, (location, name))| (index, location.clone(), name.clone()))
             .collect::<Vec<_>>();
         if !pinned.is_empty() {
             self.append_separator();
             self.append_heading("PINNED");
-            for (location, name) in pinned {
-                self.append_pinned_place(&name, location);
+            for (index, location, name) in pinned {
+                self.append_pinned_place(index, &name, location);
             }
         }
 
@@ -1293,6 +1295,9 @@ impl SidebarState {
             let Ok(source) = value.get::<String>() else {
                 return false;
             };
+            if source.starts_with(PINNED_DRAG_PREFIX) {
+                return false;
+            }
             let after = y >= f64::from(target_row.height()) / 2.0;
             if let Some(state) = weak_state.upgrade() {
                 state.reorder_place(&source, id, after);
@@ -1307,6 +1312,15 @@ impl SidebarState {
     fn reorder_place(self: &Rc<Self>, source: &str, target: &str, after: bool) {
         let changed = reorder_places(&mut self.place_order.borrow_mut(), source, target, after);
         if changed {
+            self.rebuild();
+        }
+    }
+
+    fn reorder_pinned_place(self: &Rc<Self>, source: usize, target: usize, after: bool) {
+        let changed =
+            reorder_pinned_places(&mut self.pinned_places.borrow_mut(), source, target, after);
+        if changed {
+            save_pinned_places(&self.pinned_places.borrow());
             self.rebuild();
         }
     }
@@ -1441,8 +1455,9 @@ impl SidebarState {
         row.add_controller(context);
     }
 
-    fn append_pinned_place(self: &Rc<Self>, name: &str, location: Location) {
+    fn append_pinned_place(self: &Rc<Self>, index: usize, name: &str, location: Location) {
         let row = self.append_place(crate::assets::icons::FOLDER, name, location.clone());
+        self.make_pinned_row_reorderable(&row, index);
         let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
         menu.add_css_class("folder-context-menu");
         let unpin = sidebar_context_option(crate::assets::icons::PIN, "Unpin", false);
@@ -1496,6 +1511,50 @@ impl SidebarState {
         row.add_controller(context);
     }
 
+    fn make_pinned_row_reorderable(self: &Rc<Self>, row: &gtk::Button, index: usize) {
+        row.add_css_class("reorderable");
+        row.set_cursor_from_name(Some("grab"));
+
+        let drag = gtk::DragSource::builder()
+            .actions(gtk::gdk::DragAction::MOVE)
+            .build();
+        drag.connect_prepare(move |_, _, _| {
+            Some(gtk::gdk::ContentProvider::for_value(
+                &format!("{PINNED_DRAG_PREFIX}{index}").to_value(),
+            ))
+        });
+        let dragged_row = row.clone();
+        drag.connect_drag_begin(move |_, _| {
+            dragged_row.add_css_class("dragging");
+            dragged_row.set_cursor_from_name(Some("grabbing"));
+        });
+        let dragged_row = row.clone();
+        drag.connect_drag_end(move |_, _, _| {
+            dragged_row.remove_css_class("dragging");
+            dragged_row.set_cursor_from_name(Some("grab"));
+        });
+        row.add_controller(drag);
+
+        let drop = gtk::DropTarget::new(String::static_type(), gtk::gdk::DragAction::MOVE);
+        let weak_state = Rc::downgrade(self);
+        let target_row = row.clone();
+        drop.connect_drop(move |_, value, _, y| {
+            let Ok(source) = value.get::<String>() else {
+                return false;
+            };
+            let Some(source) = parse_pinned_drag_source(&source) else {
+                return false;
+            };
+            let after = y >= f64::from(target_row.height()) / 2.0;
+            if let Some(state) = weak_state.upgrade() {
+                state.reorder_pinned_place(source, index, after);
+                return true;
+            }
+            false
+        });
+        row.add_controller(drop);
+    }
+
     fn append_place(&self, icon: &str, name: &str, location: Location) -> gtk::Button {
         let row = sidebar_button(icon, name);
         row.set_tooltip_text(Some(&location.display_path()));
@@ -1541,6 +1600,30 @@ fn reorder_places(order: &mut Vec<&'static str>, source: &str, target: &str, aft
     };
     order.insert(target_index + usize::from(after), source);
     true
+}
+
+fn reorder_pinned_places(
+    places: &mut Vec<(Location, String)>,
+    source: usize,
+    target: usize,
+    after: bool,
+) -> bool {
+    if source == target || source >= places.len() || target >= places.len() {
+        return false;
+    }
+    let place = places.remove(source);
+    let target = target - usize::from(target > source);
+    let destination = (target + usize::from(after)).min(places.len());
+    if destination == source {
+        places.insert(source, place);
+        return false;
+    }
+    places.insert(destination, place);
+    true
+}
+
+fn parse_pinned_drag_source(source: &str) -> Option<usize> {
+    source.strip_prefix(PINNED_DRAG_PREFIX)?.parse().ok()
 }
 
 fn pin_status(places: &[(Location, String)], location: &Location) -> PinStatus {

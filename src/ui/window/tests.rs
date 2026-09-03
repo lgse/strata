@@ -6,9 +6,9 @@ use crate::services::{BuildKind, ReleaseMetadata};
 
 use super::{
     MouseHistoryAction, PinStatus, is_open_terminal_shortcut, is_sidebar_focus_shortcut,
-    is_smb_location, is_standard_place_location, mouse_history_action, parse_pinned_places,
-    pin_status, remove_pinned_place, reorder_places, serialize_pinned_places,
-    should_show_standard_place, sidebar_update_label, vim_focus_direction,
+    is_smb_location, is_standard_place_location, mouse_history_action, parse_pinned_drag_source,
+    parse_pinned_places, pin_status, remove_pinned_place, reorder_pinned_places, reorder_places,
+    serialize_pinned_places, should_show_standard_place, sidebar_update_label, vim_focus_direction,
 };
 
 fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
@@ -135,6 +135,74 @@ fn invalid_place_reorders_leave_the_order_unchanged() {
     assert!(!reorder_places(&mut places, "desktop", "missing", false));
     assert!(!reorder_places(&mut places, "desktop", "desktop", false));
     assert_eq!(places, original);
+}
+
+fn pinned(paths: &[&str]) -> Vec<(crate::model::Location, String)> {
+    paths
+        .iter()
+        .map(|path| {
+            (
+                crate::model::Location::local(format!("/home/user/{path}")),
+                (*path).to_owned(),
+            )
+        })
+        .collect()
+}
+
+fn pinned_names(places: &[(crate::model::Location, String)]) -> Vec<&str> {
+    places.iter().map(|(_, name)| name.as_str()).collect()
+}
+
+#[test]
+fn pinned_places_can_move_before_an_earlier_place() {
+    let mut places = pinned(&["Projects", "Notes", "Archive"]);
+
+    assert!(reorder_pinned_places(&mut places, 2, 0, false));
+    assert_eq!(pinned_names(&places), ["Archive", "Projects", "Notes"]);
+}
+
+#[test]
+fn pinned_places_can_move_after_a_later_place() {
+    let mut places = pinned(&["Projects", "Notes", "Archive"]);
+
+    assert!(reorder_pinned_places(&mut places, 0, 2, true));
+    assert_eq!(pinned_names(&places), ["Notes", "Archive", "Projects"]);
+}
+
+#[test]
+fn pinned_reorders_that_keep_the_position_are_ignored() {
+    let original = pinned(&["Projects", "Notes", "Archive"]);
+    let mut places = original.clone();
+
+    assert!(!reorder_pinned_places(&mut places, 1, 1, false));
+    assert!(!reorder_pinned_places(&mut places, 1, 0, true));
+    assert!(!reorder_pinned_places(&mut places, 1, 2, false));
+    assert_eq!(places, original);
+}
+
+#[test]
+fn out_of_range_pinned_reorders_leave_the_order_unchanged() {
+    let original = pinned(&["Projects", "Notes"]);
+    let mut places = original.clone();
+
+    assert!(!reorder_pinned_places(&mut places, 5, 0, false));
+    assert!(!reorder_pinned_places(&mut places, 0, 5, true));
+    assert_eq!(places, original);
+}
+
+#[test]
+fn pinned_reorders_leave_the_other_places_untouched() {
+    let mut places = pinned(&["Documents", "Projects", "Notes"]);
+
+    assert!(reorder_pinned_places(&mut places, 2, 1, false));
+    assert_eq!(pinned_names(&places), ["Documents", "Notes", "Projects"]);
+}
+
+#[test]
+fn only_pinned_drag_payloads_resolve_to_a_pinned_place() {
+    assert_eq!(parse_pinned_drag_source("pinned:3"), Some(3));
+    assert_eq!(parse_pinned_drag_source("documents"), None);
+    assert_eq!(parse_pinned_drag_source("pinned:documents"), None);
 }
 
 #[test]
