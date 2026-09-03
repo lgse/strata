@@ -719,7 +719,7 @@ fn home_trash_entries_at(
             continue;
         }
         let source_path = files_root.join(OsString::from_vec(file_name.to_vec()));
-        if !source_path.exists() {
+        if std::fs::symlink_metadata(&source_path).is_err() {
             continue;
         }
         let entry = RestoreEntry {

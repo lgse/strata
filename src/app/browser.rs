@@ -180,22 +180,64 @@ type PreferencesObserver = Rc<dyn Fn(ViewPreferences)>;
 
 const MAX_INCREMENTAL_OPERATION_UPDATES: usize = 64;
 
+#[derive(Default)]
+struct TrashUndoState {
+    generation: u64,
+    locations: Vec<Location>,
+    claimed: bool,
+}
+
 // Undo follows the latest operation across every Strata window on the GTK main thread.
 thread_local! {
-    static PENDING_TRASH_UNDO: RefCell<Vec<Location>> = const { RefCell::new(Vec::new()) };
+    static PENDING_TRASH_UNDO: RefCell<TrashUndoState> = RefCell::new(TrashUndoState::default());
 }
 
 fn replace_pending_trash_undo(locations: Vec<Location>) {
-    PENDING_TRASH_UNDO.with(|pending| pending.replace(locations));
+    PENDING_TRASH_UNDO.with(|pending| {
+        let generation = pending.borrow().generation.saturating_add(1);
+        pending.replace(TrashUndoState {
+            generation,
+            locations,
+            claimed: false,
+        });
+    });
 }
 
-fn take_pending_trash_undo() -> Vec<Location> {
-    PENDING_TRASH_UNDO.with(RefCell::take)
+fn claim_pending_trash_undo() -> Option<(u64, Vec<Location>)> {
+    PENDING_TRASH_UNDO.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        if pending.claimed || pending.locations.is_empty() {
+            return None;
+        }
+        pending.claimed = true;
+        Some((pending.generation, pending.locations.clone()))
+    })
+}
+
+fn mark_trash_undo_restored(generation: u64, location: &Location) {
+    PENDING_TRASH_UNDO.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        if pending.generation == generation {
+            pending.locations.retain(|candidate| candidate != location);
+        }
+    });
+}
+
+fn finish_trash_undo(generation: u64, completed: bool) {
+    PENDING_TRASH_UNDO.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        if pending.generation == generation {
+            if completed {
+                pending.locations.clear();
+            }
+            pending.claimed = false;
+        }
+    });
 }
 
 #[cfg(test)]
 fn pending_trash_undo() -> Vec<Location> {
-    PENDING_TRASH_UNDO.with(|pending| pending.borrow().clone())
+    PENDING_TRASH_UNDO.with(|pending| pending.borrow().locations.clone())
 }
 
 pub struct Browser {
@@ -213,6 +255,7 @@ pub struct Browser {
     deletion_operation: Cell<bool>,
     deletion_permanent: Cell<bool>,
     restoration_operation: Cell<bool>,
+    undo_restoration: RefCell<Option<(u64, Vec<Location>)>>,
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
     preferences: Cell<ViewPreferences>,
@@ -242,6 +285,7 @@ impl Browser {
             deletion_operation: Cell::new(false),
             deletion_permanent: Cell::new(false),
             restoration_operation: Cell::new(false),
+            undo_restoration: RefCell::new(None),
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
             preferences: Cell::new(preferences),
@@ -931,7 +975,6 @@ impl Browser {
         };
         let total = entries.len();
         let request_id = self.begin_operation();
-        replace_pending_trash_undo(Vec::new());
         self.deletion_operation.set(true);
         self.deletion_permanent.set(permanent);
         self.emit(BrowserEvent::DeletionStarted { total });
@@ -974,17 +1017,18 @@ impl Browser {
         if self.current_operation.get().is_some() {
             return false;
         }
-        let locations = take_pending_trash_undo();
-        if locations.is_empty() {
+        let Some((generation, locations)) = claim_pending_trash_undo() else {
             return false;
-        }
+        };
         let Some(provider) = self.operation_provider.borrow().clone() else {
-            replace_pending_trash_undo(locations);
+            finish_trash_undo(generation, false);
             return false;
         };
         let total = locations.len();
         let request_id = self.begin_operation();
         self.restoration_operation.set(true);
+        self.undo_restoration
+            .replace(Some((generation, locations.clone())));
         self.emit(BrowserEvent::RestorationStarted { total });
         let load = provider.restore(
             RestoreRequest {
@@ -1075,6 +1119,9 @@ impl Browser {
 
     fn begin_operation(&self) -> OperationRequestId {
         self.operation_load.borrow_mut().take();
+        if let Some((generation, _)) = self.undo_restoration.take() {
+            finish_trash_undo(generation, false);
+        }
         self.transfer_operation.set(None);
         self.deletion_operation.set(false);
         self.deletion_permanent.set(false);
@@ -1154,6 +1201,15 @@ impl Browser {
                 ..
             } = &event
             {
+                if restored_location.is_some()
+                    && let Some((generation, locations)) =
+                        browser.undo_restoration.borrow().as_ref()
+                    && let Some(location) = completed
+                        .checked_sub(1)
+                        .and_then(|index| locations.get(index))
+                {
+                    mark_trash_undo_restored(*generation, location);
+                }
                 if *total <= MAX_INCREMENTAL_OPERATION_UPDATES
                     && let Some(location) = restored_location
                 {
@@ -1184,6 +1240,12 @@ impl Browser {
             let deleting = browser.deletion_operation.replace(false);
             let deletion_permanent = browser.deletion_permanent.replace(false);
             let restoring = browser.restoration_operation.replace(false);
+            if restoring && let Some((generation, _)) = browser.undo_restoration.take() {
+                finish_trash_undo(
+                    generation,
+                    matches!(&event, OperationEvent::Restored { .. }),
+                );
+            }
             if deleting && !deletion_permanent {
                 let locations = match &event {
                     OperationEvent::Deleted { locations, .. } => locations.clone(),

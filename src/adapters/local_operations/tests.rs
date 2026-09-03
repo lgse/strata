@@ -1201,7 +1201,7 @@ fn extraction_supports_nesting_and_regular_conflicts() -> Result<(), Box<dyn Err
 }
 
 #[test]
-fn home_trash_fallback_finds_entries_the_virtual_backend_has_not_refreshed()
+fn home_trash_fallback_finds_broken_symlinks_the_virtual_backend_has_not_refreshed()
 -> Result<(), Box<dyn Error>> {
     let unique = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)?
@@ -1211,7 +1211,7 @@ fn home_trash_fallback_finds_entries_the_virtual_backend_has_not_refreshed()
     let original = fixture.join("original report.txt");
     fs::create_dir_all(trash.join("files"))?;
     fs::create_dir_all(trash.join("info"))?;
-    fs::write(trash.join("files/report.txt"), b"fixture")?;
+    std::os::unix::fs::symlink("missing-target", trash.join("files/report.txt"))?;
     let encoded = original.display().to_string().replace(' ', "%20");
     fs::write(
         trash.join("info/report.txt.trashinfo"),

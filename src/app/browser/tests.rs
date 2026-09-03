@@ -602,10 +602,10 @@ fn another_browser_can_undo_the_latest_trash_operation() {
 }
 
 #[test]
-fn permanent_delete_does_not_create_an_undo_operation() {
+fn permanent_delete_preserves_the_previous_trash_undo() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
-    let entry = FileEntry {
+    let trashed = FileEntry {
         location: Location::local("/fixture/report.txt"),
         native_name: OsString::from("report.txt"),
         display_name: "report.txt".into(),
@@ -614,10 +614,33 @@ fn permanent_delete_does_not_create_an_undo_operation() {
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
     };
+    let permanently_deleted = FileEntry {
+        location: Location::local("/fixture/draft.txt"),
+        native_name: OsString::from("draft.txt"),
+        display_name: "draft.txt".into(),
+        ..trashed.clone()
+    };
 
-    browser.delete(vec![entry], true);
+    browser.delete(vec![trashed], false);
+    browser.delete(vec![permanently_deleted], true);
 
-    assert!(!browser.undo_last_trash());
+    assert!(browser.undo_last_trash());
+}
+
+#[test]
+fn failed_and_partial_undo_operations_can_be_retried() {
+    let first = Location::local("/fixture/first.txt");
+    let second = Location::local("/fixture/second.txt");
+    replace_pending_trash_undo(vec![first.clone(), second.clone()]);
+    let (generation, _) = claim_pending_trash_undo().expect("undo claim");
+
+    mark_trash_undo_restored(generation, &first);
+    finish_trash_undo(generation, false);
+
+    assert_eq!(pending_trash_undo(), vec![second.clone()]);
+    let (retry_generation, retry) = claim_pending_trash_undo().expect("retry claim");
+    assert_eq!(retry, vec![second]);
+    finish_trash_undo(retry_generation, true);
 }
 
 #[test]
