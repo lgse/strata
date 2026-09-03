@@ -22,6 +22,9 @@ use crate::{
 const EXPLORER_COLUMN_WIDTHS: [i32; 4] = [160, 90, 120, 150];
 const EXPLORER_COLUMN_MIN_WIDTHS: [i32; 4] = [160, 70, 80, 110];
 const DEFAULT_GRID_THUMBNAIL_SIZE: i32 = 64;
+/// Margin and padding a grid card adds around its own width.
+const GRID_CARD_SPACING: i32 = 4;
+const FALLBACK_GRID_COLUMN_WIDTH: i32 = 160;
 const MIN_GRID_THUMBNAIL_SIZE: i32 = 64;
 const MAX_GRID_THUMBNAIL_SIZE: i32 = 256;
 
@@ -149,6 +152,8 @@ struct Pane {
     /// a grouped grid it holds nothing else, since entries live in group sections.
     section: PaneSection,
     sections: Rc<RefCell<Vec<PaneSection>>>,
+    groups: Option<Rc<GridGroups>>,
+    grid: Option<Rc<GridContext>>,
     targets: super::marquee::MarqueeTargets,
     /// Set while a reload has detached the pane's models from their views.
     detached: Rc<Cell<bool>>,
@@ -661,6 +666,7 @@ impl ModeViews {
                         state: self.context_state.borrow().clone(),
                         thumbnail_size: self.grid_thumbnail_size.clone(),
                         active_new_entry: self.active_new_entry.clone(),
+                        group_by_type: self.group_by_type,
                         density: self.density,
                     },
                     *depth,
@@ -703,6 +709,7 @@ impl ModeViews {
                         let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
                         pane.model.splice(insertion.position as u32, 0, &values_ref);
                     }
+                    sync_grid_groups(pane);
                     if !pane.spinner.is_spinning() {
                         show_count(pane);
                     }
@@ -742,6 +749,7 @@ impl ModeViews {
                             &values_ref,
                         );
                     }
+                    sync_grid_groups(pane);
                     show_count(pane);
                 }
             }
@@ -756,6 +764,7 @@ impl ModeViews {
                         filtered.set_model(None::<&gio::ListModel>);
                     }
                     pane.model.splice(0, pane.model.n_items(), &[]);
+                    sync_grid_groups(pane);
                     pane.truncated_hint.set_visible(false);
                     pane.spinner.set_visible(true);
                     pane.spinner.start();
@@ -765,6 +774,7 @@ impl ModeViews {
             BrowserEvent::LoadFinished { depth, truncated } => {
                 for pane in self.panes_at(*depth) {
                     reconnect_pane_model(pane);
+                    sync_grid_groups(pane);
                     pane.spinner.stop();
                     pane.spinner.set_visible(false);
                     pane.truncated_hint.set_visible(*truncated);
@@ -909,6 +919,7 @@ impl ModeViews {
                 state: self.context_state.borrow().clone(),
                 thumbnail_size: self.grid_thumbnail_size.clone(),
                 active_new_entry: self.active_new_entry.clone(),
+                group_by_type: self.group_by_type,
                 density: self.density,
             },
             depth,
@@ -970,6 +981,7 @@ struct GridOptions {
     state: Option<Weak<super::browser::ViewState>>,
     thumbnail_size: Rc<Cell<i32>>,
     active_new_entry: Rc<RefCell<Option<ActiveModeNewEntry>>>,
+    group_by_type: bool,
     density: BrowserDensity,
 }
 
@@ -1172,6 +1184,24 @@ struct GridContext {
     density: Cell<BrowserDensity>,
 }
 
+type GridGroupBuilder = Rc<dyn Fn(&str) -> GridGroup>;
+
+#[derive(Clone)]
+struct GridGroup {
+    label: String,
+    heading: gtk::Widget,
+    section: PaneSection,
+}
+
+/// The grouped grid's heading-and-grid pairs, rebuilt as the file-type groups a
+/// directory contains change.
+struct GridGroups {
+    container: gtk::Box,
+    placeholder: gtk::Widget,
+    groups: RefCell<Vec<GridGroup>>,
+    build: RefCell<Option<GridGroupBuilder>>,
+}
+
 fn build_grid_pane(
     browser: Rc<Browser>,
     click_options: ModeClickOptions,
@@ -1221,15 +1251,47 @@ fn build_grid_pane(
         sections: Rc::downgrade(&sections),
         density: Cell::new(options.density),
     });
-    let flattened_models = gio::ListStore::new::<gio::ListModel>();
-    flattened_models.append(&new_entry_placeholder.clone().upcast::<gio::ListModel>());
-    flattened_models.append(&filtered_model.clone().upcast::<gio::ListModel>());
-    let view_model = gtk::FlattenListModel::new(Some(flattened_models));
-    let pane_section = build_grid_view(&context, &view_model, true);
-    sections.borrow_mut().push(pane_section.clone());
-    let root = pane_section.view.clone();
+    let (root, pane_section, groups) = if options.group_by_type {
+        let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        container.add_css_class("grid-type-groups");
+        let placeholder = build_grid_view(&context, &new_entry_placeholder, false);
+        placeholder.view.set_visible(false);
+        let placeholder_view = placeholder.view.clone();
+        new_entry_placeholder.connect_items_changed(move |model, _, _, _| {
+            placeholder_view.set_visible(model.n_items() > 0);
+        });
+        container.append(&placeholder.view);
+        // Groups take their natural height and the filler soaks up what is left, so a
+        // short group does not stretch to fill the viewport. It also keeps the blank
+        // area below the last group inside the marquee's drag surface.
+        let filler = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        filler.set_vexpand(true);
+        container.append(&filler);
+        let groups = Rc::new(GridGroups {
+            container: container.clone(),
+            placeholder: placeholder.view.clone(),
+            groups: RefCell::new(Vec::new()),
+            build: RefCell::new(None),
+        });
+        let build_context = context.clone();
+        let build_model = filtered_model.clone();
+        groups.build.replace(Some(Rc::new(move |label: &str| {
+            build_grid_group(&build_context, &build_model, label)
+        })));
+        (container.upcast::<gtk::Widget>(), placeholder, Some(groups))
+    } else {
+        let flattened_models = gio::ListStore::new::<gio::ListModel>();
+        flattened_models.append(&new_entry_placeholder.clone().upcast::<gio::ListModel>());
+        flattened_models.append(&filtered_model.clone().upcast::<gio::ListModel>());
+        let view_model = gtk::FlattenListModel::new(Some(flattened_models));
+        let section = build_grid_view(&context, &view_model, true);
+        sections.borrow_mut().push(section.clone());
+        (section.view.clone(), section, None)
+    };
 
     let pending_thumbnail_resize = Rc::new(RefCell::new(None::<glib::SourceId>));
+    let groups_for_pane = groups.clone();
+    let density_for_size = context.density.get();
     let sections_for_size = Rc::downgrade(&sections);
     let browser_for_size = Rc::downgrade(&context.browser);
     let source_for_size = model.clone();
@@ -1247,6 +1309,7 @@ fn build_grid_pane(
             let browser = browser_for_size.clone();
             let source = source_for_size.clone();
             let sections = sections_for_size.clone();
+            let groups_for_size = groups_for_pane.clone();
             let size_state = thumbnail_size_for_change.clone();
             let source_id =
                 glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
@@ -1258,15 +1321,40 @@ fn build_grid_pane(
                     for section in sections.borrow().iter() {
                         refresh_grid_thumbnail_size(&browser, depth, &source, section, size);
                     }
+                    if let Some(groups) = groups_for_size.as_ref() {
+                        refresh_group_columns(groups, groups.container.width(), density_for_size);
+                    }
                 });
             pending_thumbnail_resize.replace(Some(source_id));
         });
 
     let scroll = gtk::ScrolledWindow::builder()
         .child(&root)
+        .hscrollbar_policy(if groups.is_some() {
+            // Grouped grids wrap to the pane's width; only the ungrouped grid manages
+            // its own horizontal scrolling.
+            gtk::PolicyType::Never
+        } else {
+            gtk::PolicyType::Automatic
+        })
         .vexpand(true)
         .build();
     scroll.add_css_class("fixed-scrollbar");
+    if let Some(groups) = groups.clone() {
+        let context = Rc::downgrade(&context);
+        scroll
+            .hadjustment()
+            .connect_page_size_notify(move |adjustment| {
+                let Some(context) = context.upgrade() else {
+                    return;
+                };
+                refresh_group_columns(
+                    &groups,
+                    adjustment.page_size() as i32,
+                    context.density.get(),
+                );
+            });
+    }
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
     let (collection, marquee) =
         collection_with_marquee(&root, scroll, targets.clone(), "grid-card");
@@ -1279,6 +1367,8 @@ fn build_grid_pane(
         filter_model: Some(filtered_model),
         section: pane_section,
         sections,
+        groups,
+        grid: Some(context),
         targets,
         detached: Rc::new(Cell::new(false)),
         stack,
@@ -1296,6 +1386,35 @@ fn build_grid_pane(
     };
     refresh_marquee_targets(&pane);
     pane
+}
+
+/// A heading and the grid that renders one file-type group.
+fn build_grid_group(
+    context: &Rc<GridContext>,
+    entries: &gtk::FilterListModel,
+    label: &str,
+) -> GridGroup {
+    let heading = type_group_heading(label);
+    let group_model = gtk::FilterListModel::new(
+        Some(entries.clone()),
+        Some(type_group_filter(label.to_owned())),
+    );
+    let section = build_grid_view(context, &group_model, true);
+    let heading_for_items = heading.clone();
+    let view_for_items = section.view.clone();
+    let update_visibility = move |populated: bool| {
+        heading_for_items.set_visible(populated);
+        view_for_items.set_visible(populated);
+    };
+    update_visibility(group_model.n_items() > 0);
+    group_model.connect_items_changed(move |model, _, _, _| {
+        update_visibility(model.n_items() > 0);
+    });
+    GridGroup {
+        label: label.to_owned(),
+        heading: heading.upcast(),
+        section,
+    }
 }
 
 fn build_grid_view(
@@ -1516,11 +1635,117 @@ fn build_grid_view(
             depth,
             context.source.clone(),
         );
+        install_exclusive_section_click(&section, context);
     }
     if let Some(state) = context.state.as_ref().and_then(Weak::upgrade) {
         install_section_context_menu(&state, &section, &context.source, depth);
     }
     section
+}
+
+/// Keeps the grouped grid's sections in step with the file types the directory
+/// holds, adding and removing a heading and grid per type.
+fn sync_grid_groups(pane: &Pane) {
+    let Some(groups) = pane.groups.clone() else {
+        return;
+    };
+    let Some(build) = groups.build.borrow().clone() else {
+        return;
+    };
+    let desired = source_type_groups(&pane.model);
+    let existing = groups.groups.borrow().clone();
+    if existing.len() == desired.len()
+        && existing
+            .iter()
+            .zip(desired.iter())
+            .all(|(group, label)| group.label == *label)
+    {
+        return;
+    }
+    for group in &existing {
+        if !desired.contains(&group.label) {
+            groups.container.remove(&group.heading);
+            groups.container.remove(&group.section.view);
+        }
+    }
+    let mut next = Vec::with_capacity(desired.len());
+    let mut previous = groups.placeholder.clone();
+    for label in &desired {
+        let group = match existing.iter().find(|group| group.label == *label) {
+            Some(group) => {
+                groups
+                    .container
+                    .reorder_child_after(&group.heading, Some(&previous));
+                groups
+                    .container
+                    .reorder_child_after(&group.section.view, Some(&group.heading));
+                group.clone()
+            }
+            None => {
+                let group = build(label);
+                groups
+                    .container
+                    .insert_child_after(&group.heading, Some(&previous));
+                groups
+                    .container
+                    .insert_child_after(&group.section.view, Some(&group.heading));
+                group
+            }
+        };
+        previous = group.section.view.clone();
+        next.push(group);
+    }
+    *pane.sections.borrow_mut() = next.iter().map(|group| group.section.clone()).collect();
+    *groups.groups.borrow_mut() = next;
+    refresh_marquee_targets(pane);
+    if let Some(context) = pane.grid.as_ref() {
+        let density = context.density.get();
+        let groups = groups.clone();
+        // Cards bind during the next layout pass, so the columns they allow are only
+        // measurable once it has run.
+        glib::idle_add_local_once(move || {
+            refresh_group_columns(&groups, groups.container.width(), density);
+        });
+    }
+}
+
+/// A grouped grid shares one scroller with its siblings, so it has to ask for the
+/// height its own rows need. `GtkGridView` only knows its row count once its column
+/// count is fixed, so the columns are pinned to what the viewport width allows and
+/// recomputed whenever that width or the card size changes.
+fn refresh_group_columns(groups: &Rc<GridGroups>, width: i32, density: BrowserDensity) {
+    if width <= 0 {
+        return;
+    }
+    let groups = groups.groups.borrow();
+    let column = groups
+        .iter()
+        .find_map(|group| measured_card_width(&group.section))
+        .unwrap_or(FALLBACK_GRID_COLUMN_WIDTH);
+    let columns = (width / column.max(1)).clamp(1, density_grid_columns(density) as i32) as u32;
+    for group in groups.iter() {
+        let Ok(grid) = group.section.view.clone().downcast::<gtk::GridView>() else {
+            continue;
+        };
+        if grid.min_columns() == columns && grid.max_columns() == columns {
+            continue;
+        }
+        if columns > grid.max_columns() {
+            grid.set_max_columns(columns);
+            grid.set_min_columns(columns);
+        } else {
+            grid.set_min_columns(columns);
+            grid.set_max_columns(columns);
+        }
+    }
+}
+
+fn measured_card_width(section: &PaneSection) -> Option<i32> {
+    section.bound_items.borrow().iter().find_map(|bound| {
+        let widget = bound.widget.upgrade()?;
+        let (_, natural, _, _) = widget.measure(gtk::Orientation::Horizontal, -1);
+        (natural > 0).then_some(natural + GRID_CARD_SPACING)
+    })
 }
 
 fn refresh_marquee_targets(pane: &Pane) {
@@ -1582,19 +1807,29 @@ fn refresh_grid_thumbnail_size(
 }
 
 fn configure_grid_density(pane: &Pane, density: BrowserDensity) {
+    if let Some(context) = pane.grid.as_ref() {
+        context.density.set(density);
+    }
     for section in pane.all_sections() {
         if let Ok(grid) = section.view.clone().downcast::<gtk::GridView>() {
             configure_grid_view_density(&grid, density);
         }
     }
+    if let Some(groups) = pane.groups.as_ref() {
+        refresh_group_columns(groups, groups.container.width(), density);
+    }
 }
 
 fn configure_grid_view_density(grid: &gtk::GridView, density: BrowserDensity) {
     grid.set_min_columns(1);
-    grid.set_max_columns(match density {
+    grid.set_max_columns(density_grid_columns(density));
+}
+
+fn density_grid_columns(density: BrowserDensity) -> u32 {
+    match density {
         BrowserDensity::Compact => 20,
         BrowserDensity::Airy => 16,
-    });
+    }
 }
 
 fn explorer_headings(
@@ -2154,6 +2389,8 @@ fn build_explorer_pane(
         filter_model: Some(filtered_model),
         section,
         sections,
+        groups: None,
+        grid: None,
         targets,
         detached: Rc::new(Cell::new(false)),
         stack,
@@ -2717,6 +2954,7 @@ fn replace_entries(pane: &Pane, entries: &[FileEntry]) {
         .collect();
     let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
     pane.model.splice(0, pane.model.n_items(), &values_ref);
+    sync_grid_groups(pane);
     show_count(pane);
 }
 
@@ -2840,6 +3078,28 @@ fn type_group_sorter() -> gtk::CustomSorter {
     })
 }
 
+fn type_group_filter(label: String) -> gtk::CustomFilter {
+    gtk::CustomFilter::new(move |item| value_type_group(&model_value(item)) == label)
+}
+
+/// Every file-type group the loaded entries fall into, in the order they are shown.
+fn source_type_groups(model: &gtk::StringList) -> Vec<String> {
+    type_groups_of((0..model.n_items()).filter_map(|index| model.string(index)))
+}
+
+fn type_groups_of(values: impl Iterator<Item = impl AsRef<str>>) -> Vec<String> {
+    let mut labels: Vec<String> = Vec::new();
+    for value in values {
+        let label = super::browser::model_type_group(value.as_ref());
+        if let Err(position) =
+            labels.binary_search_by(|candidate| compare_type_groups(candidate, &label))
+        {
+            labels.insert(position, label);
+        }
+    }
+    labels
+}
+
 fn type_group_heading(label: &str) -> gtk::Label {
     let heading = gtk::Label::new(Some(label));
     heading.add_css_class("type-group-heading");
@@ -2919,6 +3179,52 @@ fn sync_browser_selection(
     positions.dedup();
     let focused = focused.or_else(|| positions.last().copied());
     browser.set_selection(depth, &positions, focused);
+}
+
+/// A plain click selects only what it lands on, so it clears the sections it did not
+/// land in. Modified clicks extend the selection and leave them alone.
+fn install_exclusive_section_click(section: &PaneSection, context: &Rc<GridContext>) {
+    let click = gtk::GestureClick::new();
+    click.set_button(1);
+    click.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let sections = context.sections.clone();
+    let browser = Rc::downgrade(&context.browser);
+    let source = context.source.clone();
+    let depth = context.depth;
+    click.connect_pressed(move |gesture, _, x, y| {
+        if gesture
+            .current_event_state()
+            .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
+        {
+            return;
+        }
+        let Some(view) = gesture.widget() else {
+            return;
+        };
+        if !view
+            .pick(x, y, gtk::PickFlags::DEFAULT)
+            .is_some_and(|picked| widget_or_ancestor_has_class(&picked, "grid-card"))
+        {
+            return;
+        }
+        let (Some(sections), Some(browser)) = (sections.upgrade(), browser.upgrade()) else {
+            return;
+        };
+        let mut cleared = false;
+        for other in sections.borrow().iter() {
+            if other.view == view || other.selection.selection().is_empty() {
+                continue;
+            }
+            other.syncing.set(true);
+            other.selection.unselect_all();
+            other.syncing.set(false);
+            cleared = true;
+        }
+        if cleared {
+            sync_browser_selection(&sections, &browser, depth, &source, None);
+        }
+    });
+    section.view.add_controller(click);
 }
 
 /// The view position of the item `picked` belongs to, when it is one of the section's

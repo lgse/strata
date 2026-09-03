@@ -2978,6 +2978,10 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   padding: 10px 12px 4px;
 }
 
+.grid-type-groups .type-group-heading {
+  margin: 0 6px;
+}
+
 .explorer-pane {
   background: @theme_bg;
   color: @theme_text;

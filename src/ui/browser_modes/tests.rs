@@ -2,7 +2,8 @@
 
 use super::{
     BrowserMode, ClickActivation, ClickCount, EXPLORER_COLUMN_MIN_WIDTHS, EXPLORER_COLUMN_WIDTHS,
-    compare_type_groups, explorer_column_width, should_activate_pointer_click, value_type_group,
+    compare_type_groups, explorer_column_width, should_activate_pointer_click, type_groups_of,
+    value_type_group,
 };
 
 /// Model values as the panes store them: kind, hidden flag, then the display name.
@@ -81,6 +82,22 @@ fn the_inline_new_entry_row_sorts_ahead_of_every_group() {
     assert!(compare_type_groups("", "Folder").is_lt());
     assert!(compare_type_groups("", "JSON document").is_lt());
     assert_eq!(value_type_group(""), "");
+}
+
+#[test]
+fn every_loaded_type_appears_once_with_folders_first() {
+    let values = [
+        value('f', "notes.json"),
+        value('d', "projects"),
+        value('f', "data.json"),
+        value('d', "archive"),
+    ];
+
+    let groups = type_groups_of(values.iter());
+
+    assert_eq!(groups.len(), 2);
+    assert_eq!(groups[0], "Folder");
+    assert_eq!(groups[1], value_type_group(&value('f', "notes.json")));
 }
 
 #[test]
