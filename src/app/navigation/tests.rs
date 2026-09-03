@@ -24,6 +24,7 @@ fn named_entry(path: &str, name: &str) -> FileEntry {
         kind: EntryKind::Directory,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
     }
 }
 
@@ -373,6 +374,64 @@ fn parent_removes_the_deepest_committed_column() {
     assert_eq!(parent.locations(), &[location("/home")]);
 }
 
+fn hidden_entry(path: &str, name: &str) -> FileEntry {
+    FileEntry {
+        location: location(path),
+        native_name: OsString::from(name),
+        display_name: name.into(),
+        kind: EntryKind::Directory,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: true,
+    }
+}
+
+#[test]
+fn keyboard_selection_skips_hidden_entries_when_hidden_files_are_not_shown() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/home/alpha", "alpha"),
+            hidden_entry("/home/bravo", "bravo"),
+            named_entry("/home/charlie", "charlie"),
+        ],
+    );
+
+    assert_eq!(state.move_selection(1), Some((0, 0)));
+    assert_eq!(state.move_selection(1), Some((0, 2)));
+    assert_eq!(state.move_selection(1), Some((0, 2)));
+    assert_eq!(state.move_selection(-1), Some((0, 0)));
+    assert_eq!(state.move_selection(-1), Some((0, 0)));
+
+    state.set_show_hidden(true);
+    assert_eq!(state.move_selection(1), Some((0, 1)));
+    assert_eq!(state.move_selection(1), Some((0, 2)));
+}
+
+#[test]
+fn keyboard_selection_extension_skips_hidden_entries() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/home/alpha", "alpha"),
+            hidden_entry("/home/bravo", "bravo"),
+            named_entry("/home/charlie", "charlie"),
+        ],
+    );
+    assert!(state.select(0, 0));
+
+    assert_eq!(
+        state.extend_selection(1).map(|(_, _, range)| range),
+        Some(vec![0, 2])
+    );
+    assert_eq!(state.selected_entries().len(), 2);
+    assert!(!state.selected_entries().iter().any(|e| e.is_hidden));
+}
+
 #[test]
 fn keyboard_selection_is_bounded_and_tracks_the_active_column() {
     let mut state = NavigationState::default();
@@ -453,6 +512,39 @@ fn batches_are_merged_into_one_global_sort_order() {
     assert_eq!(state.columns[0].entries[0].display_name, "a");
     assert_eq!(state.columns[0].entries[1].display_name, "z");
     assert_eq!(state.columns[0].selected, Some(1));
+}
+
+#[test]
+fn names_are_sorted_case_insensitively() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/apple", "apple"),
+            named_entry("/fixture/Banana", "Banana"),
+            named_entry("/fixture/cherry", "cherry"),
+            named_entry("/fixture/Date", "Date"),
+        ],
+    );
+
+    assert_eq!(
+        state.columns[0]
+            .entries
+            .iter()
+            .map(|entry| entry.display_name.as_str())
+            .collect::<Vec<_>>(),
+        ["apple", "Banana", "cherry", "Date"]
+    );
+}
+
+#[test]
+fn names_that_differ_only_by_case_have_a_deterministic_order() {
+    assert_eq!(compare_display_names("file", "FILE"), Ordering::Greater);
+    assert_eq!(
+        compare_display_names("Straße", "STRASSE"),
+        Ordering::Greater
+    );
 }
 
 #[test]

@@ -57,7 +57,7 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
 
 ## Installation
 
-Arch Linux and Omarchy are the primary supported environments; current binaries require **glibc 2.39 or newer** and the runtime libraries listed below. Arch users should install from the AUR. Every other platform installs a release archive manually.
+Arch Linux and Omarchy are the primary supported environments. Current binaries require **glibc 2.39 or newer** and the runtime libraries listed below.
 
 ### Arch Linux (AUR)
 
@@ -65,19 +65,19 @@ Arch Linux and Omarchy are the primary supported environments; current binaries 
 paru -S strata-bin        # or: yay -S strata-bin
 ```
 
-`strata-bin` installs the stable release; `strata-rc-bin` tracks the newest release candidate. Both install the published binary unmodified, and either one can be installed at a time — they conflict, so switching channels means installing the other package. Nightly builds are not packaged; install those manually and update in-app.
+`strata-bin` installs the stable release; `strata-rc-bin` tracks the newest release candidate. The packages conflict, so switch channels by installing the other package. Nightly builds are not packaged; install those manually and update in-app.
 
-Releases whose archive carries the desktop entry and application icon install a launcher too; releases published before that metadata was added install the `strata` command only.
-
-Update through your AUR helper — `pacman` cannot update an AUR package, because no configured repository carries it:
+Update through your AUR helper — `pacman` cannot update an AUR package because no configured repository carries it:
 
 ```bash
 paru -Sua                 # or: yay -Sua
 ```
 
-A package-managed install still reports new releases in **Settings → Updates**, but never installs over `/usr/bin/strata`, which pacman owns. Maintainers: see [`docs/packaging.md`](docs/packaging.md).
+Package-managed installs report new releases in **Settings → Updates**, but never overwrite the binary owned by pacman. Maintainers: see [`docs/packaging.md`](docs/packaging.md).
 
 ### AI-assisted installation
+
+Use this option to have a coding agent install and verify the latest release archive.
 
 Give this prompt to a coding agent with terminal access:
 
@@ -109,7 +109,9 @@ Then:
   desktop association if one was requested. Do not weaken the preview sandbox.
 ```
 
-### Manual installation
+### Manual release installation
+
+Install the release archive directly to receive stable releases as soon as they are published and to select any available release channel.
 
 #### 1. Check the architecture and install dependencies
 
@@ -128,8 +130,8 @@ On Arch Linux or Omarchy:
 ```bash
 sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
   gst-libav gst-plugins-good gtk4 gtksourceview5 poppler-glib
-# Optional SMB support:
-sudo pacman -S --needed gvfs-smb
+# Optional SMB and broader camera RAW support:
+sudo pacman -S --needed gvfs-smb imagemagick libraw dcraw
 ```
 
 GTK **4.12 or newer** and glibc **2.39 or newer** are required. Other glibc-based distributions may work when they provide equivalent runtime libraries, but their package names and binary compatibility vary. Systems with an older glibc must [build Strata from source](#development-and-documentation).
@@ -156,9 +158,13 @@ strata
 
 If `command -v` fails, add `$HOME/.local/bin` to your shell's `PATH`. Every archive contains `SOURCE_COMMIT`, identifying the exact source revision used by GitHub Actions.
 
+#### Debug a release crash
+
+Download the matching `strata-<version>-<target>.debug` asset from the same release and place it beside the installed `strata` binary, keeping its filename unchanged. Then run `coredumpctl debug strata`; GDB will load its Rust function names and source lines.
+
 #### 3. Update or uninstall
 
-Use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. In-app updates apply to manual installs only; a package-managed install updates through its package manager. To remove a per-user installation:
+For a manual release installation, use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. Package-managed installations are updated only by their system package manager. To remove a per-user installation:
 
 ```bash
 rm -f ~/.local/bin/strata \
@@ -179,7 +185,7 @@ strata                 # home directory
 strata ~/Documents     # a specific directory
 ```
 
-Useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation.
+Useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo the latest move to Trash, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation.
 
 ### Desktop entry
 

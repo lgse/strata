@@ -43,7 +43,7 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
 
     let (png, metadata) = match operation.as_str() {
         "thumbnail-image" => (render_pixbuf(input, value.clamp(16, 256))?, None),
-        "thumbnail-raw" => (render_raw(input, value.clamp(16, 256))?, None),
+        "thumbnail-raw" => (render_raw_thumbnail(input, value.clamp(16, 256))?, None),
         "thumbnail-pdf" => (render_pdf_thumbnail(input, value.clamp(16, 256))?, None),
         "thumbnail-video" => (render_media(input, value.clamp(16, 256))?, None),
         "preview-image" => (render_raw(input, 1400)?, None),
@@ -73,6 +73,13 @@ fn render_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     render_pixbuf(path, size)
         .or_else(|_| render_imagemagick(path, size))
         .or_else(|_| render_dcraw(path, size))
+}
+
+fn render_raw_thumbnail(path: &Path, size: i32) -> Result<Vec<u8>, String> {
+    // Prefer the camera JPEG so ImageMagick does not demosaic the list thumbnail.
+    render_dcraw(path, size)
+        .or_else(|_| render_pixbuf(path, size))
+        .or_else(|_| render_imagemagick(path, size))
 }
 
 fn render_imagemagick(path: &Path, size: i32) -> Result<Vec<u8>, String> {

@@ -11,6 +11,7 @@ fn terminal_shortcut_prefers_one_selected_directory() {
         kind,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
     };
     let directory = entry("selected", crate::model::EntryKind::Directory);
     let file = entry("notes.txt", crate::model::EntryKind::File);
@@ -183,6 +184,7 @@ fn delete_confirmation_labels_distinguish_files_and_folders() {
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Known(10),
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
     };
     let mut folder = file.clone();
     folder.kind = crate::model::EntryKind::Directory;
@@ -193,6 +195,104 @@ fn delete_confirmation_labels_distinguish_files_and_folders() {
     assert_eq!(entry_kind_summary(&[file.clone(), file.clone()]), "2 files");
     assert_eq!(entry_kind_summary(&[folder.clone()]), "1 folder");
     assert_eq!(entry_kind_summary(&[file, folder]), "2 items");
+}
+
+#[test]
+fn folder_peek_uses_visible_mode_bounds() {
+    assert_eq!(
+        peek_origin_bounds(BrowserMode::Columns),
+        PeekOriginBounds::Column
+    );
+    assert_eq!(
+        peek_origin_bounds(BrowserMode::Grid),
+        PeekOriginBounds::Anchor
+    );
+    assert_eq!(
+        peek_origin_bounds(BrowserMode::Explorer),
+        PeekOriginBounds::Anchor
+    );
+}
+
+#[test]
+fn folder_peek_prefers_space_to_the_right_of_its_source_column() {
+    assert_eq!(
+        peek_horizontal_placement(100.0, 300.0, 800.0),
+        Some(PeekPlacement {
+            x: 408.0,
+            side: PeekSide::Right,
+        })
+    );
+}
+
+#[test]
+fn folder_peek_uses_the_left_only_when_it_fits_outside_the_source_column() {
+    assert_eq!(
+        peek_horizontal_placement(300.0, 300.0, 700.0),
+        Some(PeekPlacement {
+            x: 36.0,
+            side: PeekSide::Left,
+        })
+    );
+    assert_eq!(peek_horizontal_placement(200.0, 300.0, 700.0), None);
+}
+
+#[test]
+fn folder_peek_animation_moves_toward_its_placement_side() {
+    assert_eq!(
+        peek_transition(PeekSide::Left),
+        gtk::RevealerTransitionType::SlideLeft
+    );
+    assert_eq!(
+        peek_transition(PeekSide::Right),
+        gtk::RevealerTransitionType::SlideRight
+    );
+}
+
+#[test]
+fn folder_peek_animation_is_anchored_to_the_source_side() {
+    assert_eq!(
+        peek_horizontal_layout(
+            PeekPlacement {
+                x: 408.0,
+                side: PeekSide::Right,
+            },
+            800.0,
+        ),
+        (gtk::Align::Start, 408, 0)
+    );
+    assert_eq!(
+        peek_horizontal_layout(
+            PeekPlacement {
+                x: 36.0,
+                side: PeekSide::Left,
+            },
+            700.0,
+        ),
+        (gtk::Align::End, 0, 408)
+    );
+}
+
+#[test]
+fn folder_peek_accepts_an_exact_viewport_fit() {
+    assert_eq!(
+        peek_horizontal_placement(0.0, 300.0, 564.0),
+        Some(PeekPlacement {
+            x: 308.0,
+            side: PeekSide::Right,
+        })
+    );
+}
+
+#[test]
+fn small_operations_delay_progress_while_large_or_unbounded_operations_show_it_immediately() {
+    assert!(!should_show_progress_immediately(1));
+    assert!(!should_show_progress_immediately(
+        IMMEDIATE_PROGRESS_ITEM_COUNT - 1
+    ));
+    assert!(should_show_progress_immediately(
+        IMMEDIATE_PROGRESS_ITEM_COUNT
+    ));
+    assert!(should_show_progress_immediately(0));
 }
 
 #[test]
@@ -255,6 +355,7 @@ fn quick_preview_is_offered_only_for_supported_files() {
         kind,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
     };
 
     assert!(entry_supports_quick_preview(&entry(
@@ -264,6 +365,10 @@ fn quick_preview_is_offered_only_for_supported_files() {
     assert!(entry_supports_quick_preview(&entry(
         "notes.txt",
         crate::model::EntryKind::FileSymbolicLink,
+    )));
+    assert!(entry_supports_quick_preview(&entry(
+        ".steampath",
+        crate::model::EntryKind::File,
     )));
     assert!(!entry_supports_quick_preview(&entry(
         "archive.zip",
@@ -277,10 +382,10 @@ fn quick_preview_is_offered_only_for_supported_files() {
     let supported = entry("photo.png", crate::model::EntryKind::File);
     let unsupported = entry("archive.zip", crate::model::EntryKind::File);
     let directory = entry("photos", crate::model::EntryKind::Directory);
-    assert!(entry_responds_to_single_click(&supported, true));
-    assert!(!entry_responds_to_single_click(&supported, false));
-    assert!(!entry_responds_to_single_click(&unsupported, true));
-    assert!(entry_responds_to_single_click(&directory, false));
+    assert!(entry_responds_to_preview_click(&supported, true));
+    assert!(!entry_responds_to_preview_click(&supported, false));
+    assert!(!entry_responds_to_preview_click(&unsupported, true));
+    assert!(!entry_responds_to_preview_click(&directory, true));
 }
 
 #[test]
@@ -356,6 +461,7 @@ fn multi_selection_summary_lists_at_most_three_names() {
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
     };
 
     assert_eq!(
@@ -525,6 +631,33 @@ fn pointer_preview_handler_ignores_double_click_activation() {
     assert!(!should_preview_pointer_press(1, true, false, false));
     assert!(!should_preview_pointer_press(1, false, true, false));
     assert!(!should_preview_pointer_press(1, false, false, true));
+}
+
+#[test]
+fn pointer_activation_respects_entry_type_click_count_and_modifiers() {
+    let activation = ClickActivation {
+        files: ClickCount::Two,
+        folders: ClickCount::One,
+    };
+
+    assert!(should_activate_single_click(
+        1, true, activation, false, false, false
+    ));
+    assert!(!should_activate_single_click(
+        1, false, activation, false, false, false
+    ));
+    assert!(!should_activate_single_click(
+        2, true, activation, false, false, false
+    ));
+    assert!(!should_activate_single_click(
+        1, true, activation, true, false, false
+    ));
+    assert!(!should_activate_single_click(
+        1, true, activation, false, true, false
+    ));
+    assert!(!should_activate_single_click(
+        1, true, activation, false, false, true
+    ));
 }
 
 #[test]
@@ -1032,4 +1165,112 @@ fn trash_summary_does_not_stop_enumerating_siblings_after_one_branch_is_depth_tr
         "every sibling should be counted (1 for \"parent\" plus one per sub-N directory), \
          not just the first next_files_future batch"
     );
+}
+
+#[test]
+fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
+    let visible = FileEntry {
+        location: Location::local("/fixture/photo"),
+        native_name: "photo".into(),
+        display_name: "photo".into(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let hidden = FileEntry {
+        location: Location::local("/fixture/.config"),
+        native_name: ".config".into(),
+        display_name: ".config".into(),
+        kind: crate::model::EntryKind::Directory,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: true,
+    };
+
+    let encoded_visible = entry_model_value(&visible);
+    let encoded_hidden = entry_model_value(&hidden);
+
+    assert_eq!(encoded_visible, "fv\tphoto");
+    assert_eq!(encoded_hidden, "dh\t.config");
+
+    assert!(!model_is_hidden(&encoded_visible));
+    assert!(model_is_hidden(&encoded_hidden));
+
+    assert_eq!(model_display_name(&encoded_visible), "photo");
+    assert_eq!(model_display_name(&encoded_hidden), ".config");
+}
+
+#[test]
+fn shell_escape_path_escapes_spaces_and_metacharacters_but_not_filename_unicode() {
+    assert_eq!(
+        shell_escape_path(Path::new("/mnt/Mass 1/Movies\u{2044}TV")),
+        "/mnt/Mass\\ 1/Movies\u{2044}TV"
+    );
+    assert_eq!(
+        shell_escape_path(Path::new("/tmp/archive (final) v1.2.tar.gz")),
+        "/tmp/archive\\ \\(final\\)\\ v1.2.tar.gz"
+    );
+    assert_eq!(
+        shell_escape_path(Path::new("/home/user/plain")),
+        "/home/user/plain"
+    );
+}
+
+#[test]
+fn copy_path_text_adds_trailing_slash_to_directories_only() {
+    let directory = Location::local("/mnt/Mass 1/Movies\u{2044}TV");
+    assert_eq!(
+        copy_path_text(&directory, true),
+        "/mnt/Mass\\ 1/Movies\u{2044}TV/"
+    );
+    assert_eq!(
+        copy_path_text(&directory, false),
+        "/mnt/Mass\\ 1/Movies\u{2044}TV"
+    );
+}
+
+#[test]
+fn copy_path_text_keeps_uris_unescaped() {
+    let remote = Location::uri("smb://server/share/folder");
+    assert_eq!(copy_path_text(&remote, true), "smb://server/share/folder");
+}
+
+#[test]
+fn shell_escape_path_preserves_newlines_and_single_quotes() {
+    assert_eq!(
+        shell_escape_path(Path::new("/tmp/line\nbob's notes")),
+        "'/tmp/line\nbob'\\''s notes'"
+    );
+}
+
+#[test]
+fn pinning_requires_an_available_non_trash_directory() {
+    let entry = |location, kind| FileEntry {
+        location,
+        native_name: "item".into(),
+        display_name: "item".into(),
+        kind,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let directory = entry(
+        Location::local("/fixture/folder"),
+        crate::model::EntryKind::Directory,
+    );
+    let file = entry(
+        Location::local("/fixture/file"),
+        crate::model::EntryKind::File,
+    );
+    let trash_directory = entry(
+        Location::uri("trash:///deleted-folder"),
+        crate::model::EntryKind::Directory,
+    );
+
+    assert!(can_pin_entry(&directory, PinStatus::Available));
+    assert!(!can_pin_entry(&directory, PinStatus::Pinned));
+    assert!(!can_pin_entry(&directory, PinStatus::Unavailable));
+    assert!(!can_pin_entry(&file, PinStatus::Available));
+    assert!(!can_pin_entry(&trash_directory, PinStatus::Available));
 }

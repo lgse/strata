@@ -29,6 +29,8 @@ use super::{
 const SIDEBAR_WIDTH: i32 = 208;
 const MIN_SIDEBAR_WIDTH: i32 = 176;
 const SIDEBAR_TRANSITION: Duration = Duration::from_millis(300);
+const PINNED_DRAG_PREFIX: &str = "pinned:";
+const STANDARD_PLACE_IDS: &[&str] = &["desktop", "documents", "downloads", "pictures", "videos"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum MouseHistoryAction {
@@ -64,6 +66,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     browser.set_view_mode(theme_manager.browser_mode());
     browser.set_density(theme_manager.browser_density());
     browser.set_operation_provider(Rc::new(LocalOperationProvider));
+    browser.set_auto_refresh_interval(theme_manager.auto_refresh_interval());
     let controller = browser.browser();
 
     let preview_preferences = theme_manager.clone();
@@ -153,7 +156,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     content.set_resize_start_child(false);
     content.set_position(SIDEBAR_WIDTH);
     content.set_vexpand(true);
-    let sidebar = build_sidebar(browser.clone());
+    let sidebar = build_sidebar(browser.clone(), theme_manager.clone());
     let weak_sidebar = Rc::downgrade(&sidebar.state);
     let pinned_places = sidebar.state.pinned_places.clone();
     browser.set_pin_handlers(
@@ -165,6 +168,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         Rc::new(move |location| pin_status(&pinned_places.borrow(), location)),
     );
     sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
+    browser.add_marquee_origin(&sidebar.widget);
     content.set_start_child(Some(&sidebar.widget));
     content.set_end_child(Some(&browser.widget()));
     let animation_generation = Rc::new(Cell::new(0));
@@ -254,6 +258,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
                 kind: EntryKind::File,
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
             });
         }
     });
@@ -266,34 +271,26 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     let search_dialog = SearchDialog::new(activate_search_result, dismiss_search);
     window_overlay.add_overlay(&search_dialog.widget());
     let shown_search = search_dialog.clone();
-    let search_browser = controller.clone();
     let search_blurred_root = blurred_root.clone();
     search_button.connect_clicked(move |button| {
         if shown_search.is_visible() {
             shown_search.hide();
             return;
         }
-        let root = search_browser
-            .active_location()
-            .and_then(|location| location.native_path().map(std::path::Path::to_path_buf))
-            .unwrap_or_else(home_directory);
+        let root = home_directory();
         button.add_css_class("active");
         search_blurred_root.set_blurred(true);
         shown_search.show(root);
     });
     let search_action = gio::SimpleAction::new("search", None);
     let shortcut_search = search_dialog.clone();
-    let shortcut_browser = controller.clone();
     let shortcut_search_button = search_button.clone();
     let shortcut_search_root = blurred_root.clone();
     search_action.connect_activate(move |_, _| {
         if shortcut_search.is_visible() {
             shortcut_search.hide();
         } else {
-            let root = shortcut_browser
-                .active_location()
-                .and_then(|location| location.native_path().map(std::path::Path::to_path_buf))
-                .unwrap_or_else(home_directory);
+            let root = home_directory();
             shortcut_search_button.add_css_class("active");
             shortcut_search_root.set_blurred(true);
             shortcut_search.show(root);
@@ -310,11 +307,23 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     window.add_action(&terminal_action);
     application.set_accels_for_action("win.open-terminal", &["<Primary>t"]);
 
+    let refresh_view = browser.clone();
+    let refresh_action = gio::SimpleAction::new("refresh", None);
+    refresh_action.connect_activate(move |_, _| {
+        refresh_view.refresh();
+    });
+    window.add_action(&refresh_action);
+    application.set_accels_for_action("win.refresh", &["F5", "<Primary>r"]);
+
     let update_button = sidebar.update_notice.clone();
     let update_area = sidebar.update_area.clone();
     let update_label = sidebar.update_label.clone();
     let available_update = Rc::new(RefCell::new(
-        None::<(crate::services::ReleaseMetadata, String)>,
+        None::<(
+            crate::services::ReleaseMetadata,
+            String,
+            crate::services::UpdateMethod,
+        )>,
     ));
     // Process-wide, not per-window: shared across the settings page's
     // update/rollback rows, this dialog, and every other open window, so at
@@ -325,7 +334,8 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     let update_parent = window.clone().upcast::<gtk::Window>();
     let install_guard_for_dialog = install_guard.clone();
     update_button.connect_clicked(move |_| {
-        let Some((release, download_url)) = available_for_click.borrow().clone() else {
+        let Some((release, download_url, update_method)) = available_for_click.borrow().clone()
+        else {
             return;
         };
         super::settings::show_update_dialog(
@@ -333,19 +343,39 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
             &release,
             download_url,
             install_guard_for_dialog.clone(),
+            update_method,
         );
     });
     let available_for_notice = available_update.clone();
     let update_notice: super::settings::UpdateNoticeHandler = Rc::new(move |release| {
-        if let Some((release, download_url)) = release {
-            update_button.set_tooltip_text(Some(&sidebar_update_tooltip(&release)));
+        if let Some((release, download_url, update_method)) = release {
+            let tooltip = match update_method {
+                crate::services::UpdateMethod::InPlace => {
+                    format!("Install Strata v{}", release.version)
+                }
+                crate::services::UpdateMethod::MarkedPackage => format!(
+                    "Strata v{} is available through {}",
+                    release.version,
+                    crate::services::InstallSource::detect()
+                        .managed()
+                        .map(crate::services::ManagedInstall::manager)
+                        .unwrap_or("your package manager")
+                ),
+                crate::services::UpdateMethod::Omarchy => {
+                    format!("Strata v{} is available through Omarchy", release.version)
+                }
+                crate::services::UpdateMethod::Pacman => {
+                    format!("Strata v{} is available through pacman", release.version)
+                }
+            };
+            update_button.set_tooltip_text(Some(&tooltip));
             update_label.set_text(&sidebar_update_label(&release));
             if release.kind == BuildKind::Stable {
                 update_button.remove_css_class("preview");
             } else {
                 update_button.add_css_class("preview");
             }
-            *available_for_notice.borrow_mut() = Some((release, download_url));
+            *available_for_notice.borrow_mut() = Some((release, download_url, update_method));
             update_area.set_visible(true);
         } else {
             available_for_notice.borrow_mut().take();
@@ -540,6 +570,28 @@ fn install_keyboard_navigation(
             view.begin_location_edit();
             return glib::Propagation::Stop;
         }
+        let text_has_focus = focused.as_ref().is_some_and(|w| {
+            w.is::<gtk::Text>() || w.is::<gtk::TextView>() || w.is::<gtk::Entry>()
+        });
+        if preview.has_video()
+            && !text_has_focus
+            && !alt
+            && !control
+            && !shift
+            && matches!(
+                key,
+                gtk::gdk::Key::space
+                    | gtk::gdk::Key::Up
+                    | gtk::gdk::Key::Down
+                    | gtk::gdk::Key::Left
+                    | gtk::gdk::Key::Right
+                    | gtk::gdk::Key::m
+                    | gtk::gdk::Key::M
+            )
+        {
+            preview.handle_video_key(key);
+            return glib::Propagation::Stop;
+        }
         if is_sidebar_focus_shortcut(key, modifiers) {
             if sidebar_has_focus {
                 let restored = focus_before_sidebar
@@ -571,6 +623,9 @@ fn install_keyboard_navigation(
                 return glib::Propagation::Stop;
             }
             return glib::Propagation::Proceed;
+        }
+        if !text_has_focus && is_undo_trash_shortcut(key, modifiers) && view.undo_last_trash() {
+            return glib::Propagation::Stop;
         }
         if alt
             && !control
@@ -620,6 +675,10 @@ fn install_keyboard_navigation(
         }
         if is_open_terminal_shortcut(key, modifiers) {
             view.open_terminal();
+            return glib::Propagation::Stop;
+        }
+        if is_refresh_shortcut(key, modifiers) {
+            view.refresh();
             return glib::Propagation::Stop;
         }
         let column_popover = focused
@@ -681,6 +740,14 @@ fn install_keyboard_navigation(
         if !control && !alt && !view.item_view_has_focus() && !header_left_boundary {
             return glib::Propagation::Proceed;
         }
+        if !control && !alt && matches!(key, gtk::gdk::Key::y | gtk::gdk::Key::Y) {
+            view.copy_path();
+            return glib::Propagation::Stop;
+        }
+        if !control && !alt && matches!(key, gtk::gdk::Key::p | gtk::gdk::Key::P) {
+            view.pin_focused();
+            return glib::Propagation::Stop;
+        }
         if key == gtk::gdk::Key::space && !alt && !control {
             preview.toggle(browser.focused_entry());
             return glib::Propagation::Stop;
@@ -739,11 +806,25 @@ fn install_keyboard_navigation(
     window.add_controller(keys);
 }
 
+fn is_undo_trash_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+        && !modifiers
+            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
+        && matches!(key, gtk::gdk::Key::z | gtk::gdk::Key::Z)
+}
+
 fn is_open_terminal_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
     modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
         && !modifiers
             .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
         && matches!(key, gtk::gdk::Key::t | gtk::gdk::Key::T)
+}
+
+fn is_refresh_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    key == gtk::gdk::Key::F5
+        || (modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+            && !modifiers.contains(gtk::gdk::ModifierType::ALT_MASK)
+            && matches!(key, gtk::gdk::Key::r | gtk::gdk::Key::R))
 }
 
 fn is_sidebar_focus_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
@@ -997,6 +1078,7 @@ struct SidebarState {
     view: BrowserView,
     browser: Rc<Browser>,
     volume_monitor: gio::VolumeMonitor,
+    theme_manager: Rc<super::theme::ThemeManager>,
     place_order: RefCell<Vec<&'static str>>,
     pinned_places: Rc<RefCell<Vec<(Location, String)>>>,
     place_rows: RefCell<Vec<(Location, gtk::Button)>>,
@@ -1052,14 +1134,15 @@ impl SidebarState {
             .pinned_places
             .borrow()
             .iter()
-            .filter(|(location, _)| !is_standard_place_location(location))
-            .cloned()
+            .enumerate()
+            .filter(|(_, (location, _))| !is_standard_place_location(location))
+            .map(|(index, (location, name))| (index, location.clone(), name.clone()))
             .collect::<Vec<_>>();
         if !pinned.is_empty() {
             self.append_separator();
             self.append_heading("PINNED");
-            for (location, name) in pinned {
-                self.append_pinned_place(&name, location);
+            for (index, location, name) in pinned {
+                self.append_pinned_place(index, &name, location);
             }
         }
 
@@ -1205,37 +1288,20 @@ impl SidebarState {
         self.widget.append(&row);
     }
 
-    fn append_reorderable_place(
+    fn make_reorderable(
         self: &Rc<Self>,
-        id: &'static str,
-        icon: &str,
-        name: &str,
-        location: Location,
+        row: &gtk::Button,
+        payload: impl Fn() -> String + 'static,
+        on_drop: impl Fn(&Rc<Self>, &str, bool) -> bool + 'static,
     ) {
-        let row = sidebar_button(icon, name);
         row.add_css_class("reorderable");
         row.set_cursor_from_name(Some("grab"));
-        row.set_tooltip_text(Some(&location.display_path()));
-        self.place_rows
-            .borrow_mut()
-            .push((location.clone(), row.clone()));
-        let weak_browser = Rc::downgrade(&self.browser);
-        let sidebar = self.widget.clone();
-        let selected_row = row.clone();
-        row.connect_clicked(move |_| {
-            select_sidebar_row(&sidebar, &selected_row);
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.navigate(location.clone());
-            }
-        });
 
         let drag = gtk::DragSource::builder()
             .actions(gtk::gdk::DragAction::MOVE)
             .build();
         drag.connect_prepare(move |_, _, _| {
-            Some(gtk::gdk::ContentProvider::for_value(
-                &id.to_string().to_value(),
-            ))
+            Some(gtk::gdk::ContentProvider::for_value(&payload().to_value()))
         });
         let dragged_row = row.clone();
         drag.connect_drag_begin(move |_, _| {
@@ -1258,18 +1324,70 @@ impl SidebarState {
             };
             let after = y >= f64::from(target_row.height()) / 2.0;
             if let Some(state) = weak_state.upgrade() {
-                state.reorder_place(&source, id, after);
-                return true;
+                return on_drop(&state, &source, after);
             }
             false
         });
         row.add_controller(drop);
+    }
+
+    fn append_reorderable_place(
+        self: &Rc<Self>,
+        id: &'static str,
+        icon: &str,
+        name: &str,
+        location: Location,
+    ) {
+        let row = sidebar_button(icon, name);
+        row.set_tooltip_text(Some(&location.display_path()));
+        self.place_rows
+            .borrow_mut()
+            .push((location.clone(), row.clone()));
+        let weak_browser = Rc::downgrade(&self.browser);
+        let sidebar = self.widget.clone();
+        let selected_row = row.clone();
+        row.connect_clicked(move |_| {
+            select_sidebar_row(&sidebar, &selected_row);
+            if let Some(browser) = weak_browser.upgrade() {
+                browser.navigate(location.clone());
+            }
+        });
+
+        self.make_reorderable(
+            &row,
+            // Standard rows drag their stable id, so a pinned row's numeric
+            // payload is rejected by the standard-place drop handler.
+            move || id.to_string(),
+            move |state, source, after| {
+                if source.starts_with(PINNED_DRAG_PREFIX) {
+                    return false;
+                }
+                state.reorder_place(source, id, after);
+                true
+            },
+        );
         self.widget.append(&row);
     }
 
     fn reorder_place(self: &Rc<Self>, source: &str, target: &str, after: bool) {
         let changed = reorder_places(&mut self.place_order.borrow_mut(), source, target, after);
         if changed {
+            let order = self
+                .place_order
+                .borrow()
+                .iter()
+                .map(|place| (*place).to_owned())
+                .collect();
+            self.theme_manager.set_sidebar_order(order);
+            self.rebuild();
+        }
+    }
+
+    fn reorder_pinned_place(self: &Rc<Self>, source: usize, target: usize, after: bool) {
+        let changed =
+            reorder_pinned_places(&mut self.pinned_places.borrow_mut(), source, target, after);
+        if changed {
+            save_pinned_places(&self.pinned_places.borrow());
             self.rebuild();
         }
     }
@@ -1404,8 +1522,9 @@ impl SidebarState {
         row.add_controller(context);
     }
 
-    fn append_pinned_place(self: &Rc<Self>, name: &str, location: Location) {
+    fn append_pinned_place(self: &Rc<Self>, index: usize, name: &str, location: Location) {
         let row = self.append_place(crate::assets::icons::FOLDER, name, location.clone());
+        self.make_pinned_row_reorderable(&row, index);
         let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
         menu.add_css_class("folder-context-menu");
         let unpin = sidebar_context_option(crate::assets::icons::PIN, "Unpin", false);
@@ -1459,6 +1578,20 @@ impl SidebarState {
         row.add_controller(context);
     }
 
+    fn make_pinned_row_reorderable(self: &Rc<Self>, row: &gtk::Button, index: usize) {
+        self.make_reorderable(
+            row,
+            move || format!("{PINNED_DRAG_PREFIX}{index}"),
+            move |state, source, after| {
+                let Some(source) = parse_pinned_drag_source(source) else {
+                    return false;
+                };
+                state.reorder_pinned_place(source, index, after);
+                true
+            },
+        );
+    }
+
     fn append_place(&self, icon: &str, name: &str, location: Location) -> gtk::Button {
         let row = sidebar_button(icon, name);
         row.set_tooltip_text(Some(&location.display_path()));
@@ -1506,6 +1639,34 @@ fn reorder_places(order: &mut Vec<&'static str>, source: &str, target: &str, aft
     true
 }
 
+fn reorder_pinned_places(
+    places: &mut Vec<(Location, String)>,
+    source: usize,
+    target: usize,
+    after: bool,
+) -> bool {
+    if source == target || source >= places.len() || target >= places.len() {
+        return false;
+    }
+    let place = places.remove(source);
+    // `source` is a pre-removal index, but `target` must remap onto the shrunken
+    // vector: any target that sat after `source` slides left by one. Since
+    // `destination == source` is checked in post-removal coordinates, a match
+    // means re-inserting into the original slot — a no-op worth reporting.
+    let target = target - usize::from(target > source);
+    let destination = (target + usize::from(after)).min(places.len());
+    if destination == source {
+        places.insert(source, place);
+        return false;
+    }
+    places.insert(destination, place);
+    true
+}
+
+fn parse_pinned_drag_source(source: &str) -> Option<usize> {
+    source.strip_prefix(PINNED_DRAG_PREFIX)?.parse().ok()
+}
+
 fn pin_status(places: &[(Location, String)], location: &Location) -> PinStatus {
     if is_standard_place_location(location) {
         PinStatus::Unavailable
@@ -1550,6 +1711,25 @@ fn is_standard_place_location(location: &Location) -> bool {
 
 fn should_show_standard_place(id: &str, path: &std::path::Path, home: &std::path::Path) -> bool {
     id != "desktop" || path != home
+}
+
+fn resolve_place_order(persisted: &[String]) -> Vec<&'static str> {
+    let mut order: Vec<&'static str> = Vec::new();
+    for id in persisted {
+        if let Some(canonical) = STANDARD_PLACE_IDS
+            .iter()
+            .find(|&&known| known == id.as_str())
+            && !order.contains(canonical)
+        {
+            order.push(*canonical);
+        }
+    }
+    for &id in STANDARD_PLACE_IDS {
+        if !order.contains(&id) {
+            order.push(id);
+        }
+    }
+    order
 }
 
 fn standard_place(id: &str) -> Option<(&'static str, &'static str, glib::UserDirectory)> {
@@ -1635,19 +1815,6 @@ fn navigate_to_gio_file(browser: &Rc<Browser>, file: &gio::File) {
 /// No channel guard belongs here: `check_for_updates` is already
 /// channel-filtered upstream, so a Stable user's `release` can never carry
 /// a prerelease kind in the first place.
-/// The sidebar update-notice pill's tooltip.
-///
-/// A packaged install never installs anything, so promising "Install Strata"
-/// there would describe an action the dialog behind this pill has already
-/// declined to offer.
-fn sidebar_update_tooltip(release: &ReleaseMetadata) -> String {
-    if crate::services::InstallSource::detect().is_managed() {
-        format!("Strata v{} is available", release.version)
-    } else {
-        format!("Install Strata v{}", release.version)
-    }
-}
-
 fn sidebar_update_label(release: &ReleaseMetadata) -> String {
     if release.kind == BuildKind::Stable {
         format!("v{} available", release.version)
@@ -1656,7 +1823,7 @@ fn sidebar_update_label(release: &ReleaseMetadata) -> String {
     }
 }
 
-fn build_sidebar(view: BrowserView) -> SidebarView {
+fn build_sidebar(view: BrowserView, theme_manager: Rc<super::theme::ThemeManager>) -> SidebarView {
     let widget = gtk::Box::new(gtk::Orientation::Vertical, 2);
     widget.add_css_class("sidebar");
     let scroller = gtk::ScrolledWindow::builder()
@@ -1667,6 +1834,7 @@ fn build_sidebar(view: BrowserView) -> SidebarView {
         .vexpand(true)
         .build();
     scroller.add_css_class("sidebar-scroll");
+    scroller.add_css_class("fixed-scrollbar");
 
     let update_content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let dot = gtk::Label::new(Some("●"));
@@ -1697,18 +1865,14 @@ fn build_sidebar(view: BrowserView) -> SidebarView {
     shell.append(&scroller);
     shell.append(&update_area);
     let volume_monitor = gio::VolumeMonitor::get();
+    let place_order = resolve_place_order(&theme_manager.sidebar_order());
     let state = Rc::new(SidebarState {
         widget,
         browser: view.browser(),
         view,
         volume_monitor,
-        place_order: RefCell::new(vec![
-            "desktop",
-            "documents",
-            "downloads",
-            "pictures",
-            "videos",
-        ]),
+        theme_manager,
+        place_order: RefCell::new(place_order),
         pinned_places: Rc::new(RefCell::new(load_pinned_places())),
         place_rows: RefCell::new(Vec::new()),
     });

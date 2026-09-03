@@ -1,21 +1,26 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::{
+    fs, io,
+    path::{Path, PathBuf},
     sync::mpsc::{self, Receiver},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::release_channel::{
     BuildKind, Channel, ReleaseSummary, Version, best_update, rollback_target,
 };
+use super::update_install::{UpdateMethod, omarchy_repository_version, package_repository_version};
 
 const API_ROOT: &str = "https://api.github.com/repos/lgse/strata/releases";
 const COMMITS_ROOT: &str = "https://api.github.com/repos/lgse/strata/commits";
 const RELEASES_URL: &str = "https://github.com/lgse/strata/releases";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+/// Minimum interval between automatic checks against the same channel.
+const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 /// How many of the most recent releases (final and prerelease) the preview
 /// feed enumerates. Only ever used to find a release *newer* than the
 /// installed one, so a bounded page is safe: an update this page cannot
@@ -178,14 +183,18 @@ fn release_metadata(release: &ReleaseSummary) -> ReleaseMetadata {
 /// data for a Stable user never even enters the process. Its result is still
 /// additionally run through [`is_eligible`] by [`select_update`] -- both
 /// checks are required, per issue #61's stated redundancy requirement.
-///
-/// `Ok(None)` covers both "no releases have been published yet" and "the
-/// tag GitHub returned failed to parse"; neither is a network failure.
-fn fetch_stable() -> Result<Option<ReleaseSummary>, ureq::Error> {
-    match request_json::<ReleaseResponse>(&format!("{API_ROOT}/latest")) {
-        Ok(release) => Ok(to_release_summary(&release)),
-        Err(ureq::Error::StatusCode(404)) => Ok(None),
-        Err(error) => Err(error),
+fn fetch_stable(etag: Option<&str>) -> ChannelFetch {
+    match request_json_conditional::<ReleaseResponse>(&format!("{API_ROOT}/latest"), etag) {
+        Ok(Some((release, etag))) => ChannelFetch::Fetched {
+            releases: to_release_summary(&release).into_iter().collect(),
+            etag,
+        },
+        Ok(None) => ChannelFetch::Unchanged,
+        Err(ureq::Error::StatusCode(404)) => ChannelFetch::Fetched {
+            releases: Vec::new(),
+            etag: None,
+        },
+        Err(error) => ChannelFetch::Failed(error),
     }
 }
 
@@ -195,10 +204,18 @@ fn fetch_stable() -> Result<Option<ReleaseSummary>, ureq::Error> {
 /// Kept as its own function rather than reused for [`Channel::Stable`]: a
 /// Stable user's code path must call [`fetch_stable`] instead, never this,
 /// so prerelease metadata never reaches that path at all.
-fn fetch_preview() -> Result<Vec<ReleaseSummary>, ureq::Error> {
-    let releases =
-        request_json::<Vec<ReleaseResponse>>(&format!("{API_ROOT}?per_page={PREVIEW_PAGE_SIZE}"))?;
-    Ok(releases.iter().filter_map(to_release_summary).collect())
+fn fetch_preview(etag: Option<&str>) -> ChannelFetch {
+    match request_json_conditional::<Vec<ReleaseResponse>>(
+        &format!("{API_ROOT}?per_page={PREVIEW_PAGE_SIZE}"),
+        etag,
+    ) {
+        Ok(Some((releases, etag))) => ChannelFetch::Fetched {
+            releases: releases.iter().filter_map(to_release_summary).collect(),
+            etag,
+        },
+        Ok(None) => ChannelFetch::Unchanged,
+        Err(error) => ChannelFetch::Failed(error),
+    }
 }
 
 /// Resolves `tag` to the commit SHA it points at.
@@ -223,6 +240,138 @@ fn fetch_commit(tag: &str) -> Option<String> {
 /// pure and network-free.
 fn resolve_commit(release: &mut ReleaseMetadata) {
     release.commit = fetch_commit(&release.tag);
+}
+
+fn cache_dir() -> PathBuf {
+    glib::user_cache_dir().join("strata")
+}
+
+fn update_check_cache_path() -> PathBuf {
+    cache_dir().join("update-check.toml")
+}
+
+fn release_notes_cache_path() -> PathBuf {
+    cache_dir().join("release-notes.toml")
+}
+
+fn read_cache_file<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
+    toml::from_str(&fs::read_to_string(path).ok()?).ok()
+}
+
+fn write_cache_file<T: Serialize>(path: &Path, value: &T) {
+    let result = (|| -> io::Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let value = toml::to_string_pretty(value).map_err(io::Error::other)?;
+        crate::storage::atomic_write(path, value.as_bytes())
+    })();
+    if let Err(error) = result {
+        tracing::warn!(%error, path = %path.display(), "unable to save update-check cache");
+    }
+}
+
+fn unix_seconds_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0)
+}
+
+#[derive(Serialize, Deserialize)]
+struct CachedReleaseNotes {
+    tag: String,
+    notes: String,
+    published_at: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct CachedRelease {
+    tag: String,
+    draft: bool,
+    prerelease: bool,
+    download_url: Option<String>,
+    published_at: Option<String>,
+    notes: String,
+    #[serde(default)]
+    commit: Option<String>,
+}
+
+fn to_cached_release(release: &ReleaseSummary) -> CachedRelease {
+    CachedRelease {
+        tag: release.tag.clone(),
+        draft: release.draft,
+        prerelease: release.prerelease,
+        download_url: release.download_url.clone(),
+        published_at: release.published_at.clone(),
+        notes: release.notes.clone(),
+        commit: None,
+    }
+}
+
+fn from_cached_release(cached: &CachedRelease) -> Option<ReleaseSummary> {
+    Some(ReleaseSummary {
+        tag: cached.tag.clone(),
+        version: Version::parse(&cached.tag)?,
+        draft: cached.draft,
+        prerelease: cached.prerelease,
+        download_url: cached.download_url.clone(),
+        published_at: cached.published_at.clone(),
+        notes: cached.notes.clone(),
+    })
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+struct UpdateCheckCache {
+    channel: String,
+    checked_at: u64,
+    #[serde(default)]
+    etag: Option<String>,
+    #[serde(default)]
+    releases: Vec<CachedRelease>,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+fn cache_is_fresh(cache: &UpdateCheckCache, channel: Channel, force: bool, now: u64) -> bool {
+    !force
+        && cache.channel == channel.as_str()
+        && now.saturating_sub(cache.checked_at) < CHECK_INTERVAL.as_secs()
+}
+
+/// Returns `None` when the server responds with `304 Not Modified`.
+fn request_json_conditional<T: serde::de::DeserializeOwned>(
+    url: &str,
+    etag: Option<&str>,
+) -> Result<Option<(T, Option<String>)>, ureq::Error> {
+    let mut request = agent()
+        .get(url)
+        .header("Accept", "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .header("User-Agent", "strata-file-manager");
+    if let Some(etag) = etag {
+        request = request.header("If-None-Match", etag);
+    }
+    let mut response = request.call()?;
+    if response.status().as_u16() == 304 {
+        return Ok(None);
+    }
+    let etag = response
+        .headers()
+        .get("etag")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let body = response.body_mut().read_json::<T>()?;
+    Ok(Some((body, etag)))
+}
+
+enum ChannelFetch {
+    Fetched {
+        releases: Vec<ReleaseSummary>,
+        etag: Option<String>,
+    },
+    Unchanged,
+    Failed(ureq::Error),
 }
 
 /// Builds the `UpdateCheck` for an eligible release, or `UpToDate` in the
@@ -263,28 +412,206 @@ fn select_update(
     }
 }
 
-fn fetch_update(channel: Channel, installed: &Version) -> UpdateCheck {
-    let releases = match channel {
-        Channel::Stable => fetch_stable().map(|release| release.into_iter().collect::<Vec<_>>()),
-        Channel::Preview | Channel::Nightly => fetch_preview(),
+fn select_and_resolve(
+    channel: Channel,
+    installed: &Version,
+    releases: &[ReleaseSummary],
+) -> UpdateCheck {
+    let mut check = select_update(channel, installed, releases);
+    if let UpdateCheck::Available { release, .. } = &mut check {
+        resolve_commit(release);
+    }
+    check
+}
+
+fn cached_releases(releases: &[ReleaseSummary], check: &UpdateCheck) -> Vec<CachedRelease> {
+    let resolved = match check {
+        UpdateCheck::Available { release, .. } => Some((&release.tag, &release.commit)),
+        UpdateCheck::UpToDate | UpdateCheck::Failed(_) => None,
     };
-    match releases {
-        Ok(releases) => {
-            let mut check = select_update(channel, installed, &releases);
-            if let UpdateCheck::Available { release, .. } = &mut check {
-                resolve_commit(release);
+    releases
+        .iter()
+        .map(|release| {
+            let mut cached = to_cached_release(release);
+            if let Some((_, commit)) = resolved.filter(|(tag, _)| **tag == release.tag) {
+                cached.commit.clone_from(commit);
             }
+            cached
+        })
+        .collect()
+}
+
+fn select_cached_update(
+    channel: Channel,
+    installed: &Version,
+    cached: &[CachedRelease],
+) -> UpdateCheck {
+    let releases: Vec<_> = cached.iter().filter_map(from_cached_release).collect();
+    let mut check = select_update(channel, installed, &releases);
+    if let UpdateCheck::Available { release, .. } = &mut check {
+        release.commit = cached
+            .iter()
+            .find(|cached| cached.tag == release.tag)
+            .and_then(|cached| cached.commit.clone());
+    }
+    check
+}
+
+fn check_from_cache(
+    cache: &UpdateCheckCache,
+    channel: Channel,
+    installed: &Version,
+) -> UpdateCheck {
+    match &cache.error {
+        Some(error) => UpdateCheck::Failed(error.clone()),
+        None => select_cached_update(channel, installed, &cache.releases),
+    }
+}
+
+fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateCheck {
+    let path = update_check_cache_path();
+    let cache = read_cache_file::<UpdateCheckCache>(&path);
+    let now = unix_seconds_now();
+
+    if let Some(cache) = cache
+        .as_ref()
+        .filter(|cache| cache_is_fresh(cache, channel, force, now))
+    {
+        return check_from_cache(cache, channel, installed);
+    }
+
+    let same_channel = cache
+        .as_ref()
+        .filter(|cache| cache.channel == channel.as_str());
+    let etag = same_channel.and_then(|cache| cache.etag.clone());
+    let outcome = match channel {
+        Channel::Stable => fetch_stable(etag.as_deref()),
+        Channel::Preview | Channel::Nightly => fetch_preview(etag.as_deref()),
+    };
+
+    match outcome {
+        ChannelFetch::Fetched { releases, etag } => {
+            let check = select_and_resolve(channel, installed, &releases);
+            write_cache_file(
+                &path,
+                &UpdateCheckCache {
+                    channel: channel.as_str().to_owned(),
+                    checked_at: now,
+                    etag,
+                    releases: cached_releases(&releases, &check),
+                    error: None,
+                },
+            );
             check
         }
+        ChannelFetch::Unchanged => {
+            let cached_releases = same_channel
+                .map(|cache| cache.releases.clone())
+                .unwrap_or_default();
+            write_cache_file(
+                &path,
+                &UpdateCheckCache {
+                    channel: channel.as_str().to_owned(),
+                    checked_at: now,
+                    etag: same_channel.and_then(|cache| cache.etag.clone()),
+                    releases: cached_releases.clone(),
+                    error: None,
+                },
+            );
+            select_cached_update(channel, installed, &cached_releases)
+        }
+        ChannelFetch::Failed(error) => {
+            let message = request_error_message(&error);
+            // Keep prior data for conditional retries, but preserve the failure outcome.
+            write_cache_file(
+                &path,
+                &UpdateCheckCache {
+                    channel: channel.as_str().to_owned(),
+                    checked_at: now,
+                    etag: same_channel.and_then(|cache| cache.etag.clone()),
+                    releases: same_channel
+                        .map(|cache| cache.releases.clone())
+                        .unwrap_or_default(),
+                    error: Some(message.clone()),
+                },
+            );
+            UpdateCheck::Failed(message)
+        }
+    }
+}
+
+fn fetch_package_update(
+    installed: &Version,
+    repository_version: impl FnOnce() -> Result<Version, String>,
+) -> UpdateCheck {
+    let available = match repository_version() {
+        Ok(version) => version,
+        Err(error) => return UpdateCheck::Failed(error),
+    };
+    if available <= *installed {
+        return UpdateCheck::UpToDate;
+    }
+
+    let tag = format!("v{available}");
+    match request_json::<ReleaseResponse>(&format!("{API_ROOT}/tags/{tag}")) {
+        Ok(response) => match package_update_from_response(&available, &response) {
+            UpdateCheck::Available {
+                mut release,
+                download_url,
+            } => {
+                resolve_commit(&mut release);
+                UpdateCheck::Available {
+                    release,
+                    download_url,
+                }
+            }
+            check => check,
+        },
         Err(error) => UpdateCheck::Failed(request_error_message(&error)),
+    }
+}
+
+fn package_update_from_response(available: &Version, response: &ReleaseResponse) -> UpdateCheck {
+    match to_release_summary(response)
+        .filter(|release| release.version == *available && !release.prerelease)
+    {
+        Some(summary) => available_check(&summary),
+        None => UpdateCheck::Failed(
+            "package repository version has no matching stable release".to_owned(),
+        ),
     }
 }
 
 fn fetch_exact_release(tag: &str) -> ReleaseNotes {
     let url = release_page_url(tag);
+    let cached = read_cache_file::<CachedReleaseNotes>(&release_notes_cache_path())
+        .filter(|cached| cached.tag == tag)
+        .zip(Version::parse(tag));
+    if let Some((cached, version)) = cached {
+        return ReleaseNotes::Found(ReleaseMetadata {
+            version: version.to_string(),
+            url,
+            note_blocks: parse_markdown(&cached.notes),
+            notes: cached.notes,
+            kind: version.build_kind(),
+            tag: tag.to_owned(),
+            published_at: cached.published_at,
+            commit: None,
+        });
+    }
     match request_json::<ReleaseResponse>(&format!("{API_ROOT}/tags/{tag}")) {
         Ok(release) => match to_release_summary(&release) {
-            Some(summary) => ReleaseNotes::Found(release_metadata(&summary)),
+            Some(summary) => {
+                write_cache_file(
+                    &release_notes_cache_path(),
+                    &CachedReleaseNotes {
+                        tag: tag.to_owned(),
+                        notes: summary.notes.clone(),
+                        published_at: summary.published_at.clone(),
+                    },
+                );
+                ReleaseNotes::Found(release_metadata(&summary))
+            }
             None => ReleaseNotes::Unavailable { url },
         },
         Err(ureq::Error::StatusCode(404)) => ReleaseNotes::Unavailable { url },
@@ -502,15 +829,30 @@ fn parse_markdown(markdown: &str) -> Vec<ReleaseNoteBlock> {
     blocks
 }
 
-/// Queries the release feed for `channel` off the GTK thread and reports the
-/// outcome once. See [`fetch_stable`] and [`fetch_preview`] for why the two
-/// feeds are kept as separate functions.
-pub fn check_for_updates(channel: Channel, installed: Version) -> Receiver<UpdateCheck> {
+/// Checks the applicable release source off the GTK thread.
+/// `force` bypasses the cache interval for in-place update checks.
+pub fn check_for_updates(
+    channel: Channel,
+    installed: Version,
+    update_method: UpdateMethod,
+    force: bool,
+) -> Receiver<UpdateCheck> {
     let (sender, receiver) = mpsc::channel();
     let spawned = std::thread::Builder::new()
         .name("strata-update-check".into())
         .spawn(move || {
-            let _sent = sender.send(fetch_update(channel, &installed));
+            let result = match update_method {
+                UpdateMethod::InPlace | UpdateMethod::MarkedPackage => {
+                    fetch_update(channel, &installed, force)
+                }
+                UpdateMethod::Omarchy => {
+                    fetch_package_update(&installed, omarchy_repository_version)
+                }
+                UpdateMethod::Pacman => {
+                    fetch_package_update(&installed, package_repository_version)
+                }
+            };
+            let _sent = sender.send(result);
         });
     drop(spawned);
     receiver

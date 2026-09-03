@@ -22,13 +22,13 @@ use crate::{
         ArchiveFormat, FileSource, LoadHandle, LocationValidationError, OperationProvider,
         PasteItem, PreviewContent, SearchEvent, TransferConflict, UriCredentials,
         backend_unavailable_message, content_family, has_plain_text_extension, index_tree,
-        sanitize_uri_credentials, validate_basename,
+        is_extensionless_dotfile, sanitize_uri_credentials, validate_basename,
     },
 };
 
 use super::{
     blur::BlurBin,
-    browser_modes::{BrowserDensity, BrowserMode, ModeViews},
+    browser_modes::{BrowserDensity, BrowserMode, ClickActivation, ClickCount, ModeViews},
     controls::{
         ModalTone, form_check_button, form_entry, form_label, form_password_entry, menu_option,
         message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
@@ -40,6 +40,8 @@ use super::{
 const COLUMN_WIDTH: i32 = 300;
 const COLUMN_OFFSET: i32 = 24;
 const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
+const PEEK_WIDTH: i32 = 256;
+const PEEK_GAP: f32 = 8.0;
 
 #[derive(Clone)]
 struct LoadPresentation {
@@ -68,7 +70,7 @@ struct ColumnView {
     selection: gtk::MultiSelection,
     syncing_selection: Rc<Cell<bool>>,
     list: gtk::ListView,
-    marquee: gtk::Box,
+    marquee: super::marquee::Marquee,
     bound_rows: Rc<RefCell<Vec<BoundRow>>>,
     entry_count: Rc<Cell<usize>>,
     spinner: gtk::Spinner,
@@ -77,6 +79,8 @@ struct ColumnView {
     new_entry_row: gtk::Box,
     new_entry_icon: gtk::Image,
     new_entry_entry: gtk::Entry,
+    show_hidden: Rc<Cell<bool>>,
+    filter: gtk::CustomFilter,
 }
 
 struct ActiveRename {
@@ -93,6 +97,13 @@ struct ActiveNewEntry {
     field: gtk::Entry,
 }
 
+const FILE_PROGRESS_DELAY: Duration = Duration::from_millis(350);
+const IMMEDIATE_PROGRESS_ITEM_COUNT: usize = 16;
+
+fn should_show_progress_immediately(total: usize) -> bool {
+    total == 0 || total >= IMMEDIATE_PROGRESS_ITEM_COUNT
+}
+
 struct DeleteProgressView {
     layer: gtk::Box,
     overlay: gtk::Overlay,
@@ -105,6 +116,11 @@ struct TrashLoadingView {
     layer: gtk::Box,
     overlay: gtk::Overlay,
     blurred_root: Option<BlurBin>,
+}
+
+struct PeekAnchor {
+    widget: gtk::Widget,
+    origin_depth: usize,
 }
 
 struct PeekView {
@@ -282,13 +298,16 @@ pub(super) struct ViewState {
     peek: RefCell<Option<PeekView>>,
     pending_peek: RefCell<Option<glib::SourceId>>,
     pending_close: RefCell<Option<glib::SourceId>>,
-    peek_anchor: RefCell<Option<gtk::Widget>>,
+    peek_anchor: RefCell<Option<PeekAnchor>>,
     peek_behavior: PeekBehavior,
     peek_enabled: Cell<bool>,
     single_click_previews: Cell<bool>,
+    columns_click_activation: Cell<ClickActivation>,
     active_rename: RefCell<Option<ActiveRename>>,
     active_new_entry: RefCell<Option<ActiveNewEntry>>,
     delete_progress: RefCell<Option<DeleteProgressView>>,
+    pending_file_progress: RefCell<Option<glib::SourceId>>,
+    file_operation_progress: Cell<(usize, usize)>,
     pin_handler: RefCell<Option<PinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     pending_select: RefCell<Vec<String>>,
@@ -298,6 +317,7 @@ pub(super) struct ViewState {
     pending_trash_summary: RefCell<Option<LoadHandle>>,
     pending_empty_trash: RefCell<Option<LoadHandle>>,
     trash_loading: RefCell<Option<TrashLoadingView>>,
+    auto_refresh: RefCell<Option<glib::SourceId>>,
     browser: Rc<Browser>,
 }
 
@@ -339,6 +359,7 @@ impl BrowserView {
             .hexpand(true)
             .vexpand(true)
             .build();
+        scroller.add_css_class("fixed-scrollbar");
         let overlay = gtk::Overlay::new();
 
         let location_entry = gtk::Entry::builder()
@@ -432,9 +453,12 @@ impl BrowserView {
             peek_behavior,
             peek_enabled: Cell::new(true),
             single_click_previews: Cell::new(true),
+            columns_click_activation: Cell::new(ClickActivation::default()),
             active_rename: RefCell::new(None),
             active_new_entry: RefCell::new(None),
             delete_progress: RefCell::new(None),
+            pending_file_progress: RefCell::new(None),
+            file_operation_progress: Cell::new((0, 0)),
             pin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
@@ -444,7 +468,21 @@ impl BrowserView {
             pending_trash_summary: RefCell::new(None),
             pending_empty_trash: RefCell::new(None),
             trash_loading: RefCell::new(None),
+            auto_refresh: RefCell::new(None),
             browser,
+        });
+
+        // Columns are laid out from the start edge, so the blank strip beside the last
+        // one is the natural place to begin a marquee that runs into it.
+        let weak_state = Rc::downgrade(&state);
+        super::marquee::install_shared_origin_surface(&state.scroller, move |surface, _, x, _| {
+            let state = weak_state.upgrade()?;
+            let laid_out = state.columns_widget.compute_bounds(surface)?;
+            if x < f64::from(laid_out.x() + laid_out.width()) {
+                return None;
+            }
+            let columns = state.columns.borrow();
+            columns.last().map(|column| column.marquee.clone())
         });
 
         let weak_state = Rc::downgrade(&state);
@@ -557,6 +595,25 @@ impl BrowserView {
             .iter()
             .map(|column| column.shell.width().max(COLUMN_WIDTH))
             .fold(0, i32::saturating_add)
+    }
+
+    /// Lets a marquee drag begin on blank chrome beside the file panes — the sidebar —
+    /// and run into whichever view the current mode shows. The pane nearest the start
+    /// edge is the target, since that is the one such a drag runs into.
+    pub(super) fn add_marquee_origin(&self, surface: &impl IsA<gtk::Widget>) {
+        let weak_state = Rc::downgrade(&self.state);
+        super::marquee::install_shared_origin_surface(surface, move |_, _, _, _| {
+            let state = weak_state.upgrade()?;
+            let mode = state.mode_views.borrow().mode();
+            if mode == BrowserMode::Columns {
+                return state
+                    .columns
+                    .borrow()
+                    .first()
+                    .map(|column| column.marquee.clone());
+            }
+            state.mode_views.borrow().leading_marquee()
+        });
     }
 
     pub fn view_mode(&self) -> BrowserMode {
@@ -756,6 +813,17 @@ impl BrowserView {
             .set_single_click_previews(enabled);
     }
 
+    pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {
+        if mode == BrowserMode::Columns {
+            self.state.columns_click_activation.set(activation);
+        } else {
+            self.state
+                .mode_views
+                .borrow()
+                .set_click_activation(mode, activation);
+        }
+    }
+
     pub fn create_new_folder(&self) {
         let mode = self.view_mode();
         let depth = if mode == BrowserMode::Columns {
@@ -807,6 +875,39 @@ impl BrowserView {
         true
     }
 
+    pub fn copy_path(&self) -> bool {
+        self.state.sync_mode_selection();
+        let entries = self.state.browser.selected_entries();
+        if entries.is_empty() {
+            let Some(entry) = self.state.browser.focused_entry() else {
+                return false;
+            };
+            copy_locations(&[entry]);
+        } else {
+            copy_locations(&entries);
+        }
+        true
+    }
+
+    pub fn pin_focused(&self) {
+        self.state.sync_mode_selection();
+        let Some(entry) = self.state.browser.focused_entry() else {
+            return;
+        };
+        let status = self
+            .state
+            .pin_status_handler
+            .borrow()
+            .as_ref()
+            .map_or(PinStatus::Unavailable, |handler| handler(&entry.location));
+        if !can_pin_entry(&entry, status) {
+            return;
+        }
+        if let Some(handler) = self.state.pin_handler.borrow().as_ref() {
+            handler(entry.location, entry.display_name);
+        }
+    }
+
     pub fn select_all(&self) {
         if self.view_mode() == BrowserMode::Columns {
             if let Some(depth) = self.state.columns.borrow().len().checked_sub(1) {
@@ -840,6 +941,18 @@ impl BrowserView {
         launch_terminal(&location, &self.state.overlay);
     }
 
+    pub fn refresh(&self) {
+        if self.view_mode() == BrowserMode::Columns {
+            self.state.browser.refresh_all();
+        } else {
+            self.state.browser.reload_active();
+        }
+    }
+
+    pub fn set_auto_refresh_interval(&self, secs: u32) {
+        self.state.set_auto_refresh_interval(secs);
+    }
+
     pub fn show_location_properties(&self, location: &Location) {
         self.state.show_folder_properties(location);
     }
@@ -870,9 +983,12 @@ impl BrowserView {
             .or_else(|| self.state.browser.active_location())
             .as_ref()
             .is_some_and(is_trash_location);
-        self.state
-            .show_delete_confirmation(entries, permanent || in_trash);
+        self.state.request_delete(entries, permanent || in_trash);
         true
+    }
+
+    pub fn undo_last_trash(&self) -> bool {
+        self.state.browser.undo_last_trash()
     }
 
     pub fn show_filter(&self) -> bool {
@@ -976,6 +1092,39 @@ impl ViewState {
             self.global_activity_spinner
                 .set_tooltip_text(Some("Working…"));
         }
+    }
+
+    pub(super) fn set_auto_refresh_interval(self: &Rc<Self>, secs: u32) {
+        if let Some(source) = self.auto_refresh.take() {
+            source.remove();
+        }
+        if secs == 0 {
+            return;
+        }
+        let weak_state = Rc::downgrade(self);
+        let weak_browser = Rc::downgrade(&self.browser);
+        let source = glib::timeout_add_local(Duration::from_secs(u64::from(secs)), move || {
+            let Some(state) = weak_state.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            if state.active_rename.borrow().is_some()
+                || state.active_new_entry.borrow().is_some()
+                || state.mode_views.borrow().rename_is_active()
+                || state.mode_views.borrow().new_entry_is_active()
+            {
+                return glib::ControlFlow::Continue;
+            }
+            let Some(browser) = weak_browser.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            if state.mode_views.borrow().mode() == BrowserMode::Columns {
+                browser.refresh_all();
+            } else {
+                browser.reload_active();
+            }
+            glib::ControlFlow::Continue
+        });
+        self.auto_refresh.replace(Some(source));
     }
 
     fn sync_mode_selection(&self) {
@@ -1608,13 +1757,40 @@ impl ViewState {
 
     fn show_file_operation_progress(
         self: &Rc<Self>,
-        _total: usize,
+        total: usize,
         icon: &str,
         title_text: &str,
         subtitle_text: &str,
         on_cancel: Rc<dyn Fn()>,
     ) {
         self.dismiss_delete_progress();
+        self.file_operation_progress.set((0, total));
+        if should_show_progress_immediately(total) {
+            self.present_file_operation_progress(icon, title_text, subtitle_text, on_cancel);
+            return;
+        }
+
+        let weak = Rc::downgrade(self);
+        let icon = icon.to_owned();
+        let title_text = title_text.to_owned();
+        let subtitle_text = subtitle_text.to_owned();
+        let source = glib::timeout_add_local_once(FILE_PROGRESS_DELAY, move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.pending_file_progress.borrow_mut().take();
+            state.present_file_operation_progress(&icon, &title_text, &subtitle_text, on_cancel);
+        });
+        self.pending_file_progress.replace(Some(source));
+    }
+
+    fn present_file_operation_progress(
+        self: &Rc<Self>,
+        icon: &str,
+        title_text: &str,
+        subtitle_text: &str,
+        on_cancel: Rc<dyn Fn()>,
+    ) {
         let Some(window_overlay) = self
             .overlay
             .root()
@@ -1669,9 +1845,12 @@ impl ViewState {
             progress.layer.add_controller(escape);
         }
         cancel.grab_focus();
+        let (completed, total) = self.file_operation_progress.get();
+        self.update_delete_progress(completed, total);
     }
 
     fn update_delete_progress(&self, completed: usize, total: usize) {
+        self.file_operation_progress.set((completed, total));
         let progress_view = self.delete_progress.borrow();
         let Some(view) = progress_view.as_ref() else {
             return;
@@ -1702,10 +1881,13 @@ impl ViewState {
     }
 
     fn dismiss_delete_progress(&self) {
-        let Some(view) = self.delete_progress.take() else {
-            return;
-        };
-        dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
+        if let Some(source) = self.pending_file_progress.take() {
+            source.remove();
+        }
+        self.file_operation_progress.set((0, 0));
+        if let Some(view) = self.delete_progress.take() {
+            dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
+        }
     }
 
     /// The total item count isn't known upfront -- entries are deleted as they're enumerated,
@@ -2040,7 +2222,16 @@ impl ViewState {
         });
     }
 
-    fn show_delete_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
+    fn request_delete(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
+        if permanent {
+            self.show_delete_confirmation(entries);
+        } else {
+            self.browser.delete(entries, false);
+            self.browser.focus_active();
+        }
+    }
+
+    fn show_delete_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>) {
         let Some(window_overlay) = self
             .overlay
             .root()
@@ -2056,16 +2247,8 @@ impl ViewState {
         }
 
         let count = entries.len();
-        let title = if permanent {
-            format!("Permanently delete {}?", item_count_label(count))
-        } else {
-            format!("Move {} to trash?", item_count_label(count))
-        };
-        let confirm_label = if permanent {
-            format!("Permanently delete {}", item_count_label(count))
-        } else {
-            format!("Move {}", item_count_label(count))
-        };
+        let title = format!("Permanently delete {}?", item_count_label(count));
+        let confirm_label = format!("Permanently delete {}", item_count_label(count));
         let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
             &title,
@@ -2112,11 +2295,9 @@ impl ViewState {
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
         layout.body.append(&file_scroller);
-        let explanation = message_dialog_description(if permanent {
-            "These items will be permanently deleted. This action cannot be undone."
-        } else {
-            "The items will be moved to trash. You can restore them later."
-        });
+        let explanation = message_dialog_description(
+            "These items will be permanently deleted. This action cannot be undone.",
+        );
         layout.body.append(&explanation);
         let content = layout.content;
         let close = layout.close;
@@ -2155,7 +2336,7 @@ impl ViewState {
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
             );
-            browser.delete(entries.clone(), permanent);
+            browser.delete(entries.clone(), true);
             browser.focus_active();
         });
         let keys = gtk::EventControllerKey::new();
@@ -2835,7 +3016,7 @@ impl ViewState {
             if let Some(display) = gtk::gdk::Display::default() {
                 display
                     .clipboard()
-                    .set_text(&copied_location.display_path());
+                    .set_text(&copy_path_text(&copied_location, true));
                 button.set_label("Copied");
             }
         });
@@ -3412,7 +3593,7 @@ impl ViewState {
                 copy.add_css_class("copy-path");
                 copy.set_has_frame(false);
                 copy.set_cursor_from_name(Some("pointer"));
-                let copied_path = location.display_path();
+                let copied_path = copy_path_text(location, true);
                 let feedback_generation = Rc::new(Cell::new(0_u64));
                 copy.connect_clicked(move |button| {
                     if let Some(display) = gtk::gdk::Display::default() {
@@ -3574,6 +3755,13 @@ impl ViewState {
                     column.spinner.start();
                     column.presentation.show_loading();
                 }
+            }
+            BrowserEvent::HiddenToggled { show_hidden } => {
+                for column in self.columns.borrow().iter() {
+                    column.show_hidden.set(show_hidden);
+                    column.filter.changed(gtk::FilterChange::Different);
+                }
+                self.mode_views.borrow().set_show_hidden(show_hidden);
             }
             BrowserEvent::LoadFinished { depth, truncated } => {
                 if let Some(column) = self.columns.borrow().get(depth) {
@@ -3958,6 +4146,7 @@ impl ViewState {
         empty_trash.set_visible(is_trash);
         empty_trash.set_sensitive(false);
         header_actions.append(&empty_trash);
+        header_actions.append(&pane_refresh_button(&self.browser, depth));
         header_actions.append(&column_sort_direction_toggle(&self.browser, depth));
         header_actions.append(&column_sort_menu(&self.browser, depth));
 
@@ -4019,17 +4208,12 @@ impl ViewState {
         let entry_count = Rc::new(Cell::new(0));
         let model = gtk::StringList::new(&[]);
         let filter_query = Rc::new(RefCell::new(String::new()));
-        let query = filter_query.clone();
-        let filter = gtk::CustomFilter::new(move |item| {
-            let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
-                return false;
-            };
-            let query = query.borrow();
-            query.is_empty()
-                || model_display_name(&item.string())
-                    .to_lowercase()
-                    .contains(query.as_str())
-        });
+        let initial_show_hidden = self
+            .browser
+            .column_preferences(depth)
+            .map_or_else(|| self.browser.preferences().show_hidden, |p| p.show_hidden);
+        let show_hidden = Rc::new(Cell::new(initial_show_hidden));
+        let filter = entry_filter(show_hidden.clone(), filter_query.clone());
         let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
         let selection = gtk::MultiSelection::new(Some(filtered_model.clone()));
         let syncing_selection = Rc::new(Cell::new(false));
@@ -4040,6 +4224,7 @@ impl ViewState {
         let filtered_for_selection = filtered_model.clone();
         let syncing_selection_changed = syncing_selection.clone();
         let focused_filtered_changed = focused_filtered.clone();
+        let filter_for_column = filter.clone();
         selection.connect_selection_changed(move |selection, position, count| {
             if syncing_selection_changed.get() {
                 return;
@@ -4308,16 +4493,28 @@ impl ViewState {
                 if let (Some(state), Some(source_position)) =
                     (weak_state_for_click.upgrade(), source_position)
                 {
-                    // GtkListView owns double-click activation through its `activate`
-                    // signal. This gesture only handles selection and single-click previews;
-                    // activating here as well would open files twice.
-                    if should_preview_pointer_press(press_count, control, shift, preserve_group) {
-                        let entry = state.browser.entry_at(depth, source_position);
-                        if entry.as_ref().is_some_and(|entry| {
-                            entry_responds_to_single_click(entry, state.single_click_previews.get())
-                        }) {
-                            state.browser.preview(depth, source_position);
-                        }
+                    let entry = state.browser.entry_at(depth, source_position);
+                    if entry.as_ref().is_some_and(|entry| {
+                        should_activate_single_click(
+                            press_count,
+                            entry.is_directory(),
+                            state.columns_click_activation.get(),
+                            control,
+                            shift,
+                            preserve_group,
+                        )
+                    }) {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        state.browser.activate(depth, source_position);
+                    } else if should_preview_pointer_press(
+                        press_count,
+                        control,
+                        shift,
+                        preserve_group,
+                    ) && entry.as_ref().is_some_and(|entry| {
+                        entry_responds_to_preview_click(entry, state.single_click_previews.get())
+                    }) {
+                        state.browser.preview(depth, source_position);
                     }
                 }
             });
@@ -4421,117 +4618,6 @@ impl ViewState {
         list.set_single_click_activate(false);
         list.set_vexpand(true);
 
-        let marquee_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        marquee_box.add_css_class("file-marquee");
-        marquee_box.set_can_target(false);
-        marquee_box.set_halign(gtk::Align::Start);
-        marquee_box.set_valign(gtk::Align::Start);
-        marquee_box.set_visible(false);
-        self.overlay.add_overlay(&marquee_box);
-
-        let marquee_active = Rc::new(Cell::new(false));
-        let marquee_origin = Rc::new(Cell::new((0.0, 0.0)));
-        let marquee_initial = Rc::new(RefCell::new(gtk::Bitset::new_empty()));
-        let marquee_modifiers = Rc::new(Cell::new((false, false)));
-        let marquee = gtk::GestureDrag::new();
-        marquee.set_button(1);
-        marquee.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let active_for_begin = marquee_active.clone();
-        let origin_for_begin = marquee_origin.clone();
-        let initial_for_begin = marquee_initial.clone();
-        let modifiers_for_begin = marquee_modifiers.clone();
-        let selection_for_begin = selection.clone();
-        let marquee_box_for_begin = marquee_box.clone();
-        marquee.connect_drag_begin(move |gesture, x, y| {
-            let starts_on_row = gesture
-                .widget()
-                .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
-                .is_some_and(is_file_row_target);
-            let force_marquee = gesture
-                .current_event_state()
-                .contains(gtk::gdk::ModifierType::ALT_MASK);
-            let can_start = force_marquee || !starts_on_row;
-            active_for_begin.set(can_start);
-            if !can_start {
-                return;
-            }
-            gesture.set_state(gtk::EventSequenceState::Claimed);
-            marquee_box_for_begin.set_visible(true);
-            origin_for_begin.set((x, y));
-            initial_for_begin.replace(selection_for_begin.selection().copy());
-            let modifiers = gesture.current_event_state();
-            modifiers_for_begin.set((
-                modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK),
-                modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
-            ));
-        });
-        let active_for_update = marquee_active.clone();
-        let origin_for_update = marquee_origin.clone();
-        let initial_for_update = marquee_initial.clone();
-        let modifiers_for_update = marquee_modifiers.clone();
-        let selection_for_marquee = selection.clone();
-        let rows_for_marquee = bound_rows.clone();
-        let list_for_marquee = list.clone();
-        let overlay_for_marquee = self.overlay.clone();
-        let marquee_box_for_update = marquee_box.clone();
-        marquee.connect_drag_update(move |_, offset_x, offset_y| {
-            if !active_for_update.get() {
-                return;
-            }
-            let (origin_x, origin_y) = origin_for_update.get();
-            let current_x = origin_x + offset_x;
-            let current_y = origin_y + offset_y;
-            let left = origin_x.min(current_x);
-            let right = origin_x.max(current_x);
-            let top = origin_y.min(current_y);
-            let bottom = origin_y.max(current_y);
-            if let Some(list_bounds) = list_for_marquee.compute_bounds(&overlay_for_marquee) {
-                marquee_box_for_update
-                    .set_margin_start((f64::from(list_bounds.x()) + left).round().max(0.0) as i32);
-                marquee_box_for_update
-                    .set_margin_top((f64::from(list_bounds.y()) + top).round().max(0.0) as i32);
-                marquee_box_for_update.set_size_request(
-                    (right - left).round().max(1.0) as i32,
-                    (bottom - top).round().max(1.0) as i32,
-                );
-            }
-            let initial = initial_for_update.borrow();
-            let (control, shift) = modifiers_for_update.get();
-            let selected = if control || shift {
-                initial.copy()
-            } else {
-                gtk::Bitset::new_empty()
-            };
-            rows_for_marquee.borrow_mut().retain(|bound| {
-                let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade()) else {
-                    return false;
-                };
-                let Some(bounds) = row.compute_bounds(&list_for_marquee) else {
-                    return true;
-                };
-                let intersects = f64::from(bounds.x()) < right
-                    && f64::from(bounds.x() + bounds.width()) > left
-                    && f64::from(bounds.y()) < bottom
-                    && f64::from(bounds.y() + bounds.height()) > top;
-                let position = item.position();
-                if intersects && position != gtk::INVALID_LIST_POSITION {
-                    if control && initial.contains(position) {
-                        selected.remove(position);
-                    } else {
-                        selected.add(position);
-                    }
-                }
-                true
-            });
-            let mask = gtk::Bitset::new_range(0, selection_for_marquee.n_items());
-            selection_for_marquee.set_selection(&selected, &mask);
-        });
-        let active_for_end = marquee_active.clone();
-        let marquee_box_for_end = marquee_box.clone();
-        marquee.connect_drag_end(move |_, _, _| {
-            active_for_end.set(false);
-            marquee_box_for_end.set_visible(false);
-        });
         let clear_selection = gtk::GestureClick::new();
         clear_selection.set_button(1);
         let background_press = Rc::new(Cell::new((0.0, 0.0)));
@@ -4551,7 +4637,6 @@ impl ViewState {
                 mouse_selection_anchor_for_background.set(None);
             }
         });
-        list.add_controller(marquee);
         list.add_controller(clear_selection);
         let selection_keys = gtk::EventControllerKey::new();
         selection_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -4590,6 +4675,27 @@ impl ViewState {
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
             .build();
+        scroll.add_css_class("fixed-scrollbar");
+        let rows_for_marquee = bound_rows.clone();
+        let marquee = super::marquee::install(super::marquee::MarqueeSetup {
+            view: list.clone().upcast(),
+            scroll: scroll.clone(),
+            overlay: self.overlay.clone(),
+            selection: selection.clone(),
+            visit_items: Rc::new(move |visit| {
+                rows_for_marquee.borrow_mut().retain(|bound| {
+                    let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade())
+                    else {
+                        return false;
+                    };
+                    visit(item.position(), row.upcast_ref());
+                    true
+                });
+            }),
+            is_item: Rc::new(|widget| is_file_row_target(widget.clone())),
+        });
+        marquee.add_origin_surface(&header);
+
         let retry = gtk::Button::with_label("Retry");
         retry.add_css_class("retry-button");
         let weak_browser = Rc::downgrade(&self.browser);
@@ -4741,7 +4847,7 @@ impl ViewState {
             selection,
             syncing_selection,
             list,
-            marquee: marquee_box,
+            marquee,
             bound_rows,
             entry_count,
             spinner,
@@ -4750,6 +4856,8 @@ impl ViewState {
             new_entry_row,
             new_entry_icon,
             new_entry_entry,
+            show_hidden,
+            filter: filter_for_column,
         });
 
         self.refresh_active_path_rows();
@@ -4808,6 +4916,11 @@ impl ViewState {
         }
         cancel_source(&self.pending_peek);
         cancel_source(&self.pending_close);
+        if self.browser.is_open_child(origin_depth, &location) {
+            self.peek_anchor.take();
+            self.browser.close_peek();
+            return;
+        }
         if self
             .peek
             .borrow()
@@ -4816,7 +4929,10 @@ impl ViewState {
         {
             return;
         }
-        self.peek_anchor.replace(Some(anchor));
+        self.peek_anchor.replace(Some(PeekAnchor {
+            widget: anchor,
+            origin_depth,
+        }));
 
         let weak_state = Rc::downgrade(self);
         let source = glib::timeout_add_local_once(self.peek_behavior.open_delay, move || {
@@ -4849,9 +4965,36 @@ impl ViewState {
             self.browser.close_peek();
             return;
         };
+        let Some(row_bounds) = anchor.widget.compute_bounds(&self.overlay) else {
+            self.browser.close_peek();
+            return;
+        };
+        let source_bounds = match peek_origin_bounds(self.mode_views.borrow().mode()) {
+            PeekOriginBounds::Anchor => row_bounds,
+            PeekOriginBounds::Column => {
+                let Some(bounds) = self
+                    .columns
+                    .borrow()
+                    .get(anchor.origin_depth)
+                    .and_then(|column| column.shell.compute_bounds(&self.overlay))
+                else {
+                    self.browser.close_peek();
+                    return;
+                };
+                bounds
+            }
+        };
+        let Some(placement) = peek_horizontal_placement(
+            source_bounds.x(),
+            source_bounds.width(),
+            self.overlay.width() as f32,
+        ) else {
+            self.browser.close_peek();
+            return;
+        };
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        content.set_size_request(256, -1);
+        content.set_size_request(PEEK_WIDTH, -1);
         content.set_overflow(gtk::Overflow::Hidden);
 
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -4913,35 +5056,25 @@ impl ViewState {
         });
         content.add_controller(click);
 
-        let Some(bounds) = anchor.compute_bounds(&self.overlay) else {
-            self.browser.close_peek();
-            return;
-        };
         content.add_css_class("peek-popover");
-        let gap = 8.0;
-        let right = bounds.x() + bounds.width() + gap;
-        let left = (bounds.x() - 260.0).max(0.0);
-        let positioned_right = right + 256.0 <= self.overlay.width() as f32;
-        let x = if positioned_right { right } else { left };
         let transition_duration = self
             .peek_behavior
             .fade_duration
             .as_millis()
             .min(u128::from(u32::MAX)) as u32;
-        let transition_type = if positioned_right {
-            gtk::RevealerTransitionType::SlideRight
-        } else {
-            gtk::RevealerTransitionType::SlideLeft
-        };
+        let transition_type = peek_transition(placement.side);
+        let (halign, margin_start, margin_end) =
+            peek_horizontal_layout(placement, self.overlay.width() as f32);
         let revealer = gtk::Revealer::builder()
             .child(&content)
             .transition_type(transition_type)
             .transition_duration(transition_duration)
             .reveal_child(false)
-            .halign(gtk::Align::Start)
+            .halign(halign)
             .valign(gtk::Align::Start)
-            .margin_start(x.round() as i32)
-            .margin_top(bounds.y().round().max(0.0) as i32)
+            .margin_start(margin_start)
+            .margin_end(margin_end)
+            .margin_top(row_bounds.y().round().max(0.0) as i32)
             .build();
         self.overlay.add_overlay(&revealer);
         self.peek.replace(Some(PeekView {
@@ -4986,7 +5119,7 @@ impl ViewState {
                 .animation_generation
                 .set(column.animation_generation.get().saturating_add(1));
             self.columns_widget.remove(&column.shell);
-            self.overlay.remove_overlay(&column.marquee);
+            self.overlay.remove_overlay(&column.marquee.band());
         }
         let retained = self
             .columns
@@ -5167,17 +5300,25 @@ pub(super) fn install_folder_context_menu(
         .build();
     popover.add_css_class("folder-context-popover");
 
-    let new_folder = context_menu_option("New Folder", Some("Ctrl+Shift+N"));
-    let new_file = context_menu_option("New File", None);
-    let paste = context_menu_option("Paste", Some("Ctrl+V"));
-    let select_all = context_menu_option("Select All", Some("Ctrl+A"));
-    let open_terminal = context_menu_option("Open in Terminal", Some("Ctrl+T"));
-    let properties = context_menu_option("Properties", None);
+    let new_folder = context_menu_option(
+        crate::assets::icons::FOLDER_PLUS,
+        "New Folder",
+        "Ctrl+Shift+N",
+    );
+    let new_file = context_menu_option(crate::assets::icons::FILE_PLUS, "New File", "");
+    let open_terminal =
+        context_menu_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
+    let paste = context_menu_option(crate::assets::icons::CLIPBOARD_PASTE, "Paste", "Ctrl+V");
+    let select_all = context_menu_option(crate::assets::icons::LIST_CHECKS, "Select All", "Ctrl+A");
+    let refresh = context_menu_option(crate::assets::icons::REFRESH, "Refresh", "F5");
+    let properties = context_menu_option(crate::assets::icons::INFO, "Properties", "");
     content.append(&new_folder);
     content.append(&new_file);
+    content.append(&open_terminal);
+    content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     content.append(&paste);
     content.append(&select_all);
-    content.append(&open_terminal);
+    content.append(&refresh);
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     content.append(&properties);
 
@@ -5232,6 +5373,16 @@ pub(super) fn install_folder_context_menu(
         }
         if let Some(state) = weak.upgrade() {
             state.select_all(depth);
+        }
+    });
+    let weak = Rc::downgrade(state);
+    let refresh_popover = popover.downgrade();
+    refresh.connect_clicked(move |_| {
+        if let Some(popover) = refresh_popover.upgrade() {
+            popover.popdown();
+        }
+        if let Some(state) = weak.upgrade() {
+            state.browser.retry_column(depth);
         }
     });
     let weak = Rc::downgrade(state);
@@ -5648,8 +5799,8 @@ pub(super) fn install_item_context_menu(
     widget.add_controller(click);
 }
 
-fn entry_responds_to_single_click(entry: &FileEntry, previews_enabled: bool) -> bool {
-    entry.is_directory() || (previews_enabled && entry_supports_quick_preview(entry))
+fn entry_responds_to_preview_click(entry: &FileEntry, previews_enabled: bool) -> bool {
+    previews_enabled && !entry.is_directory() && entry_supports_quick_preview(entry)
 }
 
 pub(super) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
@@ -5662,6 +5813,7 @@ pub(super) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
     !matches!(content_family(&content_type), PreviewContent::Unsupported)
         || gio::content_type_is_a(&content_type, "text/plain")
         || has_plain_text_extension(&entry.native_name)
+        || is_extensionless_dotfile(&entry.native_name)
 }
 
 struct TrashSummary {
@@ -5972,7 +6124,7 @@ fn connect_context_trash(
         }
         if let Some(state) = weak.upgrade() {
             let entries = context_entries(&state, &target);
-            state.show_delete_confirmation(entries, permanent);
+            state.request_delete(entries, permanent);
         }
     });
 }
@@ -6430,12 +6582,75 @@ pub(super) fn file_drag_content(entries: &[FileEntry]) -> Option<gtk::gdk::Conte
 fn copy_locations(entries: &[FileEntry]) {
     let text = entries
         .iter()
-        .map(|entry| entry.location.display_path())
+        .map(|entry| copy_path_text(&entry.location, entry.is_directory()))
         .collect::<Vec<_>>()
         .join("\n");
     if let Some(display) = gtk::gdk::Display::default() {
         display.clipboard().set_text(&text);
     }
+}
+
+fn can_pin_entry(entry: &FileEntry, status: PinStatus) -> bool {
+    entry.is_directory() && !is_trash_location(&entry.location) && status == PinStatus::Available
+}
+
+fn copy_path_text(location: &Location, is_directory: bool) -> String {
+    match location.native_path() {
+        Some(path) => {
+            let mut path = shell_escape_path(path);
+            if is_directory && !path.ends_with(std::path::MAIN_SEPARATOR) {
+                path.push(std::path::MAIN_SEPARATOR);
+            }
+            path
+        }
+        None => location.display_path(),
+    }
+}
+
+fn shell_escape_path(path: &Path) -> String {
+    let path = path.to_string_lossy();
+    if path.contains('\n') {
+        return format!("'{}'", path.replace('\'', "'\\''"));
+    }
+
+    let mut escaped = String::new();
+    for c in path.chars() {
+        if needs_shell_escape(c) {
+            escaped.push('\\');
+            escaped.push(c);
+        } else {
+            escaped.push(c);
+        }
+    }
+    escaped
+}
+
+fn needs_shell_escape(c: char) -> bool {
+    c.is_whitespace()
+        || c.is_control()
+        || matches!(
+            c,
+            '"' | '\''
+                | '\\'
+                | '$'
+                | '`'
+                | '!'
+                | '#'
+                | '&'
+                | '*'
+                | ';'
+                | '<'
+                | '>'
+                | '?'
+                | '['
+                | ']'
+                | '{'
+                | '}'
+                | '('
+                | ')'
+                | '|'
+                | '~'
+        )
 }
 
 fn set_files_clipboard(entries: &[FileEntry]) -> bool {
@@ -6463,6 +6678,22 @@ fn set_location_files_clipboard(locations: &[Location]) -> bool {
             )))
             .is_ok()
     })
+}
+
+fn should_activate_single_click(
+    press_count: i32,
+    is_directory: bool,
+    activation: ClickActivation,
+    control: bool,
+    shift: bool,
+    preserve_group: bool,
+) -> bool {
+    let configured = if is_directory {
+        activation.folders
+    } else {
+        activation.files
+    };
+    press_count == 1 && configured == ClickCount::One && !control && !shift && !preserve_group
 }
 
 fn should_preview_pointer_press(
@@ -6538,20 +6769,39 @@ fn item_context_option_with_icon(icon: gtk::Image, label: &str, accelerator: &st
     button
 }
 
-fn context_menu_option(label: &str, accelerator: Option<&str>) -> gtk::Button {
+fn context_menu_option(icon: &str, label: &str, accelerator: &str) -> gtk::Button {
     let button = gtk::Button::new();
     button.add_css_class("folder-context-option");
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 18);
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let icon = crate::assets::primary_icon(icon, 15);
+    icon.add_css_class("folder-context-icon");
     let title = gtk::Label::new(Some(label));
     title.set_xalign(0.0);
     title.set_hexpand(true);
+    row.append(&icon);
     row.append(&title);
-    if let Some(accelerator) = accelerator {
+    if !accelerator.is_empty() {
         let shortcut = gtk::Label::new(Some(accelerator));
         shortcut.add_css_class("folder-context-shortcut");
         row.append(&shortcut);
     }
     button.set_child(Some(&row));
+    button
+}
+
+pub(super) fn pane_refresh_button(browser: &Rc<Browser>, depth: usize) -> gtk::Button {
+    let button = gtk::Button::builder().tooltip_text("Refresh (F5)").build();
+    button.set_child(Some(&crate::assets::primary_icon(
+        crate::assets::icons::REFRESH,
+        16,
+    )));
+    button.add_css_class("column-header-action");
+    let weak_browser = Rc::downgrade(browser);
+    button.connect_clicked(move |_| {
+        if let Some(browser) = weak_browser.upgrade() {
+            browser.retry_column(depth);
+        }
+    });
     button
 }
 
@@ -6848,7 +7098,7 @@ pub(super) fn rename_stem_end(name: &str) -> i32 {
     name[..end].chars().count().min(i32::MAX as usize) as i32
 }
 
-fn entry_model_value(entry: &FileEntry) -> String {
+pub(super) fn entry_model_value(entry: &FileEntry) -> String {
     let kind = if entry.is_broken_symbolic_link() {
         'x'
     } else if entry.is_directory() {
@@ -6858,7 +7108,8 @@ fn entry_model_value(entry: &FileEntry) -> String {
     } else {
         'f'
     };
-    format!("{kind}\t{}", entry.display_name)
+    let hidden = if entry.is_hidden { 'h' } else { 'v' };
+    format!("{kind}{hidden}\t{}", entry.display_name)
 }
 
 fn model_display_name(value: &str) -> &str {
@@ -6866,7 +7117,31 @@ fn model_display_name(value: &str) -> &str {
 }
 
 fn model_is_directory(value: &str) -> bool {
-    value.starts_with("d\t")
+    value.starts_with("d")
+}
+
+pub(super) fn model_is_hidden(value: &str) -> bool {
+    value.as_bytes().get(1) == Some(&b'h')
+}
+
+pub(super) fn entry_filter(
+    show_hidden: Rc<Cell<bool>>,
+    filter_query: Rc<RefCell<String>>,
+) -> gtk::CustomFilter {
+    gtk::CustomFilter::new(move |item| {
+        let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
+            return false;
+        };
+        let value = item.string();
+        if !show_hidden.get() && model_is_hidden(&value) {
+            return false;
+        }
+        let query = filter_query.borrow();
+        query.is_empty()
+            || model_display_name(&value)
+                .to_lowercase()
+                .contains(query.as_str())
+    })
 }
 
 pub(super) fn entry_icon(entry: &FileEntry) -> &'static str {
@@ -6901,6 +7176,71 @@ fn icon_for_name(name: &str) -> &'static str {
         ) => crate::assets::icons::FILE_CODE,
         _ => crate::assets::icons::DOCUMENTS,
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PeekOriginBounds {
+    Anchor,
+    Column,
+}
+
+fn peek_origin_bounds(mode: BrowserMode) -> PeekOriginBounds {
+    match mode {
+        BrowserMode::Columns => PeekOriginBounds::Column,
+        BrowserMode::Grid | BrowserMode::Explorer => PeekOriginBounds::Anchor,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PeekSide {
+    Left,
+    Right,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PeekPlacement {
+    x: f32,
+    side: PeekSide,
+}
+
+fn peek_transition(side: PeekSide) -> gtk::RevealerTransitionType {
+    match side {
+        PeekSide::Left => gtk::RevealerTransitionType::SlideLeft,
+        PeekSide::Right => gtk::RevealerTransitionType::SlideRight,
+    }
+}
+
+fn peek_horizontal_layout(placement: PeekPlacement, viewport_width: f32) -> (gtk::Align, i32, i32) {
+    match placement.side {
+        PeekSide::Right => (gtk::Align::Start, placement.x.round() as i32, 0),
+        PeekSide::Left => (
+            gtk::Align::End,
+            0,
+            (viewport_width - placement.x - PEEK_WIDTH as f32)
+                .max(0.0)
+                .round() as i32,
+        ),
+    }
+}
+
+fn peek_horizontal_placement(
+    source_x: f32,
+    source_width: f32,
+    viewport_width: f32,
+) -> Option<PeekPlacement> {
+    let right = source_x + source_width + PEEK_GAP;
+    if right + PEEK_WIDTH as f32 <= viewport_width {
+        return Some(PeekPlacement {
+            x: right,
+            side: PeekSide::Right,
+        });
+    }
+
+    let left = source_x - PEEK_GAP - PEEK_WIDTH as f32;
+    (left >= 0.0).then_some(PeekPlacement {
+        x: left,
+        side: PeekSide::Left,
+    })
 }
 
 fn append_peek_entries(peek: &PeekView, entries: Vec<FileEntry>, limit: usize) {

@@ -24,15 +24,16 @@ use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 use super::{
     LocalOperationProvider, await_cancellable, copy_new_recursively, copy_recursively,
     deletion_error_message, deletion_error_summary, extract_7z_from_reader, extract_tar,
-    extract_zip_from_archive, operation_error_summary, replace_local, replace_local_with,
-    transfer_is_noop, validated_archive_path, validated_child, write_staged_archive,
+    extract_zip_from_archive, home_trash_entries_at, operation_error_summary, replace_local,
+    replace_local_with, transfer_is_noop, validated_archive_path, validated_child,
+    write_staged_archive,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{
         ArchiveFormat, CompressRequest, DeleteRequest, LoadHandle, OperationEvent,
         OperationProvider, OperationRequestId, PasteItem, PasteRequest, RestoreRequest,
-        TransferConflict,
+        RestoreSource, TransferConflict,
     },
 };
 
@@ -48,6 +49,7 @@ fn file_entry(path: &std::path::Path) -> FileEntry {
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
     }
 }
 
@@ -363,7 +365,7 @@ fn cancelled_replacement_move_tracks_the_modified_source_and_target_roots()
     let context = glib::MainContext::default();
     let watcher = context.spawn_local(async move {
         while !committed_marker.exists() {
-            glib::timeout_future(Duration::from_millis(1)).await;
+            glib::timeout_future(Duration::ZERO).await;
         }
         cancel_after_commit.cancel();
     });
@@ -497,6 +499,7 @@ fn test_file_entry(path: &Path) -> FileEntry {
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
     }
 }
 
@@ -1198,6 +1201,40 @@ fn extraction_supports_nesting_and_regular_conflicts() -> Result<(), Box<dyn Err
 }
 
 #[test]
+fn home_trash_fallback_finds_broken_symlinks_the_virtual_backend_has_not_refreshed()
+-> Result<(), Box<dyn Error>> {
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let fixture = std::env::temp_dir().join(format!("strata-home-trash-fallback-{unique}"));
+    let trash = fixture.join("Trash");
+    let original = fixture.join("original report.txt");
+    fs::create_dir_all(trash.join("files"))?;
+    fs::create_dir_all(trash.join("info"))?;
+    std::os::unix::fs::symlink("missing-target", trash.join("files/report.txt"))?;
+    let encoded = original.display().to_string().replace(' ', "%20");
+    fs::write(
+        trash.join("info/report.txt.trashinfo"),
+        format!("[Trash Info]\nPath={encoded}\nDeletionDate=2026-09-03T16:05:39\n"),
+    )?;
+
+    let entries = home_trash_entries_at(&trash, &HashSet::from([original.clone()]));
+
+    let entry = entries.get(&original).expect("fallback entry");
+    assert_eq!(
+        entry.source,
+        Location::local(trash.join("files/report.txt"))
+    );
+    assert_eq!(entry.original_target, Some(Location::local(&original)));
+    assert_eq!(
+        entry.trash_info.as_deref(),
+        Some(trash.join("info/report.txt.trashinfo").as_path())
+    );
+    fs::remove_dir_all(fixture)?;
+    Ok(())
+}
+
+#[test]
 fn cancelling_restore_before_io_reports_every_item_as_unattempted() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -1208,7 +1245,7 @@ fn cancelling_restore_before_io_reports_every_item_as_unattempted() -> Result<()
     let operation = LocalOperationProvider.restore(
         RestoreRequest {
             id: OperationRequestId(9),
-            entries: entries.clone(),
+            source: RestoreSource::TrashEntries(entries.clone()),
         },
         Rc::new(move |event| emitted.borrow_mut().push(event)),
     );

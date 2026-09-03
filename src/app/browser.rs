@@ -15,7 +15,7 @@ use crate::{
         ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
         DirectoryChange, DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
         LocationValidationError, OperationEvent, OperationProvider, OperationRequestId, PasteItem,
-        PasteRequest, RenameRequest, RequestId, RestoreRequest, TransferConflict,
+        PasteRequest, RenameRequest, RequestId, RestoreRequest, RestoreSource, TransferConflict,
         validate_basename, validate_uri_credentials,
     },
 };
@@ -72,6 +72,9 @@ pub enum BrowserEvent {
     },
     ColumnReloaded {
         depth: usize,
+    },
+    HiddenToggled {
+        show_hidden: bool,
     },
     LoadFinished {
         depth: usize,
@@ -177,6 +180,66 @@ type PreferencesObserver = Rc<dyn Fn(ViewPreferences)>;
 
 const MAX_INCREMENTAL_OPERATION_UPDATES: usize = 64;
 
+#[derive(Default)]
+struct TrashUndoState {
+    generation: u64,
+    locations: Vec<Location>,
+    claimed: bool,
+}
+
+// Undo follows the latest operation across every Strata window on the GTK main thread.
+thread_local! {
+    static PENDING_TRASH_UNDO: RefCell<TrashUndoState> = RefCell::new(TrashUndoState::default());
+}
+
+fn replace_pending_trash_undo(locations: Vec<Location>) {
+    PENDING_TRASH_UNDO.with(|pending| {
+        let generation = pending.borrow().generation.saturating_add(1);
+        pending.replace(TrashUndoState {
+            generation,
+            locations,
+            claimed: false,
+        });
+    });
+}
+
+fn claim_pending_trash_undo() -> Option<(u64, Vec<Location>)> {
+    PENDING_TRASH_UNDO.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        if pending.claimed || pending.locations.is_empty() {
+            return None;
+        }
+        pending.claimed = true;
+        Some((pending.generation, pending.locations.clone()))
+    })
+}
+
+fn mark_trash_undo_restored(generation: u64, location: &Location) {
+    PENDING_TRASH_UNDO.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        if pending.generation == generation {
+            pending.locations.retain(|candidate| candidate != location);
+        }
+    });
+}
+
+fn finish_trash_undo(generation: u64, completed: bool) {
+    PENDING_TRASH_UNDO.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        if pending.generation == generation {
+            if completed {
+                pending.locations.clear();
+            }
+            pending.claimed = false;
+        }
+    });
+}
+
+#[cfg(test)]
+fn pending_trash_undo() -> Vec<Location> {
+    PENDING_TRASH_UNDO.with(|pending| pending.borrow().locations.clone())
+}
+
 pub struct Browser {
     source: Rc<dyn FileSource>,
     state: RefCell<NavigationState>,
@@ -190,7 +253,9 @@ pub struct Browser {
     current_operation: Cell<Option<OperationRequestId>>,
     transfer_operation: Cell<Option<bool>>,
     deletion_operation: Cell<bool>,
+    deletion_permanent: Cell<bool>,
     restoration_operation: Cell<bool>,
+    undo_restoration: RefCell<Option<(u64, Vec<Location>)>>,
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
     preferences: Cell<ViewPreferences>,
@@ -218,7 +283,9 @@ impl Browser {
             current_operation: Cell::new(None),
             transfer_operation: Cell::new(None),
             deletion_operation: Cell::new(false),
+            deletion_permanent: Cell::new(false),
             restoration_operation: Cell::new(false),
+            undo_restoration: RefCell::new(None),
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
             preferences: Cell::new(preferences),
@@ -233,6 +300,10 @@ impl Browser {
 
     pub fn clear_observer(&self) {
         self.observers.borrow_mut().clear();
+    }
+
+    pub fn preferences(&self) -> ViewPreferences {
+        self.preferences.get()
     }
 
     pub fn observe_preferences(&self, observer: impl Fn(ViewPreferences) + 'static) {
@@ -456,6 +527,9 @@ impl Browser {
 
     pub fn begin_peek(self: &Rc<Self>, origin_depth: usize, location: Location) {
         self.close_peek();
+        if self.is_open_child(origin_depth, &location) {
+            return;
+        }
         let request_id = self.new_request_id();
         if !self
             .state
@@ -479,7 +553,6 @@ impl Browser {
                 id: request_id,
                 location,
                 batch_size: 128,
-                include_hidden: self.preferences.get().show_hidden,
                 max_entries: PEEK_MAX_ENTRIES,
                 time_budget: PEEK_TIME_BUDGET,
             },
@@ -568,22 +641,13 @@ impl Browser {
         self.preferences.set(preferences);
         self.notify_preferences_observers();
 
-        let locations = {
-            let mut state = self.state.borrow_mut();
-            state.set_show_hidden(preferences.show_hidden);
-            state
-                .columns
-                .iter()
-                .map(|column| column.location.clone())
-                .collect::<Vec<_>>()
-        };
-        for (depth, location) in locations.into_iter().enumerate() {
-            self.refresh_column(depth);
-            let monitor = self.install_monitor(depth, location);
-            if let Some(slot) = self.monitors.borrow_mut().get_mut(depth) {
-                *slot = monitor;
-            }
-        }
+        self.close_peek();
+        self.state
+            .borrow_mut()
+            .set_show_hidden(preferences.show_hidden);
+        self.emit(BrowserEvent::HiddenToggled {
+            show_hidden: preferences.show_hidden,
+        });
     }
 
     fn apply_column_preferences(
@@ -915,6 +979,7 @@ impl Browser {
         let total = entries.len();
         let request_id = self.begin_operation();
         self.deletion_operation.set(true);
+        self.deletion_permanent.set(permanent);
         self.emit(BrowserEvent::DeletionStarted { total });
         let load = provider.delete(
             DeleteRequest {
@@ -944,11 +1009,39 @@ impl Browser {
         let load = provider.restore(
             RestoreRequest {
                 id: request_id,
-                entries,
+                source: RestoreSource::TrashEntries(entries),
             },
             self.operation_callback(request_id, false, HashSet::new()),
         );
         self.operation_load.replace(Some(load));
+    }
+
+    pub fn undo_last_trash(self: &Rc<Self>) -> bool {
+        if self.current_operation.get().is_some() {
+            return false;
+        }
+        let Some((generation, locations)) = claim_pending_trash_undo() else {
+            return false;
+        };
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            finish_trash_undo(generation, false);
+            return false;
+        };
+        let total = locations.len();
+        let request_id = self.begin_operation();
+        self.restoration_operation.set(true);
+        self.undo_restoration
+            .replace(Some((generation, locations.clone())));
+        self.emit(BrowserEvent::RestorationStarted { total });
+        let load = provider.restore(
+            RestoreRequest {
+                id: request_id,
+                source: RestoreSource::OriginalLocations(locations),
+            },
+            self.operation_callback(request_id, false, HashSet::new()),
+        );
+        self.operation_load.replace(Some(load));
+        true
     }
 
     pub fn compress(
@@ -1029,8 +1122,12 @@ impl Browser {
 
     fn begin_operation(&self) -> OperationRequestId {
         self.operation_load.borrow_mut().take();
+        if let Some((generation, _)) = self.undo_restoration.take() {
+            finish_trash_undo(generation, false);
+        }
         self.transfer_operation.set(None);
         self.deletion_operation.set(false);
+        self.deletion_permanent.set(false);
         self.restoration_operation.set(false);
         let request_id = OperationRequestId(self.next_request.get());
         self.next_request
@@ -1107,6 +1204,15 @@ impl Browser {
                 ..
             } = &event
             {
+                if restored_location.is_some()
+                    && let Some((generation, locations)) =
+                        browser.undo_restoration.borrow().as_ref()
+                    && let Some(location) = completed
+                        .checked_sub(1)
+                        .and_then(|index| locations.get(index))
+                {
+                    mark_trash_undo_restored(*generation, location);
+                }
                 if *total <= MAX_INCREMENTAL_OPERATION_UPDATES
                     && let Some(location) = restored_location
                 {
@@ -1135,7 +1241,27 @@ impl Browser {
             browser.current_operation.set(None);
             let moving = browser.transfer_operation.replace(None);
             let deleting = browser.deletion_operation.replace(false);
+            let deletion_permanent = browser.deletion_permanent.replace(false);
             let restoring = browser.restoration_operation.replace(false);
+            if restoring && let Some((generation, _)) = browser.undo_restoration.take() {
+                finish_trash_undo(
+                    generation,
+                    matches!(&event, OperationEvent::Restored { .. }),
+                );
+            }
+            if deleting && !deletion_permanent {
+                let locations = match &event {
+                    OperationEvent::Deleted { locations, .. } => locations.clone(),
+                    OperationEvent::CompletedWithErrors {
+                        deleted_locations, ..
+                    } => deleted_locations.clone(),
+                    OperationEvent::Cancelled { result, .. } => result.completed.clone(),
+                    _ => Vec::new(),
+                };
+                if !locations.is_empty() {
+                    replace_pending_trash_undo(locations);
+                }
+            }
             if moving.is_some() {
                 let moved_locations = match &event {
                     OperationEvent::Pasted { locations, .. } if moving == Some(true) => {
@@ -1280,7 +1406,7 @@ impl Browser {
         self.activate_focused();
     }
 
-    fn is_open_child(&self, parent_depth: usize, location: &Location) -> bool {
+    pub(crate) fn is_open_child(&self, parent_depth: usize, location: &Location) -> bool {
         parent_depth
             .checked_add(1)
             .and_then(|depth| self.location_at(depth))
@@ -1433,7 +1559,6 @@ impl Browser {
                 id: request_id,
                 location,
                 batch_size: 128,
-                include_hidden: self.preferences.get().show_hidden,
                 max_entries: MAX_DIRECTORY_ENTRIES,
                 time_budget: DIRECTORY_LOAD_TIME_BUDGET,
             },
@@ -1537,6 +1662,20 @@ impl Browser {
 
     pub fn reload_active(self: &Rc<Self>) {
         if let Some(depth) = self.active_depth() {
+            self.refresh_column(depth);
+        }
+    }
+
+    pub fn refresh_all(self: &Rc<Self>) {
+        let depths: Vec<usize> = {
+            let state = self.state.borrow();
+            (0..state.columns.len()).collect()
+        };
+        if depths.is_empty() {
+            self.reload_active();
+            return;
+        }
+        for depth in depths {
             self.refresh_column(depth);
         }
     }
@@ -1645,9 +1784,21 @@ impl Browser {
                             take_focus: false,
                         });
                     }
-                } else if state.apply_peek_batch(request_id, &entries) {
-                    drop(state);
-                    self.emit(BrowserEvent::PeekEntriesAdded { entries });
+                } else {
+                    let peek_entries: Vec<_> = if self.preferences.get().show_hidden {
+                        entries
+                    } else {
+                        entries
+                            .into_iter()
+                            .filter(|entry| !entry.is_hidden)
+                            .collect()
+                    };
+                    if state.apply_peek_batch(request_id, &peek_entries) {
+                        drop(state);
+                        self.emit(BrowserEvent::PeekEntriesAdded {
+                            entries: peek_entries,
+                        });
+                    }
                 }
             }
             DirectoryEvent::Finished {

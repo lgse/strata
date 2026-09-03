@@ -10,8 +10,8 @@ use gdk_pixbuf::prelude::*;
 
 use super::{
     MediaBackend, bounded_output, bounded_output_with_timeout, bounded_surface_dimensions,
-    media_backends, media_command, read_limited, render_pixbuf, render_raw, run,
-    run_media_backends, scale_embedded_thumbnail,
+    media_backends, media_command, read_limited, render_pixbuf, render_raw, render_raw_thumbnail,
+    run, run_media_backends, scale_embedded_thumbnail,
 };
 use crate::sandbox::MediaPreviewBackend;
 
@@ -293,6 +293,35 @@ fn preview_image_uses_raw_fallbacks() {
         Err(raw) => {
             assert_ne!(pixbuf, raw);
             assert_eq!(preview.expect_err("stub should fail RAW fallbacks"), raw);
+        }
+    }
+}
+
+#[test]
+fn thumbnail_raw_uses_embedded_preview_fallbacks() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let input = directory.path().join("photo.ARW");
+    let output = directory.path().join("result.png");
+    std::fs::write(&input, b"not a camera file").expect("write stub");
+
+    let pixbuf = render_pixbuf(&input, 256).expect_err("stub must fail pixbuf");
+    let thumbnail = render_raw_thumbnail(&input, 256);
+    let helper = run(&[
+        "thumbnail-raw".into(),
+        input.to_string_lossy().into_owned(),
+        output.to_string_lossy().into_owned(),
+        "256".into(),
+        "software".into(),
+    ]);
+
+    match thumbnail {
+        Ok(_) => helper.expect("thumbnail-raw should use RAW fallbacks"),
+        Err(thumbnail) => {
+            assert_ne!(pixbuf, thumbnail);
+            assert_eq!(
+                helper.expect_err("stub should fail RAW fallbacks"),
+                thumbnail
+            );
         }
     }
 }

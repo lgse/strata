@@ -237,6 +237,7 @@ pub struct FileEntry {
     pub kind: EntryKind,
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
+    pub is_hidden: bool,
 }
 
 impl FileEntry {

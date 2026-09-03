@@ -268,12 +268,18 @@ impl NavigationState {
             }
         }
         if column.select_first_on_load && !column.entries.is_empty() {
-            let location = column.entries[0].location.clone();
-            column.selected = Some(0);
-            column.selected_locations.clear();
-            column.selected_locations.insert(location.clone());
-            column.selection_anchor = Some(location);
-            column.select_first_on_load = false;
+            let first_visible = column
+                .entries
+                .iter()
+                .position(|entry| preferences.show_hidden || !entry.is_hidden);
+            if let Some(position) = first_visible {
+                let location = column.entries[position].location.clone();
+                column.selected = Some(position);
+                column.selected_locations.clear();
+                column.selected_locations.insert(location.clone());
+                column.selection_anchor = Some(location);
+                column.select_first_on_load = false;
+            }
         }
         Some((depth, insertions))
     }
@@ -381,6 +387,30 @@ impl NavigationState {
         self.preferences.show_hidden = show_hidden;
         for column in &mut self.columns {
             column.preferences.show_hidden = show_hidden;
+            if !show_hidden {
+                if let Some(selected) = column.selected
+                    && column.entries.get(selected).is_some_and(|e| e.is_hidden)
+                {
+                    let nearest_visible = (selected + 1..column.entries.len())
+                        .find(|&i| !column.entries[i].is_hidden)
+                        .or_else(|| (0..selected).rev().find(|&i| !column.entries[i].is_hidden));
+                    column.selected = nearest_visible;
+                    column.selected_locations.clear();
+                    if let Some(pos) = nearest_visible {
+                        let loc = column.entries[pos].location.clone();
+                        column.selected_locations.insert(loc.clone());
+                        column.selection_anchor = Some(loc);
+                    } else {
+                        column.selection_anchor = None;
+                    }
+                }
+                column.selected_locations.retain(|loc| {
+                    column
+                        .entries
+                        .iter()
+                        .any(|entry| &entry.location == loc && !entry.is_hidden)
+                });
+            }
         }
     }
 
@@ -564,15 +594,34 @@ impl NavigationState {
         if column.entries.is_empty() {
             return None;
         }
-        let last = column.entries.len() - 1;
-        let current = column
-            .selected
-            .unwrap_or(if direction < 0 { last } else { 0 });
-        let focused = if direction < 0 {
-            current.saturating_sub(1)
+
+        let show_hidden = column.preferences.show_hidden;
+        let is_visible = |entry: &FileEntry| show_hidden || !entry.is_hidden;
+
+        let first_visible = column.entries.iter().position(is_visible)?;
+        let last_visible = column.entries.iter().rposition(is_visible)?;
+
+        let current = column.selected.unwrap_or(if direction < 0 {
+            last_visible
         } else {
-            (current + 1).min(last)
+            first_visible
+        });
+
+        let focused = if direction < 0 {
+            column.entries[..current]
+                .iter()
+                .rposition(is_visible)
+                .unwrap_or(current)
+        } else if current + 1 < column.entries.len() {
+            column.entries[current + 1..]
+                .iter()
+                .position(is_visible)
+                .map(|offset| current + 1 + offset)
+                .unwrap_or(current)
+        } else {
+            current
         };
+
         let anchor = column
             .selection_anchor
             .as_ref()
@@ -588,13 +637,16 @@ impl NavigationState {
         }
         let start = anchor.min(focused);
         let end = anchor.max(focused);
-        column.selected_locations = column.entries[start..=end]
+        let selected_positions: Vec<usize> = (start..=end)
+            .filter(|&index| is_visible(&column.entries[index]))
+            .collect();
+        column.selected_locations = selected_positions
             .iter()
-            .map(|entry| entry.location.clone())
+            .map(|&index| column.entries[index].location.clone())
             .collect();
         column.selected = Some(focused);
         self.active_column = Some(depth);
-        Some((depth, focused, (start..=end).collect()))
+        Some((depth, focused, selected_positions))
     }
 
     pub fn selected_positions(&self, depth: usize) -> Vec<usize> {
@@ -638,13 +690,67 @@ impl NavigationState {
             return None;
         }
 
-        let last = column.entries.len() - 1;
+        let show_hidden = column.preferences.show_hidden;
+        let is_visible = |entry: &FileEntry| show_hidden || !entry.is_hidden;
+
+        if !column.entries.iter().any(is_visible) {
+            column.selected = None;
+            column.selected_locations.clear();
+            column.selection_anchor = None;
+            return None;
+        }
+
         let position = match (column.selected, direction.cmp(&0)) {
-            (None, std::cmp::Ordering::Less) => last,
-            (None, _) => 0,
-            (Some(position), std::cmp::Ordering::Less) => position.saturating_sub(1),
-            (Some(position), std::cmp::Ordering::Greater) => (position + 1).min(last),
-            (Some(position), std::cmp::Ordering::Equal) => position,
+            (None, std::cmp::Ordering::Less) => column.entries.iter().rposition(is_visible)?,
+            (None, _) => column.entries.iter().position(is_visible)?,
+            (Some(current), std::cmp::Ordering::Less) => column.entries[..current]
+                .iter()
+                .rposition(is_visible)
+                .unwrap_or_else(|| {
+                    if is_visible(&column.entries[current]) {
+                        current
+                    } else {
+                        column
+                            .entries
+                            .iter()
+                            .position(is_visible)
+                            .unwrap_or(current)
+                    }
+                }),
+            (Some(current), std::cmp::Ordering::Greater) => {
+                if current + 1 < column.entries.len() {
+                    column.entries[current + 1..]
+                        .iter()
+                        .position(is_visible)
+                        .map(|offset| current + 1 + offset)
+                        .unwrap_or_else(|| {
+                            if is_visible(&column.entries[current]) {
+                                current
+                            } else {
+                                column
+                                    .entries
+                                    .iter()
+                                    .rposition(is_visible)
+                                    .unwrap_or(current)
+                            }
+                        })
+                } else if is_visible(&column.entries[current]) {
+                    current
+                } else {
+                    column
+                        .entries
+                        .iter()
+                        .rposition(is_visible)
+                        .unwrap_or(current)
+                }
+            }
+            (Some(current), std::cmp::Ordering::Equal) => {
+                if is_visible(&column.entries[current]) {
+                    current
+                } else {
+                    column.entries.iter().position(is_visible)?
+                }
+            }
         };
         column.selected = Some(position);
         column.selected_locations.clear();
@@ -813,7 +919,7 @@ fn compare_entries(left: &FileEntry, right: &FileEntry, preferences: ViewPrefere
     }
 
     let ordering = match preferences.sort_key {
-        SortKey::Name => left.display_name.cmp(&right.display_name),
+        SortKey::Name => compare_display_names(&left.display_name, &right.display_name),
         SortKey::Type => left.kind.cmp(&right.kind),
         SortKey::Size => compare_metadata(&left.size, &right.size),
         SortKey::Modified => {
@@ -825,8 +931,14 @@ fn compare_entries(left: &FileEntry, right: &FileEntry, preferences: ViewPrefere
         SortDirection::Descending => ordering.reverse(),
     };
     ordering
-        .then_with(|| left.display_name.cmp(&right.display_name))
+        .then_with(|| compare_display_names(&left.display_name, &right.display_name))
         .then_with(|| left.location.compare(&right.location))
+}
+
+fn compare_display_names(left: &str, right: &str) -> Ordering {
+    glib::casefold(left)
+        .cmp(&glib::casefold(right))
+        .then_with(|| left.cmp(right))
 }
 
 fn compare_metadata<T: Ord>(left: &MetadataValue<T>, right: &MetadataValue<T>) -> Ordering {

@@ -17,6 +17,7 @@ fn deleted_trash_entries_refresh_the_trash_root() {
         kind: EntryKind::File,
         size: MetadataValue::Known(10),
         modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
     };
 
     assert_eq!(
@@ -74,7 +75,7 @@ struct TrackingFileSource {
 }
 
 struct RecordingFileSource {
-    include_hidden: Rc<RefCell<Vec<bool>>>,
+    request_count: Rc<Cell<usize>>,
 }
 
 type WatchCallback = Rc<dyn Fn(DirectoryChange)>;
@@ -98,6 +99,7 @@ impl FileSource for WatchingFileSource {
                 kind: EntryKind::Directory,
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -125,12 +127,10 @@ impl FileSource for RecordingFileSource {
 
     fn enumerate(
         &self,
-        request: DirectoryRequest,
+        _request: DirectoryRequest,
         _emit: Rc<dyn Fn(DirectoryEvent)>,
     ) -> LoadHandle {
-        self.include_hidden
-            .borrow_mut()
-            .push(request.include_hidden);
+        self.request_count.set(self.request_count.get() + 1);
         LoadHandle::new(|| {})
     }
 }
@@ -173,6 +173,7 @@ impl FileSource for RetryFileSource {
                     kind: EntryKind::Directory,
                     size: MetadataValue::Unknown,
                     modified_unix_seconds: MetadataValue::Unknown,
+                    is_hidden: false,
                 }],
             });
             emit(DirectoryEvent::Finished {
@@ -227,6 +228,7 @@ impl FileSource for FilePreviewSource {
                 kind: EntryKind::File,
                 size: MetadataValue::Known(12),
                 modified_unix_seconds: MetadataValue::Known(1),
+                is_hidden: false,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -250,6 +252,7 @@ impl FileSource for RestoredSortingSource {
             kind: EntryKind::File,
             size: MetadataValue::Known(size),
             modified_unix_seconds: MetadataValue::Unknown,
+            is_hidden: false,
         };
         emit(DirectoryEvent::Batch {
             request_id: request.id,
@@ -278,6 +281,7 @@ impl FileSource for FakeFileSource {
                 kind: EntryKind::Directory,
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -305,6 +309,7 @@ impl FileSource for TrashFileSource {
                 kind: EntryKind::File,
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -515,7 +520,11 @@ impl OperationProvider for ImmediateOperationProvider {
     fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         emit(OperationEvent::Deleted {
             request_id: request.id,
-            locations: Vec::new(),
+            locations: request
+                .entries
+                .into_iter()
+                .map(|entry| entry.location)
+                .collect(),
         });
         LoadHandle::new(|| {})
     }
@@ -543,6 +552,95 @@ impl OperationProvider for ImmediateOperationProvider {
         });
         LoadHandle::new(|| {})
     }
+}
+
+#[test]
+fn a_completed_trash_operation_can_be_undone_once() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let location = Location::local("/fixture/report.txt");
+    let entry = FileEntry {
+        location: location.clone(),
+        native_name: OsString::from("report.txt"),
+        display_name: "report.txt".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    browser.delete(vec![entry], false);
+
+    assert_eq!(
+        pending_trash_undo().as_slice(),
+        std::slice::from_ref(&location)
+    );
+    assert!(browser.undo_last_trash());
+    assert!(!browser.undo_last_trash());
+}
+
+#[test]
+fn another_browser_can_undo_the_latest_trash_operation() {
+    let deleting_browser = Browser::new(Rc::new(FakeFileSource));
+    deleting_browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let undoing_browser = Browser::new(Rc::new(FakeFileSource));
+    undoing_browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let entry = FileEntry {
+        location: Location::local("/fixture/report.txt"),
+        native_name: OsString::from("report.txt"),
+        display_name: "report.txt".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    deleting_browser.delete(vec![entry], false);
+
+    assert!(undoing_browser.undo_last_trash());
+    assert!(!deleting_browser.undo_last_trash());
+}
+
+#[test]
+fn permanent_delete_preserves_the_previous_trash_undo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let trashed = FileEntry {
+        location: Location::local("/fixture/report.txt"),
+        native_name: OsString::from("report.txt"),
+        display_name: "report.txt".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let permanently_deleted = FileEntry {
+        location: Location::local("/fixture/draft.txt"),
+        native_name: OsString::from("draft.txt"),
+        display_name: "draft.txt".into(),
+        ..trashed.clone()
+    };
+
+    browser.delete(vec![trashed], false);
+    browser.delete(vec![permanently_deleted], true);
+
+    assert!(browser.undo_last_trash());
+}
+
+#[test]
+fn failed_and_partial_undo_operations_can_be_retried() {
+    let first = Location::local("/fixture/first.txt");
+    let second = Location::local("/fixture/second.txt");
+    replace_pending_trash_undo(vec![first.clone(), second.clone()]);
+    let (generation, _) = claim_pending_trash_undo().expect("undo claim");
+
+    mark_trash_undo_restored(generation, &first);
+    finish_trash_undo(generation, false);
+
+    assert_eq!(pending_trash_undo(), vec![second.clone()]);
+    let (retry_generation, retry) = claim_pending_trash_undo().expect("retry claim");
+    assert_eq!(retry, vec![second]);
+    finish_trash_undo(retry_generation, true);
 }
 
 #[test]
@@ -583,6 +681,7 @@ fn renaming_on_a_remote_location_refreshes_the_open_column() {
             kind: EntryKind::File,
             size: MetadataValue::Known(1),
             modified_unix_seconds: MetadataValue::Unknown,
+            is_hidden: false,
         },
         "new-name.txt".to_owned(),
     );
@@ -705,6 +804,7 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
         kind: EntryKind::File,
         size: MetadataValue::Known(4),
         modified_unix_seconds: MetadataValue::Known(1),
+        is_hidden: false,
     }));
 
     assert!(events.borrow().iter().any(|event| matches!(
@@ -791,9 +891,9 @@ fn retrying_a_failed_column_preserves_navigation_history() {
 
 #[test]
 fn hidden_file_preference_is_applied_to_reloaded_requests() {
-    let include_hidden = Rc::new(RefCell::new(Vec::new()));
+    let request_count = Rc::new(Cell::new(0));
     let browser = Browser::new(Rc::new(RecordingFileSource {
-        include_hidden: include_hidden.clone(),
+        request_count: request_count.clone(),
     }));
     let observed_preferences = Rc::new(Cell::new(None));
     let observed = observed_preferences.clone();
@@ -802,7 +902,8 @@ fn hidden_file_preference_is_applied_to_reloaded_requests() {
     browser.navigate(Location::local("/fixture"));
     browser.toggle_hidden();
 
-    assert_eq!(*include_hidden.borrow(), vec![false, true]);
+    // Toggling hidden files no longer re-enumerates; it only re-filters in-memory state.
+    assert_eq!(request_count.get(), 1);
     assert_eq!(
         observed_preferences.get(),
         Some(ViewPreferences {
@@ -1198,6 +1299,27 @@ fn peeking_streams_results_without_committing_navigation_history() {
 }
 
 #[test]
+fn an_already_open_child_is_not_peeked() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event));
+    let child = Location::local("/fixture/child");
+    browser.navigate(Location::local("/fixture"));
+    browser.descend(0, child.clone());
+    events.borrow_mut().clear();
+
+    browser.begin_peek(0, child);
+
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::PeekStarted { .. }))
+    );
+}
+
+#[test]
 fn committing_a_peek_descends_and_creates_history() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
@@ -1406,5 +1528,94 @@ fn escape_closes_a_peek_before_the_deepest_column() {
             .borrow()
             .iter()
             .any(|event| matches!(event, BrowserEvent::ColumnsTruncated { len: 1 }))
+    );
+}
+
+struct MixedPeekFileSource;
+
+impl FileSource for MixedPeekFileSource {
+    fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
+        Ok(())
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        emit(DirectoryEvent::Batch {
+            request_id: request.id,
+            entries: vec![
+                FileEntry {
+                    location: Location::local("/fixture/.dotfile"),
+                    native_name: OsString::from(".dotfile"),
+                    display_name: ".dotfile".into(),
+                    kind: EntryKind::File,
+                    size: MetadataValue::Unknown,
+                    modified_unix_seconds: MetadataValue::Unknown,
+                    is_hidden: true,
+                },
+                FileEntry {
+                    location: Location::local("/fixture/normal.txt"),
+                    native_name: OsString::from("normal.txt"),
+                    display_name: "normal.txt".into(),
+                    kind: EntryKind::File,
+                    size: MetadataValue::Unknown,
+                    modified_unix_seconds: MetadataValue::Unknown,
+                    is_hidden: false,
+                },
+            ],
+        });
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+            truncated: false,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
+#[test]
+fn peek_filters_hidden_entries_before_item_limit() {
+    let browser = Browser::new(Rc::new(MixedPeekFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event));
+    browser.navigate(Location::local("/fixture"));
+    browser.begin_peek(0, Location::local("/fixture/peek_target"));
+
+    let peek_batch = events.borrow().iter().find_map(|event| match event {
+        BrowserEvent::PeekEntriesAdded { entries } => Some(entries.clone()),
+        _ => None,
+    });
+    let entries = peek_batch.expect("peek batch emitted");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].display_name, "normal.txt");
+
+    events.borrow_mut().clear();
+    browser.toggle_hidden();
+    browser.begin_peek(0, Location::local("/fixture/peek_target"));
+
+    let peek_batch = events.borrow().iter().find_map(|event| match event {
+        BrowserEvent::PeekEntriesAdded { entries } => Some(entries.clone()),
+        _ => None,
+    });
+    let entries = peek_batch.expect("peek batch emitted");
+    assert_eq!(entries.len(), 2);
+}
+
+#[test]
+fn new_columns_inherit_show_hidden_preference() {
+    let preferences = ViewPreferences {
+        show_hidden: true,
+        ..Default::default()
+    };
+    let browser = Browser::with_preferences(Rc::new(FakeFileSource), preferences);
+    browser.navigate(Location::local("/fixture"));
+
+    assert_eq!(
+        browser.column_preferences(0).map(|p| p.show_hidden),
+        Some(true)
+    );
+
+    browser.descend(0, Location::local("/fixture/child"));
+    assert_eq!(
+        browser.column_preferences(1).map(|p| p.show_hidden),
+        Some(true)
     );
 }
