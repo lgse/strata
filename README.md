@@ -67,7 +67,25 @@ Install Strata from the Omarchy Package Repository:
 omarchy pkg add strata
 ```
 
-Omarchy keeps this installation current through `omarchy update`. Strata still checks for new releases and shows their notes, but detects that its executable is package-owned and does not replace it with the in-app updater.
+Omarchy keeps this installation current through `omarchy update`. Strata still checks for new releases and shows their notes, but detects that its executable is package-owned and does not replace it with the in-app updater. When an update is available, **Open Omarchy Update** launches the interactive updater in your configured terminal.
+
+#### Switch a manual installation to OPR
+
+Close Strata, install the OPR package, and remove the per-user executable and desktop metadata that would otherwise take precedence over the package:
+
+```bash
+omarchy pkg add strata
+rm -f ~/.local/bin/strata \
+  ~/.local/share/applications/io.github.lgse.Strata.desktop \
+  ~/.local/share/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg
+update-desktop-database ~/.local/share/applications 2>/dev/null || true
+gtk-update-icon-cache -qtf ~/.local/share/icons/hicolor 2>/dev/null || true
+hash -r
+command -v strata
+pacman -Qo "$(command -v strata)"
+```
+
+The final commands should identify `/usr/bin/strata` as package-owned. Preferences and custom themes remain in place.
 
 ### AI-assisted installation
 

@@ -7,9 +7,10 @@ use crate::services::{BuildKind, Channel, ReleaseMetadata, UpdateCheck, UpdateMe
 use super::{
     COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
     RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, install_guard, installed_version_status,
-    is_stale_check, offer_still_eligible, responsive_dialog_size, shows_available_release_notes,
-    theme_background_is_light, theme_name_matches, update_check_message, uses_compact_navigation,
-    video_preview_backend_label, video_preview_control_state,
+    is_stale_check, offer_still_eligible, omarchy_update_command, responsive_dialog_size,
+    shows_available_release_notes, theme_background_is_light, theme_name_matches,
+    update_check_message, uses_compact_navigation, video_preview_backend_label,
+    video_preview_control_state,
 };
 use crate::sandbox::MediaPreviewBackend;
 
@@ -148,6 +149,17 @@ fn package_managed_status_identifies_omarchy() {
     assert_eq!(
         installed_version_status(&version, BuildKind::Stable, UpdateMethod::Omarchy),
         "Version 0.8.0 · Managed by Omarchy"
+    );
+}
+
+#[test]
+fn omarchy_updates_open_in_the_configured_terminal() {
+    let command = omarchy_update_command();
+
+    assert_eq!(command.get_program(), "xdg-terminal-exec");
+    assert_eq!(
+        command.get_args().collect::<Vec<_>>(),
+        ["--", "omarchy", "update"]
     );
 }
 

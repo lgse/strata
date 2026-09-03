@@ -2,6 +2,7 @@
 
 use std::{
     cell::{Cell, RefCell},
+    process::{Command, Stdio},
     rc::Rc,
     sync::mpsc::TryRecvError,
     time::Duration,
@@ -890,6 +891,7 @@ fn update_check_row(
     let pending_download = Rc::new(RefCell::new(None::<PendingInstall>));
     // Set once an install finishes, so the next click restarts instead of re-checking.
     let installed = Rc::new(Cell::new(false));
+    let managed_update_available = Rc::new(Cell::new(false));
     // The generation of the most recently started check. Each call to
     // `run_check` captures the next value and compares against this when its
     // result arrives; a mismatch means a newer check (e.g. from a channel
@@ -907,6 +909,7 @@ fn update_check_row(
         let update_notice = update_notice.clone();
         let pending_download = pending_download.clone();
         let installed = installed.clone();
+        let managed_update_available = managed_update_available.clone();
         let progress = progress.clone();
         let available_notes = available_notes.clone();
         let manager = manager.clone();
@@ -921,6 +924,7 @@ fn update_check_row(
             checking.set(true);
             *pending_download.borrow_mut() = None;
             installed.set(false);
+            managed_update_available.set(false);
             button.set_label("Check now");
             progress.set_fraction(0.0);
             progress.set_visible(false);
@@ -947,6 +951,7 @@ fn update_check_row(
             let button = button.clone();
             let update_notice = update_notice.clone();
             let pending_download = pending_download.clone();
+            let managed_update_available = managed_update_available.clone();
             let available_notes = available_notes.clone();
             let manager = manager.clone();
             glib::timeout_add_local(Duration::from_millis(100), move || {
@@ -998,7 +1003,12 @@ fn update_check_row(
                             } => {
                                 show_release_notes(&available_notes, release);
                                 if update_method.is_package_managed() {
-                                    button.set_label("Check again");
+                                    managed_update_available.set(true);
+                                    button.set_label(match update_method {
+                                        UpdateMethod::Omarchy => "Open Omarchy Update",
+                                        UpdateMethod::Pacman => "Check again",
+                                        UpdateMethod::InPlace => unreachable!(),
+                                    });
                                 } else {
                                     *pending_download.borrow_mut() = Some(PendingInstall {
                                         kind: release.kind,
@@ -1037,6 +1047,13 @@ fn update_check_row(
 
     let clicked_check = run_check.clone();
     button.connect_clicked(move |button| {
+        if update_method == UpdateMethod::Omarchy && managed_update_available.get() {
+            match launch_omarchy_update() {
+                Ok(()) => status.set_text("Omarchy Update opened in your terminal."),
+                Err(error) => status.set_text(&format!("Couldn’t open Omarchy Update: {error}")),
+            }
+            return;
+        }
         if installed.get() {
             restart_application(button);
             return;
@@ -1340,10 +1357,10 @@ pub(super) fn show_update_dialog(
             crate::build_info::installed_version(),
             release.version
         ),
-        if update_method.is_package_managed() {
-            "Close"
-        } else {
-            "Download update"
+        match update_method {
+            UpdateMethod::InPlace => "Download update",
+            UpdateMethod::Omarchy => "Open Omarchy Update",
+            UpdateMethod::Pacman => "Close",
         },
     );
     layout.content.add_css_class("update-dialog");
@@ -1461,7 +1478,17 @@ pub(super) fn show_update_dialog(
     let application = parent.application();
     let action_close = close.clone();
     action.connect_clicked(move |button| {
-        if update_method.is_package_managed() {
+        if update_method == UpdateMethod::Omarchy {
+            match launch_omarchy_update() {
+                Ok(()) => {
+                    dismiss_modal_layer(&action_layer, &action_overlay, action_root.as_ref());
+                    button.set_sensitive(false);
+                }
+                Err(error) => status.set_text(&format!("Couldn’t open Omarchy Update: {error}")),
+            }
+            return;
+        }
+        if update_method == UpdateMethod::Pacman {
             dismiss_modal_layer(&action_layer, &action_overlay, action_root.as_ref());
             button.set_sensitive(false);
             return;
@@ -1577,6 +1604,23 @@ pub(super) fn show_update_dialog(
             started_for_guard.set(false);
         }
     });
+}
+
+fn omarchy_update_command() -> Command {
+    let mut command = Command::new("xdg-terminal-exec");
+    command
+        .args(["--", "omarchy", "update"])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    command
+}
+
+fn launch_omarchy_update() -> Result<(), String> {
+    omarchy_update_command()
+        .spawn()
+        .map(|_child| ())
+        .map_err(|error| error.to_string())
 }
 
 /// Renders `release`'s channel, tag, source commit, and publication date as
