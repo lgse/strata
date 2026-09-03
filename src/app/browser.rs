@@ -15,7 +15,7 @@ use crate::{
         ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
         DirectoryChange, DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
         LocationValidationError, OperationEvent, OperationProvider, OperationRequestId, PasteItem,
-        PasteRequest, RenameRequest, RequestId, RestoreRequest, TransferConflict,
+        PasteRequest, RenameRequest, RequestId, RestoreRequest, RestoreSource, TransferConflict,
         validate_basename, validate_uri_credentials,
     },
 };
@@ -180,6 +180,24 @@ type PreferencesObserver = Rc<dyn Fn(ViewPreferences)>;
 
 const MAX_INCREMENTAL_OPERATION_UPDATES: usize = 64;
 
+// Undo follows the latest operation across every Strata window on the GTK main thread.
+thread_local! {
+    static PENDING_TRASH_UNDO: RefCell<Vec<Location>> = const { RefCell::new(Vec::new()) };
+}
+
+fn replace_pending_trash_undo(locations: Vec<Location>) {
+    PENDING_TRASH_UNDO.with(|pending| pending.replace(locations));
+}
+
+fn take_pending_trash_undo() -> Vec<Location> {
+    PENDING_TRASH_UNDO.with(RefCell::take)
+}
+
+#[cfg(test)]
+fn pending_trash_undo() -> Vec<Location> {
+    PENDING_TRASH_UNDO.with(|pending| pending.borrow().clone())
+}
+
 pub struct Browser {
     source: Rc<dyn FileSource>,
     state: RefCell<NavigationState>,
@@ -193,6 +211,7 @@ pub struct Browser {
     current_operation: Cell<Option<OperationRequestId>>,
     transfer_operation: Cell<Option<bool>>,
     deletion_operation: Cell<bool>,
+    deletion_permanent: Cell<bool>,
     restoration_operation: Cell<bool>,
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
@@ -221,6 +240,7 @@ impl Browser {
             current_operation: Cell::new(None),
             transfer_operation: Cell::new(None),
             deletion_operation: Cell::new(false),
+            deletion_permanent: Cell::new(false),
             restoration_operation: Cell::new(false),
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
@@ -911,7 +931,9 @@ impl Browser {
         };
         let total = entries.len();
         let request_id = self.begin_operation();
+        replace_pending_trash_undo(Vec::new());
         self.deletion_operation.set(true);
+        self.deletion_permanent.set(permanent);
         self.emit(BrowserEvent::DeletionStarted { total });
         let load = provider.delete(
             DeleteRequest {
@@ -941,11 +963,38 @@ impl Browser {
         let load = provider.restore(
             RestoreRequest {
                 id: request_id,
-                entries,
+                source: RestoreSource::TrashEntries(entries),
             },
             self.operation_callback(request_id, false, HashSet::new()),
         );
         self.operation_load.replace(Some(load));
+    }
+
+    pub fn undo_last_trash(self: &Rc<Self>) -> bool {
+        if self.current_operation.get().is_some() {
+            return false;
+        }
+        let locations = take_pending_trash_undo();
+        if locations.is_empty() {
+            return false;
+        }
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            replace_pending_trash_undo(locations);
+            return false;
+        };
+        let total = locations.len();
+        let request_id = self.begin_operation();
+        self.restoration_operation.set(true);
+        self.emit(BrowserEvent::RestorationStarted { total });
+        let load = provider.restore(
+            RestoreRequest {
+                id: request_id,
+                source: RestoreSource::OriginalLocations(locations),
+            },
+            self.operation_callback(request_id, false, HashSet::new()),
+        );
+        self.operation_load.replace(Some(load));
+        true
     }
 
     pub fn compress(
@@ -1028,6 +1077,7 @@ impl Browser {
         self.operation_load.borrow_mut().take();
         self.transfer_operation.set(None);
         self.deletion_operation.set(false);
+        self.deletion_permanent.set(false);
         self.restoration_operation.set(false);
         let request_id = OperationRequestId(self.next_request.get());
         self.next_request
@@ -1132,7 +1182,21 @@ impl Browser {
             browser.current_operation.set(None);
             let moving = browser.transfer_operation.replace(None);
             let deleting = browser.deletion_operation.replace(false);
+            let deletion_permanent = browser.deletion_permanent.replace(false);
             let restoring = browser.restoration_operation.replace(false);
+            if deleting && !deletion_permanent {
+                let locations = match &event {
+                    OperationEvent::Deleted { locations, .. } => locations.clone(),
+                    OperationEvent::CompletedWithErrors {
+                        deleted_locations, ..
+                    } => deleted_locations.clone(),
+                    OperationEvent::Cancelled { result, .. } => result.completed.clone(),
+                    _ => Vec::new(),
+                };
+                if !locations.is_empty() {
+                    replace_pending_trash_undo(locations);
+                }
+            }
             if moving.is_some() {
                 let moved_locations = match &event {
                     OperationEvent::Pasted { locations, .. } if moving == Some(true) => {

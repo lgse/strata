@@ -198,6 +198,18 @@ fn delete_confirmation_labels_distinguish_files_and_folders() {
 }
 
 #[test]
+fn small_operations_delay_progress_while_large_or_unbounded_operations_show_it_immediately() {
+    assert!(!should_show_progress_immediately(1));
+    assert!(!should_show_progress_immediately(
+        IMMEDIATE_PROGRESS_ITEM_COUNT - 1
+    ));
+    assert!(should_show_progress_immediately(
+        IMMEDIATE_PROGRESS_ITEM_COUNT
+    ));
+    assert!(should_show_progress_immediately(0));
+}
+
+#[test]
 fn delete_confirmation_direction_keys_choose_an_action() {
     assert_eq!(
         delete_confirmation_focus_target(gtk::gdk::Key::Left),

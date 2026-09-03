@@ -75,9 +75,15 @@ pub struct DeleteRequest {
 }
 
 #[derive(Clone, Debug)]
+pub enum RestoreSource {
+    TrashEntries(Vec<FileEntry>),
+    OriginalLocations(Vec<Location>),
+}
+
+#[derive(Clone, Debug)]
 pub struct RestoreRequest {
     pub id: OperationRequestId,
-    pub entries: Vec<FileEntry>,
+    pub source: RestoreSource,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

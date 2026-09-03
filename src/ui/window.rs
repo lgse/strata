@@ -616,6 +616,9 @@ fn install_keyboard_navigation(
             }
             return glib::Propagation::Proceed;
         }
+        if !text_has_focus && is_undo_trash_shortcut(key, modifiers) && view.undo_last_trash() {
+            return glib::Propagation::Stop;
+        }
         if alt
             && !control
             && !shift
@@ -785,6 +788,13 @@ fn install_keyboard_navigation(
         glib::Propagation::Stop
     });
     window.add_controller(keys);
+}
+
+fn is_undo_trash_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+        && !modifiers
+            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
+        && matches!(key, gtk::gdk::Key::z | gtk::gdk::Key::Z)
 }
 
 fn is_open_terminal_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {

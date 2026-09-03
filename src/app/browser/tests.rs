@@ -520,7 +520,11 @@ impl OperationProvider for ImmediateOperationProvider {
     fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         emit(OperationEvent::Deleted {
             request_id: request.id,
-            locations: Vec::new(),
+            locations: request
+                .entries
+                .into_iter()
+                .map(|entry| entry.location)
+                .collect(),
         });
         LoadHandle::new(|| {})
     }
@@ -548,6 +552,72 @@ impl OperationProvider for ImmediateOperationProvider {
         });
         LoadHandle::new(|| {})
     }
+}
+
+#[test]
+fn a_completed_trash_operation_can_be_undone_once() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let location = Location::local("/fixture/report.txt");
+    let entry = FileEntry {
+        location: location.clone(),
+        native_name: OsString::from("report.txt"),
+        display_name: "report.txt".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    browser.delete(vec![entry], false);
+
+    assert_eq!(
+        pending_trash_undo().as_slice(),
+        std::slice::from_ref(&location)
+    );
+    assert!(browser.undo_last_trash());
+    assert!(!browser.undo_last_trash());
+}
+
+#[test]
+fn another_browser_can_undo_the_latest_trash_operation() {
+    let deleting_browser = Browser::new(Rc::new(FakeFileSource));
+    deleting_browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let undoing_browser = Browser::new(Rc::new(FakeFileSource));
+    undoing_browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let entry = FileEntry {
+        location: Location::local("/fixture/report.txt"),
+        native_name: OsString::from("report.txt"),
+        display_name: "report.txt".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    deleting_browser.delete(vec![entry], false);
+
+    assert!(undoing_browser.undo_last_trash());
+    assert!(!deleting_browser.undo_last_trash());
+}
+
+#[test]
+fn permanent_delete_does_not_create_an_undo_operation() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let entry = FileEntry {
+        location: Location::local("/fixture/report.txt"),
+        native_name: OsString::from("report.txt"),
+        display_name: "report.txt".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    browser.delete(vec![entry], true);
+
+    assert!(!browser.undo_last_trash());
 }
 
 #[test]

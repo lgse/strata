@@ -95,6 +95,13 @@ struct ActiveNewEntry {
     field: gtk::Entry,
 }
 
+const FILE_PROGRESS_DELAY: Duration = Duration::from_millis(350);
+const IMMEDIATE_PROGRESS_ITEM_COUNT: usize = 16;
+
+fn should_show_progress_immediately(total: usize) -> bool {
+    total == 0 || total >= IMMEDIATE_PROGRESS_ITEM_COUNT
+}
+
 struct DeleteProgressView {
     layer: gtk::Box,
     overlay: gtk::Overlay,
@@ -292,6 +299,8 @@ pub(super) struct ViewState {
     active_rename: RefCell<Option<ActiveRename>>,
     active_new_entry: RefCell<Option<ActiveNewEntry>>,
     delete_progress: RefCell<Option<DeleteProgressView>>,
+    pending_file_progress: RefCell<Option<glib::SourceId>>,
+    file_operation_progress: Cell<(usize, usize)>,
     pin_handler: RefCell<Option<PinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     pending_select: RefCell<Vec<String>>,
@@ -441,6 +450,8 @@ impl BrowserView {
             active_rename: RefCell::new(None),
             active_new_entry: RefCell::new(None),
             delete_progress: RefCell::new(None),
+            pending_file_progress: RefCell::new(None),
+            file_operation_progress: Cell::new((0, 0)),
             pin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
@@ -932,9 +943,12 @@ impl BrowserView {
             .or_else(|| self.state.browser.active_location())
             .as_ref()
             .is_some_and(is_trash_location);
-        self.state
-            .show_delete_confirmation(entries, permanent || in_trash);
+        self.state.request_delete(entries, permanent || in_trash);
         true
+    }
+
+    pub fn undo_last_trash(&self) -> bool {
+        self.state.browser.undo_last_trash()
     }
 
     pub fn show_filter(&self) -> bool {
@@ -1703,13 +1717,40 @@ impl ViewState {
 
     fn show_file_operation_progress(
         self: &Rc<Self>,
-        _total: usize,
+        total: usize,
         icon: &str,
         title_text: &str,
         subtitle_text: &str,
         on_cancel: Rc<dyn Fn()>,
     ) {
         self.dismiss_delete_progress();
+        self.file_operation_progress.set((0, total));
+        if should_show_progress_immediately(total) {
+            self.present_file_operation_progress(icon, title_text, subtitle_text, on_cancel);
+            return;
+        }
+
+        let weak = Rc::downgrade(self);
+        let icon = icon.to_owned();
+        let title_text = title_text.to_owned();
+        let subtitle_text = subtitle_text.to_owned();
+        let source = glib::timeout_add_local_once(FILE_PROGRESS_DELAY, move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.pending_file_progress.borrow_mut().take();
+            state.present_file_operation_progress(&icon, &title_text, &subtitle_text, on_cancel);
+        });
+        self.pending_file_progress.replace(Some(source));
+    }
+
+    fn present_file_operation_progress(
+        self: &Rc<Self>,
+        icon: &str,
+        title_text: &str,
+        subtitle_text: &str,
+        on_cancel: Rc<dyn Fn()>,
+    ) {
         let Some(window_overlay) = self
             .overlay
             .root()
@@ -1764,9 +1805,12 @@ impl ViewState {
             progress.layer.add_controller(escape);
         }
         cancel.grab_focus();
+        let (completed, total) = self.file_operation_progress.get();
+        self.update_delete_progress(completed, total);
     }
 
     fn update_delete_progress(&self, completed: usize, total: usize) {
+        self.file_operation_progress.set((completed, total));
         let progress_view = self.delete_progress.borrow();
         let Some(view) = progress_view.as_ref() else {
             return;
@@ -1797,10 +1841,13 @@ impl ViewState {
     }
 
     fn dismiss_delete_progress(&self) {
-        let Some(view) = self.delete_progress.take() else {
-            return;
-        };
-        dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
+        if let Some(source) = self.pending_file_progress.take() {
+            source.remove();
+        }
+        self.file_operation_progress.set((0, 0));
+        if let Some(view) = self.delete_progress.take() {
+            dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
+        }
     }
 
     /// The total item count isn't known upfront -- entries are deleted as they're enumerated,
@@ -2135,7 +2182,16 @@ impl ViewState {
         });
     }
 
-    fn show_delete_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
+    fn request_delete(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
+        if permanent {
+            self.show_delete_confirmation(entries);
+        } else {
+            self.browser.delete(entries, false);
+            self.browser.focus_active();
+        }
+    }
+
+    fn show_delete_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>) {
         let Some(window_overlay) = self
             .overlay
             .root()
@@ -2151,16 +2207,8 @@ impl ViewState {
         }
 
         let count = entries.len();
-        let title = if permanent {
-            format!("Permanently delete {}?", item_count_label(count))
-        } else {
-            format!("Move {} to trash?", item_count_label(count))
-        };
-        let confirm_label = if permanent {
-            format!("Permanently delete {}", item_count_label(count))
-        } else {
-            format!("Move {}", item_count_label(count))
-        };
+        let title = format!("Permanently delete {}?", item_count_label(count));
+        let confirm_label = format!("Permanently delete {}", item_count_label(count));
         let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
             &title,
@@ -2207,11 +2255,9 @@ impl ViewState {
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
         layout.body.append(&file_scroller);
-        let explanation = message_dialog_description(if permanent {
-            "These items will be permanently deleted. This action cannot be undone."
-        } else {
-            "The items will be moved to trash. You can restore them later."
-        });
+        let explanation = message_dialog_description(
+            "These items will be permanently deleted. This action cannot be undone.",
+        );
         layout.body.append(&explanation);
         let content = layout.content;
         let close = layout.close;
@@ -2250,7 +2296,7 @@ impl ViewState {
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
             );
-            browser.delete(entries.clone(), permanent);
+            browser.delete(entries.clone(), true);
             browser.focus_active();
         });
         let keys = gtk::EventControllerKey::new();
@@ -6013,7 +6059,7 @@ fn connect_context_trash(
         }
         if let Some(state) = weak.upgrade() {
             let entries = context_entries(&state, &target);
-            state.show_delete_confirmation(entries, permanent);
+            state.request_delete(entries, permanent);
         }
     });
 }

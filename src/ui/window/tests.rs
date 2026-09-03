@@ -6,10 +6,11 @@ use crate::services::{BuildKind, ReleaseMetadata};
 
 use super::{
     MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, is_open_terminal_shortcut,
-    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location, mouse_history_action,
-    parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
-    reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
-    should_show_standard_place, sidebar_update_label, standard_place, vim_focus_direction,
+    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location, is_undo_trash_shortcut,
+    mouse_history_action, parse_pinned_drag_source, parse_pinned_places, pin_status,
+    remove_pinned_place, reorder_pinned_places, reorder_places, resolve_place_order,
+    serialize_pinned_places, should_show_standard_place, sidebar_update_label, standard_place,
+    vim_focus_direction,
 };
 
 fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
@@ -72,6 +73,22 @@ fn open_terminal_shortcut_requires_only_control() {
     ));
     assert!(!is_open_terminal_shortcut(gtk::gdk::Key::t, control | alt));
     assert!(!is_open_terminal_shortcut(gtk::gdk::Key::F4, control));
+}
+
+#[test]
+fn undo_trash_shortcut_requires_control_without_shift_or_alt() {
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+    let shift = gtk::gdk::ModifierType::SHIFT_MASK;
+    let alt = gtk::gdk::ModifierType::ALT_MASK;
+
+    assert!(is_undo_trash_shortcut(gtk::gdk::Key::z, control));
+    assert!(is_undo_trash_shortcut(gtk::gdk::Key::Z, control));
+    assert!(!is_undo_trash_shortcut(
+        gtk::gdk::Key::z,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(!is_undo_trash_shortcut(gtk::gdk::Key::z, control | shift));
+    assert!(!is_undo_trash_shortcut(gtk::gdk::Key::z, control | alt));
 }
 
 #[test]
