@@ -54,11 +54,11 @@ fn capture_directory_start_logs(locations: &[(RequestId, &Location)]) -> String 
         .with_writer(writer.clone())
         .finish();
 
-    tracing::subscriber::with_default(subscriber, || {
-        for (request_id, location) in locations {
-            log_directory_load_started(*request_id, location);
-        }
-    });
+    tracing::subscriber::set_global_default(subscriber)
+        .expect("the logging subscriber should only be installed once");
+    for (request_id, location) in locations {
+        log_directory_load_started(*request_id, location);
+    }
     writer.output()
 }
 
