@@ -2728,14 +2728,8 @@ impl ViewState {
                 .unwrap_or_else(|| "—".to_owned())
         };
         let size = properties_row(&details, "SIZE", &initial_size);
-        let modified = properties_row(
-            &details,
-            "MODIFIED",
-            &entry
-                .as_ref()
-                .map(crate::util::modified_date)
-                .unwrap_or_else(|| "—".to_owned()),
-        );
+        let modified = properties_row(&details, "MODIFIED", "—");
+        crate::util::set_modified_date(&modified, entry.as_ref(), "—");
         let opens_with = properties_row(&details, "OPENS WITH", "—");
         let hidden = properties_row(
             &details,

@@ -1779,7 +1779,7 @@ fn build_explorer_pane(
             name.set_label(&entry.display_name);
             size.set_label(&entry_size(&entry));
             kind.set_label(entry_type(&entry));
-            modified.set_label(&crate::util::modified_date(&entry));
+            crate::util::set_modified_date(&modified, Some(&entry), "—");
         } else {
             row.remove_css_class("cut-item");
             let icon_name = if entry_kind_for_bind.get() {
@@ -1792,7 +1792,7 @@ fn build_explorer_pane(
             field.set_visible(true);
             size.set_label("");
             kind.set_label("");
-            modified.set_label("");
+            crate::util::set_modified_date(&modified, None, "");
         }
     });
     factory.connect_unbind(|_, item| super::thumbnail::cancel_list_item_thumbnails(item));

@@ -323,7 +323,7 @@ impl PreviewState {
         self.title
             .set_tooltip_text(Some(&entry.location.display_path()));
         self.size.set_text(&metadata_size(&entry));
-        self.modified.set_text(&crate::util::modified_date(&entry));
+        crate::util::set_modified_date(&self.modified, Some(&entry), "—");
         self.content_type.set_text(file_extension(&entry));
         self.show_loading();
         self.load.borrow_mut().take();
