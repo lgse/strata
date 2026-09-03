@@ -6,10 +6,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+use gdk_pixbuf::prelude::*;
+
 use super::{
     MediaBackend, bounded_output, bounded_output_with_timeout, bounded_surface_dimensions,
-    media_backends, media_command, run_media_backends,
+    media_backends, media_command, read_limited, render_pixbuf, render_raw, render_raw_thumbnail,
+    run, run_media_backends, scale_embedded_thumbnail,
 };
+use crate::sandbox::MediaPreviewBackend;
 
 fn arguments(backend: &MediaBackend) -> String {
     media_command(backend, Path::new("/input"))
@@ -29,7 +33,7 @@ fn media_backends_are_deterministic_and_ordered() {
     ];
 
     assert_eq!(
-        media_backends(&devices),
+        media_backends(&devices, MediaPreviewBackend::Automatic),
         [
             MediaBackend::VaApi("/dev/dri/renderD128".into()),
             MediaBackend::VaApi("/dev/dri/renderD129".into()),
@@ -39,7 +43,30 @@ fn media_backends_are_deterministic_and_ordered() {
         ]
     );
     assert_eq!(
-        media_backends(&["/dev/nvidia0".into(), "/dev/nvidiactl".into()]),
+        media_backends(&devices, MediaPreviewBackend::VaApi),
+        [
+            MediaBackend::VaApi("/dev/dri/renderD128".into()),
+            MediaBackend::VaApi("/dev/dri/renderD129".into()),
+            MediaBackend::Software,
+        ]
+    );
+    assert_eq!(
+        media_backends(&devices, MediaPreviewBackend::Vulkan),
+        [
+            MediaBackend::Vulkan(0),
+            MediaBackend::Vulkan(1),
+            MediaBackend::Software,
+        ]
+    );
+    assert_eq!(
+        media_backends(&devices, MediaPreviewBackend::Software),
+        [MediaBackend::Software]
+    );
+    assert_eq!(
+        media_backends(
+            &["/dev/nvidia0".into(), "/dev/nvidiactl".into()],
+            MediaPreviewBackend::Automatic,
+        ),
         [MediaBackend::Vulkan(0), MediaBackend::Software]
     );
 }
@@ -79,6 +106,23 @@ fn final_software_failure_returns_the_normalization_error() {
         run_media_backends(&[MediaBackend::Software], |_| Ok::<Option<()>, ()>(None)),
         Err("Unable to normalize media preview".to_owned())
     );
+}
+
+#[test]
+fn forced_backend_failure_goes_directly_to_software() {
+    for backends in [
+        media_backends(&["/dev/dri/renderD128".into()], MediaPreviewBackend::VaApi),
+        media_backends(&["/dev/dri/renderD128".into()], MediaPreviewBackend::Vulkan),
+    ] {
+        let mut attempts = Vec::new();
+        run_media_backends(&backends, |backend| {
+            attempts.push(backend.clone());
+            Ok::<_, ()>((*backend == MediaBackend::Software).then_some(()))
+        })
+        .expect("software fallback should succeed");
+        assert_eq!(attempts, backends);
+        assert_eq!(attempts.len(), 2);
+    }
 }
 
 #[test]
@@ -146,6 +190,20 @@ fn provider_output_is_bounded_without_buffering_stderr() {
 }
 
 #[test]
+fn file_reads_stop_before_exceeding_the_output_limit() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let path = directory.path().join("thumb.jpg");
+
+    std::fs::write(&path, b"1234").expect("write exact");
+    let exact = read_limited(std::fs::File::open(&path).expect("open exact"), 4)
+        .expect("read file at the limit");
+    assert_eq!(exact, b"1234");
+
+    std::fs::write(&path, vec![0_u8; 1025]).expect("write oversized");
+    assert!(read_limited(std::fs::File::open(&path).expect("open oversized"), 1024).is_err());
+}
+
+#[test]
 fn media_commands_select_the_backend_and_preserve_limits() {
     for backend in [
         MediaBackend::VaApi("/dev/dri/renderD129".into()),
@@ -164,7 +222,7 @@ fn media_commands_select_the_backend_and_preserve_limits() {
     assert!(vaapi.contains("-hwaccel_output_format vaapi"));
     assert!(
         vaapi.contains(
-            "-vf scale_vaapi=w=1280:h=1280:force_original_aspect_ratio=decrease:force_divisible_by=2:format=nv12 -c:v h264_vaapi"
+            "-vf scale_vaapi=w=1280:h=1280:force_original_aspect_ratio=decrease:force_divisible_by=16:format=nv12 -c:v h264_vaapi"
         )
     );
     assert!(vaapi.contains("-c:a aac -b:a 96k -movflags +frag_keyframe+empty_moov -f mp4"));
@@ -174,7 +232,7 @@ fn media_commands_select_the_backend_and_preserve_limits() {
     assert!(vulkan.contains("-init_hw_device vulkan=vk:1 -filter_hw_device vk"));
     assert!(vulkan.contains("-hwaccel vulkan -hwaccel_device vk"));
     assert!(vulkan.contains(
-        "-vf scale_vulkan=w='if(gte(iw,ih),min(1280,trunc(iw/2)*2),-2)':h='if(gte(iw,ih),-2,min(1280,trunc(ih/2)*2))':format=nv12 -c:v h264_vulkan"
+        "-vf scale_vulkan=w='max(16,trunc(min(iw,iw*1280/max(iw,ih))/16)*16)':h='max(16,trunc(min(ih,ih*1280/max(iw,ih))/16)*16)':format=nv12 -c:v h264_vulkan"
     ));
     assert!(vulkan.contains("-usage transcode -tune ull"));
     assert!(vulkan.contains("-c:a aac -b:a 96k -movflags +frag_keyframe+empty_moov -f mp4"));
@@ -192,5 +250,78 @@ fn media_commands_select_the_backend_and_preserve_limits() {
         assert!(command.contains("-fpsmax 30"));
         assert!(command.contains("-b:v 2M -maxrate 3M -bufsize 4M"));
         assert!(command.ends_with("pipe:1"));
+    }
+}
+
+#[test]
+fn embedded_thumbnails_scale_to_the_requested_size() {
+    let source = gdk_pixbuf::Pixbuf::new(gdk_pixbuf::Colorspace::Rgb, false, 8, 80, 60)
+        .expect("allocate thumbnail");
+    source.fill(0x3366_99ff);
+    let jpeg = source
+        .save_to_bufferv("jpeg", &[])
+        .expect("encode thumbnail");
+
+    let png = scale_embedded_thumbnail(&jpeg, 32).expect("scale thumbnail");
+    let loader = gdk_pixbuf::PixbufLoader::new();
+    loader.write(&png).expect("load scaled png");
+    loader.close().expect("finish scaled png");
+    let scaled = loader.pixbuf().expect("decode scaled png");
+
+    assert_eq!((scaled.width(), scaled.height()), (32, 24));
+}
+
+#[test]
+fn preview_image_uses_raw_fallbacks() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let input = directory.path().join("photo.ARW");
+    let output = directory.path().join("result.png");
+    std::fs::write(&input, b"not a camera file").expect("write stub");
+
+    let pixbuf = render_pixbuf(&input, 1400).expect_err("stub must fail pixbuf");
+    let raw = render_raw(&input, 1400);
+    let preview = run(&[
+        "preview-image".into(),
+        input.to_string_lossy().into_owned(),
+        output.to_string_lossy().into_owned(),
+        "1400".into(),
+        "software".into(),
+    ]);
+
+    match raw {
+        Ok(_) => preview.expect("preview-image should use RAW fallbacks"),
+        Err(raw) => {
+            assert_ne!(pixbuf, raw);
+            assert_eq!(preview.expect_err("stub should fail RAW fallbacks"), raw);
+        }
+    }
+}
+
+#[test]
+fn thumbnail_raw_uses_embedded_preview_fallbacks() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let input = directory.path().join("photo.ARW");
+    let output = directory.path().join("result.png");
+    std::fs::write(&input, b"not a camera file").expect("write stub");
+
+    let pixbuf = render_pixbuf(&input, 256).expect_err("stub must fail pixbuf");
+    let thumbnail = render_raw_thumbnail(&input, 256);
+    let helper = run(&[
+        "thumbnail-raw".into(),
+        input.to_string_lossy().into_owned(),
+        output.to_string_lossy().into_owned(),
+        "256".into(),
+        "software".into(),
+    ]);
+
+    match thumbnail {
+        Ok(_) => helper.expect("thumbnail-raw should use RAW fallbacks"),
+        Err(thumbnail) => {
+            assert_ne!(pixbuf, thumbnail);
+            assert_eq!(
+                helper.expect_err("stub should fail RAW fallbacks"),
+                thumbnail
+            );
+        }
     }
 }

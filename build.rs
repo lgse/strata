@@ -13,6 +13,28 @@ fn main() {
         .or_else(git_commit)
         .unwrap_or_else(|| "unknown".to_owned());
     println!("cargo::rustc-env=STRATA_BUILD_COMMIT={commit}");
+
+    println!("cargo::rerun-if-env-changed=STRATA_RELEASE_TAG");
+    println!("cargo::rerun-if-env-changed=STRATA_BUILD_KIND");
+
+    let release_tag = env::var("STRATA_RELEASE_TAG")
+        .ok()
+        .and_then(|value| value.lines().next().map(str::trim).map(str::to_owned))
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| format!("v{}", env!("CARGO_PKG_VERSION")));
+    println!("cargo::rustc-env=STRATA_RELEASE_TAG={release_tag}");
+
+    let build_kind = env::var("STRATA_BUILD_KIND")
+        .ok()
+        .and_then(|value| value.lines().next().map(str::trim).map(str::to_owned))
+        .filter(|value| {
+            matches!(
+                value.as_str(),
+                "stable" | "alpha" | "beta" | "rc" | "nightly"
+            )
+        })
+        .unwrap_or_else(|| "stable".to_owned());
+    println!("cargo::rustc-env=STRATA_BUILD_KIND={build_kind}");
 }
 
 fn git_commit() -> Option<String> {

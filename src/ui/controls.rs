@@ -27,6 +27,21 @@ pub(super) fn form_check_button(label: &str) -> gtk::CheckButton {
     button
 }
 
+pub(super) fn menu_option(label: &str, selected: bool) -> (gtk::Button, gtk::Image) {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let check = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
+    check.set_visible(selected);
+    let label = gtk::Label::new(Some(label));
+    label.set_xalign(0.0);
+    label.set_hexpand(true);
+    row.append(&label);
+    row.append(&check);
+    let option = gtk::Button::builder().child(&row).build();
+    option.add_css_class("column-menu-option");
+    option.set_has_frame(false);
+    (option, check)
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) enum ModalTone {
     #[default]

@@ -1249,6 +1249,7 @@ impl Browser {
             return;
         };
         if entry.is_directory() && self.is_open_child(depth, &entry.location) {
+            self.close_column(depth + 1);
             return;
         }
         self.select(depth, position);
@@ -1272,6 +1273,7 @@ impl Browser {
             .entry_at(depth, position)
             .is_some_and(|entry| entry.is_directory() && self.is_open_child(depth, &entry.location))
         {
+            self.close_column(depth + 1);
             return;
         }
         self.select(depth, position);
@@ -1535,6 +1537,20 @@ impl Browser {
 
     pub fn reload_active(self: &Rc<Self>) {
         if let Some(depth) = self.active_depth() {
+            self.refresh_column(depth);
+        }
+    }
+
+    pub fn refresh_all(self: &Rc<Self>) {
+        let depths: Vec<usize> = {
+            let state = self.state.borrow();
+            (0..state.columns.len()).collect()
+        };
+        if depths.is_empty() {
+            self.reload_active();
+            return;
+        }
+        for depth in depths {
             self.refresh_column(depth);
         }
     }

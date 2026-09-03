@@ -19,7 +19,7 @@ The font is distributed unmodified. Strata materializes the embedded font in its
 - Version: 1.35.0
 - Copyright: Lucide Contributors and Feather Icons contributors
 - License: ISC
-- Included assets: curated and namespaced SVG icons under `data/icons/`
+- Included assets: curated and namespaced SVG icons under `data/icons/scalable/actions/`
 - Full license: [`data/licenses/Lucide-ISC.txt`](data/licenses/Lucide-ISC.txt)
 
 The SVGs retain Lucide geometry. Their foreground color was changed from `currentColor` to GTK's symbolic foreground color so GTK can recolor them according to the active theme.

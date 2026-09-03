@@ -12,7 +12,11 @@ use gtk::{gdk, gio, glib, prelude::*};
 use serde::{Deserialize, Serialize};
 use sourceview5::prelude::BufferExt as _;
 
-use crate::model::{SortDirection, SortKey, ViewPreferences};
+use crate::{
+    model::{SortDirection, SortKey, ViewPreferences},
+    sandbox::MediaPreviewBackend,
+    services::Channel,
+};
 
 thread_local! {
     static SHARED_MANAGER: RefCell<std::rc::Weak<ThemeManager>> = const { RefCell::new(std::rc::Weak::new()) };
@@ -64,6 +68,10 @@ struct Preferences {
     folder_peeking: bool,
     #[serde(default = "default_enabled")]
     single_click_previews: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hardware_accelerated_video_previews: Option<bool>,
+    #[serde(default = "default_video_preview_backend")]
+    video_preview_backend: String,
     #[serde(default)]
     search_open_files_directly: bool,
     #[serde(default)]
@@ -86,6 +94,10 @@ struct Preferences {
     preview_muted: bool,
     #[serde(default = "default_full_volume")]
     preview_volume: f64,
+    #[serde(default)]
+    auto_refresh_interval: u32,
+    #[serde(default = "default_release_channel")]
+    release_channel: String,
 }
 
 impl Default for Preferences {
@@ -95,6 +107,8 @@ impl Default for Preferences {
             theme: "azure-glow".to_owned(),
             folder_peeking: true,
             single_click_previews: true,
+            hardware_accelerated_video_previews: None,
+            video_preview_backend: default_video_preview_backend(),
             search_open_files_directly: false,
             reduce_motion: false,
             browser_mode: default_browser_mode(),
@@ -106,6 +120,8 @@ impl Default for Preferences {
             check_for_updates: true,
             preview_muted: false,
             preview_volume: default_full_volume(),
+            auto_refresh_interval: 0,
+            release_channel: default_release_channel(),
         }
     }
 }
@@ -114,8 +130,16 @@ fn default_enabled() -> bool {
     true
 }
 
+fn default_release_channel() -> String {
+    "stable".to_owned()
+}
+
 fn default_browser_mode() -> String {
     "columns".to_owned()
+}
+
+fn default_video_preview_backend() -> String {
+    "automatic".to_owned()
 }
 
 fn default_browser_density() -> String {
@@ -219,6 +243,43 @@ impl ThemeManager {
         self.save_preferences();
     }
 
+    pub fn hardware_accelerated_video_previews(&self) -> bool {
+        configured_hardware_acceleration(
+            &self.preferences.borrow(),
+            crate::sandbox::polaris_gpu_available(),
+        )
+    }
+
+    pub fn set_hardware_accelerated_video_previews(&self, enabled: bool) {
+        self.preferences
+            .borrow_mut()
+            .hardware_accelerated_video_previews = Some(enabled);
+        self.save_preferences();
+    }
+
+    pub fn video_preview_backend(&self) -> MediaPreviewBackend {
+        configured_video_preview_backend(&self.preferences.borrow())
+    }
+
+    pub fn set_video_preview_backend(&self, backend: MediaPreviewBackend) {
+        let backend = match backend {
+            MediaPreviewBackend::Automatic => "automatic",
+            MediaPreviewBackend::VaApi => "vaapi",
+            MediaPreviewBackend::Vulkan => "vulkan",
+            MediaPreviewBackend::Software => return,
+        };
+        self.preferences.borrow_mut().video_preview_backend = backend.to_owned();
+        self.save_preferences();
+    }
+
+    pub(crate) fn media_preview_backend(&self) -> MediaPreviewBackend {
+        if !self.hardware_accelerated_video_previews() {
+            MediaPreviewBackend::Software
+        } else {
+            self.video_preview_backend()
+        }
+    }
+
     pub fn search_open_files_directly(&self) -> bool {
         self.preferences.borrow().search_open_files_directly
     }
@@ -262,6 +323,24 @@ impl ThemeManager {
 
     pub fn set_preview_volume(&self, volume: f64) {
         self.preferences.borrow_mut().preview_volume = volume.clamp(0.0, 1.0);
+        self.save_preferences();
+    }
+
+    pub fn auto_refresh_interval(&self) -> u32 {
+        self.preferences.borrow().auto_refresh_interval
+    }
+
+    pub fn set_auto_refresh_interval(&self, secs: u32) {
+        self.preferences.borrow_mut().auto_refresh_interval = secs;
+        self.save_preferences();
+    }
+
+    pub fn release_channel(&self) -> Channel {
+        Channel::parse(&self.preferences.borrow().release_channel)
+    }
+
+    pub fn set_release_channel(&self, channel: Channel) {
+        self.preferences.borrow_mut().release_channel = channel.as_str().to_owned();
         self.save_preferences();
     }
 
@@ -442,7 +521,6 @@ impl ThemeManager {
     fn apply_tokens(&self, tokens: &ThemeTokens) {
         self.provider.load_from_string(&tokens_css(tokens));
         crate::assets::set_primary_icon_color(&tokens.accent);
-        crate::assets::set_text_icon_color(&tokens.text);
         crate::assets::set_danger_icon_color(&tokens.danger);
         install_source_style_scheme(tokens);
     }
@@ -607,6 +685,20 @@ fn sort_preferences(preferences: &Preferences) -> ViewPreferences {
         sort_key: sorting.0,
         sort_direction: sorting.1,
     }
+}
+
+fn configured_video_preview_backend(preferences: &Preferences) -> MediaPreviewBackend {
+    match preferences.video_preview_backend.as_str() {
+        "vaapi" => MediaPreviewBackend::VaApi,
+        "vulkan" => MediaPreviewBackend::Vulkan,
+        _ => MediaPreviewBackend::Automatic,
+    }
+}
+
+fn configured_hardware_acceleration(preferences: &Preferences, polaris_available: bool) -> bool {
+    preferences
+        .hardware_accelerated_video_previews
+        .unwrap_or(!polaris_available)
 }
 
 fn load_omarchy_theme() -> Option<ThemeTokens> {

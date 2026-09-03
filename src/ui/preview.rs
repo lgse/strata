@@ -388,7 +388,7 @@ impl PreviewState {
         self.title
             .set_tooltip_text(Some(&entry.location.display_path()));
         self.size.set_text(&metadata_size(&entry));
-        self.modified.set_text(&metadata_modified(&entry));
+        crate::util::set_modified_date(&self.modified, Some(&entry), "—");
         self.content_type.set_text(file_extension(&entry));
         self.show_loading();
         self.load.borrow_mut().take();
@@ -1359,16 +1359,6 @@ fn metadata_size(entry: &FileEntry) -> String {
         MetadataValue::Known(bytes) => format_file_size(bytes),
         MetadataValue::Unknown | MetadataValue::Unavailable => "—".to_owned(),
     }
-}
-
-fn metadata_modified(entry: &FileEntry) -> String {
-    let MetadataValue::Known(seconds) = entry.modified_unix_seconds else {
-        return "—".to_owned();
-    };
-    glib::DateTime::from_unix_local(seconds)
-        .and_then(|date| date.format("%Y-%m-%d %H:%M"))
-        .map(|value| value.to_string())
-        .unwrap_or_else(|_| "—".to_owned())
 }
 
 fn file_extension(entry: &FileEntry) -> &str {
