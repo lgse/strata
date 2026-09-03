@@ -683,6 +683,7 @@ impl ModeViews {
                     ExplorerOptions {
                         state: self.context_state.borrow().clone(),
                         active_new_entry: self.active_new_entry.clone(),
+                        group_by_type: self.group_by_type,
                     },
                     *depth,
                     &location.display_name(),
@@ -939,6 +940,7 @@ impl ModeViews {
             ExplorerOptions {
                 state: self.context_state.borrow().clone(),
                 active_new_entry: self.active_new_entry.clone(),
+                group_by_type: self.group_by_type,
             },
             depth,
             &snapshot.location.display_name(),
@@ -961,6 +963,7 @@ fn widget_has_focus(widget: &impl IsA<gtk::Widget>, focused: Option<&gtk::Widget
 struct ExplorerOptions {
     state: Option<Weak<super::browser::ViewState>>,
     active_new_entry: Rc<RefCell<Option<ActiveModeNewEntry>>>,
+    group_by_type: bool,
 }
 
 struct GridOptions {
@@ -1882,7 +1885,13 @@ fn build_explorer_pane(
     let flattened_models = gio::ListStore::new::<gio::ListModel>();
     flattened_models.append(&new_entry_placeholder.clone().upcast::<gio::ListModel>());
     flattened_models.append(&filtered_model.clone().upcast::<gio::ListModel>());
-    let view_model = gtk::FlattenListModel::new(Some(flattened_models));
+    let flattened = gtk::FlattenListModel::new(Some(flattened_models));
+    let view_model = gtk::SortListModel::new(Some(flattened), None::<gtk::CustomSorter>);
+    if options.group_by_type {
+        let sorter = type_group_sorter();
+        view_model.set_sorter(Some(&sorter));
+        view_model.set_section_sorter(Some(&sorter));
+    }
     let view_model_object = view_model.clone().upcast::<gio::ListModel>();
     let selection = gtk::MultiSelection::new(Some(view_model.clone()));
     let syncing_selection = Rc::new(Cell::new(false));
@@ -2074,6 +2083,9 @@ fn build_explorer_pane(
     factory.connect_unbind(|_, item| super::thumbnail::cancel_list_item_thumbnails(item));
     let view = gtk::ListView::new(Some(selection.clone()), Some(factory));
     view.add_css_class("explorer-list");
+    if options.group_by_type {
+        view.set_header_factory(Some(&type_group_header_factory()));
+    }
     view.set_enable_rubberband(false);
     // GTK bundles single-click activation with hover selection, which collapses
     // multi-selection. Per-row gestures honor the configured click behavior instead.
@@ -2782,6 +2794,84 @@ fn entry_type(entry: &FileEntry) -> &'static str {
         EntryKind::SymbolicLink => "Broken link",
         EntryKind::Other => "Other",
     }
+}
+
+/// Orders file-type groups: the inline new-entry row leads, then folders, then the
+/// remaining labels alphabetically, so a group's place does not depend on which
+/// entries happen to be loaded.
+fn compare_type_groups(left: &str, right: &str) -> std::cmp::Ordering {
+    fn rank(label: &str) -> u8 {
+        match label {
+            "" => 0,
+            super::browser::FOLDER_TYPE_GROUP => 1,
+            _ => 2,
+        }
+    }
+    rank(left)
+        .cmp(&rank(right))
+        .then_with(|| left.to_lowercase().cmp(&right.to_lowercase()))
+}
+
+fn model_value(item: &glib::Object) -> String {
+    item.downcast_ref::<gtk::StringObject>()
+        .map(|value| value.string().to_string())
+        .unwrap_or_default()
+}
+
+/// The group a model value belongs to. The inline new-entry row carries no value and
+/// stays in a group of its own, ahead of the entries.
+fn value_type_group(value: &str) -> String {
+    if value.is_empty() {
+        return String::new();
+    }
+    super::browser::model_type_group(value)
+}
+
+/// Sorts entries into their file-type groups. `GtkSortListModel` sorts stably, so
+/// entries keep the pane's own sort order inside each group, and the same sorter
+/// marks where one section ends and the next begins.
+fn type_group_sorter() -> gtk::CustomSorter {
+    gtk::CustomSorter::new(|left, right| {
+        compare_type_groups(
+            &value_type_group(&model_value(left)),
+            &value_type_group(&model_value(right)),
+        )
+        .into()
+    })
+}
+
+fn type_group_heading(label: &str) -> gtk::Label {
+    let heading = gtk::Label::new(Some(label));
+    heading.add_css_class("type-group-heading");
+    heading.set_xalign(0.0);
+    heading
+}
+
+/// Section headings for a grouped list view.
+fn type_group_header_factory() -> gtk::SignalListItemFactory {
+    let factory = gtk::SignalListItemFactory::new();
+    factory.connect_setup(|_, header| {
+        let Some(header) = header.downcast_ref::<gtk::ListHeader>() else {
+            return;
+        };
+        header.set_child(Some(&type_group_heading("")));
+    });
+    factory.connect_bind(|_, header| {
+        let Some(header) = header.downcast_ref::<gtk::ListHeader>() else {
+            return;
+        };
+        let Some(heading) = header.child().and_downcast::<gtk::Label>() else {
+            return;
+        };
+        let value = header
+            .item()
+            .map(|item| model_value(&item))
+            .unwrap_or_default();
+        let group = value_type_group(&value);
+        heading.set_label(&group);
+        heading.set_visible(!group.is_empty());
+    });
+    factory
 }
 
 fn bound_item_visitor(bound_items: Rc<RefCell<Vec<BoundModeItem>>>) -> super::marquee::ItemVisitor {

@@ -2,7 +2,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     ffi::OsString,
     future::Future,
     path::Path,
@@ -7103,6 +7103,68 @@ fn model_is_directory(value: &str) -> bool {
 
 pub(super) fn model_is_hidden(value: &str) -> bool {
     value.as_bytes().get(1) == Some(&b'h')
+}
+
+fn model_is_broken_link(value: &str) -> bool {
+    value.starts_with("x")
+}
+
+/// Directories lead a grouped view, and files whose type the shared MIME database
+/// cannot name fall back to a plain label.
+pub(super) const FOLDER_TYPE_GROUP: &str = "Folder";
+const UNTYPED_TYPE_GROUP: &str = "File";
+
+/// The user-facing file-type label a model value belongs to when the browser groups
+/// entries by type. Labels come from the shared MIME database, so they read the way
+/// they do elsewhere on the desktop: "JSON document", "Python script", and so on.
+pub(super) fn model_type_group(value: &str) -> String {
+    if model_is_directory(value) {
+        return FOLDER_TYPE_GROUP.to_owned();
+    }
+    if model_is_broken_link(value) {
+        return "Broken link".to_owned();
+    }
+    let name = model_display_name(value);
+    TYPE_GROUPS.with_borrow_mut(|cache| {
+        if let Some(label) = cache.get(type_group_key(name)) {
+            return label.clone();
+        }
+        let label = guess_type_group(name);
+        // A directory listing holds far more entries than distinct types, and the
+        // cache is keyed by suffix, so it stays small; clear it if that ever fails.
+        if cache.len() >= TYPE_GROUP_CACHE_LIMIT {
+            cache.clear();
+        }
+        cache.insert(type_group_key(name).to_owned(), label.clone());
+        label
+    })
+}
+
+/// Names sharing a suffix share a type, so the cache is keyed by suffix where there
+/// is one and by the whole name otherwise.
+fn type_group_key(name: &str) -> &str {
+    match name.rfind('.') {
+        Some(position) if position > 0 => &name[position..],
+        _ => name,
+    }
+}
+
+fn guess_type_group(name: &str) -> String {
+    let (content_type, _) = gio::content_type_guess(Some(Path::new(name)), None::<&[u8]>);
+    if content_type.is_empty() || content_type == "application/octet-stream" {
+        return UNTYPED_TYPE_GROUP.to_owned();
+    }
+    let description = gio::content_type_get_description(&content_type);
+    if description.is_empty() {
+        return UNTYPED_TYPE_GROUP.to_owned();
+    }
+    description.to_string()
+}
+
+const TYPE_GROUP_CACHE_LIMIT: usize = 2048;
+
+thread_local! {
+    static TYPE_GROUPS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
 }
 
 pub(super) fn entry_filter(

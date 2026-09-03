@@ -1188,3 +1188,34 @@ fn pinning_requires_an_available_non_trash_directory() {
     assert!(!can_pin_entry(&file, PinStatus::Available));
     assert!(!can_pin_entry(&trash_directory, PinStatus::Available));
 }
+
+#[test]
+fn type_groups_name_folders_and_broken_links_directly() {
+    assert_eq!(model_type_group("dv\tprojects"), FOLDER_TYPE_GROUP);
+    assert_eq!(model_type_group("dv\tlinked"), FOLDER_TYPE_GROUP);
+    assert_eq!(model_type_group("xv\tdangling"), "Broken link");
+}
+
+#[test]
+fn files_of_an_unrecognized_type_share_one_group() {
+    assert_eq!(model_type_group("fv\tblob.qqqqq"), "File");
+    assert_eq!(model_type_group("fv\tarchive-index"), "File");
+}
+
+#[test]
+fn type_groups_come_from_the_shared_mime_database() {
+    let expected = gio::content_type_get_description(
+        &gio::content_type_guess(Some(Path::new("notes.json")), None::<&[u8]>).0,
+    );
+
+    assert_eq!(model_type_group("fv\tnotes.json"), expected);
+}
+
+#[test]
+fn repeated_lookups_of_one_suffix_agree() {
+    let first = model_type_group("fv\tone.py");
+    let second = model_type_group("fv\ttwo.py");
+
+    assert_eq!(first, second);
+    assert_ne!(first, "File");
+}
