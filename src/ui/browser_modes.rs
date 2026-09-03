@@ -136,6 +136,7 @@ struct PaneSection {
     selection: gtk::MultiSelection,
     bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
     syncing: Rc<Cell<bool>>,
+    visit: super::marquee::ItemVisitor,
 }
 
 #[derive(Clone)]
@@ -148,6 +149,7 @@ struct Pane {
     /// a grouped grid it holds nothing else, since entries live in group sections.
     section: PaneSection,
     sections: Rc<RefCell<Vec<PaneSection>>>,
+    targets: super::marquee::MarqueeTargets,
     /// Set while a reload has detached the pane's models from their views.
     detached: Rc<Cell<bool>>,
     stack: gtk::Stack,
@@ -1246,16 +1248,19 @@ fn build_grid_pane(
         .vexpand(true)
         .build();
     scroll.add_css_class("fixed-scrollbar");
-    let (collection, marquee) = collection_with_marquee(&root, scroll, &pane_section, "grid-card");
+    let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
+    let (collection, marquee) =
+        collection_with_marquee(&root, scroll, targets.clone(), "grid-card");
     content.append(&collection);
     marquee.add_origin_surface(&header);
-    Pane {
+    let pane = Pane {
         depth,
         shell,
         model,
         filter_model: Some(filtered_model),
         section: pane_section,
         sections,
+        targets,
         detached: Rc::new(Cell::new(false)),
         stack,
         status,
@@ -1269,7 +1274,9 @@ fn build_grid_pane(
         new_entry_is_directory: Some(new_entry_is_directory),
         show_hidden,
         filter: filter_for_pane,
-    }
+    };
+    refresh_marquee_targets(&pane);
+    pane
 }
 
 fn build_grid_view(
@@ -1478,8 +1485,9 @@ fn build_grid_view(
         view: view.clone().upcast(),
         view_model,
         selection,
-        bound_items,
+        bound_items: bound_items.clone(),
         syncing: syncing_selection,
+        visit: bound_item_visitor(bound_items),
     };
     if syncs_selection {
         connect_selection(
@@ -1494,6 +1502,18 @@ fn build_grid_view(
         install_section_context_menu(&state, &section, &context.source, depth);
     }
     section
+}
+
+fn refresh_marquee_targets(pane: &Pane) {
+    *pane.targets.borrow_mut() = pane
+        .sections
+        .borrow()
+        .iter()
+        .map(|section| super::marquee::MarqueeTarget {
+            selection: section.selection.clone(),
+            visit_items: section.visit.clone(),
+        })
+        .collect();
 }
 
 fn refresh_grid_thumbnail_size(
@@ -2060,8 +2080,9 @@ fn build_explorer_pane(
         view: view.clone().upcast(),
         view_model: view_model_object,
         selection,
-        bound_items,
+        bound_items: bound_items.clone(),
         syncing: syncing_selection,
+        visit: bound_item_visitor(bound_items),
     };
     sections.borrow_mut().push(section.clone());
     connect_selection(
@@ -2083,8 +2104,9 @@ fn build_explorer_pane(
     let table = gtk::Box::new(gtk::Orientation::Vertical, 0);
     table.set_vexpand(true);
     table.append(&headings);
+    let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
     let (collection, marquee) =
-        collection_with_marquee(view.upcast_ref(), scroll, &section, "explorer-row");
+        collection_with_marquee(view.upcast_ref(), scroll, targets.clone(), "explorer-row");
     table.append(&collection);
     marquee.add_origin_surface(&header);
     marquee.add_origin_surface(&headings);
@@ -2097,13 +2119,14 @@ fn build_explorer_pane(
         .build();
     table_scroll.add_css_class("fixed-scrollbar");
     content.append(&table_scroll);
-    Pane {
+    let pane = Pane {
         depth,
         shell,
         model,
         filter_model: Some(filtered_model),
         section,
         sections,
+        targets,
         detached: Rc::new(Cell::new(false)),
         stack,
         status,
@@ -2117,7 +2140,9 @@ fn build_explorer_pane(
         new_entry_is_directory: Some(new_entry_is_directory),
         show_hidden,
         filter: filter_for_pane,
-    }
+    };
+    refresh_marquee_targets(&pane);
+    pane
 }
 
 fn pane_base(
@@ -2209,7 +2234,7 @@ fn register_bound_mode_item(
 fn collection_with_marquee(
     view: &gtk::Widget,
     scroll: gtk::ScrolledWindow,
-    section: &PaneSection,
+    targets: super::marquee::MarqueeTargets,
     item_class: &'static str,
 ) -> (gtk::Overlay, super::marquee::Marquee) {
     let overlay = gtk::Overlay::new();
@@ -2217,22 +2242,11 @@ fn collection_with_marquee(
     overlay.set_hexpand(true);
     overlay.set_vexpand(true);
 
-    let items_for_visit = section.bound_items.clone();
     let marquee = super::marquee::install(super::marquee::MarqueeSetup {
         view: view.clone(),
         scroll,
         overlay: overlay.clone(),
-        selection: section.selection.clone(),
-        visit_items: Rc::new(move |visit| {
-            items_for_visit.borrow_mut().retain(|bound| {
-                let (Some(item), Some(widget)) = (bound.item.upgrade(), bound.widget.upgrade())
-                else {
-                    return false;
-                };
-                visit(item.position(), &widget);
-                true
-            });
-        }),
+        targets: targets.clone(),
         is_item: Rc::new(|widget| widget_or_ancestor_has_class(widget, item_class)),
     });
 
@@ -2241,7 +2255,6 @@ fn collection_with_marquee(
     let press = Rc::new(Cell::new((0.0, 0.0)));
     let press_for_start = press.clone();
     clear.connect_pressed(move |_, _, x, y| press_for_start.set((x, y)));
-    let selection_for_clear = section.selection.clone();
     clear.connect_released(move |gesture, _, x, y| {
         let (start_x, start_y) = press.get();
         if (x - start_x).abs() > 3.0 || (y - start_y).abs() > 3.0 {
@@ -2251,7 +2264,9 @@ fn collection_with_marquee(
             .widget()
             .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT));
         if !target.is_some_and(|widget| widget_or_ancestor_has_class(&widget, item_class)) {
-            selection_for_clear.unselect_all();
+            for target in targets.borrow().iter() {
+                target.selection.unselect_all();
+            }
         }
     });
     view.add_controller(clear);
@@ -2751,6 +2766,18 @@ fn entry_type(entry: &FileEntry) -> &'static str {
         EntryKind::SymbolicLink => "Broken link",
         EntryKind::Other => "Other",
     }
+}
+
+fn bound_item_visitor(bound_items: Rc<RefCell<Vec<BoundModeItem>>>) -> super::marquee::ItemVisitor {
+    Rc::new(move |visit| {
+        bound_items.borrow_mut().retain(|bound| {
+            let (Some(item), Some(widget)) = (bound.item.upgrade(), bound.widget.upgrade()) else {
+                return false;
+            };
+            visit(item.position(), &widget);
+            true
+        });
+    })
 }
 
 fn selected_source_positions(

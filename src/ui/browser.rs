@@ -4674,17 +4674,19 @@ impl ViewState {
             view: list.clone().upcast(),
             scroll: scroll.clone(),
             overlay: self.overlay.clone(),
-            selection: selection.clone(),
-            visit_items: Rc::new(move |visit| {
-                rows_for_marquee.borrow_mut().retain(|bound| {
-                    let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade())
-                    else {
-                        return false;
-                    };
-                    visit(item.position(), row.upcast_ref());
-                    true
-                });
-            }),
+            targets: Rc::new(RefCell::new(vec![super::marquee::MarqueeTarget {
+                selection: selection.clone(),
+                visit_items: Rc::new(move |visit| {
+                    rows_for_marquee.borrow_mut().retain(|bound| {
+                        let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade())
+                        else {
+                            return false;
+                        };
+                        visit(item.position(), row.upcast_ref());
+                        true
+                    });
+                }),
+            }])),
             is_item: Rc::new(|widget| is_file_row_target(widget.clone())),
         });
         marquee.add_origin_surface(&header);
