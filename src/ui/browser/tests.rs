@@ -1503,3 +1503,35 @@ fn accepting_a_host_key_lets_the_attempt_report_its_real_result() {
         MountOutcome::NeedsCredentials { .. }
     ));
 }
+
+#[test]
+fn mount_logging_respects_default_and_diagnostic_privacy() {
+    let location = Location::uri("sftp://alice:hunter2@host.example:2222/home/alice");
+    let output = crate::test_support::capture_logs(|| {
+        log_mount_started(&location, MountStrategy::EnclosingVolume);
+        log_mount_finished(
+            &location,
+            &Err(glib::Error::new(
+                gio::IOErrorEnum::Failed,
+                "Permission denied for alice@host.example",
+            )),
+        );
+    });
+
+    for message in ["mount requested", "mount failed"] {
+        let event = crate::test_support::captured_event(&output, message);
+        assert_eq!(event.split_whitespace().next(), Some("INFO"));
+        assert!(event.contains("backend=sftp"));
+        for secret in ["alice", "hunter2", "host.example", "/home/alice"] {
+            assert!(
+                !event.contains(secret),
+                "{message:?} leaked {secret:?}: {event}"
+            );
+        }
+    }
+
+    let diagnostic = crate::test_support::captured_event(&output, "mount location");
+    assert_eq!(diagnostic.split_whitespace().next(), Some("DEBUG"));
+    assert!(diagnostic.contains("sftp://host.example:2222/home/alice"));
+    assert!(!diagnostic.contains("hunter2"));
+}

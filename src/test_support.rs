@@ -106,3 +106,12 @@ pub(crate) fn capture_logs(action: impl FnOnce()) -> String {
     tracing::subscriber::with_default(subscriber, action);
     writer.output()
 }
+
+/// Finds the rendered event carrying `message`, panicking with the whole
+/// capture when it is missing so a failure shows what was logged instead.
+pub(crate) fn captured_event<'a>(output: &'a str, message: &str) -> &'a str {
+    output
+        .lines()
+        .find(|line| line.contains(message))
+        .unwrap_or_else(|| panic!("missing {message:?} event in:\n{output}"))
+}

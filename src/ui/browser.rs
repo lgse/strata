@@ -3443,6 +3443,7 @@ impl ViewState {
         if self.overlay.root().and_downcast::<gtk::Window>().is_none() {
             return;
         }
+        log_mount_started(&location, strategy);
         let activity = BrowserView {
             state: self.clone(),
         }
@@ -3544,6 +3545,7 @@ impl ViewState {
                     .await
                     .map(|_| ()),
             };
+            log_mount_finished(&location, &result);
             if let Some(prompt) = active_prompt.borrow_mut().take() {
                 dismiss_authentication_prompt(&result_overlay, &prompt);
             }
@@ -8191,6 +8193,27 @@ impl MountAttempt {
     }
 }
 
+fn log_mount_started(location: &Location, strategy: MountStrategy) {
+    tracing::info!(
+        backend = %location.backend_name(),
+        strategy = strategy.name(),
+        "mount requested"
+    );
+    tracing::debug!(location = %location.diagnostic_path(), "mount location");
+}
+
+fn log_mount_finished(location: &Location, result: &Result<(), glib::Error>) {
+    match result {
+        Ok(()) => tracing::info!(backend = %location.backend_name(), "mount finished"),
+        Err(error) => tracing::info!(
+            backend = %location.backend_name(),
+            error_domain = ?error.domain(),
+            error_code = error.code(),
+            "mount failed"
+        ),
+    }
+}
+
 #[derive(Clone, Copy)]
 enum MountStrategy {
     /// The location itself is accessible but sits on an unmounted volume.
@@ -8198,6 +8221,15 @@ enum MountStrategy {
     /// The location is itself the mountable target (an SMB share, a
     /// "Connect to Server" bookmark, ...).
     Mountable,
+}
+
+impl MountStrategy {
+    fn name(self) -> &'static str {
+        match self {
+            Self::EnclosingVolume => "enclosing-volume",
+            Self::Mountable => "mountable",
+        }
+    }
 }
 
 fn mount_error_is_authentication_failure(location: &Location, error: &glib::Error) -> bool {
