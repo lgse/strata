@@ -1244,37 +1244,20 @@ impl SidebarState {
         self.widget.append(&row);
     }
 
-    fn append_reorderable_place(
+    fn make_reorderable(
         self: &Rc<Self>,
-        id: &'static str,
-        icon: &str,
-        name: &str,
-        location: Location,
+        row: &gtk::Button,
+        payload: impl Fn() -> String + 'static,
+        on_drop: impl Fn(&Rc<Self>, &str, bool) -> bool + 'static,
     ) {
-        let row = sidebar_button(icon, name);
         row.add_css_class("reorderable");
         row.set_cursor_from_name(Some("grab"));
-        row.set_tooltip_text(Some(&location.display_path()));
-        self.place_rows
-            .borrow_mut()
-            .push((location.clone(), row.clone()));
-        let weak_browser = Rc::downgrade(&self.browser);
-        let sidebar = self.widget.clone();
-        let selected_row = row.clone();
-        row.connect_clicked(move |_| {
-            select_sidebar_row(&sidebar, &selected_row);
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.navigate(location.clone());
-            }
-        });
 
         let drag = gtk::DragSource::builder()
             .actions(gtk::gdk::DragAction::MOVE)
             .build();
         drag.connect_prepare(move |_, _, _| {
-            Some(gtk::gdk::ContentProvider::for_value(
-                &id.to_string().to_value(),
-            ))
+            Some(gtk::gdk::ContentProvider::for_value(&payload().to_value()))
         });
         let dragged_row = row.clone();
         drag.connect_drag_begin(move |_, _| {
@@ -1295,17 +1278,50 @@ impl SidebarState {
             let Ok(source) = value.get::<String>() else {
                 return false;
             };
-            if source.starts_with(PINNED_DRAG_PREFIX) {
-                return false;
-            }
             let after = y >= f64::from(target_row.height()) / 2.0;
             if let Some(state) = weak_state.upgrade() {
-                state.reorder_place(&source, id, after);
-                return true;
+                return on_drop(&state, &source, after);
             }
             false
         });
         row.add_controller(drop);
+    }
+
+    fn append_reorderable_place(
+        self: &Rc<Self>,
+        id: &'static str,
+        icon: &str,
+        name: &str,
+        location: Location,
+    ) {
+        let row = sidebar_button(icon, name);
+        row.set_tooltip_text(Some(&location.display_path()));
+        self.place_rows
+            .borrow_mut()
+            .push((location.clone(), row.clone()));
+        let weak_browser = Rc::downgrade(&self.browser);
+        let sidebar = self.widget.clone();
+        let selected_row = row.clone();
+        row.connect_clicked(move |_| {
+            select_sidebar_row(&sidebar, &selected_row);
+            if let Some(browser) = weak_browser.upgrade() {
+                browser.navigate(location.clone());
+            }
+        });
+
+        self.make_reorderable(
+            &row,
+            // Standard rows drag their stable id, so a pinned row's numeric
+            // payload is rejected by the standard-place drop handler.
+            move || id.to_string(),
+            move |state, source, after| {
+                if source.starts_with(PINNED_DRAG_PREFIX) {
+                    return false;
+                }
+                state.reorder_place(source, id, after);
+                true
+            },
+        );
         self.widget.append(&row);
     }
 
@@ -1512,47 +1528,17 @@ impl SidebarState {
     }
 
     fn make_pinned_row_reorderable(self: &Rc<Self>, row: &gtk::Button, index: usize) {
-        row.add_css_class("reorderable");
-        row.set_cursor_from_name(Some("grab"));
-
-        let drag = gtk::DragSource::builder()
-            .actions(gtk::gdk::DragAction::MOVE)
-            .build();
-        drag.connect_prepare(move |_, _, _| {
-            Some(gtk::gdk::ContentProvider::for_value(
-                &format!("{PINNED_DRAG_PREFIX}{index}").to_value(),
-            ))
-        });
-        let dragged_row = row.clone();
-        drag.connect_drag_begin(move |_, _| {
-            dragged_row.add_css_class("dragging");
-            dragged_row.set_cursor_from_name(Some("grabbing"));
-        });
-        let dragged_row = row.clone();
-        drag.connect_drag_end(move |_, _, _| {
-            dragged_row.remove_css_class("dragging");
-            dragged_row.set_cursor_from_name(Some("grab"));
-        });
-        row.add_controller(drag);
-
-        let drop = gtk::DropTarget::new(String::static_type(), gtk::gdk::DragAction::MOVE);
-        let weak_state = Rc::downgrade(self);
-        let target_row = row.clone();
-        drop.connect_drop(move |_, value, _, y| {
-            let Ok(source) = value.get::<String>() else {
-                return false;
-            };
-            let Some(source) = parse_pinned_drag_source(&source) else {
-                return false;
-            };
-            let after = y >= f64::from(target_row.height()) / 2.0;
-            if let Some(state) = weak_state.upgrade() {
+        self.make_reorderable(
+            row,
+            move || format!("{PINNED_DRAG_PREFIX}{index}"),
+            move |state, source, after| {
+                let Some(source) = parse_pinned_drag_source(source) else {
+                    return false;
+                };
                 state.reorder_pinned_place(source, index, after);
-                return true;
-            }
-            false
-        });
-        row.add_controller(drop);
+                true
+            },
+        );
     }
 
     fn append_place(&self, icon: &str, name: &str, location: Location) -> gtk::Button {
@@ -1612,6 +1598,10 @@ fn reorder_pinned_places(
         return false;
     }
     let place = places.remove(source);
+    // `source` is a pre-removal index, but `target` must remap onto the shrunken
+    // vector: any target that sat after `source` slides left by one. Since
+    // `destination == source` is checked in post-removal coordinates, a match
+    // means re-inserting into the original slot — a no-op worth reporting.
     let target = target - usize::from(target > source);
     let destination = (target + usize::from(after)).min(places.len());
     if destination == source {
