@@ -31,8 +31,8 @@ use super::{
     browser_modes::{BrowserDensity, BrowserMode, ClickActivation, ClickCount, ModeViews},
     controls::{
         ModalTone, form_check_button, form_entry, form_label, form_password_entry, menu_option,
-        message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
-        wrap_dialog_text,
+        message_dialog_description, message_dialog_layout, modal_layout, modal_layout_with_tone,
+        segmented_control, wrap_dialog_text,
     },
     motion::{animations_enabled, emphasized_deceleration},
 };
@@ -3498,6 +3498,38 @@ impl ViewState {
                 prompt_for_signal.replace(prompt);
             },
         );
+        let question_overlay = self.overlay.clone();
+        let question_prompt = active_prompt.clone();
+        let attempt_for_question = attempt.clone();
+        // `ask-question` carries a GStrv, which gir cannot wrap, so the backend's
+        // trust decisions are taken from the raw signal rather than dropped.
+        operation.connect_local("ask-question", false, move |values| {
+            let operation = values
+                .first()
+                .and_then(|value| value.get::<gio::MountOperation>().ok())?;
+            let message = values
+                .get(1)
+                .and_then(|value| value.get::<String>().ok())
+                .unwrap_or_default();
+            let choices = values
+                .get(2)
+                .and_then(|value| value.get::<Vec<String>>().ok())
+                .unwrap_or_default();
+            let details = MountQuestionDetails { message, choices };
+            attempt_for_question
+                .borrow_mut()
+                .ask_question(details.clone());
+            if let Some(previous) = question_prompt.borrow_mut().take() {
+                dismiss_authentication_prompt(&question_overlay, &previous);
+            }
+            let prompt = show_mount_question_dialog(&question_overlay, &operation, &details, {
+                let attempt = attempt_for_question.clone();
+                move |decision| attempt.borrow_mut().decide(decision)
+            });
+            question_prompt.replace(prompt);
+            None
+        });
+
         let weak = Rc::downgrade(self);
         let result_overlay = self.overlay.clone();
         glib::MainContext::default().spawn_local(async move {
@@ -7849,6 +7881,225 @@ fn apply_mount_credentials(operation: &gio::MountOperation, credentials: &MountC
     operation.set_password_save(credentials.save);
 }
 
+/// A `GMountOperation::ask-question` request: a trust decision the backend
+/// refuses to make on its own, such as an unrecognized or changed SSH host key.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct MountQuestionDetails {
+    message: String,
+    choices: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MountQuestionKind {
+    UnknownHostKey,
+    ChangedHostKey,
+    Other,
+}
+
+impl MountQuestionKind {
+    fn classify(message: &str) -> Self {
+        let message = message.to_ascii_lowercase();
+        let about_host_key = ["host key", "identity of the remote computer", "fingerprint"]
+            .iter()
+            .any(|marker| message.contains(marker));
+        if !about_host_key {
+            return Self::Other;
+        }
+        if ["changed", "man-in-the-middle", "nasty", "eavesdropping"]
+            .iter()
+            .any(|marker| message.contains(marker))
+        {
+            Self::ChangedHostKey
+        } else {
+            Self::UnknownHostKey
+        }
+    }
+
+    fn heading(self) -> (&'static str, &'static str) {
+        match self {
+            Self::UnknownHostKey => (
+                "Unrecognized host key",
+                "This computer has not been verified before",
+            ),
+            Self::ChangedHostKey => (
+                "Host key changed",
+                "This computer is not presenting the key it used before",
+            ),
+            Self::Other => (
+                "Confirmation required",
+                "The connection needs a decision before it can continue",
+            ),
+        }
+    }
+
+    fn tone(self) -> ModalTone {
+        match self {
+            Self::ChangedHostKey => ModalTone::Danger,
+            Self::UnknownHostKey | Self::Other => ModalTone::Accent,
+        }
+    }
+
+    fn icon(self) -> &'static str {
+        match self {
+            Self::ChangedHostKey => crate::assets::icons::TRIANGLE_ALERT,
+            Self::UnknownHostKey | Self::Other => crate::assets::icons::KEY,
+        }
+    }
+}
+
+/// Recognizes the choice that declines, so it can be the focused default. A
+/// trust decision is never pre-selected in the accepting direction.
+fn choice_declines(label: &str) -> bool {
+    let label = label.to_ascii_lowercase();
+    ["cancel", "abort", "no", "don't", "do not", "reject", "deny"]
+        .iter()
+        .any(|marker| label.contains(marker))
+}
+
+fn safest_choice(choices: &[String]) -> usize {
+    choices
+        .iter()
+        .position(|choice| choice_declines(choice))
+        .unwrap_or_else(|| choices.len().saturating_sub(1))
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MountQuestionDecision {
+    Chose(usize),
+    Declined,
+}
+
+fn show_mount_question_dialog(
+    browser_overlay: &gtk::Overlay,
+    operation: &gio::MountOperation,
+    details: &MountQuestionDetails,
+    decided: impl Fn(MountQuestionDecision) + 'static,
+) -> Option<gtk::Box> {
+    if details.choices.is_empty() {
+        operation.reply(gio::MountOperationResult::Aborted);
+        decided(MountQuestionDecision::Declined);
+        return None;
+    }
+    let Some(window_overlay) = browser_overlay
+        .root()
+        .and_downcast::<gtk::Window>()
+        .and_then(|window| window.child())
+        .and_downcast::<gtk::Overlay>()
+    else {
+        operation.reply(gio::MountOperationResult::Aborted);
+        decided(MountQuestionDecision::Declined);
+        return None;
+    };
+    let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
+    if let Some(root) = blurred_root.as_ref() {
+        root.set_blurred(true);
+    }
+
+    let kind = MountQuestionKind::classify(&details.message);
+    let (heading, subheading) = kind.heading();
+    let layout = modal_layout_with_tone(kind.icon(), heading, subheading, "Continue", kind.tone());
+    layout.content.add_css_class("wide");
+    layout.body.add_css_class("authentication-body");
+    let explanation = gtk::Label::new(Some(&wrap_dialog_text(
+        details.message.trim(),
+        AUTHENTICATION_TEXT_WIDTH_CHARS as usize,
+    )));
+    explanation.add_css_class("authentication-explanation");
+    explanation.set_max_width_chars(AUTHENTICATION_TEXT_WIDTH_CHARS);
+    explanation.set_selectable(true);
+    explanation.set_wrap(true);
+    explanation.set_xalign(0.0);
+    layout.body.append(&explanation);
+
+    // The backend owns the wording of every option, so the stock Cancel and
+    // Continue buttons are replaced by one button per offered choice.
+    while let Some(child) = layout.actions.first_child() {
+        layout.actions.remove(&child);
+    }
+    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    spacer.set_hexpand(true);
+    layout.actions.append(&spacer);
+
+    let content = layout.content;
+    let layer = modal_layer(
+        &content,
+        &window_overlay,
+        blurred_root.clone(),
+        Some(Rc::new(|| true)),
+    );
+    window_overlay.add_overlay(&layer);
+    let decided = Rc::new(decided);
+    let answered = Rc::new(Cell::new(false));
+
+    let default_choice = safest_choice(&details.choices);
+    let mut default_button = None;
+    for (index, choice) in details.choices.iter().enumerate() {
+        let button = gtk::Button::with_label(choice);
+        if choice_declines(choice) {
+            button.add_css_class("action-dialog-cancel");
+        } else {
+            button.add_css_class("action-dialog-confirm");
+            if kind.tone() == ModalTone::Danger {
+                button.add_css_class("danger");
+            }
+        }
+        let operation = operation.clone();
+        let decided = decided.clone();
+        let answered = answered.clone();
+        let layer = layer.clone();
+        let overlay = window_overlay.clone();
+        let root = blurred_root.clone();
+        button.connect_clicked(move |_| {
+            if answered.replace(true) {
+                return;
+            }
+            dismiss_modal_layer(&layer, &overlay, root.as_ref());
+            operation.set_choice(index as i32);
+            operation.reply(gio::MountOperationResult::Handled);
+            decided(MountQuestionDecision::Chose(index));
+        });
+        layout.actions.append(&button);
+        if index == default_choice {
+            default_button = Some(button);
+        }
+    }
+
+    let decline = {
+        let operation = operation.clone();
+        let decided = decided.clone();
+        let answered = answered.clone();
+        let layer = layer.clone();
+        let overlay = window_overlay.clone();
+        let root = blurred_root.clone();
+        Rc::new(move || {
+            if answered.replace(true) {
+                return;
+            }
+            dismiss_modal_layer(&layer, &overlay, root.as_ref());
+            operation.reply(gio::MountOperationResult::Aborted);
+            decided(MountQuestionDecision::Declined);
+        })
+    };
+
+    let close_decline = decline.clone();
+    layout.close.connect_clicked(move |_| close_decline());
+
+    let escape = gtk::EventControllerKey::new();
+    escape.connect_key_pressed(move |_, key, _, _| {
+        if key != gtk::gdk::Key::Escape {
+            return glib::Propagation::Proceed;
+        }
+        decline();
+        glib::Propagation::Stop
+    });
+    layer.add_controller(escape);
+
+    if let Some(button) = default_button {
+        button.grab_focus();
+    }
+    Some(layer)
+}
+
 /// How a finished mount attempt should be reported to the caller.
 enum MountOutcome {
     Mounted,
@@ -7880,6 +8131,8 @@ struct MountAttempt {
     attempted: Option<MountCredentials>,
     prompted: bool,
     details: Option<MountPromptDetails>,
+    question: Option<MountQuestionDetails>,
+    declined: bool,
 }
 
 impl MountAttempt {
@@ -7906,6 +8159,14 @@ impl MountAttempt {
         self.attempted = Some(credentials);
     }
 
+    fn ask_question(&mut self, details: MountQuestionDetails) {
+        self.question = Some(details);
+    }
+
+    fn decide(&mut self, decision: MountQuestionDecision) {
+        self.declined = decision == MountQuestionDecision::Declined;
+    }
+
     fn outcome(&self, location: &Location, result: Result<(), glib::Error>) -> MountOutcome {
         let error = match result {
             Ok(()) => return MountOutcome::Mounted,
@@ -7914,6 +8175,9 @@ impl MountAttempt {
             }
             Err(error) => error,
         };
+        if self.declined {
+            return MountOutcome::Cancelled;
+        }
         if mount_error_is_authentication_failure(location, &error) {
             return MountOutcome::NeedsCredentials {
                 attempted: self.attempted.clone(),

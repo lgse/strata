@@ -1412,3 +1412,94 @@ fn a_cancelled_prompt_ends_the_attempt_without_an_error_dialog() {
         );
     }
 }
+
+#[test]
+fn host_key_questions_are_classified_from_the_backend_wording() {
+    assert_eq!(
+        MountQuestionKind::classify(
+            "The identity of the remote computer is not known. Its host key fingerprint is \
+             SHA256:abc. Are you sure you want to continue connecting?"
+        ),
+        MountQuestionKind::UnknownHostKey
+    );
+    assert_eq!(
+        MountQuestionKind::classify(
+            "WARNING: The host key for host.example has changed. Someone could be eavesdropping \
+             on you right now (man-in-the-middle attack)."
+        ),
+        MountQuestionKind::ChangedHostKey
+    );
+    assert_eq!(
+        MountQuestionKind::classify("Replace the existing file?"),
+        MountQuestionKind::Other
+    );
+    assert_eq!(
+        MountQuestionKind::ChangedHostKey.tone(),
+        crate::ui::controls::ModalTone::Danger
+    );
+}
+
+#[test]
+fn a_trust_decision_never_defaults_to_accepting() {
+    let choices = ["Log In Anyway".to_owned(), "Cancel".to_owned()];
+    assert_eq!(safest_choice(&choices), 1);
+    assert!(choice_declines("Cancel"));
+    assert!(!choice_declines("Log In Anyway"));
+
+    let unlabelled = ["Continue".to_owned(), "Accept and remember".to_owned()];
+    assert_eq!(
+        safest_choice(&unlabelled),
+        1,
+        "with nothing recognizable to decline, the last choice is focused, never the first"
+    );
+    assert_eq!(safest_choice(&[]), 0);
+}
+
+#[test]
+fn declining_a_host_key_ends_the_attempt_instead_of_asking_to_sign_in_again() {
+    let location = Location::uri("sftp://host.example/home/alice");
+    let mut attempt = MountAttempt::new(None);
+    attempt.ask_question(MountQuestionDetails {
+        message: "The identity of the remote computer is not known.".to_owned(),
+        choices: vec!["Log In Anyway".to_owned(), "Cancel".to_owned()],
+    });
+    attempt.decide(MountQuestionDecision::Declined);
+
+    let outcome = attempt.outcome(
+        &location,
+        Err(glib::Error::new(
+            gio::IOErrorEnum::PermissionDenied,
+            "Permission denied",
+        )),
+    );
+    assert!(
+        matches!(outcome, MountOutcome::Cancelled),
+        "the user already answered, so the browser returns to where it was"
+    );
+}
+
+#[test]
+fn accepting_a_host_key_lets_the_attempt_report_its_real_result() {
+    let location = Location::uri("sftp://host.example/home/alice");
+    let mut attempt = MountAttempt::new(None);
+    attempt.ask_question(MountQuestionDetails {
+        message: "The identity of the remote computer is not known.".to_owned(),
+        choices: vec!["Log In Anyway".to_owned(), "Cancel".to_owned()],
+    });
+    attempt.decide(MountQuestionDecision::Chose(0));
+
+    assert!(matches!(
+        attempt.outcome(&location, Ok(())),
+        MountOutcome::Mounted
+    ));
+    assert!(matches!(
+        attempt.outcome(
+            &location,
+            Err(glib::Error::new(
+                gio::IOErrorEnum::PermissionDenied,
+                "Permission denied",
+            )),
+        ),
+        MountOutcome::NeedsCredentials { .. }
+    ));
+}
