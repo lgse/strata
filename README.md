@@ -80,6 +80,8 @@ omarchy pkg add strata
 
 Omarchy keeps this installation current through `omarchy update`. Strata still checks for stable releases and shows their notes, but detects that its executable is package-owned, hides the in-app release-channel selector, and does not replace it with the in-app updater. When an update is available, **Open Omarchy Update** launches the interactive updater in your configured terminal.
 
+For more frequent updates, prefer the [manual release installation](#manual-release-installation). Manual installations can select any release channel and receive stable releases as soon as they are published, while OPR installations follow the Omarchy repository's release schedule and stable channel.
+
 #### Switch a manual installation to OPR
 
 Close Strata, install the OPR package, and remove the per-user executable and desktop metadata that would otherwise take precedence over the package:
