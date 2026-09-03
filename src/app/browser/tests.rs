@@ -1413,3 +1413,92 @@ fn escape_closes_a_peek_before_the_deepest_column() {
             .any(|event| matches!(event, BrowserEvent::ColumnsTruncated { len: 1 }))
     );
 }
+
+struct MixedPeekFileSource;
+
+impl FileSource for MixedPeekFileSource {
+    fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
+        Ok(())
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        emit(DirectoryEvent::Batch {
+            request_id: request.id,
+            entries: vec![
+                FileEntry {
+                    location: Location::local("/fixture/.dotfile"),
+                    native_name: OsString::from(".dotfile"),
+                    display_name: ".dotfile".into(),
+                    kind: EntryKind::File,
+                    size: MetadataValue::Unknown,
+                    modified_unix_seconds: MetadataValue::Unknown,
+                    is_hidden: true,
+                },
+                FileEntry {
+                    location: Location::local("/fixture/normal.txt"),
+                    native_name: OsString::from("normal.txt"),
+                    display_name: "normal.txt".into(),
+                    kind: EntryKind::File,
+                    size: MetadataValue::Unknown,
+                    modified_unix_seconds: MetadataValue::Unknown,
+                    is_hidden: false,
+                },
+            ],
+        });
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+            truncated: false,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
+#[test]
+fn peek_filters_hidden_entries_before_item_limit() {
+    let browser = Browser::new(Rc::new(MixedPeekFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event));
+    browser.navigate(Location::local("/fixture"));
+    browser.begin_peek(0, Location::local("/fixture/peek_target"));
+
+    let peek_batch = events.borrow().iter().find_map(|event| match event {
+        BrowserEvent::PeekEntriesAdded { entries } => Some(entries.clone()),
+        _ => None,
+    });
+    let entries = peek_batch.expect("peek batch emitted");
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].display_name, "normal.txt");
+
+    events.borrow_mut().clear();
+    browser.toggle_hidden();
+    browser.begin_peek(0, Location::local("/fixture/peek_target"));
+
+    let peek_batch = events.borrow().iter().find_map(|event| match event {
+        BrowserEvent::PeekEntriesAdded { entries } => Some(entries.clone()),
+        _ => None,
+    });
+    let entries = peek_batch.expect("peek batch emitted");
+    assert_eq!(entries.len(), 2);
+}
+
+#[test]
+fn new_columns_inherit_show_hidden_preference() {
+    let preferences = ViewPreferences {
+        show_hidden: true,
+        ..Default::default()
+    };
+    let browser = Browser::with_preferences(Rc::new(FakeFileSource), preferences);
+    browser.navigate(Location::local("/fixture"));
+
+    assert_eq!(
+        browser.column_preferences(0).map(|p| p.show_hidden),
+        Some(true)
+    );
+
+    browser.descend(0, Location::local("/fixture/child"));
+    assert_eq!(
+        browser.column_preferences(1).map(|p| p.show_hidden),
+        Some(true)
+    );
+}

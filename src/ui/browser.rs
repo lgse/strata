@@ -4034,7 +4034,11 @@ impl ViewState {
         let entry_count = Rc::new(Cell::new(0));
         let model = gtk::StringList::new(&[]);
         let filter_query = Rc::new(RefCell::new(String::new()));
-        let show_hidden = Rc::new(Cell::new(false));
+        let initial_show_hidden = self
+            .browser
+            .column_preferences(depth)
+            .map_or_else(|| self.browser.preferences().show_hidden, |p| p.show_hidden);
+        let show_hidden = Rc::new(Cell::new(initial_show_hidden));
         let filter = entry_filter(show_hidden.clone(), filter_query.clone());
         let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
         let selection = gtk::MultiSelection::new(Some(filtered_model.clone()));
@@ -6873,7 +6877,7 @@ pub(super) fn rename_stem_end(name: &str) -> i32 {
     name[..end].chars().count().min(i32::MAX as usize) as i32
 }
 
-fn entry_model_value(entry: &FileEntry) -> String {
+pub(super) fn entry_model_value(entry: &FileEntry) -> String {
     let kind = if entry.is_broken_symbolic_link() {
         'x'
     } else if entry.is_directory() {

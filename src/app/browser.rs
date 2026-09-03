@@ -238,6 +238,10 @@ impl Browser {
         self.observers.borrow_mut().clear();
     }
 
+    pub fn preferences(&self) -> ViewPreferences {
+        self.preferences.get()
+    }
+
     pub fn observe_preferences(&self, observer: impl Fn(ViewPreferences) + 'static) {
         self.preferences_observers
             .borrow_mut()
@@ -570,6 +574,7 @@ impl Browser {
         self.preferences.set(preferences);
         self.notify_preferences_observers();
 
+        self.close_peek();
         self.state
             .borrow_mut()
             .set_show_hidden(preferences.show_hidden);
@@ -1634,9 +1639,21 @@ impl Browser {
                             take_focus: false,
                         });
                     }
-                } else if state.apply_peek_batch(request_id, &entries) {
-                    drop(state);
-                    self.emit(BrowserEvent::PeekEntriesAdded { entries });
+                } else {
+                    let peek_entries: Vec<_> = if self.preferences.get().show_hidden {
+                        entries
+                    } else {
+                        entries
+                            .into_iter()
+                            .filter(|entry| !entry.is_hidden)
+                            .collect()
+                    };
+                    if state.apply_peek_batch(request_id, &peek_entries) {
+                        drop(state);
+                        self.emit(BrowserEvent::PeekEntriesAdded {
+                            entries: peek_entries,
+                        });
+                    }
                 }
             }
             DirectoryEvent::Finished {

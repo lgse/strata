@@ -543,12 +543,13 @@ impl ModeViews {
             BrowserEvent::EntriesInserted { depth, insertions } => {
                 for pane in self.panes_at(*depth) {
                     for insertion in insertions {
-                        let values: Vec<_> = insertion
+                        let values: Vec<String> = insertion
                             .entries
                             .iter()
-                            .map(|entry| entry.display_name.as_str())
+                            .map(super::browser::entry_model_value)
                             .collect();
-                        pane.model.splice(insertion.position as u32, 0, &values);
+                        let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
+                        pane.model.splice(insertion.position as u32, 0, &values_ref);
                     }
                     if !pane.spinner.is_spinning() {
                         show_count(pane);
@@ -577,13 +578,17 @@ impl ModeViews {
             BrowserEvent::EntriesSpliced { depth, splices, .. } => {
                 for pane in self.panes_at(*depth) {
                     for splice in splices {
-                        let values: Vec<_> = splice
+                        let values: Vec<String> = splice
                             .entries
                             .iter()
-                            .map(|entry| entry.display_name.as_str())
+                            .map(super::browser::entry_model_value)
                             .collect();
-                        pane.model
-                            .splice(splice.position as u32, splice.removed as u32, &values);
+                        let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
+                        pane.model.splice(
+                            splice.position as u32,
+                            splice.removed as u32,
+                            &values_ref,
+                        );
                     }
                     show_count(pane);
                 }
@@ -1010,7 +1015,10 @@ fn build_grid_pane(
     }
     content.append(&controls.filter_revealer);
     let filter_query = Rc::new(RefCell::new(String::new()));
-    let show_hidden = Rc::new(Cell::new(false));
+    let initial_show_hidden = browser
+        .column_preferences(depth)
+        .map_or_else(|| browser.preferences().show_hidden, |p| p.show_hidden);
+    let show_hidden = Rc::new(Cell::new(initial_show_hidden));
     let filter = super::browser::entry_filter(show_hidden.clone(), filter_query.clone());
     let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
     let filter_for_pane = filter.clone();
@@ -1604,7 +1612,10 @@ fn build_explorer_pane(
     }
     content.append(&filter_revealer);
     let filter_query = Rc::new(RefCell::new(String::new()));
-    let show_hidden = Rc::new(Cell::new(false));
+    let initial_show_hidden = browser
+        .column_preferences(depth)
+        .map_or_else(|| browser.preferences().show_hidden, |p| p.show_hidden);
+    let show_hidden = Rc::new(Cell::new(initial_show_hidden));
     let filter = super::browser::entry_filter(show_hidden.clone(), filter_query.clone());
     let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
     let filter_for_pane = filter.clone();
@@ -2490,11 +2501,12 @@ fn refresh_cut_pane(pane: &Pane, browser: &Browser, cuts: &[Location]) {
 }
 
 fn replace_entries(pane: &Pane, entries: &[FileEntry]) {
-    let values: Vec<_> = entries
+    let values: Vec<String> = entries
         .iter()
-        .map(|entry| entry.display_name.as_str())
+        .map(super::browser::entry_model_value)
         .collect();
-    pane.model.splice(0, pane.model.n_items(), &values);
+    let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
+    pane.model.splice(0, pane.model.n_items(), &values_ref);
     show_count(pane);
 }
 

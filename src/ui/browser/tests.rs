@@ -1037,3 +1037,37 @@ fn trash_summary_does_not_stop_enumerating_siblings_after_one_branch_is_depth_tr
          not just the first next_files_future batch"
     );
 }
+
+#[test]
+fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
+    let visible = FileEntry {
+        location: Location::local("/fixture/photo"),
+        native_name: "photo".into(),
+        display_name: "photo".into(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let hidden = FileEntry {
+        location: Location::local("/fixture/.config"),
+        native_name: ".config".into(),
+        display_name: ".config".into(),
+        kind: crate::model::EntryKind::Directory,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: true,
+    };
+
+    let encoded_visible = entry_model_value(&visible);
+    let encoded_hidden = entry_model_value(&hidden);
+
+    assert_eq!(encoded_visible, "fv\tphoto");
+    assert_eq!(encoded_hidden, "dh\t.config");
+
+    assert!(!model_is_hidden(&encoded_visible));
+    assert!(model_is_hidden(&encoded_hidden));
+
+    assert_eq!(model_display_name(&encoded_visible), "photo");
+    assert_eq!(model_display_name(&encoded_hidden), ".config");
+}
