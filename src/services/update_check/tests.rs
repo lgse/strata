@@ -423,8 +423,6 @@ fn empty_release_markdown_has_no_blocks() {
     assert!(parse_markdown("  \n").is_empty());
 }
 
-// --- cache_is_fresh ------------------------------------------------------
-
 fn cache(channel: Channel, checked_at: u64) -> UpdateCheckCache {
     UpdateCheckCache {
         channel: channel.as_str().to_owned(),
@@ -463,14 +461,10 @@ fn a_channel_mismatch_is_never_fresh() {
 
 #[test]
 fn a_cache_from_the_future_is_still_fresh() {
-    // `checked_at` should never be ahead of `now` in practice, but a clock
-    // rolled backward between runs must not make every subsequent launch
-    // treat a same-instant cache as stale via underflow.
+    // Clock rollback must not make the cache stale through underflow.
     let cache = cache(Channel::Stable, 2_000);
     assert!(cache_is_fresh(&cache, Channel::Stable, false, 1_000));
 }
-
-// --- CachedRelease round-trip ---------------------------------------------
 
 fn release_summary(tag: &str) -> ReleaseSummary {
     ReleaseSummary {

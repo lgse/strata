@@ -619,11 +619,6 @@ fn channel_option(manager: Rc<ThemeManager>, run_check: Rc<dyn Fn(bool)>) -> gtk
         button.connect_active_notify(move |button| {
             if button.is_active() {
                 manager.set_release_channel(channel);
-                // Not `force`d: a switch to a channel with no cached entry
-                // is a cache miss on its own (`cache_is_fresh` requires a
-                // channel match), so this still fetches fresh. Re-selecting
-                // the channel already active correctly reuses its cache
-                // instead of spending a request on a no-op.
                 run_check(false);
             }
         });

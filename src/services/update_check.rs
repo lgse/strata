@@ -19,10 +19,7 @@ const API_ROOT: &str = "https://api.github.com/repos/lgse/strata/releases";
 const COMMITS_ROOT: &str = "https://api.github.com/repos/lgse/strata/commits";
 const RELEASES_URL: &str = "https://github.com/lgse/strata/releases";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
-/// Minimum time between two automatic (non-`force`d) checks against the
-/// same channel, matching Omarchy's own update-poll interval. The "Check
-/// now" button and an explicit channel switch always `force` past this --
-/// see [`check_for_updates`].
+/// Minimum interval between automatic checks against the same channel.
 const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 /// How many of the most recent releases (final and prerelease) the preview
 /// feed enumerates. Only ever used to find a release *newer* than the
@@ -186,10 +183,6 @@ fn release_metadata(release: &ReleaseSummary) -> ReleaseMetadata {
 /// data for a Stable user never even enters the process. Its result is still
 /// additionally run through [`is_eligible`] by [`select_update`] -- both
 /// checks are required, per issue #61's stated redundancy requirement.
-///
-/// A `404` (nothing published yet) and a tag that fails to parse both
-/// surface as [`ChannelFetch::Fetched`] with an empty release list; neither
-/// is a network failure.
 fn fetch_stable(etag: Option<&str>) -> ChannelFetch {
     match request_json_conditional::<ReleaseResponse>(&format!("{API_ROOT}/latest"), etag) {
         Ok(Some((release, etag))) => ChannelFetch::Fetched {
@@ -285,11 +278,6 @@ fn unix_seconds_now() -> u64 {
         .unwrap_or(0)
 }
 
-/// The installed version's release notes, permanently cached under
-/// `~/.cache/strata/` and keyed by `tag`: that release is immutable, so a
-/// given tag's notes need fetching at most once, ever. `url` and `kind` are
-/// not stored -- both are pure functions of `tag` -- so [`fetch_exact_release`]
-/// recomputes them on a cache hit instead.
 #[derive(Serialize, Deserialize)]
 struct CachedReleaseNotes {
     tag: String,
@@ -297,10 +285,6 @@ struct CachedReleaseNotes {
     published_at: Option<String>,
 }
 
-/// A [`ReleaseSummary`] flattened into a serializable form for the
-/// update-check cache. `release_channel` deliberately carries no serde
-/// derives (see its module doc), so this crosses that boundary the same way
-/// [`to_release_summary`] already does for GitHub's own wire format.
 #[derive(Clone, Serialize, Deserialize)]
 struct CachedRelease {
     tag: String,
@@ -325,10 +309,6 @@ fn to_cached_release(release: &ReleaseSummary) -> CachedRelease {
     }
 }
 
-/// Reconstructs a [`ReleaseSummary`] from its cached form, re-parsing
-/// [`Version`] from `tag` since [`CachedRelease`] cannot carry it directly.
-/// `None` for a tag that no longer parses -- defensive against a cache
-/// written by some future, wider tag grammar.
 fn from_cached_release(cached: &CachedRelease) -> Option<ReleaseSummary> {
     Some(ReleaseSummary {
         tag: cached.tag.clone(),
@@ -341,10 +321,6 @@ fn from_cached_release(cached: &CachedRelease) -> Option<ReleaseSummary> {
     })
 }
 
-/// Persisted state for the latest-release probe: when it last ran, against
-/// which channel, the `ETag` it can send as `If-None-Match` next time, and
-/// the releases it saw -- so a within-[`CHECK_INTERVAL`] call can answer
-/// from cache alone.
 #[derive(Clone, Serialize, Deserialize)]
 struct UpdateCheckCache {
     channel: String,
@@ -357,26 +333,13 @@ struct UpdateCheckCache {
     error: Option<String>,
 }
 
-/// Whether a cached channel check is still within [`CHECK_INTERVAL`] and
-/// therefore usable without a network request.
-///
-/// Always `false` when `force` (the "Check now" button, or an explicit
-/// channel switch) is set. Also always `false` on a channel mismatch --
-/// reusing Stable's cached eligibility data for a Preview check, or vice
-/// versa, would apply the wrong release set entirely.
 fn cache_is_fresh(cache: &UpdateCheckCache, channel: Channel, force: bool, now: u64) -> bool {
     !force
         && cache.channel == channel.as_str()
         && now.saturating_sub(cache.checked_at) < CHECK_INTERVAL.as_secs()
 }
 
-/// Sends a GET, attaching `If-None-Match` when `etag` is given.
-///
-/// `Ok(None)` is a `304 Not Modified`: the caller's cached copy is still
-/// current. `Ok(Some((body, etag)))` is a fresh representation and the
-/// `ETag` to remember for next time. A conditional request that comes back
-/// `304` does not count against GitHub's rate limit, which is the entire
-/// point of sending one.
+/// Returns `None` when the server responds with `304 Not Modified`.
 fn request_json_conditional<T: serde::de::DeserializeOwned>(
     url: &str,
     etag: Option<&str>,
@@ -402,16 +365,11 @@ fn request_json_conditional<T: serde::de::DeserializeOwned>(
     Ok(Some((body, etag)))
 }
 
-/// The outcome of fetching one channel's release feed with a conditional
-/// request.
 enum ChannelFetch {
-    /// Fetched fresh (`200`), or `/latest` returned `404` (nothing
-    /// published yet, treated as zero releases -- see [`fetch_stable`]).
     Fetched {
         releases: Vec<ReleaseSummary>,
         etag: Option<String>,
     },
-    /// `304 Not Modified` -- the caller's cached releases are still current.
     Unchanged,
     Failed(ureq::Error),
 }
@@ -454,9 +412,6 @@ fn select_update(
     }
 }
 
-/// Runs the pure selection step against `releases`, resolving the winning
-/// release's commit afterward -- see [`resolve_commit`] for why that stays
-/// outside the pure path.
 fn select_and_resolve(
     channel: Channel,
     installed: &Version,
@@ -567,9 +522,7 @@ fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateChe
         }
         ChannelFetch::Failed(error) => {
             let message = request_error_message(&error);
-            // Preserve releases and their ETag for a later retry, while
-            // caching the failure itself so automatic checks do not turn an
-            // offline or rate-limited result into a false "up to date".
+            // Keep prior data for conditional retries, but preserve the failure outcome.
             write_cache_file(
                 &path,
                 &UpdateCheckCache {
@@ -876,14 +829,8 @@ fn parse_markdown(markdown: &str) -> Vec<ReleaseNoteBlock> {
     blocks
 }
 
-/// Checks the applicable release source off the GTK thread and reports the
-/// outcome once. In-place installs follow GitHub, using the cached result for
-/// automatic checks; package-managed installs first require the configured
-/// repository to offer the version.
-///
-/// `force` bypasses [`CHECK_INTERVAL`]'s floor for in-place update checks.
-/// Pass `true` only for an explicit user action such as the "Check now"
-/// button.
+/// Checks the applicable release source off the GTK thread.
+/// `force` bypasses the cache interval for in-place update checks.
 pub fn check_for_updates(
     channel: Channel,
     installed: Version,
