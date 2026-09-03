@@ -4732,7 +4732,10 @@ impl ViewState {
         install_folder_context_menu(
             self,
             presentation.stack.upcast_ref(),
-            &selection,
+            {
+                let entries = selection.clone();
+                Rc::new(move || entries.n_items() > 0)
+            },
             Rc::new(|picked| is_file_row_target(picked.clone())),
             depth,
             location.clone(),
@@ -5254,7 +5257,7 @@ fn filtered_position_for_source(column: &ColumnView, source_position: usize) -> 
 pub(super) fn install_folder_context_menu(
     state: &Rc<ViewState>,
     parent: &gtk::Widget,
-    selection: &gtk::MultiSelection,
+    has_entries: Rc<dyn Fn() -> bool>,
     is_item_target: Rc<dyn Fn(&gtk::Widget) -> bool>,
     depth: usize,
     location: Location,
@@ -5378,7 +5381,6 @@ pub(super) fn install_folder_context_menu(
 
     let menu_click = gtk::GestureClick::new();
     menu_click.set_button(3);
-    let selection = selection.clone();
     let popover_for_click = popover.clone();
     menu_click.connect_pressed(move |gesture, _, x, y| {
         let over_item = gesture
@@ -5395,7 +5397,7 @@ pub(super) fn install_folder_context_menu(
                 .formats()
                 .contains_type(gtk::gdk::FileList::static_type())
         }));
-        select_all.set_sensitive(selection.n_items() > 0);
+        select_all.set_sensitive(has_entries());
         open_terminal.set_sensitive(can_open_terminal(&location));
         if popover_for_click.parent().is_none()
             && let Some(parent) = gesture.widget()
