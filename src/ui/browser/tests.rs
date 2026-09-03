@@ -1137,3 +1137,42 @@ fn copy_path_text_keeps_uris_unescaped() {
     let remote = Location::uri("smb://server/share/folder");
     assert_eq!(copy_path_text(&remote, true), "smb://server/share/folder");
 }
+
+#[test]
+fn shell_escape_path_preserves_newlines_and_single_quotes() {
+    assert_eq!(
+        shell_escape_path(Path::new("/tmp/line\nbob's notes")),
+        "'/tmp/line\nbob'\\''s notes'"
+    );
+}
+
+#[test]
+fn pinning_requires_an_available_non_trash_directory() {
+    let entry = |location, kind| FileEntry {
+        location,
+        native_name: "item".into(),
+        display_name: "item".into(),
+        kind,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let directory = entry(
+        Location::local("/fixture/folder"),
+        crate::model::EntryKind::Directory,
+    );
+    let file = entry(
+        Location::local("/fixture/file"),
+        crate::model::EntryKind::File,
+    );
+    let trash_directory = entry(
+        Location::uri("trash:///deleted-folder"),
+        crate::model::EntryKind::Directory,
+    );
+
+    assert!(can_pin_entry(&directory, PinStatus::Available));
+    assert!(!can_pin_entry(&directory, PinStatus::Pinned));
+    assert!(!can_pin_entry(&directory, PinStatus::Unavailable));
+    assert!(!can_pin_entry(&file, PinStatus::Available));
+    assert!(!can_pin_entry(&trash_directory, PinStatus::Available));
+}

@@ -876,7 +876,13 @@ impl BrowserView {
         let Some(entry) = self.state.browser.focused_entry() else {
             return;
         };
-        if !entry.is_directory() {
+        let status = self
+            .state
+            .pin_status_handler
+            .borrow()
+            .as_ref()
+            .map_or(PinStatus::Unavailable, |handler| handler(&entry.location));
+        if !can_pin_entry(&entry, status) {
             return;
         }
         if let Some(handler) = self.state.pin_handler.borrow().as_ref() {
@@ -6506,6 +6512,10 @@ fn copy_locations(entries: &[FileEntry]) {
     }
 }
 
+fn can_pin_entry(entry: &FileEntry, status: PinStatus) -> bool {
+    entry.is_directory() && !is_trash_location(&entry.location) && status == PinStatus::Available
+}
+
 fn copy_path_text(location: &Location, is_directory: bool) -> String {
     match location.native_path() {
         Some(path) => {
@@ -6520,8 +6530,13 @@ fn copy_path_text(location: &Location, is_directory: bool) -> String {
 }
 
 fn shell_escape_path(path: &Path) -> String {
+    let path = path.to_string_lossy();
+    if path.contains('\n') {
+        return format!("'{}'", path.replace('\'', "'\\''"));
+    }
+
     let mut escaped = String::new();
-    for c in path.to_string_lossy().chars() {
+    for c in path.chars() {
         if needs_shell_escape(c) {
             escaped.push('\\');
             escaped.push(c);
