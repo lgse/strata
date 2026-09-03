@@ -238,6 +238,8 @@ jobs:
           install -m 755 "target/$TARGET/release/strata" "dist/$package/strata"
           printf '%s\n' "$SOURCE_SHA" > "dist/$package/SOURCE_COMMIT"
           cp README.md LICENSE THIRD_PARTY_LICENSES.md "dist/$package/"
+          install -m 644 data/io.github.lgse.Strata.desktop "dist/$package/"
+          install -m 644 data/icons/scalable/apps/io.github.lgse.Strata.svg "dist/$package/"
           tar -C dist -czf "dist/$package.tar.gz" "$package"
           (cd dist && sha256sum "$package.tar.gz" > "$package.tar.gz.sha256")
 

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::{
-    MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, format_file_size,
+    MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, format_file_size, format_media_time,
     media_error_feedback, pdf_zoom_after_scroll, preview_width_for_empty_space,
 };
 
@@ -42,4 +42,16 @@ fn pdf_scroll_zoom_stays_within_its_supported_range() {
     assert!(pdf_zoom_after_scroll(2.0, 1.0) < 2.0);
     assert_eq!(pdf_zoom_after_scroll(PDF_MIN_ZOOM, 100.0), PDF_MIN_ZOOM);
     assert_eq!(pdf_zoom_after_scroll(PDF_MAX_ZOOM, -100.0), PDF_MAX_ZOOM);
+}
+
+#[test]
+fn media_time_formats_minutes_and_seconds() {
+    assert_eq!(format_media_time(0, 0), "0:00/0:00");
+    assert_eq!(format_media_time(1_500_000, 65_000_000), "0:01/1:05");
+    assert_eq!(format_media_time(125_000_000, 125_000_000), "2:05/2:05");
+}
+
+#[test]
+fn media_time_clamps_negative_timestamps_to_zero() {
+    assert_eq!(format_media_time(-500_000, 10_000_000), "0:00/0:10");
 }

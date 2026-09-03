@@ -3,12 +3,13 @@
 use std::{cell::RefCell, collections::HashSet};
 
 use super::{
-    Preferences, Theme, azure_tokens, blend, builtins, is_omarchy_theme_event,
-    merge_builtin_and_custom_themes, notify_live, slugify, sort_preferences, title_case_slug,
-    tokens_from_quattro, validate_tokens,
+    Preferences, Theme, azure_tokens, blend, builtins, configured_hardware_acceleration,
+    configured_video_preview_backend, is_omarchy_theme_event, merge_builtin_and_custom_themes,
+    notify_live, slugify, sort_preferences, title_case_slug, tokens_from_quattro, validate_tokens,
 };
 use crate::{
     model::{SortDirection, SortKey, ViewPreferences},
+    sandbox::MediaPreviewBackend,
     services::Channel,
 };
 
@@ -166,6 +167,13 @@ theme = "azure-glow"
 
     assert!(preferences.folder_peeking);
     assert!(preferences.single_click_previews);
+    assert_eq!(preferences.hardware_accelerated_video_previews, None);
+    assert!(configured_hardware_acceleration(&preferences, false));
+    assert!(!configured_hardware_acceleration(&preferences, true));
+    assert_eq!(
+        configured_video_preview_backend(&preferences),
+        MediaPreviewBackend::Automatic
+    );
     assert!(!preferences.search_open_files_directly);
     assert!(!preferences.reduce_motion);
     assert_eq!(preferences.browser_mode, "columns");
@@ -250,6 +258,36 @@ fn general_preferences_round_trip() {
 }
 
 #[test]
+fn preview_volume_preferences_round_trip() {
+    let preferences = Preferences {
+        preview_muted: true,
+        preview_volume: 0.3,
+        ..Preferences::default()
+    };
+
+    let serialized = toml::to_string(&preferences).expect("preferences should serialize");
+    let restored: Preferences =
+        toml::from_str(&serialized).expect("preferences should deserialize");
+
+    assert!(restored.preview_muted);
+    assert_eq!(restored.preview_volume, 0.3);
+}
+
+#[test]
+fn legacy_preferences_default_preview_unmuted_at_full_volume() {
+    let preferences: Preferences = toml::from_str(
+        r#"
+mode = "theme"
+theme = "azure-glow"
+"#,
+    )
+    .expect("legacy preferences should remain valid");
+
+    assert!(!preferences.preview_muted);
+    assert_eq!(preferences.preview_volume, 1.0);
+}
+
+#[test]
 fn release_channel_defaults_to_stable() {
     let preferences = Preferences::default();
     assert_eq!(preferences.release_channel, "stable");
@@ -315,10 +353,93 @@ theme = "azure-glow"
 }
 
 #[test]
+fn video_preview_acceleration_can_be_disabled_and_persisted() {
+    let preferences = Preferences {
+        hardware_accelerated_video_previews: Some(false),
+        ..Preferences::default()
+    };
+    let serialized = toml::to_string(&preferences).expect("serialize preferences");
+    let restored: Preferences = toml::from_str(&serialized).expect("deserialize preferences");
+
+    assert_eq!(restored.hardware_accelerated_video_previews, Some(false));
+}
+
+#[test]
+fn video_preview_acceleration_can_be_enabled_and_persisted() {
+    let preferences = Preferences {
+        hardware_accelerated_video_previews: Some(true),
+        ..Preferences::default()
+    };
+    let serialized = toml::to_string(&preferences).expect("serialize preferences");
+    let restored: Preferences = toml::from_str(&serialized).expect("deserialize preferences");
+
+    assert_eq!(restored.hardware_accelerated_video_previews, Some(true));
+}
+
+#[test]
+fn video_preview_backends_round_trip_and_invalid_values_fall_back() {
+    for (stored, backend) in [
+        ("automatic", MediaPreviewBackend::Automatic),
+        ("vaapi", MediaPreviewBackend::VaApi),
+        ("vulkan", MediaPreviewBackend::Vulkan),
+    ] {
+        let preferences = Preferences {
+            video_preview_backend: stored.to_owned(),
+            ..Preferences::default()
+        };
+        let serialized = toml::to_string(&preferences).expect("serialize preferences");
+        let restored: Preferences = toml::from_str(&serialized).expect("deserialize preferences");
+        assert_eq!(configured_video_preview_backend(&restored), backend);
+    }
+
+    let invalid = Preferences {
+        video_preview_backend: "unsupported".to_owned(),
+        ..Preferences::default()
+    };
+    assert_eq!(
+        configured_video_preview_backend(&invalid),
+        MediaPreviewBackend::Automatic
+    );
+}
+
+#[test]
+fn sidebar_order_defaults_to_the_canonical_place_list() {
+    let preferences = Preferences::default();
+    assert_eq!(
+        preferences.sidebar_order,
+        ["desktop", "documents", "downloads", "pictures", "videos"]
+    );
+}
+
+#[test]
+fn sidebar_order_round_trips_through_toml() {
+    let preferences = Preferences {
+        sidebar_order: vec!["videos".to_owned(), "desktop".to_owned()],
+        ..Preferences::default()
+    };
+    let serialized = toml::to_string(&preferences).expect("preferences should serialize");
+    let restored: Preferences =
+        toml::from_str(&serialized).expect("preferences should deserialize");
+    assert_eq!(restored.sidebar_order, ["videos", "desktop"]);
+}
+
+#[test]
+fn legacy_preferences_without_sidebar_order_default_to_the_canonical_list() {
+    let preferences: Preferences = toml::from_str(
+        r#"
+mode = "theme"
+theme = "azure-glow"
+"#,
+    )
+    .expect("legacy preferences without sidebar_order should remain valid");
+    assert_eq!(
+        preferences.sidebar_order,
+        ["desktop", "documents", "downloads", "pictures", "videos"]
+    );
+}
+
+#[test]
 fn a_channel_change_reaches_only_the_views_that_still_exist() {
-    // Each entry is (id, still alive). A view whose window has closed must
-    // not be refreshed -- it would run an update check for widgets nobody
-    // can see -- and must not be kept for the next change either.
     let ran = RefCell::new(Vec::new());
     let live = notify_live(
         vec![(1, true), (2, false), (3, true)],

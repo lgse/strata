@@ -13,7 +13,7 @@ use std::{
 use gdk_pixbuf::prelude::*;
 use gtk::gio;
 
-use crate::sandbox::{MAX_OUTPUT_BYTES, gpu_devices, numbered_name};
+use crate::sandbox::{MAX_OUTPUT_BYTES, MediaPreviewBackend, gpu_devices, numbered_name};
 
 const HARDWARE_ATTEMPT_TIME_LIMIT: Duration = Duration::from_secs(8);
 const HARDWARE_TOTAL_TIME_LIMIT: Duration = Duration::from_secs(12);
@@ -30,7 +30,7 @@ enum MediaBackend {
 }
 
 pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
-    let [operation, input, output, value] = arguments else {
+    let [operation, input, output, value, media_backend] = arguments else {
         return Err("Invalid preview helper arguments".to_owned());
     };
     let input = Path::new(input);
@@ -38,10 +38,12 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     let value = value
         .parse::<i32>()
         .map_err(|_| "Invalid preview helper size or page".to_owned())?;
+    let media_backend = MediaPreviewBackend::from_argument(media_backend)
+        .ok_or_else(|| "Invalid media preview backend".to_owned())?;
 
     let (png, metadata) = match operation.as_str() {
         "thumbnail-image" => (render_pixbuf(input, value.clamp(16, 256))?, None),
-        "thumbnail-raw" => (render_raw(input, value.clamp(16, 256))?, None),
+        "thumbnail-raw" => (render_raw_thumbnail(input, value.clamp(16, 256))?, None),
         "thumbnail-pdf" => (render_pdf_thumbnail(input, value.clamp(16, 256))?, None),
         "thumbnail-video" => (render_media(input, value.clamp(16, 256))?, None),
         "preview-image" => (render_raw(input, 1400)?, None),
@@ -49,7 +51,7 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             let (png, page, pages) = render_pdf_page(input, value)?;
             (png, Some(format!("{page} {pages}")))
         }
-        "preview-media" => (render_media_preview(input)?, None),
+        "preview-media" => (render_media_preview(input, media_backend)?, None),
         _ => return Err("Unknown preview helper operation".to_owned()),
     };
     fs::write(output, png).map_err(|error| error.to_string())?;
@@ -71,6 +73,13 @@ fn render_raw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     render_pixbuf(path, size)
         .or_else(|_| render_imagemagick(path, size))
         .or_else(|_| render_dcraw(path, size))
+}
+
+fn render_raw_thumbnail(path: &Path, size: i32) -> Result<Vec<u8>, String> {
+    // Prefer the camera JPEG so ImageMagick does not demosaic the list thumbnail.
+    render_dcraw(path, size)
+        .or_else(|_| render_pixbuf(path, size))
+        .or_else(|_| render_imagemagick(path, size))
 }
 
 fn render_imagemagick(path: &Path, size: i32) -> Result<Vec<u8>, String> {
@@ -244,8 +253,8 @@ fn bounded_surface_dimensions(
     (width, height, scale)
 }
 
-fn render_media_preview(path: &Path) -> Result<Vec<u8>, String> {
-    let backends = media_backends(&gpu_devices(Path::new("/dev")));
+fn render_media_preview(path: &Path, policy: MediaPreviewBackend) -> Result<Vec<u8>, String> {
+    let backends = media_backends(&gpu_devices(Path::new("/dev"), policy), policy);
     let started = Instant::now();
     let hardware_started = Instant::now();
     run_media_backends(&backends, |backend| {
@@ -268,7 +277,7 @@ fn render_media_preview(path: &Path) -> Result<Vec<u8>, String> {
     })
 }
 
-fn media_backends(devices: &[PathBuf]) -> Vec<MediaBackend> {
+fn media_backends(devices: &[PathBuf], policy: MediaPreviewBackend) -> Vec<MediaBackend> {
     let mut render_nodes: Vec<_> = devices
         .iter()
         .filter(|device| {
@@ -288,11 +297,19 @@ fn media_backends(devices: &[PathBuf]) -> Vec<MediaBackend> {
         })
         .count();
     let vulkan_devices = render_nodes.len().max(nvidia_devices);
-    let mut backends = render_nodes
-        .into_iter()
-        .map(MediaBackend::VaApi)
-        .collect::<Vec<_>>();
-    backends.extend((0..vulkan_devices).map(MediaBackend::Vulkan));
+    let mut backends = Vec::new();
+    if matches!(
+        policy,
+        MediaPreviewBackend::Automatic | MediaPreviewBackend::VaApi
+    ) {
+        backends.extend(render_nodes.into_iter().map(MediaBackend::VaApi));
+    }
+    if matches!(
+        policy,
+        MediaPreviewBackend::Automatic | MediaPreviewBackend::Vulkan
+    ) {
+        backends.extend((0..vulkan_devices).map(MediaBackend::Vulkan));
+    }
     backends.push(MediaBackend::Software);
     backends
 }
@@ -348,7 +365,7 @@ fn media_command(backend: &MediaBackend, path: &Path) -> Command {
         MediaBackend::VaApi(_) => {
             command.args([
                 "-vf",
-                "scale_vaapi=w=1280:h=1280:force_original_aspect_ratio=decrease:force_divisible_by=2:format=nv12",
+                "scale_vaapi=w=1280:h=1280:force_original_aspect_ratio=decrease:force_divisible_by=16:format=nv12",
                 "-c:v",
                 "h264_vaapi",
             ]);
@@ -356,7 +373,7 @@ fn media_command(backend: &MediaBackend, path: &Path) -> Command {
         MediaBackend::Vulkan(_) => {
             command.args([
                 "-vf",
-                "scale_vulkan=w='if(gte(iw,ih),min(1280,trunc(iw/2)*2),-2)':h='if(gte(iw,ih),-2,min(1280,trunc(ih/2)*2))':format=nv12",
+                "scale_vulkan=w='max(16,trunc(min(iw,iw*1280/max(iw,ih))/16)*16)':h='max(16,trunc(min(ih,ih*1280/max(iw,ih))/16)*16)':format=nv12",
                 "-c:v",
                 "h264_vulkan",
                 "-usage",

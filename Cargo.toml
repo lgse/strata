@@ -1,6 +1,6 @@
 [package]
 name = "strata"
-version = "0.7.0"
+version = "0.8.1"
 edition = "2024"
 description = "A fast, keyboard-first file manager for Linux"
 authors = ["LGSE Ltd."]
@@ -30,6 +30,7 @@ toml = "0.9"
 tracing = "0.1.41"
 tracing-subscriber = "0.3.20"
 ureq = { version = "3.4", features = ["json"] }
+zstd = "0.13.3"
 zip = "8.6.0"
 
 [build-dependencies]

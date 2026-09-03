@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::{
+    io::{Read, Write},
+    net::TcpListener,
+};
+
 use super::{
-    BuildKind, Channel, ReleaseNoteBlock, ReleaseResponse, UpdateCheck, Version, archive_name,
-    parse_markdown, release_metadata, release_page_url, request_error_message, select_update,
+    BuildKind, CHECK_INTERVAL, Channel, ReleaseNoteBlock, ReleaseResponse, ReleaseSummary,
+    UpdateCheck, UpdateCheckCache, Version, archive_name, cache_is_fresh, cached_releases,
+    check_from_cache, fetch_package_update, from_cached_release, package_update_from_response,
+    parse_markdown, release_metadata, release_page_url, request_error_message,
+    request_json_conditional, select_cached_update, select_update, to_cached_release,
     to_release_summary,
 };
 
@@ -23,6 +31,39 @@ fn release_response_list(json: &str) -> Vec<ReleaseResponse> {
 fn matching_asset_json(version: &str) -> String {
     let name = archive_name(version);
     format!(r#"{{"name":"{name}","browser_download_url":"https://example.invalid/{name}"}}"#)
+}
+
+#[test]
+fn package_update_requires_the_release_matching_the_repository_version() {
+    let asset = matching_asset_json("0.8.2");
+    let response = release_response(&format!(
+        r#"{{"tag_name":"v0.8.2","draft":false,"prerelease":false,"assets":[{asset}]}}"#
+    ));
+
+    assert!(matches!(
+        package_update_from_response(&version("0.8.1"), &response),
+        UpdateCheck::Failed(_)
+    ));
+}
+
+#[test]
+fn package_update_accepts_the_stable_release_in_the_repository() {
+    let asset = matching_asset_json("0.8.1");
+    let response = release_response(&format!(
+        r#"{{"tag_name":"v0.8.1","draft":false,"prerelease":false,"assets":[{asset}]}}"#
+    ));
+
+    assert!(matches!(
+        package_update_from_response(&version("0.8.1"), &response),
+        UpdateCheck::Available { .. }
+    ));
+}
+
+#[test]
+fn package_check_stays_quiet_when_the_repository_has_no_newer_version() {
+    let result = fetch_package_update(&version("0.8.1"), || Ok(version("0.8.1")));
+
+    assert_eq!(result, UpdateCheck::UpToDate);
 }
 
 // --- Version::parse migration -------------------------------------------
@@ -380,4 +421,138 @@ fn malformed_markdown_and_entities_remain_inert() {
 #[test]
 fn empty_release_markdown_has_no_blocks() {
     assert!(parse_markdown("  \n").is_empty());
+}
+
+fn cache(channel: Channel, checked_at: u64) -> UpdateCheckCache {
+    UpdateCheckCache {
+        channel: channel.as_str().to_owned(),
+        checked_at,
+        etag: None,
+        releases: Vec::new(),
+        error: None,
+    }
+}
+
+#[test]
+fn a_check_just_under_the_interval_is_fresh() {
+    let cache = cache(Channel::Stable, 1_000);
+    let now = 1_000 + CHECK_INTERVAL.as_secs() - 1;
+    assert!(cache_is_fresh(&cache, Channel::Stable, false, now));
+}
+
+#[test]
+fn a_check_at_or_past_the_interval_is_not_fresh() {
+    let cache = cache(Channel::Stable, 1_000);
+    let now = 1_000 + CHECK_INTERVAL.as_secs();
+    assert!(!cache_is_fresh(&cache, Channel::Stable, false, now));
+}
+
+#[test]
+fn a_forced_check_is_never_fresh() {
+    let cache = cache(Channel::Stable, 1_000);
+    assert!(!cache_is_fresh(&cache, Channel::Stable, true, 1_000));
+}
+
+#[test]
+fn a_channel_mismatch_is_never_fresh() {
+    let cache = cache(Channel::Stable, 1_000);
+    assert!(!cache_is_fresh(&cache, Channel::Preview, false, 1_000));
+}
+
+#[test]
+fn a_cache_from_the_future_is_still_fresh() {
+    // Clock rollback must not make the cache stale through underflow.
+    let cache = cache(Channel::Stable, 2_000);
+    assert!(cache_is_fresh(&cache, Channel::Stable, false, 1_000));
+}
+
+fn release_summary(tag: &str) -> ReleaseSummary {
+    ReleaseSummary {
+        tag: tag.to_owned(),
+        version: version(tag),
+        draft: false,
+        prerelease: false,
+        download_url: Some("https://example.invalid/asset".to_owned()),
+        published_at: Some("2026-01-01T00:00:00Z".to_owned()),
+        notes: "Notes".to_owned(),
+    }
+}
+
+#[test]
+fn a_cached_release_round_trips_every_field() {
+    let original = release_summary("v0.8.0");
+    let restored = from_cached_release(&to_cached_release(&original))
+        .expect("a freshly cached release should still parse");
+    assert_eq!(restored.tag, original.tag);
+    assert_eq!(restored.version, original.version);
+    assert_eq!(restored.draft, original.draft);
+    assert_eq!(restored.prerelease, original.prerelease);
+    assert_eq!(restored.download_url, original.download_url);
+    assert_eq!(restored.published_at, original.published_at);
+    assert_eq!(restored.notes, original.notes);
+}
+
+#[test]
+fn a_cached_release_with_an_unparsable_tag_is_dropped() {
+    let mut cached = to_cached_release(&release_summary("v0.8.0"));
+    cached.tag = "not-a-version".to_owned();
+    assert!(from_cached_release(&cached).is_none());
+}
+
+#[test]
+fn a_cached_update_reuses_its_resolved_commit() {
+    let releases = vec![release_summary("v0.8.0")];
+    let mut check = select_update(Channel::Stable, &version("v0.7.0"), &releases);
+    if let UpdateCheck::Available { release, .. } = &mut check {
+        release.commit = Some("0123456789abcdef".to_owned());
+    }
+    let cached = cached_releases(&releases, &check);
+
+    let restored = select_cached_update(Channel::Stable, &version("v0.7.0"), &cached);
+
+    assert!(matches!(
+        restored,
+        UpdateCheck::Available { release, .. }
+            if release.commit.as_deref() == Some("0123456789abcdef")
+    ));
+}
+
+#[test]
+fn a_cached_failure_remains_a_failure() {
+    let mut cache = cache(Channel::Stable, 1_000);
+    cache.error = Some("Network request failed".to_owned());
+
+    assert_eq!(
+        check_from_cache(&cache, Channel::Stable, &version("v0.8.0")),
+        UpdateCheck::Failed("Network request failed".to_owned())
+    );
+}
+
+#[test]
+fn a_not_modified_response_reuses_the_cached_representation() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("test server should bind");
+    let address = listener
+        .local_addr()
+        .expect("test server should have an address");
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("test server should accept");
+        let mut request = [0_u8; 1024];
+        let _read = stream
+            .read(&mut request)
+            .expect("request should be readable");
+        stream
+            .write_all(
+                b"HTTP/1.1 304 Not Modified\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            )
+            .expect("response should be writable");
+    });
+
+    let result = request_json_conditional::<serde_json::Value>(
+        &format!("http://{address}"),
+        Some("\"cached-etag\""),
+    )
+    .expect("304 should not be treated as an error");
+
+    assert!(result.is_none());
+    server.join().expect("test server should stop");
 }

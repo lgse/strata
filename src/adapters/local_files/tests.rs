@@ -387,7 +387,6 @@ fn enumerate_reports_truncated_once_the_entry_budget_is_exceeded() {
         id: RequestId(1),
         location: Location::local(&root),
         batch_size: 2,
-        include_hidden: true,
         max_entries: 3,
         time_budget: Duration::from_secs(10),
     });
@@ -418,7 +417,6 @@ fn enumerate_completes_untruncated_at_the_exact_entry_budget() {
         id: RequestId(1),
         location: Location::local(&root),
         batch_size: 2,
-        include_hidden: true,
         max_entries: 4,
         time_budget: Duration::from_secs(10),
     });
@@ -443,7 +441,6 @@ fn enumerate_reports_truncated_once_the_time_budget_is_exceeded() {
         id: RequestId(1),
         location: Location::local(&root),
         batch_size: 1,
-        include_hidden: true,
         max_entries: usize::MAX,
         time_budget: Duration::from_nanos(1),
     });
@@ -469,7 +466,6 @@ fn enumerate_completes_untruncated_within_budget() {
         id: RequestId(1),
         location: Location::local(&root),
         batch_size: 64,
-        include_hidden: true,
         max_entries: 100,
         time_budget: Duration::from_secs(10),
     });

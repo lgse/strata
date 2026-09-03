@@ -19,7 +19,8 @@ use crate::{
     model::{FileEntry, Location, MetadataValue, SortDirection, SortKey},
 };
 
-const EXPLORER_COLUMN_WIDTHS: [i32; 4] = [600, 90, 120, 150];
+const EXPLORER_COLUMN_WIDTHS: [i32; 4] = [160, 90, 120, 150];
+const EXPLORER_COLUMN_MIN_WIDTHS: [i32; 4] = [160, 70, 80, 110];
 const DEFAULT_GRID_THUMBNAIL_SIZE: i32 = 64;
 const MIN_GRID_THUMBNAIL_SIZE: i32 = 64;
 const MAX_GRID_THUMBNAIL_SIZE: i32 = 256;
@@ -28,6 +29,7 @@ const MAX_GRID_THUMBNAIL_SIZE: i32 = 256;
 struct ExplorerColumnLayout {
     widths: Rc<Vec<Cell<i32>>>,
     cells: Rc<Vec<RefCell<Vec<glib::WeakRef<gtk::Widget>>>>>,
+    name_manually_resized: Rc<Cell<bool>>,
 }
 
 impl ExplorerColumnLayout {
@@ -35,6 +37,7 @@ impl ExplorerColumnLayout {
         Self {
             widths: Rc::new(EXPLORER_COLUMN_WIDTHS.into_iter().map(Cell::new).collect()),
             cells: Rc::new((0..4).map(|_| RefCell::new(Vec::new())).collect()),
+            name_manually_resized: Rc::new(Cell::new(false)),
         }
     }
 }
@@ -96,6 +99,8 @@ struct Pane {
     empty_trash_button: Option<gtk::Button>,
     new_entry_placeholder: Option<gtk::StringList>,
     new_entry_is_directory: Option<Rc<Cell<bool>>>,
+    show_hidden: Rc<Cell<bool>>,
+    filter: gtk::CustomFilter,
 }
 
 pub struct ModeViews {
@@ -177,6 +182,13 @@ impl ModeViews {
 
     pub fn widget(&self) -> gtk::Stack {
         self.stack.clone()
+    }
+
+    pub fn set_show_hidden(&self, show_hidden: bool) {
+        for pane in self.all_panes() {
+            pane.show_hidden.set(show_hidden);
+            pane.filter.changed(gtk::FilterChange::Different);
+        }
     }
 
     pub fn mode(&self) -> BrowserMode {
@@ -534,12 +546,13 @@ impl ModeViews {
             BrowserEvent::EntriesInserted { depth, insertions } => {
                 for pane in self.panes_at(*depth) {
                     for insertion in insertions {
-                        let values: Vec<_> = insertion
+                        let values: Vec<String> = insertion
                             .entries
                             .iter()
-                            .map(|entry| entry.display_name.as_str())
+                            .map(super::browser::entry_model_value)
                             .collect();
-                        pane.model.splice(insertion.position as u32, 0, &values);
+                        let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
+                        pane.model.splice(insertion.position as u32, 0, &values_ref);
                     }
                     if !pane.spinner.is_spinning() {
                         show_count(pane);
@@ -568,13 +581,17 @@ impl ModeViews {
             BrowserEvent::EntriesSpliced { depth, splices, .. } => {
                 for pane in self.panes_at(*depth) {
                     for splice in splices {
-                        let values: Vec<_> = splice
+                        let values: Vec<String> = splice
                             .entries
                             .iter()
-                            .map(|entry| entry.display_name.as_str())
+                            .map(super::browser::entry_model_value)
                             .collect();
-                        pane.model
-                            .splice(splice.position as u32, splice.removed as u32, &values);
+                        let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
+                        pane.model.splice(
+                            splice.position as u32,
+                            splice.removed as u32,
+                            &values_ref,
+                        );
                     }
                     show_count(pane);
                 }
@@ -664,6 +681,13 @@ impl ModeViews {
                 }
             }
         }
+    }
+
+    fn all_panes(&self) -> Vec<&Pane> {
+        self.grid_panes
+            .iter()
+            .chain(self.explorer_pane.as_ref())
+            .collect()
     }
 
     fn panes_at(&self, depth: usize) -> Vec<&Pane> {
@@ -951,6 +975,7 @@ fn grid_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> Gr
     empty_trash.set_visible(is_trash);
     empty_trash.set_sensitive(false);
     actions.append(&empty_trash);
+    actions.append(&super::browser::pane_refresh_button(browser, depth));
     actions.append(&thumbnail_menu);
     actions.append(&super::browser::column_sort_direction_toggle(
         browser, depth,
@@ -994,15 +1019,13 @@ fn build_grid_pane(
     }
     content.append(&controls.filter_revealer);
     let filter_query = Rc::new(RefCell::new(String::new()));
-    let query = filter_query.clone();
-    let filter = gtk::CustomFilter::new(move |item| {
-        let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
-            return false;
-        };
-        let query = query.borrow();
-        query.is_empty() || item.string().to_lowercase().contains(query.as_str())
-    });
+    let initial_show_hidden = browser
+        .column_preferences(depth)
+        .map_or_else(|| browser.preferences().show_hidden, |p| p.show_hidden);
+    let show_hidden = Rc::new(Cell::new(initial_show_hidden));
+    let filter = super::browser::entry_filter(show_hidden.clone(), filter_query.clone());
     let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
+    let filter_for_pane = filter.clone();
     let new_entry_placeholder = gtk::StringList::new(&[]);
     let new_entry_is_directory = Rc::new(Cell::new(true));
     let flattened_models = gio::ListStore::new::<gio::ListModel>();
@@ -1275,6 +1298,8 @@ fn build_grid_pane(
         empty_trash_button: controls.empty_trash_button,
         new_entry_placeholder: Some(new_entry_placeholder),
         new_entry_is_directory: Some(new_entry_is_directory),
+        show_hidden,
+        filter: filter_for_pane,
     }
 }
 
@@ -1433,7 +1458,8 @@ fn register_explorer_column_cell(
     widget: &impl IsA<gtk::Widget>,
 ) {
     widget.set_width_request(columns.widths[index].get());
-    widget.set_hexpand(false);
+    // Until the user resizes it, Name absorbs space left after the fixed metadata columns.
+    widget.set_hexpand(index == 0 && !columns.name_manually_resized.get());
     let weak = glib::WeakRef::new();
     weak.set(Some(widget.upcast_ref()));
     columns.cells[index].borrow_mut().push(weak);
@@ -1441,11 +1467,17 @@ fn register_explorer_column_cell(
 
 fn set_explorer_column_width(columns: &ExplorerColumnLayout, index: usize, width: i32) {
     columns.widths[index].set(width);
+    if index == 0 {
+        columns.name_manually_resized.set(true);
+    }
     columns.cells[index].borrow_mut().retain(|weak| {
         let Some(widget) = weak.upgrade() else {
             return false;
         };
         widget.set_width_request(width);
+        if index == 0 {
+            widget.set_hexpand(false);
+        }
         true
     });
 }
@@ -1483,7 +1515,11 @@ fn column_resize_handle(
                 .map(|widget| super::browser::max_child_natural_width(&widget))
                 .max()
                 .unwrap_or(initial_width);
-            set_explorer_column_width(&columns_for_autofit, index, natural.max(64));
+            set_explorer_column_width(
+                &columns_for_autofit,
+                index,
+                explorer_column_width(index, natural),
+            );
             gesture.set_state(gtk::EventSequenceState::Denied);
             return;
         }
@@ -1492,7 +1528,7 @@ fn column_resize_handle(
             .iter()
             .find_map(glib::WeakRef::upgrade)
             .map_or(initial_width, |widget| widget.width());
-        starting_for_begin.set(width.max(64));
+        starting_for_begin.set(explorer_column_width(index, width));
         pointer_for_begin.set(
             gesture
                 .current_event()
@@ -1512,10 +1548,18 @@ fn column_resize_handle(
             .zip(pointer_x)
             .map_or(fallback_offset_x, |(start, current)| current - start);
         let width = (f64::from(starting_width.get()) + offset_x).round() as i32;
-        set_explorer_column_width(&columns_for_update, index, width.max(64));
+        set_explorer_column_width(
+            &columns_for_update,
+            index,
+            explorer_column_width(index, width),
+        );
     });
     handle.add_controller(resize);
     handle
+}
+
+fn explorer_column_width(index: usize, width: i32) -> i32 {
+    width.max(EXPLORER_COLUMN_MIN_WIDTHS[index])
 }
 
 fn explorer_navigation(browser: &Rc<Browser>) -> gtk::Box {
@@ -1577,6 +1621,7 @@ fn build_explorer_pane(
     empty_trash.set_visible(is_trash);
     empty_trash.set_sensitive(false);
     actions.append(&empty_trash);
+    actions.append(&super::browser::pane_refresh_button(&browser, depth));
     let (filter_entry, filter_revealer, filter_button) =
         filter_controls("Filter explorer (Ctrl+F)");
     actions.append(&filter_button);
@@ -1591,15 +1636,13 @@ fn build_explorer_pane(
     }
     content.append(&filter_revealer);
     let filter_query = Rc::new(RefCell::new(String::new()));
-    let query = filter_query.clone();
-    let filter = gtk::CustomFilter::new(move |item| {
-        let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
-            return false;
-        };
-        let query = query.borrow();
-        query.is_empty() || item.string().to_lowercase().contains(query.as_str())
-    });
+    let initial_show_hidden = browser
+        .column_preferences(depth)
+        .map_or_else(|| browser.preferences().show_hidden, |p| p.show_hidden);
+    let show_hidden = Rc::new(Cell::new(initial_show_hidden));
+    let filter = super::browser::entry_filter(show_hidden.clone(), filter_query.clone());
     let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
+    let filter_for_pane = filter.clone();
     filter_entry.connect_changed(move |entry| {
         *filter_query.borrow_mut() = entry.text().to_lowercase();
         filter.changed(gtk::FilterChange::Different);
@@ -1779,7 +1822,7 @@ fn build_explorer_pane(
             name.set_label(&entry.display_name);
             size.set_label(&entry_size(&entry));
             kind.set_label(entry_type(&entry));
-            modified.set_label(&entry_modified(&entry));
+            crate::util::set_modified_date(&modified, Some(&entry), "—");
         } else {
             row.remove_css_class("cut-item");
             let icon_name = if entry_kind_for_bind.get() {
@@ -1792,14 +1835,14 @@ fn build_explorer_pane(
             field.set_visible(true);
             size.set_label("");
             kind.set_label("");
-            modified.set_label("");
+            crate::util::set_modified_date(&modified, None, "");
         }
     });
     factory.connect_unbind(|_, item| super::thumbnail::cancel_list_item_thumbnails(item));
     let view = gtk::ListView::new(Some(selection.clone()), Some(factory));
     view.add_css_class("explorer-list");
     view.set_enable_rubberband(false);
-    view.set_single_click_activate(false);
+    view.set_single_click_activate(true);
     let weak_browser = Rc::downgrade(&browser);
     let source_for_activation = model.clone();
     let view_model_for_activation = view_model_object.clone();
@@ -1811,7 +1854,7 @@ fn build_explorer_pane(
                 position,
             )
         {
-            browser.activate_in_place(depth, position);
+            browser.activate(depth, position);
         }
     });
     connect_selection(
@@ -1864,6 +1907,8 @@ fn build_explorer_pane(
         empty_trash_button: is_trash.then_some(empty_trash),
         new_entry_placeholder: Some(new_entry_placeholder),
         new_entry_is_directory: Some(new_entry_is_directory),
+        show_hidden,
+        filter: filter_for_pane,
     }
 }
 
@@ -2480,11 +2525,12 @@ fn refresh_cut_pane(pane: &Pane, browser: &Browser, cuts: &[Location]) {
 }
 
 fn replace_entries(pane: &Pane, entries: &[FileEntry]) {
-    let values: Vec<_> = entries
+    let values: Vec<String> = entries
         .iter()
-        .map(|entry| entry.display_name.as_str())
+        .map(super::browser::entry_model_value)
         .collect();
-    pane.model.splice(0, pane.model.n_items(), &values);
+    let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
+    pane.model.splice(0, pane.model.n_items(), &values_ref);
     show_count(pane);
 }
 
@@ -2566,17 +2612,6 @@ fn entry_type(entry: &FileEntry) -> &'static str {
     }
 }
 
-fn entry_modified(entry: &FileEntry) -> String {
-    match entry.modified_unix_seconds {
-        MetadataValue::Known(seconds) => glib::DateTime::from_unix_local(seconds)
-            .ok()
-            .and_then(|date| date.format("%Y-%m-%d %H:%M").ok())
-            .map(|value| value.to_string())
-            .unwrap_or_default(),
-        MetadataValue::Unknown | MetadataValue::Unavailable => String::new(),
-    }
-}
-
 fn bitset_positions(bitset: &gtk::Bitset) -> Vec<usize> {
     let Some((iterator, first)) = gtk::BitsetIter::init_first(bitset) else {
         return Vec::new();
@@ -2586,3 +2621,6 @@ fn bitset_positions(bitset: &gtk::Bitset) -> Vec<usize> {
         .map(|position| position as usize)
         .collect()
 }
+
+#[cfg(test)]
+mod tests;

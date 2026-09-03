@@ -14,6 +14,7 @@ use sourceview5::prelude::BufferExt as _;
 
 use crate::{
     model::{SortDirection, SortKey, ViewPreferences},
+    sandbox::MediaPreviewBackend,
     services::Channel,
 };
 
@@ -24,25 +25,11 @@ thread_local! {
     static CHANNEL_LISTENERS: RefCell<Vec<ChannelListener>> = const { RefCell::new(Vec::new()) };
 }
 
-/// A view that must refresh itself when the release channel changes, and
-/// the widget whose liveness says whether that view still exists.
-///
-/// `anchor` is deliberately a widget the listener does *not* itself hold on
-/// to -- typically the page or modal layer the view sits in. Update views
-/// capture their own widgets strongly (a button's click handler holding a
-/// clone of that button is unavoidable here), so anchoring on one of those
-/// would keep the entry alive for the life of the process and leave closed
-/// windows running update checks forever.
 struct ChannelListener {
     anchor: glib::WeakRef<gtk::Widget>,
     refresh: Rc<dyn Fn()>,
 }
 
-/// Runs every listener whose anchor is still alive, and forgets the rest.
-///
-/// The list is taken out of its cell for the duration: a listener is free
-/// to touch a widget whose handler registers another listener, and running
-/// them while holding the borrow would panic.
 fn notify_release_channel_changed() {
     let taken = CHANNEL_LISTENERS.with(|listeners| std::mem::take(&mut *listeners.borrow_mut()));
     let mut live = notify_live(
@@ -52,14 +39,11 @@ fn notify_release_channel_changed() {
     );
     CHANNEL_LISTENERS.with(|listeners| {
         let mut listeners = listeners.borrow_mut();
-        // Anything registered while the listeners ran belongs after them.
         live.extend(listeners.drain(..));
         *listeners = live;
     });
 }
 
-/// Calls `run` on each of `listeners` that `is_live` accepts, and returns
-/// exactly those -- the dead ones are neither run nor kept.
 fn notify_live<T>(listeners: Vec<T>, is_live: impl Fn(&T) -> bool, run: impl Fn(&T)) -> Vec<T> {
     let live: Vec<T> = listeners
         .into_iter()
@@ -115,6 +99,10 @@ struct Preferences {
     folder_peeking: bool,
     #[serde(default = "default_enabled")]
     single_click_previews: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    hardware_accelerated_video_previews: Option<bool>,
+    #[serde(default = "default_video_preview_backend")]
+    video_preview_backend: String,
     #[serde(default)]
     search_open_files_directly: bool,
     #[serde(default)]
@@ -123,6 +111,8 @@ struct Preferences {
     browser_mode: String,
     #[serde(default = "default_browser_density")]
     browser_density: String,
+    #[serde(default = "default_sidebar_order")]
+    sidebar_order: Vec<String>,
     #[serde(default)]
     show_hidden: bool,
     #[serde(default = "default_enabled")]
@@ -133,6 +123,12 @@ struct Preferences {
     sort_direction: String,
     #[serde(default = "default_enabled")]
     check_for_updates: bool,
+    #[serde(default)]
+    preview_muted: bool,
+    #[serde(default = "default_full_volume")]
+    preview_volume: f64,
+    #[serde(default)]
+    auto_refresh_interval: u32,
     #[serde(default = "default_release_channel")]
     release_channel: String,
 }
@@ -144,15 +140,21 @@ impl Default for Preferences {
             theme: "azure-glow".to_owned(),
             folder_peeking: true,
             single_click_previews: true,
+            hardware_accelerated_video_previews: None,
+            video_preview_backend: default_video_preview_backend(),
             search_open_files_directly: false,
             reduce_motion: false,
             browser_mode: default_browser_mode(),
             browser_density: default_browser_density(),
+            sidebar_order: default_sidebar_order(),
             show_hidden: false,
             folders_first: true,
             sort_key: default_sort_key(),
             sort_direction: default_sort_direction(),
             check_for_updates: true,
+            preview_muted: false,
+            preview_volume: default_full_volume(),
+            auto_refresh_interval: 0,
             release_channel: default_release_channel(),
         }
     }
@@ -170,8 +172,22 @@ fn default_browser_mode() -> String {
     "columns".to_owned()
 }
 
+fn default_video_preview_backend() -> String {
+    "automatic".to_owned()
+}
+
 fn default_browser_density() -> String {
     "compact".to_owned()
+}
+
+fn default_sidebar_order() -> Vec<String> {
+    vec![
+        "desktop".to_owned(),
+        "documents".to_owned(),
+        "downloads".to_owned(),
+        "pictures".to_owned(),
+        "videos".to_owned(),
+    ]
 }
 
 fn default_sort_key() -> String {
@@ -180,6 +196,10 @@ fn default_sort_key() -> String {
 
 fn default_sort_direction() -> String {
     "ascending".to_owned()
+}
+
+fn default_full_volume() -> f64 {
+    1.0
 }
 
 pub struct ThemeManager {
@@ -267,6 +287,43 @@ impl ThemeManager {
         self.save_preferences();
     }
 
+    pub fn hardware_accelerated_video_previews(&self) -> bool {
+        configured_hardware_acceleration(
+            &self.preferences.borrow(),
+            crate::sandbox::polaris_gpu_available(),
+        )
+    }
+
+    pub fn set_hardware_accelerated_video_previews(&self, enabled: bool) {
+        self.preferences
+            .borrow_mut()
+            .hardware_accelerated_video_previews = Some(enabled);
+        self.save_preferences();
+    }
+
+    pub fn video_preview_backend(&self) -> MediaPreviewBackend {
+        configured_video_preview_backend(&self.preferences.borrow())
+    }
+
+    pub fn set_video_preview_backend(&self, backend: MediaPreviewBackend) {
+        let backend = match backend {
+            MediaPreviewBackend::Automatic => "automatic",
+            MediaPreviewBackend::VaApi => "vaapi",
+            MediaPreviewBackend::Vulkan => "vulkan",
+            MediaPreviewBackend::Software => return,
+        };
+        self.preferences.borrow_mut().video_preview_backend = backend.to_owned();
+        self.save_preferences();
+    }
+
+    pub(crate) fn media_preview_backend(&self) -> MediaPreviewBackend {
+        if !self.hardware_accelerated_video_previews() {
+            MediaPreviewBackend::Software
+        } else {
+            self.video_preview_backend()
+        }
+    }
+
     pub fn search_open_files_directly(&self) -> bool {
         self.preferences.borrow().search_open_files_directly
     }
@@ -295,17 +352,37 @@ impl ThemeManager {
         self.save_preferences();
     }
 
+    pub fn preview_muted(&self) -> bool {
+        self.preferences.borrow().preview_muted
+    }
+
+    pub fn set_preview_muted(&self, muted: bool) {
+        self.preferences.borrow_mut().preview_muted = muted;
+        self.save_preferences();
+    }
+
+    pub fn preview_volume(&self) -> f64 {
+        self.preferences.borrow().preview_volume
+    }
+
+    pub fn set_preview_volume(&self, volume: f64) {
+        self.preferences.borrow_mut().preview_volume = volume.clamp(0.0, 1.0);
+        self.save_preferences();
+    }
+
+    pub fn auto_refresh_interval(&self) -> u32 {
+        self.preferences.borrow().auto_refresh_interval
+    }
+
+    pub fn set_auto_refresh_interval(&self, secs: u32) {
+        self.preferences.borrow_mut().auto_refresh_interval = secs;
+        self.save_preferences();
+    }
+
     pub fn release_channel(&self) -> Channel {
         Channel::parse(&self.preferences.borrow().release_channel)
     }
 
-    /// Persists `channel` and refreshes every registered update view.
-    ///
-    /// Returns early when the channel is unchanged, which is what keeps
-    /// [`Self::on_release_channel_changed`] safe to use for two-way
-    /// binding: a listener that syncs a switch to the new channel makes
-    /// that switch emit its own `notify`, whose handler writes the same
-    /// channel straight back here.
     pub fn set_release_channel(&self, channel: Channel) {
         if self.release_channel() == channel {
             return;
@@ -315,15 +392,6 @@ impl ThemeManager {
         notify_release_channel_changed();
     }
 
-    /// Registers `refresh` to run whenever the release channel changes,
-    /// for as long as `anchor` is alive.
-    ///
-    /// The channel preference is process-wide, but an offer produced by a
-    /// check that already finished is not: it stays cached in the view that
-    /// produced it. Without this, switching back to Stable in one window
-    /// left every other window still advertising a preview build until
-    /// something made it check again. See [`ChannelListener`] for what
-    /// `anchor` must be.
     pub fn on_release_channel_changed(
         &self,
         anchor: &impl IsA<gtk::Widget>,
@@ -369,6 +437,15 @@ impl ThemeManager {
             super::browser_modes::BrowserDensity::Airy => "airy",
         }
         .to_owned();
+        self.save_preferences();
+    }
+
+    pub fn sidebar_order(&self) -> Vec<String> {
+        self.preferences.borrow().sidebar_order.clone()
+    }
+
+    pub fn set_sidebar_order(&self, order: Vec<String>) {
+        self.preferences.borrow_mut().sidebar_order = order;
         self.save_preferences();
     }
 
@@ -679,6 +756,20 @@ fn sort_preferences(preferences: &Preferences) -> ViewPreferences {
         sort_key: sorting.0,
         sort_direction: sorting.1,
     }
+}
+
+fn configured_video_preview_backend(preferences: &Preferences) -> MediaPreviewBackend {
+    match preferences.video_preview_backend.as_str() {
+        "vaapi" => MediaPreviewBackend::VaApi,
+        "vulkan" => MediaPreviewBackend::Vulkan,
+        _ => MediaPreviewBackend::Automatic,
+    }
+}
+
+fn configured_hardware_acceleration(preferences: &Preferences, polaris_available: bool) -> bool {
+    preferences
+        .hardware_accelerated_video_previews
+        .unwrap_or(!polaris_available)
 }
 
 fn load_omarchy_theme() -> Option<ThemeTokens> {

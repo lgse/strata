@@ -15,7 +15,6 @@ pub struct DirectoryRequest {
     pub id: RequestId,
     pub location: Location,
     pub batch_size: usize,
-    pub include_hidden: bool,
     /// Caps how many entries a single load will retain/render, bounding worst-case time and
     /// memory on an adversarially large or unbounded directory.
     pub max_entries: usize,

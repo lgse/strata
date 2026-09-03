@@ -73,6 +73,9 @@ pub enum BrowserEvent {
     ColumnReloaded {
         depth: usize,
     },
+    HiddenToggled {
+        show_hidden: bool,
+    },
     LoadFinished {
         depth: usize,
         truncated: bool,
@@ -233,6 +236,10 @@ impl Browser {
 
     pub fn clear_observer(&self) {
         self.observers.borrow_mut().clear();
+    }
+
+    pub fn preferences(&self) -> ViewPreferences {
+        self.preferences.get()
     }
 
     pub fn observe_preferences(&self, observer: impl Fn(ViewPreferences) + 'static) {
@@ -479,7 +486,6 @@ impl Browser {
                 id: request_id,
                 location,
                 batch_size: 128,
-                include_hidden: self.preferences.get().show_hidden,
                 max_entries: PEEK_MAX_ENTRIES,
                 time_budget: PEEK_TIME_BUDGET,
             },
@@ -568,22 +574,13 @@ impl Browser {
         self.preferences.set(preferences);
         self.notify_preferences_observers();
 
-        let locations = {
-            let mut state = self.state.borrow_mut();
-            state.set_show_hidden(preferences.show_hidden);
-            state
-                .columns
-                .iter()
-                .map(|column| column.location.clone())
-                .collect::<Vec<_>>()
-        };
-        for (depth, location) in locations.into_iter().enumerate() {
-            self.refresh_column(depth);
-            let monitor = self.install_monitor(depth, location);
-            if let Some(slot) = self.monitors.borrow_mut().get_mut(depth) {
-                *slot = monitor;
-            }
-        }
+        self.close_peek();
+        self.state
+            .borrow_mut()
+            .set_show_hidden(preferences.show_hidden);
+        self.emit(BrowserEvent::HiddenToggled {
+            show_hidden: preferences.show_hidden,
+        });
     }
 
     fn apply_column_preferences(
@@ -1249,6 +1246,7 @@ impl Browser {
             return;
         };
         if entry.is_directory() && self.is_open_child(depth, &entry.location) {
+            self.close_column(depth + 1);
             return;
         }
         self.select(depth, position);
@@ -1272,6 +1270,7 @@ impl Browser {
             .entry_at(depth, position)
             .is_some_and(|entry| entry.is_directory() && self.is_open_child(depth, &entry.location))
         {
+            self.close_column(depth + 1);
             return;
         }
         self.select(depth, position);
@@ -1431,7 +1430,6 @@ impl Browser {
                 id: request_id,
                 location,
                 batch_size: 128,
-                include_hidden: self.preferences.get().show_hidden,
                 max_entries: MAX_DIRECTORY_ENTRIES,
                 time_budget: DIRECTORY_LOAD_TIME_BUDGET,
             },
@@ -1535,6 +1533,20 @@ impl Browser {
 
     pub fn reload_active(self: &Rc<Self>) {
         if let Some(depth) = self.active_depth() {
+            self.refresh_column(depth);
+        }
+    }
+
+    pub fn refresh_all(self: &Rc<Self>) {
+        let depths: Vec<usize> = {
+            let state = self.state.borrow();
+            (0..state.columns.len()).collect()
+        };
+        if depths.is_empty() {
+            self.reload_active();
+            return;
+        }
+        for depth in depths {
             self.refresh_column(depth);
         }
     }
@@ -1643,9 +1655,21 @@ impl Browser {
                             take_focus: false,
                         });
                     }
-                } else if state.apply_peek_batch(request_id, &entries) {
-                    drop(state);
-                    self.emit(BrowserEvent::PeekEntriesAdded { entries });
+                } else {
+                    let peek_entries: Vec<_> = if self.preferences.get().show_hidden {
+                        entries
+                    } else {
+                        entries
+                            .into_iter()
+                            .filter(|entry| !entry.is_hidden)
+                            .collect()
+                    };
+                    if state.apply_peek_batch(request_id, &peek_entries) {
+                        drop(state);
+                        self.emit(BrowserEvent::PeekEntriesAdded {
+                            entries: peek_entries,
+                        });
+                    }
                 }
             }
             DirectoryEvent::Finished {

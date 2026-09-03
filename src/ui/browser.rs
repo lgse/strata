@@ -30,7 +30,7 @@ use super::{
     blur::BlurBin,
     browser_modes::{BrowserDensity, BrowserMode, ModeViews},
     controls::{
-        ModalTone, form_check_button, form_entry, form_label, form_password_entry,
+        ModalTone, form_check_button, form_entry, form_label, form_password_entry, menu_option,
         message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
         wrap_dialog_text,
     },
@@ -77,6 +77,8 @@ struct ColumnView {
     new_entry_row: gtk::Box,
     new_entry_icon: gtk::Image,
     new_entry_entry: gtk::Entry,
+    show_hidden: Rc<Cell<bool>>,
+    filter: gtk::CustomFilter,
 }
 
 struct ActiveRename {
@@ -298,6 +300,7 @@ pub(super) struct ViewState {
     pending_trash_summary: RefCell<Option<LoadHandle>>,
     pending_empty_trash: RefCell<Option<LoadHandle>>,
     trash_loading: RefCell<Option<TrashLoadingView>>,
+    auto_refresh: RefCell<Option<glib::SourceId>>,
     browser: Rc<Browser>,
 }
 
@@ -444,6 +447,7 @@ impl BrowserView {
             pending_trash_summary: RefCell::new(None),
             pending_empty_trash: RefCell::new(None),
             trash_loading: RefCell::new(None),
+            auto_refresh: RefCell::new(None),
             browser,
         });
 
@@ -840,6 +844,18 @@ impl BrowserView {
         launch_terminal(&location, &self.state.overlay);
     }
 
+    pub fn refresh(&self) {
+        if self.view_mode() == BrowserMode::Columns {
+            self.state.browser.refresh_all();
+        } else {
+            self.state.browser.reload_active();
+        }
+    }
+
+    pub fn set_auto_refresh_interval(&self, secs: u32) {
+        self.state.set_auto_refresh_interval(secs);
+    }
+
     pub fn show_location_properties(&self, location: &Location) {
         self.state.show_folder_properties(location);
     }
@@ -976,6 +992,39 @@ impl ViewState {
             self.global_activity_spinner
                 .set_tooltip_text(Some("Working…"));
         }
+    }
+
+    pub(super) fn set_auto_refresh_interval(self: &Rc<Self>, secs: u32) {
+        if let Some(source) = self.auto_refresh.take() {
+            source.remove();
+        }
+        if secs == 0 {
+            return;
+        }
+        let weak_state = Rc::downgrade(self);
+        let weak_browser = Rc::downgrade(&self.browser);
+        let source = glib::timeout_add_local(Duration::from_secs(u64::from(secs)), move || {
+            let Some(state) = weak_state.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            if state.active_rename.borrow().is_some()
+                || state.active_new_entry.borrow().is_some()
+                || state.mode_views.borrow().rename_is_active()
+                || state.mode_views.borrow().new_entry_is_active()
+            {
+                return glib::ControlFlow::Continue;
+            }
+            let Some(browser) = weak_browser.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            if state.mode_views.borrow().mode() == BrowserMode::Columns {
+                browser.refresh_all();
+            } else {
+                browser.reload_active();
+            }
+            glib::ControlFlow::Continue
+        });
+        self.auto_refresh.replace(Some(source));
     }
 
     fn sync_mode_selection(&self) {
@@ -2728,14 +2777,8 @@ impl ViewState {
                 .unwrap_or_else(|| "—".to_owned())
         };
         let size = properties_row(&details, "SIZE", &initial_size);
-        let modified = properties_row(
-            &details,
-            "MODIFIED",
-            &entry
-                .as_ref()
-                .map(metadata_modified)
-                .unwrap_or_else(|| "—".to_owned()),
-        );
+        let modified = properties_row(&details, "MODIFIED", "—");
+        crate::util::set_modified_date(&modified, entry.as_ref(), "—");
         let opens_with = properties_row(&details, "OPENS WITH", "—");
         let hidden = properties_row(
             &details,
@@ -3581,6 +3624,13 @@ impl ViewState {
                     column.presentation.show_loading();
                 }
             }
+            BrowserEvent::HiddenToggled { show_hidden } => {
+                for column in self.columns.borrow().iter() {
+                    column.show_hidden.set(show_hidden);
+                    column.filter.changed(gtk::FilterChange::Different);
+                }
+                self.mode_views.borrow().set_show_hidden(show_hidden);
+            }
             BrowserEvent::LoadFinished { depth, truncated } => {
                 if let Some(column) = self.columns.borrow().get(depth) {
                     if column.selection.model().is_none() {
@@ -3964,6 +4014,7 @@ impl ViewState {
         empty_trash.set_visible(is_trash);
         empty_trash.set_sensitive(false);
         header_actions.append(&empty_trash);
+        header_actions.append(&pane_refresh_button(&self.browser, depth));
         header_actions.append(&column_sort_direction_toggle(&self.browser, depth));
         header_actions.append(&column_sort_menu(&self.browser, depth));
 
@@ -4025,17 +4076,12 @@ impl ViewState {
         let entry_count = Rc::new(Cell::new(0));
         let model = gtk::StringList::new(&[]);
         let filter_query = Rc::new(RefCell::new(String::new()));
-        let query = filter_query.clone();
-        let filter = gtk::CustomFilter::new(move |item| {
-            let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
-                return false;
-            };
-            let query = query.borrow();
-            query.is_empty()
-                || model_display_name(&item.string())
-                    .to_lowercase()
-                    .contains(query.as_str())
-        });
+        let initial_show_hidden = self
+            .browser
+            .column_preferences(depth)
+            .map_or_else(|| self.browser.preferences().show_hidden, |p| p.show_hidden);
+        let show_hidden = Rc::new(Cell::new(initial_show_hidden));
+        let filter = entry_filter(show_hidden.clone(), filter_query.clone());
         let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
         let selection = gtk::MultiSelection::new(Some(filtered_model.clone()));
         let syncing_selection = Rc::new(Cell::new(false));
@@ -4046,6 +4092,7 @@ impl ViewState {
         let filtered_for_selection = filtered_model.clone();
         let syncing_selection_changed = syncing_selection.clone();
         let focused_filtered_changed = focused_filtered.clone();
+        let filter_for_column = filter.clone();
         selection.connect_selection_changed(move |selection, position, count| {
             if syncing_selection_changed.get() {
                 return;
@@ -4756,6 +4803,8 @@ impl ViewState {
             new_entry_row,
             new_entry_icon,
             new_entry_entry,
+            show_hidden,
+            filter: filter_for_column,
         });
 
         self.refresh_active_path_rows();
@@ -5173,17 +5222,25 @@ pub(super) fn install_folder_context_menu(
         .build();
     popover.add_css_class("folder-context-popover");
 
-    let new_folder = context_menu_option("New Folder", Some("Ctrl+Shift+N"));
-    let new_file = context_menu_option("New File", None);
-    let paste = context_menu_option("Paste", Some("Ctrl+V"));
-    let select_all = context_menu_option("Select All", Some("Ctrl+A"));
-    let open_terminal = context_menu_option("Open in Terminal", Some("Ctrl+T"));
-    let properties = context_menu_option("Properties", None);
+    let new_folder = context_menu_option(
+        crate::assets::icons::FOLDER_PLUS,
+        "New Folder",
+        "Ctrl+Shift+N",
+    );
+    let new_file = context_menu_option(crate::assets::icons::FILE_PLUS, "New File", "");
+    let open_terminal =
+        context_menu_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
+    let paste = context_menu_option(crate::assets::icons::CLIPBOARD_PASTE, "Paste", "Ctrl+V");
+    let select_all = context_menu_option(crate::assets::icons::LIST_CHECKS, "Select All", "Ctrl+A");
+    let refresh = context_menu_option(crate::assets::icons::REFRESH, "Refresh", "F5");
+    let properties = context_menu_option(crate::assets::icons::INFO, "Properties", "");
     content.append(&new_folder);
     content.append(&new_file);
+    content.append(&open_terminal);
+    content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     content.append(&paste);
     content.append(&select_all);
-    content.append(&open_terminal);
+    content.append(&refresh);
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     content.append(&properties);
 
@@ -5238,6 +5295,16 @@ pub(super) fn install_folder_context_menu(
         }
         if let Some(state) = weak.upgrade() {
             state.select_all(depth);
+        }
+    });
+    let weak = Rc::downgrade(state);
+    let refresh_popover = popover.downgrade();
+    refresh.connect_clicked(move |_| {
+        if let Some(popover) = refresh_popover.upgrade() {
+            popover.popdown();
+        }
+        if let Some(state) = weak.upgrade() {
+            state.browser.retry_column(depth);
         }
     });
     let weak = Rc::downgrade(state);
@@ -6544,20 +6611,39 @@ fn item_context_option_with_icon(icon: gtk::Image, label: &str, accelerator: &st
     button
 }
 
-fn context_menu_option(label: &str, accelerator: Option<&str>) -> gtk::Button {
+fn context_menu_option(icon: &str, label: &str, accelerator: &str) -> gtk::Button {
     let button = gtk::Button::new();
     button.add_css_class("folder-context-option");
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 18);
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let icon = crate::assets::primary_icon(icon, 15);
+    icon.add_css_class("folder-context-icon");
     let title = gtk::Label::new(Some(label));
     title.set_xalign(0.0);
     title.set_hexpand(true);
+    row.append(&icon);
     row.append(&title);
-    if let Some(accelerator) = accelerator {
+    if !accelerator.is_empty() {
         let shortcut = gtk::Label::new(Some(accelerator));
         shortcut.add_css_class("folder-context-shortcut");
         row.append(&shortcut);
     }
     button.set_child(Some(&row));
+    button
+}
+
+pub(super) fn pane_refresh_button(browser: &Rc<Browser>, depth: usize) -> gtk::Button {
+    let button = gtk::Button::builder().tooltip_text("Refresh (F5)").build();
+    button.set_child(Some(&crate::assets::primary_icon(
+        crate::assets::icons::REFRESH,
+        16,
+    )));
+    button.add_css_class("column-header-action");
+    let weak_browser = Rc::downgrade(browser);
+    button.connect_clicked(move |_| {
+        if let Some(browser) = weak_browser.upgrade() {
+            browser.retry_column(depth);
+        }
+    });
     button
 }
 
@@ -6585,7 +6671,7 @@ pub(super) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk::Menu
         ("Modified", SortKey::Modified),
         ("Type", SortKey::Type),
     ] {
-        let (option, check) = column_menu_option(label, preferences.sort_key == key);
+        let (option, check) = menu_option(label, preferences.sort_key == key);
         selected_checks.borrow_mut().push((key, check));
         let checks = selected_checks.clone();
         let weak_browser = Rc::downgrade(browser);
@@ -6605,8 +6691,7 @@ pub(super) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk::Menu
     }
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-    let (folders_first, folders_check) =
-        column_menu_option("Folders first", preferences.folders_first);
+    let (folders_first, folders_check) = menu_option("Folders first", preferences.folders_first);
     let folders_enabled = Rc::new(Cell::new(preferences.folders_first));
     let weak_browser = Rc::downgrade(browser);
     let folders_enabled_for_click = folders_enabled.clone();
@@ -6764,21 +6849,6 @@ pub(super) fn empty_trash_button(browser: &Rc<Browser>) -> gtk::Button {
     button
 }
 
-fn column_menu_option(label: &str, selected: bool) -> (gtk::Button, gtk::Image) {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    let check = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
-    check.set_visible(selected);
-    let label = gtk::Label::new(Some(label));
-    label.set_xalign(0.0);
-    label.set_hexpand(true);
-    row.append(&label);
-    row.append(&check);
-    let option = gtk::Button::builder().child(&row).build();
-    option.add_css_class("column-menu-option");
-    option.set_has_frame(false);
-    (option, check)
-}
-
 fn file_row_target(mut target: gtk::Widget) -> Option<gtk::Box> {
     loop {
         if target.has_css_class("file-row") {
@@ -6870,7 +6940,7 @@ pub(super) fn rename_stem_end(name: &str) -> i32 {
     name[..end].chars().count().min(i32::MAX as usize) as i32
 }
 
-fn entry_model_value(entry: &FileEntry) -> String {
+pub(super) fn entry_model_value(entry: &FileEntry) -> String {
     let kind = if entry.is_broken_symbolic_link() {
         'x'
     } else if entry.is_directory() {
@@ -6880,7 +6950,8 @@ fn entry_model_value(entry: &FileEntry) -> String {
     } else {
         'f'
     };
-    format!("{kind}\t{}", entry.display_name)
+    let hidden = if entry.is_hidden { 'h' } else { 'v' };
+    format!("{kind}{hidden}\t{}", entry.display_name)
 }
 
 fn model_display_name(value: &str) -> &str {
@@ -6888,7 +6959,31 @@ fn model_display_name(value: &str) -> &str {
 }
 
 fn model_is_directory(value: &str) -> bool {
-    value.starts_with("d\t")
+    value.starts_with("d")
+}
+
+pub(super) fn model_is_hidden(value: &str) -> bool {
+    value.as_bytes().get(1) == Some(&b'h')
+}
+
+pub(super) fn entry_filter(
+    show_hidden: Rc<Cell<bool>>,
+    filter_query: Rc<RefCell<String>>,
+) -> gtk::CustomFilter {
+    gtk::CustomFilter::new(move |item| {
+        let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
+            return false;
+        };
+        let value = item.string();
+        if !show_hidden.get() && model_is_hidden(&value) {
+            return false;
+        }
+        let query = filter_query.borrow();
+        query.is_empty()
+            || model_display_name(&value)
+                .to_lowercase()
+                .contains(query.as_str())
+    })
 }
 
 pub(super) fn entry_icon(entry: &FileEntry) -> &'static str {
@@ -7650,16 +7745,6 @@ fn compact_native_path(path: &Path) -> String {
         .ok()
         .map(|suffix| format!("~/{}", suffix.to_string_lossy()))
         .unwrap_or_else(|| path.to_string_lossy().into_owned())
-}
-
-fn metadata_modified(entry: &FileEntry) -> String {
-    let crate::model::MetadataValue::Known(seconds) = entry.modified_unix_seconds else {
-        return "—".to_owned();
-    };
-    glib::DateTime::from_unix_local(seconds)
-        .and_then(|date| date.format("%Y-%m-%d %H:%M"))
-        .map(|value| value.to_string())
-        .unwrap_or_else(|_| "—".to_owned())
 }
 
 fn properties_row(parent: &gtk::Box, label: &str, value: &str) -> gtk::Label {

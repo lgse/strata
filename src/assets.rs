@@ -22,6 +22,7 @@ pub mod icons {
     pub const CHECK: &str = "strata-check";
     pub const CHECK_ON_PRIMARY: &str = "strata-check-on-primary";
     pub const CHEVRON_RIGHT: &str = "strata-chevron-right";
+    pub const CLIPBOARD_PASTE: &str = "strata-clipboard-paste";
     pub const COPY: &str = "strata-copy";
     pub const CORNER_DOWN_LEFT: &str = "strata-corner-down-left";
     pub const DOCUMENTS: &str = "strata-file-text";
@@ -31,7 +32,9 @@ pub mod icons {
     pub const EXTERNAL_LINK: &str = "strata-external-link";
     pub const FILE_ARCHIVE: &str = "strata-file-archive";
     pub const FILE_CODE: &str = "strata-file-code";
+    pub const FILE_PLUS: &str = "strata-file-plus";
     pub const FOLDER: &str = "strata-folder";
+    pub const FOLDER_PLUS: &str = "strata-folder-plus";
     pub const HARD_DRIVE: &str = "strata-hard-drive";
     pub const INFO: &str = "strata-info";
     pub const FUNNEL: &str = "strata-funnel";
@@ -39,14 +42,17 @@ pub mod icons {
     pub const HOME: &str = "strata-house";
     pub const LIST: &str = "strata-list";
     pub const LIST_ACTIVE: &str = "strata-list-active";
+    pub const LIST_CHECKS: &str = "strata-list-checks";
     pub const KEY: &str = "strata-key";
     pub const KEYBOARD: &str = "strata-keyboard";
     pub const MONITOR: &str = "strata-monitor";
     pub const NETWORK: &str = "strata-network";
     pub const PALETTE: &str = "strata-palette";
     pub const PANEL_LEFT: &str = "strata-panel-left-symbolic";
+    pub const PAUSE: &str = "strata-pause";
     pub const PENCIL: &str = "strata-pencil";
     pub const PIN: &str = "strata-pin";
+    pub const PLAY: &str = "strata-play";
     pub const PLUS: &str = "strata-plus";
     pub const PICTURES: &str = "strata-image";
     pub const ROWS: &str = "strata-rows";
@@ -54,12 +60,15 @@ pub mod icons {
     pub const SEARCH: &str = "strata-search";
     pub const SETTINGS: &str = "strata-settings";
     pub const SETTINGS_2: &str = "strata-settings-2";
+    pub const REFRESH: &str = "strata-refresh";
     pub const SLIDERS: &str = "strata-sliders-horizontal";
     pub const TERMINAL: &str = "strata-terminal";
     pub const TRASH: &str = "strata-trash";
     pub const TRIANGLE_ALERT: &str = "strata-triangle-alert";
     pub const UNPLUG: &str = "strata-unplug";
     pub const VIDEOS: &str = "strata-video";
+    pub const VOLUME_2: &str = "strata-volume-2";
+    pub const VOLUME_X: &str = "strata-volume-x";
     pub const X: &str = "strata-x";
 }
 
@@ -100,6 +109,10 @@ pub fn register_icon_theme() {
     if let Some(display) = gdk::Display::default() {
         gtk::IconTheme::for_display(&display).add_resource_path("/io/github/lgse/Strata/icons");
     }
+    // Desktop shells resolve the window icon by matching the application ID to a
+    // desktop entry, but GTK also needs the name to expose the bundled icon on its
+    // own surfaces and on compositors that accept a toplevel icon.
+    gtk::Window::set_default_icon_name(crate::APPLICATION_ID);
 }
 
 pub fn primary_icon(name: &str, pixel_size: i32) -> gtk::Image {

@@ -2,15 +2,17 @@
 
 use std::rc::Rc;
 
-use crate::services::{BuildKind, Channel, ReleaseMetadata, UpdateCheck, Version};
+use crate::services::{BuildKind, Channel, ReleaseMetadata, UpdateCheck, UpdateMethod, Version};
 
 use super::{
     CHANNEL_ORDER, COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
-    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, channel_index, install_guard,
-    installed_version_status, is_stale_check, offer_still_eligible, responsive_dialog_size,
-    shows_available_release_notes, theme_background_is_light, theme_name_matches,
-    uses_compact_navigation,
+    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, channel_index, effective_update_channel,
+    install_guard, installed_version_status, is_stale_check, offer_still_eligible,
+    omarchy_update_command, responsive_dialog_size, shows_available_release_notes,
+    theme_background_is_light, theme_name_matches, update_check_message, uses_compact_navigation,
+    video_preview_backend_label, video_preview_control_state,
 };
+use crate::sandbox::MediaPreviewBackend;
 
 #[test]
 fn a_checks_result_is_current_only_for_the_generation_it_was_issued_under() {
@@ -94,6 +96,21 @@ fn available_notes_are_shown_only_for_a_newer_release() {
 }
 
 #[test]
+fn video_preview_backend_selector_labels_all_options() {
+    for (backend, label) in [
+        (MediaPreviewBackend::Automatic, "Automatic"),
+        (MediaPreviewBackend::VaApi, "VA-API"),
+        (MediaPreviewBackend::Vulkan, "Vulkan"),
+    ] {
+        assert_eq!(video_preview_backend_label(backend), label);
+    }
+    assert_eq!(
+        video_preview_backend_label(MediaPreviewBackend::Software),
+        "Automatic"
+    );
+}
+
+#[test]
 fn release_channel_copy_distinguishes_preview_from_nightly() {
     assert_eq!(RELEASE_CHANNEL_TITLE, "Release channel");
     assert_eq!(
@@ -103,10 +120,16 @@ fn release_channel_copy_distinguishes_preview_from_nightly() {
 }
 
 #[test]
+fn video_preview_controls_follow_enabled_state() {
+    assert_eq!(video_preview_control_state(true), (true, true, true));
+    assert_eq!(video_preview_control_state(false), (false, true, false));
+}
+
+#[test]
 fn installed_version_status_stays_plain_for_a_stable_build() {
     let version = Version::parse("0.6.0").expect("valid version");
     assert_eq!(
-        installed_version_status(&version, BuildKind::Stable),
+        installed_version_status(&version, BuildKind::Stable, UpdateMethod::InPlace),
         "Version 0.6.0"
     );
 }
@@ -115,9 +138,75 @@ fn installed_version_status_stays_plain_for_a_stable_build() {
 fn installed_version_status_names_the_build_kind_for_a_prerelease() {
     let version = Version::parse("0.6.0-rc.1").expect("valid version");
     assert_eq!(
-        installed_version_status(&version, BuildKind::Rc),
+        installed_version_status(&version, BuildKind::Rc, UpdateMethod::InPlace),
         "Version 0.6.0-rc.1 · Release candidate"
     );
+}
+
+#[test]
+fn package_managed_updates_always_follow_stable() {
+    for selected in [Channel::Stable, Channel::Preview, Channel::Nightly] {
+        assert_eq!(
+            effective_update_channel(selected, UpdateMethod::Omarchy),
+            Channel::Stable
+        );
+        assert_eq!(
+            effective_update_channel(selected, UpdateMethod::Pacman),
+            Channel::Stable
+        );
+    }
+}
+
+#[test]
+fn manual_updates_keep_the_selected_channel() {
+    for selected in [Channel::Stable, Channel::Preview, Channel::Nightly] {
+        assert_eq!(
+            effective_update_channel(selected, UpdateMethod::InPlace),
+            selected
+        );
+    }
+}
+
+#[test]
+fn package_managed_status_identifies_omarchy() {
+    let version = Version::parse("0.8.0").expect("valid version");
+    assert_eq!(
+        installed_version_status(&version, BuildKind::Stable, UpdateMethod::Omarchy),
+        "Version 0.8.0 · Managed by Omarchy"
+    );
+}
+
+#[test]
+fn omarchy_updates_open_in_the_configured_terminal() {
+    let command = omarchy_update_command();
+
+    assert_eq!(command.get_program(), "xdg-terminal-exec");
+    assert_eq!(
+        command.get_args().collect::<Vec<_>>(),
+        ["--", "omarchy", "update"]
+    );
+}
+
+#[test]
+fn package_managed_update_directs_users_to_omarchy_update() {
+    let message = update_check_message(
+        &UpdateCheck::Available {
+            release: ReleaseMetadata {
+                version: "0.9.0".to_owned(),
+                url: "https://example.test/release".to_owned(),
+                notes: String::new(),
+                note_blocks: Vec::new(),
+                kind: BuildKind::Stable,
+                tag: "v0.9.0".to_owned(),
+                published_at: None,
+                commit: None,
+            },
+            download_url: "https://example.test/download".to_owned(),
+        },
+        UpdateMethod::Omarchy,
+    );
+
+    assert!(message.contains("Run “omarchy update” to install"));
 }
 
 #[test]
@@ -160,8 +249,6 @@ fn every_window_installs_behind_one_process_wide_guard() {
 
 #[test]
 fn the_selector_highlights_the_button_for_the_persisted_channel() {
-    // The broadcast resyncs the selector by index, so an index that does not
-    // match the button order would silently select the wrong channel.
     for (index, channel) in CHANNEL_ORDER.into_iter().enumerate() {
         assert_eq!(channel_index(channel), index);
     }

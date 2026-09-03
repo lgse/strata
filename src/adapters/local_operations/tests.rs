@@ -48,6 +48,7 @@ fn file_entry(path: &std::path::Path) -> FileEntry {
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
     }
 }
 
@@ -363,7 +364,7 @@ fn cancelled_replacement_move_tracks_the_modified_source_and_target_roots()
     let context = glib::MainContext::default();
     let watcher = context.spawn_local(async move {
         while !committed_marker.exists() {
-            glib::timeout_future(Duration::from_millis(1)).await;
+            glib::timeout_future(Duration::ZERO).await;
         }
         cancel_after_commit.cancel();
     });
@@ -497,6 +498,7 @@ fn test_file_entry(path: &Path) -> FileEntry {
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
     }
 }
 

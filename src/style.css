@@ -749,7 +749,8 @@ entry.form-control:disabled {
   color: @theme_dim_text;
 }
 
-dropdown.form-control > button {
+dropdown.form-control > button,
+menubutton.form-control > button {
   background: alpha(@theme_bg, 0.72);
   border: 1px solid alpha(@theme_border, 0.54);
   border-radius: 5px;
@@ -760,26 +761,32 @@ dropdown.form-control > button {
   transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out;
 }
 
-dropdown.form-control > button:hover {
+dropdown.form-control > button:hover,
+menubutton.form-control > button:hover {
   background: alpha(@theme_accent, 0.15);
   border-color: alpha(@theme_accent, 0.68);
 }
 
-dropdown.form-control > button:active {
+dropdown.form-control > button:active,
+menubutton.form-control > button:active {
   background: alpha(@theme_accent, 0.22);
   transform: scale(0.97);
 }
 
 dropdown.form-control:focus > button,
 dropdown.form-control:focus-visible > button,
-dropdown.form-control > button:focus-visible {
+dropdown.form-control > button:focus-visible,
+menubutton.form-control:focus > button,
+menubutton.form-control:focus-visible > button,
+menubutton.form-control > button:focus-visible {
   border-color: @theme_accent;
   box-shadow: 0 0 0 1px alpha(@theme_accent, 0.42);
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
 }
 
-dropdown.form-control:disabled > button {
+dropdown.form-control:disabled > button,
+menubutton.form-control:disabled > button {
   background: alpha(@theme_muted, 0.3);
   border-color: alpha(@theme_border, 0.38);
   color: @theme_dim_text;
@@ -1496,6 +1503,126 @@ paned > separator {
   padding: 6px 10px;
 }
 
+.preview-volume-toggle {
+  background: alpha(@theme_bg, 0.72);
+  border: 1px solid alpha(@theme_border, 0.42);
+  border-radius: 6px;
+  box-shadow: none;
+  color: @theme_accent;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 3px;
+  transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out;
+}
+
+.preview-volume-toggle:hover {
+  background: alpha(@theme_muted, 0.82);
+  border-color: @theme_accent;
+}
+
+.preview-volume-toggle:active {
+  background: alpha(@theme_muted, 0.96);
+  border-color: @theme_accent;
+  transform: scale(0.96);
+}
+
+.preview-volume-toggle:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.52);
+  outline-offset: 1px;
+}
+
+.preview-media-bar {
+  background: alpha(@theme_bg, 0.55);
+  border-top: 1px solid alpha(@theme_border, 0.24);
+  padding: 6px 10px;
+}
+
+.preview-media-center {
+  background: alpha(@theme_bg, 0.72);
+  border: 1px solid alpha(@theme_border, 0.42);
+  border-radius: 50%;
+  box-shadow: none;
+  color: @theme_accent;
+  min-height: 56px;
+  min-width: 56px;
+  padding: 8px;
+  transition: transform 160ms ease-out, background 160ms ease-out;
+}
+
+.preview-media-center:hover {
+  background: alpha(@theme_muted, 0.82);
+  border-color: @theme_accent;
+}
+
+.preview-media-center:active {
+  transform: scale(0.94);
+}
+
+.preview-media-button {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  box-shadow: none;
+  color: @theme_accent;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 2px;
+  transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out;
+}
+
+.preview-media-button:hover {
+  background: alpha(@theme_muted, 0.62);
+  border-color: alpha(@theme_border, 0.42);
+}
+
+.preview-media-button:active {
+  background: alpha(@theme_muted, 0.82);
+  border-color: @theme_accent;
+  transform: scale(0.97);
+}
+
+.preview-media-button:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.52);
+  outline-offset: 1px;
+}
+
+.preview-media-time {
+  color: @theme_dim_text;
+  font-size: 0.78em;
+  font-variant-numeric: tabular-nums;
+}
+
+.preview-media-seek trough,
+.preview-media-volume trough {
+  background: alpha(@theme_border, 0.42);
+  border-radius: 3px;
+  min-height: 4px;
+}
+
+.preview-media-seek highlight,
+.preview-media-volume highlight {
+  background: @theme_accent;
+  border-radius: 3px;
+}
+
+.preview-media-seek slider,
+.preview-media-volume slider {
+  background: @theme_accent;
+  border: none;
+  border-radius: 50%;
+  color: @theme_accent;
+  min-height: 10px;
+  min-width: 10px;
+  margin: -4px;
+}
+
+.preview-media-seek:hover slider,
+.preview-media-volume:hover slider {
+  min-height: 12px;
+  min-width: 12px;
+  margin: -5px;
+}
+
 .preview-pdf-list,
 .preview-pdf-list > row {
   background: @theme_surface;
@@ -2058,7 +2185,8 @@ menubutton.column-header-action > button:active {
   opacity: 0.46;
 }
 
-.item-context-icon {
+.item-context-icon,
+.folder-context-icon {
   opacity: 0.72;
 }
 
