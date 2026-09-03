@@ -45,43 +45,58 @@ impl LogWriter {
     }
 }
 
-fn capture_directory_start_log(level: tracing::Level, location: &Location) -> String {
+fn capture_directory_start_logs(locations: &[(RequestId, &Location)]) -> String {
     let writer = LogWriter::default();
     let subscriber = tracing_subscriber::fmt()
         .with_ansi(false)
         .without_time()
-        .with_max_level(level)
+        .with_max_level(tracing::Level::DEBUG)
         .with_writer(writer.clone())
         .finish();
 
     tracing::subscriber::with_default(subscriber, || {
-        log_directory_load_started(RequestId(42), location);
+        for (request_id, location) in locations {
+            log_directory_load_started(*request_id, location);
+        }
     });
     writer.output()
+}
+
+fn captured_event<'a>(output: &'a str, request_id: RequestId, message: &str) -> &'a str {
+    let request_id = format!("request_id={}", request_id.0);
+    output
+        .lines()
+        .find(|line| line.contains(message) && line.contains(&request_id))
+        .unwrap_or_else(|| panic!("missing {message:?} event for {request_id}"))
 }
 
 #[test]
 fn directory_logging_respects_default_and_diagnostic_privacy() {
     let native_path = "/home/alice/sentinel-private-directory";
     let native = Location::local(native_path);
-
-    let default_log = capture_directory_start_log(tracing::Level::INFO, &native);
-    assert!(default_log.contains("directory load started"));
-    assert!(default_log.contains("backend=native"));
-    assert!(!default_log.contains(native_path));
-
-    let diagnostic_log = capture_directory_start_log(tracing::Level::DEBUG, &native);
-    assert!(diagnostic_log.contains(native_path));
-
     let remote = Location::uri(
         "sftp://alice:password;key=secret@example.com/private?token=secret#private-fragment",
     );
-    let remote_default_log = capture_directory_start_log(tracing::Level::INFO, &remote);
-    assert!(remote_default_log.contains("backend=sftp"));
-    assert!(!remote_default_log.contains("example.com"));
+    let output =
+        capture_directory_start_logs(&[(RequestId(42), &native), (RequestId(43), &remote)]);
 
-    let remote_log = capture_directory_start_log(tracing::Level::DEBUG, &remote);
-    assert!(remote_log.contains("sftp://example.com/private"));
+    let native_default = captured_event(&output, RequestId(42), "directory load started");
+    assert_eq!(native_default.split_whitespace().next(), Some("INFO"));
+    assert!(native_default.contains("backend=native"));
+    assert!(!native_default.contains(native_path));
+
+    let native_diagnostic = captured_event(&output, RequestId(42), "directory load location");
+    assert_eq!(native_diagnostic.split_whitespace().next(), Some("DEBUG"));
+    assert!(native_diagnostic.contains(native_path));
+
+    let remote_default = captured_event(&output, RequestId(43), "directory load started");
+    assert_eq!(remote_default.split_whitespace().next(), Some("INFO"));
+    assert!(remote_default.contains("backend=sftp"));
+    assert!(!remote_default.contains("example.com"));
+
+    let remote_diagnostic = captured_event(&output, RequestId(43), "directory load location");
+    assert_eq!(remote_diagnostic.split_whitespace().next(), Some("DEBUG"));
+    assert!(remote_diagnostic.contains("sftp://example.com/private"));
     for secret in [
         "alice",
         "password",
@@ -89,7 +104,7 @@ fn directory_logging_respects_default_and_diagnostic_privacy() {
         "token=secret",
         "private-fragment",
     ] {
-        assert!(!remote_log.contains(secret));
+        assert!(!remote_diagnostic.contains(secret));
     }
 }
 
