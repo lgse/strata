@@ -25,6 +25,7 @@ mod tests;
 use super::{
     blur::BlurBin,
     browser::{BrowserView, dismiss_modal_layer, modal_layer},
+    browser_modes::{BrowserMode, ClickActivation, ClickCount},
     controls::{form_entry, menu_option, modal_layout, segmented_control},
     theme::{Theme, ThemeManager, ThemeTokens},
 };
@@ -428,6 +429,35 @@ fn general_page(browser: &BrowserView, manager: Rc<ThemeManager>) -> gtk::Widget
         manager_for_previews.set_single_click_previews(enabled);
     });
     preferences.append(&preview_row);
+
+    append_heading(&preferences, "CLICK ACTIVATION");
+    for (label, mode) in [
+        ("List", BrowserMode::Columns),
+        ("Grid", BrowserMode::Grid),
+        ("Explorer", BrowserMode::Explorer),
+    ] {
+        let activation = manager.click_activation(mode);
+        browser.set_click_activation(mode, activation);
+        let (row, file_buttons, folder_buttons) = click_activation_option(label, activation);
+        let update = Rc::new({
+            let browser = browser.clone();
+            let manager = manager.clone();
+            move |files, folders| {
+                let activation = ClickActivation { files, folders };
+                browser.set_click_activation(mode, activation);
+                manager.set_click_activation(mode, activation);
+            }
+        });
+        connect_click_activation_buttons(&file_buttons, &folder_buttons, update.clone());
+        connect_click_activation_buttons(
+            &folder_buttons,
+            &file_buttons,
+            Rc::new(move |folders, files| {
+                update(files, folders);
+            }),
+        );
+        preferences.append(&row);
+    }
 
     let direct_open_enabled = manager.search_open_files_directly();
     let (search_open_row, search_open_files) = settings_option(
@@ -2484,6 +2514,65 @@ fn page_content() -> gtk::Box {
     let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
     content.add_css_class("settings-preferences");
     content
+}
+
+fn click_activation_option(
+    mode: &str,
+    activation: ClickActivation,
+) -> (gtk::Box, Vec<gtk::ToggleButton>, Vec<gtk::ToggleButton>) {
+    let row = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    row.add_css_class("settings-option");
+    let title = gtk::Label::new(Some(mode));
+    title.set_xalign(0.0);
+    title.add_css_class("settings-option-title");
+    row.append(&title);
+
+    let controls = gtk::Grid::builder()
+        .column_spacing(12)
+        .row_spacing(6)
+        .build();
+    let file_label = gtk::Label::new(Some("Files"));
+    file_label.set_xalign(0.0);
+    file_label.add_css_class("settings-option-description");
+    let folder_label = gtk::Label::new(Some("Folders"));
+    folder_label.set_xalign(0.0);
+    folder_label.add_css_class("settings-option-description");
+    let selected = |count| usize::from(count == ClickCount::Two);
+    let (file_control, file_buttons) =
+        segmented_control(&["1 click", "2 clicks"], selected(activation.files));
+    let (folder_control, folder_buttons) =
+        segmented_control(&["1 click", "2 clicks"], selected(activation.folders));
+    controls.attach(&file_label, 0, 0, 1, 1);
+    controls.attach(&file_control, 1, 0, 1, 1);
+    controls.attach(&folder_label, 0, 1, 1, 1);
+    controls.attach(&folder_control, 1, 1, 1, 1);
+    row.append(&controls);
+    (row, file_buttons, folder_buttons)
+}
+
+fn connect_click_activation_buttons(
+    buttons: &[gtk::ToggleButton],
+    other_buttons: &[gtk::ToggleButton],
+    update: Rc<dyn Fn(ClickCount, ClickCount)>,
+) {
+    for button in buttons {
+        let buttons = buttons.to_vec();
+        let other_buttons = other_buttons.to_vec();
+        let update = update.clone();
+        button.connect_toggled(move |button| {
+            if !button.is_active() {
+                return;
+            }
+            let selected = |buttons: &[gtk::ToggleButton]| {
+                if buttons.get(1).is_some_and(gtk::ToggleButton::is_active) {
+                    ClickCount::Two
+                } else {
+                    ClickCount::One
+                }
+            };
+            update(selected(&buttons), selected(&other_buttons));
+        });
+    }
 }
 
 fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, gtk::Switch) {

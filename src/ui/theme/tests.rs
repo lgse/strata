@@ -178,6 +178,12 @@ theme = "azure-glow"
     assert!(!preferences.reduce_motion);
     assert_eq!(preferences.browser_mode, "columns");
     assert_eq!(preferences.browser_density, "compact");
+    assert_eq!(preferences.list_file_clicks, 2);
+    assert_eq!(preferences.list_folder_clicks, 1);
+    assert_eq!(preferences.grid_file_clicks, 2);
+    assert_eq!(preferences.grid_folder_clicks, 1);
+    assert_eq!(preferences.explorer_file_clicks, 2);
+    assert_eq!(preferences.explorer_folder_clicks, 1);
     assert_eq!(sort_preferences(&preferences), ViewPreferences::default());
 }
 
@@ -244,6 +250,12 @@ fn general_preferences_round_trip() {
         single_click_previews: false,
         search_open_files_directly: true,
         reduce_motion: true,
+        list_file_clicks: 1,
+        list_folder_clicks: 2,
+        grid_file_clicks: 1,
+        grid_folder_clicks: 2,
+        explorer_file_clicks: 1,
+        explorer_folder_clicks: 2,
         ..Preferences::default()
     };
 
@@ -255,6 +267,12 @@ fn general_preferences_round_trip() {
     assert!(!restored.single_click_previews);
     assert!(restored.search_open_files_directly);
     assert!(restored.reduce_motion);
+    assert_eq!(restored.list_file_clicks, 1);
+    assert_eq!(restored.list_folder_clicks, 2);
+    assert_eq!(restored.grid_file_clicks, 1);
+    assert_eq!(restored.grid_folder_clicks, 2);
+    assert_eq!(restored.explorer_file_clicks, 1);
+    assert_eq!(restored.explorer_folder_clicks, 2);
 }
 
 #[test]

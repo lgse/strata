@@ -280,10 +280,10 @@ fn quick_preview_is_offered_only_for_supported_files() {
     let supported = entry("photo.png", crate::model::EntryKind::File);
     let unsupported = entry("archive.zip", crate::model::EntryKind::File);
     let directory = entry("photos", crate::model::EntryKind::Directory);
-    assert!(entry_responds_to_single_click(&supported, true));
-    assert!(!entry_responds_to_single_click(&supported, false));
-    assert!(!entry_responds_to_single_click(&unsupported, true));
-    assert!(entry_responds_to_single_click(&directory, false));
+    assert!(entry_responds_to_preview_click(&supported, true));
+    assert!(!entry_responds_to_preview_click(&supported, false));
+    assert!(!entry_responds_to_preview_click(&unsupported, true));
+    assert!(!entry_responds_to_preview_click(&directory, true));
 }
 
 #[test]
@@ -529,6 +529,33 @@ fn pointer_preview_handler_ignores_double_click_activation() {
     assert!(!should_preview_pointer_press(1, true, false, false));
     assert!(!should_preview_pointer_press(1, false, true, false));
     assert!(!should_preview_pointer_press(1, false, false, true));
+}
+
+#[test]
+fn pointer_activation_respects_entry_type_click_count_and_modifiers() {
+    let activation = ClickActivation {
+        files: ClickCount::Two,
+        folders: ClickCount::One,
+    };
+
+    assert!(should_activate_single_click(
+        1, true, activation, false, false, false
+    ));
+    assert!(!should_activate_single_click(
+        1, false, activation, false, false, false
+    ));
+    assert!(!should_activate_single_click(
+        2, true, activation, false, false, false
+    ));
+    assert!(!should_activate_single_click(
+        1, true, activation, true, false, false
+    ));
+    assert!(!should_activate_single_click(
+        1, true, activation, false, true, false
+    ));
+    assert!(!should_activate_single_click(
+        1, true, activation, false, false, true
+    ));
 }
 
 #[test]

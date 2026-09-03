@@ -28,7 +28,7 @@ use crate::{
 
 use super::{
     blur::BlurBin,
-    browser_modes::{BrowserDensity, BrowserMode, ModeViews},
+    browser_modes::{BrowserDensity, BrowserMode, ClickActivation, ClickCount, ModeViews},
     controls::{
         ModalTone, form_check_button, form_entry, form_label, form_password_entry, menu_option,
         message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
@@ -288,6 +288,7 @@ pub(super) struct ViewState {
     peek_behavior: PeekBehavior,
     peek_enabled: Cell<bool>,
     single_click_previews: Cell<bool>,
+    columns_click_activation: Cell<ClickActivation>,
     active_rename: RefCell<Option<ActiveRename>>,
     active_new_entry: RefCell<Option<ActiveNewEntry>>,
     delete_progress: RefCell<Option<DeleteProgressView>>,
@@ -435,6 +436,7 @@ impl BrowserView {
             peek_behavior,
             peek_enabled: Cell::new(true),
             single_click_previews: Cell::new(true),
+            columns_click_activation: Cell::new(ClickActivation::default()),
             active_rename: RefCell::new(None),
             active_new_entry: RefCell::new(None),
             delete_progress: RefCell::new(None),
@@ -758,6 +760,17 @@ impl BrowserView {
             .mode_views
             .borrow()
             .set_single_click_previews(enabled);
+    }
+
+    pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {
+        if mode == BrowserMode::Columns {
+            self.state.columns_click_activation.set(activation);
+        } else {
+            self.state
+                .mode_views
+                .borrow()
+                .set_click_activation(mode, activation);
+        }
     }
 
     pub fn create_new_folder(&self) {
@@ -4361,16 +4374,28 @@ impl ViewState {
                 if let (Some(state), Some(source_position)) =
                     (weak_state_for_click.upgrade(), source_position)
                 {
-                    // GtkListView owns double-click activation through its `activate`
-                    // signal. This gesture only handles selection and single-click previews;
-                    // activating here as well would open files twice.
-                    if should_preview_pointer_press(press_count, control, shift, preserve_group) {
-                        let entry = state.browser.entry_at(depth, source_position);
-                        if entry.as_ref().is_some_and(|entry| {
-                            entry_responds_to_single_click(entry, state.single_click_previews.get())
-                        }) {
-                            state.browser.preview(depth, source_position);
-                        }
+                    let entry = state.browser.entry_at(depth, source_position);
+                    if entry.as_ref().is_some_and(|entry| {
+                        should_activate_single_click(
+                            press_count,
+                            entry.is_directory(),
+                            state.columns_click_activation.get(),
+                            control,
+                            shift,
+                            preserve_group,
+                        )
+                    }) {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        state.browser.activate(depth, source_position);
+                    } else if should_preview_pointer_press(
+                        press_count,
+                        control,
+                        shift,
+                        preserve_group,
+                    ) && entry.as_ref().is_some_and(|entry| {
+                        entry_responds_to_preview_click(entry, state.single_click_previews.get())
+                    }) {
+                        state.browser.preview(depth, source_position);
                     }
                 }
             });
@@ -5721,8 +5746,8 @@ pub(super) fn install_item_context_menu(
     widget.add_controller(click);
 }
 
-fn entry_responds_to_single_click(entry: &FileEntry, previews_enabled: bool) -> bool {
-    entry.is_directory() || (previews_enabled && entry_supports_quick_preview(entry))
+fn entry_responds_to_preview_click(entry: &FileEntry, previews_enabled: bool) -> bool {
+    previews_enabled && !entry.is_directory() && entry_supports_quick_preview(entry)
 }
 
 pub(super) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
@@ -6536,6 +6561,22 @@ fn set_location_files_clipboard(locations: &[Location]) -> bool {
             )))
             .is_ok()
     })
+}
+
+fn should_activate_single_click(
+    press_count: i32,
+    is_directory: bool,
+    activation: ClickActivation,
+    control: bool,
+    shift: bool,
+    preserve_group: bool,
+) -> bool {
+    let configured = if is_directory {
+        activation.folders
+    } else {
+        activation.files
+    };
+    press_count == 1 && configured == ClickCount::One && !control && !shift && !preserve_group
 }
 
 fn should_preview_pointer_press(

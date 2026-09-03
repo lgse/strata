@@ -111,6 +111,18 @@ struct Preferences {
     browser_mode: String,
     #[serde(default = "default_browser_density")]
     browser_density: String,
+    #[serde(default = "default_file_clicks")]
+    list_file_clicks: u8,
+    #[serde(default = "default_folder_clicks")]
+    list_folder_clicks: u8,
+    #[serde(default = "default_file_clicks")]
+    grid_file_clicks: u8,
+    #[serde(default = "default_folder_clicks")]
+    grid_folder_clicks: u8,
+    #[serde(default = "default_file_clicks")]
+    explorer_file_clicks: u8,
+    #[serde(default = "default_folder_clicks")]
+    explorer_folder_clicks: u8,
     #[serde(default = "default_sidebar_order")]
     sidebar_order: Vec<String>,
     #[serde(default)]
@@ -146,6 +158,12 @@ impl Default for Preferences {
             reduce_motion: false,
             browser_mode: default_browser_mode(),
             browser_density: default_browser_density(),
+            list_file_clicks: default_file_clicks(),
+            list_folder_clicks: default_folder_clicks(),
+            grid_file_clicks: default_file_clicks(),
+            grid_folder_clicks: default_folder_clicks(),
+            explorer_file_clicks: default_file_clicks(),
+            explorer_folder_clicks: default_folder_clicks(),
             sidebar_order: default_sidebar_order(),
             show_hidden: false,
             folders_first: true,
@@ -178,6 +196,14 @@ fn default_video_preview_backend() -> String {
 
 fn default_browser_density() -> String {
     "compact".to_owned()
+}
+
+fn default_file_clicks() -> u8 {
+    2
+}
+
+fn default_folder_clicks() -> u8 {
+    1
 }
 
 fn default_sidebar_order() -> Vec<String> {
@@ -437,6 +463,56 @@ impl ThemeManager {
             super::browser_modes::BrowserDensity::Airy => "airy",
         }
         .to_owned();
+        self.save_preferences();
+    }
+
+    pub fn click_activation(
+        &self,
+        mode: super::browser_modes::BrowserMode,
+    ) -> super::browser_modes::ClickActivation {
+        use super::browser_modes::{BrowserMode, ClickActivation, ClickCount};
+
+        let preferences = self.preferences.borrow();
+        let (files, folders) = match mode {
+            BrowserMode::Columns => (preferences.list_file_clicks, preferences.list_folder_clicks),
+            BrowserMode::Grid => (preferences.grid_file_clicks, preferences.grid_folder_clicks),
+            BrowserMode::Explorer => (
+                preferences.explorer_file_clicks,
+                preferences.explorer_folder_clicks,
+            ),
+        };
+        let defaults = ClickActivation::default();
+        ClickActivation {
+            files: ClickCount::from_stored(files).unwrap_or(defaults.files),
+            folders: ClickCount::from_stored(folders).unwrap_or(defaults.folders),
+        }
+    }
+
+    pub fn set_click_activation(
+        &self,
+        mode: super::browser_modes::BrowserMode,
+        activation: super::browser_modes::ClickActivation,
+    ) {
+        use super::browser_modes::BrowserMode;
+
+        let mut preferences = self.preferences.borrow_mut();
+        let files = activation.files.stored();
+        let folders = activation.folders.stored();
+        match mode {
+            BrowserMode::Columns => {
+                preferences.list_file_clicks = files;
+                preferences.list_folder_clicks = folders;
+            }
+            BrowserMode::Grid => {
+                preferences.grid_file_clicks = files;
+                preferences.grid_folder_clicks = folders;
+            }
+            BrowserMode::Explorer => {
+                preferences.explorer_file_clicks = files;
+                preferences.explorer_folder_clicks = folders;
+            }
+        }
+        drop(preferences);
         self.save_preferences();
     }
 
