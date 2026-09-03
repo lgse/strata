@@ -527,6 +527,9 @@ impl Browser {
 
     pub fn begin_peek(self: &Rc<Self>, origin_depth: usize, location: Location) {
         self.close_peek();
+        if self.is_open_child(origin_depth, &location) {
+            return;
+        }
         let request_id = self.new_request_id();
         if !self
             .state
@@ -1403,7 +1406,7 @@ impl Browser {
         self.activate_focused();
     }
 
-    fn is_open_child(&self, parent_depth: usize, location: &Location) -> bool {
+    pub(crate) fn is_open_child(&self, parent_depth: usize, location: &Location) -> bool {
         parent_depth
             .checked_add(1)
             .and_then(|depth| self.location_at(depth))

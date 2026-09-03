@@ -4916,6 +4916,11 @@ impl ViewState {
         }
         cancel_source(&self.pending_peek);
         cancel_source(&self.pending_close);
+        if self.browser.is_open_child(origin_depth, &location) {
+            self.peek_anchor.take();
+            self.browser.close_peek();
+            return;
+        }
         if self
             .peek
             .borrow()

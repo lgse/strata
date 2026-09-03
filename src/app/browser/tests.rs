@@ -1299,6 +1299,27 @@ fn peeking_streams_results_without_committing_navigation_history() {
 }
 
 #[test]
+fn an_already_open_child_is_not_peeked() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event));
+    let child = Location::local("/fixture/child");
+    browser.navigate(Location::local("/fixture"));
+    browser.descend(0, child.clone());
+    events.borrow_mut().clear();
+
+    browser.begin_peek(0, child);
+
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::PeekStarted { .. }))
+    );
+}
+
+#[test]
 fn committing_a_peek_descends_and_creates_history() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
