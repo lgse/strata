@@ -998,6 +998,24 @@ menubutton.form-control:disabled > button {
   color: @theme_accent;
 }
 
+.click-activation-options {
+  padding: 6px 10px;
+}
+
+.click-activation-row {
+  min-height: 36px;
+}
+
+.click-activation-row + .click-activation-row {
+  border-top: 1px solid alpha(@theme_border, 0.18);
+  padding-top: 4px;
+}
+
+.click-activation-control .segmented-control-option {
+  min-height: 28px;
+  padding: 2px 8px;
+}
+
 .release-notes-card {
   background: alpha(@theme_bg, 0.55);
   border: 1px solid alpha(@theme_border, 0.24);
