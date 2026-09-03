@@ -19,7 +19,8 @@ use crate::{
     model::{FileEntry, Location, MetadataValue, SortDirection, SortKey},
 };
 
-const EXPLORER_COLUMN_WIDTHS: [i32; 4] = [600, 90, 120, 150];
+const EXPLORER_COLUMN_WIDTHS: [i32; 4] = [160, 90, 120, 150];
+const EXPLORER_COLUMN_MIN_WIDTHS: [i32; 4] = [160, 70, 80, 110];
 const DEFAULT_GRID_THUMBNAIL_SIZE: i32 = 64;
 const MIN_GRID_THUMBNAIL_SIZE: i32 = 64;
 const MAX_GRID_THUMBNAIL_SIZE: i32 = 256;
@@ -28,6 +29,7 @@ const MAX_GRID_THUMBNAIL_SIZE: i32 = 256;
 struct ExplorerColumnLayout {
     widths: Rc<Vec<Cell<i32>>>,
     cells: Rc<Vec<RefCell<Vec<glib::WeakRef<gtk::Widget>>>>>,
+    name_manually_resized: Rc<Cell<bool>>,
 }
 
 impl ExplorerColumnLayout {
@@ -35,6 +37,7 @@ impl ExplorerColumnLayout {
         Self {
             widths: Rc::new(EXPLORER_COLUMN_WIDTHS.into_iter().map(Cell::new).collect()),
             cells: Rc::new((0..4).map(|_| RefCell::new(Vec::new())).collect()),
+            name_manually_resized: Rc::new(Cell::new(false)),
         }
     }
 }
@@ -875,7 +878,7 @@ fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButt
         .child(&row)
         .build();
     let button = gtk::ToggleButton::builder().tooltip_text(tooltip).build();
-    button.set_child(Some(&crate::assets::text_icon(
+    button.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::FUNNEL,
         16,
     )));
@@ -940,7 +943,7 @@ fn grid_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> Gr
         .build();
     thumbnail_menu.add_css_class("column-header-action");
     thumbnail_menu.add_css_class("grid-thumbnail-menu");
-    thumbnail_menu.set_child(Some(&crate::assets::text_icon(
+    thumbnail_menu.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::PICTURES,
         16,
     )));
@@ -1372,7 +1375,7 @@ fn explorer_headings(
         let label = gtk::Label::new(Some(text));
         label.set_xalign(0.0);
         label.set_hexpand(true);
-        let arrow = crate::assets::text_icon(
+        let arrow = crate::assets::primary_icon(
             if preferences.sort_direction == SortDirection::Ascending {
                 crate::assets::icons::ARROW_UP
             } else {
@@ -1403,7 +1406,7 @@ fn explorer_headings(
             for (arrow_key, arrow) in arrows_for_click.borrow().iter() {
                 arrow.set_visible(*arrow_key == key);
                 if *arrow_key == key {
-                    crate::assets::set_text_icon(
+                    crate::assets::set_primary_icon(
                         arrow,
                         if direction == SortDirection::Ascending {
                             crate::assets::icons::ARROW_UP
@@ -1434,7 +1437,8 @@ fn register_explorer_column_cell(
     widget: &impl IsA<gtk::Widget>,
 ) {
     widget.set_width_request(columns.widths[index].get());
-    widget.set_hexpand(false);
+    // Until the user resizes it, Name absorbs space left after the fixed metadata columns.
+    widget.set_hexpand(index == 0 && !columns.name_manually_resized.get());
     let weak = glib::WeakRef::new();
     weak.set(Some(widget.upcast_ref()));
     columns.cells[index].borrow_mut().push(weak);
@@ -1442,11 +1446,17 @@ fn register_explorer_column_cell(
 
 fn set_explorer_column_width(columns: &ExplorerColumnLayout, index: usize, width: i32) {
     columns.widths[index].set(width);
+    if index == 0 {
+        columns.name_manually_resized.set(true);
+    }
     columns.cells[index].borrow_mut().retain(|weak| {
         let Some(widget) = weak.upgrade() else {
             return false;
         };
         widget.set_width_request(width);
+        if index == 0 {
+            widget.set_hexpand(false);
+        }
         true
     });
 }
@@ -1484,7 +1494,11 @@ fn column_resize_handle(
                 .map(|widget| super::browser::max_child_natural_width(&widget))
                 .max()
                 .unwrap_or(initial_width);
-            set_explorer_column_width(&columns_for_autofit, index, natural.max(64));
+            set_explorer_column_width(
+                &columns_for_autofit,
+                index,
+                explorer_column_width(index, natural),
+            );
             gesture.set_state(gtk::EventSequenceState::Denied);
             return;
         }
@@ -1493,7 +1507,7 @@ fn column_resize_handle(
             .iter()
             .find_map(glib::WeakRef::upgrade)
             .map_or(initial_width, |widget| widget.width());
-        starting_for_begin.set(width.max(64));
+        starting_for_begin.set(explorer_column_width(index, width));
         pointer_for_begin.set(
             gesture
                 .current_event()
@@ -1513,10 +1527,18 @@ fn column_resize_handle(
             .zip(pointer_x)
             .map_or(fallback_offset_x, |(start, current)| current - start);
         let width = (f64::from(starting_width.get()) + offset_x).round() as i32;
-        set_explorer_column_width(&columns_for_update, index, width.max(64));
+        set_explorer_column_width(
+            &columns_for_update,
+            index,
+            explorer_column_width(index, width),
+        );
     });
     handle.add_controller(resize);
     handle
+}
+
+fn explorer_column_width(index: usize, width: i32) -> i32 {
+    width.max(EXPLORER_COLUMN_MIN_WIDTHS[index])
 }
 
 fn explorer_navigation(browser: &Rc<Browser>) -> gtk::Box {
@@ -1546,7 +1568,7 @@ fn explorer_navigation(browser: &Rc<Browser>) -> gtk::Box {
             .tooltip_text(tooltip)
             .sensitive(available)
             .build();
-        button.set_child(Some(&crate::assets::text_icon(icon, 16)));
+        button.set_child(Some(&crate::assets::primary_icon(icon, 16)));
         button.add_css_class("explorer-navigation-button");
         let weak_browser = Rc::downgrade(browser);
         button.connect_clicked(move |_| {
@@ -1781,7 +1803,7 @@ fn build_explorer_pane(
             name.set_label(&entry.display_name);
             size.set_label(&entry_size(&entry));
             kind.set_label(entry_type(&entry));
-            modified.set_label(&entry_modified(&entry));
+            crate::util::set_modified_date(&modified, Some(&entry), "—");
         } else {
             row.remove_css_class("cut-item");
             let icon_name = if entry_kind_for_bind.get() {
@@ -1794,14 +1816,14 @@ fn build_explorer_pane(
             field.set_visible(true);
             size.set_label("");
             kind.set_label("");
-            modified.set_label("");
+            crate::util::set_modified_date(&modified, None, "");
         }
     });
     factory.connect_unbind(|_, item| super::thumbnail::cancel_list_item_thumbnails(item));
     let view = gtk::ListView::new(Some(selection.clone()), Some(factory));
     view.add_css_class("explorer-list");
     view.set_enable_rubberband(false);
-    view.set_single_click_activate(false);
+    view.set_single_click_activate(true);
     let weak_browser = Rc::downgrade(&browser);
     let source_for_activation = model.clone();
     let view_model_for_activation = view_model_object.clone();
@@ -1813,7 +1835,7 @@ fn build_explorer_pane(
                 position,
             )
         {
-            browser.activate_in_place(depth, position);
+            browser.activate(depth, position);
         }
     });
     connect_selection(
@@ -2568,17 +2590,6 @@ fn entry_type(entry: &FileEntry) -> &'static str {
     }
 }
 
-fn entry_modified(entry: &FileEntry) -> String {
-    match entry.modified_unix_seconds {
-        MetadataValue::Known(seconds) => glib::DateTime::from_unix_local(seconds)
-            .ok()
-            .and_then(|date| date.format("%Y-%m-%d %H:%M").ok())
-            .map(|value| value.to_string())
-            .unwrap_or_default(),
-        MetadataValue::Unknown | MetadataValue::Unavailable => String::new(),
-    }
-}
-
 fn bitset_positions(bitset: &gtk::Bitset) -> Vec<usize> {
     let Some((iterator, first)) = gtk::BitsetIter::init_first(bitset) else {
         return Vec::new();
@@ -2588,3 +2599,6 @@ fn bitset_positions(bitset: &gtk::Bitset) -> Vec<usize> {
         .map(|position| position as usize)
         .collect()
 }
+
+#[cfg(test)]
+mod tests;

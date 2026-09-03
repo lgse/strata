@@ -1249,6 +1249,7 @@ impl Browser {
             return;
         };
         if entry.is_directory() && self.is_open_child(depth, &entry.location) {
+            self.close_column(depth + 1);
             return;
         }
         self.select(depth, position);
@@ -1272,6 +1273,7 @@ impl Browser {
             .entry_at(depth, position)
             .is_some_and(|entry| entry.is_directory() && self.is_open_child(depth, &entry.location))
         {
+            self.close_column(depth + 1);
             return;
         }
         self.select(depth, position);

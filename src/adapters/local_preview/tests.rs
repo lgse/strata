@@ -29,6 +29,7 @@ fn renders_requested_pdf_pages_within_the_pixel_budget() {
         path.to_string_lossy().into_owned(),
         output.to_string_lossy().into_owned(),
         "1".to_owned(),
+        "software".to_owned(),
     ])
     .expect("render second PDF page");
     let png = fs::read(&output).expect("read rendered page");

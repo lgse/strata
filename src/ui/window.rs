@@ -14,7 +14,7 @@ use crate::{
     adapters::{LocalFileSource, LocalOperationProvider, LocalPreviewProvider, location_for_file},
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, MetadataValue},
-    services::sanitize_uri_credentials,
+    services::{BuildKind, ReleaseMetadata, sanitize_uri_credentials},
 };
 
 use super::{
@@ -67,7 +67,10 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     browser.set_auto_refresh_interval(theme_manager.auto_refresh_interval());
     let controller = browser.browser();
 
-    let preview = PreviewDrawer::new(Rc::new(LocalPreviewProvider));
+    let preview_preferences = theme_manager.clone();
+    let preview = PreviewDrawer::new(Rc::new(LocalPreviewProvider::new(Rc::new(move || {
+        preview_preferences.media_preview_backend()
+    }))));
     let preview_for_selection = preview.clone();
     let weak_controller = Rc::downgrade(&controller);
     controller.observe(move |event| match event {
@@ -109,20 +112,23 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     let search_button = gtk::Button::builder()
         .tooltip_text("Search (Ctrl+K)")
         .build();
-    search_button.set_child(Some(&crate::assets::text_icon(
+    search_button.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::SEARCH,
         20,
     )));
     search_button.add_css_class("header-action");
     let appearance = build_appearance_menu(&browser, &controller, theme_manager.clone());
     let settings = gtk::Button::builder().tooltip_text("Settings").build();
-    settings.set_child(Some(&crate::assets::text_icon(
+    settings.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::SETTINGS,
         20,
     )));
     settings.add_css_class("header-action");
     let close_window = gtk::Button::builder().tooltip_text("Close window").build();
-    close_window.set_child(Some(&crate::assets::text_icon(crate::assets::icons::X, 20)));
+    close_window.set_child(Some(&crate::assets::primary_icon(
+        crate::assets::icons::X,
+        20,
+    )));
     close_window.add_css_class("header-action");
     let closing_window = window.clone();
     close_window.connect_clicked(move |_| closing_window.close());
@@ -319,19 +325,35 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     let available_update = Rc::new(RefCell::new(
         None::<(crate::services::ReleaseMetadata, String)>,
     ));
+    // Process-wide, not per-window: shared across the settings page's
+    // update/rollback rows, this dialog, and every other open window, so at
+    // most one install ever runs at a time -- see
+    // `settings::install_guard`.
+    let install_guard = super::settings::install_guard();
     let available_for_click = available_update.clone();
     let update_parent = window.clone().upcast::<gtk::Window>();
+    let install_guard_for_dialog = install_guard.clone();
     update_button.connect_clicked(move |_| {
         let Some((release, download_url)) = available_for_click.borrow().clone() else {
             return;
         };
-        super::settings::show_update_dialog(&update_parent, &release, download_url);
+        super::settings::show_update_dialog(
+            &update_parent,
+            &release,
+            download_url,
+            install_guard_for_dialog.clone(),
+        );
     });
     let available_for_notice = available_update.clone();
     let update_notice: super::settings::UpdateNoticeHandler = Rc::new(move |release| {
         if let Some((release, download_url)) = release {
             update_button.set_tooltip_text(Some(&format!("Install Strata v{}", release.version)));
-            update_label.set_text(&format!("v{} available", release.version));
+            update_label.set_text(&sidebar_update_label(&release));
+            if release.kind == BuildKind::Stable {
+                update_button.remove_css_class("preview");
+            } else {
+                update_button.add_css_class("preview");
+            }
             *available_for_notice.borrow_mut() = Some((release, download_url));
             update_area.set_visible(true);
         } else {
@@ -345,6 +367,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         &blurred_root,
         theme_manager,
         update_notice,
+        install_guard,
     );
     window_overlay.add_overlay(&settings_layer);
     let shown_settings = settings_layer.clone();
@@ -933,11 +956,11 @@ fn build_appearance_menu(
     content.append(&hidden);
 
     popover.set_child(Some(&content));
-    let icon = crate::assets::text_icon(crate::assets::icons::LIST, 20);
+    let icon = crate::assets::primary_icon(crate::assets::icons::LIST, 20);
     button.set_child(Some(&icon));
     button.add_css_class("header-action");
     button.connect_active_notify(move |button| {
-        crate::assets::set_text_icon(
+        crate::assets::set_primary_icon(
             &icon,
             if button.is_active() {
                 crate::assets::icons::LIST_ACTIVE
@@ -1621,6 +1644,22 @@ fn sidebar_button(icon: &str, name: &str) -> gtk::Button {
 fn navigate_to_gio_file(browser: &Rc<Browser>, file: &gio::File) {
     if let Some(location) = location_for_file(file) {
         browser.navigate(location);
+    }
+}
+
+/// The sidebar update-notice pill's label text: `v{version} available` for a
+/// stable offer, or `v{version} ({label}) available` for a prerelease --
+/// e.g. `v0.5.0-rc.1 (Release candidate) available` -- so a preview build
+/// offer is never mistaken for an ordinary stable update at a glance.
+///
+/// No channel guard belongs here: `check_for_updates` is already
+/// channel-filtered upstream, so a Stable user's `release` can never carry
+/// a prerelease kind in the first place.
+fn sidebar_update_label(release: &ReleaseMetadata) -> String {
+    if release.kind == BuildKind::Stable {
+        format!("v{} available", release.version)
+    } else {
+        format!("v{} ({}) available", release.version, release.kind.label())
     }
 }
 

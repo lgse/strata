@@ -2,12 +2,47 @@
 
 use std::path::Path;
 
+use crate::services::{BuildKind, ReleaseMetadata};
+
 use super::{
     MouseHistoryAction, PinStatus, is_open_terminal_shortcut, is_sidebar_focus_shortcut,
     is_smb_location, is_standard_place_location, mouse_history_action, parse_pinned_places,
     pin_status, remove_pinned_place, reorder_places, serialize_pinned_places,
-    should_show_standard_place, vim_focus_direction,
+    should_show_standard_place, sidebar_update_label, vim_focus_direction,
 };
+
+fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
+    ReleaseMetadata {
+        version: version.to_owned(),
+        url: "https://example.test/release".to_owned(),
+        notes: String::new(),
+        note_blocks: Vec::new(),
+        kind,
+        tag: format!("v{version}"),
+        published_at: None,
+        commit: None,
+    }
+}
+
+#[test]
+fn sidebar_update_label_stays_plain_for_a_stable_release() {
+    assert_eq!(
+        sidebar_update_label(&release("0.6.0", BuildKind::Stable)),
+        "v0.6.0 available"
+    );
+}
+
+#[test]
+fn sidebar_update_label_names_the_build_kind_for_a_prerelease() {
+    assert_eq!(
+        sidebar_update_label(&release("0.6.0-rc.1", BuildKind::Rc)),
+        "v0.6.0-rc.1 (Release candidate) available"
+    );
+    assert_eq!(
+        sidebar_update_label(&release("0.6.0-nightly.20260901", BuildKind::Nightly)),
+        "v0.6.0-nightly.20260901 (Nightly) available"
+    );
+}
 
 #[test]
 fn mouse_history_buttons_map_to_navigation_actions() {

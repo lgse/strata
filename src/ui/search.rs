@@ -89,7 +89,7 @@ impl SearchDialog {
         let list = gtk::ListBox::new();
         list.add_css_class("search-results");
         list.set_selection_mode(gtk::SelectionMode::Single);
-        list.set_activate_on_single_click(false);
+        list.set_activate_on_single_click(true);
         let scroller = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
@@ -110,7 +110,7 @@ impl SearchDialog {
         let navigation = gtk::Label::new(Some("↑↓  navigate"));
         let open = gtk::Box::new(gtk::Orientation::Horizontal, 5);
         open.set_valign(gtk::Align::Center);
-        open.append(&crate::assets::text_icon(
+        open.append(&crate::assets::primary_icon(
             crate::assets::icons::CORNER_DOWN_LEFT,
             13,
         ));

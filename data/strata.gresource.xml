@@ -51,5 +51,6 @@
     <file>icons/scalable/actions/strata-unplug.svg</file>
     <file>icons/scalable/actions/strata-video.svg</file>
     <file>icons/scalable/actions/strata-x.svg</file>
+    <file>icons/scalable/apps/io.github.lgse.Strata.svg</file>
   </gresource>
 </gresources>

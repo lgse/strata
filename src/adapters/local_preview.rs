@@ -6,18 +6,28 @@ use gtk::{gio, glib, prelude::*};
 
 use crate::{
     model::Location,
-    sandbox::{Cancellation, ParseOperation},
+    sandbox::{Cancellation, MediaPreviewBackend, ParseOperation},
     services::{
         LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
         content_family, has_plain_text_extension,
     },
 };
 
-#[derive(Default)]
-pub struct LocalPreviewProvider;
+pub struct LocalPreviewProvider {
+    media_preview_backend: Rc<dyn Fn() -> MediaPreviewBackend>,
+}
+
+impl LocalPreviewProvider {
+    pub(crate) fn new(media_preview_backend: Rc<dyn Fn() -> MediaPreviewBackend>) -> Self {
+        Self {
+            media_preview_backend,
+        }
+    }
+}
 
 impl PreviewProvider for LocalPreviewProvider {
     fn load(&self, request: PreviewRequest, emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle {
+        let media_preview_backend = (self.media_preview_backend)();
         let request_id = request.id;
         let entry = request.entry.clone();
         let cancellation = Cancellation::default();
@@ -78,7 +88,13 @@ impl PreviewProvider for LocalPreviewProvider {
                 let value = request.pdf_page;
                 let cancellation = cancellation_for_task.clone();
                 content = match gio::spawn_blocking(move || {
-                    crate::sandbox::parse(&path, operation, value, &cancellation)
+                    crate::sandbox::parse(
+                        &path,
+                        operation,
+                        value,
+                        media_preview_backend,
+                        &cancellation,
+                    )
                 })
                 .await
                 {
