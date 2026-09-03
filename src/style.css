@@ -2065,7 +2065,8 @@ menubutton.column-header-action > button:active {
   opacity: 0.46;
 }
 
-.item-context-icon {
+.item-context-icon,
+.folder-context-icon {
   opacity: 0.72;
 }
 
