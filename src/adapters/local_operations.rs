@@ -256,6 +256,75 @@ async fn copy_new_recursively(
     result
 }
 
+type MoveAttempt = Rc<
+    dyn Fn(
+        gio::File,
+        gio::File,
+        gio::Cancellable,
+    ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>>,
+>;
+
+/// Moves `source` to `target` via `attempt_move`, falling back to a safe
+/// recursive copy-then-delete when that attempt fails with
+/// [`gio::IOErrorEnum::WouldRecurse`].
+///
+/// `g_file_move` renames when it can, but for a directory it never silently
+/// recurses to cross a filesystem boundary -- it returns `WouldRecurse`
+/// instead of doing a partial, unsafe copy. [`copy_new_recursively`] already
+/// implements that recursive copy safely (staged in a sibling, then renamed
+/// into place, with the staging area cleaned up on any failure), so the
+/// fallback here reuses it rather than duplicating that staging logic; the
+/// source is only deleted once the copy has fully and durably succeeded.
+///
+/// `attempt_move` is a parameter, mirroring [`replace_local_with`], so a test
+/// can inject a `WouldRecurse` (or any other) failure without needing an
+/// actual second filesystem to reproduce it.
+async fn move_local_with(
+    source: gio::File,
+    target: gio::File,
+    cancellable: gio::Cancellable,
+    attempt_move: MoveAttempt,
+) -> Result<(), glib::Error> {
+    let result = attempt_move(source.clone(), target.clone(), cancellable.clone()).await;
+    match result {
+        Err(error) if error.matches(gio::IOErrorEnum::WouldRecurse) => {
+            copy_new_recursively(source.clone(), target, cancellable.clone()).await?;
+            permanently_delete(source, true, cancellable).await
+        }
+        other => other,
+    }
+}
+
+async fn move_local(
+    source: gio::File,
+    target: gio::File,
+    cancellable: gio::Cancellable,
+) -> Result<(), glib::Error> {
+    move_local_with(
+        source,
+        target,
+        cancellable,
+        Rc::new(|source, target, cancellable| {
+            Box::pin(async move {
+                let flags =
+                    gio::FileCopyFlags::ALL_METADATA | gio::FileCopyFlags::NOFOLLOW_SYMLINKS;
+                await_cancellable(&source, &cancellable, move |source, cancellable, result| {
+                    source.move_async(
+                        &target,
+                        flags,
+                        glib::Priority::DEFAULT,
+                        Some(cancellable),
+                        None,
+                        move |output| result.resolve(output),
+                    );
+                })
+                .await
+            })
+        }),
+    )
+    .await
+}
+
 enum StagedSibling {
     File(tempfile::TempPath),
     Directory(tempfile::TempDir),
@@ -873,23 +942,7 @@ impl OperationProvider for LocalOperationProvider {
                     )
                     .await
                 } else if request.move_sources {
-                    let flags =
-                        gio::FileCopyFlags::ALL_METADATA | gio::FileCopyFlags::NOFOLLOW_SYMLINKS;
-                    await_cancellable(
-                        &source,
-                        &operation_cancellable,
-                        move |source, cancellable, result| {
-                            source.move_async(
-                                &target,
-                                flags,
-                                glib::Priority::DEFAULT,
-                                Some(cancellable),
-                                None,
-                                move |output| result.resolve(output),
-                            );
-                        },
-                    )
-                    .await
+                    move_local(source, target, operation_cancellable.clone()).await
                 } else {
                     copy_new_recursively(source, target, operation_cancellable.clone()).await
                 };
@@ -1101,22 +1154,7 @@ impl OperationProvider for LocalOperationProvider {
                             {
                                 affected_locations.insert(parent);
                             }
-                            await_cancellable(
-                                &source,
-                                &operation_cancellable,
-                                move |source, cancellable, result| {
-                                    source.move_async(
-                                        &target,
-                                        gio::FileCopyFlags::ALL_METADATA
-                                            | gio::FileCopyFlags::NOFOLLOW_SYMLINKS,
-                                        glib::Priority::DEFAULT,
-                                        Some(cancellable),
-                                        None,
-                                        move |output| result.resolve(output),
-                                    );
-                                },
-                            )
-                            .await
+                            move_local(source, target, operation_cancellable.clone()).await
                         }
                         None => Err(glib::Error::new(
                             gio::IOErrorEnum::NotFound,
