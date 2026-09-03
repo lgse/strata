@@ -42,6 +42,7 @@ struct PreviewState {
     media_volume_slider: RefCell<Option<gtk::Scale>>,
     media_volume_icon: RefCell<Option<gtk::Image>>,
     media_volume_save: Rc<RefCell<Option<glib::SourceId>>>,
+    media_toggle_mute: RefCell<Option<Rc<dyn Fn()>>>,
     split: RefCell<Option<gtk::Paned>>,
     occupied_width: RefCell<Option<Rc<dyn Fn() -> i32>>>,
     current: RefCell<Option<FileEntry>>,
@@ -137,6 +138,7 @@ impl PreviewDrawer {
             media_volume_slider: RefCell::new(None),
             media_volume_icon: RefCell::new(None),
             media_volume_save: Rc::new(RefCell::new(None)),
+            media_toggle_mute: RefCell::new(None),
             split: RefCell::new(None),
             occupied_width: RefCell::new(None),
             current: RefCell::new(None),
@@ -209,7 +211,7 @@ impl PreviewDrawer {
     }
 
     pub fn has_video(&self) -> bool {
-        self.state.media.borrow().is_some()
+        self.is_open() && self.state.media.borrow().is_some()
     }
 
     pub fn handle_video_key(&self, key: gtk::gdk::Key) -> bool {
@@ -237,27 +239,22 @@ impl PreviewDrawer {
                 } else {
                     -0.1
                 };
-                let volume = (preferences.preview_volume() + delta).clamp(0.0, 1.0);
+                let current_vol = if preferences.preview_muted() {
+                    0.0
+                } else {
+                    preferences.preview_volume()
+                };
+                let volume = (current_vol + delta).clamp(0.0, 1.0);
                 set_preview_volume(&media, &preferences, &slider, icon, volume);
                 true
             }
             gtk::gdk::Key::m | gtk::gdk::Key::M => {
-                let muted = !media.is_muted();
-                if muted {
-                    media.set_volume(0.0);
-                    if let Some(slider) = slider.as_ref() {
-                        slider.set_value(0.0);
-                    }
-                    set_preview_mute(&media, icon, &preferences, true);
+                if let Some(toggle_volume) = self.state.media_toggle_mute.borrow().as_ref() {
+                    toggle_volume();
+                    true
                 } else {
-                    let restored = preferences.preview_volume().max(0.1);
-                    media.set_volume(restored);
-                    if let Some(slider) = slider.as_ref() {
-                        slider.set_value(restored);
-                    }
-                    set_preview_mute(&media, icon, &preferences, false);
+                    false
                 }
-                true
             }
             gtk::gdk::Key::Left | gtk::gdk::Key::Right if media.is_seekable() => {
                 let delta: i64 = if matches!(key, gtk::gdk::Key::Right) {
@@ -574,8 +571,14 @@ impl PreviewState {
                     );
                 } else {
                     let preferences = super::theme::ThemeManager::shared();
-                    media.set_volume(preferences.preview_volume());
-                    media.set_muted(preferences.preview_muted());
+                    let muted = preferences.preview_muted();
+                    let volume = if muted {
+                        0.0
+                    } else {
+                        preferences.preview_volume()
+                    };
+                    media.set_volume(volume);
+                    media.set_muted(muted);
                     self.append_media_controls(
                         &media,
                         &preferences,
@@ -971,7 +974,12 @@ impl PreviewState {
             .build();
         volume_slider.add_css_class("preview-media-volume");
         volume_slider.set_range(0.0, 1.0);
-        volume_slider.set_value(preferences.preview_volume());
+        let initial_slider = if preferences.preview_muted() {
+            0.0
+        } else {
+            preferences.preview_volume()
+        };
+        volume_slider.set_value(initial_slider);
 
         bar.append(&time_label);
         bar.append(&seek);
@@ -1017,7 +1025,7 @@ impl PreviewState {
         });
         seek.add_controller(drag);
 
-        let last_volume = Rc::new(Cell::new(preferences.preview_volume()));
+        let last_volume = Rc::new(Cell::new(preferences.preview_volume().max(0.1)));
         let updating_slider = Rc::new(Cell::new(false));
 
         let toggle_volume = Rc::new({
@@ -1028,7 +1036,7 @@ impl PreviewState {
             let last_volume = last_volume.clone();
             let updating = updating_slider.clone();
             move || {
-                let muted = !media.is_muted();
+                let muted = !preferences.preview_muted();
                 updating.set(true);
                 if muted {
                     if slider.value() > 0.0 {
@@ -1047,6 +1055,7 @@ impl PreviewState {
             }
         });
         let toggle_volume_for_click = toggle_volume.clone();
+        self.media_toggle_mute.replace(Some(toggle_volume));
         volume_toggle.connect_clicked(move |_| {
             toggle_volume_for_click();
         });
@@ -1063,12 +1072,9 @@ impl PreviewState {
                 return;
             }
             let volume = scale.value();
-            if volume > 0.0 {
-                last_volume_for_volume.set(volume);
-            }
             media_for_volume.set_volume(volume);
             let muted = volume == 0.0;
-            if media_for_volume.is_muted() != muted {
+            if preferences_for_volume.preview_muted() != muted {
                 set_preview_mute(
                     &media_for_volume,
                     &icon_for_volume,
@@ -1079,12 +1085,19 @@ impl PreviewState {
             if let Some(prev) = save_slot.borrow_mut().take() {
                 prev.remove();
             }
-            let prefs = preferences_for_save.clone();
-            let id =
-                glib::timeout_add_local_once(std::time::Duration::from_millis(400), move || {
-                    prefs.set_preview_volume(volume);
-                });
-            save_slot.borrow_mut().replace(id);
+            if volume > 0.0 {
+                last_volume_for_volume.set(volume);
+                let save_slot_for_timeout = save_slot.clone();
+                let prefs = preferences_for_save.clone();
+                let id = glib::timeout_add_local_once(
+                    std::time::Duration::from_millis(400),
+                    move || {
+                        save_slot_for_timeout.borrow_mut().take();
+                        prefs.set_preview_volume(volume);
+                    },
+                );
+                save_slot.borrow_mut().replace(id);
+            }
         });
     }
 
@@ -1098,6 +1111,7 @@ impl PreviewState {
         if let Some(id) = self.media_volume_save.borrow_mut().take() {
             id.remove();
         }
+        self.media_toggle_mute.replace(None);
         self.media_volume_slider.replace(None);
         self.media_volume_icon.replace(None);
         clear_box(&self.content);
@@ -1407,12 +1421,14 @@ fn set_preview_volume(
     volume: f64,
 ) {
     media.set_volume(volume);
-    preferences.set_preview_volume(volume);
+    if volume > 0.0 {
+        preferences.set_preview_volume(volume);
+    }
     if let Some(slider) = slider {
         slider.set_value(volume);
     }
     let muted = volume == 0.0;
-    if media.is_muted() != muted {
+    if preferences.preview_muted() != muted {
         set_preview_mute(media, icon, preferences, muted);
     }
 }
