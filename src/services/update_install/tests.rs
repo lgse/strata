@@ -61,6 +61,18 @@ fn omarchy_package_ownership_defers_updates_to_omarchy() {
 }
 
 #[test]
+fn ownership_probe_errors_disable_in_place_updates() {
+    let dir = tempfile::tempdir().expect("create scratch dir");
+    let os_release = dir.path().join("os-release");
+    fs::write(&os_release, "ID=omarchy\n").expect("write os-release");
+
+    assert_eq!(
+        update_method_for(Path::new("/usr/bin/strata"), dir.path(), &os_release),
+        UpdateMethod::Omarchy
+    );
+}
+
+#[test]
 fn non_omarchy_pacman_ownership_defers_updates_to_pacman() {
     let dir = tempfile::tempdir().expect("create scratch dir");
     let probe = ownership_probe(dir.path(), 0);

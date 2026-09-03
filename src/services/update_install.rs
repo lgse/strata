@@ -65,11 +65,18 @@ pub fn update_method() -> UpdateMethod {
 }
 
 fn update_method_for(executable: &Path, pacman: &Path, os_release: &Path) -> UpdateMethod {
-    let package_owned = Command::new(pacman)
+    let package_owned = match Command::new(pacman)
         .args(["--query", "--owns", "--quiet", "--"])
         .arg(executable)
         .output()
-        .is_ok_and(|output| output.status.success());
+    {
+        Ok(output) => output.status.success(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+        Err(error) => {
+            tracing::warn!(%error, "could not query pacman ownership; disabling in-place updates");
+            true
+        }
+    };
     if !package_owned {
         return UpdateMethod::InPlace;
     }
