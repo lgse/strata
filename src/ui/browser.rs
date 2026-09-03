@@ -5052,14 +5052,17 @@ impl ViewState {
             .as_millis()
             .min(u128::from(u32::MAX)) as u32;
         let transition_type = peek_transition(placement.side);
+        let (halign, margin_start, margin_end) =
+            peek_horizontal_layout(placement, self.overlay.width() as f32);
         let revealer = gtk::Revealer::builder()
             .child(&content)
             .transition_type(transition_type)
             .transition_duration(transition_duration)
             .reveal_child(false)
-            .halign(gtk::Align::Start)
+            .halign(halign)
             .valign(gtk::Align::Start)
-            .margin_start(placement.x.round() as i32)
+            .margin_start(margin_start)
+            .margin_end(margin_end)
             .margin_top(row_bounds.y().round().max(0.0) as i32)
             .build();
         self.overlay.add_overlay(&revealer);
@@ -7180,6 +7183,19 @@ fn peek_transition(side: PeekSide) -> gtk::RevealerTransitionType {
     match side {
         PeekSide::Left => gtk::RevealerTransitionType::SlideLeft,
         PeekSide::Right => gtk::RevealerTransitionType::SlideRight,
+    }
+}
+
+fn peek_horizontal_layout(placement: PeekPlacement, viewport_width: f32) -> (gtk::Align, i32, i32) {
+    match placement.side {
+        PeekSide::Right => (gtk::Align::Start, placement.x.round() as i32, 0),
+        PeekSide::Left => (
+            gtk::Align::End,
+            0,
+            (viewport_width - placement.x - PEEK_WIDTH as f32)
+                .max(0.0)
+                .round() as i32,
+        ),
     }
 }
 

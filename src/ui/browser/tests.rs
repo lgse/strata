@@ -233,6 +233,30 @@ fn folder_peek_animation_moves_toward_its_placement_side() {
 }
 
 #[test]
+fn folder_peek_animation_is_anchored_to_the_source_side() {
+    assert_eq!(
+        peek_horizontal_layout(
+            PeekPlacement {
+                x: 408.0,
+                side: PeekSide::Right,
+            },
+            800.0,
+        ),
+        (gtk::Align::Start, 408, 0)
+    );
+    assert_eq!(
+        peek_horizontal_layout(
+            PeekPlacement {
+                x: 36.0,
+                side: PeekSide::Left,
+            },
+            700.0,
+        ),
+        (gtk::Align::End, 0, 408)
+    );
+}
+
+#[test]
 fn folder_peek_accepts_an_exact_viewport_fit() {
     assert_eq!(
         peek_horizontal_placement(0.0, 300.0, 564.0),
