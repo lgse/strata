@@ -5,9 +5,9 @@ use std::path::Path;
 use crate::services::{BuildKind, ReleaseMetadata};
 
 use super::{
-    MouseHistoryAction, PinStatus, is_open_terminal_shortcut, is_sidebar_focus_shortcut,
-    is_smb_location, is_standard_place_location, mouse_history_action, parse_pinned_places,
-    pin_status, remove_pinned_place, reorder_places, serialize_pinned_places,
+    MouseHistoryAction, PinStatus, is_native_editing_shortcut, is_open_terminal_shortcut,
+    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location, mouse_history_action,
+    parse_pinned_places, pin_status, remove_pinned_place, reorder_places, serialize_pinned_places,
     should_show_standard_place, sidebar_update_label, vim_focus_direction,
 };
 
@@ -81,6 +81,24 @@ fn sidebar_focus_shortcut_requires_control_and_shift() {
     assert!(is_sidebar_focus_shortcut(gtk::gdk::Key::b, control | shift));
     assert!(is_sidebar_focus_shortcut(gtk::gdk::Key::B, control | shift));
     assert!(!is_sidebar_focus_shortcut(gtk::gdk::Key::b, control));
+}
+
+#[test]
+fn native_editing_shortcuts_are_left_to_the_focused_widget() {
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+
+    for key in [
+        gtk::gdk::Key::a,
+        gtk::gdk::Key::c,
+        gtk::gdk::Key::v,
+        gtk::gdk::Key::x,
+    ] {
+        assert!(is_native_editing_shortcut(key, control));
+    }
+    assert!(!is_native_editing_shortcut(
+        gtk::gdk::Key::c,
+        control | gtk::gdk::ModifierType::SHIFT_MASK
+    ));
 }
 
 #[test]

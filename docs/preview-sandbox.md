@@ -15,6 +15,8 @@ Image previews are normalized to PNG by the helper. Video previews are limited t
 
 Thumbnail rendering uses one helper at a time and queues at most 64 unique requests. Live rows deferred by a full queue are retried as capacity opens, duplicate requests share one render, rows leaving the view cancel work that has no remaining targets, and failed renders are cached for 30 seconds to prevent retry loops.
 
+Local [Markdown and bounded HTML previews](document-previews.md) are also parsed in-process. Their pure-Rust parsers receive only the bounded source string and cannot initiate filesystem access, network access, JavaScript execution, or subresource loading.
+
 ## Isolation and limits
 
 Strata starts its own executable in a bubblewrap sandbox. The sandbox has:

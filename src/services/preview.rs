@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::{ffi::OsStr, path::Path, rc::Rc};
+use std::{borrow::Cow, ffi::OsStr, path::Path, rc::Rc};
 
 use crate::model::FileEntry;
 
-use super::LoadHandle;
+use super::{DocumentLayout, LoadHandle};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PreviewRequestId(pub u64);
@@ -14,17 +14,36 @@ pub struct PreviewRequest {
     pub id: PreviewRequestId,
     pub entry: FileEntry,
     pub text_byte_limit: usize,
+    pub render_document: bool,
     pub pdf_page: i32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PreviewContent {
-    Text { content: String, truncated: bool },
+    Text {
+        content: String,
+        truncated: bool,
+    },
+    Document {
+        source: String,
+        document: Option<DocumentLayout>,
+        fallback_reason: Option<String>,
+        warnings: Vec<String>,
+        truncated: bool,
+    },
     Image,
     Media,
-    Rasterized { png: Vec<u8> },
-    SandboxedMedia { data: Vec<u8> },
-    Pdf { png: Vec<u8>, page: i32, pages: i32 },
+    Rasterized {
+        png: Vec<u8>,
+    },
+    SandboxedMedia {
+        data: Vec<u8>,
+    },
+    Pdf {
+        png: Vec<u8>,
+        page: i32,
+        pages: i32,
+    },
     Unsupported,
 }
 
@@ -55,6 +74,14 @@ pub(crate) fn has_plain_text_extension(name: &OsStr) -> bool {
         .extension()
         .and_then(OsStr::to_str)
         .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "conf" | "ini"))
+}
+
+pub(crate) fn normalize_preview_text(text: &str) -> Cow<'_, str> {
+    if text.contains('\0') {
+        Cow::Owned(text.replace('\0', "�"))
+    } else {
+        Cow::Borrowed(text)
+    }
 }
 
 pub(crate) fn content_family(content_type: &str) -> PreviewContent {

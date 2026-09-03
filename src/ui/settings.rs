@@ -12,7 +12,7 @@ use gtk::{gdk, glib, prelude::*, subclass::prelude::*};
 use crate::{
     assets::icons,
     services::{
-        self, BuildKind, Channel, InstallRequest, ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes,
+        self, BuildKind, Channel, DocumentBlock, InstallRequest, ReleaseMetadata, ReleaseNotes,
         UpdateCheck, UpdateInstall, Version,
     },
 };
@@ -410,6 +410,18 @@ fn general_page(browser: &BrowserView, manager: Rc<ThemeManager>) -> gtk::Widget
     });
     preferences.append(&preview_row);
 
+    let render_documents = manager.render_documents_by_default();
+    let (render_documents_row, render_documents_toggle) = settings_option(
+        "Render documents by default",
+        "Open Markdown and HTML previews in the rendered view instead of source.",
+        render_documents,
+    );
+    let manager_for_documents = manager.clone();
+    render_documents_toggle.connect_active_notify(move |toggle| {
+        manager_for_documents.set_render_documents_by_default(toggle.is_active());
+    });
+    preferences.append(&render_documents_row);
+
     let direct_open_enabled = manager.search_open_files_directly();
     let (search_open_row, search_open_files) = settings_option(
         "Open search results directly",
@@ -570,23 +582,23 @@ fn set_release_notes_message(notes: &gtk::Box, message: &str) {
     notes.append(&label);
 }
 
-fn set_release_note_blocks(notes: &gtk::Box, blocks: &[ReleaseNoteBlock]) {
+fn set_release_note_blocks(notes: &gtk::Box, blocks: &[DocumentBlock]) {
     clear_release_notes(notes);
     for block in blocks {
         match block {
-            ReleaseNoteBlock::Heading { level, markup } => {
+            DocumentBlock::Heading { level, markup } => {
                 let label = release_notes_label();
                 label.add_css_class("release-notes-heading");
                 label.add_css_class(&format!("level-{level}"));
                 label.set_markup(markup);
                 notes.append(&label);
             }
-            ReleaseNoteBlock::Paragraph(markup) => {
+            DocumentBlock::Paragraph(markup) => {
                 let label = release_notes_label();
                 label.set_markup(markup);
                 notes.append(&label);
             }
-            ReleaseNoteBlock::ListItem {
+            DocumentBlock::ListItem {
                 marker,
                 depth,
                 markup,
@@ -603,17 +615,53 @@ fn set_release_note_blocks(notes: &gtk::Box, blocks: &[ReleaseNoteBlock]) {
                 row.append(&copy);
                 notes.append(&row);
             }
-            ReleaseNoteBlock::Code(markup) => {
+            DocumentBlock::ListChild {
+                depth,
+                kind,
+                markup,
+            } => {
+                let copy = release_notes_label();
+                copy.set_margin_start(
+                    i32::try_from(depth.saturating_add(1).saturating_mul(18)).unwrap_or(i32::MAX),
+                );
+                match kind {
+                    services::DocumentListChildKind::Heading(level) => {
+                        copy.add_css_class("release-notes-heading");
+                        copy.add_css_class(&format!("level-{level}"));
+                        copy.set_markup(markup);
+                    }
+                    services::DocumentListChildKind::Code(_) => {
+                        copy.add_css_class("release-notes-code");
+                        copy.set_markup(&format!("<tt>{markup}</tt>"));
+                    }
+                    services::DocumentListChildKind::Paragraph
+                    | services::DocumentListChildKind::Quote => copy.set_markup(markup),
+                }
+                notes.append(&copy);
+            }
+            DocumentBlock::Code { markup, .. } => {
                 let label = release_notes_label();
                 label.add_css_class("release-notes-code");
                 label.set_markup(&format!("<tt>{markup}</tt>"));
                 notes.append(&label);
             }
-            ReleaseNoteBlock::Rule => {
+            DocumentBlock::Rule => {
                 let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
                 separator.add_css_class("release-notes-rule");
                 notes.append(&separator);
             }
+            DocumentBlock::ListRule { depth } => {
+                let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
+                separator.add_css_class("release-notes-rule");
+                separator.set_margin_start(
+                    i32::try_from(depth.saturating_add(1).saturating_mul(18)).unwrap_or(i32::MAX),
+                );
+                notes.append(&separator);
+            }
+            DocumentBlock::Quote(_)
+            | DocumentBlock::TableRow { .. }
+            | DocumentBlock::ListTableRow { .. }
+            | DocumentBlock::ContainerBoundary => {}
         }
     }
 }

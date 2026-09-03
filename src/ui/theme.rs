@@ -21,6 +21,8 @@ thread_local! {
     static SHARED_MANAGER: RefCell<std::rc::Weak<ThemeManager>> = const { RefCell::new(std::rc::Weak::new()) };
     static SOURCE_STYLE_PATH_INSTALLED: Cell<bool> = const { Cell::new(false) };
     static SOURCE_BUFFERS: RefCell<Vec<glib::WeakRef<sourceview5::Buffer>>> = const { RefCell::new(Vec::new()) };
+    static DOCUMENT_BUFFERS: RefCell<Vec<glib::WeakRef<gtk::TextBuffer>>> = const { RefCell::new(Vec::new()) };
+    static DOCUMENT_VIEWS: RefCell<Vec<glib::WeakRef<super::document_view::DocumentTextView>>> = const { RefCell::new(Vec::new()) };
 }
 
 const THEME_CATALOG: &str = include_str!("../../data/themes/catalog.toml");
@@ -38,6 +40,14 @@ pub struct ThemeTokens {
     pub highlight: String,
     pub border: String,
     pub dim_text: String,
+}
+
+struct SourcePalette {
+    statement: String,
+    string: String,
+    constant: String,
+    type_color: String,
+    preprocessor: String,
 }
 
 #[derive(Clone, Debug)]
@@ -67,6 +77,8 @@ struct Preferences {
     folder_peeking: bool,
     #[serde(default = "default_enabled")]
     single_click_previews: bool,
+    #[serde(default = "default_enabled")]
+    render_documents_by_default: bool,
     #[serde(default)]
     search_open_files_directly: bool,
     #[serde(default)]
@@ -96,6 +108,7 @@ impl Default for Preferences {
             theme: "azure-glow".to_owned(),
             folder_peeking: true,
             single_click_previews: true,
+            render_documents_by_default: true,
             search_open_files_directly: false,
             reduce_motion: false,
             browser_mode: default_browser_mode(),
@@ -216,6 +229,15 @@ impl ThemeManager {
 
     pub fn set_single_click_previews(&self, enabled: bool) {
         self.preferences.borrow_mut().single_click_previews = enabled;
+        self.save_preferences();
+    }
+
+    pub fn render_documents_by_default(&self) -> bool {
+        self.preferences.borrow().render_documents_by_default
+    }
+
+    pub fn set_render_documents_by_default(&self, enabled: bool) {
+        self.preferences.borrow_mut().render_documents_by_default = enabled;
         self.save_preferences();
     }
 
@@ -345,7 +367,7 @@ impl ThemeManager {
     pub fn preview(&self, tokens: &ThemeTokens) {
         if validate_tokens(tokens).is_ok() {
             self.previewing.set(true);
-            self.apply_tokens(tokens);
+            self.apply_tokens(tokens, None);
         }
     }
 
@@ -412,12 +434,13 @@ impl ThemeManager {
     fn apply_selected(&self) {
         if self.follows_omarchy() {
             if let Some(tokens) = load_omarchy_theme() {
-                self.apply_tokens(&tokens);
+                let palette = load_omarchy_source_palette();
+                self.apply_tokens(&tokens, palette.as_ref());
             }
             return;
         }
         if let Some(tokens) = self.current_tokens() {
-            self.apply_tokens(&tokens);
+            self.apply_tokens(&tokens, None);
         }
     }
 
@@ -430,11 +453,13 @@ impl ThemeManager {
             .map(|theme| theme.tokens.clone())
     }
 
-    fn apply_tokens(&self, tokens: &ThemeTokens) {
+    fn apply_tokens(&self, tokens: &ThemeTokens, source_palette: Option<&SourcePalette>) {
         self.provider.load_from_string(&tokens_css(tokens));
         crate::assets::set_primary_icon_color(&tokens.accent);
         crate::assets::set_danger_icon_color(&tokens.danger);
-        install_source_style_scheme(tokens);
+        install_source_style_scheme(tokens, source_palette);
+        style_document_buffers(tokens);
+        style_document_views(tokens);
     }
 
     fn save_preferences(&self) {
@@ -606,6 +631,11 @@ fn load_omarchy_theme() -> Option<ThemeTokens> {
     tokens_from_quattro(name.trim(), &colors)
 }
 
+fn load_omarchy_source_palette() -> Option<SourcePalette> {
+    let colors = fs::read_to_string(omarchy_state_dir().join("theme/colors.toml")).ok()?;
+    source_palette_from_quattro(&colors)
+}
+
 fn tokens_from_quattro(name: &str, source: &str) -> Option<ThemeTokens> {
     let values: toml::Value = toml::from_str(source).ok()?;
     let get = |key: &str| {
@@ -630,6 +660,18 @@ fn tokens_from_quattro(name: &str, source: &str) -> Option<ThemeTokens> {
         text,
         accent,
         danger: get("color1").unwrap_or_else(default_danger),
+    })
+}
+
+fn source_palette_from_quattro(source: &str) -> Option<SourcePalette> {
+    let values: toml::Value = toml::from_str(source).ok()?;
+    let get = |key: &str| values.get(key)?.as_str().map(str::to_owned);
+    Some(SourcePalette {
+        statement: get("magenta").or_else(|| get("blue"))?,
+        string: get("green")?,
+        constant: get("orange").or_else(|| get("yellow"))?,
+        type_color: get("cyan").or_else(|| get("blue"))?,
+        preprocessor: get("yellow")?,
     })
 }
 
@@ -674,10 +716,117 @@ pub(super) fn register_source_buffer(buffer: &sourceview5::Buffer) {
     });
 }
 
-fn install_source_style_scheme(tokens: &ThemeTokens) {
+pub(super) fn register_document_buffer(buffer: &gtk::TextBuffer) {
+    let manager = ThemeManager::shared();
+    let tokens = if manager.follows_omarchy() {
+        load_omarchy_theme()
+    } else {
+        manager.current_tokens()
+    }
+    .unwrap_or_else(azure_tokens);
+    style_document_buffer(buffer, &tokens);
+    DOCUMENT_BUFFERS.with(|buffers| {
+        let mut buffers = buffers.borrow_mut();
+        buffers.retain(|buffer| buffer.upgrade().is_some());
+        let weak = glib::WeakRef::new();
+        weak.set(Some(buffer));
+        buffers.push(weak);
+    });
+}
+
+pub(super) fn register_document_view(view: &super::document_view::DocumentTextView) {
+    let manager = ThemeManager::shared();
+    let tokens = if manager.follows_omarchy() {
+        load_omarchy_theme()
+    } else {
+        manager.current_tokens()
+    }
+    .unwrap_or_else(azure_tokens);
+    style_document_view(view, &tokens);
+    DOCUMENT_VIEWS.with(|views| {
+        let mut views = views.borrow_mut();
+        views.retain(|view| view.upgrade().is_some());
+        let weak = glib::WeakRef::new();
+        weak.set(Some(view));
+        views.push(weak);
+    });
+}
+
+fn style_document_buffers(tokens: &ThemeTokens) {
+    DOCUMENT_BUFFERS.with(|buffers| {
+        buffers.borrow_mut().retain(|buffer| {
+            let Some(buffer) = buffer.upgrade() else {
+                return false;
+            };
+            style_document_buffer(&buffer, tokens);
+            true
+        });
+    });
+}
+
+fn style_document_views(tokens: &ThemeTokens) {
+    DOCUMENT_VIEWS.with(|views| {
+        views.borrow_mut().retain(|view| {
+            let Some(view) = view.upgrade() else {
+                return false;
+            };
+            style_document_view(&view, tokens);
+            true
+        });
+    });
+}
+
+fn style_document_view(view: &super::document_view::DocumentTextView, tokens: &ThemeTokens) {
+    if let (Ok(fill), Ok(border), Ok(selection)) = (
+        gdk::RGBA::parse(blend(&tokens.surface, &tokens.muted, 0.54)),
+        gdk::RGBA::parse(blend(&tokens.surface, &tokens.border, 0.5)),
+        gdk::RGBA::parse(&tokens.accent),
+    ) {
+        view.set_colors(fill, border, selection);
+    }
+}
+
+fn style_document_buffer(buffer: &gtk::TextBuffer, tokens: &ThemeTokens) {
+    let parse = |value: &str| gdk::RGBA::parse(value).ok();
+    let table = buffer.tag_table();
+    if let Some(color) = parse(&tokens.accent) {
+        for name in ["document-accent", "document-link"] {
+            if let Some(tag) = table.lookup(name) {
+                tag.set_foreground_rgba(Some(&color));
+            }
+        }
+    }
+    if let Some(color) = parse(&tokens.dim_text)
+        && let Some(tag) = table.lookup("document-dim")
+    {
+        tag.set_foreground_rgba(Some(&color));
+    }
+    if let Some(color) = parse(&tokens.text)
+        && let Some(tag) = table.lookup("document-link-hover")
+    {
+        tag.set_foreground_rgba(Some(&color));
+    }
+    if let Some(color) = parse(&tokens.background)
+        && let Some(tag) = table.lookup("document-selection")
+    {
+        tag.set_foreground_rgba(Some(&color));
+    }
+    if let Some(mut color) = parse(&tokens.highlight) {
+        color.set_alpha(0.36);
+        if let Some(tag) = table.lookup("document-quote") {
+            tag.set_paragraph_background_rgba(Some(&color));
+        }
+        color.set_alpha(0.5);
+        if let Some(tag) = table.lookup("document-link-hover") {
+            tag.set_background_rgba(Some(&color));
+        }
+    }
+}
+
+fn install_source_style_scheme(tokens: &ThemeTokens, palette: Option<&SourcePalette>) {
     let directory = glib::user_cache_dir().join("strata").join("source-styles");
     if let Err(error) = fs::create_dir_all(&directory).and_then(|()| {
-        let value = source_style_scheme_xml(tokens);
+        let value = source_style_scheme_xml(tokens, palette);
         crate::storage::atomic_write(&directory.join("strata-current.xml"), value.as_bytes())
     }) {
         tracing::warn!(%error, "unable to write preview syntax style");
@@ -703,10 +852,15 @@ fn install_source_style_scheme(tokens: &ThemeTokens) {
     });
 }
 
-fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
-    let string = blend(&tokens.accent, &tokens.text, 0.48);
-    let constant = blend(&tokens.accent, &tokens.text, 0.18);
-    let type_color = blend(&tokens.accent, &tokens.text, 0.24);
+fn source_style_scheme_xml(tokens: &ThemeTokens, palette: Option<&SourcePalette>) -> String {
+    let fallback = SourcePalette {
+        statement: tokens.accent.clone(),
+        string: blend(&tokens.accent, &tokens.text, 0.48),
+        constant: blend(&tokens.accent, &tokens.text, 0.18),
+        type_color: blend(&tokens.accent, &tokens.text, 0.24),
+        preprocessor: blend(&tokens.accent, &tokens.text, 0.32),
+    };
+    let palette = palette.unwrap_or(&fallback);
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <style-scheme id="strata-current" _name="Strata Current Theme" version="1.0">
@@ -714,11 +868,14 @@ fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
   <color name="surface" value="{}"/>
   <color name="text" value="{}"/>
   <color name="accent" value="{}"/>
+  <color name="danger" value="{}"/>
   <color name="selection" value="{}"/>
   <color name="dim" value="{}"/>
   <color name="string" value="{}"/>
   <color name="constant" value="{}"/>
   <color name="type" value="{}"/>
+  <color name="statement" value="{}"/>
+  <color name="preprocessor" value="{}"/>
   <style name="text" foreground="text" background="surface"/>
   <style name="selection" foreground="background" background="accent"/>
   <style name="cursor" foreground="accent"/>
@@ -730,23 +887,26 @@ fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
   <style name="def:constant" foreground="constant"/>
   <style name="def:special-char" foreground="constant"/>
   <style name="def:identifier" foreground="text"/>
-  <style name="def:statement" foreground="accent" bold="true"/>
+  <style name="def:statement" foreground="statement" bold="true"/>
   <style name="def:type" foreground="type" bold="true"/>
-  <style name="def:preprocessor" foreground="type"/>
+  <style name="def:preprocessor" foreground="preprocessor"/>
   <style name="def:heading" foreground="accent" bold="true"/>
   <style name="def:link-destination" foreground="string" underline="single"/>
-  <style name="def:error" foreground="background" background="accent" bold="true"/>
+  <style name="def:error" foreground="background" background="danger" bold="true"/>
 </style-scheme>
 "#,
         tokens.background,
         tokens.surface,
         tokens.text,
         tokens.accent,
+        tokens.danger,
         tokens.highlight,
         tokens.dim_text,
-        string,
-        constant,
-        type_color,
+        palette.string,
+        palette.constant,
+        palette.type_color,
+        palette.statement,
+        palette.preprocessor,
     )
 }
 

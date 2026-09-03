@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::{
-    BuildKind, Channel, ReleaseNoteBlock, ReleaseResponse, UpdateCheck, Version, archive_name,
-    parse_markdown, release_metadata, release_page_url, request_error_message, select_update,
-    to_release_summary,
+    BuildKind, Channel, ReleaseResponse, UpdateCheck, Version, archive_name, release_metadata,
+    release_page_url, request_error_message, select_update, to_release_summary,
 };
 
 fn version(tag: &str) -> Version {
@@ -286,98 +285,4 @@ fn selecting_stable_on_a_prerelease_offers_the_latest_final_as_the_channel_trans
         UpdateCheck::Available { release, .. } => assert_eq!(release.tag, "v0.4.0"),
         other => panic!("expected the stable channel transition, got {other:?}"),
     }
-}
-
-// --- markdown rendering, untouched by this task ---------------------------
-
-#[test]
-fn release_markdown_renders_supported_formatting_as_blocks() {
-    assert_eq!(
-        parse_markdown("## Changes\n\n- **Fast** and `safe`\n- [Details](https://example.test)"),
-        vec![
-            ReleaseNoteBlock::Heading {
-                level: 2,
-                markup: "Changes".to_owned(),
-            },
-            ReleaseNoteBlock::ListItem {
-                marker: "•".to_owned(),
-                depth: 0,
-                markup: "<b>Fast</b> and <tt>safe</tt>".to_owned(),
-            },
-            ReleaseNoteBlock::ListItem {
-                marker: "•".to_owned(),
-                depth: 0,
-                markup: "<a href=\"https://example.test\">Details</a>".to_owned(),
-            },
-        ]
-    );
-}
-
-#[test]
-fn multiline_formatting_and_code_stay_in_balanced_blocks() {
-    assert_eq!(
-        parse_markdown("**first\nsecond**\n\n```text\none < two\n```"),
-        vec![
-            ReleaseNoteBlock::Paragraph("<b>first\nsecond</b>".to_owned()),
-            ReleaseNoteBlock::Code("one &lt; two\n".to_owned()),
-        ]
-    );
-}
-
-#[test]
-fn nested_and_ordered_lists_keep_markers_and_depth() {
-    let blocks = parse_markdown("3. outer\n   - inner\n4. next");
-    assert_eq!(
-        blocks,
-        vec![
-            ReleaseNoteBlock::ListItem {
-                marker: "3.".to_owned(),
-                depth: 0,
-                markup: "outer".to_owned(),
-            },
-            ReleaseNoteBlock::ListItem {
-                marker: "•".to_owned(),
-                depth: 1,
-                markup: "inner".to_owned(),
-            },
-            ReleaseNoteBlock::ListItem {
-                marker: "4.".to_owned(),
-                depth: 0,
-                markup: "next".to_owned(),
-            },
-        ]
-    );
-}
-
-#[test]
-fn release_markdown_keeps_html_inert_and_does_not_load_images() {
-    let blocks = parse_markdown(
-        "<script>alert('no')</script>\n\n![tracking](https://example.test/pixel.png)",
-    );
-    let debug = format!("{blocks:?}");
-    assert!(!debug.contains("<script>"));
-    assert!(debug.contains("&lt;script&gt;"));
-    assert!(!debug.contains("pixel.png"));
-    assert!(debug.contains("[Image: tracking]"));
-}
-
-#[test]
-fn release_markdown_does_not_activate_non_web_links() {
-    assert_eq!(
-        parse_markdown("[Run](javascript:alert('no'))"),
-        vec![ReleaseNoteBlock::Paragraph("<u>Run</u>".to_owned())]
-    );
-}
-
-#[test]
-fn malformed_markdown_and_entities_remain_inert() {
-    let blocks = parse_markdown("<broken & **unfinished");
-    let debug = format!("{blocks:?}");
-    assert!(debug.contains("&lt;broken &amp;"));
-    assert!(!debug.contains("<broken"));
-}
-
-#[test]
-fn empty_release_markdown_has_no_blocks() {
-    assert!(parse_markdown("  \n").is_empty());
 }

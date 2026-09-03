@@ -48,7 +48,7 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
 - **Three browser modes:** navigable Miller columns, a thumbnail Grid, and a sortable Explorer table.
 - **Keyboard-first control:** Vim-style movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews.
 - **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed.
-- **Rich previews and thumbnails:** bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application.
+- **Rich previews and thumbnails:** native rendered Markdown and static HTML, plus bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
 - **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
 - **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares from the location field.

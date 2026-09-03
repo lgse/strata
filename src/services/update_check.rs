@@ -5,11 +5,11 @@ use std::{
     time::Duration,
 };
 
-use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
 use serde::Deserialize;
 
-use super::release_channel::{
-    BuildKind, Channel, ReleaseSummary, Version, best_update, rollback_target,
+use super::{
+    DocumentBlock, parse_markdown,
+    release_channel::{BuildKind, Channel, ReleaseSummary, Version, best_update, rollback_target},
 };
 
 const API_ROOT: &str = "https://api.github.com/repos/lgse/strata/releases";
@@ -22,22 +22,6 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
 /// reach is older than one it can.
 const PREVIEW_PAGE_SIZE: u32 = 30;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ReleaseNoteBlock {
-    Heading {
-        level: u8,
-        markup: String,
-    },
-    Paragraph(String),
-    ListItem {
-        marker: String,
-        depth: usize,
-        markup: String,
-    },
-    Code(String),
-    Rule,
-}
-
 /// Everything the update/rollback dialogs need to identify and describe a
 /// release before installing it: what build it is, its exact tag and
 /// display version, where it was published, and its rendered notes.
@@ -47,7 +31,7 @@ pub struct ReleaseMetadata {
     pub version: String,
     pub url: String,
     pub notes: String,
-    pub note_blocks: Vec<ReleaseNoteBlock>,
+    pub note_blocks: Vec<DocumentBlock>,
     pub kind: BuildKind,
     /// The exact tag as published on GitHub, e.g. `v0.5.0-rc.1`.
     pub tag: String,
@@ -160,7 +144,7 @@ fn release_metadata(release: &ReleaseSummary) -> ReleaseMetadata {
         version: release.version.to_string(),
         url: release_page_url(&release.tag),
         notes: release.notes.clone(),
-        note_blocks: parse_markdown(&release.notes),
+        note_blocks: parse_markdown(&release.notes).blocks,
         kind: release.version.build_kind(),
         tag: release.tag.clone(),
         published_at: release.published_at.clone(),
@@ -305,201 +289,6 @@ fn request_error_message(error: &ureq::Error) -> String {
 
 fn release_page_url(tag: &str) -> String {
     format!("{RELEASES_URL}/tag/{tag}")
-}
-
-#[derive(Debug)]
-enum ActiveBlock {
-    Heading {
-        level: u8,
-        markup: String,
-    },
-    Paragraph(String),
-    ListItem {
-        marker: String,
-        depth: usize,
-        markup: String,
-    },
-    Code(String),
-}
-
-impl ActiveBlock {
-    fn markup_mut(&mut self) -> &mut String {
-        match self {
-            Self::Heading { markup, .. }
-            | Self::Paragraph(markup)
-            | Self::ListItem { markup, .. }
-            | Self::Code(markup) => markup,
-        }
-    }
-}
-
-fn heading_level(level: HeadingLevel) -> u8 {
-    match level {
-        HeadingLevel::H1 => 1,
-        HeadingLevel::H2 => 2,
-        HeadingLevel::H3 => 3,
-        HeadingLevel::H4 => 4,
-        HeadingLevel::H5 => 5,
-        HeadingLevel::H6 => 6,
-    }
-}
-
-fn finish_block(active: &mut Option<ActiveBlock>, blocks: &mut Vec<ReleaseNoteBlock>) {
-    let Some(active) = active.take() else {
-        return;
-    };
-    let block = match active {
-        ActiveBlock::Heading { level, markup } => ReleaseNoteBlock::Heading { level, markup },
-        ActiveBlock::Paragraph(markup) => ReleaseNoteBlock::Paragraph(markup),
-        ActiveBlock::ListItem {
-            marker,
-            depth,
-            markup,
-        } => ReleaseNoteBlock::ListItem {
-            marker,
-            depth,
-            markup,
-        },
-        ActiveBlock::Code(markup) => ReleaseNoteBlock::Code(markup),
-    };
-    blocks.push(block);
-}
-
-fn append_markup(active: &mut Option<ActiveBlock>, markup: &str) {
-    let block = active.get_or_insert_with(|| ActiveBlock::Paragraph(String::new()));
-    block.markup_mut().push_str(markup);
-}
-
-fn append_escaped(active: &mut Option<ActiveBlock>, text: &str) {
-    append_markup(active, &glib::markup_escape_text(text));
-}
-
-/// Parses the supported GitHub Markdown subset into safe, balanced blocks while
-/// release metadata is processed on a worker thread.
-fn parse_markdown(markdown: &str) -> Vec<ReleaseNoteBlock> {
-    let mut blocks = Vec::new();
-    let mut active = None;
-    let mut links = Vec::new();
-    let mut lists = Vec::<Option<u64>>::new();
-    let options = Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS;
-
-    for event in Parser::new_ext(markdown, options) {
-        match event {
-            Event::Start(Tag::Heading { level, .. }) => {
-                finish_block(&mut active, &mut blocks);
-                active = Some(ActiveBlock::Heading {
-                    level: heading_level(level),
-                    markup: String::new(),
-                });
-            }
-            Event::End(TagEnd::Heading(_)) => finish_block(&mut active, &mut blocks),
-            Event::Start(Tag::Paragraph) => {
-                if active.is_none() {
-                    active = Some(ActiveBlock::Paragraph(String::new()));
-                }
-            }
-            Event::End(TagEnd::Paragraph) => {
-                if matches!(active, Some(ActiveBlock::Paragraph(_))) {
-                    finish_block(&mut active, &mut blocks);
-                }
-            }
-            Event::Start(Tag::List(start)) => {
-                if matches!(active, Some(ActiveBlock::ListItem { .. })) {
-                    finish_block(&mut active, &mut blocks);
-                }
-                lists.push(start);
-            }
-            Event::End(TagEnd::List(_)) => {
-                if matches!(active, Some(ActiveBlock::ListItem { .. })) {
-                    finish_block(&mut active, &mut blocks);
-                }
-                lists.pop();
-            }
-            Event::Start(Tag::Item) => {
-                finish_block(&mut active, &mut blocks);
-                let marker = match lists.last_mut() {
-                    Some(Some(next)) => {
-                        let marker = format!("{next}.");
-                        *next = next.saturating_add(1);
-                        marker
-                    }
-                    _ => "•".to_owned(),
-                };
-                active = Some(ActiveBlock::ListItem {
-                    marker,
-                    depth: lists.len().saturating_sub(1),
-                    markup: String::new(),
-                });
-            }
-            Event::End(TagEnd::Item) => {
-                if matches!(active, Some(ActiveBlock::ListItem { .. })) {
-                    finish_block(&mut active, &mut blocks);
-                }
-            }
-            Event::Start(Tag::Emphasis) => append_markup(&mut active, "<i>"),
-            Event::End(TagEnd::Emphasis) => append_markup(&mut active, "</i>"),
-            Event::Start(Tag::Strong) => append_markup(&mut active, "<b>"),
-            Event::End(TagEnd::Strong) => append_markup(&mut active, "</b>"),
-            Event::Start(Tag::Strikethrough) => append_markup(&mut active, "<s>"),
-            Event::End(TagEnd::Strikethrough) => append_markup(&mut active, "</s>"),
-            Event::Start(Tag::Link { dest_url, .. }) => {
-                let destination = dest_url.as_ref();
-                let external =
-                    destination.starts_with("https://") || destination.starts_with("http://");
-                links.push(external);
-                if external {
-                    append_markup(&mut active, "<a href=\"");
-                    append_escaped(&mut active, destination);
-                    append_markup(&mut active, "\">");
-                } else {
-                    append_markup(&mut active, "<u>");
-                }
-            }
-            Event::End(TagEnd::Link) => append_markup(
-                &mut active,
-                if links.pop().unwrap_or(false) {
-                    "</a>"
-                } else {
-                    "</u>"
-                },
-            ),
-            Event::Start(Tag::Image { .. }) => append_markup(&mut active, "[Image: "),
-            Event::End(TagEnd::Image) => append_markup(&mut active, "]"),
-            Event::Start(Tag::CodeBlock(_)) => {
-                if matches!(active, Some(ActiveBlock::ListItem { .. })) {
-                    append_markup(&mut active, "<tt>");
-                } else {
-                    finish_block(&mut active, &mut blocks);
-                    active = Some(ActiveBlock::Code(String::new()));
-                }
-            }
-            Event::End(TagEnd::CodeBlock) => {
-                if matches!(active, Some(ActiveBlock::Code(_))) {
-                    finish_block(&mut active, &mut blocks);
-                } else {
-                    append_markup(&mut active, "</tt>");
-                }
-            }
-            Event::Code(text) => {
-                append_markup(&mut active, "<tt>");
-                append_escaped(&mut active, &text);
-                append_markup(&mut active, "</tt>");
-            }
-            Event::Text(text) => append_escaped(&mut active, &text),
-            Event::SoftBreak | Event::HardBreak => append_markup(&mut active, "\n"),
-            Event::Rule => {
-                finish_block(&mut active, &mut blocks);
-                blocks.push(ReleaseNoteBlock::Rule);
-            }
-            Event::Html(text) | Event::InlineHtml(text) => append_escaped(&mut active, &text),
-            Event::TaskListMarker(checked) => {
-                append_markup(&mut active, if checked { "☑ " } else { "☐ " });
-            }
-            _ => {}
-        }
-    }
-    finish_block(&mut active, &mut blocks);
-    blocks
 }
 
 /// Queries the release feed for `channel` off the GTK thread and reports the

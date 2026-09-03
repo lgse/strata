@@ -13,8 +13,8 @@ use sourceview5::prelude::*;
 use crate::{
     model::{FileEntry, MetadataValue},
     services::{
-        LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
-        PreviewRequestId,
+        DocumentLayout, LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider,
+        PreviewRequest, PreviewRequestId, normalize_preview_text,
     },
 };
 
@@ -22,11 +22,41 @@ const DEFAULT_WIDTH: i32 = 520;
 const MIN_WIDTH: i32 = 280;
 const MAX_WIDTH: i32 = 3_000;
 const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
+pub(super) const SOURCE_HIGHLIGHT_BYTE_LIMIT: usize = 128 * 1024;
+pub(super) const SOURCE_HIGHLIGHT_LINE_LIMIT: usize = 512;
+const SOURCE_INSERT_CHUNK_BYTES: usize = 4 * 1024;
+const SOURCE_INSERT_CHUNK_LINES: usize = 64;
+const FOCUS_PREVIEW_DELAY: Duration = Duration::from_millis(75);
 const TRANSITION: Duration = Duration::from_millis(260);
 const PDF_PAGE_GAP: i32 = 6;
 const PDF_MIN_ZOOM: f64 = 1.0;
 const PDF_MAX_ZOOM: f64 = 4.0;
 const MEDIA_PLUGIN_INSTALL_COMMAND: &str = "sudo pacman -S --needed gst-plugins-good gst-libav";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DocumentView {
+    Rendered,
+    Source,
+}
+
+struct PendingSourcePreview {
+    entry: FileEntry,
+    content_type: String,
+    content: String,
+    truncated: bool,
+}
+
+struct SourcePreviewView {
+    view: sourceview5::View,
+    generation: Rc<Cell<u64>>,
+}
+
+struct DocumentPreview {
+    stack: gtk::Stack,
+    source: Option<PendingSourcePreview>,
+    rendered: Option<(DocumentLayout, Vec<String>)>,
+    render_pending: bool,
+}
 
 struct PreviewState {
     provider: Rc<dyn PreviewProvider>,
@@ -37,10 +67,16 @@ struct PreviewState {
     modified: gtk::Label,
     content_type: gtk::Label,
     content: gtk::Box,
+    document_view_button: gtk::Button,
+    document_view_icon: gtk::Image,
+    document_view: Cell<DocumentView>,
+    document_preview: RefCell<Option<DocumentPreview>>,
+    source_preview: SourcePreviewView,
     media: RefCell<Option<gtk::Video>>,
     split: RefCell<Option<gtk::Paned>>,
     occupied_width: RefCell<Option<Rc<dyn Fn() -> i32>>>,
     current: RefCell<Option<FileEntry>>,
+    pending_show: RefCell<Option<glib::SourceId>>,
     load: RefCell<Option<LoadHandle>>,
     pdf_loads: Rc<RefCell<HashMap<i32, LoadHandle>>>,
     current_request: Cell<Option<PreviewRequestId>>,
@@ -81,6 +117,15 @@ impl PreviewDrawer {
             16,
         )));
         open.add_css_class("preview-header-action");
+        let document_view_icon = crate::assets::primary_icon(crate::assets::icons::FILE_CODE, 16);
+        let document_view_button = gtk::Button::builder()
+            .tooltip_text("View source")
+            .valign(gtk::Align::Center)
+            .visible(false)
+            .build();
+        document_view_button.set_child(Some(&document_view_icon));
+        document_view_button.add_css_class("preview-header-action");
+        document_view_button.update_property(&[gtk::accessible::Property::Label("View source")]);
         let close = gtk::Button::builder()
             .tooltip_text("Close preview (Space)")
             .valign(gtk::Align::Center)
@@ -93,6 +138,7 @@ impl PreviewDrawer {
         close.add_css_class("preview-header-action");
         header.append(&icon);
         header.append(&title);
+        header.append(&document_view_button);
         header.append(&open);
         header.append(&close);
         pane.append(&header);
@@ -128,10 +174,16 @@ impl PreviewDrawer {
             modified,
             content_type,
             content,
+            document_view_button: document_view_button.clone(),
+            document_view_icon,
+            document_view: Cell::new(DocumentView::Rendered),
+            document_preview: RefCell::new(None),
+            source_preview: SourcePreviewView::new(),
             media: RefCell::new(None),
             split: RefCell::new(None),
             occupied_width: RefCell::new(None),
             current: RefCell::new(None),
+            pending_show: RefCell::new(None),
             load: RefCell::new(None),
             pdf_loads: Rc::new(RefCell::new(HashMap::new())),
             current_request: Cell::new(None),
@@ -140,6 +192,17 @@ impl PreviewDrawer {
             last_split_width: Cell::new(0),
             animating: Cell::new(false),
             animation_generation: Rc::new(Cell::new(0)),
+        });
+        let weak = Rc::downgrade(&state);
+        document_view_button.connect_clicked(move |_| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let next = match state.document_view.get() {
+                DocumentView::Rendered => DocumentView::Source,
+                DocumentView::Source => DocumentView::Rendered,
+            };
+            state.show_document_view(next);
         });
         let weak = Rc::downgrade(&state);
         open.connect_clicked(move |_| {
@@ -206,7 +269,35 @@ impl PreviewDrawer {
     }
 
     pub fn show(&self, entry: FileEntry) {
+        self.state.cancel_pending_show();
         self.state.show(entry);
+    }
+
+    pub fn show_after_focus_change(&self, entry: FileEntry) {
+        self.state.cancel_pending_show();
+        if self.state.current.borrow().as_ref() == Some(&entry) {
+            return;
+        }
+
+        let cancelled_request = self.state.current_request.replace(None).is_some();
+        let cancelled_load = self.state.load.borrow_mut().take().is_some();
+        let cancelled_pdf_load = !self.state.pdf_loads.borrow().is_empty();
+        self.state.pdf_loads.borrow_mut().clear();
+        if cancelled_request || cancelled_load || cancelled_pdf_load {
+            self.state.current.replace(None);
+        }
+
+        let weak = Rc::downgrade(&self.state);
+        let source = glib::timeout_add_local_once(FOCUS_PREVIEW_DELAY, move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.pending_show.borrow_mut().take();
+            if state.opened.get() {
+                state.load(entry, 0);
+            }
+        });
+        self.state.pending_show.replace(Some(source));
     }
 
     pub fn close(&self) {
@@ -223,6 +314,12 @@ impl PreviewDrawer {
 }
 
 impl PreviewState {
+    fn cancel_pending_show(&self) {
+        if let Some(source) = self.pending_show.borrow_mut().take() {
+            source.remove();
+        }
+    }
+
     fn show(self: &Rc<Self>, entry: FileEntry) {
         let was_open = self.opened.replace(true);
         let already_showing = self.current.borrow().as_ref() == Some(&entry);
@@ -300,6 +397,7 @@ impl PreviewState {
     }
 
     fn close(self: &Rc<Self>) {
+        self.cancel_pending_show();
         self.opened.set(false);
         self.animating.set(false);
         self.animation_generation
@@ -318,6 +416,16 @@ impl PreviewState {
     }
 
     fn load(self: &Rc<Self>, entry: FileEntry, pdf_page: i32) {
+        let render_document = super::theme::ThemeManager::shared().render_documents_by_default();
+        self.document_view.set(if render_document {
+            DocumentView::Rendered
+        } else {
+            DocumentView::Source
+        });
+        self.load_request(entry, pdf_page, render_document);
+    }
+
+    fn load_request(self: &Rc<Self>, entry: FileEntry, pdf_page: i32, render_document: bool) {
         self.current.replace(Some(entry.clone()));
         self.title.set_text(&entry.display_name);
         self.title
@@ -345,6 +453,7 @@ impl PreviewState {
                 id: request_id,
                 entry,
                 text_byte_limit: TEXT_BYTE_LIMIT,
+                render_document,
                 pdf_page,
             },
             emit,
@@ -353,7 +462,11 @@ impl PreviewState {
     }
 
     fn handle_event(self: &Rc<Self>, expected: PreviewRequestId, event: PreviewEvent) {
-        if self.current_request.get() != Some(expected) {
+        let response = match &event {
+            PreviewEvent::Ready(preview) => preview.request_id,
+            PreviewEvent::Failed { request_id, .. } => *request_id,
+        };
+        if !accepts_preview_event(self.current_request.get(), expected, response) {
             return;
         }
         match event {
@@ -381,43 +494,31 @@ impl PreviewState {
         self.clear_content();
         match preview.content {
             PreviewContent::Text { content, truncated } => {
-                let buffer = sourceview5::Buffer::new(None);
-                let languages = sourceview5::LanguageManager::default();
-                let language = languages.guess_language(
-                    preview.entry.location.native_path(),
-                    Some(&preview.content_type),
+                self.content.append(&self.source_preview.show(
+                    &preview.entry,
+                    &preview.content_type,
+                    &content,
+                    truncated,
+                ));
+            }
+            PreviewContent::Document {
+                source,
+                document,
+                fallback_reason,
+                warnings,
+                truncated,
+            } => {
+                self.render_document_preview(
+                    PendingSourcePreview {
+                        entry: preview.entry,
+                        content_type: preview.content_type,
+                        content: source,
+                        truncated,
+                    },
+                    document,
+                    fallback_reason,
+                    warnings,
                 );
-                buffer.set_language(language.as_ref());
-                super::theme::register_source_buffer(&buffer);
-                buffer.set_highlight_syntax(true);
-                buffer.set_text(&content);
-                let view = sourceview5::View::builder()
-                    .buffer(&buffer)
-                    .cursor_visible(false)
-                    .editable(false)
-                    .highlight_current_line(false)
-                    .left_margin(14)
-                    .right_margin(14)
-                    .top_margin(12)
-                    .bottom_margin(12)
-                    .monospace(true)
-                    .show_line_numbers(true)
-                    .wrap_mode(gtk::WrapMode::None)
-                    .build();
-                view.add_css_class("preview-text");
-                let scroll = gtk::ScrolledWindow::builder()
-                    .child(&view)
-                    .hscrollbar_policy(gtk::PolicyType::Automatic)
-                    .vscrollbar_policy(gtk::PolicyType::Automatic)
-                    .hexpand(true)
-                    .vexpand(true)
-                    .build();
-                self.content.append(&scroll);
-                if truncated {
-                    let notice = gtk::Label::new(Some("Preview limited to the first 1 MB"));
-                    notice.add_css_class("preview-note");
-                    self.content.append(&notice);
-                }
             }
             PreviewContent::Rasterized { png } => {
                 let bytes = glib::Bytes::from_owned(png);
@@ -486,6 +587,82 @@ impl PreviewState {
                 );
             }
         }
+    }
+
+    fn render_document_preview(
+        self: &Rc<Self>,
+        source: PendingSourcePreview,
+        document: Option<DocumentLayout>,
+        fallback_reason: Option<String>,
+        warnings: Vec<String>,
+    ) {
+        let render_pending = document.is_none() && fallback_reason.is_none();
+        let rendered_available = document.is_some() || render_pending;
+        let initial = initial_document_view(
+            self.document_view.get() == DocumentView::Rendered,
+            document.is_some(),
+        );
+
+        if let Some(reason) = fallback_reason.as_deref() {
+            self.content.append(&document_notice(reason));
+        }
+
+        let stack = gtk::Stack::builder()
+            .transition_type(gtk::StackTransitionType::Crossfade)
+            .transition_duration(100)
+            .hexpand(true)
+            .vexpand(true)
+            .build();
+        self.document_preview.replace(Some(DocumentPreview {
+            stack: stack.clone(),
+            source: Some(source),
+            rendered: document.map(|document| (document, warnings)),
+            render_pending,
+        }));
+        self.content.append(&stack);
+        self.show_document_view(initial);
+        self.document_view_button.set_visible(rendered_available);
+    }
+
+    fn show_document_view(self: &Rc<Self>, view: DocumentView) {
+        let mut preview_guard = self.document_preview.borrow_mut();
+        let Some(preview) = preview_guard.as_mut() else {
+            return;
+        };
+        if view == DocumentView::Rendered && preview.render_pending {
+            preview.render_pending = false;
+            drop(preview_guard);
+            self.document_view.set(DocumentView::Rendered);
+            self.update_document_view_action();
+            let entry = self.current.borrow().clone();
+            if let Some(entry) = entry {
+                self.load_request(entry, 0, true);
+            }
+            return;
+        }
+        let name = document_view_name(view);
+        if preview.stack.child_by_name(name).is_none() {
+            let child = match view {
+                DocumentView::Source => preview.source.take().map(|source| {
+                    self.source_preview.show(
+                        &source.entry,
+                        &source.content_type,
+                        &source.content,
+                        source.truncated,
+                    )
+                }),
+                DocumentView::Rendered => preview.rendered.take().map(|(document, warnings)| {
+                    super::virtual_preview::rendered_document(document, warnings)
+                }),
+            };
+            let Some(child) = child else {
+                return;
+            };
+            preview.stack.add_named(&child, Some(name));
+        }
+        preview.stack.set_visible_child_name(name);
+        self.document_view.set(view);
+        self.update_document_view_action();
     }
 
     fn render_pdf_viewer(
@@ -624,6 +801,7 @@ impl PreviewState {
                     id: request_id,
                     entry: entry_for_bind.clone(),
                     text_byte_limit: TEXT_BYTE_LIMIT,
+                    render_document: false,
                     pdf_page: page_index,
                 },
                 emit,
@@ -755,12 +933,23 @@ impl PreviewState {
     }
 
     fn clear_content(&self) {
+        self.source_preview.cancel();
+        self.document_view_button.set_visible(false);
+        self.document_preview.borrow_mut().take();
         if let Some(video) = self.media.borrow_mut().take()
             && let Some(stream) = video.media_stream()
         {
             stream.set_playing(false);
         }
         clear_box(&self.content);
+    }
+
+    fn update_document_view_action(&self) {
+        let (label, icon) = document_view_action(self.document_view.get());
+        self.document_view_button.set_tooltip_text(Some(label));
+        self.document_view_button
+            .update_property(&[gtk::accessible::Property::Label(label)]);
+        crate::assets::set_primary_icon(&self.document_view_icon, icon);
     }
 
     fn show_loading(&self) {
@@ -821,6 +1010,185 @@ impl PreviewState {
         }
         self.content.append(&box_);
     }
+}
+
+fn accepts_preview_event(
+    current: Option<PreviewRequestId>,
+    expected: PreviewRequestId,
+    response: PreviewRequestId,
+) -> bool {
+    current == Some(expected) && response == expected
+}
+
+fn initial_document_view(prefer_rendered: bool, rendered_available: bool) -> DocumentView {
+    if prefer_rendered && rendered_available {
+        DocumentView::Rendered
+    } else {
+        DocumentView::Source
+    }
+}
+
+fn document_view_name(view: DocumentView) -> &'static str {
+    match view {
+        DocumentView::Rendered => "rendered",
+        DocumentView::Source => "source",
+    }
+}
+
+fn document_view_action(view: DocumentView) -> (&'static str, &'static str) {
+    match view {
+        DocumentView::Rendered => ("View source", crate::assets::icons::FILE_CODE),
+        DocumentView::Source => ("View rendered", crate::assets::icons::DOCUMENTS),
+    }
+}
+
+impl SourcePreviewView {
+    fn new() -> Self {
+        let buffer = sourceview5::Buffer::new(None);
+        super::theme::register_source_buffer(&buffer);
+        let view = sourceview5::View::builder()
+            .buffer(&buffer)
+            .cursor_visible(false)
+            .editable(false)
+            .highlight_current_line(false)
+            .left_margin(14)
+            .right_margin(14)
+            .top_margin(12)
+            .bottom_margin(12)
+            .monospace(true)
+            .show_line_numbers(true)
+            .wrap_mode(gtk::WrapMode::None)
+            .build();
+        view.add_css_class("preview-text");
+        Self {
+            view,
+            generation: Rc::new(Cell::new(0)),
+        }
+    }
+
+    fn show(
+        &self,
+        entry: &FileEntry,
+        content_type: &str,
+        content: &str,
+        truncated: bool,
+    ) -> gtk::Box {
+        self.cancel();
+        if let Some(parent) = self.view.parent() {
+            if let Ok(scroll) = parent.downcast::<gtk::ScrolledWindow>() {
+                scroll.set_child(None::<&gtk::Widget>);
+            } else {
+                self.view.unparent();
+            }
+        }
+        if super::virtual_preview::use_virtual_source(content) {
+            return super::virtual_preview::source_document(content, truncated);
+        }
+        let display = normalize_preview_text(content).into_owned();
+        let buffer = sourceview5::Buffer::new(None);
+        super::theme::register_source_buffer(&buffer);
+        let languages = sourceview5::LanguageManager::default();
+        let language = languages.guess_language(entry.location.native_path(), Some(content_type));
+        let highlight_syntax = display.len() <= SOURCE_HIGHLIGHT_BYTE_LIMIT
+            && display.lines().count() <= SOURCE_HIGHLIGHT_LINE_LIMIT;
+        buffer.set_highlight_syntax(false);
+        buffer.set_language(language.as_ref());
+        self.view.set_buffer(Some(&buffer));
+        fill_source_buffer(
+            &buffer,
+            display,
+            self.generation.clone(),
+            self.generation.get(),
+            highlight_syntax,
+        );
+
+        let scroll = gtk::ScrolledWindow::builder()
+            .child(&self.view)
+            .hscrollbar_policy(gtk::PolicyType::Automatic)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .hexpand(true)
+            .vexpand(true)
+            .build();
+        let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        container.set_vexpand(true);
+        container.append(&scroll);
+        if truncated {
+            let notice = gtk::Label::new(Some("Preview limited to the first 1 MB."));
+            notice.add_css_class("preview-note");
+            notice.set_wrap(true);
+            container.append(&notice);
+        }
+        container
+    }
+
+    fn cancel(&self) {
+        self.generation.set(self.generation.get().saturating_add(1));
+    }
+}
+
+fn fill_source_buffer(
+    buffer: &sourceview5::Buffer,
+    text: String,
+    generation: Rc<Cell<u64>>,
+    expected_generation: u64,
+    highlight_syntax: bool,
+) {
+    let text = normalize_preview_text(&text).into_owned();
+    let first_end = source_chunk_end(&text, 0);
+    buffer.set_text(&text[..first_end]);
+    if first_end == text.len() {
+        buffer.set_modified(false);
+        buffer.set_highlight_syntax(highlight_syntax);
+        return;
+    }
+
+    let weak_buffer = buffer.downgrade();
+    let mut offset = first_end;
+    glib::idle_add_local(move || {
+        if generation.get() != expected_generation {
+            return glib::ControlFlow::Break;
+        }
+        let Some(buffer) = weak_buffer.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
+        let end = source_chunk_end(&text, offset);
+        buffer.insert(&mut buffer.end_iter(), &text[offset..end]);
+        offset = end;
+        if offset == text.len() {
+            buffer.set_modified(false);
+            buffer.set_highlight_syntax(highlight_syntax);
+            glib::ControlFlow::Break
+        } else {
+            glib::ControlFlow::Continue
+        }
+    });
+}
+
+fn source_chunk_end(text: &str, start: usize) -> usize {
+    let mut end = start
+        .saturating_add(SOURCE_INSERT_CHUNK_BYTES)
+        .min(text.len());
+    while !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    if let Some(line_end) = text[start..end]
+        .match_indices('\n')
+        .nth(SOURCE_INSERT_CHUNK_LINES - 1)
+        .map(|(offset, _)| start + offset + 1)
+    {
+        end = line_end;
+    }
+    end
+}
+
+pub(super) fn document_notice(message: &str) -> gtk::Label {
+    let notice = gtk::Label::new(Some(message));
+    notice.add_css_class("preview-document-notice");
+    notice.set_hexpand(true);
+    notice.set_selectable(true);
+    notice.set_wrap(true);
+    notice.set_xalign(0.0);
+    notice
 }
 
 fn copyable_command(command: &str) -> gtk::Overlay {

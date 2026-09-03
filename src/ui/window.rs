@@ -82,7 +82,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
                 if entry.is_directory() {
                     preview_for_selection.close();
                 } else {
-                    preview_for_selection.show(entry);
+                    preview_for_selection.show_after_focus_change(entry);
                 }
             }
         }
@@ -478,6 +478,7 @@ fn install_keyboard_navigation(
     let sidebar_state = sidebar.state.clone();
     let sidebar_widget = sidebar.widget.clone();
     let sidebar_toggle = sidebar_toggle.clone();
+    let preview_widget = preview.widget();
     let preview = preview.clone();
     let dialog_parent = window.clone();
     let focus_before_sidebar = Rc::new(RefCell::new(None::<gtk::Widget>));
@@ -501,6 +502,9 @@ fn install_keyboard_navigation(
         let focused = gtk::prelude::RootExt::focus(&dialog_parent);
         let sidebar_has_focus = focused.as_ref().is_some_and(|focused| {
             focused == &sidebar_widget || focused.is_ancestor(&sidebar_widget)
+        });
+        let preview_has_focus = focused.as_ref().is_some_and(|focused| {
+            focused == &preview_widget || focused.is_ancestor(&preview_widget)
         });
         if control && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::K) {
             if let Err(error) =
@@ -580,6 +584,9 @@ fn install_keyboard_navigation(
         if control && shift && matches!(key, gtk::gdk::Key::n | gtk::gdk::Key::N) {
             view.create_new_folder();
             return glib::Propagation::Stop;
+        }
+        if preview_has_focus && is_native_editing_shortcut(key, modifiers) {
+            return glib::Propagation::Proceed;
         }
         if control && !shift && key == gtk::gdk::Key::v {
             if view.filter_has_focus() {
@@ -747,6 +754,16 @@ fn is_sidebar_focus_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierTy
     modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
         && !modifiers.contains(gtk::gdk::ModifierType::ALT_MASK)
         && matches!(key, gtk::gdk::Key::b | gtk::gdk::Key::B)
+}
+
+fn is_native_editing_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+        && !modifiers
+            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
+        && matches!(
+            key,
+            gtk::gdk::Key::a | gtk::gdk::Key::c | gtk::gdk::Key::v | gtk::gdk::Key::x
+        )
 }
 
 fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {

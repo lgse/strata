@@ -780,6 +780,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "html5gum"
+version = "0.8.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "428502d3ec1742c35e015871aef742bc4722a9acfcb616b8ff79b519922e1c36"
+
+[[package]]
 name = "http"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1514,6 +1520,7 @@ dependencies = [
  "glib",
  "glib-build-tools",
  "gtk4",
+ "html5gum",
  "ignore",
  "poppler-rs",
  "pulldown-cmark",

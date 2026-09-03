@@ -1483,6 +1483,159 @@ paned > separator {
   color: @theme_bg;
 }
 
+.preview-document-notice {
+  background: alpha(@theme_accent, 0.1);
+  border: 1px solid alpha(@theme_accent, 0.42);
+  border-radius: 5px;
+  color: @theme_text;
+  font-size: 0.82em;
+  margin: 8px 12px;
+  padding: 7px 9px;
+}
+
+.preview-document-notice selection {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+.preview-document {
+  background: @theme_surface;
+  color: @theme_text;
+}
+
+.preview-virtual-list,
+.preview-virtual-list > row,
+.preview-virtual-list > row:hover,
+.preview-virtual-list > row:active,
+.preview-virtual-list > row:selected,
+.preview-virtual-row {
+  background: @theme_surface;
+  border: none;
+  box-shadow: none;
+  color: @theme_text;
+  margin: 0;
+  outline: none;
+  padding: 0;
+}
+
+.preview-source-row {
+  background: @theme_surface;
+  color: @theme_text;
+  padding: 0 14px;
+}
+
+.preview-source-lines,
+.preview-source-lines text {
+  background: @theme_surface;
+  color: @theme_dim_text;
+  font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
+}
+
+.preview-virtual-source:focus-visible,
+.preview-virtual-list:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.preview-document text {
+  background: @theme_surface;
+  color: @theme_text;
+}
+
+.preview-document selection,
+.preview-document text selection {
+  background: transparent;
+  color: @theme_bg;
+}
+
+.preview-code-overlay {
+  background: transparent;
+}
+
+.preview-code-copy {
+  background: alpha(@theme_surface, 0.9);
+  border: 1px solid alpha(@theme_border, 0.72);
+  border-radius: 5px;
+  box-shadow: 0 2px 8px alpha(@theme_bg, 0.22);
+  color: @theme_text;
+  margin: 10px 24px 0 0;
+  min-height: 27px;
+  min-width: 27px;
+  opacity: 0;
+  padding: 3px;
+  transition: opacity 120ms ease-out, background 120ms ease-out, border-color 120ms ease-out;
+}
+
+.preview-code-overlay:hover .preview-code-copy,
+.preview-code-copy:focus-visible {
+  opacity: 1;
+}
+
+.preview-code-copy:hover {
+  background: alpha(@theme_highlight, 0.92);
+  border-color: @theme_accent;
+  color: @theme_accent;
+}
+
+.preview-code-copy:active {
+  background: alpha(@theme_muted, 0.88);
+  border-color: @theme_accent;
+  color: @theme_accent;
+}
+
+.preview-code-copy:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.58);
+  outline-offset: 1px;
+}
+
+.preview-document-table {
+  background: alpha(@theme_border, 0.5);
+  border: 1px solid alpha(@theme_border, 0.5);
+  border-radius: 5px;
+}
+
+.preview-document-table-cell {
+  background: @theme_surface;
+  color: @theme_text;
+  padding: 6px 8px;
+}
+
+.preview-document-table-cell.header {
+  background: alpha(@theme_highlight, 0.64);
+  color: @theme_accent;
+  font-weight: 700;
+}
+
+.preview-document-table-cell link {
+  color: @theme_accent;
+}
+
+.preview-document-table-cell link:hover {
+  background: alpha(@theme_highlight, 0.5);
+  color: @theme_text;
+}
+
+.preview-document-table-cell link:active {
+  background: alpha(@theme_muted, 0.72);
+  color: @theme_accent;
+}
+
+.preview-document-table-cell link:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.5);
+  outline-offset: 1px;
+}
+
+.preview-document-table.selected .preview-document-table-cell,
+.preview-document-table.selected .preview-document-table-cell.header {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+.preview-document:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
 .preview-image,
 .preview-media {
   background: alpha(@theme_bg, 0.55);
