@@ -875,7 +875,7 @@ fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButt
         .child(&row)
         .build();
     let button = gtk::ToggleButton::builder().tooltip_text(tooltip).build();
-    button.set_child(Some(&crate::assets::text_icon(
+    button.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::FUNNEL,
         16,
     )));
@@ -940,7 +940,7 @@ fn grid_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> Gr
         .build();
     thumbnail_menu.add_css_class("column-header-action");
     thumbnail_menu.add_css_class("grid-thumbnail-menu");
-    thumbnail_menu.set_child(Some(&crate::assets::text_icon(
+    thumbnail_menu.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::PICTURES,
         16,
     )));
@@ -1371,7 +1371,7 @@ fn explorer_headings(
         let label = gtk::Label::new(Some(text));
         label.set_xalign(0.0);
         label.set_hexpand(true);
-        let arrow = crate::assets::text_icon(
+        let arrow = crate::assets::primary_icon(
             if preferences.sort_direction == SortDirection::Ascending {
                 crate::assets::icons::ARROW_UP
             } else {
@@ -1402,7 +1402,7 @@ fn explorer_headings(
             for (arrow_key, arrow) in arrows_for_click.borrow().iter() {
                 arrow.set_visible(*arrow_key == key);
                 if *arrow_key == key {
-                    crate::assets::set_text_icon(
+                    crate::assets::set_primary_icon(
                         arrow,
                         if direction == SortDirection::Ascending {
                             crate::assets::icons::ARROW_UP
@@ -1545,7 +1545,7 @@ fn explorer_navigation(browser: &Rc<Browser>) -> gtk::Box {
             .tooltip_text(tooltip)
             .sensitive(available)
             .build();
-        button.set_child(Some(&crate::assets::text_icon(icon, 16)));
+        button.set_child(Some(&crate::assets::primary_icon(icon, 16)));
         button.add_css_class("explorer-navigation-button");
         let weak_browser = Rc::downgrade(browser);
         button.connect_clicked(move |_| {

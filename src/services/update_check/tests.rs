@@ -1,43 +1,145 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::{
-    ReleaseNoteBlock, ReleaseResponse, is_newer, metadata, parse_markdown, release_page_url,
-    request_error_message,
+    BuildKind, Channel, ReleaseNoteBlock, ReleaseResponse, UpdateCheck, Version, archive_name,
+    parse_markdown, release_metadata, release_page_url, request_error_message, select_update,
+    to_release_summary,
 };
+
+fn version(tag: &str) -> Version {
+    Version::parse(tag).unwrap_or_else(|| panic!("expected {tag} to parse"))
+}
+
+fn release_response(json: &str) -> ReleaseResponse {
+    serde_json::from_str(json).expect("release fixture should deserialize")
+}
+
+fn release_response_list(json: &str) -> Vec<ReleaseResponse> {
+    serde_json::from_str(json).expect("release fixture list should deserialize")
+}
+
+/// A GitHub asset JSON object whose `name` matches [`archive_name`] for
+/// `version`, i.e. the asset this platform's architecture would download.
+fn matching_asset_json(version: &str) -> String {
+    let name = archive_name(version);
+    format!(r#"{{"name":"{name}","browser_download_url":"https://example.invalid/{name}"}}"#)
+}
+
+// --- Version::parse migration -------------------------------------------
+//
+// `parse_version`/`is_newer` are gone, replaced by `release_channel::Version`.
+// These migrate the coverage that used to live here rather than dropping it.
 
 #[test]
 fn newer_patch_version_is_detected() {
-    assert!(is_newer("0.2.1", "0.2.0"));
+    assert!(version("0.2.1") > version("0.2.0"));
 }
 
 #[test]
 fn newer_minor_version_is_detected() {
-    assert!(is_newer("0.3.0", "0.2.9"));
+    assert!(version("0.3.0") > version("0.2.9"));
 }
 
 #[test]
 fn equal_version_is_not_newer() {
-    assert!(!is_newer("0.2.0", "0.2.0"));
+    assert_eq!(version("0.2.0"), version("0.2.0"));
 }
 
 #[test]
 fn older_version_is_not_newer() {
-    assert!(!is_newer("0.1.9", "0.2.0"));
+    assert!(version("0.1.9") < version("0.2.0"));
+}
+
+/// The old `parse_version` silently zero-filled missing/malformed segments,
+/// which was the exact bug behind issue #61 (a malformed tag could compare
+/// as a real version instead of being rejected). `Version::parse` must
+/// reject these outright rather than falling back to zero.
+#[test]
+fn missing_or_malformed_segments_are_rejected() {
+    assert!(Version::parse("0.2").is_none());
+    assert!(Version::parse("0.2.x").is_none());
+}
+
+// --- ReleaseResponse -> ReleaseSummary conversion ------------------------
+
+#[test]
+fn malformed_tag_is_dropped() {
+    let response = release_response(
+        r#"{"tag_name":"not-a-version","draft":false,"prerelease":false,"assets":[]}"#,
+    );
+    assert!(to_release_summary(&response).is_none());
 }
 
 #[test]
-fn missing_or_malformed_segments_fall_back_to_zero() {
-    assert!(!is_newer("0.2", "0.2.0"));
-    assert!(!is_newer("0.2.x", "0.2.1"));
+fn non_matching_arch_asset_yields_no_download_url() {
+    let response = release_response(
+        r#"{"tag_name":"v0.5.0","draft":false,"prerelease":false,
+        "assets":[{"name":"strata-0.5.0-bogus-arch.tar.gz","browser_download_url":"https://example.invalid/x"}]}"#,
+    );
+    let summary = to_release_summary(&response).expect("tag should parse");
+    assert!(summary.download_url.is_none());
 }
+
+#[test]
+fn matching_arch_asset_resolves_download_url() {
+    let name = archive_name("0.5.0-rc.1");
+    let response = release_response(&format!(
+        r#"{{"tag_name":"v0.5.0-rc.1","draft":false,"prerelease":true,
+        "assets":[{{"name":"{name}","browser_download_url":"https://example.invalid/{name}"}}]}}"#
+    ));
+    let summary = to_release_summary(&response).expect("tag should parse");
+    assert_eq!(
+        summary.download_url.as_deref(),
+        Some(format!("https://example.invalid/{name}")).as_deref()
+    );
+}
+
+#[test]
+fn release_metadata_tolerates_missing_publication_fields() {
+    let asset = matching_asset_json("0.5.0");
+    let response = release_response(&format!(
+        r#"{{"tag_name":"v0.5.0","draft":false,"prerelease":false,"assets":[{asset}]}}"#
+    ));
+    let summary = to_release_summary(&response).expect("tag should parse");
+    assert!(summary.published_at.is_none());
+}
+
+#[test]
+fn release_metadata_carries_channel_identity_fields() {
+    let asset = matching_asset_json("0.5.0-rc.1");
+    let response = release_response(&format!(
+        r#"{{"tag_name":"v0.5.0-rc.1","draft":false,"prerelease":true,
+        "published_at":"2026-08-01T00:00:00Z","target_commitish":"main","assets":[{asset}]}}"#
+    ));
+    let summary = to_release_summary(&response).expect("tag should parse");
+    let metadata = release_metadata(&summary);
+    assert_eq!(metadata.version, "0.5.0-rc.1");
+    assert_eq!(metadata.tag, "v0.5.0-rc.1");
+    assert_eq!(metadata.kind, BuildKind::Rc);
+    assert_eq!(
+        metadata.published_at.as_deref(),
+        Some("2026-08-01T00:00:00Z")
+    );
+    // `target_commitish` is never the commit: GitHub returns the default
+    // branch for a release published against an existing tag. The metadata
+    // leaves `commit` unresolved for `resolve_commit` to fill in.
+    assert!(metadata.commit.is_none());
+    assert_eq!(
+        metadata.url,
+        "https://github.com/lgse/strata/releases/tag/v0.5.0-rc.1"
+    );
+}
+
+// --- release notes plumbing, unchanged --------------------------------
 
 #[test]
 fn release_body_is_retained() {
-    let response: ReleaseResponse = serde_json::from_str(
-        r###"{"tag_name":"v1.2.3","html_url":"https://example.test/release","body":"## Changes\n\n- Fast"}"###,
-    )
-    .expect("release fixture should deserialize");
-    let release = metadata(&response);
+    let asset = matching_asset_json("1.2.3");
+    let response = release_response(&format!(
+        r###"{{"tag_name":"v1.2.3","draft":false,"prerelease":false,"assets":[{asset}],"body":"## Changes\n\n- Fast"}}"###
+    ));
+    let summary = to_release_summary(&response).expect("tag should parse");
+    let release = release_metadata(&summary);
     assert_eq!(release.version, "1.2.3");
     assert_eq!(release.notes, "## Changes\n\n- Fast");
     assert!(!release.note_blocks.is_empty());
@@ -45,19 +147,19 @@ fn release_body_is_retained() {
 
 #[test]
 fn missing_release_body_becomes_empty_notes() {
-    let response: ReleaseResponse =
-        serde_json::from_str(r#"{"tag_name":"v1.2.3","html_url":"https://example.test/release"}"#)
-            .expect("release fixture should deserialize");
-    assert!(metadata(&response).notes.is_empty());
+    let response =
+        release_response(r#"{"tag_name":"v1.2.3","draft":false,"prerelease":false,"assets":[]}"#);
+    let summary = to_release_summary(&response).expect("tag should parse");
+    assert!(release_metadata(&summary).notes.is_empty());
 }
 
 #[test]
 fn null_release_body_becomes_empty_notes() {
-    let response: ReleaseResponse = serde_json::from_str(
-        r#"{"tag_name":"v1.2.3","html_url":"https://example.test/release","body":null}"#,
-    )
-    .expect("release fixture should deserialize");
-    assert!(metadata(&response).notes.is_empty());
+    let response = release_response(
+        r#"{"tag_name":"v1.2.3","draft":false,"prerelease":false,"assets":[],"body":null}"#,
+    );
+    let summary = to_release_summary(&response).expect("tag should parse");
+    assert!(release_metadata(&summary).notes.is_empty());
 }
 
 #[test]
@@ -75,6 +177,118 @@ fn other_api_failures_include_the_status() {
         "GitHub API returned HTTP 500"
     );
 }
+
+#[test]
+fn release_page_url_uses_the_exact_published_tag() {
+    assert_eq!(
+        release_page_url("v1.2.3"),
+        "https://github.com/lgse/strata/releases/tag/v1.2.3"
+    );
+}
+
+// --- channel selection, fixture-driven, no network -----------------------
+
+#[test]
+fn stable_feed_flagged_prerelease_is_never_offered() {
+    let asset = matching_asset_json("0.5.0");
+    let response = release_response(&format!(
+        r#"{{"tag_name":"v0.5.0","draft":false,"prerelease":true,"assets":[{asset}]}}"#
+    ));
+    let summary = to_release_summary(&response).expect("tag should parse");
+    let installed = version("0.4.0");
+    assert_eq!(
+        select_update(Channel::Stable, &installed, &[summary]),
+        UpdateCheck::UpToDate
+    );
+}
+
+#[test]
+fn stable_feed_prerelease_tag_with_false_flag_is_never_offered() {
+    let asset = matching_asset_json("0.5.0-rc.1");
+    let response = release_response(&format!(
+        r#"{{"tag_name":"v0.5.0-rc.1","draft":false,"prerelease":false,"assets":[{asset}]}}"#
+    ));
+    let summary = to_release_summary(&response).expect("tag should parse");
+    let installed = version("0.4.0");
+    assert_eq!(
+        select_update(Channel::Stable, &installed, &[summary]),
+        UpdateCheck::UpToDate
+    );
+}
+
+/// Exercises `fetch_preview`'s exact filtering pipeline against a fixture
+/// list: a draft, an unparsable tag, a release with no asset for this
+/// architecture, and one valid newer release. Only the valid release may
+/// ever be offered.
+#[test]
+fn preview_feed_skips_drafts_unparsable_tags_and_assetless_releases() {
+    let draft_asset = matching_asset_json("0.7.0");
+    let valid_asset = matching_asset_json("0.5.0");
+    let responses = release_response_list(&format!(
+        r#"[
+            {{"tag_name":"v0.7.0","draft":true,"prerelease":false,"assets":[{draft_asset}]}},
+            {{"tag_name":"not-a-version","draft":false,"prerelease":false,"assets":[]}},
+            {{"tag_name":"v0.6.0","draft":false,"prerelease":false,
+              "assets":[{{"name":"strata-0.6.0-bogus-arch.tar.gz","browser_download_url":"https://example.invalid/z"}}]}},
+            {{"tag_name":"v0.5.0","draft":false,"prerelease":false,"assets":[{valid_asset}]}}
+        ]"#
+    ));
+    let summaries: Vec<_> = responses.iter().filter_map(to_release_summary).collect();
+    assert_eq!(
+        summaries.len(),
+        3,
+        "only the unparsable tag is dropped at conversion time"
+    );
+
+    let installed = version("0.1.0");
+    let result = select_update(Channel::Preview, &installed, &summaries);
+    match result {
+        UpdateCheck::Available { release, .. } => assert_eq!(release.tag, "v0.5.0"),
+        other => panic!("expected the newest eligible release, got {other:?}"),
+    }
+}
+
+#[test]
+fn preview_offers_final_release_over_an_installed_release_candidate() {
+    let final_asset = matching_asset_json("0.5.0");
+    let rc_asset = matching_asset_json("0.5.0-rc.2");
+    let responses = release_response_list(&format!(
+        r#"[
+            {{"tag_name":"v0.5.0","draft":false,"prerelease":false,"assets":[{final_asset}]}},
+            {{"tag_name":"v0.5.0-rc.2","draft":false,"prerelease":true,"assets":[{rc_asset}]}}
+        ]"#
+    ));
+    let summaries: Vec<_> = responses.iter().filter_map(to_release_summary).collect();
+    let installed = version("0.5.0-rc.2");
+    let result = select_update(Channel::Preview, &installed, &summaries);
+    match result {
+        UpdateCheck::Available {
+            release,
+            download_url,
+        } => {
+            assert_eq!(release.tag, "v0.5.0");
+            assert!(!download_url.is_empty());
+        }
+        other => panic!("expected final 0.5.0 to be offered, got {other:?}"),
+    }
+}
+
+#[test]
+fn selecting_stable_on_a_prerelease_offers_the_latest_final_as_the_channel_transition() {
+    let stable_asset = matching_asset_json("0.4.0");
+    let response = release_response(&format!(
+        r#"{{"tag_name":"v0.4.0","draft":false,"prerelease":false,"assets":[{stable_asset}]}}"#
+    ));
+    let summary = to_release_summary(&response).expect("tag should parse");
+    let installed = version("0.5.0-rc.2");
+
+    match select_update(Channel::Stable, &installed, &[summary]) {
+        UpdateCheck::Available { release, .. } => assert_eq!(release.tag, "v0.4.0"),
+        other => panic!("expected the stable channel transition, got {other:?}"),
+    }
+}
+
+// --- markdown rendering, untouched by this task ---------------------------
 
 #[test]
 fn release_markdown_renders_supported_formatting_as_blocks() {
@@ -166,12 +380,4 @@ fn malformed_markdown_and_entities_remain_inert() {
 #[test]
 fn empty_release_markdown_has_no_blocks() {
     assert!(parse_markdown("  \n").is_empty());
-}
-
-#[test]
-fn current_release_fallback_uses_exact_version_tag() {
-    assert_eq!(
-        release_page_url("1.2.3"),
-        "https://github.com/lgse/strata/releases/tag/v1.2.3"
-    );
 }

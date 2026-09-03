@@ -30,7 +30,7 @@ use super::{
     blur::BlurBin,
     browser_modes::{BrowserDensity, BrowserMode, ModeViews},
     controls::{
-        ModalTone, form_check_button, form_entry, form_label, form_password_entry,
+        ModalTone, form_check_button, form_entry, form_label, form_password_entry, menu_option,
         message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
         wrap_dialog_text,
     },
@@ -3985,7 +3985,7 @@ impl ViewState {
         let filter_button = gtk::ToggleButton::builder()
             .tooltip_text("Filter this pane (Ctrl+F)")
             .build();
-        filter_button.set_child(Some(&crate::assets::text_icon(
+        filter_button.set_child(Some(&crate::assets::primary_icon(
             crate::assets::icons::FUNNEL,
             16,
         )));
@@ -4005,7 +4005,10 @@ impl ViewState {
             let close = gtk::Button::builder()
                 .tooltip_text("Close this pane")
                 .build();
-            close.set_child(Some(&crate::assets::text_icon(crate::assets::icons::X, 16)));
+            close.set_child(Some(&crate::assets::primary_icon(
+                crate::assets::icons::X,
+                16,
+            )));
             close.add_css_class("column-header-action");
             let weak_browser = Rc::downgrade(&self.browser);
             close.connect_clicked(move |_| {
@@ -5009,6 +5012,7 @@ fn peek_label_factory(entries: Rc<RefCell<Vec<FileEntry>>>) -> gtk::SignalListIt
             return;
         };
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        row.add_css_class("file-row");
         let icon = gtk::Image::new();
         icon.add_css_class("file-icon");
         icon.set_pixel_size(17);
@@ -5352,9 +5356,19 @@ pub(super) fn install_item_context_menu(
     } else {
         "Move to Trash"
     };
-    let move_to_trash =
-        item_context_danger_option(crate::assets::icons::TRASH, delete_label, "Del");
-    move_to_trash.add_css_class("danger");
+    let move_to_trash = if in_trash {
+        let option = item_context_danger_option(crate::assets::icons::TRASH, delete_label, "Del");
+        option.add_css_class("danger");
+        option
+    } else {
+        item_context_option(crate::assets::icons::TRASH, delete_label, "Del")
+    };
+    let permanent_delete = item_context_danger_option(
+        crate::assets::icons::TRASH,
+        "Permanently delete",
+        "Shift+Del",
+    );
+    permanent_delete.add_css_class("danger");
     let properties = item_context_option(crate::assets::icons::INFO, "Properties", "Alt+Enter");
     let compress = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
     let extract = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract here", "");
@@ -5380,6 +5394,7 @@ pub(super) fn install_item_context_menu(
     single.append(&properties);
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     single.append(&move_to_trash);
+    single.append(&permanent_delete);
     content.append(&single);
 
     let multiple = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -5390,9 +5405,19 @@ pub(super) fn install_item_context_menu(
     let move_multiple = item_context_option(crate::assets::icons::FOLDER, "Move to…", "");
     let copy_to_multiple = item_context_option(crate::assets::icons::COPY, "Copy to…", "");
     let cut_multiple = item_context_option(crate::assets::icons::SCISSORS, "Cut", "Ctrl+X");
-    let trash_multiple =
-        item_context_danger_option(crate::assets::icons::TRASH, delete_label, "Del");
-    trash_multiple.add_css_class("danger");
+    let trash_multiple = if in_trash {
+        let option = item_context_danger_option(crate::assets::icons::TRASH, delete_label, "Del");
+        option.add_css_class("danger");
+        option
+    } else {
+        item_context_option(crate::assets::icons::TRASH, delete_label, "Del")
+    };
+    let permanent_delete_multiple = item_context_danger_option(
+        crate::assets::icons::TRASH,
+        "Permanently delete",
+        "Shift+Del",
+    );
+    permanent_delete_multiple.add_css_class("danger");
     let compress_multiple =
         item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
     multiple.append(&restore_multiple);
@@ -5406,6 +5431,7 @@ pub(super) fn install_item_context_menu(
     multiple.append(&compress_multiple);
     multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&trash_multiple);
+    multiple.append(&permanent_delete_multiple);
     multiple.set_visible(false);
     content.append(&multiple);
 
@@ -5527,6 +5553,8 @@ pub(super) fn install_item_context_menu(
     connect_context_copy(&copy_multiple, &popover, state, &target);
     connect_context_trash(&move_to_trash, &popover, state, &target, in_trash);
     connect_context_trash(&trash_multiple, &popover, state, &target, in_trash);
+    connect_context_trash(&permanent_delete, &popover, state, &target, true);
+    connect_context_trash(&permanent_delete_multiple, &popover, state, &target, true);
     connect_context_compress(&compress, &popover, state, &target);
     connect_context_compress(&compress_multiple, &popover, state, &target);
     connect_context_extract(&extract, &popover, state, &target, false);
@@ -5589,6 +5617,8 @@ pub(super) fn install_item_context_menu(
         let entries = state.browser.selected_entries();
         preview.set_visible(entry_supports_quick_preview(&entry));
         open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
+        permanent_delete.set_visible(!in_trash);
+        permanent_delete_multiple.set_visible(!in_trash);
         pin.set_visible(entry.is_directory() && !is_trash_location(&entry.location));
         pin.set_sensitive(
             state
@@ -6488,7 +6518,7 @@ fn retain_untransferred(cut: &mut Vec<Location>, transferred: &[Location]) {
 }
 
 fn item_context_option(icon: &str, label: &str, accelerator: &str) -> gtk::Button {
-    item_context_option_with_icon(crate::assets::text_icon(icon, 15), label, accelerator)
+    item_context_option_with_icon(crate::assets::primary_icon(icon, 15), label, accelerator)
 }
 
 fn item_context_danger_option(icon: &str, label: &str, accelerator: &str) -> gtk::Button {
@@ -6542,16 +6572,24 @@ pub(super) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk::Menu
     let preferences = browser.column_preferences(depth).unwrap_or_default();
     let selected_checks: Rc<RefCell<Vec<(SortKey, gtk::Image)>>> =
         Rc::new(RefCell::new(Vec::new()));
+    let popover = gtk::Popover::builder()
+        .has_arrow(false)
+        .halign(gtk::Align::End)
+        .position(gtk::PositionType::Bottom)
+        .build();
+    popover.add_css_class("column-popover");
+    let popover_weak = popover.downgrade();
     for (label, key) in [
         ("Name", SortKey::Name),
         ("Size", SortKey::Size),
         ("Modified", SortKey::Modified),
         ("Type", SortKey::Type),
     ] {
-        let (option, check) = column_menu_option(label, preferences.sort_key == key);
+        let (option, check) = menu_option(label, preferences.sort_key == key);
         selected_checks.borrow_mut().push((key, check));
         let checks = selected_checks.clone();
         let weak_browser = Rc::downgrade(browser);
+        let popover_weak = popover_weak.clone();
         option.connect_clicked(move |_| {
             for (check_key, check) in checks.borrow().iter() {
                 check.set_visible(*check_key == key);
@@ -6559,17 +6597,20 @@ pub(super) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk::Menu
             if let Some(browser) = weak_browser.upgrade() {
                 browser.set_sort_key(depth, key);
             }
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+            }
         });
         content.append(&option);
     }
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-    let (folders_first, folders_check) =
-        column_menu_option("Folders first", preferences.folders_first);
+    let (folders_first, folders_check) = menu_option("Folders first", preferences.folders_first);
     let folders_enabled = Rc::new(Cell::new(preferences.folders_first));
     let weak_browser = Rc::downgrade(browser);
     let folders_enabled_for_click = folders_enabled.clone();
     let folders_check_for_click = folders_check.clone();
+    let popover_weak = popover_weak.clone();
     folders_first.connect_clicked(move |_| {
         let enabled = !folders_enabled_for_click.get();
         folders_enabled_for_click.set(enabled);
@@ -6577,16 +6618,13 @@ pub(super) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk::Menu
         if let Some(browser) = weak_browser.upgrade() {
             browser.set_folders_first(depth, enabled);
         }
+        if let Some(popover) = popover_weak.upgrade() {
+            popover.popdown();
+        }
     });
     content.append(&folders_first);
 
-    let popover = gtk::Popover::builder()
-        .child(&content)
-        .has_arrow(false)
-        .halign(gtk::Align::End)
-        .position(gtk::PositionType::Bottom)
-        .build();
-    popover.add_css_class("column-popover");
+    popover.set_child(Some(&content));
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let dismissed_popover = popover.clone();
@@ -6634,7 +6672,7 @@ pub(super) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gtk::Menu
         .tooltip_text("Choose sort field")
         .popover(&popover)
         .build();
-    button.set_child(Some(&crate::assets::text_icon(
+    button.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::SETTINGS_2,
         16,
     )));
@@ -6648,7 +6686,7 @@ pub(super) fn column_sort_direction_toggle(browser: &Rc<Browser>, depth: usize) 
         .unwrap_or_default()
         .sort_direction;
     let button = gtk::Button::new();
-    let icon = crate::assets::text_icon(crate::assets::icons::ARROW_UP_NARROW_WIDE, 16);
+    let icon = crate::assets::primary_icon(crate::assets::icons::ARROW_UP_NARROW_WIDE, 16);
     button.set_child(Some(&icon));
     button.add_css_class("column-header-action");
     sync_sort_direction_toggle(&button, &icon, direction);
@@ -6685,7 +6723,7 @@ pub(super) fn column_sort_direction_toggle(browser: &Rc<Browser>, depth: usize) 
 
 fn sync_sort_direction_toggle(button: &gtk::Button, icon: &gtk::Image, direction: SortDirection) {
     let descending = direction == SortDirection::Descending;
-    crate::assets::set_text_icon(
+    crate::assets::set_primary_icon(
         icon,
         if descending {
             crate::assets::icons::ARROW_DOWN_WIDE_NARROW
@@ -6711,7 +6749,7 @@ pub(super) fn empty_trash_button(browser: &Rc<Browser>) -> gtk::Button {
         .tooltip_text("Empty Trash")
         .visible(false)
         .build();
-    button.set_child(Some(&crate::assets::text_icon(
+    button.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::TRASH,
         16,
     )));
@@ -6723,21 +6761,6 @@ pub(super) fn empty_trash_button(browser: &Rc<Browser>) -> gtk::Button {
         }
     });
     button
-}
-
-fn column_menu_option(label: &str, selected: bool) -> (gtk::Button, gtk::Image) {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    let check = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
-    check.set_visible(selected);
-    let label = gtk::Label::new(Some(label));
-    label.set_xalign(0.0);
-    label.set_hexpand(true);
-    row.append(&label);
-    row.append(&check);
-    let option = gtk::Button::builder().child(&row).build();
-    option.add_css_class("column-menu-option");
-    option.set_has_frame(false);
-    (option, check)
 }
 
 fn file_row_target(mut target: gtk::Widget) -> Option<gtk::Box> {

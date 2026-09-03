@@ -75,8 +75,6 @@ struct PrimaryIcon {
 thread_local! {
     static PRIMARY_ICON_COLOR: RefCell<String> = RefCell::new("#8bc9eb".to_owned());
     static PRIMARY_ICONS: RefCell<Vec<PrimaryIcon>> = const { RefCell::new(Vec::new()) };
-    static TEXT_ICON_COLOR: RefCell<String> = RefCell::new("#c9deed".to_owned());
-    static TEXT_ICONS: RefCell<Vec<PrimaryIcon>> = const { RefCell::new(Vec::new()) };
     static DANGER_ICON_COLOR: RefCell<String> = RefCell::new("#e5484d".to_owned());
     static DANGER_ICONS: RefCell<Vec<PrimaryIcon>> = const { RefCell::new(Vec::new()) };
     static ICON_TEXTURES: RefCell<HashMap<(String, String), gdk::Texture>> = RefCell::new(HashMap::new());
@@ -144,24 +142,6 @@ pub fn remove_primary_icon(image: &gtk::Image) {
             .borrow_mut()
             .retain(|icon| icon.image.upgrade().as_ref() != Some(image));
     });
-}
-
-pub fn text_icon(name: &str, pixel_size: i32) -> gtk::Image {
-    let image = gtk::Image::new();
-    image.set_pixel_size(pixel_size);
-    set_text_icon(&image, name);
-    image
-}
-
-pub fn set_text_icon(image: &gtk::Image, name: &str) {
-    let color = TEXT_ICON_COLOR.with(|color| color.borrow().clone());
-    apply_primary_icon(image, name, &color);
-    TEXT_ICONS.with(|icons| register_icon(icons, image, name));
-}
-
-pub fn set_text_icon_color(color: &str) {
-    TEXT_ICON_COLOR.with(|current| current.replace(color.to_owned()));
-    TEXT_ICONS.with(|icons| recolor_registered_icons(icons, color));
 }
 
 pub fn danger_icon(name: &str, pixel_size: i32) -> gtk::Image {
