@@ -26,6 +26,35 @@ pub(crate) const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
 static NEXT_DIRECTORY: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MediaPreviewBackend {
+    Automatic,
+    VaApi,
+    Vulkan,
+    Software,
+}
+
+impl MediaPreviewBackend {
+    pub(crate) fn argument(self) -> &'static str {
+        match self {
+            Self::Automatic => "automatic",
+            Self::VaApi => "vaapi",
+            Self::Vulkan => "vulkan",
+            Self::Software => "software",
+        }
+    }
+
+    pub(crate) fn from_argument(value: &str) -> Option<Self> {
+        match value {
+            "automatic" => Some(Self::Automatic),
+            "vaapi" => Some(Self::VaApi),
+            "vulkan" => Some(Self::Vulkan),
+            "software" => Some(Self::Software),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ParseOperation {
     ThumbnailImage,
     ThumbnailRaw,
@@ -112,6 +141,7 @@ pub(crate) fn parse(
     input: &Path,
     operation: ParseOperation,
     value: i32,
+    media_backend: MediaPreviewBackend,
     cancellation: &Cancellation,
 ) -> Result<ParseOutput, String> {
     if cancellation.is_cancelled() {
@@ -136,7 +166,7 @@ pub(crate) fn parse(
     let executable = std::env::current_exe()
         .map_err(|error| format!("Unable to locate the Strata executable: {error}"))?;
     let devices = if operation == ParseOperation::PreviewMedia {
-        gpu_devices(Path::new("/dev"))
+        gpu_devices(Path::new("/dev"), media_backend)
     } else {
         Vec::new()
     };
@@ -146,6 +176,7 @@ pub(crate) fn parse(
         output.path(),
         operation,
         value,
+        media_backend,
         &devices,
     );
     command.stderr(Stdio::null());
@@ -310,6 +341,7 @@ fn sandbox_command(
     output: &Path,
     operation: ParseOperation,
     value: i32,
+    media_backend: MediaPreviewBackend,
     devices: &[PathBuf],
 ) -> Command {
     let mut command = Command::new("bwrap");
@@ -368,7 +400,7 @@ fn sandbox_command(
     if operation != ParseOperation::PreviewMedia {
         command.arg("--bind").arg(output).arg("/output");
     }
-    if operation == ParseOperation::PreviewMedia {
+    if operation == ParseOperation::PreviewMedia && media_backend != MediaPreviewBackend::Software {
         // Hardware media drivers need selected render nodes plus read-only sysfs discovery data.
         for device in devices {
             command.arg("--dev-bind-try").arg(device).arg(device);
@@ -400,6 +432,7 @@ fn sandbox_command(
         command.arg(format!("/output/{}", operation.output_name()));
     }
     command.arg(value.to_string());
+    command.arg(media_backend.argument());
     command
 }
 
@@ -415,7 +448,10 @@ fn sandbox_input_path(input: &Path) -> String {
     }
 }
 
-pub(crate) fn gpu_devices(dev: &Path) -> Vec<PathBuf> {
+pub(crate) fn gpu_devices(dev: &Path, media_backend: MediaPreviewBackend) -> Vec<PathBuf> {
+    if media_backend == MediaPreviewBackend::Software {
+        return Vec::new();
+    }
     let mut devices = Vec::new();
     if let Ok(entries) = fs::read_dir(dev.join("dri")) {
         for entry in entries.flatten() {
@@ -424,7 +460,9 @@ pub(crate) fn gpu_devices(dev: &Path) -> Vec<PathBuf> {
             }
         }
     }
-    if let Ok(entries) = fs::read_dir(dev) {
+    if media_backend != MediaPreviewBackend::VaApi
+        && let Ok(entries) = fs::read_dir(dev)
+    {
         for entry in entries.flatten() {
             let name = entry.file_name();
             if name == "nvidiactl" || numbered_name(&name, "nvidia") {
@@ -434,6 +472,37 @@ pub(crate) fn gpu_devices(dev: &Path) -> Vec<PathBuf> {
     }
     devices.sort();
     devices
+}
+
+pub(crate) fn polaris_gpu_available() -> bool {
+    polaris_gpu_available_at(Path::new("/dev"), Path::new("/sys/class/drm"))
+}
+
+fn polaris_gpu_available_at(dev: &Path, drm: &Path) -> bool {
+    fs::read_dir(dev.join("dri")).is_ok_and(|entries| {
+        entries.flatten().any(|entry| {
+            numbered_name(&entry.file_name(), "renderD") && polaris_render_node(&entry.path(), drm)
+        })
+    })
+}
+
+fn polaris_render_node(device: &Path, drm: &Path) -> bool {
+    let Some(name) = device.file_name() else {
+        return false;
+    };
+    let metadata = drm.join(name).join("device");
+    let Some(vendor) = pci_id(&metadata.join("vendor")) else {
+        return false;
+    };
+    let Some(device) = pci_id(&metadata.join("device")) else {
+        return false;
+    };
+    vendor == 0x1002 && matches!(device, 0x67c0..=0x67df | 0x67e0..=0x67ff | 0x6980..=0x699f)
+}
+
+fn pci_id(path: &Path) -> Option<u16> {
+    let value = fs::read_to_string(path).ok()?;
+    u16::from_str_radix(value.trim().strip_prefix("0x").unwrap_or(value.trim()), 16).ok()
 }
 
 pub(crate) fn numbered_name(name: &std::ffi::OsStr, prefix: &str) -> bool {

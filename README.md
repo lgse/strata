@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/logos/strata-tokyo-night.svg" alt="Strata logo" width="160">
+
 # Strata
 
 **Navigate every layer.** A fast, keyboard-first file manager for modern Linux desktops.
@@ -34,6 +36,7 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
   - [Follow Omarchy Quattro](#follow-omarchy-quattro)
   - [Bundled themes](#bundled-themes)
   - [Custom themes](#custom-themes)
+- [Release channels](#release-channels)
 - [Under the hood](#under-the-hood)
 - [Technical specifications](#technical-specifications)
 - [Development and documentation](#development-and-documentation)
@@ -245,6 +248,16 @@ Select **Add a theme**, enter a name, and choose the semantic colors for the bac
 
 Custom themes are stored as shareable TOML files in `~/.config/strata/themes/`. See [Themes](docs/themes.md) for the schema, file location, and Omarchy color mapping.
 
+## Release channels
+
+Strata defaults to the **Stable** channel: only final tagged releases are ever offered, and a Stable install never receives, sees, or is notified about a prerelease.
+
+To try upcoming changes early, choose a channel in **Settings → Updates**. **Preview** receives curated alpha, beta, and release-candidate builds but excludes nightlies. **Nightly** receives every recognised prerelease, including daily development builds. The update dialog and release notes always identify the exact build kind.
+
+When a prerelease installation selects **Stable**, the Updates card immediately offers the newest stable release as the channel target—even when that requires a semantic downgrade—and labels the action **Return to stable**. Preview and Nightly selections use the same card for ordinary forward updates, so channel changes never create a separate competing rollback card.
+
+See [Releasing](docs/releasing.md) for the tag grammar these channels rely on and, for maintainers, how a release candidate is cut and promoted.
+
 ## Under the hood
 
 ### Why search stays fast
@@ -295,6 +308,7 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Dee
 - [Performance baseline](docs/performance-baseline.md)
 - [Themes and Omarchy integration](docs/themes.md)
 - [Unsafe code policy](docs/unsafe-code.md)
+- [Releasing](docs/releasing.md)
 
 ## Contributors
 

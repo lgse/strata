@@ -582,8 +582,14 @@ fn render_thumbnail(
         ThumbnailKind::Pdf => ParseOperation::ThumbnailPdf,
         ThumbnailKind::Video => ParseOperation::ThumbnailVideo,
     };
-    crate::sandbox::parse(path, operation, size.clamp(16, 256), cancellation)
-        .map(|output| output.data)
+    crate::sandbox::parse(
+        path,
+        operation,
+        size.clamp(16, 256),
+        crate::sandbox::MediaPreviewBackend::Software,
+        cancellation,
+    )
+    .map(|output| output.data)
 }
 
 #[cfg(test)]
