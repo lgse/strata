@@ -3,17 +3,28 @@
 
 Both packages are generated from the single template
 `packaging/aur/PKGBUILD.in`: `strata-bin` tracks stable releases and
-`strata-preview-bin` tracks the newest preview-channel release. The AUR
-requires a self-contained `PKGBUILD`, so the rendered files are committed
-rather than sourced from the template at build time.
+`strata-rc-bin` tracks the newest release candidate. The AUR requires a
+self-contained `PKGBUILD`, so the rendered files are committed rather than
+sourced from the template at build time.
+
+Nightly releases are deliberately not packaged. A nightly's download URL
+carries its own tag, and `makepkg` fetches `source` before `pkgver()` runs,
+so a package cannot discover the newest nightly and download it in the same
+build; pinning each one instead would mean an AUR push per nightly. Nightly
+users install manually and update in-app.
 
 Checksums are read from the `.sha256` files published alongside each release
 archive, so a mistyped version fails loudly instead of pinning a wrong digest.
 
+Each channel is rendered only when its own flag is passed. Rendering the RC
+package from `--stable` would let a stable release silently roll the RC
+package's `pkgver` backwards past a newer release candidate.
+
 Usage:
 
     python3 scripts/update_aur.py --stable 0.7.0
-    python3 scripts/update_aur.py --stable 0.7.0 --preview 0.7.1-rc.2
+    python3 scripts/update_aur.py --stable 0.7.0 --rc 0.7.1-rc.2
+    python3 scripts/update_aur.py --rc 0.8.0-rc.1
 
 `.SRCINFO` is regenerated with `makepkg --printsrcinfo`, which requires Arch's
 pacman tooling; pass `--skip-srcinfo` on a non-Arch machine and regenerate it
@@ -40,14 +51,14 @@ RELEASE_VERSION_PATTERN = re.compile(
 PACKAGES = {
     "strata-bin": {
         "channel": "stable",
-        "alternate": "strata-preview-bin",
+        "alternate": "strata-rc-bin",
         "description": "A fast, keyboard-first file manager for Linux",
     },
-    "strata-preview-bin": {
-        "channel": "preview",
+    "strata-rc-bin": {
+        "channel": "rc",
         "alternate": "strata-bin",
         "description": (
-            "A fast, keyboard-first file manager for Linux (preview releases)"
+            "A fast, keyboard-first file manager for Linux (release candidates)"
         ),
     },
 }
@@ -60,10 +71,16 @@ class PackagingError(ValueError):
 def package_version(release_version: str) -> str:
     """Converts a release version into a valid `pkgver`.
 
-    `pkgver` may not contain a hyphen, so semver prerelease punctuation is
-    stripped: `0.8.0-rc.1` becomes `0.8.0rc1`. This preserves `vercmp`
-    ordering -- `0.8.0rc1` sorts below `0.8.0` and above `0.7.0`, and `rc10`
-    above `rc2` -- so pacman upgrades a preview install in release order.
+    `pkgver` forbids `-` and `:` but allows `.`, so only the hyphen
+    separating the prerelease is removed: `0.8.0-rc.1` becomes `0.8.0rc.1`.
+
+    Dots are deliberately kept. `vercmp` splits on non-alphanumerics and
+    compares segment by segment, so dropping them would concatenate a
+    prerelease's components into one number -- `0.8.0-nightly.20260901.2`
+    would mangle to `0.8.0nightly202609012`, which orders *above*
+    `0.8.0nightly20260902`. Keeping the separator makes every component its
+    own segment, which orders correctly for every form of the tag grammar:
+    `0.8.0rc.1 < 0.8.0rc.2 < 0.8.0rc.10 < 0.8.0`.
     """
     version = release_version.strip().removeprefix("v")
     match = RELEASE_VERSION_PATTERN.match(version)
@@ -74,7 +91,7 @@ def package_version(release_version: str) -> str:
     prerelease = match.group("prerelease")
     if prerelease is None:
         return match.group("core")
-    return match.group("core") + prerelease.replace(".", "")
+    return match.group("core") + prerelease
 
 
 def release_version(version: str) -> str:
@@ -153,8 +170,7 @@ def package_values(
         "RELEASEVER": version,
         "PKGDESC": package["description"],
         "CHANNEL": package["channel"],
-        "CONFLICTS": package["alternate"],
-        "UPDATE_COMMAND": f"sudo pacman -Syu {pkgname}",
+        "ALTERNATE": package["alternate"],
         "SHA256_X86_64": checksums["x86_64"],
         "SHA256_AARCH64": checksums["aarch64"],
     }
@@ -198,8 +214,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--stable", help="stable release version, e.g. 0.7.0")
     parser.add_argument(
-        "--preview",
-        help="preview-channel release version, e.g. 0.7.1-rc.2 (defaults to --stable)",
+        "--rc",
+        help="release-candidate version, e.g. 0.7.1-rc.2",
     )
     parser.add_argument("--pkgrel", type=int, default=1, help="package release number")
     parser.add_argument(
@@ -209,8 +225,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     arguments = parser.parse_args(argv)
 
-    if arguments.stable is None and arguments.preview is None:
-        parser.error("pass --stable, --preview, or both")
+    if arguments.stable is None and arguments.rc is None:
+        parser.error("pass --stable, --rc, or both")
 
     root = pathlib.Path(__file__).resolve().parent.parent
     try:
@@ -222,12 +238,11 @@ def main(argv: list[str] | None = None) -> int:
                 arguments.pkgrel,
                 arguments.skip_srcinfo,
             )
-        preview = arguments.preview or arguments.stable
-        if preview is not None:
+        if arguments.rc is not None:
             update_package(
                 root,
-                "strata-preview-bin",
-                release_version(preview),
+                "strata-rc-bin",
+                release_version(arguments.rc),
                 arguments.pkgrel,
                 arguments.skip_srcinfo,
             )

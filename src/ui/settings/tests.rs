@@ -1,22 +1,48 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::services::{InstallSource, ManagedInstall, ReleaseMetadata, UpdateCheck};
+use std::rc::Rc;
+
+use crate::services::{
+    BuildKind, Channel, InstallSource, ManagedInstall, ReleaseMetadata, UpdateCheck, Version,
+};
 
 use super::{
     COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
-    managed_install_summary, responsive_dialog_size, shows_available_release_notes,
-    theme_background_is_light, theme_name_matches, update_dialog_status, update_status_markup,
-    uses_compact_navigation,
+    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, install_guard, installed_version_status,
+    is_stale_check, managed_channel_description, managed_install_summary, offer_still_eligible,
+    responsive_dialog_size, shows_available_release_notes, theme_background_is_light,
+    theme_name_matches, update_dialog_status, update_status_markup, uses_compact_navigation,
+    video_preview_backend_label, video_preview_control_state,
 };
+use crate::sandbox::MediaPreviewBackend;
 
+#[test]
+fn a_checks_result_is_current_only_for_the_generation_it_was_issued_under() {
+    assert!(!is_stale_check(1, 1));
+    assert!(!is_stale_check(0, 0));
+}
+
+#[test]
+fn a_checks_result_is_stale_once_a_newer_check_has_started() {
+    // The scenario Important 1 fixes: a check issued as generation 1 is
+    // still in flight when a channel toggle starts generation 2. Generation
+    // 1's eventual result must never be applied.
+    assert!(is_stale_check(1, 2));
+    assert!(is_stale_check(2, 1));
+}
+
+/// A stable-channel packaged install, with `update_command` set so the
+/// wording asserted below does not depend on which AUR helper the machine
+/// running the tests happens to have installed. Helper detection itself is
+/// covered in `services::install_source::tests`.
 fn packaged() -> InstallSource {
     let managed: ManagedInstall = toml::from_str(
         r#"
         manager = "pacman"
         package = "strata-bin"
         channel = "stable"
-        update_command = "sudo pacman -Syu strata-bin"
-        alternate_package = "strata-preview-bin"
+        update_command = "yay -S strata-bin"
+        alternate_package = "strata-rc-bin"
         "#,
     )
     .expect("the marker to parse");
@@ -30,8 +56,12 @@ fn available_release() -> UpdateCheck {
             url: "https://github.com/lgse/strata/releases/tag/v0.8.0".to_owned(),
             notes: String::new(),
             note_blocks: Vec::new(),
+            kind: BuildKind::Stable,
+            tag: "v0.8.0".to_owned(),
+            published_at: None,
+            commit: None,
         },
-        download_url: Some("https://example.invalid/strata.tar.gz".to_owned()),
+        download_url: "https://example.invalid/strata.tar.gz".to_owned(),
     }
 }
 
@@ -92,33 +122,42 @@ fn available_notes_are_shown_only_for_a_newer_release() {
             note_blocks: vec![crate::services::ReleaseNoteBlock::Paragraph(
                 "Changes".to_owned(),
             )],
+            kind: BuildKind::Stable,
+            tag: "v1.0.0".to_owned(),
+            published_at: None,
+            commit: None,
         },
-        download_url: None,
+        download_url: "https://example.test/download".to_owned(),
     }));
 }
 
 #[test]
 fn a_packaged_install_is_told_how_to_update_through_its_package_manager() {
-    let markup = update_status_markup(&available_release(), &packaged());
+    let message = super::update_check_message(&available_release());
+    let markup = update_status_markup(message, &available_release(), &packaged());
 
     assert!(
-        markup.ends_with("\nUpdate Strata with: sudo pacman -Syu strata-bin"),
+        markup.ends_with("\nUpdate Strata with: yay -S strata-bin"),
         "expected packaging guidance, got: {markup}"
     );
 }
 
 #[test]
 fn a_user_owned_install_gets_no_packaging_guidance() {
+    let message = super::update_check_message(&available_release());
+
     assert_eq!(
-        update_status_markup(&available_release(), &InstallSource::SelfManaged),
+        update_status_markup(message, &available_release(), &InstallSource::SelfManaged),
         super::update_check_message(&available_release())
     );
 }
 
 #[test]
 fn packaging_guidance_is_withheld_when_no_update_is_available() {
+    let message = super::update_check_message(&UpdateCheck::UpToDate);
+
     assert_eq!(
-        update_status_markup(&UpdateCheck::UpToDate, &packaged()),
+        update_status_markup(message, &UpdateCheck::UpToDate, &packaged()),
         super::update_check_message(&UpdateCheck::UpToDate)
     );
 }
@@ -132,8 +171,32 @@ fn the_managed_row_names_the_package_channel_and_commands() {
         managed_install_summary(managed),
         "Installed by pacman as strata-bin.\n\
          Tracking the stable release channel.\n\
-         Update Strata with: sudo pacman -Syu strata-bin\n\
-         Other release channels are published as strata-preview-bin."
+         Update Strata with: yay -S strata-bin\n\
+         Other release channels are published as strata-rc-bin."
+    );
+}
+
+#[test]
+fn the_channel_selector_explains_a_packaged_channel_and_how_to_change_it() {
+    let source = packaged();
+    let managed = source.managed().expect("a managed install");
+
+    assert_eq!(
+        managed_channel_description(managed),
+        "This install tracks the stable release channel. \
+         Other release channels are published as strata-rc-bin."
+    );
+}
+
+#[test]
+fn the_packaged_channel_selection_follows_the_installed_package() {
+    let source = packaged();
+    let managed = source.managed().expect("a managed install");
+
+    assert_eq!(
+        managed.tracked_channel(),
+        Some(Channel::Stable),
+        "the selector must show the channel the package can actually deliver"
     );
 }
 
@@ -144,6 +207,92 @@ fn the_update_dialog_defers_to_the_package_manager() {
 
     assert_eq!(
         update_dialog_status(managed),
-        "Installed by pacman as strata-bin. Update Strata with: sudo pacman -Syu strata-bin"
+        "Installed by pacman as strata-bin. Update Strata with: yay -S strata-bin"
     );
+}
+
+#[test]
+fn video_preview_backend_selector_labels_all_options() {
+    for (backend, label) in [
+        (MediaPreviewBackend::Automatic, "Automatic"),
+        (MediaPreviewBackend::VaApi, "VA-API"),
+        (MediaPreviewBackend::Vulkan, "Vulkan"),
+    ] {
+        assert_eq!(video_preview_backend_label(backend), label);
+    }
+    assert_eq!(
+        video_preview_backend_label(MediaPreviewBackend::Software),
+        "Automatic"
+    );
+}
+
+#[test]
+fn release_channel_copy_distinguishes_preview_from_nightly() {
+    assert_eq!(RELEASE_CHANNEL_TITLE, "Release channel");
+    assert_eq!(
+        RELEASE_CHANNEL_DESCRIPTION,
+        "Preview receives alpha, beta, and release-candidate builds. Nightly also receives daily development builds."
+    );
+}
+
+#[test]
+fn video_preview_controls_follow_enabled_state() {
+    assert_eq!(video_preview_control_state(true), (true, true, true));
+    assert_eq!(video_preview_control_state(false), (false, true, false));
+}
+
+#[test]
+fn installed_version_status_stays_plain_for_a_stable_build() {
+    let version = Version::parse("0.6.0").expect("valid version");
+    assert_eq!(
+        installed_version_status(&version, BuildKind::Stable),
+        "Version 0.6.0"
+    );
+}
+
+#[test]
+fn installed_version_status_names_the_build_kind_for_a_prerelease() {
+    let version = Version::parse("0.6.0-rc.1").expect("valid version");
+    assert_eq!(
+        installed_version_status(&version, BuildKind::Rc),
+        "Version 0.6.0-rc.1 · Release candidate"
+    );
+}
+
+#[test]
+fn a_cached_prerelease_offer_stops_being_installable_once_the_channel_is_stable() {
+    // The cross-window case: a window cached an RC offer while on Preview,
+    // another window switched back to Stable, and the cached offer's install
+    // button must refuse it.
+    assert!(!offer_still_eligible(Channel::Stable, BuildKind::Rc));
+    assert!(!offer_still_eligible(Channel::Stable, BuildKind::Nightly));
+    assert!(!offer_still_eligible(Channel::Preview, BuildKind::Nightly));
+}
+
+#[test]
+fn a_cached_offer_stays_installable_when_the_channel_still_allows_it() {
+    assert!(offer_still_eligible(Channel::Stable, BuildKind::Stable));
+    assert!(offer_still_eligible(Channel::Preview, BuildKind::Stable));
+    assert!(offer_still_eligible(Channel::Preview, BuildKind::Alpha));
+    assert!(offer_still_eligible(Channel::Preview, BuildKind::Beta));
+    assert!(offer_still_eligible(Channel::Preview, BuildKind::Rc));
+    assert!(offer_still_eligible(Channel::Nightly, BuildKind::Nightly));
+    assert!(offer_still_eligible(Channel::Nightly, BuildKind::Rc));
+}
+
+#[test]
+fn every_window_installs_behind_one_process_wide_guard() {
+    // Two windows each ask for a guard the way `ui::window::present` does.
+    // Handing out two independent cells is what let an update in one window
+    // and another update in a second window replace the executable concurrently.
+    let first = install_guard();
+    let second = install_guard();
+    assert!(Rc::ptr_eq(&first, &second));
+
+    assert!(!first.replace(true));
+    assert!(
+        second.get(),
+        "an install started in one window must be visible in every other"
+    );
+    first.set(false);
 }

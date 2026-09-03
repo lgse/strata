@@ -11,9 +11,10 @@ use gtk::{gdk, glib, prelude::*, subclass::prelude::*};
 
 use crate::{
     assets::icons,
+    sandbox::MediaPreviewBackend,
     services::{
-        self, InstallSource, ManagedInstall, ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes,
-        UpdateCheck, UpdateInstall,
+        self, BuildKind, Channel, InstallRequest, InstallSource, ManagedInstall, ReleaseMetadata,
+        ReleaseNoteBlock, ReleaseNotes, UpdateCheck, UpdateInstall, Version,
     },
 };
 
@@ -23,12 +24,45 @@ mod tests;
 use super::{
     blur::BlurBin,
     browser::{BrowserView, dismiss_modal_layer, modal_layer},
-    controls::{form_entry, modal_layout, segmented_control},
+    controls::{form_entry, menu_option, modal_layout, segmented_control},
     theme::{Theme, ThemeManager, ThemeTokens},
 };
 
 type ThemeCards = Rc<RefCell<Vec<(String, gtk::Button, gtk::Image)>>>;
 pub(super) type UpdateNoticeHandler = Rc<dyn Fn(Option<(ReleaseMetadata, String)>)>;
+
+/// Shared "an install is running" guard across the update row and update
+/// dialog, the two places [`services::install_update`] is called. Without one
+/// process-wide guard, separate windows could replace the executable at the
+/// same time. See [`start_install`].
+pub(super) type InstallGuard = Rc<Cell<bool>>;
+
+thread_local! {
+    static INSTALL_GUARD: InstallGuard = Rc::new(Cell::new(false));
+}
+
+/// The one [`InstallGuard`] for this process.
+///
+/// Every install writes the *same* target -- the running executable -- so
+/// the guard has to span every window, not just the controls within one. A
+/// per-window guard would let installs started in separate windows replace
+/// that executable concurrently, leaving the last writer as the installed
+/// build.
+///
+/// A `thread_local` `Rc` (rather than a `Mutex`) is the whole story here
+/// because every window is built on the single GTK main thread, from
+/// `connect_activate`; this mirrors [`ThemeManager::shared`]. It is
+/// deliberately never released: it is one `bool`, and the guard's
+/// correctness should not depend on some window or in-flight install
+/// happening to still hold a strong reference.
+///
+/// This bounds races to *this* process. A second `strata` process can
+/// still install over the same executable, but `update_install` stages
+/// into a unique path and lands it with a single atomic rename, so that
+/// case degrades to last-writer-wins rather than a corrupted binary.
+pub(super) fn install_guard() -> InstallGuard {
+    INSTALL_GUARD.with(Rc::clone)
+}
 
 const DIALOG_WIDTH: i32 = 920;
 const DIALOG_HEIGHT: i32 = 680;
@@ -161,6 +195,7 @@ pub fn build_layer(
     root: &BlurBin,
     themes: Rc<ThemeManager>,
     update_notice: UpdateNoticeHandler,
+    install_guard: InstallGuard,
 ) -> gtk::Box {
     let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
     layer.add_css_class("app-modal-layer");
@@ -209,7 +244,7 @@ pub fn build_layer(
         .build();
     stack.add_named(&general_page(browser, themes.clone()), Some("general"));
     stack.add_named(
-        &updates_page(themes.clone(), update_notice),
+        &updates_page(themes.clone(), update_notice, install_guard),
         Some("updates"),
     );
     stack.add_named(&keybindings_page(), Some("keybindings"));
@@ -388,6 +423,29 @@ fn general_page(browser: &BrowserView, manager: Rc<ThemeManager>) -> gtk::Widget
     });
     preferences.append(&search_open_row);
 
+    append_heading(&preferences, "VIDEO PREVIEWS");
+    let (acceleration_active, acceleration_sensitive, backend_sensitive) =
+        video_preview_control_state(manager.hardware_accelerated_video_previews());
+    let description = "Choose a hardware backend.";
+    let selected_backend = manager.video_preview_backend();
+    let manager_for_backend = manager.clone();
+    let (video_row, acceleration, backend) = video_preview_option(
+        description,
+        acceleration_active,
+        acceleration_sensitive,
+        backend_sensitive,
+        selected_backend,
+        Rc::new(move |backend| manager_for_backend.set_video_preview_backend(backend)),
+    );
+    let manager_for_acceleration = manager.clone();
+    let backend_for_acceleration = backend.clone();
+    acceleration.connect_active_notify(move |toggle| {
+        let enabled = toggle.is_active();
+        backend_for_acceleration.set_sensitive(enabled);
+        manager_for_acceleration.set_hardware_accelerated_video_previews(enabled);
+    });
+    preferences.append(&video_row);
+
     append_heading(&preferences, "MOTION");
     let (motion_row, reduce_motion) = settings_option(
         "Reduce motion",
@@ -402,12 +460,29 @@ fn general_page(browser: &BrowserView, manager: Rc<ThemeManager>) -> gtk::Widget
     scrollable_page(&preferences, None)
 }
 
-fn updates_page(manager: Rc<ThemeManager>, update_notice: UpdateNoticeHandler) -> gtk::Widget {
+fn updates_page(
+    manager: Rc<ThemeManager>,
+    update_notice: UpdateNoticeHandler,
+    install_guard: InstallGuard,
+) -> gtk::Widget {
     let preferences = page_content();
     append_heading(&preferences, "UPDATE PREFERENCES");
-    if let Some(managed) = InstallSource::detect().managed() {
+    let managed = InstallSource::detect().managed();
+    if let Some(managed) = managed {
         preferences.append(&managed_install_row(managed));
     }
+
+    let available_notes = release_notes_card(
+        "Available release",
+        "Check for updates to see the latest release notes.",
+    );
+    let (update_row, run_check) = update_check_row(
+        manager.clone(),
+        update_notice.clone(),
+        available_notes.clone(),
+        install_guard.clone(),
+    );
+
     let auto_check_enabled = manager.checks_for_updates();
     let (auto_check_row, auto_check) = settings_option(
         "Automatically check for updates",
@@ -416,16 +491,17 @@ fn updates_page(manager: Rc<ThemeManager>, update_notice: UpdateNoticeHandler) -
     );
     preferences.append(&auto_check_row);
 
-    let available_notes = release_notes_card(
-        "Available release",
-        "Check for updates to see the latest release notes.",
-    );
-    let (update_row, run_check) = update_check_row(update_notice.clone(), available_notes.clone());
+    let channel_row = channel_option(manager.clone(), run_check.clone(), managed);
+    channel_row.set_sensitive(auto_check_enabled);
+    preferences.append(&channel_row);
     preferences.append(&update_row);
 
     append_heading(&preferences, "RELEASE NOTES");
     let current_notes = release_notes_card(
-        &format!("Current release · v{}", env!("CARGO_PKG_VERSION")),
+        &format!(
+            "Current release · v{}",
+            crate::build_info::installed_version()
+        ),
         "Loading release notes…",
     );
     preferences.append(&current_notes.container);
@@ -436,6 +512,7 @@ fn updates_page(manager: Rc<ThemeManager>, update_notice: UpdateNoticeHandler) -
     auto_check.connect_active_notify(move |toggle| {
         let enabled = toggle.is_active();
         manager_for_updates.set_checks_for_updates(enabled);
+        channel_row.set_sensitive(enabled);
         if enabled {
             toggled_check();
         } else {
@@ -447,6 +524,86 @@ fn updates_page(manager: Rc<ThemeManager>, update_notice: UpdateNoticeHandler) -
     }
 
     scrollable_page(&preferences, None)
+}
+
+const RELEASE_CHANNEL_TITLE: &str = "Release channel";
+const RELEASE_CHANNEL_DESCRIPTION: &str = "Preview receives alpha, beta, and release-candidate builds. Nightly also receives daily development builds.";
+
+/// A three-way release-channel selector. Changing it persists immediately and
+/// starts a fresh check, so an offer from the previously selected channel is
+/// superseded without waiting for the next automatic check.
+///
+/// On a packaged install the channel is a property of the installed package,
+/// not a preference: the selector shows the package's channel, is not
+/// editable, and says which package to install to change it. The preference
+/// is persisted to match, so the check that runs asks for releases the
+/// package could actually deliver.
+fn channel_option(
+    manager: Rc<ThemeManager>,
+    run_check: Rc<dyn Fn()>,
+    managed: Option<&ManagedInstall>,
+) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    row.add_css_class("settings-option");
+
+    let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    let title = gtk::Label::new(Some(RELEASE_CHANNEL_TITLE));
+    title.set_xalign(0.0);
+    title.add_css_class("settings-option-title");
+    let locked_channel = managed.and_then(ManagedInstall::tracked_channel);
+    if let Some(channel) = locked_channel {
+        manager.set_release_channel(channel);
+    }
+    let description = gtk::Label::new(Some(&match managed {
+        Some(managed) => managed_channel_description(managed),
+        None => RELEASE_CHANNEL_DESCRIPTION.to_owned(),
+    }));
+    description.set_xalign(0.0);
+    description.set_wrap(true);
+    description.add_css_class("settings-option-description");
+    copy.append(&title);
+    copy.append(&description);
+    row.append(&copy);
+
+    let selected = match manager.release_channel() {
+        Channel::Stable => 0,
+        Channel::Preview => 1,
+        Channel::Nightly => 2,
+    };
+    let (control, buttons) = segmented_control(&["Stable", "Preview", "Nightly"], selected);
+    for (button, channel) in
+        buttons
+            .into_iter()
+            .zip([Channel::Stable, Channel::Preview, Channel::Nightly])
+    {
+        let manager = manager.clone();
+        let run_check = run_check.clone();
+        button.connect_active_notify(move |button| {
+            if button.is_active() {
+                manager.set_release_channel(channel);
+                run_check();
+            }
+        });
+    }
+    // Set on the control rather than the row so the explanation above stays
+    // legible; GTK sensitivity is the conjunction of a widget's own state and
+    // its parent's, so the row's own toggling cannot re-enable this.
+    control.set_sensitive(managed.is_none());
+    row.append(&control);
+    row
+}
+
+/// The release-channel description on a packaged install: which channel this
+/// package tracks and which package to install for another one.
+fn managed_channel_description(managed: &ManagedInstall) -> String {
+    let tracked = match managed.channel() {
+        Some(channel) => format!("This install tracks the {channel} release channel."),
+        None => "The installed package decides the release channel.".to_owned(),
+    };
+    match managed.alternate_instruction() {
+        Some(alternate) => format!("{tracked} {alternate}"),
+        None => tracked,
+    }
 }
 
 fn release_notes_label() -> gtk::Label {
@@ -527,6 +684,7 @@ fn set_release_note_blocks(notes: &gtk::Box, blocks: &[ReleaseNoteBlock]) {
 struct ReleaseNotesCard {
     container: gtk::Box,
     title: gtk::Label,
+    badge: gtk::Label,
     notes: gtk::Box,
     fallback: gtk::LinkButton,
 }
@@ -538,6 +696,11 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
     title_label.add_css_class("release-notes-title");
     title_label.set_xalign(0.0);
     title_label.set_wrap(true);
+    let badge = gtk::Label::new(None);
+    badge.add_css_class("prerelease-badge");
+    badge.set_xalign(0.0);
+    badge.set_halign(gtk::Align::Start);
+    badge.set_visible(false);
     let notes = gtk::Box::new(gtk::Orientation::Vertical, 6);
     set_release_notes_message(&notes, initial);
     let fallback =
@@ -546,16 +709,21 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
     fallback.set_halign(gtk::Align::Start);
     fallback.set_visible(false);
     container.append(&title_label);
+    container.append(&badge);
     container.append(&notes);
     container.append(&fallback);
     ReleaseNotesCard {
         container,
         title: title_label,
+        badge,
         notes,
         fallback,
     }
 }
 
+/// Shows `release`'s notes in `card`, including a visible prerelease badge
+/// above the notes whenever `release.kind` is not [`BuildKind::Stable`] --
+/// release notes and update surfaces must visibly label prerelease software.
 fn show_release_notes(card: &ReleaseNotesCard, release: &ReleaseMetadata) {
     card.container.set_visible(true);
     card.title.set_text(&format!(
@@ -568,6 +736,12 @@ fn show_release_notes(card: &ReleaseNotesCard, release: &ReleaseMetadata) {
             .trim(),
         release.version
     ));
+    if release.kind == BuildKind::Stable {
+        card.badge.set_visible(false);
+    } else {
+        card.badge.set_text(release.kind.label());
+        card.badge.set_visible(true);
+    }
     if release.notes.trim().is_empty() {
         set_release_notes_message(
             &card.notes,
@@ -581,7 +755,7 @@ fn show_release_notes(card: &ReleaseNotesCard, release: &ReleaseMetadata) {
 }
 
 fn load_current_release_notes(card: &ReleaseNotesCard) {
-    let receiver = services::fetch_release_notes(env!("CARGO_PKG_VERSION"));
+    let receiver = services::fetch_release_notes(crate::build_info::RELEASE_TAG);
     let card = card.clone();
     glib::timeout_add_local(Duration::from_millis(100), move || {
         match receiver.try_recv() {
@@ -650,9 +824,59 @@ fn managed_install_summary(managed: &ManagedInstall) -> String {
     lines.join("\n")
 }
 
+/// Whether a check's result -- issued under `result_generation` -- has been
+/// superseded by a newer check, whose generation is `current_generation`.
+///
+/// A toggle mid-check must start a fresh check rather than being silently
+/// dropped (see `run_check`'s doc comment), which means an older check's
+/// result can still land after a newer one has already started or even
+/// finished. Applying that stale result regardless is exactly how a Preview
+/// fetch in flight when the user flips back to Stable could still offer an
+/// RC to a Stable user: the result carries no channel of its own, so
+/// nothing but generation order distinguishes it from a current one.
+fn is_stale_check(result_generation: u64, current_generation: u64) -> bool {
+    result_generation != current_generation
+}
+
+/// An update that a completed check offered and that the next click will
+/// install, held with the [`BuildKind`] it was offered as.
+///
+/// The kind is what lets the click re-test the offer against the channel
+/// preference in force *then* rather than when the check ran -- see
+/// [`offer_still_eligible`]. It is kept here, beside the request, rather
+/// than on [`InstallRequest`], which deliberately carries nothing but the
+/// URL the installer actually uses.
+struct PendingInstall {
+    kind: BuildKind,
+    returns_to_stable: bool,
+    request: InstallRequest,
+}
+
+/// Whether an offer for a `kind` build may still be installed by a user now
+/// on `channel`.
+///
+/// `is_stale_check` only covers a check whose *result* has not landed yet,
+/// and only within the one row that started it. This covers the other half:
+/// an offer that already landed and is sitting in a window's "Install
+/// update" button or an open update dialog. The channel preference is
+/// process-wide ([`ThemeManager::shared`]), so switching back to Stable in
+/// one window leaves every other window holding a cached RC offer it would
+/// otherwise happily install. Re-testing at the moment of the click is what
+/// makes the preference authoritative regardless of how many views cached
+/// an offer under the old one.
+fn offer_still_eligible(channel: Channel, kind: BuildKind) -> bool {
+    match channel {
+        Channel::Stable => kind == BuildKind::Stable,
+        Channel::Preview => kind != BuildKind::Nightly,
+        Channel::Nightly => true,
+    }
+}
+
 fn update_check_row(
+    manager: Rc<ThemeManager>,
     update_notice: UpdateNoticeHandler,
     available_notes: ReleaseNotesCard,
+    install_guard: InstallGuard,
 ) -> (gtk::Box, Rc<dyn Fn()>) {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
     row.add_css_class("settings-option");
@@ -661,10 +885,13 @@ fn update_check_row(
     let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     copy.set_hexpand(true);
     copy.set_valign(gtk::Align::Center);
-    let title = gtk::Label::new(Some("Check for updates"));
+    let title = gtk::Label::new(Some("Updates"));
     title.set_xalign(0.0);
     title.add_css_class("settings-option-title");
-    let status = gtk::Label::new(Some(&format!("Version {}", env!("CARGO_PKG_VERSION"))));
+    let status = gtk::Label::new(Some(&installed_version_status(
+        &crate::build_info::installed_version(),
+        crate::build_info::build_kind(),
+    )));
     status.set_xalign(0.0);
     status.set_wrap(true);
     status.set_use_markup(true);
@@ -692,12 +919,21 @@ fn update_check_row(
     let checking = Rc::new(Cell::new(false));
     // Set once a check finds an update this platform can install; consumed by the
     // button's next click instead of re-running a check.
-    let pending_download = Rc::new(RefCell::new(None::<String>));
+    let pending_download = Rc::new(RefCell::new(None::<PendingInstall>));
     // Set once an install finishes, so the next click restarts instead of re-checking.
     let installed = Rc::new(Cell::new(false));
+    // The generation of the most recently started check. Each call to
+    // `run_check` captures the next value and compares against this when its
+    // result arrives; a mismatch means a newer check (e.g. from a channel
+    // toggle mid-flight) has since superseded it. Without this, a Preview
+    // fetch still in flight when the user flips back to Stable could land
+    // after the flip and offer an RC to a Stable user -- exactly the bug
+    // `is_stale_check` exists to prevent. See its doc comment.
+    let generation = Rc::new(Cell::new(0_u64));
 
     let run_check: Rc<dyn Fn()> = Rc::new({
         let checking = checking.clone();
+        let generation = generation.clone();
         let status = status.clone();
         let button = button.clone();
         let update_notice = update_notice.clone();
@@ -705,10 +941,16 @@ fn update_check_row(
         let installed = installed.clone();
         let progress = progress.clone();
         let available_notes = available_notes.clone();
+        let manager = manager.clone();
         move || {
-            if checking.replace(true) {
-                return;
-            }
+            // Always start a fresh check rather than dropping it: a channel
+            // toggle must never be silently ignored just because a previous
+            // check (for the old channel) is still in flight. The stale
+            // check's own result is discarded below instead, once its
+            // generation no longer matches.
+            let my_generation = generation.get().saturating_add(1);
+            generation.set(my_generation);
+            checking.set(true);
             *pending_download.borrow_mut() = None;
             installed.set(false);
             button.set_label("Check now");
@@ -718,33 +960,68 @@ fn update_check_row(
             status.set_text("Checking for updates…");
             available_notes.container.set_visible(false);
             available_notes.fallback.set_visible(false);
+            // Clear any previously offered release immediately, not only once
+            // this check's own result lands: otherwise the sidebar keeps
+            // showing a (possibly prerelease) offer from before the channel
+            // was switched for the whole duration of this check.
+            update_notice(None);
             button.set_sensitive(false);
-            let receiver = services::check_for_updates(env!("CARGO_PKG_VERSION"));
+            // Read the channel now, not once when the row was built: a
+            // mid-session channel toggle must be reflected by the very next
+            // check, including this one if it was triggered by that toggle.
+            let receiver = services::check_for_updates(
+                manager.release_channel(),
+                crate::build_info::installed_version(),
+            );
             let checking = checking.clone();
+            let generation = generation.clone();
             let status = status.clone();
             let button = button.clone();
             let update_notice = update_notice.clone();
             let pending_download = pending_download.clone();
             let available_notes = available_notes.clone();
+            let manager = manager.clone();
             glib::timeout_add_local(Duration::from_millis(100), move || {
+                if is_stale_check(my_generation, generation.get()) {
+                    // A newer check has since started; that one owns
+                    // `checking`, `status`, and every other piece of shared
+                    // state this closure would otherwise touch. Stop polling
+                    // without applying this result.
+                    return glib::ControlFlow::Break;
+                }
                 match receiver.try_recv() {
                     Ok(result) => {
-                        status.set_markup(&update_status_markup(&result, InstallSource::detect()));
+                        let returns_to_stable = matches!(
+                            &result,
+                            UpdateCheck::Available { release, .. }
+                                if manager.release_channel() == Channel::Stable
+                                    && crate::build_info::build_kind() != BuildKind::Stable
+                                    && release.kind == BuildKind::Stable
+                        );
+                        let message = match (&result, returns_to_stable) {
+                            (UpdateCheck::Available { release, .. }, true) => format!(
+                                "Stable channel target: <a href=\"{}\">v{}</a>",
+                                glib::markup_escape_text(&release.url),
+                                glib::markup_escape_text(&release.version),
+                            ),
+                            _ => update_check_message(&result),
+                        };
+                        status.set_markup(&update_status_markup(
+                            message,
+                            &result,
+                            InstallSource::detect(),
+                        ));
                         available_notes
                             .container
                             .set_visible(shows_available_release_notes(&result));
                         match &result {
                             UpdateCheck::Available {
                                 release,
-                                download_url: Some(download_url),
+                                download_url,
                             } => {
                                 update_notice(Some((release.clone(), download_url.clone())));
                             }
-                            UpdateCheck::UpToDate
-                            | UpdateCheck::Available {
-                                download_url: None, ..
-                            } => update_notice(None),
-                            UpdateCheck::Failed(_) => {}
+                            UpdateCheck::UpToDate | UpdateCheck::Failed(_) => update_notice(None),
                         }
                         match &result {
                             UpdateCheck::Available {
@@ -752,11 +1029,23 @@ fn update_check_row(
                                 download_url,
                             } => {
                                 show_release_notes(&available_notes, release);
-                                if let Some(download_url) = download_url
-                                    && !package_managed
-                                {
-                                    *pending_download.borrow_mut() = Some(download_url.clone());
-                                    button.set_label("Install update");
+                                // A package manager owns the binary, so neither
+                                // an update nor a return to stable may be armed:
+                                // both end in a rename over package-owned files.
+                                // The release is still reported above.
+                                if !package_managed {
+                                    *pending_download.borrow_mut() = Some(PendingInstall {
+                                        kind: release.kind,
+                                        returns_to_stable,
+                                        request: InstallRequest {
+                                            download_url: download_url.clone(),
+                                        },
+                                    });
+                                    button.set_label(if returns_to_stable {
+                                        "Return to stable"
+                                    } else {
+                                        "Install update"
+                                    });
                                 }
                             }
                             UpdateCheck::UpToDate | UpdateCheck::Failed(_) => {}
@@ -786,77 +1075,223 @@ fn update_check_row(
             restart_application(button);
             return;
         }
-        if let Some(download_url) = pending_download.borrow_mut().take() {
+        if let Some(pending) = pending_download.borrow_mut().take() {
+            if !offer_still_eligible(manager.release_channel(), pending.kind) {
+                // The channel was switched back to Stable -- possibly from
+                // another window, which this row never hears about -- after
+                // this offer was cached. Drop it and re-check rather than
+                // installing a prerelease the user has since opted out of;
+                // `clicked_check` clears the sidebar notice and relabels the
+                // button on its way.
+                clicked_check();
+                return;
+            }
+            let PendingInstall {
+                kind: offered_kind,
+                returns_to_stable,
+                request,
+            } = pending;
             if checking.replace(true) {
                 return;
             }
-            status.set_text("Downloading update…");
+            status.set_text(if returns_to_stable {
+                "Downloading stable release…"
+            } else {
+                "Downloading update…"
+            });
             progress.set_fraction(0.0);
             progress.set_visible(true);
             progress.remove_css_class("error");
             button.set_sensitive(false);
-            let receiver = services::install_update(download_url);
-            let checking = checking.clone();
-            let status = status.clone();
-            let button = button.clone();
-            let installed = installed.clone();
-            let progress = progress.clone();
-            glib::timeout_add_local(Duration::from_millis(100), move || {
-                loop {
-                    match receiver.try_recv() {
-                        Ok(UpdateInstall::Downloading { downloaded, total }) => {
-                            if let Some(total) = total.filter(|total| *total > 0) {
-                                let fraction = (downloaded as f64 / total as f64).clamp(0.0, 1.0);
-                                progress.set_fraction(fraction);
-                                status.set_text(&format!(
-                                    "Downloading update… {:.0}%",
-                                    fraction * 100.0
-                                ));
-                            } else {
-                                progress.pulse();
-                                status.set_text(&format!(
-                                    "Downloading update… {:.1} MB",
-                                    downloaded as f64 / 1_048_576.0
-                                ));
-                            }
-                        }
-                        Ok(UpdateInstall::Installing) => {
-                            progress.set_fraction(1.0);
-                            status.set_text("Verifying and installing update…");
-                        }
-                        Ok(UpdateInstall::Installed) => {
-                            status.set_text("Update installed — restart to apply");
-                            button.set_label("Restart now");
-                            button.set_sensitive(true);
-                            installed.set(true);
-                            checking.set(false);
-                            return glib::ControlFlow::Break;
-                        }
-                        Ok(UpdateInstall::Failed(message)) => {
-                            status.set_text(&format!("Couldn't install update: {message}"));
-                            progress.add_css_class("error");
-                            button.set_label("Check now");
-                            button.set_sensitive(true);
-                            checking.set(false);
-                            return glib::ControlFlow::Break;
-                        }
-                        Err(TryRecvError::Empty) => return glib::ControlFlow::Continue,
-                        Err(TryRecvError::Disconnected) => {
-                            status.set_text("Couldn't install update");
-                            progress.add_css_class("error");
-                            button.set_label("Check now");
-                            button.set_sensitive(true);
-                            checking.set(false);
-                            return glib::ControlFlow::Break;
-                        }
+            let progress_for_progress = progress.clone();
+            let status_for_progress = status.clone();
+            let checking_for_installed = checking.clone();
+            let status_for_installed = status.clone();
+            let button_for_installed = button.clone();
+            let installed_for_installed = installed.clone();
+            let checking_for_failed = checking.clone();
+            let status_for_failed = status.clone();
+            let button_for_failed = button.clone();
+            let progress_for_failed = progress.clone();
+            let started = start_install(
+                &install_guard,
+                request,
+                move |event| {
+                    apply_install_progress(&status_for_progress, &progress_for_progress, event)
+                },
+                move || {
+                    status_for_installed.set_text(if returns_to_stable {
+                        "Stable release installed — restart to apply"
+                    } else {
+                        "Update installed — restart to apply"
+                    });
+                    button_for_installed.set_label("Restart now");
+                    button_for_installed.set_sensitive(true);
+                    installed_for_installed.set(true);
+                    checking_for_installed.set(false);
+                },
+                move |message| {
+                    match message {
+                        Some(message) => status_for_failed
+                            .set_text(&format!("Couldn't install update: {message}")),
+                        None => status_for_failed.set_text("Couldn't install update"),
                     }
-                }
-            });
+                    progress_for_failed.add_css_class("error");
+                    button_for_failed.set_label("Check now");
+                    button_for_failed.set_sensitive(true);
+                    checking_for_failed.set(false);
+                },
+            );
+            if let Err(request) = started {
+                // An install from an update dialog or another window is
+                // already running. Leave this row
+                // re-triable rather than stuck mid-"downloading" with
+                // nothing actually happening.
+                status.set_text("Another install is already running — try again shortly.");
+                progress.set_visible(false);
+                button.set_label(if returns_to_stable {
+                    "Return to stable"
+                } else {
+                    "Install update"
+                });
+                button.set_sensitive(true);
+                checking.set(false);
+                *pending_download.borrow_mut() = Some(PendingInstall {
+                    kind: offered_kind,
+                    returns_to_stable,
+                    request,
+                });
+            }
         } else {
             clicked_check();
         }
     });
     (row, run_check)
+}
+
+/// The three non-terminal states [`drive_install`] reports through
+/// `on_progress`. Keeping this separate from [`UpdateInstall`] means callers
+/// never need to (incorrectly) handle `Installed`/`Failed` in that closure --
+/// those terminal states are always reported through the driver's other two
+/// callbacks instead.
+enum InstallProgress {
+    Downloading { downloaded: u64, total: Option<u64> },
+    Verifying,
+    Installing,
+}
+
+/// Drives an install `receiver` on the GTK main loop until it reports a
+/// terminal outcome, then stops.
+///
+/// This is the shared shape behind `update_check_row`'s and
+/// `show_update_dialog`'s install flows: poll `receiver` every 100ms, forward
+/// non-terminal updates to `on_progress`, and invoke exactly one of
+/// `on_installed`/`on_failed` once a terminal state is reached. Deliberately
+/// does *not* format status text itself because the two call sites use
+/// different wording. `on_failed` receives `Some(message)` for an explicit
+/// [`UpdateInstall::Failed`] or `None` when the receiver disconnected
+/// without ever reporting one, since callers render those two cases
+/// differently too.
+fn drive_install(
+    receiver: std::sync::mpsc::Receiver<UpdateInstall>,
+    on_progress: impl Fn(InstallProgress) + 'static,
+    on_installed: impl Fn() + 'static,
+    on_failed: impl Fn(Option<String>) + 'static,
+) {
+    glib::timeout_add_local(Duration::from_millis(100), move || {
+        loop {
+            match receiver.try_recv() {
+                Ok(UpdateInstall::Downloading { downloaded, total }) => {
+                    on_progress(InstallProgress::Downloading { downloaded, total });
+                }
+                Ok(UpdateInstall::Verifying) => on_progress(InstallProgress::Verifying),
+                Ok(UpdateInstall::Installing) => on_progress(InstallProgress::Installing),
+                Ok(UpdateInstall::Installed) => {
+                    on_installed();
+                    return glib::ControlFlow::Break;
+                }
+                Ok(UpdateInstall::Failed(message)) => {
+                    on_failed(Some(message));
+                    return glib::ControlFlow::Break;
+                }
+                Err(TryRecvError::Empty) => return glib::ControlFlow::Continue,
+                Err(TryRecvError::Disconnected) => {
+                    on_failed(None);
+                    return glib::ControlFlow::Break;
+                }
+            }
+        }
+    });
+}
+
+/// Starts `request`'s install unless another install-guarded flow is
+/// already running, driving it with [`drive_install`] and clearing `guard`
+/// once it reaches a terminal state.
+///
+/// `guard` is shared by [`update_check_row`] and [`show_update_dialog`] -- the
+/// only call sites of [`services::install_update`]. Without it, controls in
+/// separate windows could start two replacement threads concurrently.
+///
+/// Returns `Ok(())` once an install has started, or `Err(request)` --
+/// handing `request` back unused -- if `guard` was already held. Callers
+/// must handle the `Err` case by leaving their own button/status in a
+/// re-triable state, since the click that produced it did not actually
+/// start anything.
+fn start_install(
+    guard: &InstallGuard,
+    request: InstallRequest,
+    on_progress: impl Fn(InstallProgress) + 'static,
+    on_installed: impl Fn() + 'static,
+    on_failed: impl Fn(Option<String>) + 'static,
+) -> Result<(), InstallRequest> {
+    if guard.replace(true) {
+        return Err(request);
+    }
+    let receiver = services::install_update(request);
+    let guard_for_installed = guard.clone();
+    let guard_for_failed = guard.clone();
+    drive_install(
+        receiver,
+        on_progress,
+        move || {
+            guard_for_installed.set(false);
+            on_installed();
+        },
+        move |message| {
+            guard_for_failed.set(false);
+            on_failed(message);
+        },
+    );
+    Ok(())
+}
+
+/// The update row's compact progress rendering, distinct from the update
+/// dialog's dialog-specific wording.
+fn apply_install_progress(
+    status: &gtk::Label,
+    progress: &gtk::ProgressBar,
+    event: InstallProgress,
+) {
+    match event {
+        InstallProgress::Downloading { downloaded, total } => {
+            if let Some(total) = total.filter(|total| *total > 0) {
+                let fraction = (downloaded as f64 / total as f64).clamp(0.0, 1.0);
+                progress.set_fraction(fraction);
+                status.set_text(&format!("Downloading update… {:.0}%", fraction * 100.0));
+            } else {
+                progress.pulse();
+                status.set_text(&format!(
+                    "Downloading update… {:.1} MB",
+                    downloaded as f64 / 1_048_576.0
+                ));
+            }
+        }
+        InstallProgress::Verifying => status.set_text("Verifying update…"),
+        InstallProgress::Installing => {
+            progress.set_fraction(1.0);
+            status.set_text("Installing update…");
+        }
+    }
 }
 
 /// Relaunches the (just-updated) executable and quits the current instance.
@@ -869,6 +1304,8 @@ fn restart_application(button: &gtk::Button) {
 }
 
 fn restart(application: Option<&gtk::Application>) {
+    use std::{os::unix::process::CommandExt, process::Stdio};
+
     let Ok(mut current_exe) = std::env::current_exe() else {
         return;
     };
@@ -883,11 +1320,26 @@ fn restart(application: Option<&gtk::Application>) {
     {
         current_exe = path.into();
     }
-    // Give GApplication time to release its single-instance bus name before the
-    // replacement starts. Starting it immediately only re-activates this process.
+    // Wait for this process to exit completely before relaunching. A fixed
+    // delay could overlap the old and new GTK/Wayland clients and rapidly hand
+    // keyboard focus through an underlying terminal. Besides re-activating the
+    // old GApplication instance, that exposed a Foot/libxkbcommon crash on
+    // affected systems. Detach the waiter from inherited terminal streams and
+    // put it in its own process group so applying an update cannot disturb the
+    // terminal that launched Strata.
+    let parent_pid = std::process::id().to_string();
     if std::process::Command::new("sh")
-        .args(["-c", "sleep 0.25; exec \"$1\"", "strata-restart"])
+        .args([
+            "-c",
+            "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; sleep 0.5; exec \"$2\"",
+            "strata-restart",
+        ])
+        .arg(parent_pid)
         .arg(current_exe)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .process_group(0)
         .spawn()
         .is_err()
     {
@@ -903,6 +1355,7 @@ pub(super) fn show_update_dialog(
     parent: &gtk::Window,
     release: &ReleaseMetadata,
     download_url: String,
+    install_guard: InstallGuard,
 ) {
     let Some(window_overlay) = parent.child().and_downcast::<gtk::Overlay>() else {
         return;
@@ -920,7 +1373,7 @@ pub(super) fn show_update_dialog(
         &format!("Strata v{} is available", release.version),
         &format!(
             "Installed v{}  →  Available v{}",
-            env!("CARGO_PKG_VERSION"),
+            crate::build_info::installed_version(),
             release.version
         ),
         if managed.is_some() {
@@ -931,6 +1384,18 @@ pub(super) fn show_update_dialog(
     );
     layout.content.add_css_class("update-dialog");
     layout.content.set_size_request(560, -1);
+    // A prerelease offer must be visibly labelled, and must let the user
+    // confirm exactly what they are about to install before doing so: which
+    // channel it is, its precise tag, the source commit, and when it was
+    // published.
+    if release.kind != BuildKind::Stable {
+        let badge = gtk::Label::new(Some(release.kind.label()));
+        badge.add_css_class("prerelease-badge");
+        badge.set_xalign(0.0);
+        badge.set_halign(gtk::Align::Start);
+        layout.body.append(&badge);
+        layout.body.append(&update_dialog_details(release));
+    }
     let notes_heading = gtk::Label::new(Some("What’s new"));
     notes_heading.add_css_class("release-notes-title");
     notes_heading.set_xalign(0.0);
@@ -981,6 +1446,9 @@ pub(super) fn show_update_dialog(
     action.grab_focus();
 
     let dismiss_only = managed.is_some();
+    // The confirm button already reads "Close" on a packaged install, so the
+    // footer would otherwise offer two buttons that do the same thing.
+    cancel.set_visible(!dismiss_only);
     let started = Rc::new(Cell::new(false));
     let cancel_layer = layer.clone();
     let cancel_overlay = window_overlay.clone();
@@ -1018,6 +1486,10 @@ pub(super) fn show_update_dialog(
     layer.add_controller(escape);
 
     let installed = Rc::new(Cell::new(false));
+    // Set when the offer this dialog was opened with is no longer eligible on
+    // the current channel, which turns the action button into a plain Close.
+    let withdrawn = Rc::new(Cell::new(false));
+    let offered_kind = release.kind;
     let action_layer = layer.clone();
     let action_overlay = window_overlay.clone();
     let action_root = blurred_root.clone();
@@ -1033,6 +1505,24 @@ pub(super) fn show_update_dialog(
             button.set_sensitive(false);
             return;
         }
+        if withdrawn.get() {
+            dismiss_modal_layer(&action_layer, &action_overlay, action_root.as_ref());
+            button.set_sensitive(false);
+            return;
+        }
+        // Read the channel at the click, not when the dialog was opened: this
+        // dialog is driven by the sidebar notice, whose cached offer survives
+        // a channel switch made anywhere in the process -- including in
+        // another window. `withdrawn` rather than `started` so Cancel and
+        // Escape keep dismissing normally.
+        if !offer_still_eligible(ThemeManager::shared().release_channel(), offered_kind) {
+            withdrawn.set(true);
+            status.set_text(
+                "This build is no longer offered on your update channel — check for updates again.",
+            );
+            button.set_label("Close");
+            return;
+        }
         if started.replace(true) {
             dismiss_modal_layer(&action_layer, &action_overlay, action_root.as_ref());
             button.set_sensitive(false);
@@ -1044,69 +1534,93 @@ pub(super) fn show_update_dialog(
         action_close.set_sensitive(false);
         progress.set_visible(true);
         status.set_text("Starting download…");
-        let receiver = services::install_update(download_url.clone());
-        let progress = progress.clone();
-        let status = status.clone();
-        let action = button.clone();
-        let installed = installed.clone();
-        glib::timeout_add_local(Duration::from_millis(100), move || {
-            loop {
-                match receiver.try_recv() {
-                    Ok(UpdateInstall::Downloading { downloaded, total }) => {
-                        if let Some(total) = total.filter(|total| *total > 0) {
-                            let fraction = (downloaded as f64 / total as f64).clamp(0.0, 1.0);
-                            progress.set_fraction(fraction);
-                            status.set_text(&format!(
-                                "Downloading… {:.0}%  ({:.1} of {:.1} MB)",
-                                fraction * 100.0,
-                                downloaded as f64 / 1_048_576.0,
-                                total as f64 / 1_048_576.0,
-                            ));
-                        } else {
-                            progress.pulse();
-                            status.set_text(&format!(
-                                "Downloading… {:.1} MB",
-                                downloaded as f64 / 1_048_576.0
-                            ));
-                        }
-                    }
-                    Ok(UpdateInstall::Installing) => {
-                        progress.set_fraction(1.0);
-                        status.set_text("Download complete — verifying and installing…");
-                    }
-                    Ok(UpdateInstall::Installed) => {
-                        progress.set_fraction(1.0);
-                        status.set_text("Update installed — restart to apply");
-                        action.set_label("Restart now");
-                        action.add_css_class("suggested-action");
-                        action.set_sensitive(true);
-                        installed.set(true);
-                        return glib::ControlFlow::Break;
-                    }
-                    Ok(UpdateInstall::Failed(message)) => {
-                        status.set_text(&format!("Couldn’t install update: {message}"));
-                        progress.add_css_class("error");
-                        action.set_label("Close");
-                        action.set_sensitive(true);
-                        return glib::ControlFlow::Break;
-                    }
-                    Err(TryRecvError::Empty) => return glib::ControlFlow::Continue,
-                    Err(TryRecvError::Disconnected) => {
-                        status.set_text("Couldn’t install update");
-                        action.set_label("Close");
-                        action.set_sensitive(true);
-                        return glib::ControlFlow::Break;
+        let progress_for_progress = progress.clone();
+        let status_for_progress = status.clone();
+        let progress_for_installed = progress.clone();
+        let status_for_installed = status.clone();
+        let action_for_installed = button.clone();
+        let installed_for_installed = installed.clone();
+        let progress_for_failed = progress.clone();
+        let status_for_failed = status.clone();
+        let action_for_failed = button.clone();
+        let status_for_guard = status.clone();
+        let progress_for_guard = progress.clone();
+        let action_for_guard = button.clone();
+        let started_for_guard = started.clone();
+        let install_guard = install_guard.clone();
+        let request = InstallRequest {
+            download_url: download_url.clone(),
+        };
+        let outcome = start_install(
+            &install_guard,
+            request,
+            move |event| match event {
+                InstallProgress::Downloading { downloaded, total } => {
+                    if let Some(total) = total.filter(|total| *total > 0) {
+                        let fraction = (downloaded as f64 / total as f64).clamp(0.0, 1.0);
+                        progress_for_progress.set_fraction(fraction);
+                        status_for_progress.set_text(&format!(
+                            "Downloading… {:.0}%  ({:.1} of {:.1} MB)",
+                            fraction * 100.0,
+                            downloaded as f64 / 1_048_576.0,
+                            total as f64 / 1_048_576.0,
+                        ));
+                    } else {
+                        progress_for_progress.pulse();
+                        status_for_progress.set_text(&format!(
+                            "Downloading… {:.1} MB",
+                            downloaded as f64 / 1_048_576.0
+                        ));
                     }
                 }
-            }
-        });
+                InstallProgress::Verifying => status_for_progress.set_text("Verifying update…"),
+                InstallProgress::Installing => {
+                    progress_for_progress.set_fraction(1.0);
+                    status_for_progress.set_text("Installing update…");
+                }
+            },
+            move || {
+                progress_for_installed.set_fraction(1.0);
+                status_for_installed.set_text("Update installed — restart to apply");
+                action_for_installed.set_label("Restart now");
+                action_for_installed.add_css_class("suggested-action");
+                action_for_installed.set_sensitive(true);
+                installed_for_installed.set(true);
+            },
+            move |message| {
+                match message {
+                    Some(message) => {
+                        status_for_failed.set_text(&format!("Couldn’t install update: {message}"));
+                        progress_for_failed.add_css_class("error");
+                    }
+                    None => status_for_failed.set_text("Couldn’t install update"),
+                }
+                action_for_failed.set_label("Close");
+                action_for_failed.set_sensitive(true);
+            },
+        );
+        if outcome.is_err() {
+            // An install from the update row or another window is already
+            // running. Reset `started` too, so the next
+            // click retries the install instead of being treated as a
+            // dismissal -- this click never actually started one.
+            status_for_guard.set_text("Another install is already running — try again shortly.");
+            progress_for_guard.set_visible(false);
+            action_for_guard.set_sensitive(true);
+            cancel.set_sensitive(true);
+            started_for_guard.set(false);
+        }
     });
 }
 
-/// The update row's status line: the check result, plus how to update when a
-/// package manager owns the binary and the in-app install action is withheld.
-fn update_status_markup(result: &UpdateCheck, source: &InstallSource) -> String {
-    let message = update_check_message(result);
+/// The update row's status line: `message`, the caller's already-rendered
+/// check result, plus how to update when a package manager owns the binary
+/// and the in-app install action is withheld.
+///
+/// Takes the rendered message rather than deriving it, because the caller
+/// renders a stable-rollback offer differently from an ordinary update and
+/// both need the packaged instruction appended.
+fn update_status_markup(message: String, result: &UpdateCheck, source: &InstallSource) -> String {
     match (source.managed(), result) {
         (Some(managed), UpdateCheck::Available { .. }) => format!(
             "{message}\n{}",
@@ -1126,14 +1640,75 @@ fn update_dialog_status(managed: &ManagedInstall) -> String {
     )
 }
 
+/// Renders `release`'s channel, tag, source commit, and publication date as
+/// a small identity block, for the dialog to show above the notes whenever
+/// it is offering a prerelease -- the issue requires the user be able to
+/// confirm exactly what they are about to install before doing so.
+fn update_dialog_details(release: &ReleaseMetadata) -> gtk::Box {
+    let details = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    details.add_css_class("update-dialog-details");
+    for (label, value) in [
+        ("Channel", release.kind.label().to_owned()),
+        ("Tag", release.tag.clone()),
+        (
+            "Commit",
+            release
+                .commit
+                .clone()
+                .unwrap_or_else(|| "Unknown".to_owned()),
+        ),
+        (
+            "Published",
+            release
+                .published_at
+                .clone()
+                .unwrap_or_else(|| "Unknown".to_owned()),
+        ),
+    ] {
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        row.add_css_class("update-dialog-detail-row");
+        let label_widget = gtk::Label::new(Some(label));
+        label_widget.add_css_class("update-dialog-detail-label");
+        label_widget.set_xalign(0.0);
+        label_widget.set_hexpand(true);
+        let value_widget = gtk::Label::new(Some(&value));
+        value_widget.add_css_class("update-dialog-detail-value");
+        value_widget.set_xalign(0.0);
+        value_widget.set_selectable(true);
+        value_widget.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+        if label == "Commit" {
+            value_widget.add_css_class("monospace");
+        }
+        row.append(&label_widget);
+        row.append(&value_widget);
+        details.append(&row);
+    }
+    details
+}
+
 fn shows_available_release_notes(result: &UpdateCheck) -> bool {
     matches!(result, UpdateCheck::Available { .. })
+}
+
+/// The installed build's identity, for the update row's idle status line:
+/// just the version for a stable build, or `Version {version} · {label}`
+/// when running a prerelease -- so a user on an RC or nightly always sees
+/// what they currently have installed, not just a bare version number.
+fn installed_version_status(version: &Version, kind: BuildKind) -> String {
+    if kind == BuildKind::Stable {
+        format!("Version {version}")
+    } else {
+        format!("Version {version} · {}", kind.label())
+    }
 }
 
 fn update_check_message(result: &UpdateCheck) -> String {
     match result {
         UpdateCheck::UpToDate => {
-            format!("Up to date — version {}", env!("CARGO_PKG_VERSION"))
+            format!(
+                "Up to date — version {}",
+                crate::build_info::installed_version()
+            )
         }
         UpdateCheck::Available { release, .. } => format!(
             "Update available: <a href=\"{}\">v{}</a>",
@@ -1204,7 +1779,12 @@ fn about_page() -> gtk::Widget {
     append_heading(&content, "BUILD INFORMATION");
     let build = gtk::Box::new(gtk::Orientation::Vertical, 0);
     build.add_css_class("about-details");
-    append_about_detail(&build, "Version", crate::build_info::VERSION, false);
+    let version = crate::build_info::installed_version().to_string();
+    append_about_detail(&build, "Version", &version, false);
+    let build_kind = crate::build_info::build_kind();
+    if build_kind != services::BuildKind::Stable {
+        append_about_detail(&build, "Build", build_kind.label(), false);
+    }
     append_about_detail(&build, "Commit", crate::build_info::COMMIT, true);
     content.append(&build);
 
@@ -1806,22 +2386,109 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
     let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     copy.set_hexpand(true);
     copy.set_valign(gtk::Align::Center);
-    let title = gtk::Label::new(Some(title));
-    title.set_xalign(0.0);
-    title.add_css_class("settings-option-title");
-    let description = gtk::Label::new(Some(description));
-    description.set_xalign(0.0);
-    description.set_wrap(true);
-    description.add_css_class("settings-option-description");
-    copy.append(&title);
-    copy.append(&description);
+    let title_label = gtk::Label::new(Some(title));
+    title_label.set_xalign(0.0);
+    title_label.add_css_class("settings-option-title");
+    let description_label = gtk::Label::new(Some(description));
+    description_label.set_xalign(0.0);
+    description_label.set_wrap(true);
+    description_label.add_css_class("settings-option-description");
+    copy.append(&title_label);
+    copy.append(&description_label);
     let toggle = gtk::Switch::builder()
         .active(active)
         .valign(gtk::Align::Center)
         .build();
+    toggle.update_property(&[
+        gtk::accessible::Property::Label(title),
+        gtk::accessible::Property::Description(description),
+    ]);
     row.append(&copy);
     row.append(&toggle);
     (row, toggle)
+}
+
+fn video_preview_option(
+    description: &str,
+    active: bool,
+    toggle_sensitive: bool,
+    backend_sensitive: bool,
+    selected_backend: MediaPreviewBackend,
+    on_backend_selected: Rc<dyn Fn(MediaPreviewBackend)>,
+) -> (gtk::Box, gtk::Switch, gtk::MenuButton) {
+    let (row, toggle) = settings_option(
+        "Use hardware acceleration for video previews.",
+        description,
+        active,
+    );
+    row.remove(&toggle);
+
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    content.add_css_class("column-menu");
+    let options = [
+        ("Automatic", MediaPreviewBackend::Automatic),
+        ("VA-API", MediaPreviewBackend::VaApi),
+        ("Vulkan", MediaPreviewBackend::Vulkan),
+    ]
+    .map(|(label, value)| {
+        let (option, check) = menu_option(label, selected_backend == value);
+        content.append(&option);
+        (label, value, option, check)
+    });
+    let popover = gtk::Popover::builder()
+        .child(&content)
+        .has_arrow(false)
+        .halign(gtk::Align::End)
+        .position(gtk::PositionType::Bottom)
+        .build();
+    popover.add_css_class("column-popover");
+    let backend = gtk::MenuButton::builder()
+        .label(video_preview_backend_label(selected_backend))
+        .always_show_arrow(true)
+        .popover(&popover)
+        .build();
+    backend.add_css_class("form-control");
+    backend.set_sensitive(backend_sensitive);
+    backend.set_valign(gtk::Align::Center);
+    backend.update_property(&[
+        gtk::accessible::Property::Label("Video preview hardware backend"),
+        gtk::accessible::Property::Description(description),
+    ]);
+    let checks = Rc::new(
+        options
+            .iter()
+            .map(|(_, value, _, check)| (*value, check.clone()))
+            .collect::<Vec<_>>(),
+    );
+    for (label, value, option, _) in options {
+        let backend = backend.clone();
+        let checks = checks.clone();
+        let on_backend_selected = on_backend_selected.clone();
+        option.connect_clicked(move |_| {
+            backend.set_label(label);
+            for (candidate, check) in checks.iter() {
+                check.set_visible(*candidate == value);
+            }
+            backend.popdown();
+            on_backend_selected(value);
+        });
+    }
+    toggle.set_sensitive(toggle_sensitive);
+    row.append(&backend);
+    row.append(&toggle);
+    (row, toggle, backend)
+}
+
+fn video_preview_backend_label(backend: MediaPreviewBackend) -> &'static str {
+    match backend {
+        MediaPreviewBackend::Automatic | MediaPreviewBackend::Software => "Automatic",
+        MediaPreviewBackend::VaApi => "VA-API",
+        MediaPreviewBackend::Vulkan => "Vulkan",
+    }
+}
+
+fn video_preview_control_state(enabled: bool) -> (bool, bool, bool) {
+    (enabled, true, enabled)
 }
 
 fn append_heading(container: &gtk::Box, text: &str) -> gtk::Label {

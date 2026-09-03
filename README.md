@@ -1,5 +1,7 @@
 <div align="center">
 
+<img src="docs/assets/logos/strata-tokyo-night.svg" alt="Strata logo" width="160">
+
 # Strata
 
 **Navigate every layer.** A fast, keyboard-first file manager for modern Linux desktops.
@@ -34,6 +36,7 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
   - [Follow Omarchy Quattro](#follow-omarchy-quattro)
   - [Bundled themes](#bundled-themes)
   - [Custom themes](#custom-themes)
+- [Release channels](#release-channels)
 - [Under the hood](#under-the-hood)
 - [Technical specifications](#technical-specifications)
 - [Development and documentation](#development-and-documentation)
@@ -62,12 +65,14 @@ Arch Linux and Omarchy are the primary supported environments; current binaries 
 paru -S strata-bin        # or: yay -S strata-bin
 ```
 
-`strata-bin` installs the stable release; `strata-preview-bin` tracks the newest preview build. Both install the published binary unmodified, along with the launcher and application icon, and either one can be installed at a time.
+`strata-bin` installs the stable release; `strata-rc-bin` tracks the newest release candidate. Both install the published binary unmodified, and either one can be installed at a time — they conflict, so switching channels means installing the other package. Nightly builds are not packaged; install those manually and update in-app.
 
-Update through your AUR helper or `pacman`:
+Releases whose archive carries the desktop entry and application icon install a launcher too; releases published before that metadata was added install the `strata` command only.
+
+Update through your AUR helper — `pacman` cannot update an AUR package, because no configured repository carries it:
 
 ```bash
-sudo pacman -Syu strata-bin
+paru -Sua                 # or: yay -Sua
 ```
 
 A package-managed install still reports new releases in **Settings → Updates**, but never installs over `/usr/bin/strata`, which pacman owns. Maintainers: see [`docs/packaging.md`](docs/packaging.md).
@@ -97,7 +102,9 @@ Then:
 - Extract it and install `strata` to ~/.local/bin/strata without overwriting an
   unrelated file. Ensure ~/.local/bin is on PATH.
 - Ask whether I want a per-user desktop entry and inode/directory association;
-  if yes, use application ID io.github.lgse.Strata and refresh the desktop database.
+  if yes, install the archive's io.github.lgse.Strata.desktop and io.github.lgse.Strata.svg
+  under ~/.local/share, pointing Exec at the installed binary, then refresh the
+  desktop database and icon cache.
 - Launch `strata`, report its installed version/source release, and verify the
   desktop association if one was requested. Do not weaken the preview sandbox.
 ```
@@ -151,12 +158,14 @@ If `command -v` fails, add `$HOME/.local/bin` to your shell's `PATH`. Every arch
 
 #### 3. Update or uninstall
 
-Use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. In-app updates apply to manual installs only; a package-managed install updates through its package manager. To remove a per-user installation:
+Use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. In-app updates apply to manual installs only; a package-managed install updates through its package manager. To remove a per-user installation:
 
 ```bash
 rm -f ~/.local/bin/strata \
-  ~/.local/share/applications/io.github.lgse.Strata.desktop
+  ~/.local/share/applications/io.github.lgse.Strata.desktop \
+  ~/.local/share/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg
 update-desktop-database ~/.local/share/applications 2>/dev/null || true
+gtk-update-icon-cache -qtf ~/.local/share/icons/hicolor 2>/dev/null || true
 ```
 
 User preferences and custom themes remain under the XDG configuration directories so an uninstall does not destroy personal settings.
@@ -174,28 +183,24 @@ Useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd
 
 ### Desktop entry
 
-Create a per-user launcher and optionally make Strata the default directory handler:
+Every release archive ships `io.github.lgse.Strata.desktop` and the Strata application icon `io.github.lgse.Strata.svg`. Install both to give Strata a per-user launcher with its own icon in launchers, docks, task switchers, and window overviews, and optionally make Strata the default directory handler:
 
 ```bash
-mkdir -p ~/.local/share/applications
-cat > ~/.local/share/applications/io.github.lgse.Strata.desktop <<EOF
-[Desktop Entry]
-Name=Strata
-Comment=Navigate every layer
-Exec=$HOME/.local/bin/strata %U
-Icon=system-file-manager
-Terminal=false
-Type=Application
-Categories=Utility;FileManager;
-MimeType=inode/directory;
-StartupNotify=true
-EOF
+cd ~/Downloads/"${archive%.tar.gz}"
+install -Dm644 io.github.lgse.Strata.svg \
+  ~/.local/share/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg
+install -d ~/.local/share/applications
+sed "s|^Exec=strata |Exec=$HOME/.local/bin/strata |" io.github.lgse.Strata.desktop \
+  > ~/.local/share/applications/io.github.lgse.Strata.desktop
 update-desktop-database ~/.local/share/applications
+gtk-update-icon-cache -qtf ~/.local/share/icons/hicolor 2>/dev/null || true
 xdg-mime default io.github.lgse.Strata.desktop inode/directory
 xdg-mime query default inode/directory
 ```
 
-The final command should print `io.github.lgse.Strata.desktop`.
+The final command should print `io.github.lgse.Strata.desktop`. The desktop entry's filename matches the `io.github.lgse.Strata` application ID that Strata's windows report, so desktop shells match a running window to this entry and draw its `Icon` value. Log out and back in if a shell caches launcher icons.
+
+When building from source, `make install-local` installs the binary, icon, and desktop entry in the same locations, and `make uninstall-local` removes them.
 
 ### Make Strata the Omarchy file manager
 
@@ -261,6 +266,16 @@ Select **Add a theme**, enter a name, and choose the semantic colors for the bac
 
 Custom themes are stored as shareable TOML files in `~/.config/strata/themes/`. See [Themes](docs/themes.md) for the schema, file location, and Omarchy color mapping.
 
+## Release channels
+
+Strata defaults to the **Stable** channel: only final tagged releases are ever offered, and a Stable install never receives, sees, or is notified about a prerelease.
+
+To try upcoming changes early, choose a channel in **Settings → Updates**. **Preview** receives curated alpha, beta, and release-candidate builds but excludes nightlies. **Nightly** receives every recognised prerelease, including daily development builds. The update dialog and release notes always identify the exact build kind.
+
+When a prerelease installation selects **Stable**, the Updates card immediately offers the newest stable release as the channel target—even when that requires a semantic downgrade—and labels the action **Return to stable**. Preview and Nightly selections use the same card for ordinary forward updates, so channel changes never create a separate competing rollback card.
+
+See [Releasing](docs/releasing.md) for the tag grammar these channels rely on and, for maintainers, how a release candidate is cut and promoted.
+
 ## Under the hood
 
 ### Why search stays fast
@@ -311,6 +326,7 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Dee
 - [Performance baseline](docs/performance-baseline.md)
 - [Themes and Omarchy integration](docs/themes.md)
 - [Unsafe code policy](docs/unsafe-code.md)
+- [Releasing](docs/releasing.md)
 
 ## Contributors
 

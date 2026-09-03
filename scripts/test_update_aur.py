@@ -42,15 +42,35 @@ class PackageVersionTests(unittest.TestCase):
     def test_a_leading_v_is_dropped(self):
         self.assertEqual(package_version("v0.7.0"), "0.7.0")
 
-    def test_prerelease_punctuation_is_stripped(self):
-        self.assertEqual(package_version("0.8.0-rc.1"), "0.8.0rc1")
-        self.assertEqual(package_version("0.8.0-beta.2"), "0.8.0beta2")
-        self.assertEqual(package_version("0.8.0-alpha.10"), "0.8.0alpha10")
+    def test_only_the_prerelease_hyphen_is_removed(self):
+        self.assertEqual(package_version("0.8.0-rc.1"), "0.8.0rc.1")
+        self.assertEqual(package_version("0.8.0-beta.2"), "0.8.0beta.2")
+        self.assertEqual(package_version("0.8.0-alpha.10"), "0.8.0alpha.10")
 
-    def test_a_nightly_keeps_its_date(self):
+    def test_a_nightly_keeps_its_date_and_disambiguator_separate(self):
+        # Concatenating these would make the second nightly of one day
+        # (...202609012) order above the next day's (...20260902).
         self.assertEqual(
-            package_version("0.8.0-nightly.20260901"), "0.8.0nightly20260901"
+            package_version("0.8.0-nightly.20260901"), "0.8.0nightly.20260901"
         )
+        self.assertEqual(
+            package_version("0.8.0-nightly.20260901.2"), "0.8.0nightly.20260901.2"
+        )
+
+    def test_the_result_never_contains_a_character_pkgver_forbids(self):
+        # makepkg's check_pkgver rejects colons, slashes, hyphens and
+        # whitespace. Dots are legal and are what keeps ordering correct.
+        for version in (
+            "0.7.0",
+            "0.8.0-rc.1",
+            "0.8.0-alpha.10",
+            "0.8.0-nightly.20260901.2",
+        ):
+            mangled = package_version(version)
+            self.assertFalse(
+                set(mangled) & set(":/- \t"),
+                f"{mangled!r} contains a character pkgver forbids",
+            )
 
     def test_the_result_never_contains_a_hyphen(self):
         for version in ("0.8.0-rc.1", "0.8.0-nightly.20260901.2"):
@@ -115,20 +135,26 @@ class PackageValuesTests(unittest.TestCase):
         self.assertEqual(values["PKGVER"], "0.7.0")
         self.assertEqual(values["RELEASEVER"], "0.7.0")
         self.assertEqual(values["CHANNEL"], "stable")
-        self.assertEqual(values["CONFLICTS"], "strata-preview-bin")
-        self.assertEqual(values["UPDATE_COMMAND"], "sudo pacman -Syu strata-bin")
+        self.assertEqual(values["ALTERNATE"], "strata-rc-bin")
 
-    def test_the_preview_package_keeps_the_unmangled_release_version(self):
-        values = package_values("strata-preview-bin", "0.8.0-rc.1", 1, self.checksums)
+    def test_no_package_names_a_pacman_update_command(self):
+        # pacman cannot update an AUR package; Strata picks an installed AUR
+        # helper at runtime instead, so the marker must not pin a command.
+        for pkgname in PACKAGES:
+            values = package_values(pkgname, "0.7.0", 1, self.checksums)
+            self.assertNotIn("UPDATE_COMMAND", values)
 
-        self.assertEqual(values["PKGVER"], "0.8.0rc1")
+    def test_the_rc_package_keeps_the_unmangled_release_version(self):
+        values = package_values("strata-rc-bin", "0.8.0-rc.1", 1, self.checksums)
+
+        self.assertEqual(values["PKGVER"], "0.8.0rc.1")
         self.assertEqual(
             values["RELEASEVER"],
             "0.8.0-rc.1",
             "the download URL must use the real release tag, not the mangled pkgver",
         )
-        self.assertEqual(values["CHANNEL"], "preview")
-        self.assertEqual(values["CONFLICTS"], "strata-bin")
+        self.assertEqual(values["CHANNEL"], "rc")
+        self.assertEqual(values["ALTERNATE"], "strata-bin")
 
     def test_each_architecture_keeps_its_own_checksum(self):
         values = package_values("strata-bin", "0.7.0", 1, self.checksums)

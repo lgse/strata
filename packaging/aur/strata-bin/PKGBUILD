@@ -30,8 +30,8 @@ optdepends=(
   'imagemagick: RAW image previews'
   'libraw: RAW image previews when ImageMagick is unavailable'
 )
-provides=('strata')
-conflicts=('strata' 'strata-preview-bin')
+provides=("strata=${pkgver}")
+conflicts=('strata' 'strata-rc-bin')
 # The published binary is covered by a GitHub build-provenance attestation.
 # Stripping rewrites it, so `gh attestation verify` would no longer match the
 # file this package installs. There are no sources to build, so a debug package
@@ -64,11 +64,15 @@ package() {
 
   # Tells Strata that pacman owns /usr/bin/strata, so the in-app updater reports
   # new releases but never installs over package-owned files.
+  #
+  # No update_command: pacman cannot update an AUR package -- no configured
+  # repository carries it, so `pacman -Syu strata-bin` fails with "target not
+  # found". Strata names whichever of these helpers is on PATH instead.
   install -Dm644 /dev/stdin "${pkgdir}/usr/share/strata/install-source.toml" <<'MARKER'
 manager = "pacman"
 package = "strata-bin"
 channel = "stable"
-update_command = "sudo pacman -Syu strata-bin"
-alternate_package = "strata-preview-bin"
+aur_helpers = ["yay", "paru", "pikaur", "trizen"]
+alternate_package = "strata-rc-bin"
 MARKER
 }

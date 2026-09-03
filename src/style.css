@@ -749,7 +749,8 @@ entry.form-control:disabled {
   color: @theme_dim_text;
 }
 
-dropdown.form-control > button {
+dropdown.form-control > button,
+menubutton.form-control > button {
   background: alpha(@theme_bg, 0.72);
   border: 1px solid alpha(@theme_border, 0.54);
   border-radius: 5px;
@@ -760,26 +761,32 @@ dropdown.form-control > button {
   transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out;
 }
 
-dropdown.form-control > button:hover {
+dropdown.form-control > button:hover,
+menubutton.form-control > button:hover {
   background: alpha(@theme_accent, 0.15);
   border-color: alpha(@theme_accent, 0.68);
 }
 
-dropdown.form-control > button:active {
+dropdown.form-control > button:active,
+menubutton.form-control > button:active {
   background: alpha(@theme_accent, 0.22);
   transform: scale(0.97);
 }
 
 dropdown.form-control:focus > button,
 dropdown.form-control:focus-visible > button,
-dropdown.form-control > button:focus-visible {
+dropdown.form-control > button:focus-visible,
+menubutton.form-control:focus > button,
+menubutton.form-control:focus-visible > button,
+menubutton.form-control > button:focus-visible {
   border-color: @theme_accent;
   box-shadow: 0 0 0 1px alpha(@theme_accent, 0.42);
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
 }
 
-dropdown.form-control:disabled > button {
+dropdown.form-control:disabled > button,
+menubutton.form-control:disabled > button {
   background: alpha(@theme_muted, 0.3);
   border-color: alpha(@theme_border, 0.38);
   color: @theme_dim_text;
@@ -823,6 +830,57 @@ dropdown.form-control:disabled > button {
   background: @theme_danger;
 }
 
+.update-dialog-details {
+  background: alpha(@theme_bg, 0.3);
+  border: 1px solid alpha(@theme_border, 0.24);
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.update-dialog-detail-row {
+  padding: 3px 0;
+}
+
+.update-dialog-detail-label {
+  color: @theme_dim_text;
+  font-size: 0.88em;
+}
+
+.update-dialog-detail-value {
+  color: @theme_text;
+  font-weight: 700;
+}
+
+.update-dialog-actions {
+  border-top: 1px solid alpha(@theme_border, 0.28);
+  padding: 12px 20px;
+}
+
+.update-dialog-action {
+  background: alpha(@theme_accent, 0.12);
+  border: 1px solid alpha(@theme_accent, 0.6);
+  border-radius: 5px;
+  box-shadow: none;
+  color: @theme_accent;
+  min-height: 30px;
+  padding: 4px 14px;
+}
+
+.update-dialog-action:hover {
+  background: alpha(@theme_accent, 0.22);
+  border-color: @theme_accent;
+  color: @theme_accent;
+}
+
+.update-dialog-action:active {
+  background: alpha(@theme_accent, 0.32);
+  color: @theme_accent;
+}
+
+.update-dialog-action:focus-visible {
+  outline: 2px solid alpha(@theme_accent, 0.5);
+  outline-offset: 1px;
+}
 
 .settings-dialog {
   background: @theme_surface;
@@ -960,6 +1018,16 @@ dropdown.form-control:disabled > button {
 .release-notes-title {
   color: @theme_text;
   font-weight: 700;
+}
+
+.prerelease-badge {
+  background: alpha(@theme_danger, 0.14);
+  border: 1px solid @theme_danger;
+  border-radius: 999px;
+  color: @theme_danger;
+  font-size: 0.78em;
+  font-weight: 700;
+  padding: 2px 9px;
 }
 
 .release-notes-content {
@@ -1238,6 +1306,25 @@ switch:checked slider {
   color: @theme_accent;
   font-size: 0.88em;
   font-weight: 650;
+}
+
+.sidebar-update.preview {
+  color: @theme_danger;
+}
+
+.sidebar-update.preview:hover {
+  background: alpha(@theme_danger, 0.16);
+  color: @theme_danger;
+}
+
+.sidebar-update.preview:active {
+  background: alpha(@theme_danger, 0.24);
+  color: @theme_danger;
+}
+
+.sidebar-update.preview .sidebar-update-dot,
+.sidebar-update.preview .sidebar-update-label {
+  color: @theme_danger;
 }
 
 .sidebar-row {
