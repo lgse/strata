@@ -4969,18 +4969,24 @@ impl ViewState {
             self.browser.close_peek();
             return;
         };
-        let Some(column_bounds) = self
-            .columns
-            .borrow()
-            .get(anchor.origin_depth)
-            .and_then(|column| column.shell.compute_bounds(&self.overlay))
-        else {
-            self.browser.close_peek();
-            return;
+        let source_bounds = match peek_origin_bounds(self.mode_views.borrow().mode()) {
+            PeekOriginBounds::Anchor => row_bounds,
+            PeekOriginBounds::Column => {
+                let Some(bounds) = self
+                    .columns
+                    .borrow()
+                    .get(anchor.origin_depth)
+                    .and_then(|column| column.shell.compute_bounds(&self.overlay))
+                else {
+                    self.browser.close_peek();
+                    return;
+                };
+                bounds
+            }
         };
         let Some(placement) = peek_horizontal_placement(
-            column_bounds.x(),
-            column_bounds.width(),
+            source_bounds.x(),
+            source_bounds.width(),
             self.overlay.width() as f32,
         ) else {
             self.browser.close_peek();
@@ -7169,6 +7175,19 @@ fn icon_for_name(name: &str) -> &'static str {
             | "lua" | "php" | "html" | "css" | "scss" | "json",
         ) => crate::assets::icons::FILE_CODE,
         _ => crate::assets::icons::DOCUMENTS,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PeekOriginBounds {
+    Anchor,
+    Column,
+}
+
+fn peek_origin_bounds(mode: BrowserMode) -> PeekOriginBounds {
+    match mode {
+        BrowserMode::Columns => PeekOriginBounds::Column,
+        BrowserMode::Grid | BrowserMode::Explorer => PeekOriginBounds::Anchor,
     }
 }
 

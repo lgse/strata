@@ -198,6 +198,22 @@ fn delete_confirmation_labels_distinguish_files_and_folders() {
 }
 
 #[test]
+fn folder_peek_uses_visible_mode_bounds() {
+    assert_eq!(
+        peek_origin_bounds(BrowserMode::Columns),
+        PeekOriginBounds::Column
+    );
+    assert_eq!(
+        peek_origin_bounds(BrowserMode::Grid),
+        PeekOriginBounds::Anchor
+    );
+    assert_eq!(
+        peek_origin_bounds(BrowserMode::Explorer),
+        PeekOriginBounds::Anchor
+    );
+}
+
+#[test]
 fn folder_peek_prefers_space_to_the_right_of_its_source_column() {
     assert_eq!(
         peek_horizontal_placement(100.0, 300.0, 800.0),
