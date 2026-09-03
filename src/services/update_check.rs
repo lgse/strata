@@ -309,6 +309,8 @@ struct CachedRelease {
     download_url: Option<String>,
     published_at: Option<String>,
     notes: String,
+    #[serde(default)]
+    commit: Option<String>,
 }
 
 fn to_cached_release(release: &ReleaseSummary) -> CachedRelease {
@@ -319,6 +321,7 @@ fn to_cached_release(release: &ReleaseSummary) -> CachedRelease {
         download_url: release.download_url.clone(),
         published_at: release.published_at.clone(),
         notes: release.notes.clone(),
+        commit: None,
     }
 }
 
@@ -350,6 +353,8 @@ struct UpdateCheckCache {
     etag: Option<String>,
     #[serde(default)]
     releases: Vec<CachedRelease>,
+    #[serde(default)]
+    error: Option<String>,
 }
 
 /// Whether a cached channel check is still within [`CHECK_INTERVAL`] and
@@ -384,19 +389,17 @@ fn request_json_conditional<T: serde::de::DeserializeOwned>(
     if let Some(etag) = etag {
         request = request.header("If-None-Match", etag);
     }
-    match request.call() {
-        Ok(mut response) => {
-            let etag = response
-                .headers()
-                .get("etag")
-                .and_then(|value| value.to_str().ok())
-                .map(str::to_owned);
-            let body = response.body_mut().read_json::<T>()?;
-            Ok(Some((body, etag)))
-        }
-        Err(ureq::Error::StatusCode(304)) => Ok(None),
-        Err(error) => Err(error),
+    let mut response = request.call()?;
+    if response.status().as_u16() == 304 {
+        return Ok(None);
     }
+    let etag = response
+        .headers()
+        .get("etag")
+        .and_then(|value| value.to_str().ok())
+        .map(str::to_owned);
+    let body = response.body_mut().read_json::<T>()?;
+    Ok(Some((body, etag)))
 }
 
 /// The outcome of fetching one channel's release feed with a conditional
@@ -466,6 +469,50 @@ fn select_and_resolve(
     check
 }
 
+fn cached_releases(releases: &[ReleaseSummary], check: &UpdateCheck) -> Vec<CachedRelease> {
+    let resolved = match check {
+        UpdateCheck::Available { release, .. } => Some((&release.tag, &release.commit)),
+        UpdateCheck::UpToDate | UpdateCheck::Failed(_) => None,
+    };
+    releases
+        .iter()
+        .map(|release| {
+            let mut cached = to_cached_release(release);
+            if let Some((_, commit)) = resolved.filter(|(tag, _)| **tag == release.tag) {
+                cached.commit.clone_from(commit);
+            }
+            cached
+        })
+        .collect()
+}
+
+fn select_cached_update(
+    channel: Channel,
+    installed: &Version,
+    cached: &[CachedRelease],
+) -> UpdateCheck {
+    let releases: Vec<_> = cached.iter().filter_map(from_cached_release).collect();
+    let mut check = select_update(channel, installed, &releases);
+    if let UpdateCheck::Available { release, .. } = &mut check {
+        release.commit = cached
+            .iter()
+            .find(|cached| cached.tag == release.tag)
+            .and_then(|cached| cached.commit.clone());
+    }
+    check
+}
+
+fn check_from_cache(
+    cache: &UpdateCheckCache,
+    channel: Channel,
+    installed: &Version,
+) -> UpdateCheck {
+    match &cache.error {
+        Some(error) => UpdateCheck::Failed(error.clone()),
+        None => select_cached_update(channel, installed, &cache.releases),
+    }
+}
+
 fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateCheck {
     let path = update_check_cache_path();
     let cache = read_cache_file::<UpdateCheckCache>(&path);
@@ -475,12 +522,7 @@ fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateChe
         .as_ref()
         .filter(|cache| cache_is_fresh(cache, channel, force, now))
     {
-        let releases: Vec<_> = cache
-            .releases
-            .iter()
-            .filter_map(from_cached_release)
-            .collect();
-        return select_and_resolve(channel, installed, &releases);
+        return check_from_cache(cache, channel, installed);
     }
 
     let same_channel = cache
@@ -492,18 +534,20 @@ fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateChe
         Channel::Preview | Channel::Nightly => fetch_preview(etag.as_deref()),
     };
 
-    let releases = match outcome {
+    match outcome {
         ChannelFetch::Fetched { releases, etag } => {
+            let check = select_and_resolve(channel, installed, &releases);
             write_cache_file(
                 &path,
                 &UpdateCheckCache {
                     channel: channel.as_str().to_owned(),
                     checked_at: now,
                     etag,
-                    releases: releases.iter().map(to_cached_release).collect(),
+                    releases: cached_releases(&releases, &check),
+                    error: None,
                 },
             );
-            releases
+            check
         }
         ChannelFetch::Unchanged => {
             let cached_releases = same_channel
@@ -516,19 +560,16 @@ fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateChe
                     checked_at: now,
                     etag: same_channel.and_then(|cache| cache.etag.clone()),
                     releases: cached_releases.clone(),
+                    error: None,
                 },
             );
-            cached_releases
-                .iter()
-                .filter_map(from_cached_release)
-                .collect()
+            select_cached_update(channel, installed, &cached_releases)
         }
         ChannelFetch::Failed(error) => {
-            // Still record the attempt so a rate-limited or offline run is
-            // not retried on every subsequent launch within the interval --
-            // but keep any previously cached good result for this channel
-            // untouched, so a later success can still send its `etag` and
-            // does not lose its releases.
+            let message = request_error_message(&error);
+            // Preserve releases and their ETag for a later retry, while
+            // caching the failure itself so automatic checks do not turn an
+            // offline or rate-limited result into a false "up to date".
             write_cache_file(
                 &path,
                 &UpdateCheckCache {
@@ -538,13 +579,12 @@ fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateChe
                     releases: same_channel
                         .map(|cache| cache.releases.clone())
                         .unwrap_or_default(),
+                    error: Some(message.clone()),
                 },
             );
-            return UpdateCheck::Failed(request_error_message(&error));
+            UpdateCheck::Failed(message)
         }
-    };
-
-    select_and_resolve(channel, installed, &releases)
+    }
 }
 
 fn fetch_package_update(

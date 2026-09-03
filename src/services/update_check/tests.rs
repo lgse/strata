@@ -1,10 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::{
+    io::{Read, Write},
+    net::TcpListener,
+};
+
 use super::{
     BuildKind, CHECK_INTERVAL, Channel, ReleaseNoteBlock, ReleaseResponse, ReleaseSummary,
-    UpdateCheck, UpdateCheckCache, Version, archive_name, cache_is_fresh, fetch_package_update,
-    from_cached_release, package_update_from_response, parse_markdown, release_metadata,
-    release_page_url, request_error_message, select_update, to_cached_release, to_release_summary,
+    UpdateCheck, UpdateCheckCache, Version, archive_name, cache_is_fresh, cached_releases,
+    check_from_cache, fetch_package_update, from_cached_release, package_update_from_response,
+    parse_markdown, release_metadata, release_page_url, request_error_message,
+    request_json_conditional, select_cached_update, select_update, to_cached_release,
+    to_release_summary,
 };
 
 fn version(tag: &str) -> Version {
@@ -424,6 +431,7 @@ fn cache(channel: Channel, checked_at: u64) -> UpdateCheckCache {
         checked_at,
         etag: None,
         releases: Vec::new(),
+        error: None,
     }
 }
 
@@ -495,4 +503,62 @@ fn a_cached_release_with_an_unparseable_tag_is_dropped() {
     let mut cached = to_cached_release(&release_summary("v0.8.0"));
     cached.tag = "not-a-version".to_owned();
     assert!(from_cached_release(&cached).is_none());
+}
+
+#[test]
+fn a_cached_update_reuses_its_resolved_commit() {
+    let releases = vec![release_summary("v0.8.0")];
+    let mut check = select_update(Channel::Stable, &version("v0.7.0"), &releases);
+    if let UpdateCheck::Available { release, .. } = &mut check {
+        release.commit = Some("0123456789abcdef".to_owned());
+    }
+    let cached = cached_releases(&releases, &check);
+
+    let restored = select_cached_update(Channel::Stable, &version("v0.7.0"), &cached);
+
+    assert!(matches!(
+        restored,
+        UpdateCheck::Available { release, .. }
+            if release.commit.as_deref() == Some("0123456789abcdef")
+    ));
+}
+
+#[test]
+fn a_cached_failure_remains_a_failure() {
+    let mut cache = cache(Channel::Stable, 1_000);
+    cache.error = Some("Network request failed".to_owned());
+
+    assert_eq!(
+        check_from_cache(&cache, Channel::Stable, &version("v0.8.0")),
+        UpdateCheck::Failed("Network request failed".to_owned())
+    );
+}
+
+#[test]
+fn a_not_modified_response_reuses_the_cached_representation() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("test server should bind");
+    let address = listener
+        .local_addr()
+        .expect("test server should have an address");
+    let server = std::thread::spawn(move || {
+        let (mut stream, _) = listener.accept().expect("test server should accept");
+        let mut request = [0_u8; 1024];
+        let _read = stream
+            .read(&mut request)
+            .expect("request should be readable");
+        stream
+            .write_all(
+                b"HTTP/1.1 304 Not Modified\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            )
+            .expect("response should be writable");
+    });
+
+    let result = request_json_conditional::<serde_json::Value>(
+        &format!("http://{address}"),
+        Some("\"cached-etag\""),
+    )
+    .expect("304 should not be treated as an error");
+
+    assert!(result.is_none());
+    server.join().expect("test server should stop");
 }
