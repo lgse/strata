@@ -61,7 +61,9 @@ Arch Linux and Omarchy are the primary supported environments. Current binaries 
 
 ### Omarchy
 
-Install Strata from the Omarchy Package Repository:
+The `strata` package is available on **Omarchy 4.0.2 or newer**. Update an
+older Omarchy installation before installing Strata from the Omarchy Package
+Repository:
 
 ```bash
 omarchy pkg add strata
