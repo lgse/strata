@@ -6,10 +6,10 @@ use crate::services::{BuildKind, Channel, ReleaseMetadata, UpdateCheck, UpdateMe
 
 use super::{
     COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
-    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, install_guard, installed_version_status,
-    is_stale_check, offer_still_eligible, omarchy_update_command, responsive_dialog_size,
-    shows_available_release_notes, theme_background_is_light, theme_name_matches,
-    update_check_message, uses_compact_navigation, video_preview_backend_label,
+    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, effective_update_channel, install_guard,
+    installed_version_status, is_stale_check, offer_still_eligible, omarchy_update_command,
+    responsive_dialog_size, shows_available_release_notes, theme_background_is_light,
+    theme_name_matches, update_check_message, uses_compact_navigation, video_preview_backend_label,
     video_preview_control_state,
 };
 use crate::sandbox::MediaPreviewBackend;
@@ -141,6 +141,30 @@ fn installed_version_status_names_the_build_kind_for_a_prerelease() {
         installed_version_status(&version, BuildKind::Rc, UpdateMethod::InPlace),
         "Version 0.6.0-rc.1 · Release candidate"
     );
+}
+
+#[test]
+fn package_managed_updates_always_follow_stable() {
+    for selected in [Channel::Stable, Channel::Preview, Channel::Nightly] {
+        assert_eq!(
+            effective_update_channel(selected, UpdateMethod::Omarchy),
+            Channel::Stable
+        );
+        assert_eq!(
+            effective_update_channel(selected, UpdateMethod::Pacman),
+            Channel::Stable
+        );
+    }
+}
+
+#[test]
+fn manual_updates_keep_the_selected_channel() {
+    for selected in [Channel::Stable, Channel::Preview, Channel::Nightly] {
+        assert_eq!(
+            effective_update_channel(selected, UpdateMethod::InPlace),
+            selected
+        );
+    }
 }
 
 #[test]

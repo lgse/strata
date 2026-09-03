@@ -76,7 +76,7 @@ omarchy pkg add strata
 > omarchy pkg add gvfs-smb imagemagick libraw dcraw
 > ```
 
-Omarchy keeps this installation current through `omarchy update`. Strata still checks for new releases and shows their notes, but detects that its executable is package-owned and does not replace it with the in-app updater. When an update is available, **Open Omarchy Update** launches the interactive updater in your configured terminal.
+Omarchy keeps this installation current through `omarchy update`. Strata still checks for stable releases and shows their notes, but detects that its executable is package-owned, hides the in-app release-channel selector, and does not replace it with the in-app updater. When an update is available, **Open Omarchy Update** launches the interactive updater in your configured terminal.
 
 #### Switch a manual installation to OPR
 

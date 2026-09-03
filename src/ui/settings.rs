@@ -538,6 +538,7 @@ fn updates_page(
 
     let channel_row = channel_option(manager.clone(), run_check.clone());
     channel_row.set_sensitive(auto_check_enabled);
+    channel_row.set_visible(!update_method.is_package_managed());
     preferences.append(&channel_row);
     preferences.append(&update_row);
 
@@ -844,6 +845,14 @@ struct PendingInstall {
 /// otherwise happily install. Re-testing at the moment of the click is what
 /// makes the preference authoritative regardless of how many views cached
 /// an offer under the old one.
+fn effective_update_channel(selected: Channel, update_method: UpdateMethod) -> Channel {
+    if update_method.is_package_managed() {
+        Channel::Stable
+    } else {
+        selected
+    }
+}
+
 fn offer_still_eligible(channel: Channel, kind: BuildKind) -> bool {
     match channel {
         Channel::Stable => kind == BuildKind::Stable,
@@ -951,10 +960,9 @@ fn update_check_row(
             // Read the channel now, not once when the row was built: a
             // mid-session channel toggle must be reflected by the very next
             // check, including this one if it was triggered by that toggle.
-            let receiver = services::check_for_updates(
-                manager.release_channel(),
-                crate::build_info::installed_version(),
-            );
+            let channel = effective_update_channel(manager.release_channel(), update_method);
+            let receiver =
+                services::check_for_updates(channel, crate::build_info::installed_version());
             let checking = checking.clone();
             let generation = generation.clone();
             let status = status.clone();
@@ -963,7 +971,6 @@ fn update_check_row(
             let pending_download = pending_download.clone();
             let managed_update_available = managed_update_available.clone();
             let available_notes = available_notes.clone();
-            let manager = manager.clone();
             glib::timeout_add_local(Duration::from_millis(100), move || {
                 if is_stale_check(my_generation, generation.get()) {
                     // A newer check has since started; that one owns
@@ -977,7 +984,7 @@ fn update_check_row(
                         let returns_to_stable = matches!(
                             &result,
                             UpdateCheck::Available { release, .. }
-                                if manager.release_channel() == Channel::Stable
+                                if channel == Channel::Stable
                                     && crate::build_info::build_kind() != BuildKind::Stable
                                     && release.kind == BuildKind::Stable
                         );
