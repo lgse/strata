@@ -295,6 +295,11 @@ pub(super) struct ViewState {
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     pending_select: RefCell<Vec<String>>,
     pending_extract_retry: RefCell<Option<(FileEntry, Location)>>,
+    /// The entries a just-dispatched, non-permanent delete requested,
+    /// snapshotted so a `CompletedWithErrors` response naming entries that
+    /// failed only because the location doesn't support Trash can offer a
+    /// permanent-delete retry for exactly those entries.
+    pending_delete_entries: RefCell<Vec<FileEntry>>,
     pending_navigate: RefCell<Option<Location>>,
     pending_location_credentials: RefCell<Option<MountCredentials>>,
     pending_trash_summary: RefCell<Option<LoadHandle>>,
@@ -442,6 +447,7 @@ impl BrowserView {
             pin_status_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
             pending_extract_retry: RefCell::new(None),
+            pending_delete_entries: RefCell::new(Vec::new()),
             pending_navigate: RefCell::new(None),
             pending_location_credentials: RefCell::new(None),
             pending_trash_summary: RefCell::new(None),
@@ -2198,12 +2204,16 @@ impl ViewState {
         let confirmed_overlay = window_overlay.clone();
         let confirmed_root = blurred_root.clone();
         let browser = self.browser.clone();
+        let weak_state = Rc::downgrade(self);
         confirm.connect_clicked(move |_| {
             dismiss_modal_layer(
                 &confirmed_layer,
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
             );
+            if !permanent && let Some(state) = weak_state.upgrade() {
+                state.pending_delete_entries.replace(entries.clone());
+            }
             browser.delete(entries.clone(), permanent);
             browser.focus_active();
         });
@@ -3838,8 +3848,28 @@ impl ViewState {
                 }
                 show_error_dialog(&self.overlay, "Unable to complete operation", &message);
             }
-            BrowserEvent::OperationCompletedWithErrors { message } => {
-                show_error_dialog(&self.overlay, "Completed with errors", &message);
+            BrowserEvent::OperationCompletedWithErrors {
+                message,
+                retryable_locations,
+            } => {
+                let retryable_entries = retryable_delete_entries(
+                    self.pending_delete_entries.take(),
+                    &retryable_locations,
+                );
+                if retryable_entries.is_empty() {
+                    show_error_dialog(&self.overlay, "Completed with errors", &message);
+                } else {
+                    let weak_state = Rc::downgrade(self);
+                    show_delete_error_dialog(
+                        &self.overlay,
+                        &message,
+                        Rc::new(move || {
+                            if let Some(state) = weak_state.upgrade() {
+                                state.show_delete_confirmation(retryable_entries.clone(), true);
+                            }
+                        }),
+                    );
+                }
             }
             BrowserEvent::OperationCancelled {
                 completed,
@@ -7167,6 +7197,20 @@ fn entry_kind_summary(entries: &[FileEntry]) -> String {
     }
 }
 
+/// Narrows a just-attempted delete's entries down to the ones a completed
+/// operation named as retryable, so a permanent-delete retry (issue #179)
+/// re-targets exactly those and not, say, ones that already succeeded or
+/// failed for an unrelated reason.
+fn retryable_delete_entries(
+    entries: Vec<FileEntry>,
+    retryable_locations: &[Location],
+) -> Vec<FileEntry> {
+    entries
+        .into_iter()
+        .filter(|entry| retryable_locations.contains(&entry.location))
+        .collect()
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DeleteConfirmationFocus {
     Cancel,
@@ -7984,6 +8028,80 @@ fn show_error_dialog_after_close(
     });
     layer.add_controller(escape);
     close.grab_focus();
+}
+
+/// Like [`show_error_dialog`], but for a `Completed with errors` delete
+/// result where every failure was caused by the destination not supporting
+/// Trash (issue #179): rather than a dead-end "Done" button, this offers an
+/// actionable "Delete Permanently" button that invokes `on_retry` -- the
+/// caller's job is to re-run the delete for just the retryable entries,
+/// e.g. via `show_delete_confirmation(retryable_entries, true)`.
+fn show_delete_error_dialog(parent: &impl IsA<gtk::Widget>, detail: &str, on_retry: Rc<dyn Fn()>) {
+    let Some(window_overlay) = parent
+        .root()
+        .and_downcast::<gtk::Window>()
+        .and_then(|window| window.child())
+        .and_downcast::<gtk::Overlay>()
+    else {
+        return;
+    };
+    let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
+    if let Some(root) = blurred_root.as_ref() {
+        root.set_blurred(true);
+    }
+
+    let layout = message_dialog_layout(
+        crate::assets::icons::X,
+        "Completed with errors",
+        "Some items could not be processed",
+        "Delete Permanently",
+        ModalTone::Danger,
+    );
+    layout.cancel.set_label("Done");
+    let explanation = message_dialog_description(detail);
+    explanation.set_selectable(true);
+    layout.body.append(&explanation);
+    let content = layout.content;
+    let close_icon = layout.close;
+    let cancel = layout.cancel;
+    let confirm = layout.confirm;
+
+    let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+    window_overlay.add_overlay(&layer);
+    let dismissed = Rc::new(Cell::new(false));
+
+    let dismiss_layer = layer.clone();
+    let dismiss_overlay = window_overlay.clone();
+    let dismiss_root = blurred_root.clone();
+    let dismissed_for_dismiss = dismissed.clone();
+    let dismiss = Rc::new(move || {
+        if dismissed_for_dismiss.replace(true) {
+            return;
+        }
+        dismiss_modal_layer(&dismiss_layer, &dismiss_overlay, dismiss_root.as_ref());
+    });
+
+    let clicked_dismiss = dismiss.clone();
+    cancel.connect_clicked(move |_| clicked_dismiss());
+    let icon_dismiss = dismiss.clone();
+    close_icon.connect_clicked(move |_| icon_dismiss());
+    let confirm_dismiss = dismiss.clone();
+    confirm.connect_clicked(move |_| {
+        confirm_dismiss();
+        on_retry();
+    });
+    let escape = gtk::EventControllerKey::new();
+    let escape_dismiss = dismiss.clone();
+    escape.connect_key_pressed(move |_, key, _, _| {
+        if key == gtk::gdk::Key::Escape {
+            escape_dismiss();
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    });
+    layer.add_controller(escape);
+    cancel.grab_focus();
 }
 
 #[cfg(test)]

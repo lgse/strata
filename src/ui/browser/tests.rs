@@ -1071,3 +1071,40 @@ fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
     assert_eq!(model_display_name(&encoded_visible), "photo");
     assert_eq!(model_display_name(&encoded_hidden), ".config");
 }
+
+#[test]
+fn retryable_delete_entries_keeps_only_the_named_locations() {
+    let entry = |name: &str| FileEntry {
+        location: Location::local(format!("/fixture/{name}")),
+        native_name: name.into(),
+        display_name: name.into(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let retryable = entry("share-file.txt");
+    let denied = entry("locked-file.txt");
+    let entries = vec![retryable.clone(), denied];
+
+    let kept = retryable_delete_entries(entries, std::slice::from_ref(&retryable.location));
+
+    assert_eq!(kept, vec![retryable]);
+}
+
+#[test]
+fn retryable_delete_entries_is_empty_when_nothing_matches() {
+    let entry = FileEntry {
+        location: Location::local("/fixture/photo"),
+        native_name: "photo".into(),
+        display_name: "photo".into(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    let kept = retryable_delete_entries(vec![entry], &[]);
+
+    assert!(kept.is_empty());
+}
