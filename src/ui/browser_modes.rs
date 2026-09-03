@@ -208,6 +208,7 @@ pub struct ModeViews {
     active_new_entry: Rc<RefCell<Option<ActiveModeNewEntry>>>,
     mode: BrowserMode,
     density: BrowserDensity,
+    group_by_type: bool,
     grid_thumbnail_size: Rc<Cell<i32>>,
 }
 
@@ -273,6 +274,7 @@ impl ModeViews {
             active_new_entry: Rc::new(RefCell::new(None)),
             mode: BrowserMode::Columns,
             density: BrowserDensity::Compact,
+            group_by_type: false,
             grid_thumbnail_size: Rc::new(Cell::new(DEFAULT_GRID_THUMBNAIL_SIZE)),
         }
     }
@@ -602,6 +604,20 @@ impl ModeViews {
                 BrowserDensity::Compact => "density-compact",
                 BrowserDensity::Airy => "density-airy",
             });
+        }
+    }
+
+    pub fn set_group_by_type(&mut self, enabled: bool) {
+        if self.group_by_type == enabled {
+            return;
+        }
+        self.cancel_new_entry();
+        self.cancel_rename();
+        self.group_by_type = enabled;
+        match self.mode {
+            BrowserMode::Columns => {}
+            BrowserMode::Grid => self.rebuild_grid(),
+            BrowserMode::Explorer => self.rebuild_explorer(),
         }
     }
 

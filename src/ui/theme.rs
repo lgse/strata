@@ -111,6 +111,8 @@ struct Preferences {
     browser_mode: String,
     #[serde(default = "default_browser_density")]
     browser_density: String,
+    #[serde(default)]
+    group_by_type: bool,
     #[serde(default = "default_file_clicks")]
     list_file_clicks: u8,
     #[serde(default = "default_folder_clicks")]
@@ -158,6 +160,7 @@ impl Default for Preferences {
             reduce_motion: false,
             browser_mode: default_browser_mode(),
             browser_density: default_browser_density(),
+            group_by_type: false,
             list_file_clicks: default_file_clicks(),
             list_folder_clicks: default_folder_clicks(),
             grid_file_clicks: default_file_clicks(),
@@ -467,6 +470,15 @@ impl ThemeManager {
             super::browser_modes::BrowserDensity::Airy => "airy",
         }
         .to_owned();
+        self.save_preferences();
+    }
+
+    pub fn group_by_type(&self) -> bool {
+        self.preferences.borrow().group_by_type
+    }
+
+    pub fn set_group_by_type(&self, enabled: bool) {
+        self.preferences.borrow_mut().group_by_type = enabled;
         self.save_preferences();
     }
 

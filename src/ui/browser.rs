@@ -631,6 +631,15 @@ impl BrowserView {
         });
     }
 
+    /// Groups Explorer and Grid entries under file-type headings. The Miller-column
+    /// mode is unaffected.
+    pub fn set_group_by_type(&self, enabled: bool) {
+        self.state
+            .mode_views
+            .borrow_mut()
+            .set_group_by_type(enabled);
+    }
+
     pub fn activate_focused(&self) {
         if self.view_mode() != BrowserMode::Columns {
             self.state.browser.activate_focused_in_place();

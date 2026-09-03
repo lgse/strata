@@ -65,6 +65,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     let browser = BrowserView::new(Rc::new(LocalFileSource), PeekBehavior::default());
     browser.set_view_mode(theme_manager.browser_mode());
     browser.set_density(theme_manager.browser_density());
+    browser.set_group_by_type(theme_manager.group_by_type());
     browser.set_operation_provider(Rc::new(LocalOperationProvider));
     browser.set_auto_refresh_interval(theme_manager.auto_refresh_interval());
     let controller = browser.browser();
@@ -923,6 +924,34 @@ fn build_appearance_menu(
     content.append(&list);
     content.append(&grid);
     content.append(&explorer);
+
+    let grouped = preferences.group_by_type();
+    let (group_by_type, group_check, _) = appearance_option(
+        crate::assets::icons::ROWS,
+        "Group by file type",
+        grouped,
+        true,
+    );
+    group_by_type.set_tooltip_text(Some(
+        "Group Explorer and Grid entries under file-type headings",
+    ));
+    {
+        let view = view.clone();
+        let preferences = preferences.clone();
+        let popover_weak = popover_weak.clone();
+        let grouped = Cell::new(grouped);
+        group_by_type.connect_clicked(move |_| {
+            let enabled = !grouped.get();
+            grouped.set(enabled);
+            view.set_group_by_type(enabled);
+            preferences.set_group_by_type(enabled);
+            group_check.set_visible(enabled);
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+            }
+        });
+    }
+    content.append(&group_by_type);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     append_menu_heading(&content, "DENSITY");
