@@ -1102,3 +1102,38 @@ fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
     assert_eq!(model_display_name(&encoded_visible), "photo");
     assert_eq!(model_display_name(&encoded_hidden), ".config");
 }
+
+#[test]
+fn shell_escape_path_escapes_spaces_and_metacharacters_but_not_filename_unicode() {
+    assert_eq!(
+        shell_escape_path(Path::new("/mnt/Mass 1/Movies\u{2044}TV")),
+        "/mnt/Mass\\ 1/Movies\u{2044}TV"
+    );
+    assert_eq!(
+        shell_escape_path(Path::new("/tmp/archive (final) v1.2.tar.gz")),
+        "/tmp/archive\\ \\(final\\)\\ v1.2.tar.gz"
+    );
+    assert_eq!(
+        shell_escape_path(Path::new("/home/user/plain")),
+        "/home/user/plain"
+    );
+}
+
+#[test]
+fn copy_path_text_adds_trailing_slash_to_directories_only() {
+    let directory = Location::local("/mnt/Mass 1/Movies\u{2044}TV");
+    assert_eq!(
+        copy_path_text(&directory, true),
+        "/mnt/Mass\\ 1/Movies\u{2044}TV/"
+    );
+    assert_eq!(
+        copy_path_text(&directory, false),
+        "/mnt/Mass\\ 1/Movies\u{2044}TV"
+    );
+}
+
+#[test]
+fn copy_path_text_keeps_uris_unescaped() {
+    let remote = Location::uri("smb://server/share/folder");
+    assert_eq!(copy_path_text(&remote, true), "smb://server/share/folder");
+}

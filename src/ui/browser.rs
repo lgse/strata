@@ -857,6 +857,33 @@ impl BrowserView {
         true
     }
 
+    pub fn copy_path(&self) -> bool {
+        self.state.sync_mode_selection();
+        let entries = self.state.browser.selected_entries();
+        if entries.is_empty() {
+            let Some(entry) = self.state.browser.focused_entry() else {
+                return false;
+            };
+            copy_locations(&[entry]);
+        } else {
+            copy_locations(&entries);
+        }
+        true
+    }
+
+    pub fn pin_focused(&self) {
+        self.state.sync_mode_selection();
+        let Some(entry) = self.state.browser.focused_entry() else {
+            return;
+        };
+        if !entry.is_directory() {
+            return;
+        }
+        if let Some(handler) = self.state.pin_handler.borrow().as_ref() {
+            handler(entry.location, entry.display_name);
+        }
+    }
+
     pub fn select_all(&self) {
         if self.view_mode() == BrowserMode::Columns {
             if let Some(depth) = self.state.columns.borrow().len().checked_sub(1) {
@@ -2930,7 +2957,7 @@ impl ViewState {
             if let Some(display) = gtk::gdk::Display::default() {
                 display
                     .clipboard()
-                    .set_text(&copied_location.display_path());
+                    .set_text(&copy_path_text(&copied_location, true));
                 button.set_label("Copied");
             }
         });
@@ -3507,7 +3534,7 @@ impl ViewState {
                 copy.add_css_class("copy-path");
                 copy.set_has_frame(false);
                 copy.set_cursor_from_name(Some("pointer"));
-                let copied_path = location.display_path();
+                let copied_path = copy_path_text(location, true);
                 let feedback_generation = Rc::new(Cell::new(0_u64));
                 copy.connect_clicked(move |button| {
                     if let Some(display) = gtk::gdk::Display::default() {
@@ -6471,12 +6498,66 @@ pub(super) fn file_drag_content(entries: &[FileEntry]) -> Option<gtk::gdk::Conte
 fn copy_locations(entries: &[FileEntry]) {
     let text = entries
         .iter()
-        .map(|entry| entry.location.display_path())
+        .map(|entry| copy_path_text(&entry.location, entry.is_directory()))
         .collect::<Vec<_>>()
         .join("\n");
     if let Some(display) = gtk::gdk::Display::default() {
         display.clipboard().set_text(&text);
     }
+}
+
+fn copy_path_text(location: &Location, is_directory: bool) -> String {
+    match location.native_path() {
+        Some(path) => {
+            let mut path = shell_escape_path(path);
+            if is_directory && !path.ends_with(std::path::MAIN_SEPARATOR) {
+                path.push(std::path::MAIN_SEPARATOR);
+            }
+            path
+        }
+        None => location.display_path(),
+    }
+}
+
+fn shell_escape_path(path: &Path) -> String {
+    let mut escaped = String::new();
+    for c in path.to_string_lossy().chars() {
+        if needs_shell_escape(c) {
+            escaped.push('\\');
+            escaped.push(c);
+        } else {
+            escaped.push(c);
+        }
+    }
+    escaped
+}
+
+fn needs_shell_escape(c: char) -> bool {
+    c.is_whitespace()
+        || c.is_control()
+        || matches!(
+            c,
+            '"' | '\''
+                | '\\'
+                | '$'
+                | '`'
+                | '!'
+                | '#'
+                | '&'
+                | '*'
+                | ';'
+                | '<'
+                | '>'
+                | '?'
+                | '['
+                | ']'
+                | '{'
+                | '}'
+                | '('
+                | ')'
+                | '|'
+                | '~'
+        )
 }
 
 fn set_files_clipboard(entries: &[FileEntry]) -> bool {

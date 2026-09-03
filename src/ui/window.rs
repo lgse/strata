@@ -729,6 +729,14 @@ fn install_keyboard_navigation(
         if !control && !alt && !view.item_view_has_focus() && !header_left_boundary {
             return glib::Propagation::Proceed;
         }
+        if !control && !alt && matches!(key, gtk::gdk::Key::y | gtk::gdk::Key::Y) {
+            view.copy_path();
+            return glib::Propagation::Stop;
+        }
+        if !control && !alt && matches!(key, gtk::gdk::Key::p | gtk::gdk::Key::P) {
+            view.pin_focused();
+            return glib::Propagation::Stop;
+        }
         if key == gtk::gdk::Key::space && !alt && !control {
             preview.toggle(browser.focused_entry());
             return glib::Propagation::Stop;
