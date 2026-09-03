@@ -57,9 +57,21 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
 
 ## Installation
 
-Strata currently publishes release archives rather than distribution packages. Arch Linux and Omarchy are the primary supported environments; current binaries require **glibc 2.39 or newer** and the runtime libraries listed below.
+Arch Linux and Omarchy are the primary supported environments. Current binaries require **glibc 2.39 or newer** and the runtime libraries listed below.
+
+### Omarchy
+
+Install Strata from the Omarchy Package Repository:
+
+```bash
+omarchy pkg add strata
+```
+
+Omarchy keeps this installation current through `omarchy update`. Strata still checks for new releases and shows their notes, but detects that its executable is package-owned and does not replace it with the in-app updater.
 
 ### AI-assisted installation
+
+Use this option for supported systems other than Omarchy, where the OPR package above is not available.
 
 Give this prompt to a coding agent with terminal access:
 
@@ -91,7 +103,9 @@ Then:
   desktop association if one was requested. Do not weaken the preview sandbox.
 ```
 
-### Manual installation
+### Manual release installation
+
+Use the release archive when the Omarchy package is not available or a per-user installation is preferred.
 
 #### 1. Check the architecture and install dependencies
 
@@ -140,7 +154,7 @@ If `command -v` fails, add `$HOME/.local/bin` to your shell's `PATH`. Every arch
 
 #### 3. Update or uninstall
 
-Use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. To remove a per-user installation:
+For a manual release installation, use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. Package-managed installations are updated only by their system package manager. To remove a per-user installation:
 
 ```bash
 rm -f ~/.local/bin/strata \

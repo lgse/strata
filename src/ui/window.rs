@@ -323,7 +323,11 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     let update_area = sidebar.update_area.clone();
     let update_label = sidebar.update_label.clone();
     let available_update = Rc::new(RefCell::new(
-        None::<(crate::services::ReleaseMetadata, String)>,
+        None::<(
+            crate::services::ReleaseMetadata,
+            String,
+            crate::services::UpdateMethod,
+        )>,
     ));
     // Process-wide, not per-window: shared across the settings page's
     // update/rollback rows, this dialog, and every other open window, so at
@@ -334,7 +338,8 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     let update_parent = window.clone().upcast::<gtk::Window>();
     let install_guard_for_dialog = install_guard.clone();
     update_button.connect_clicked(move |_| {
-        let Some((release, download_url)) = available_for_click.borrow().clone() else {
+        let Some((release, download_url, update_method)) = available_for_click.borrow().clone()
+        else {
             return;
         };
         super::settings::show_update_dialog(
@@ -342,19 +347,31 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
             &release,
             download_url,
             install_guard_for_dialog.clone(),
+            update_method,
         );
     });
     let available_for_notice = available_update.clone();
     let update_notice: super::settings::UpdateNoticeHandler = Rc::new(move |release| {
-        if let Some((release, download_url)) = release {
-            update_button.set_tooltip_text(Some(&format!("Install Strata v{}", release.version)));
+        if let Some((release, download_url, update_method)) = release {
+            let tooltip = match update_method {
+                crate::services::UpdateMethod::InPlace => {
+                    format!("Install Strata v{}", release.version)
+                }
+                crate::services::UpdateMethod::Omarchy => {
+                    format!("Strata v{} is available through Omarchy", release.version)
+                }
+                crate::services::UpdateMethod::Pacman => {
+                    format!("Strata v{} is available through pacman", release.version)
+                }
+            };
+            update_button.set_tooltip_text(Some(&tooltip));
             update_label.set_text(&sidebar_update_label(&release));
             if release.kind == BuildKind::Stable {
                 update_button.remove_css_class("preview");
             } else {
                 update_button.add_css_class("preview");
             }
-            *available_for_notice.borrow_mut() = Some((release, download_url));
+            *available_for_notice.borrow_mut() = Some((release, download_url, update_method));
             update_area.set_visible(true);
         } else {
             available_for_notice.borrow_mut().take();

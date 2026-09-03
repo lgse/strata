@@ -14,6 +14,21 @@ use gtk::glib;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 const DESKTOP_ENTRY: &str = "io.github.lgse.Strata.desktop";
 const APPLICATION_ICON: &str = "io.github.lgse.Strata.svg";
+const PACMAN: &str = "/usr/bin/pacman";
+const OS_RELEASE: &str = "/etc/os-release";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum UpdateMethod {
+    InPlace,
+    Omarchy,
+    Pacman,
+}
+
+impl UpdateMethod {
+    pub fn is_package_managed(self) -> bool {
+        self != Self::InPlace
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UpdateInstall {
@@ -40,10 +55,43 @@ pub struct InstallRequest {
     pub download_url: String,
 }
 
+/// Determines whether the running executable may be updated in place or is
+/// owned by pacman and must be updated through the operating system.
+pub fn update_method() -> UpdateMethod {
+    let Ok(executable) = std::env::current_exe() else {
+        return UpdateMethod::InPlace;
+    };
+    update_method_for(&executable, Path::new(PACMAN), Path::new(OS_RELEASE))
+}
+
+fn update_method_for(executable: &Path, pacman: &Path, os_release: &Path) -> UpdateMethod {
+    let package_owned = Command::new(pacman)
+        .args(["--query", "--owns", "--quiet", "--"])
+        .arg(executable)
+        .output()
+        .is_ok_and(|output| output.status.success());
+    if !package_owned {
+        return UpdateMethod::InPlace;
+    }
+
+    if fs::read_to_string(os_release).is_ok_and(|contents| os_release_has_id(&contents, "omarchy"))
+    {
+        UpdateMethod::Omarchy
+    } else {
+        UpdateMethod::Pacman
+    }
+}
+
+fn os_release_has_id(contents: &str, expected: &str) -> bool {
+    contents.lines().any(|line| {
+        line.strip_prefix("ID=")
+            .map(|value| value.trim_matches(|character| character == '\'' || character == '"'))
+            == Some(expected)
+    })
+}
+
 /// Downloads, verifies, and installs `request`'s archive in place of the running
-/// executable. Runs off the GTK thread and reports the outcome once. Mirrors the
-/// manual install steps in the README: fetch the release archive, check its
-/// published `sha256`, and extract the `strata` binary over the current install.
+/// executable. Package-owned executables are rejected before download.
 pub fn install_update(request: InstallRequest) -> Receiver<UpdateInstall> {
     let (sender, receiver) = mpsc::channel();
     let spawned = std::thread::Builder::new()
@@ -60,6 +108,22 @@ pub fn install_update(request: InstallRequest) -> Receiver<UpdateInstall> {
 }
 
 fn perform_install(download_url: &str, progress: &Sender<UpdateInstall>) -> Result<(), String> {
+    match update_method() {
+        UpdateMethod::InPlace => {}
+        UpdateMethod::Omarchy => {
+            return Err(
+                "This installation is managed by Omarchy; install updates with `omarchy update`."
+                    .to_owned(),
+            );
+        }
+        UpdateMethod::Pacman => {
+            return Err(
+                "This installation is managed by pacman; install updates through a full system update."
+                    .to_owned(),
+            );
+        }
+    }
+
     let current_exe = std::env::current_exe().map_err(|error| error.to_string())?;
     let exe_dir = current_exe
         .parent()

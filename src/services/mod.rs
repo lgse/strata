@@ -33,4 +33,6 @@ pub(crate) use update_check::{
     ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes, UpdateCheck, check_for_updates,
     fetch_release_notes,
 };
-pub(crate) use update_install::{InstallRequest, UpdateInstall, install_update};
+pub(crate) use update_install::{
+    InstallRequest, UpdateInstall, UpdateMethod, install_update, update_method,
+};

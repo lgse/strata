@@ -6,8 +6,9 @@ use std::{
 };
 
 use super::{
-    APPLICATION_ICON, DESKTOP_ENTRY, desktop_entry_with_exec, find_binaries, first_hash_token,
-    refresh_desktop_metadata, stage_binary_path, stage_workdir,
+    APPLICATION_ICON, DESKTOP_ENTRY, UpdateMethod, desktop_entry_with_exec, find_binaries,
+    first_hash_token, refresh_desktop_metadata, stage_binary_path, stage_workdir,
+    update_method_for,
 };
 
 const PACKAGED_ENTRY: &str =
@@ -33,6 +34,58 @@ fn installed_icon(data_home: &Path) -> PathBuf {
     data_home
         .join("icons/hicolor/scalable/apps")
         .join(APPLICATION_ICON)
+}
+
+fn ownership_probe(dir: &Path, exit_code: u8) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt;
+
+    let probe = dir.join("pacman");
+    fs::write(&probe, format!("#!/bin/sh\nexit {exit_code}\n")).expect("write ownership probe");
+    fs::set_permissions(&probe, fs::Permissions::from_mode(0o755))
+        .expect("make ownership probe executable");
+    probe
+}
+
+#[test]
+fn omarchy_package_ownership_defers_updates_to_omarchy() {
+    let dir = tempfile::tempdir().expect("create scratch dir");
+    let probe = ownership_probe(dir.path(), 0);
+    let os_release = dir.path().join("os-release");
+    fs::write(&os_release, "NAME=\"Omarchy\"\nID=omarchy\nID_LIKE=arch\n")
+        .expect("write os-release");
+
+    assert_eq!(
+        update_method_for(Path::new("/usr/bin/strata"), &probe, &os_release),
+        UpdateMethod::Omarchy
+    );
+}
+
+#[test]
+fn non_omarchy_pacman_ownership_defers_updates_to_pacman() {
+    let dir = tempfile::tempdir().expect("create scratch dir");
+    let probe = ownership_probe(dir.path(), 0);
+    let os_release = dir.path().join("os-release");
+    fs::write(&os_release, "ID=arch\n").expect("write os-release");
+
+    assert_eq!(
+        update_method_for(Path::new("/usr/bin/strata"), &probe, &os_release),
+        UpdateMethod::Pacman
+    );
+}
+
+#[test]
+fn unowned_release_binary_keeps_in_place_updates() {
+    let dir = tempfile::tempdir().expect("create scratch dir");
+    let probe = ownership_probe(dir.path(), 1);
+
+    assert_eq!(
+        update_method_for(
+            Path::new("/home/user/.local/bin/strata"),
+            &probe,
+            &dir.path().join("missing-os-release"),
+        ),
+        UpdateMethod::InPlace
+    );
 }
 
 #[test]

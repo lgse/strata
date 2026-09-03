@@ -14,7 +14,7 @@ use crate::{
     sandbox::MediaPreviewBackend,
     services::{
         self, BuildKind, Channel, InstallRequest, ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes,
-        UpdateCheck, UpdateInstall, Version,
+        UpdateCheck, UpdateInstall, UpdateMethod, Version,
     },
 };
 
@@ -29,7 +29,7 @@ use super::{
 };
 
 type ThemeCards = Rc<RefCell<Vec<(String, gtk::Button, gtk::Image)>>>;
-pub(super) type UpdateNoticeHandler = Rc<dyn Fn(Option<(ReleaseMetadata, String)>)>;
+pub(super) type UpdateNoticeHandler = Rc<dyn Fn(Option<(ReleaseMetadata, String, UpdateMethod)>)>;
 
 /// Shared "an install is running" guard across the update row and update
 /// dialog, the two places [`services::install_update`] is called. Without one
@@ -508,11 +508,13 @@ fn updates_page(
         "Available release",
         "Check for updates to see the latest release notes.",
     );
+    let update_method = services::update_method();
     let (update_row, run_check) = update_check_row(
         manager.clone(),
         update_notice.clone(),
         available_notes.clone(),
         install_guard.clone(),
+        update_method,
     );
 
     let auto_check_enabled = manager.checks_for_updates();
@@ -844,6 +846,7 @@ fn update_check_row(
     update_notice: UpdateNoticeHandler,
     available_notes: ReleaseNotesCard,
     install_guard: InstallGuard,
+    update_method: UpdateMethod,
 ) -> (gtk::Box, Rc<dyn Fn()>) {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
     row.add_css_class("settings-option");
@@ -858,6 +861,7 @@ fn update_check_row(
     let status = gtk::Label::new(Some(&installed_version_status(
         &crate::build_info::installed_version(),
         crate::build_info::build_kind(),
+        update_method,
     )));
     status.set_xalign(0.0);
     status.set_wrap(true);
@@ -962,7 +966,7 @@ fn update_check_row(
                                     && crate::build_info::build_kind() != BuildKind::Stable
                                     && release.kind == BuildKind::Stable
                         );
-                        if returns_to_stable {
+                        if returns_to_stable && !update_method.is_package_managed() {
                             if let UpdateCheck::Available { release, .. } = &result {
                                 status.set_markup(&format!(
                                     "Stable channel target: <a href=\"{}\">v{}</a>",
@@ -971,7 +975,7 @@ fn update_check_row(
                                 ));
                             }
                         } else {
-                            status.set_markup(&update_check_message(&result));
+                            status.set_markup(&update_check_message(&result, update_method));
                         }
                         available_notes
                             .container
@@ -980,9 +984,11 @@ fn update_check_row(
                             UpdateCheck::Available {
                                 release,
                                 download_url,
-                            } => {
-                                update_notice(Some((release.clone(), download_url.clone())));
-                            }
+                            } => update_notice(Some((
+                                release.clone(),
+                                download_url.clone(),
+                                update_method,
+                            ))),
                             UpdateCheck::UpToDate | UpdateCheck::Failed(_) => update_notice(None),
                         }
                         match &result {
@@ -991,18 +997,22 @@ fn update_check_row(
                                 download_url,
                             } => {
                                 show_release_notes(&available_notes, release);
-                                *pending_download.borrow_mut() = Some(PendingInstall {
-                                    kind: release.kind,
-                                    returns_to_stable,
-                                    request: InstallRequest {
-                                        download_url: download_url.clone(),
-                                    },
-                                });
-                                button.set_label(if returns_to_stable {
-                                    "Return to stable"
+                                if update_method.is_package_managed() {
+                                    button.set_label("Check again");
                                 } else {
-                                    "Install update"
-                                });
+                                    *pending_download.borrow_mut() = Some(PendingInstall {
+                                        kind: release.kind,
+                                        returns_to_stable,
+                                        request: InstallRequest {
+                                            download_url: download_url.clone(),
+                                        },
+                                    });
+                                    button.set_label(if returns_to_stable {
+                                        "Return to stable"
+                                    } else {
+                                        "Install update"
+                                    });
+                                }
                             }
                             UpdateCheck::UpToDate | UpdateCheck::Failed(_) => {}
                         }
@@ -1312,6 +1322,7 @@ pub(super) fn show_update_dialog(
     release: &ReleaseMetadata,
     download_url: String,
     install_guard: InstallGuard,
+    update_method: UpdateMethod,
 ) {
     let Some(window_overlay) = parent.child().and_downcast::<gtk::Overlay>() else {
         return;
@@ -1329,7 +1340,11 @@ pub(super) fn show_update_dialog(
             crate::build_info::installed_version(),
             release.version
         ),
-        "Download update",
+        if update_method.is_package_managed() {
+            "Close"
+        } else {
+            "Download update"
+        },
     );
     layout.content.add_css_class("update-dialog");
     layout.content.set_size_request(560, -1);
@@ -1369,9 +1384,15 @@ pub(super) fn show_update_dialog(
     let fallback = gtk::LinkButton::with_label(&release.url, "View release on GitHub");
     fallback.add_css_class("release-notes-fallback");
     fallback.set_halign(gtk::Align::Start);
-    let status = gtk::Label::new(Some(
-        "Review the release notes before downloading the update.",
-    ));
+    let status = gtk::Label::new(Some(match update_method {
+        UpdateMethod::InPlace => "Review the release notes before downloading the update.",
+        UpdateMethod::Omarchy => {
+            "This installation is managed by Omarchy. Run “omarchy update” to install it."
+        }
+        UpdateMethod::Pacman => {
+            "This installation is managed by pacman. Install it through a full system update."
+        }
+    }));
     status.add_css_class("update-dialog-status");
     status.set_xalign(0.0);
     status.set_wrap(true);
@@ -1440,6 +1461,11 @@ pub(super) fn show_update_dialog(
     let application = parent.application();
     let action_close = close.clone();
     action.connect_clicked(move |button| {
+        if update_method.is_package_managed() {
+            dismiss_modal_layer(&action_layer, &action_overlay, action_root.as_ref());
+            button.set_sensitive(false);
+            return;
+        }
         if installed.get() {
             restart(application.as_ref());
             button.set_sensitive(false);
@@ -1607,15 +1633,24 @@ fn shows_available_release_notes(result: &UpdateCheck) -> bool {
 /// just the version for a stable build, or `Version {version} · {label}`
 /// when running a prerelease -- so a user on an RC or nightly always sees
 /// what they currently have installed, not just a bare version number.
-fn installed_version_status(version: &Version, kind: BuildKind) -> String {
-    if kind == BuildKind::Stable {
+fn installed_version_status(
+    version: &Version,
+    kind: BuildKind,
+    update_method: UpdateMethod,
+) -> String {
+    let version = if kind == BuildKind::Stable {
         format!("Version {version}")
     } else {
         format!("Version {version} · {}", kind.label())
+    };
+    match update_method {
+        UpdateMethod::InPlace => version,
+        UpdateMethod::Omarchy => format!("{version} · Managed by Omarchy"),
+        UpdateMethod::Pacman => format!("{version} · Managed by pacman"),
     }
 }
 
-fn update_check_message(result: &UpdateCheck) -> String {
+fn update_check_message(result: &UpdateCheck, update_method: UpdateMethod) -> String {
     match result {
         UpdateCheck::UpToDate => {
             format!(
@@ -1623,11 +1658,18 @@ fn update_check_message(result: &UpdateCheck) -> String {
                 crate::build_info::installed_version()
             )
         }
-        UpdateCheck::Available { release, .. } => format!(
-            "Update available: <a href=\"{}\">v{}</a>",
-            glib::markup_escape_text(&release.url),
-            glib::markup_escape_text(&release.version),
-        ),
+        UpdateCheck::Available { release, .. } => {
+            let instruction = match update_method {
+                UpdateMethod::InPlace => "",
+                UpdateMethod::Omarchy => " · Run “omarchy update” to install",
+                UpdateMethod::Pacman => " · Install through a full system update",
+            };
+            format!(
+                "Update available: <a href=\"{}\">v{}</a>{instruction}",
+                glib::markup_escape_text(&release.url),
+                glib::markup_escape_text(&release.version),
+            )
+        }
         UpdateCheck::Failed(message) => format!(
             "Couldn't check for updates: {} · <a href=\"https://github.com/lgse/strata/releases/latest\">View releases on GitHub</a>",
             glib::markup_escape_text(message)
