@@ -122,6 +122,7 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
             .modification_date_time()
             .map(|modified| MetadataValue::Known(modified.to_unix()))
             .unwrap_or(MetadataValue::Unavailable),
+        is_hidden: info_is_hidden(&info),
     }
 }
 
@@ -266,7 +267,6 @@ impl FileSource for LocalFileSource {
                     Ok(Ok(files)) => {
                         let mut entries: Vec<_> = files
                             .into_iter()
-                            .filter(|info| request.include_hidden || !info_is_hidden(info))
                             .filter_map(|info| {
                                 let child = directory.child(info.name());
                                 Some(entry_from_info(location_for_file(&child)?, info))
@@ -327,6 +327,7 @@ impl FileSource for LocalFileSource {
         include_hidden: bool,
         notify: Rc<dyn Fn(DirectoryChange)>,
     ) -> Option<LoadHandle> {
+        let _ = include_hidden;
         let path = location.native_path()?.to_path_buf();
         let file = gio::File::for_path(&path);
         let monitor = match file.monitor_directory(
@@ -405,7 +406,7 @@ impl FileSource for LocalFileSource {
             let cancelled = cancelled_for_change.clone();
             let source = glib::timeout_add_local_once(Duration::from_millis(100), move || {
                 timeout.take();
-                flush_monitor_changes(&pending, include_hidden, &notify, &cancelled);
+                flush_monitor_changes(&pending, &notify, &cancelled);
             });
             timeout_for_change.replace(Some(source));
         });
@@ -474,7 +475,6 @@ fn merge_pending_change(
 
 fn flush_monitor_changes(
     pending: &RefCell<HashMap<PathBuf, PendingMonitorChange>>,
-    include_hidden: bool,
     notify: &Rc<dyn Fn(DirectoryChange)>,
     cancelled: &Rc<Cell<bool>>,
 ) {
@@ -496,20 +496,12 @@ fn flush_monitor_changes(
             PendingMonitorChange::Remove(path) => {
                 notify(DirectoryChange::Remove(Location::local(path)));
             }
-            PendingMonitorChange::Upsert(path) => query_monitored_entry(
-                path,
-                include_hidden,
-                None,
-                notify.clone(),
-                cancelled.clone(),
-            ),
-            PendingMonitorChange::Move { from, to } => query_monitored_entry(
-                to,
-                include_hidden,
-                Some(from),
-                notify.clone(),
-                cancelled.clone(),
-            ),
+            PendingMonitorChange::Upsert(path) => {
+                query_monitored_entry(path, None, notify.clone(), cancelled.clone())
+            }
+            PendingMonitorChange::Move { from, to } => {
+                query_monitored_entry(to, Some(from), notify.clone(), cancelled.clone())
+            }
             PendingMonitorChange::Rescan => {}
         }
     }
@@ -517,7 +509,6 @@ fn flush_monitor_changes(
 
 fn query_monitored_entry(
     path: PathBuf,
-    include_hidden: bool,
     moved_from: Option<PathBuf>,
     notify: Rc<dyn Fn(DirectoryChange)>,
     cancelled: Rc<Cell<bool>>,
@@ -535,7 +526,7 @@ fn query_monitored_entry(
             return;
         }
         match result {
-            Ok(info) if include_hidden || !info_is_hidden(&info) => {
+            Ok(info) => {
                 let entry = entry_from_info(Location::local(path), info);
                 if let Some(from) = moved_from {
                     notify(DirectoryChange::Move {
@@ -544,11 +535,6 @@ fn query_monitored_entry(
                     });
                 } else {
                     notify(DirectoryChange::Upsert(entry));
-                }
-            }
-            Ok(_) => {
-                if let Some(from) = moved_from {
-                    notify(DirectoryChange::Remove(Location::local(from)));
                 }
             }
             Err(error) if error.matches(gio::IOErrorEnum::NotFound) => {

@@ -38,8 +38,10 @@
     <file>icons/scalable/actions/strata-network.svg</file>
     <file>icons/scalable/actions/strata-palette.svg</file>
     <file>icons/scalable/actions/strata-panel-left-symbolic.svg</file>
+    <file>icons/scalable/actions/strata-pause.svg</file>
     <file>icons/scalable/actions/strata-pencil.svg</file>
     <file>icons/scalable/actions/strata-pin.svg</file>
+    <file>icons/scalable/actions/strata-play.svg</file>
     <file>icons/scalable/actions/strata-plus.svg</file>
     <file>icons/scalable/actions/strata-rows.svg</file>
     <file>icons/scalable/actions/strata-scissors.svg</file>
@@ -54,6 +56,8 @@
     <file>icons/scalable/actions/strata-triangle-alert.svg</file>
     <file>icons/scalable/actions/strata-unplug.svg</file>
     <file>icons/scalable/actions/strata-video.svg</file>
+    <file>icons/scalable/actions/strata-volume-2.svg</file>
+    <file>icons/scalable/actions/strata-volume-x.svg</file>
     <file>icons/scalable/actions/strata-x.svg</file>
     <file>icons/scalable/apps/io.github.lgse.Strata.svg</file>
   </gresource>

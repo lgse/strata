@@ -2,9 +2,9 @@
 
 use super::{
     BuildKind, CHECK_INTERVAL, Channel, ReleaseNoteBlock, ReleaseResponse, ReleaseSummary,
-    UpdateCheck, UpdateCheckCache, Version, archive_name, cache_is_fresh, from_cached_release,
-    parse_markdown, release_metadata, release_page_url, request_error_message, select_update,
-    to_cached_release, to_release_summary,
+    UpdateCheck, UpdateCheckCache, Version, archive_name, cache_is_fresh, fetch_package_update,
+    from_cached_release, package_update_from_response, parse_markdown, release_metadata,
+    release_page_url, request_error_message, select_update, to_cached_release, to_release_summary,
 };
 
 fn version(tag: &str) -> Version {
@@ -24,6 +24,39 @@ fn release_response_list(json: &str) -> Vec<ReleaseResponse> {
 fn matching_asset_json(version: &str) -> String {
     let name = archive_name(version);
     format!(r#"{{"name":"{name}","browser_download_url":"https://example.invalid/{name}"}}"#)
+}
+
+#[test]
+fn package_update_requires_the_release_matching_the_repository_version() {
+    let asset = matching_asset_json("0.8.2");
+    let response = release_response(&format!(
+        r#"{{"tag_name":"v0.8.2","draft":false,"prerelease":false,"assets":[{asset}]}}"#
+    ));
+
+    assert!(matches!(
+        package_update_from_response(&version("0.8.1"), &response),
+        UpdateCheck::Failed(_)
+    ));
+}
+
+#[test]
+fn package_update_accepts_the_stable_release_in_the_repository() {
+    let asset = matching_asset_json("0.8.1");
+    let response = release_response(&format!(
+        r#"{{"tag_name":"v0.8.1","draft":false,"prerelease":false,"assets":[{asset}]}}"#
+    ));
+
+    assert!(matches!(
+        package_update_from_response(&version("0.8.1"), &response),
+        UpdateCheck::Available { .. }
+    ));
+}
+
+#[test]
+fn package_check_stays_quiet_when_the_repository_has_no_newer_version() {
+    let result = fetch_package_update(&version("0.8.1"), || Ok(version("0.8.1")));
+
+    assert_eq!(result, UpdateCheck::UpToDate);
 }
 
 // --- Version::parse migration -------------------------------------------

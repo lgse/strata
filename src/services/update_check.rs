@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use super::release_channel::{
     BuildKind, Channel, ReleaseSummary, Version, best_update, rollback_target,
 };
+use super::update_install::{UpdateMethod, omarchy_repository_version, package_repository_version};
 
 const API_ROOT: &str = "https://api.github.com/repos/lgse/strata/releases";
 const COMMITS_ROOT: &str = "https://api.github.com/repos/lgse/strata/commits";
@@ -546,6 +547,48 @@ fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateChe
     select_and_resolve(channel, installed, &releases)
 }
 
+fn fetch_package_update(
+    installed: &Version,
+    repository_version: impl FnOnce() -> Result<Version, String>,
+) -> UpdateCheck {
+    let available = match repository_version() {
+        Ok(version) => version,
+        Err(error) => return UpdateCheck::Failed(error),
+    };
+    if available <= *installed {
+        return UpdateCheck::UpToDate;
+    }
+
+    let tag = format!("v{available}");
+    match request_json::<ReleaseResponse>(&format!("{API_ROOT}/tags/{tag}")) {
+        Ok(response) => match package_update_from_response(&available, &response) {
+            UpdateCheck::Available {
+                mut release,
+                download_url,
+            } => {
+                resolve_commit(&mut release);
+                UpdateCheck::Available {
+                    release,
+                    download_url,
+                }
+            }
+            check => check,
+        },
+        Err(error) => UpdateCheck::Failed(request_error_message(&error)),
+    }
+}
+
+fn package_update_from_response(available: &Version, response: &ReleaseResponse) -> UpdateCheck {
+    match to_release_summary(response)
+        .filter(|release| release.version == *available && !release.prerelease)
+    {
+        Some(summary) => available_check(&summary),
+        None => UpdateCheck::Failed(
+            "package repository version has no matching stable release".to_owned(),
+        ),
+    }
+}
+
 fn fetch_exact_release(tag: &str) -> ReleaseNotes {
     let url = release_page_url(tag);
     let cached = read_cache_file::<CachedReleaseNotes>(&release_notes_cache_path())
@@ -793,26 +836,34 @@ fn parse_markdown(markdown: &str) -> Vec<ReleaseNoteBlock> {
     blocks
 }
 
-/// Queries the release feed for `channel` off the GTK thread and reports the
-/// outcome once. See [`fetch_stable`] and [`fetch_preview`] for why the two
-/// feeds are kept as separate functions.
+/// Checks the applicable release source off the GTK thread and reports the
+/// outcome once. In-place installs follow GitHub, using the cached result for
+/// automatic checks; package-managed installs first require the configured
+/// repository to offer the version.
 ///
-/// `force` bypasses [`CHECK_INTERVAL`]'s floor on a repeat check against the
-/// same channel -- the caller still benefits from a free `304` when an
-/// `ETag` is cached, since a conditional request costs nothing even when
-/// forced. Pass `true` only for an explicit user action (the "Check now"
-/// button, or a channel switch); an automatic check on startup or on
-/// re-enabling the "automatically check" preference should pass `false`.
+/// `force` bypasses [`CHECK_INTERVAL`]'s floor for in-place update checks.
+/// Pass `true` only for an explicit user action such as the "Check now"
+/// button.
 pub fn check_for_updates(
     channel: Channel,
     installed: Version,
+    update_method: UpdateMethod,
     force: bool,
 ) -> Receiver<UpdateCheck> {
     let (sender, receiver) = mpsc::channel();
     let spawned = std::thread::Builder::new()
         .name("strata-update-check".into())
         .spawn(move || {
-            let _sent = sender.send(fetch_update(channel, &installed, force));
+            let result = match update_method {
+                UpdateMethod::InPlace => fetch_update(channel, &installed, force),
+                UpdateMethod::Omarchy => {
+                    fetch_package_update(&installed, omarchy_repository_version)
+                }
+                UpdateMethod::Pacman => {
+                    fetch_package_update(&installed, package_repository_version)
+                }
+            };
+            let _sent = sender.send(result);
         });
     drop(spawned);
     receiver

@@ -77,6 +77,8 @@ struct ColumnView {
     new_entry_row: gtk::Box,
     new_entry_icon: gtk::Image,
     new_entry_entry: gtk::Entry,
+    show_hidden: Rc<Cell<bool>>,
+    filter: gtk::CustomFilter,
 }
 
 struct ActiveRename {
@@ -3622,6 +3624,13 @@ impl ViewState {
                     column.presentation.show_loading();
                 }
             }
+            BrowserEvent::HiddenToggled { show_hidden } => {
+                for column in self.columns.borrow().iter() {
+                    column.show_hidden.set(show_hidden);
+                    column.filter.changed(gtk::FilterChange::Different);
+                }
+                self.mode_views.borrow().set_show_hidden(show_hidden);
+            }
             BrowserEvent::LoadFinished { depth, truncated } => {
                 if let Some(column) = self.columns.borrow().get(depth) {
                     if column.selection.model().is_none() {
@@ -4067,17 +4076,12 @@ impl ViewState {
         let entry_count = Rc::new(Cell::new(0));
         let model = gtk::StringList::new(&[]);
         let filter_query = Rc::new(RefCell::new(String::new()));
-        let query = filter_query.clone();
-        let filter = gtk::CustomFilter::new(move |item| {
-            let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
-                return false;
-            };
-            let query = query.borrow();
-            query.is_empty()
-                || model_display_name(&item.string())
-                    .to_lowercase()
-                    .contains(query.as_str())
-        });
+        let initial_show_hidden = self
+            .browser
+            .column_preferences(depth)
+            .map_or_else(|| self.browser.preferences().show_hidden, |p| p.show_hidden);
+        let show_hidden = Rc::new(Cell::new(initial_show_hidden));
+        let filter = entry_filter(show_hidden.clone(), filter_query.clone());
         let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
         let selection = gtk::MultiSelection::new(Some(filtered_model.clone()));
         let syncing_selection = Rc::new(Cell::new(false));
@@ -4088,6 +4092,7 @@ impl ViewState {
         let filtered_for_selection = filtered_model.clone();
         let syncing_selection_changed = syncing_selection.clone();
         let focused_filtered_changed = focused_filtered.clone();
+        let filter_for_column = filter.clone();
         selection.connect_selection_changed(move |selection, position, count| {
             if syncing_selection_changed.get() {
                 return;
@@ -4798,6 +4803,8 @@ impl ViewState {
             new_entry_row,
             new_entry_icon,
             new_entry_entry,
+            show_hidden,
+            filter: filter_for_column,
         });
 
         self.refresh_active_path_rows();
@@ -6933,7 +6940,7 @@ pub(super) fn rename_stem_end(name: &str) -> i32 {
     name[..end].chars().count().min(i32::MAX as usize) as i32
 }
 
-fn entry_model_value(entry: &FileEntry) -> String {
+pub(super) fn entry_model_value(entry: &FileEntry) -> String {
     let kind = if entry.is_broken_symbolic_link() {
         'x'
     } else if entry.is_directory() {
@@ -6943,7 +6950,8 @@ fn entry_model_value(entry: &FileEntry) -> String {
     } else {
         'f'
     };
-    format!("{kind}\t{}", entry.display_name)
+    let hidden = if entry.is_hidden { 'h' } else { 'v' };
+    format!("{kind}{hidden}\t{}", entry.display_name)
 }
 
 fn model_display_name(value: &str) -> &str {
@@ -6951,7 +6959,31 @@ fn model_display_name(value: &str) -> &str {
 }
 
 fn model_is_directory(value: &str) -> bool {
-    value.starts_with("d\t")
+    value.starts_with("d")
+}
+
+pub(super) fn model_is_hidden(value: &str) -> bool {
+    value.as_bytes().get(1) == Some(&b'h')
+}
+
+pub(super) fn entry_filter(
+    show_hidden: Rc<Cell<bool>>,
+    filter_query: Rc<RefCell<String>>,
+) -> gtk::CustomFilter {
+    gtk::CustomFilter::new(move |item| {
+        let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
+            return false;
+        };
+        let value = item.string();
+        if !show_hidden.get() && model_is_hidden(&value) {
+            return false;
+        }
+        let query = filter_query.borrow();
+        query.is_empty()
+            || model_display_name(&value)
+                .to_lowercase()
+                .contains(query.as_str())
+    })
 }
 
 pub(super) fn entry_icon(entry: &FileEntry) -> &'static str {

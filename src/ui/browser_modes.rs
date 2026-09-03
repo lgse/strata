@@ -99,6 +99,8 @@ struct Pane {
     empty_trash_button: Option<gtk::Button>,
     new_entry_placeholder: Option<gtk::StringList>,
     new_entry_is_directory: Option<Rc<Cell<bool>>>,
+    show_hidden: Rc<Cell<bool>>,
+    filter: gtk::CustomFilter,
 }
 
 pub struct ModeViews {
@@ -180,6 +182,13 @@ impl ModeViews {
 
     pub fn widget(&self) -> gtk::Stack {
         self.stack.clone()
+    }
+
+    pub fn set_show_hidden(&self, show_hidden: bool) {
+        for pane in self.all_panes() {
+            pane.show_hidden.set(show_hidden);
+            pane.filter.changed(gtk::FilterChange::Different);
+        }
     }
 
     pub fn mode(&self) -> BrowserMode {
@@ -537,12 +546,13 @@ impl ModeViews {
             BrowserEvent::EntriesInserted { depth, insertions } => {
                 for pane in self.panes_at(*depth) {
                     for insertion in insertions {
-                        let values: Vec<_> = insertion
+                        let values: Vec<String> = insertion
                             .entries
                             .iter()
-                            .map(|entry| entry.display_name.as_str())
+                            .map(super::browser::entry_model_value)
                             .collect();
-                        pane.model.splice(insertion.position as u32, 0, &values);
+                        let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
+                        pane.model.splice(insertion.position as u32, 0, &values_ref);
                     }
                     if !pane.spinner.is_spinning() {
                         show_count(pane);
@@ -571,13 +581,17 @@ impl ModeViews {
             BrowserEvent::EntriesSpliced { depth, splices, .. } => {
                 for pane in self.panes_at(*depth) {
                     for splice in splices {
-                        let values: Vec<_> = splice
+                        let values: Vec<String> = splice
                             .entries
                             .iter()
-                            .map(|entry| entry.display_name.as_str())
+                            .map(super::browser::entry_model_value)
                             .collect();
-                        pane.model
-                            .splice(splice.position as u32, splice.removed as u32, &values);
+                        let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
+                        pane.model.splice(
+                            splice.position as u32,
+                            splice.removed as u32,
+                            &values_ref,
+                        );
                     }
                     show_count(pane);
                 }
@@ -667,6 +681,13 @@ impl ModeViews {
                 }
             }
         }
+    }
+
+    fn all_panes(&self) -> Vec<&Pane> {
+        self.grid_panes
+            .iter()
+            .chain(self.explorer_pane.as_ref())
+            .collect()
     }
 
     fn panes_at(&self, depth: usize) -> Vec<&Pane> {
@@ -998,15 +1019,13 @@ fn build_grid_pane(
     }
     content.append(&controls.filter_revealer);
     let filter_query = Rc::new(RefCell::new(String::new()));
-    let query = filter_query.clone();
-    let filter = gtk::CustomFilter::new(move |item| {
-        let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
-            return false;
-        };
-        let query = query.borrow();
-        query.is_empty() || item.string().to_lowercase().contains(query.as_str())
-    });
+    let initial_show_hidden = browser
+        .column_preferences(depth)
+        .map_or_else(|| browser.preferences().show_hidden, |p| p.show_hidden);
+    let show_hidden = Rc::new(Cell::new(initial_show_hidden));
+    let filter = super::browser::entry_filter(show_hidden.clone(), filter_query.clone());
     let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
+    let filter_for_pane = filter.clone();
     let new_entry_placeholder = gtk::StringList::new(&[]);
     let new_entry_is_directory = Rc::new(Cell::new(true));
     let flattened_models = gio::ListStore::new::<gio::ListModel>();
@@ -1279,6 +1298,8 @@ fn build_grid_pane(
         empty_trash_button: controls.empty_trash_button,
         new_entry_placeholder: Some(new_entry_placeholder),
         new_entry_is_directory: Some(new_entry_is_directory),
+        show_hidden,
+        filter: filter_for_pane,
     }
 }
 
@@ -1615,15 +1636,13 @@ fn build_explorer_pane(
     }
     content.append(&filter_revealer);
     let filter_query = Rc::new(RefCell::new(String::new()));
-    let query = filter_query.clone();
-    let filter = gtk::CustomFilter::new(move |item| {
-        let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
-            return false;
-        };
-        let query = query.borrow();
-        query.is_empty() || item.string().to_lowercase().contains(query.as_str())
-    });
+    let initial_show_hidden = browser
+        .column_preferences(depth)
+        .map_or_else(|| browser.preferences().show_hidden, |p| p.show_hidden);
+    let show_hidden = Rc::new(Cell::new(initial_show_hidden));
+    let filter = super::browser::entry_filter(show_hidden.clone(), filter_query.clone());
     let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
+    let filter_for_pane = filter.clone();
     filter_entry.connect_changed(move |entry| {
         *filter_query.borrow_mut() = entry.text().to_lowercase();
         filter.changed(gtk::FilterChange::Different);
@@ -1888,6 +1907,8 @@ fn build_explorer_pane(
         empty_trash_button: is_trash.then_some(empty_trash),
         new_entry_placeholder: Some(new_entry_placeholder),
         new_entry_is_directory: Some(new_entry_is_directory),
+        show_hidden,
+        filter: filter_for_pane,
     }
 }
 
@@ -2504,11 +2525,12 @@ fn refresh_cut_pane(pane: &Pane, browser: &Browser, cuts: &[Location]) {
 }
 
 fn replace_entries(pane: &Pane, entries: &[FileEntry]) {
-    let values: Vec<_> = entries
+    let values: Vec<String> = entries
         .iter()
-        .map(|entry| entry.display_name.as_str())
+        .map(super::browser::entry_model_value)
         .collect();
-    pane.model.splice(0, pane.model.n_items(), &values);
+    let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
+    pane.model.splice(0, pane.model.n_items(), &values_ref);
     show_count(pane);
 }
 

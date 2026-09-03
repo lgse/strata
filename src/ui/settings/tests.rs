@@ -2,14 +2,15 @@
 
 use std::rc::Rc;
 
-use crate::services::{BuildKind, Channel, ReleaseMetadata, UpdateCheck, Version};
+use crate::services::{BuildKind, Channel, ReleaseMetadata, UpdateCheck, UpdateMethod, Version};
 
 use super::{
     COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
-    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, install_guard, installed_version_status,
-    is_stale_check, offer_still_eligible, responsive_dialog_size, shows_available_release_notes,
-    theme_background_is_light, theme_name_matches, uses_compact_navigation,
-    video_preview_backend_label, video_preview_control_state,
+    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, effective_update_channel, install_guard,
+    installed_version_status, is_stale_check, offer_still_eligible, omarchy_update_command,
+    responsive_dialog_size, shows_available_release_notes, theme_background_is_light,
+    theme_name_matches, update_check_message, uses_compact_navigation, video_preview_backend_label,
+    video_preview_control_state,
 };
 use crate::sandbox::MediaPreviewBackend;
 
@@ -128,7 +129,7 @@ fn video_preview_controls_follow_enabled_state() {
 fn installed_version_status_stays_plain_for_a_stable_build() {
     let version = Version::parse("0.6.0").expect("valid version");
     assert_eq!(
-        installed_version_status(&version, BuildKind::Stable),
+        installed_version_status(&version, BuildKind::Stable, UpdateMethod::InPlace),
         "Version 0.6.0"
     );
 }
@@ -137,9 +138,75 @@ fn installed_version_status_stays_plain_for_a_stable_build() {
 fn installed_version_status_names_the_build_kind_for_a_prerelease() {
     let version = Version::parse("0.6.0-rc.1").expect("valid version");
     assert_eq!(
-        installed_version_status(&version, BuildKind::Rc),
+        installed_version_status(&version, BuildKind::Rc, UpdateMethod::InPlace),
         "Version 0.6.0-rc.1 · Release candidate"
     );
+}
+
+#[test]
+fn package_managed_updates_always_follow_stable() {
+    for selected in [Channel::Stable, Channel::Preview, Channel::Nightly] {
+        assert_eq!(
+            effective_update_channel(selected, UpdateMethod::Omarchy),
+            Channel::Stable
+        );
+        assert_eq!(
+            effective_update_channel(selected, UpdateMethod::Pacman),
+            Channel::Stable
+        );
+    }
+}
+
+#[test]
+fn manual_updates_keep_the_selected_channel() {
+    for selected in [Channel::Stable, Channel::Preview, Channel::Nightly] {
+        assert_eq!(
+            effective_update_channel(selected, UpdateMethod::InPlace),
+            selected
+        );
+    }
+}
+
+#[test]
+fn package_managed_status_identifies_omarchy() {
+    let version = Version::parse("0.8.0").expect("valid version");
+    assert_eq!(
+        installed_version_status(&version, BuildKind::Stable, UpdateMethod::Omarchy),
+        "Version 0.8.0 · Managed by Omarchy"
+    );
+}
+
+#[test]
+fn omarchy_updates_open_in_the_configured_terminal() {
+    let command = omarchy_update_command();
+
+    assert_eq!(command.get_program(), "xdg-terminal-exec");
+    assert_eq!(
+        command.get_args().collect::<Vec<_>>(),
+        ["--", "omarchy", "update"]
+    );
+}
+
+#[test]
+fn package_managed_update_directs_users_to_omarchy_update() {
+    let message = update_check_message(
+        &UpdateCheck::Available {
+            release: ReleaseMetadata {
+                version: "0.9.0".to_owned(),
+                url: "https://example.test/release".to_owned(),
+                notes: String::new(),
+                note_blocks: Vec::new(),
+                kind: BuildKind::Stable,
+                tag: "v0.9.0".to_owned(),
+                published_at: None,
+                commit: None,
+            },
+            download_url: "https://example.test/download".to_owned(),
+        },
+        UpdateMethod::Omarchy,
+    );
+
+    assert!(message.contains("Run “omarchy update” to install"));
 }
 
 #[test]

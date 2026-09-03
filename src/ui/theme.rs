@@ -80,6 +80,8 @@ struct Preferences {
     browser_mode: String,
     #[serde(default = "default_browser_density")]
     browser_density: String,
+    #[serde(default = "default_sidebar_order")]
+    sidebar_order: Vec<String>,
     #[serde(default)]
     show_hidden: bool,
     #[serde(default = "default_enabled")]
@@ -90,6 +92,10 @@ struct Preferences {
     sort_direction: String,
     #[serde(default = "default_enabled")]
     check_for_updates: bool,
+    #[serde(default)]
+    preview_muted: bool,
+    #[serde(default = "default_full_volume")]
+    preview_volume: f64,
     #[serde(default)]
     auto_refresh_interval: u32,
     #[serde(default = "default_release_channel")]
@@ -109,11 +115,14 @@ impl Default for Preferences {
             reduce_motion: false,
             browser_mode: default_browser_mode(),
             browser_density: default_browser_density(),
+            sidebar_order: default_sidebar_order(),
             show_hidden: false,
             folders_first: true,
             sort_key: default_sort_key(),
             sort_direction: default_sort_direction(),
             check_for_updates: true,
+            preview_muted: false,
+            preview_volume: default_full_volume(),
             auto_refresh_interval: 0,
             release_channel: default_release_channel(),
         }
@@ -140,12 +149,26 @@ fn default_browser_density() -> String {
     "compact".to_owned()
 }
 
+fn default_sidebar_order() -> Vec<String> {
+    vec![
+        "desktop".to_owned(),
+        "documents".to_owned(),
+        "downloads".to_owned(),
+        "pictures".to_owned(),
+        "videos".to_owned(),
+    ]
+}
+
 fn default_sort_key() -> String {
     "name".to_owned()
 }
 
 fn default_sort_direction() -> String {
     "ascending".to_owned()
+}
+
+fn default_full_volume() -> f64 {
+    1.0
 }
 
 pub struct ThemeManager {
@@ -298,6 +321,24 @@ impl ThemeManager {
         self.save_preferences();
     }
 
+    pub fn preview_muted(&self) -> bool {
+        self.preferences.borrow().preview_muted
+    }
+
+    pub fn set_preview_muted(&self, muted: bool) {
+        self.preferences.borrow_mut().preview_muted = muted;
+        self.save_preferences();
+    }
+
+    pub fn preview_volume(&self) -> f64 {
+        self.preferences.borrow().preview_volume
+    }
+
+    pub fn set_preview_volume(&self, volume: f64) {
+        self.preferences.borrow_mut().preview_volume = volume.clamp(0.0, 1.0);
+        self.save_preferences();
+    }
+
     pub fn auto_refresh_interval(&self) -> u32 {
         self.preferences.borrow().auto_refresh_interval
     }
@@ -347,6 +388,15 @@ impl ThemeManager {
             super::browser_modes::BrowserDensity::Airy => "airy",
         }
         .to_owned();
+        self.save_preferences();
+    }
+
+    pub fn sidebar_order(&self) -> Vec<String> {
+        self.preferences.borrow().sidebar_order.clone()
+    }
+
+    pub fn set_sidebar_order(&self, order: Vec<String>) {
+        self.preferences.borrow_mut().sidebar_order = order;
         self.save_preferences();
     }
 

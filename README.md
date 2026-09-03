@@ -57,9 +57,52 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
 
 ## Installation
 
-Strata currently publishes release archives rather than distribution packages. Arch Linux and Omarchy are the primary supported environments; current binaries require **glibc 2.39 or newer** and the runtime libraries listed below.
+Arch Linux and Omarchy are the primary supported environments. Current binaries require **glibc 2.39 or newer** and the runtime libraries listed below.
+
+### Omarchy
+
+Update Omarchy to refresh its package database, then install Strata from the
+Omarchy Package Repository:
+
+```bash
+omarchy update
+omarchy pkg add strata
+```
+
+> [!TIP]
+> **Optional integrations**
+>
+> Video and standard image thumbnails work with the required packages installed alongside Strata. For SMB network shares and the broadest camera RAW preview support, add the optional integrations:
+>
+> ```bash
+> omarchy pkg add gvfs-smb imagemagick libraw dcraw
+> ```
+
+Omarchy keeps this installation current through `omarchy update`. Strata checks the configured package repository for stable releases and shows their notes, but detects that its executable is package-owned, hides the in-app release-channel selector, and does not replace it with the in-app updater. GitHub releases are not announced to package-managed installations until the corresponding package is available. When an update is available, **Open Omarchy Update** launches the interactive updater in your configured terminal.
+
+For more frequent updates, prefer the [manual release installation](#manual-release-installation). Manual installations can select any release channel and receive stable releases as soon as they are published, while OPR installations follow the Omarchy repository's release schedule and stable channel.
+
+#### Switch a manual installation to OPR
+
+Close Strata, install the OPR package, and remove the per-user executable and desktop metadata that would otherwise take precedence over the package:
+
+```bash
+omarchy pkg add strata
+rm -f ~/.local/bin/strata \
+  ~/.local/share/applications/io.github.lgse.Strata.desktop \
+  ~/.local/share/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg
+update-desktop-database ~/.local/share/applications 2>/dev/null || true
+gtk-update-icon-cache -qtf ~/.local/share/icons/hicolor 2>/dev/null || true
+hash -r
+command -v strata
+pacman -Qo "$(command -v strata)"
+```
+
+The final commands should identify `/usr/bin/strata` as package-owned. Preferences and custom themes remain in place.
 
 ### AI-assisted installation
+
+Use this option for supported systems other than Omarchy, where the OPR package above is not available.
 
 Give this prompt to a coding agent with terminal access:
 
@@ -91,7 +134,9 @@ Then:
   desktop association if one was requested. Do not weaken the preview sandbox.
 ```
 
-### Manual installation
+### Manual release installation
+
+Use the release archive when the Omarchy package is not available or a per-user installation is preferred.
 
 #### 1. Check the architecture and install dependencies
 
@@ -140,7 +185,7 @@ If `command -v` fails, add `$HOME/.local/bin` to your shell's `PATH`. Every arch
 
 #### 3. Update or uninstall
 
-Use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. To remove a per-user installation:
+For a manual release installation, use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. Package-managed installations are updated only by their system package manager. To remove a per-user installation:
 
 ```bash
 rm -f ~/.local/bin/strata \
