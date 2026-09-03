@@ -201,7 +201,14 @@ fn repository_description_field<'a>(description: &'a str, field: &str) -> Option
 
 fn package_repository_version_for(pacman: &Path, package: &str) -> Result<Version, String> {
     let output = Command::new(pacman)
-        .args(["--sync", "--print", "--print-format", "%v", "--", package])
+        .args([
+            "--sync",
+            "--print",
+            "--print-format",
+            "%n %v",
+            "--",
+            package,
+        ])
         .output()
         .map_err(|error| format!("could not query the package repository: {error}"))?;
     if !output.status.success() {
@@ -210,7 +217,11 @@ fn package_repository_version_for(pacman: &Path, package: &str) -> Result<Versio
 
     let output = String::from_utf8(output.stdout)
         .map_err(|_| "package repository returned an invalid version".to_owned())?;
-    parse_package_version(output.trim())
+    output
+        .lines()
+        .filter_map(|line| line.trim().split_once(char::is_whitespace))
+        .find(|(name, _version)| *name == package)
+        .and_then(|(_name, version)| parse_package_version(version.trim()))
         .ok_or_else(|| "package repository returned an invalid version".to_owned())
 }
 

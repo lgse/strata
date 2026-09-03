@@ -62,12 +62,16 @@ fn arch_package_versions_drop_epoch_and_package_release() {
 }
 
 #[test]
-fn repository_probe_reads_pacmans_machine_readable_version() {
+fn repository_probe_selects_strata_instead_of_a_dependency() {
     use std::os::unix::fs::PermissionsExt;
 
     let dir = tempfile::tempdir().expect("create tempdir");
     let probe = dir.path().join("pacman");
-    fs::write(&probe, "#!/bin/sh\nprintf '%s\\n' '0.8.1-1'\n").expect("write probe");
+    fs::write(
+        &probe,
+        "#!/bin/sh\nprintf '%s\\n' 'dependency 9.8.7-1' 'strata 0.8.1-1'\n",
+    )
+    .expect("write probe");
     fs::set_permissions(&probe, fs::Permissions::from_mode(0o755)).expect("make probe executable");
 
     assert_eq!(
