@@ -68,7 +68,7 @@ struct ColumnView {
     selection: gtk::MultiSelection,
     syncing_selection: Rc<Cell<bool>>,
     list: gtk::ListView,
-    marquee: gtk::Box,
+    marquee: super::marquee::Marquee,
     bound_rows: Rc<RefCell<Vec<BoundRow>>>,
     entry_count: Rc<Cell<usize>>,
     spinner: gtk::Spinner,
@@ -448,6 +448,27 @@ impl BrowserView {
             auto_refresh: RefCell::new(None),
             browser,
         });
+
+        // Columns are laid out from the start edge, so the blank strip beside the last
+        // one is the natural place to begin a marquee that runs into it.
+        let weak_state = Rc::downgrade(&state);
+        super::marquee::install_shared_origin_surface(
+            &state.scroller,
+            move |surface, picked, x, _| {
+                if picked.is::<gtk::Scrollbar>()
+                    || picked.ancestor(gtk::Scrollbar::static_type()).is_some()
+                {
+                    return None;
+                }
+                let state = weak_state.upgrade()?;
+                let laid_out = state.columns_widget.compute_bounds(surface)?;
+                if x < f64::from(laid_out.x() + laid_out.width()) {
+                    return None;
+                }
+                let columns = state.columns.borrow();
+                columns.last().map(|column| column.marquee.clone())
+            },
+        );
 
         let weak_state = Rc::downgrade(&state);
         state.mode_views.borrow().set_transfer_handler(Rc::new(
@@ -4469,117 +4490,6 @@ impl ViewState {
         list.set_single_click_activate(false);
         list.set_vexpand(true);
 
-        let marquee_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        marquee_box.add_css_class("file-marquee");
-        marquee_box.set_can_target(false);
-        marquee_box.set_halign(gtk::Align::Start);
-        marquee_box.set_valign(gtk::Align::Start);
-        marquee_box.set_visible(false);
-        self.overlay.add_overlay(&marquee_box);
-
-        let marquee_active = Rc::new(Cell::new(false));
-        let marquee_origin = Rc::new(Cell::new((0.0, 0.0)));
-        let marquee_initial = Rc::new(RefCell::new(gtk::Bitset::new_empty()));
-        let marquee_modifiers = Rc::new(Cell::new((false, false)));
-        let marquee = gtk::GestureDrag::new();
-        marquee.set_button(1);
-        marquee.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let active_for_begin = marquee_active.clone();
-        let origin_for_begin = marquee_origin.clone();
-        let initial_for_begin = marquee_initial.clone();
-        let modifiers_for_begin = marquee_modifiers.clone();
-        let selection_for_begin = selection.clone();
-        let marquee_box_for_begin = marquee_box.clone();
-        marquee.connect_drag_begin(move |gesture, x, y| {
-            let starts_on_row = gesture
-                .widget()
-                .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
-                .is_some_and(is_file_row_target);
-            let force_marquee = gesture
-                .current_event_state()
-                .contains(gtk::gdk::ModifierType::ALT_MASK);
-            let can_start = force_marquee || !starts_on_row;
-            active_for_begin.set(can_start);
-            if !can_start {
-                return;
-            }
-            gesture.set_state(gtk::EventSequenceState::Claimed);
-            marquee_box_for_begin.set_visible(true);
-            origin_for_begin.set((x, y));
-            initial_for_begin.replace(selection_for_begin.selection().copy());
-            let modifiers = gesture.current_event_state();
-            modifiers_for_begin.set((
-                modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK),
-                modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
-            ));
-        });
-        let active_for_update = marquee_active.clone();
-        let origin_for_update = marquee_origin.clone();
-        let initial_for_update = marquee_initial.clone();
-        let modifiers_for_update = marquee_modifiers.clone();
-        let selection_for_marquee = selection.clone();
-        let rows_for_marquee = bound_rows.clone();
-        let list_for_marquee = list.clone();
-        let overlay_for_marquee = self.overlay.clone();
-        let marquee_box_for_update = marquee_box.clone();
-        marquee.connect_drag_update(move |_, offset_x, offset_y| {
-            if !active_for_update.get() {
-                return;
-            }
-            let (origin_x, origin_y) = origin_for_update.get();
-            let current_x = origin_x + offset_x;
-            let current_y = origin_y + offset_y;
-            let left = origin_x.min(current_x);
-            let right = origin_x.max(current_x);
-            let top = origin_y.min(current_y);
-            let bottom = origin_y.max(current_y);
-            if let Some(list_bounds) = list_for_marquee.compute_bounds(&overlay_for_marquee) {
-                marquee_box_for_update
-                    .set_margin_start((f64::from(list_bounds.x()) + left).round().max(0.0) as i32);
-                marquee_box_for_update
-                    .set_margin_top((f64::from(list_bounds.y()) + top).round().max(0.0) as i32);
-                marquee_box_for_update.set_size_request(
-                    (right - left).round().max(1.0) as i32,
-                    (bottom - top).round().max(1.0) as i32,
-                );
-            }
-            let initial = initial_for_update.borrow();
-            let (control, shift) = modifiers_for_update.get();
-            let selected = if control || shift {
-                initial.copy()
-            } else {
-                gtk::Bitset::new_empty()
-            };
-            rows_for_marquee.borrow_mut().retain(|bound| {
-                let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade()) else {
-                    return false;
-                };
-                let Some(bounds) = row.compute_bounds(&list_for_marquee) else {
-                    return true;
-                };
-                let intersects = f64::from(bounds.x()) < right
-                    && f64::from(bounds.x() + bounds.width()) > left
-                    && f64::from(bounds.y()) < bottom
-                    && f64::from(bounds.y() + bounds.height()) > top;
-                let position = item.position();
-                if intersects && position != gtk::INVALID_LIST_POSITION {
-                    if control && initial.contains(position) {
-                        selected.remove(position);
-                    } else {
-                        selected.add(position);
-                    }
-                }
-                true
-            });
-            let mask = gtk::Bitset::new_range(0, selection_for_marquee.n_items());
-            selection_for_marquee.set_selection(&selected, &mask);
-        });
-        let active_for_end = marquee_active.clone();
-        let marquee_box_for_end = marquee_box.clone();
-        marquee.connect_drag_end(move |_, _, _| {
-            active_for_end.set(false);
-            marquee_box_for_end.set_visible(false);
-        });
         let clear_selection = gtk::GestureClick::new();
         clear_selection.set_button(1);
         let background_press = Rc::new(Cell::new((0.0, 0.0)));
@@ -4599,7 +4509,6 @@ impl ViewState {
                 mouse_selection_anchor_for_background.set(None);
             }
         });
-        list.add_controller(marquee);
         list.add_controller(clear_selection);
         let selection_keys = gtk::EventControllerKey::new();
         selection_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -4638,6 +4547,26 @@ impl ViewState {
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
             .build();
+        let rows_for_marquee = bound_rows.clone();
+        let marquee = super::marquee::install(super::marquee::MarqueeSetup {
+            view: list.clone().upcast(),
+            scroll: scroll.clone(),
+            overlay: self.overlay.clone(),
+            selection: selection.clone(),
+            visit_items: Rc::new(move |visit| {
+                rows_for_marquee.borrow_mut().retain(|bound| {
+                    let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade())
+                    else {
+                        return false;
+                    };
+                    visit(item.position(), row.upcast_ref());
+                    true
+                });
+            }),
+            is_item: Rc::new(|widget| is_file_row_target(widget.clone())),
+        });
+        marquee.add_origin_surface(&header);
+
         let retry = gtk::Button::with_label("Retry");
         retry.add_css_class("retry-button");
         let weak_browser = Rc::downgrade(&self.browser);
@@ -4789,7 +4718,7 @@ impl ViewState {
             selection,
             syncing_selection,
             list,
-            marquee: marquee_box,
+            marquee,
             bound_rows,
             entry_count,
             spinner,
@@ -5034,7 +4963,7 @@ impl ViewState {
                 .animation_generation
                 .set(column.animation_generation.get().saturating_add(1));
             self.columns_widget.remove(&column.shell);
-            self.overlay.remove_overlay(&column.marquee);
+            self.overlay.remove_overlay(&column.marquee.band());
         }
         let retained = self
             .columns

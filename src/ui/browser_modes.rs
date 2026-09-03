@@ -987,7 +987,7 @@ fn build_grid_pane(
     let controls = grid_controls(&browser, depth, options.thumbnail_size.get());
     let thumbnail_size = options.thumbnail_size;
     let active_new_entry = options.active_new_entry;
-    let (pane, content, model, stack, status, spinner, truncated_hint) = pane_base(
+    let (pane, header, content, model, stack, status, spinner, truncated_hint) = pane_base(
         title,
         "grid-pane",
         Some(controls.leading.clone().upcast()),
@@ -1252,13 +1252,15 @@ fn build_grid_pane(
         .child(&view)
         .vexpand(true)
         .build();
-    content.append(&collection_with_marquee(
+    let (collection, marquee) = collection_with_marquee(
         view.upcast_ref(),
         scroll,
         &selection,
         bound_items.clone(),
         "grid-card",
-    ));
+    );
+    content.append(&collection);
+    marquee.add_origin_surface(&header);
     let shell = pane;
     Pane {
         depth,
@@ -1604,7 +1606,7 @@ fn build_explorer_pane(
     let (filter_entry, filter_revealer, filter_button) =
         filter_controls("Filter explorer (Ctrl+F)");
     actions.append(&filter_button);
-    let (shell, content, model, stack, status, spinner, truncated_hint) = pane_base(
+    let (shell, header, content, model, stack, status, spinner, truncated_hint) = pane_base(
         title,
         "explorer-pane",
         Some(navigation.upcast()),
@@ -1854,13 +1856,16 @@ fn build_explorer_pane(
     let table = gtk::Box::new(gtk::Orientation::Vertical, 0);
     table.set_vexpand(true);
     table.append(&headings);
-    table.append(&collection_with_marquee(
+    let (collection, marquee) = collection_with_marquee(
         view.upcast_ref(),
         scroll,
         &selection,
         bound_items.clone(),
         "explorer-row",
-    ));
+    );
+    table.append(&collection);
+    marquee.add_origin_surface(&header);
+    marquee.add_origin_surface(&headings);
     let table_scroll = gtk::ScrolledWindow::builder()
         .child(&table)
         .hscrollbar_policy(gtk::PolicyType::Automatic)
@@ -1897,6 +1902,7 @@ fn pane_base(
     header_leading: Option<gtk::Widget>,
     header_actions: Option<gtk::Widget>,
 ) -> (
+    gtk::Box,
     gtk::Box,
     gtk::Box,
     gtk::StringList,
@@ -1951,6 +1957,7 @@ fn pane_base(
     let model = gtk::StringList::new(&[]);
     (
         shell,
+        header,
         content,
         model,
         stack,
@@ -1981,121 +1988,30 @@ fn collection_with_marquee(
     selection: &gtk::MultiSelection,
     bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
     item_class: &'static str,
-) -> gtk::Overlay {
+) -> (gtk::Overlay, super::marquee::Marquee) {
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&scroll));
     overlay.set_hexpand(true);
     overlay.set_vexpand(true);
-    let marquee_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    marquee_box.add_css_class("file-marquee");
-    marquee_box.set_can_target(false);
-    marquee_box.set_halign(gtk::Align::Start);
-    marquee_box.set_valign(gtk::Align::Start);
-    marquee_box.set_visible(false);
-    overlay.add_overlay(&marquee_box);
 
-    let active = Rc::new(Cell::new(false));
-    let origin = Rc::new(Cell::new((0.0, 0.0)));
-    let initial = Rc::new(RefCell::new(gtk::Bitset::new_empty()));
-    let modifiers = Rc::new(Cell::new((false, false)));
-    let marquee = gtk::GestureDrag::new();
-    marquee.set_button(1);
-    marquee.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let active_for_begin = active.clone();
-    let origin_for_begin = origin.clone();
-    let initial_for_begin = initial.clone();
-    let modifiers_for_begin = modifiers.clone();
-    let selection_for_begin = selection.clone();
-    let marquee_for_begin = marquee_box.clone();
-    marquee.connect_drag_begin(move |gesture, x, y| {
-        let starts_on_item = gesture
-            .widget()
-            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
-            .is_some_and(|widget| widget_or_ancestor_has_class(&widget, item_class));
-        let force_marquee = gesture
-            .current_event_state()
-            .contains(gtk::gdk::ModifierType::ALT_MASK);
-        let can_start = force_marquee || !starts_on_item;
-        active_for_begin.set(can_start);
-        if !can_start {
-            return;
-        }
-        gesture.set_state(gtk::EventSequenceState::Claimed);
-        marquee_for_begin.set_visible(true);
-        origin_for_begin.set((x, y));
-        initial_for_begin.replace(selection_for_begin.selection().copy());
-        let state = gesture.current_event_state();
-        modifiers_for_begin.set((
-            state.contains(gtk::gdk::ModifierType::CONTROL_MASK),
-            state.contains(gtk::gdk::ModifierType::SHIFT_MASK),
-        ));
+    let items_for_visit = bound_items.clone();
+    let marquee = super::marquee::install(super::marquee::MarqueeSetup {
+        view: view.clone(),
+        scroll,
+        overlay: overlay.clone(),
+        selection: selection.clone(),
+        visit_items: Rc::new(move |visit| {
+            items_for_visit.borrow_mut().retain(|bound| {
+                let (Some(item), Some(widget)) = (bound.item.upgrade(), bound.widget.upgrade())
+                else {
+                    return false;
+                };
+                visit(item.position(), &widget);
+                true
+            });
+        }),
+        is_item: Rc::new(|widget| widget_or_ancestor_has_class(widget, item_class)),
     });
-
-    let active_for_update = active.clone();
-    let view_for_update = view.clone();
-    let overlay_for_update = overlay.clone();
-    let marquee_for_update = marquee_box.clone();
-    let selection_for_update = selection.clone();
-    let items_for_update = bound_items.clone();
-    marquee.connect_drag_update(move |_, offset_x, offset_y| {
-        if !active_for_update.get() {
-            return;
-        }
-        let (origin_x, origin_y) = origin.get();
-        let current_x = origin_x + offset_x;
-        let current_y = origin_y + offset_y;
-        let left = origin_x.min(current_x);
-        let right = origin_x.max(current_x);
-        let top = origin_y.min(current_y);
-        let bottom = origin_y.max(current_y);
-        if let Some(view_bounds) = view_for_update.compute_bounds(&overlay_for_update) {
-            marquee_for_update
-                .set_margin_start((f64::from(view_bounds.x()) + left).round().max(0.0) as i32);
-            marquee_for_update
-                .set_margin_top((f64::from(view_bounds.y()) + top).round().max(0.0) as i32);
-            marquee_for_update.set_size_request(
-                (right - left).round().max(1.0) as i32,
-                (bottom - top).round().max(1.0) as i32,
-            );
-        }
-        let initial = initial.borrow();
-        let (control, shift) = modifiers.get();
-        let selected = if control || shift {
-            initial.copy()
-        } else {
-            gtk::Bitset::new_empty()
-        };
-        items_for_update.borrow_mut().retain(|bound| {
-            let (Some(item), Some(widget)) = (bound.item.upgrade(), bound.widget.upgrade()) else {
-                return false;
-            };
-            let Some(bounds) = widget.compute_bounds(&view_for_update) else {
-                return true;
-            };
-            let intersects = f64::from(bounds.x()) < right
-                && f64::from(bounds.x() + bounds.width()) > left
-                && f64::from(bounds.y()) < bottom
-                && f64::from(bounds.y() + bounds.height()) > top;
-            let position = item.position();
-            if intersects && position != gtk::INVALID_LIST_POSITION {
-                if control && initial.contains(position) {
-                    selected.remove(position);
-                } else {
-                    selected.add(position);
-                }
-            }
-            true
-        });
-        let mask = gtk::Bitset::new_range(0, selection_for_update.n_items());
-        selection_for_update.set_selection(&selected, &mask);
-    });
-    let active_for_end = active;
-    let marquee_for_end = marquee_box;
-    marquee.connect_drag_end(move |_, _, _| {
-        active_for_end.set(false);
-        marquee_for_end.set_visible(false);
-    });
-    view.add_controller(marquee);
 
     let clear = gtk::GestureClick::new();
     clear.set_button(1);
@@ -2116,7 +2032,7 @@ fn collection_with_marquee(
         }
     });
     view.add_controller(clear);
-    overlay
+    (overlay, marquee)
 }
 
 fn descendant_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widget> {
