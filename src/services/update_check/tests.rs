@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::{
-    BuildKind, Channel, ReleaseNoteBlock, ReleaseResponse, UpdateCheck, Version, archive_name,
+    BuildKind, CHECK_INTERVAL, Channel, ReleaseNoteBlock, ReleaseResponse, ReleaseSummary,
+    UpdateCheck, UpdateCheckCache, Version, archive_name, cache_is_fresh, from_cached_release,
     parse_markdown, release_metadata, release_page_url, request_error_message, select_update,
-    to_release_summary,
+    to_cached_release, to_release_summary,
 };
 
 fn version(tag: &str) -> Version {
@@ -380,4 +381,85 @@ fn malformed_markdown_and_entities_remain_inert() {
 #[test]
 fn empty_release_markdown_has_no_blocks() {
     assert!(parse_markdown("  \n").is_empty());
+}
+
+// --- cache_is_fresh ------------------------------------------------------
+
+fn cache(channel: Channel, checked_at: u64) -> UpdateCheckCache {
+    UpdateCheckCache {
+        channel: channel.as_str().to_owned(),
+        checked_at,
+        etag: None,
+        releases: Vec::new(),
+    }
+}
+
+#[test]
+fn a_check_just_under_the_interval_is_fresh() {
+    let cache = cache(Channel::Stable, 1_000);
+    let now = 1_000 + CHECK_INTERVAL.as_secs() - 1;
+    assert!(cache_is_fresh(&cache, Channel::Stable, false, now));
+}
+
+#[test]
+fn a_check_at_or_past_the_interval_is_not_fresh() {
+    let cache = cache(Channel::Stable, 1_000);
+    let now = 1_000 + CHECK_INTERVAL.as_secs();
+    assert!(!cache_is_fresh(&cache, Channel::Stable, false, now));
+}
+
+#[test]
+fn a_forced_check_is_never_fresh() {
+    let cache = cache(Channel::Stable, 1_000);
+    assert!(!cache_is_fresh(&cache, Channel::Stable, true, 1_000));
+}
+
+#[test]
+fn a_channel_mismatch_is_never_fresh() {
+    let cache = cache(Channel::Stable, 1_000);
+    assert!(!cache_is_fresh(&cache, Channel::Preview, false, 1_000));
+}
+
+#[test]
+fn a_cache_from_the_future_is_still_fresh() {
+    // `checked_at` should never be ahead of `now` in practice, but a clock
+    // rolled backward between runs must not make every subsequent launch
+    // treat a same-instant cache as stale via underflow.
+    let cache = cache(Channel::Stable, 2_000);
+    assert!(cache_is_fresh(&cache, Channel::Stable, false, 1_000));
+}
+
+// --- CachedRelease round-trip ---------------------------------------------
+
+fn release_summary(tag: &str) -> ReleaseSummary {
+    ReleaseSummary {
+        tag: tag.to_owned(),
+        version: version(tag),
+        draft: false,
+        prerelease: false,
+        download_url: Some("https://example.invalid/asset".to_owned()),
+        published_at: Some("2026-01-01T00:00:00Z".to_owned()),
+        notes: "Notes".to_owned(),
+    }
+}
+
+#[test]
+fn a_cached_release_round_trips_every_field() {
+    let original = release_summary("v0.8.0");
+    let restored = from_cached_release(&to_cached_release(&original))
+        .expect("a freshly cached release should still parse");
+    assert_eq!(restored.tag, original.tag);
+    assert_eq!(restored.version, original.version);
+    assert_eq!(restored.draft, original.draft);
+    assert_eq!(restored.prerelease, original.prerelease);
+    assert_eq!(restored.download_url, original.download_url);
+    assert_eq!(restored.published_at, original.published_at);
+    assert_eq!(restored.notes, original.notes);
+}
+
+#[test]
+fn a_cached_release_with_an_unparseable_tag_is_dropped() {
+    let mut cached = to_cached_release(&release_summary("v0.8.0"));
+    cached.tag = "not-a-version".to_owned();
+    assert!(from_cached_release(&cached).is_none());
 }

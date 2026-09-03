@@ -546,13 +546,13 @@ fn updates_page(
         manager_for_updates.set_checks_for_updates(enabled);
         channel_row.set_sensitive(enabled);
         if enabled {
-            toggled_check();
+            toggled_check(false);
         } else {
             update_notice(None);
         }
     });
     if auto_check_enabled {
-        run_check();
+        run_check(false);
     }
 
     scrollable_page(&preferences, None)
@@ -564,7 +564,7 @@ const RELEASE_CHANNEL_DESCRIPTION: &str = "Preview receives alpha, beta, and rel
 /// A three-way release-channel selector. Changing it persists immediately and
 /// starts a fresh check, so an offer from the previously selected channel is
 /// superseded without waiting for the next automatic check.
-fn channel_option(manager: Rc<ThemeManager>, run_check: Rc<dyn Fn()>) -> gtk::Box {
+fn channel_option(manager: Rc<ThemeManager>, run_check: Rc<dyn Fn(bool)>) -> gtk::Box {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 12);
     row.add_css_class("settings-option");
 
@@ -596,7 +596,12 @@ fn channel_option(manager: Rc<ThemeManager>, run_check: Rc<dyn Fn()>) -> gtk::Bo
         button.connect_active_notify(move |button| {
             if button.is_active() {
                 manager.set_release_channel(channel);
-                run_check();
+                // Not `force`d: a switch to a channel with no cached entry
+                // is a cache miss on its own (`cache_is_fresh` requires a
+                // channel match), so this still fetches fresh. Re-selecting
+                // the channel already active correctly reuses its cache
+                // instead of spending a request on a no-op.
+                run_check(false);
             }
         });
     }
@@ -844,7 +849,7 @@ fn update_check_row(
     update_notice: UpdateNoticeHandler,
     available_notes: ReleaseNotesCard,
     install_guard: InstallGuard,
-) -> (gtk::Box, Rc<dyn Fn()>) {
+) -> (gtk::Box, Rc<dyn Fn(bool)>) {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
     row.add_css_class("settings-option");
     let summary = gtk::Box::new(gtk::Orientation::Horizontal, 16);
@@ -895,7 +900,7 @@ fn update_check_row(
     // `is_stale_check` exists to prevent. See its doc comment.
     let generation = Rc::new(Cell::new(0_u64));
 
-    let run_check: Rc<dyn Fn()> = Rc::new({
+    let run_check: Rc<dyn Fn(bool)> = Rc::new({
         let checking = checking.clone();
         let generation = generation.clone();
         let status = status.clone();
@@ -906,7 +911,7 @@ fn update_check_row(
         let progress = progress.clone();
         let available_notes = available_notes.clone();
         let manager = manager.clone();
-        move || {
+        move |force: bool| {
             // Always start a fresh check rather than dropping it: a channel
             // toggle must never be silently ignored just because a previous
             // check (for the old channel) is still in flight. The stale
@@ -936,6 +941,7 @@ fn update_check_row(
             let receiver = services::check_for_updates(
                 manager.release_channel(),
                 crate::build_info::installed_version(),
+                force,
             );
             let checking = checking.clone();
             let generation = generation.clone();
@@ -1039,7 +1045,7 @@ fn update_check_row(
                 // installing a prerelease the user has since opted out of;
                 // `clicked_check` clears the sidebar notice and relabels the
                 // button on its way.
-                clicked_check();
+                clicked_check(true);
                 return;
             }
             let PendingInstall {
@@ -1119,7 +1125,7 @@ fn update_check_row(
                 });
             }
         } else {
-            clicked_check();
+            clicked_check(true);
         }
     });
     (row, run_check)

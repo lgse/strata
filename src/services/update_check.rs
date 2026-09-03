@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::{
+    fs, io,
+    path::{Path, PathBuf},
     sync::mpsc::{self, Receiver},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use pulldown_cmark::{Event, HeadingLevel, Options, Parser, Tag, TagEnd};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::release_channel::{
     BuildKind, Channel, ReleaseSummary, Version, best_update, rollback_target,
@@ -16,6 +18,11 @@ const API_ROOT: &str = "https://api.github.com/repos/lgse/strata/releases";
 const COMMITS_ROOT: &str = "https://api.github.com/repos/lgse/strata/commits";
 const RELEASES_URL: &str = "https://github.com/lgse/strata/releases";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(10);
+/// Minimum time between two automatic (non-`force`d) checks against the
+/// same channel, matching Omarchy's own update-poll interval. The "Check
+/// now" button and an explicit channel switch always `force` past this --
+/// see [`check_for_updates`].
+const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 /// How many of the most recent releases (final and prerelease) the preview
 /// feed enumerates. Only ever used to find a release *newer* than the
 /// installed one, so a bounded page is safe: an update this page cannot
@@ -179,13 +186,21 @@ fn release_metadata(release: &ReleaseSummary) -> ReleaseMetadata {
 /// additionally run through [`is_eligible`] by [`select_update`] -- both
 /// checks are required, per issue #61's stated redundancy requirement.
 ///
-/// `Ok(None)` covers both "no releases have been published yet" and "the
-/// tag GitHub returned failed to parse"; neither is a network failure.
-fn fetch_stable() -> Result<Option<ReleaseSummary>, ureq::Error> {
-    match request_json::<ReleaseResponse>(&format!("{API_ROOT}/latest")) {
-        Ok(release) => Ok(to_release_summary(&release)),
-        Err(ureq::Error::StatusCode(404)) => Ok(None),
-        Err(error) => Err(error),
+/// A `404` (nothing published yet) and a tag that fails to parse both
+/// surface as [`ChannelFetch::Fetched`] with an empty release list; neither
+/// is a network failure.
+fn fetch_stable(etag: Option<&str>) -> ChannelFetch {
+    match request_json_conditional::<ReleaseResponse>(&format!("{API_ROOT}/latest"), etag) {
+        Ok(Some((release, etag))) => ChannelFetch::Fetched {
+            releases: to_release_summary(&release).into_iter().collect(),
+            etag,
+        },
+        Ok(None) => ChannelFetch::Unchanged,
+        Err(ureq::Error::StatusCode(404)) => ChannelFetch::Fetched {
+            releases: Vec::new(),
+            etag: None,
+        },
+        Err(error) => ChannelFetch::Failed(error),
     }
 }
 
@@ -195,10 +210,18 @@ fn fetch_stable() -> Result<Option<ReleaseSummary>, ureq::Error> {
 /// Kept as its own function rather than reused for [`Channel::Stable`]: a
 /// Stable user's code path must call [`fetch_stable`] instead, never this,
 /// so prerelease metadata never reaches that path at all.
-fn fetch_preview() -> Result<Vec<ReleaseSummary>, ureq::Error> {
-    let releases =
-        request_json::<Vec<ReleaseResponse>>(&format!("{API_ROOT}?per_page={PREVIEW_PAGE_SIZE}"))?;
-    Ok(releases.iter().filter_map(to_release_summary).collect())
+fn fetch_preview(etag: Option<&str>) -> ChannelFetch {
+    match request_json_conditional::<Vec<ReleaseResponse>>(
+        &format!("{API_ROOT}?per_page={PREVIEW_PAGE_SIZE}"),
+        etag,
+    ) {
+        Ok(Some((releases, etag))) => ChannelFetch::Fetched {
+            releases: releases.iter().filter_map(to_release_summary).collect(),
+            etag,
+        },
+        Ok(None) => ChannelFetch::Unchanged,
+        Err(error) => ChannelFetch::Failed(error),
+    }
 }
 
 /// Resolves `tag` to the commit SHA it points at.
@@ -223,6 +246,170 @@ fn fetch_commit(tag: &str) -> Option<String> {
 /// pure and network-free.
 fn resolve_commit(release: &mut ReleaseMetadata) {
     release.commit = fetch_commit(&release.tag);
+}
+
+fn cache_dir() -> PathBuf {
+    glib::user_cache_dir().join("strata")
+}
+
+fn update_check_cache_path() -> PathBuf {
+    cache_dir().join("update-check.toml")
+}
+
+fn release_notes_cache_path() -> PathBuf {
+    cache_dir().join("release-notes.toml")
+}
+
+fn read_cache_file<T: serde::de::DeserializeOwned>(path: &Path) -> Option<T> {
+    toml::from_str(&fs::read_to_string(path).ok()?).ok()
+}
+
+fn write_cache_file<T: Serialize>(path: &Path, value: &T) {
+    let result = (|| -> io::Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let value = toml::to_string_pretty(value).map_err(io::Error::other)?;
+        crate::storage::atomic_write(path, value.as_bytes())
+    })();
+    if let Err(error) = result {
+        tracing::warn!(%error, path = %path.display(), "unable to save update-check cache");
+    }
+}
+
+fn unix_seconds_now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0)
+}
+
+/// The installed version's release notes, permanently cached under
+/// `~/.cache/strata/` and keyed by `tag`: that release is immutable, so a
+/// given tag's notes need fetching at most once, ever. `url` and `kind` are
+/// not stored -- both are pure functions of `tag` -- so [`fetch_exact_release`]
+/// recomputes them on a cache hit instead.
+#[derive(Serialize, Deserialize)]
+struct CachedReleaseNotes {
+    tag: String,
+    notes: String,
+    published_at: Option<String>,
+}
+
+/// A [`ReleaseSummary`] flattened into a serializable form for the
+/// update-check cache. `release_channel` deliberately carries no serde
+/// derives (see its module doc), so this crosses that boundary the same way
+/// [`to_release_summary`] already does for GitHub's own wire format.
+#[derive(Clone, Serialize, Deserialize)]
+struct CachedRelease {
+    tag: String,
+    draft: bool,
+    prerelease: bool,
+    download_url: Option<String>,
+    published_at: Option<String>,
+    notes: String,
+}
+
+fn to_cached_release(release: &ReleaseSummary) -> CachedRelease {
+    CachedRelease {
+        tag: release.tag.clone(),
+        draft: release.draft,
+        prerelease: release.prerelease,
+        download_url: release.download_url.clone(),
+        published_at: release.published_at.clone(),
+        notes: release.notes.clone(),
+    }
+}
+
+/// Reconstructs a [`ReleaseSummary`] from its cached form, re-parsing
+/// [`Version`] from `tag` since [`CachedRelease`] cannot carry it directly.
+/// `None` for a tag that no longer parses -- defensive against a cache
+/// written by some future, wider tag grammar.
+fn from_cached_release(cached: &CachedRelease) -> Option<ReleaseSummary> {
+    Some(ReleaseSummary {
+        tag: cached.tag.clone(),
+        version: Version::parse(&cached.tag)?,
+        draft: cached.draft,
+        prerelease: cached.prerelease,
+        download_url: cached.download_url.clone(),
+        published_at: cached.published_at.clone(),
+        notes: cached.notes.clone(),
+    })
+}
+
+/// Persisted state for the latest-release probe: when it last ran, against
+/// which channel, the `ETag` it can send as `If-None-Match` next time, and
+/// the releases it saw -- so a within-[`CHECK_INTERVAL`] call can answer
+/// from cache alone.
+#[derive(Clone, Serialize, Deserialize)]
+struct UpdateCheckCache {
+    channel: String,
+    checked_at: u64,
+    #[serde(default)]
+    etag: Option<String>,
+    #[serde(default)]
+    releases: Vec<CachedRelease>,
+}
+
+/// Whether a cached channel check is still within [`CHECK_INTERVAL`] and
+/// therefore usable without a network request.
+///
+/// Always `false` when `force` (the "Check now" button, or an explicit
+/// channel switch) is set. Also always `false` on a channel mismatch --
+/// reusing Stable's cached eligibility data for a Preview check, or vice
+/// versa, would apply the wrong release set entirely.
+fn cache_is_fresh(cache: &UpdateCheckCache, channel: Channel, force: bool, now: u64) -> bool {
+    !force
+        && cache.channel == channel.as_str()
+        && now.saturating_sub(cache.checked_at) < CHECK_INTERVAL.as_secs()
+}
+
+/// Sends a GET, attaching `If-None-Match` when `etag` is given.
+///
+/// `Ok(None)` is a `304 Not Modified`: the caller's cached copy is still
+/// current. `Ok(Some((body, etag)))` is a fresh representation and the
+/// `ETag` to remember for next time. A conditional request that comes back
+/// `304` does not count against GitHub's rate limit, which is the entire
+/// point of sending one.
+fn request_json_conditional<T: serde::de::DeserializeOwned>(
+    url: &str,
+    etag: Option<&str>,
+) -> Result<Option<(T, Option<String>)>, ureq::Error> {
+    let mut request = agent()
+        .get(url)
+        .header("Accept", "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .header("User-Agent", "strata-file-manager");
+    if let Some(etag) = etag {
+        request = request.header("If-None-Match", etag);
+    }
+    match request.call() {
+        Ok(mut response) => {
+            let etag = response
+                .headers()
+                .get("etag")
+                .and_then(|value| value.to_str().ok())
+                .map(str::to_owned);
+            let body = response.body_mut().read_json::<T>()?;
+            Ok(Some((body, etag)))
+        }
+        Err(ureq::Error::StatusCode(304)) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+/// The outcome of fetching one channel's release feed with a conditional
+/// request.
+enum ChannelFetch {
+    /// Fetched fresh (`200`), or `/latest` returned `404` (nothing
+    /// published yet, treated as zero releases -- see [`fetch_stable`]).
+    Fetched {
+        releases: Vec<ReleaseSummary>,
+        etag: Option<String>,
+    },
+    /// `304 Not Modified` -- the caller's cached releases are still current.
+    Unchanged,
+    Failed(ureq::Error),
 }
 
 /// Builds the `UpdateCheck` for an eligible release, or `UpToDate` in the
@@ -263,28 +450,132 @@ fn select_update(
     }
 }
 
-fn fetch_update(channel: Channel, installed: &Version) -> UpdateCheck {
-    let releases = match channel {
-        Channel::Stable => fetch_stable().map(|release| release.into_iter().collect::<Vec<_>>()),
-        Channel::Preview | Channel::Nightly => fetch_preview(),
-    };
-    match releases {
-        Ok(releases) => {
-            let mut check = select_update(channel, installed, &releases);
-            if let UpdateCheck::Available { release, .. } = &mut check {
-                resolve_commit(release);
-            }
-            check
-        }
-        Err(error) => UpdateCheck::Failed(request_error_message(&error)),
+/// Runs the pure selection step against `releases`, resolving the winning
+/// release's commit afterward -- see [`resolve_commit`] for why that stays
+/// outside the pure path.
+fn select_and_resolve(
+    channel: Channel,
+    installed: &Version,
+    releases: &[ReleaseSummary],
+) -> UpdateCheck {
+    let mut check = select_update(channel, installed, releases);
+    if let UpdateCheck::Available { release, .. } = &mut check {
+        resolve_commit(release);
     }
+    check
+}
+
+fn fetch_update(channel: Channel, installed: &Version, force: bool) -> UpdateCheck {
+    let path = update_check_cache_path();
+    let cache = read_cache_file::<UpdateCheckCache>(&path);
+    let now = unix_seconds_now();
+
+    if let Some(cache) = cache
+        .as_ref()
+        .filter(|cache| cache_is_fresh(cache, channel, force, now))
+    {
+        let releases: Vec<_> = cache
+            .releases
+            .iter()
+            .filter_map(from_cached_release)
+            .collect();
+        return select_and_resolve(channel, installed, &releases);
+    }
+
+    let same_channel = cache
+        .as_ref()
+        .filter(|cache| cache.channel == channel.as_str());
+    let etag = same_channel.and_then(|cache| cache.etag.clone());
+    let outcome = match channel {
+        Channel::Stable => fetch_stable(etag.as_deref()),
+        Channel::Preview | Channel::Nightly => fetch_preview(etag.as_deref()),
+    };
+
+    let releases = match outcome {
+        ChannelFetch::Fetched { releases, etag } => {
+            write_cache_file(
+                &path,
+                &UpdateCheckCache {
+                    channel: channel.as_str().to_owned(),
+                    checked_at: now,
+                    etag,
+                    releases: releases.iter().map(to_cached_release).collect(),
+                },
+            );
+            releases
+        }
+        ChannelFetch::Unchanged => {
+            let cached_releases = same_channel
+                .map(|cache| cache.releases.clone())
+                .unwrap_or_default();
+            write_cache_file(
+                &path,
+                &UpdateCheckCache {
+                    channel: channel.as_str().to_owned(),
+                    checked_at: now,
+                    etag: same_channel.and_then(|cache| cache.etag.clone()),
+                    releases: cached_releases.clone(),
+                },
+            );
+            cached_releases
+                .iter()
+                .filter_map(from_cached_release)
+                .collect()
+        }
+        ChannelFetch::Failed(error) => {
+            // Still record the attempt so a rate-limited or offline run is
+            // not retried on every subsequent launch within the interval --
+            // but keep any previously cached good result for this channel
+            // untouched, so a later success can still send its `etag` and
+            // does not lose its releases.
+            write_cache_file(
+                &path,
+                &UpdateCheckCache {
+                    channel: channel.as_str().to_owned(),
+                    checked_at: now,
+                    etag: same_channel.and_then(|cache| cache.etag.clone()),
+                    releases: same_channel
+                        .map(|cache| cache.releases.clone())
+                        .unwrap_or_default(),
+                },
+            );
+            return UpdateCheck::Failed(request_error_message(&error));
+        }
+    };
+
+    select_and_resolve(channel, installed, &releases)
 }
 
 fn fetch_exact_release(tag: &str) -> ReleaseNotes {
     let url = release_page_url(tag);
+    let cached = read_cache_file::<CachedReleaseNotes>(&release_notes_cache_path())
+        .filter(|cached| cached.tag == tag)
+        .zip(Version::parse(tag));
+    if let Some((cached, version)) = cached {
+        return ReleaseNotes::Found(ReleaseMetadata {
+            version: version.to_string(),
+            url,
+            note_blocks: parse_markdown(&cached.notes),
+            notes: cached.notes,
+            kind: version.build_kind(),
+            tag: tag.to_owned(),
+            published_at: cached.published_at,
+            commit: None,
+        });
+    }
     match request_json::<ReleaseResponse>(&format!("{API_ROOT}/tags/{tag}")) {
         Ok(release) => match to_release_summary(&release) {
-            Some(summary) => ReleaseNotes::Found(release_metadata(&summary)),
+            Some(summary) => {
+                write_cache_file(
+                    &release_notes_cache_path(),
+                    &CachedReleaseNotes {
+                        tag: tag.to_owned(),
+                        notes: summary.notes.clone(),
+                        published_at: summary.published_at.clone(),
+                    },
+                );
+                ReleaseNotes::Found(release_metadata(&summary))
+            }
             None => ReleaseNotes::Unavailable { url },
         },
         Err(ureq::Error::StatusCode(404)) => ReleaseNotes::Unavailable { url },
@@ -505,12 +796,23 @@ fn parse_markdown(markdown: &str) -> Vec<ReleaseNoteBlock> {
 /// Queries the release feed for `channel` off the GTK thread and reports the
 /// outcome once. See [`fetch_stable`] and [`fetch_preview`] for why the two
 /// feeds are kept as separate functions.
-pub fn check_for_updates(channel: Channel, installed: Version) -> Receiver<UpdateCheck> {
+///
+/// `force` bypasses [`CHECK_INTERVAL`]'s floor on a repeat check against the
+/// same channel -- the caller still benefits from a free `304` when an
+/// `ETag` is cached, since a conditional request costs nothing even when
+/// forced. Pass `true` only for an explicit user action (the "Check now"
+/// button, or a channel switch); an automatic check on startup or on
+/// re-enabling the "automatically check" preference should pass `false`.
+pub fn check_for_updates(
+    channel: Channel,
+    installed: Version,
+    force: bool,
+) -> Receiver<UpdateCheck> {
     let (sender, receiver) = mpsc::channel();
     let spawned = std::thread::Builder::new()
         .name("strata-update-check".into())
         .spawn(move || {
-            let _sent = sender.send(fetch_update(channel, &installed));
+            let _sent = sender.send(fetch_update(channel, &installed, force));
         });
     drop(spawned);
     receiver
