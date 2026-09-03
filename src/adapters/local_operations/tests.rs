@@ -363,7 +363,7 @@ fn cancelled_replacement_move_tracks_the_modified_source_and_target_roots()
     let context = glib::MainContext::default();
     let watcher = context.spawn_local(async move {
         while !committed_marker.exists() {
-            glib::timeout_future(Duration::from_millis(1)).await;
+            glib::timeout_future(Duration::ZERO).await;
         }
         cancel_after_commit.cancel();
     });
