@@ -159,8 +159,16 @@ fn refresh_desktop_metadata(package_dir: &Path, executable: &Path, data_home: &P
     if let Err(error) = write_desktop_entry(package_dir, executable, &entry_path) {
         tracing::warn!("could not refresh the desktop entry: {error}");
     }
-    if let Err(error) = write_application_icon(package_dir, data_home) {
-        tracing::warn!("could not refresh the application icon: {error}");
+    match write_application_icon(package_dir, data_home) {
+        Ok(()) => {
+            if let Err(error) = run(Command::new("gtk-update-icon-cache")
+                .arg("-qtf")
+                .arg(data_home.join("icons/hicolor")))
+            {
+                tracing::warn!("could not refresh the application icon cache: {error}");
+            }
+        }
+        Err(error) => tracing::warn!("could not refresh the application icon: {error}"),
     }
 
     let _refreshed =
