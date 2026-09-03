@@ -452,23 +452,15 @@ impl BrowserView {
         // Columns are laid out from the start edge, so the blank strip beside the last
         // one is the natural place to begin a marquee that runs into it.
         let weak_state = Rc::downgrade(&state);
-        super::marquee::install_shared_origin_surface(
-            &state.scroller,
-            move |surface, picked, x, _| {
-                if picked.is::<gtk::Scrollbar>()
-                    || picked.ancestor(gtk::Scrollbar::static_type()).is_some()
-                {
-                    return None;
-                }
-                let state = weak_state.upgrade()?;
-                let laid_out = state.columns_widget.compute_bounds(surface)?;
-                if x < f64::from(laid_out.x() + laid_out.width()) {
-                    return None;
-                }
-                let columns = state.columns.borrow();
-                columns.last().map(|column| column.marquee.clone())
-            },
-        );
+        super::marquee::install_shared_origin_surface(&state.scroller, move |surface, _, x, _| {
+            let state = weak_state.upgrade()?;
+            let laid_out = state.columns_widget.compute_bounds(surface)?;
+            if x < f64::from(laid_out.x() + laid_out.width()) {
+                return None;
+            }
+            let columns = state.columns.borrow();
+            columns.last().map(|column| column.marquee.clone())
+        });
 
         let weak_state = Rc::downgrade(&state);
         state.mode_views.borrow().set_transfer_handler(Rc::new(
@@ -580,6 +572,25 @@ impl BrowserView {
             .iter()
             .map(|column| column.shell.width().max(COLUMN_WIDTH))
             .fold(0, i32::saturating_add)
+    }
+
+    /// Lets a marquee drag begin on blank chrome beside the file panes — the sidebar —
+    /// and run into whichever view the current mode shows. The pane nearest the start
+    /// edge is the target, since that is the one such a drag runs into.
+    pub(super) fn add_marquee_origin(&self, surface: &impl IsA<gtk::Widget>) {
+        let weak_state = Rc::downgrade(&self.state);
+        super::marquee::install_shared_origin_surface(surface, move |_, _, _, _| {
+            let state = weak_state.upgrade()?;
+            let mode = state.mode_views.borrow().mode();
+            if mode == BrowserMode::Columns {
+                return state
+                    .columns
+                    .borrow()
+                    .first()
+                    .map(|column| column.marquee.clone());
+            }
+            state.mode_views.borrow().leading_marquee()
+        });
     }
 
     pub fn view_mode(&self) -> BrowserMode {

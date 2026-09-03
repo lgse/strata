@@ -160,10 +160,11 @@ fn is_inert_chrome(surface: &gtk::Widget, picked: &gtk::Widget) -> bool {
     false
 }
 
-/// Lets one long-lived surface — such as the blank area beside the last open
-/// column — begin a marquee drag on whichever collection view `resolve` picks for
+/// Lets one long-lived surface — the blank area beside the last open column, or the
+/// sidebar — begin a marquee drag on whichever collection view `resolve` picks for
 /// the press position. Unlike [`Marquee::add_origin_surface`] the surface outlives
-/// the views it feeds, so the target is resolved per drag.
+/// the views it feeds, so the target is resolved per drag. Presses landing on a
+/// control the surface hosts are filtered out before `resolve` is consulted.
 pub(super) fn install_shared_origin_surface(
     surface: &impl IsA<gtk::Widget>,
     resolve: impl Fn(&gtk::Widget, &gtk::Widget, f64, f64) -> Option<Marquee> + 'static,
@@ -179,6 +180,9 @@ pub(super) fn install_shared_origin_surface(
         let Some(picked) = surface_for_begin.pick(x, y, gtk::PickFlags::DEFAULT) else {
             return;
         };
+        if !is_inert_chrome(&surface_for_begin, &picked) {
+            return;
+        }
         let Some(marquee) = resolve(&surface_for_begin, &picked, x, y) else {
             return;
         };

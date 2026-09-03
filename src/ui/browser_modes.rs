@@ -94,6 +94,7 @@ struct Pane {
     truncated_hint: gtk::Image,
     view: gtk::Widget,
     bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
+    marquee: super::marquee::Marquee,
     filter_entry: Option<gtk::Entry>,
     filter_button: Option<gtk::ToggleButton>,
     empty_trash_button: Option<gtk::Button>,
@@ -184,6 +185,17 @@ impl ModeViews {
 
     pub fn mode(&self) -> BrowserMode {
         self.mode
+    }
+
+    /// The marquee of the pane nearest the window's start edge, so chrome outside the
+    /// panes can run a drag into whichever view the current mode shows.
+    pub(super) fn leading_marquee(&self) -> Option<super::marquee::Marquee> {
+        let pane = match self.mode {
+            BrowserMode::Columns => return None,
+            BrowserMode::Grid => self.grid_panes.first(),
+            BrowserMode::Explorer => self.explorer_pane.as_ref(),
+        }?;
+        Some(pane.marquee.clone())
     }
 
     pub fn selected_positions(&self) -> Option<(usize, Vec<usize>)> {
@@ -1276,6 +1288,7 @@ fn build_grid_pane(
         truncated_hint,
         view: view.upcast(),
         bound_items,
+        marquee,
         filter_entry: Some(controls.filter_entry),
         filter_button: Some(controls.filter_button),
         empty_trash_button: controls.empty_trash_button,
@@ -1891,6 +1904,7 @@ fn build_explorer_pane(
         truncated_hint,
         view: view.upcast(),
         bound_items,
+        marquee,
         filter_entry: Some(filter_entry),
         filter_button: Some(filter_button),
         empty_trash_button: is_trash.then_some(empty_trash),
