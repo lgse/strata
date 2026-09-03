@@ -117,11 +117,11 @@ struct Preferences {
     list_folder_clicks: u8,
     #[serde(default = "default_file_clicks")]
     grid_file_clicks: u8,
-    #[serde(default = "default_folder_clicks")]
+    #[serde(default = "default_double_clicks")]
     grid_folder_clicks: u8,
     #[serde(default = "default_file_clicks")]
     explorer_file_clicks: u8,
-    #[serde(default = "default_folder_clicks")]
+    #[serde(default = "default_double_clicks")]
     explorer_folder_clicks: u8,
     #[serde(default = "default_sidebar_order")]
     sidebar_order: Vec<String>,
@@ -161,9 +161,9 @@ impl Default for Preferences {
             list_file_clicks: default_file_clicks(),
             list_folder_clicks: default_folder_clicks(),
             grid_file_clicks: default_file_clicks(),
-            grid_folder_clicks: default_folder_clicks(),
+            grid_folder_clicks: default_double_clicks(),
             explorer_file_clicks: default_file_clicks(),
-            explorer_folder_clicks: default_folder_clicks(),
+            explorer_folder_clicks: default_double_clicks(),
             sidebar_order: default_sidebar_order(),
             show_hidden: false,
             folders_first: true,
@@ -204,6 +204,10 @@ fn default_file_clicks() -> u8 {
 
 fn default_folder_clicks() -> u8 {
     1
+}
+
+fn default_double_clicks() -> u8 {
+    2
 }
 
 fn default_sidebar_order() -> Vec<String> {
@@ -481,7 +485,7 @@ impl ThemeManager {
                 preferences.explorer_folder_clicks,
             ),
         };
-        let defaults = ClickActivation::default();
+        let defaults = ClickActivation::default_for(mode);
         ClickActivation {
             files: ClickCount::from_stored(files).unwrap_or(defaults.files),
             folders: ClickCount::from_stored(folders).unwrap_or(defaults.folders),

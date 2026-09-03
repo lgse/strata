@@ -89,12 +89,21 @@ pub struct ClickActivation {
     pub folders: ClickCount,
 }
 
-impl Default for ClickActivation {
-    fn default() -> Self {
+impl ClickActivation {
+    pub fn default_for(mode: BrowserMode) -> Self {
         Self {
             files: ClickCount::Two,
-            folders: ClickCount::One,
+            folders: match mode {
+                BrowserMode::Columns => ClickCount::One,
+                BrowserMode::Grid | BrowserMode::Explorer => ClickCount::Two,
+            },
         }
+    }
+}
+
+impl Default for ClickActivation {
+    fn default() -> Self {
+        Self::default_for(BrowserMode::Columns)
     }
 }
 
@@ -209,8 +218,12 @@ impl ModeViews {
             explorer_pane: None,
             browser,
             single_click_previews: Rc::new(Cell::new(true)),
-            grid_click_activation: Rc::new(Cell::new(ClickActivation::default())),
-            explorer_click_activation: Rc::new(Cell::new(ClickActivation::default())),
+            grid_click_activation: Rc::new(Cell::new(ClickActivation::default_for(
+                BrowserMode::Grid,
+            ))),
+            explorer_click_activation: Rc::new(Cell::new(ClickActivation::default_for(
+                BrowserMode::Explorer,
+            ))),
             transfer_handler: Rc::new(RefCell::new(None)),
             cut_locations: Rc::new(RefCell::new(HashSet::new())),
             context_state: RefCell::new(None),

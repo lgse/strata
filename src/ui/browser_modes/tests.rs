@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::{
-    ClickActivation, ClickCount, EXPLORER_COLUMN_MIN_WIDTHS, EXPLORER_COLUMN_WIDTHS,
+    BrowserMode, ClickActivation, ClickCount, EXPLORER_COLUMN_MIN_WIDTHS, EXPLORER_COLUMN_WIDTHS,
     explorer_column_width, should_activate_pointer_click,
 };
 
@@ -29,6 +29,26 @@ fn stored_click_counts_reject_unsupported_values() {
     assert_eq!(ClickCount::from_stored(2), Some(ClickCount::Two));
     assert_eq!(ClickCount::from_stored(0), None);
     assert_eq!(ClickCount::from_stored(3), None);
+}
+
+#[test]
+fn click_activation_defaults_follow_view_conventions() {
+    assert_eq!(
+        ClickActivation::default_for(BrowserMode::Columns),
+        ClickActivation {
+            files: ClickCount::Two,
+            folders: ClickCount::One,
+        }
+    );
+    for mode in [BrowserMode::Grid, BrowserMode::Explorer] {
+        assert_eq!(
+            ClickActivation::default_for(mode),
+            ClickActivation {
+                files: ClickCount::Two,
+                folders: ClickCount::Two,
+            }
+        );
+    }
 }
 
 #[test]

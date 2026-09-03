@@ -181,9 +181,9 @@ theme = "azure-glow"
     assert_eq!(preferences.list_file_clicks, 2);
     assert_eq!(preferences.list_folder_clicks, 1);
     assert_eq!(preferences.grid_file_clicks, 2);
-    assert_eq!(preferences.grid_folder_clicks, 1);
+    assert_eq!(preferences.grid_folder_clicks, 2);
     assert_eq!(preferences.explorer_file_clicks, 2);
-    assert_eq!(preferences.explorer_folder_clicks, 1);
+    assert_eq!(preferences.explorer_folder_clicks, 2);
     assert_eq!(sort_preferences(&preferences), ViewPreferences::default());
 }
 
