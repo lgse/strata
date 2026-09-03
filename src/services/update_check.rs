@@ -11,6 +11,7 @@ use serde::Deserialize;
 use super::release_channel::{
     BuildKind, Channel, ReleaseSummary, Version, best_update, rollback_target,
 };
+use super::update_install::{UpdateMethod, omarchy_repository_version, package_repository_version};
 
 const API_ROOT: &str = "https://api.github.com/repos/lgse/strata/releases";
 const COMMITS_ROOT: &str = "https://api.github.com/repos/lgse/strata/commits";
@@ -263,7 +264,7 @@ fn select_update(
     }
 }
 
-fn fetch_update(channel: Channel, installed: &Version) -> UpdateCheck {
+fn fetch_github_update(channel: Channel, installed: &Version) -> UpdateCheck {
     let releases = match channel {
         Channel::Stable => fetch_stable().map(|release| release.into_iter().collect::<Vec<_>>()),
         Channel::Preview | Channel::Nightly => fetch_preview(),
@@ -277,6 +278,48 @@ fn fetch_update(channel: Channel, installed: &Version) -> UpdateCheck {
             check
         }
         Err(error) => UpdateCheck::Failed(request_error_message(&error)),
+    }
+}
+
+fn fetch_package_update(
+    installed: &Version,
+    repository_version: impl FnOnce() -> Result<Version, String>,
+) -> UpdateCheck {
+    let available = match repository_version() {
+        Ok(version) => version,
+        Err(error) => return UpdateCheck::Failed(error),
+    };
+    if available <= *installed {
+        return UpdateCheck::UpToDate;
+    }
+
+    let tag = format!("v{available}");
+    match request_json::<ReleaseResponse>(&format!("{API_ROOT}/tags/{tag}")) {
+        Ok(response) => match package_update_from_response(&available, &response) {
+            UpdateCheck::Available {
+                mut release,
+                download_url,
+            } => {
+                resolve_commit(&mut release);
+                UpdateCheck::Available {
+                    release,
+                    download_url,
+                }
+            }
+            check => check,
+        },
+        Err(error) => UpdateCheck::Failed(request_error_message(&error)),
+    }
+}
+
+fn package_update_from_response(available: &Version, response: &ReleaseResponse) -> UpdateCheck {
+    match to_release_summary(response)
+        .filter(|release| release.version == *available && !release.prerelease)
+    {
+        Some(summary) => available_check(&summary),
+        None => UpdateCheck::Failed(
+            "package repository version has no matching stable release".to_owned(),
+        ),
     }
 }
 
@@ -502,15 +545,28 @@ fn parse_markdown(markdown: &str) -> Vec<ReleaseNoteBlock> {
     blocks
 }
 
-/// Queries the release feed for `channel` off the GTK thread and reports the
-/// outcome once. See [`fetch_stable`] and [`fetch_preview`] for why the two
-/// feeds are kept as separate functions.
-pub fn check_for_updates(channel: Channel, installed: Version) -> Receiver<UpdateCheck> {
+/// Checks the applicable release source off the GTK thread and reports the
+/// outcome once. In-place installs follow GitHub; package-managed installs
+/// first require the configured repository to offer the version.
+pub fn check_for_updates(
+    channel: Channel,
+    installed: Version,
+    update_method: UpdateMethod,
+) -> Receiver<UpdateCheck> {
     let (sender, receiver) = mpsc::channel();
     let spawned = std::thread::Builder::new()
         .name("strata-update-check".into())
         .spawn(move || {
-            let _sent = sender.send(fetch_update(channel, &installed));
+            let result = match update_method {
+                UpdateMethod::InPlace => fetch_github_update(channel, &installed),
+                UpdateMethod::Omarchy => {
+                    fetch_package_update(&installed, omarchy_repository_version)
+                }
+                UpdateMethod::Pacman => {
+                    fetch_package_update(&installed, package_repository_version)
+                }
+            };
+            let _sent = sender.send(result);
         });
     drop(spawned);
     receiver

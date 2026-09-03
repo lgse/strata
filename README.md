@@ -78,7 +78,7 @@ omarchy pkg add strata
 > omarchy pkg add gvfs-smb imagemagick libraw dcraw
 > ```
 
-Omarchy keeps this installation current through `omarchy update`. Strata still checks for stable releases and shows their notes, but detects that its executable is package-owned, hides the in-app release-channel selector, and does not replace it with the in-app updater. When an update is available, **Open Omarchy Update** launches the interactive updater in your configured terminal.
+Omarchy keeps this installation current through `omarchy update`. Strata checks the configured package repository for stable releases and shows their notes, but detects that its executable is package-owned, hides the in-app release-channel selector, and does not replace it with the in-app updater. GitHub releases are not announced to package-managed installations until the corresponding package is available. When an update is available, **Open Omarchy Update** launches the interactive updater in your configured terminal.
 
 For more frequent updates, prefer the [manual release installation](#manual-release-installation). Manual installations can select any release channel and receive stable releases as soon as they are published, while OPR installations follow the Omarchy repository's release schedule and stable channel.
 

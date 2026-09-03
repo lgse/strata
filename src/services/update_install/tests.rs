@@ -7,7 +7,8 @@ use std::{
 
 use super::{
     APPLICATION_ICON, DESKTOP_ENTRY, UpdateMethod, desktop_entry_with_exec, find_binaries,
-    first_hash_token, refresh_desktop_metadata, stage_binary_path, stage_workdir,
+    first_hash_token, package_repository_version_for, parse_package_version,
+    refresh_desktop_metadata, repository_database_version, stage_binary_path, stage_workdir,
     update_method_for,
 };
 
@@ -44,6 +45,58 @@ fn ownership_probe(dir: &Path, exit_code: u8) -> PathBuf {
     fs::set_permissions(&probe, fs::Permissions::from_mode(0o755))
         .expect("make ownership probe executable");
     probe
+}
+
+#[test]
+fn arch_package_versions_drop_epoch_and_package_release() {
+    assert_eq!(
+        parse_package_version("0.8.1-1").map(|version| version.to_string()),
+        Some("0.8.1".to_owned())
+    );
+    assert_eq!(
+        parse_package_version("2:0.9.0-rc.1-3.1").map(|version| version.to_string()),
+        Some("0.9.0-rc.1".to_owned())
+    );
+    assert!(parse_package_version("0.8.1").is_none());
+    assert!(parse_package_version("not-a-version-1").is_none());
+}
+
+#[test]
+fn repository_probe_reads_pacmans_machine_readable_version() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = tempfile::tempdir().expect("create tempdir");
+    let probe = dir.path().join("pacman");
+    fs::write(&probe, "#!/bin/sh\nprintf '%s\\n' '0.8.1-1'\n").expect("write probe");
+    fs::set_permissions(&probe, fs::Permissions::from_mode(0o755)).expect("make probe executable");
+
+    assert_eq!(
+        package_repository_version_for(&probe, "strata").map(|version| version.to_string()),
+        Ok("0.8.1".to_owned())
+    );
+}
+
+#[test]
+fn omarchy_database_reports_the_packaged_strata_version() {
+    let description = b"%NAME%\nstrata\n\n%VERSION%\n0.8.1-2\n";
+    let mut archive = Vec::new();
+    {
+        let mut builder = tar::Builder::new(&mut archive);
+        let mut header = tar::Header::new_gnu();
+        header.set_size(description.len() as u64);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder
+            .append_data(&mut header, "strata-0.8.1-2/desc", &description[..])
+            .expect("append package description");
+        builder.finish().expect("finish repository archive");
+    }
+    let database = zstd::stream::encode_all(&archive[..], 0).expect("compress repository database");
+
+    assert_eq!(
+        repository_database_version(&database, "strata").map(|version| version.to_string()),
+        Ok("0.8.1".to_owned())
+    );
 }
 
 #[test]

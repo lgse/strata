@@ -531,7 +531,15 @@ fn updates_page(
     let auto_check_enabled = manager.checks_for_updates();
     let (auto_check_row, auto_check) = settings_option(
         "Automatically check for updates",
-        "Check GitHub for a newer release when Strata starts.",
+        match update_method {
+            UpdateMethod::InPlace => "Check GitHub for a newer release when Strata starts.",
+            UpdateMethod::Omarchy => {
+                "Check the Omarchy package repository for a newer release when Strata starts."
+            }
+            UpdateMethod::Pacman => {
+                "Check the configured package repositories for a newer release when Strata starts."
+            }
+        },
         auto_check_enabled,
     );
     preferences.append(&auto_check_row);
@@ -961,8 +969,11 @@ fn update_check_row(
             // mid-session channel toggle must be reflected by the very next
             // check, including this one if it was triggered by that toggle.
             let channel = effective_update_channel(manager.release_channel(), update_method);
-            let receiver =
-                services::check_for_updates(channel, crate::build_info::installed_version());
+            let receiver = services::check_for_updates(
+                channel,
+                crate::build_info::installed_version(),
+                update_method,
+            );
             let checking = checking.clone();
             let generation = generation.clone();
             let status = status.clone();
