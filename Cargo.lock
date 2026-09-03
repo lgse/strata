@@ -1530,6 +1530,7 @@ dependencies = [
  "ureq",
  "yeslogic-fontconfig-sys",
  "zip",
+ "zstd",
 ]
 
 [[package]]

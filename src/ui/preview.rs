@@ -37,7 +37,12 @@ struct PreviewState {
     modified: gtk::Label,
     content_type: gtk::Label,
     content: gtk::Box,
-    media: RefCell<Option<gtk::Video>>,
+    media: RefCell<Option<gtk::MediaStream>>,
+    media_signals: RefCell<Vec<glib::SignalHandlerId>>,
+    media_volume_slider: RefCell<Option<gtk::Scale>>,
+    media_volume_icon: RefCell<Option<gtk::Image>>,
+    media_volume_save: Rc<RefCell<Option<glib::SourceId>>>,
+    media_toggle_mute: RefCell<Option<Rc<dyn Fn()>>>,
     split: RefCell<Option<gtk::Paned>>,
     occupied_width: RefCell<Option<Rc<dyn Fn() -> i32>>>,
     current: RefCell<Option<FileEntry>>,
@@ -129,6 +134,11 @@ impl PreviewDrawer {
             content_type,
             content,
             media: RefCell::new(None),
+            media_signals: RefCell::new(Vec::new()),
+            media_volume_slider: RefCell::new(None),
+            media_volume_icon: RefCell::new(None),
+            media_volume_save: Rc::new(RefCell::new(None)),
+            media_toggle_mute: RefCell::new(None),
             split: RefCell::new(None),
             occupied_width: RefCell::new(None),
             current: RefCell::new(None),
@@ -152,12 +162,7 @@ impl PreviewDrawer {
                 .as_ref()
                 .map(|entry| entry.location.clone());
             if let Some(location) = location {
-                if let Some(stream) = state
-                    .media
-                    .borrow()
-                    .as_ref()
-                    .and_then(gtk::Video::media_stream)
-                {
+                if let Some(stream) = state.media.borrow().as_ref() {
                     stream.set_playing(false);
                 }
                 super::browser::open_location(&location, &state.pane);
@@ -203,6 +208,66 @@ impl PreviewDrawer {
 
     pub fn is_open(&self) -> bool {
         self.state.opened.get()
+    }
+
+    pub fn has_video(&self) -> bool {
+        self.is_open() && self.state.media.borrow().is_some()
+    }
+
+    pub fn handle_video_key(&self, key: gtk::gdk::Key) -> bool {
+        let media = match self.state.media.borrow().as_ref() {
+            Some(m) => m.clone(),
+            None => return false,
+        };
+        let preferences = super::theme::ThemeManager::shared();
+        let slider = self.state.media_volume_slider.borrow().clone();
+        let icon = self.state.media_volume_icon.borrow().clone();
+        let fallback = gtk::Image::new();
+        let icon = icon.as_ref().unwrap_or(&fallback);
+        match key {
+            gtk::gdk::Key::space => {
+                if media.is_playing() {
+                    media.pause();
+                } else {
+                    media.play();
+                }
+                true
+            }
+            gtk::gdk::Key::Up | gtk::gdk::Key::Down => {
+                let delta = if matches!(key, gtk::gdk::Key::Up) {
+                    0.1
+                } else {
+                    -0.1
+                };
+                let current_vol = if preferences.preview_muted() {
+                    0.0
+                } else {
+                    preferences.preview_volume()
+                };
+                let volume = (current_vol + delta).clamp(0.0, 1.0);
+                set_preview_volume(&media, &preferences, &slider, icon, volume);
+                true
+            }
+            gtk::gdk::Key::m | gtk::gdk::Key::M => {
+                if let Some(toggle_volume) = self.state.media_toggle_mute.borrow().as_ref() {
+                    toggle_volume();
+                    true
+                } else {
+                    false
+                }
+            }
+            gtk::gdk::Key::Left | gtk::gdk::Key::Right if media.is_seekable() => {
+                let delta: i64 = if matches!(key, gtk::gdk::Key::Right) {
+                    5_000_000
+                } else {
+                    -5_000_000
+                };
+                let target = (media.timestamp() + delta).max(0);
+                media.seek(target);
+                true
+            }
+            _ => false,
+        }
     }
 
     pub fn show(&self, entry: FileEntry) {
@@ -438,14 +503,8 @@ impl PreviewState {
                 let bytes = glib::Bytes::from_owned(data);
                 let stream = gio::MemoryInputStream::from_bytes(&bytes);
                 let media = gtk::MediaFile::for_input_stream(&stream);
-                let video = gtk::Video::for_media_stream(Some(&media));
-                video.add_css_class("preview-media");
                 let is_gif = preview.content_type == "image/gif";
-                video.set_autoplay(is_gif);
-                video.set_loop(is_gif);
-                video.set_hexpand(true);
-                video.set_vexpand(true);
-                self.media.replace(Some(video.clone()));
+                self.media.replace(Some(media.clone().upcast()));
                 let weak = Rc::downgrade(self);
                 media.connect_error_notify(move |media| {
                     let Some(error) = media.error() else {
@@ -455,7 +514,81 @@ impl PreviewState {
                         state.show_media_error(&error);
                     }
                 });
-                self.content.append(&video);
+
+                let picture = gtk::Picture::for_paintable(&media);
+                picture.add_css_class("preview-media");
+                picture.set_content_fit(gtk::ContentFit::Contain);
+                picture.set_hexpand(true);
+                picture.set_vexpand(true);
+
+                let overlay = gtk::Overlay::new();
+                overlay.set_child(Some(&picture));
+                overlay.set_focusable(true);
+                overlay.set_can_target(true);
+
+                let center_play = gtk::Button::new();
+                center_play.add_css_class("preview-media-center");
+                center_play.set_halign(gtk::Align::Center);
+                center_play.set_valign(gtk::Align::Center);
+                center_play.set_visible(false);
+                let center_icon = crate::assets::primary_icon(crate::assets::icons::PLAY, 48);
+                center_play.set_child(Some(&center_icon));
+                overlay.add_overlay(&center_play);
+
+                let media_for_center = media.clone();
+                center_play.connect_clicked(move |_| {
+                    if media_for_center.is_playing() {
+                        media_for_center.pause();
+                    } else {
+                        media_for_center.play();
+                    }
+                });
+
+                let media_for_click = media.clone();
+                let overlay_for_focus = overlay.clone();
+                let click = gtk::GestureClick::new();
+                click.connect_pressed(move |_, _, _, _| {
+                    overlay_for_focus.grab_focus();
+                    if media_for_click.is_playing() {
+                        media_for_click.pause();
+                    } else {
+                        media_for_click.play();
+                    }
+                });
+                picture.add_controller(click);
+
+                self.content.append(&overlay);
+
+                if is_gif {
+                    media.set_loop(true);
+                    media.play();
+                    self.append_media_controls(
+                        &media,
+                        &super::theme::ThemeManager::shared(),
+                        &overlay.upcast(),
+                        &center_play,
+                        true,
+                    );
+                } else {
+                    let preferences = super::theme::ThemeManager::shared();
+                    let muted = preferences.preview_muted();
+                    let volume = if muted {
+                        0.0
+                    } else {
+                        preferences.preview_volume()
+                    };
+                    media.set_volume(volume);
+                    media.set_muted(muted);
+                    self.append_media_controls(
+                        &media,
+                        &preferences,
+                        &overlay.upcast(),
+                        &center_play,
+                        false,
+                    );
+                    media.play();
+                }
+
                 if let Some(error) = media.error() {
                     self.show_media_error(&error);
                 }
@@ -754,12 +887,233 @@ impl PreviewState {
         self.content.append(&scroll);
     }
 
+    fn append_media_controls(
+        self: &Rc<Self>,
+        media: &gtk::MediaFile,
+        preferences: &Rc<super::theme::ThemeManager>,
+        _video_area: &gtk::Widget,
+        center_play: &gtk::Button,
+        is_gif: bool,
+    ) {
+        let bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        bar.add_css_class("preview-media-bar");
+
+        let play_icon = crate::assets::primary_icon(crate::assets::icons::PLAY, 18);
+        let pause_icon = crate::assets::primary_icon(crate::assets::icons::PAUSE, 18);
+        let play_button = gtk::Button::new();
+        play_button.add_css_class("preview-media-button");
+        play_button.set_tooltip_text(Some("Play/Pause (Space)"));
+        play_button.set_child(Some(if media.is_playing() {
+            &pause_icon
+        } else {
+            &play_icon
+        }));
+        let media_for_play = media.clone();
+        play_button.connect_clicked(move |_| {
+            if media_for_play.is_playing() {
+                media_for_play.pause();
+            } else {
+                media_for_play.play();
+            }
+        });
+
+        bar.append(&play_button);
+
+        let play_button_for_notify = play_button.clone();
+        let play_icon_for_notify = play_icon.clone();
+        let pause_icon_for_notify = pause_icon.clone();
+        let center_for_notify = center_play.clone();
+        let media_for_playing = media.clone();
+        let handler = media.connect_notify_local(Some("playing"), move |_, _| {
+            let playing = media_for_playing.is_playing();
+            play_button_for_notify.set_child(Some(if playing {
+                &pause_icon_for_notify
+            } else {
+                &play_icon_for_notify
+            }));
+            center_for_notify.set_visible(!playing);
+        });
+        self.media_signals.borrow_mut().push(handler);
+
+        if is_gif {
+            self.content.append(&bar);
+            return;
+        }
+
+        let time_label = gtk::Label::new(Some("0:00 / 0:00"));
+        time_label.add_css_class("preview-media-time");
+        time_label.set_xalign(0.5);
+
+        let seek = gtk::Scale::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .hexpand(true)
+            .draw_value(false)
+            .build();
+        seek.add_css_class("preview-media-seek");
+        seek.set_range(0.0, 0.0);
+        seek.set_sensitive(false);
+
+        let volume_toggle = gtk::Button::new();
+        volume_toggle.add_css_class("preview-media-button");
+        volume_toggle.set_tooltip_text(Some("Mute/unmute (M)"));
+        let muted = preferences.preview_muted();
+        let volume_icon = crate::assets::primary_icon(
+            if muted {
+                crate::assets::icons::VOLUME_X
+            } else {
+                crate::assets::icons::VOLUME_2
+            },
+            16,
+        );
+        volume_toggle.set_child(Some(&volume_icon));
+
+        let volume_slider = gtk::Scale::builder()
+            .orientation(gtk::Orientation::Horizontal)
+            .draw_value(false)
+            .width_request(72)
+            .build();
+        volume_slider.add_css_class("preview-media-volume");
+        volume_slider.set_range(0.0, 1.0);
+        let initial_slider = if preferences.preview_muted() {
+            0.0
+        } else {
+            preferences.preview_volume()
+        };
+        volume_slider.set_value(initial_slider);
+
+        bar.append(&time_label);
+        bar.append(&seek);
+        bar.append(&volume_toggle);
+        bar.append(&volume_slider);
+        self.content.append(&bar);
+
+        self.media_volume_slider
+            .replace(Some(volume_slider.clone()));
+        self.media_volume_icon.replace(Some(volume_icon.clone()));
+
+        let seeking = Rc::new(Cell::new(false));
+        let update_time = {
+            let media = media.clone();
+            let time_label = time_label.clone();
+            let seek = seek.clone();
+            let seeking = seeking.clone();
+            move || sync_media_time(&media, &time_label, &seek, &seeking)
+        };
+        update_time();
+        let update_for_timestamp = update_time.clone();
+        let handler = media.connect_notify_local(Some("timestamp"), move |_, _| {
+            update_for_timestamp();
+        });
+        self.media_signals.borrow_mut().push(handler);
+        let update_for_duration = update_time.clone();
+        let handler = media.connect_notify_local(Some("duration"), move |_, _| {
+            update_for_duration();
+        });
+        self.media_signals.borrow_mut().push(handler);
+
+        let drag = gtk::GestureDrag::new();
+        let seeking_for_begin = seeking.clone();
+        drag.connect_drag_begin(move |_, _, _| {
+            seeking_for_begin.set(true);
+        });
+        let seeking_for_end = seeking.clone();
+        let media_for_drag_end = media.clone();
+        let seek_for_drag_end = seek.clone();
+        drag.connect_drag_end(move |_, _, _| {
+            seeking_for_end.set(false);
+            media_for_drag_end.seek(seek_for_drag_end.value() as i64);
+        });
+        seek.add_controller(drag);
+
+        let last_volume = Rc::new(Cell::new(preferences.preview_volume().max(0.1)));
+        let updating_slider = Rc::new(Cell::new(false));
+
+        let toggle_volume = Rc::new({
+            let media = media.clone();
+            let icon = volume_icon.clone();
+            let preferences = preferences.clone();
+            let slider = volume_slider.clone();
+            let last_volume = last_volume.clone();
+            let updating = updating_slider.clone();
+            move || {
+                let muted = !preferences.preview_muted();
+                updating.set(true);
+                if muted {
+                    if slider.value() > 0.0 {
+                        last_volume.set(slider.value());
+                    }
+                    media.set_volume(0.0);
+                    slider.set_value(0.0);
+                    set_preview_mute(&media, &icon, &preferences, true);
+                } else {
+                    let restored = last_volume.get().max(0.1);
+                    media.set_volume(restored);
+                    slider.set_value(restored);
+                    set_preview_mute(&media, &icon, &preferences, false);
+                }
+                updating.set(false);
+            }
+        });
+        let toggle_volume_for_click = toggle_volume.clone();
+        self.media_toggle_mute.replace(Some(toggle_volume));
+        volume_toggle.connect_clicked(move |_| {
+            toggle_volume_for_click();
+        });
+
+        let media_for_volume = media.clone();
+        let icon_for_volume = volume_icon.clone();
+        let preferences_for_volume = preferences.clone();
+        let last_volume_for_volume = last_volume.clone();
+        let updating_for_volume = updating_slider.clone();
+        let save_slot = self.media_volume_save.clone();
+        let preferences_for_save = preferences.clone();
+        volume_slider.connect_value_changed(move |scale| {
+            if updating_for_volume.get() {
+                return;
+            }
+            let volume = scale.value();
+            media_for_volume.set_volume(volume);
+            let muted = volume == 0.0;
+            if preferences_for_volume.preview_muted() != muted {
+                set_preview_mute(
+                    &media_for_volume,
+                    &icon_for_volume,
+                    &preferences_for_volume,
+                    muted,
+                );
+            }
+            if let Some(prev) = save_slot.borrow_mut().take() {
+                prev.remove();
+            }
+            if volume > 0.0 {
+                last_volume_for_volume.set(volume);
+                let save_slot_for_timeout = save_slot.clone();
+                let prefs = preferences_for_save.clone();
+                let id = glib::timeout_add_local_once(
+                    std::time::Duration::from_millis(400),
+                    move || {
+                        save_slot_for_timeout.borrow_mut().take();
+                        prefs.set_preview_volume(volume);
+                    },
+                );
+                save_slot.borrow_mut().replace(id);
+            }
+        });
+    }
+
     fn clear_content(&self) {
-        if let Some(video) = self.media.borrow_mut().take()
-            && let Some(stream) = video.media_stream()
-        {
+        if let Some(stream) = self.media.borrow_mut().take() {
+            for handler in self.media_signals.borrow_mut().drain(..) {
+                stream.disconnect(handler);
+            }
             stream.set_playing(false);
         }
+        if let Some(id) = self.media_volume_save.borrow_mut().take() {
+            id.remove();
+        }
+        self.media_toggle_mute.replace(None);
+        self.media_volume_slider.replace(None);
+        self.media_volume_icon.replace(None);
         clear_box(&self.content);
     }
 
@@ -1029,6 +1383,75 @@ fn format_file_size(bytes: u64) -> String {
     } else {
         format!("{value:.1} {}", UNITS[unit])
     }
+}
+
+fn set_preview_mute(
+    media: &impl IsA<gtk::MediaStream>,
+    icon: &gtk::Image,
+    preferences: &Rc<super::theme::ThemeManager>,
+    muted: bool,
+) {
+    media.set_muted(muted);
+    crate::assets::set_primary_icon(
+        icon,
+        if muted {
+            crate::assets::icons::VOLUME_X
+        } else {
+            crate::assets::icons::VOLUME_2
+        },
+    );
+    preferences.set_preview_muted(muted);
+}
+
+fn set_preview_volume(
+    media: &impl IsA<gtk::MediaStream>,
+    preferences: &Rc<super::theme::ThemeManager>,
+    slider: &Option<gtk::Scale>,
+    icon: &gtk::Image,
+    volume: f64,
+) {
+    media.set_volume(volume);
+    if volume > 0.0 {
+        preferences.set_preview_volume(volume);
+    }
+    if let Some(slider) = slider {
+        slider.set_value(volume);
+    }
+    let muted = volume == 0.0;
+    if preferences.preview_muted() != muted {
+        set_preview_mute(media, icon, preferences, muted);
+    }
+}
+
+fn sync_media_time(
+    media: &impl IsA<gtk::MediaStream>,
+    time_label: &gtk::Label,
+    seek: &gtk::Scale,
+    seeking: &Rc<Cell<bool>>,
+) {
+    let timestamp = media.timestamp();
+    let duration = media.duration();
+    let max = duration.max(timestamp) as f64;
+    let adjustment = seek.adjustment();
+    if adjustment.upper() != max {
+        adjustment.set_upper(max);
+        seek.set_sensitive(max > 0.0 && media.is_seekable());
+    }
+    if !seeking.get() {
+        seek.set_value(timestamp as f64);
+    }
+    time_label.set_text(&format_media_time(timestamp, duration));
+}
+
+fn format_media_time(timestamp_us: i64, duration_us: i64) -> String {
+    format!("{}/{}", fmt_time(timestamp_us), fmt_time(duration_us))
+}
+
+fn fmt_time(microseconds: i64) -> String {
+    let total_seconds = microseconds.max(0) / 1_000_000;
+    let minutes = total_seconds / 60;
+    let seconds = total_seconds % 60;
+    format!("{minutes}:{seconds:02}")
 }
 
 #[cfg(test)]

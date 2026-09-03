@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::collections::HashSet;
+use std::{cell::RefCell, collections::HashSet};
 
 use super::{
     Preferences, Theme, azure_tokens, blend, builtins, configured_hardware_acceleration,
     configured_video_preview_backend, is_omarchy_theme_event, merge_builtin_and_custom_themes,
-    slugify, sort_preferences, title_case_slug, tokens_from_quattro, validate_tokens,
+    notify_live, slugify, sort_preferences, title_case_slug, tokens_from_quattro, validate_tokens,
 };
 use crate::{
     model::{SortDirection, SortKey, ViewPreferences},
@@ -178,6 +178,12 @@ theme = "azure-glow"
     assert!(!preferences.reduce_motion);
     assert_eq!(preferences.browser_mode, "columns");
     assert_eq!(preferences.browser_density, "compact");
+    assert_eq!(preferences.list_file_clicks, 2);
+    assert_eq!(preferences.list_folder_clicks, 1);
+    assert_eq!(preferences.grid_file_clicks, 2);
+    assert_eq!(preferences.grid_folder_clicks, 2);
+    assert_eq!(preferences.explorer_file_clicks, 2);
+    assert_eq!(preferences.explorer_folder_clicks, 2);
     assert_eq!(sort_preferences(&preferences), ViewPreferences::default());
 }
 
@@ -244,6 +250,12 @@ fn general_preferences_round_trip() {
         single_click_previews: false,
         search_open_files_directly: true,
         reduce_motion: true,
+        list_file_clicks: 1,
+        list_folder_clicks: 2,
+        grid_file_clicks: 1,
+        grid_folder_clicks: 2,
+        explorer_file_clicks: 1,
+        explorer_folder_clicks: 2,
         ..Preferences::default()
     };
 
@@ -255,6 +267,42 @@ fn general_preferences_round_trip() {
     assert!(!restored.single_click_previews);
     assert!(restored.search_open_files_directly);
     assert!(restored.reduce_motion);
+    assert_eq!(restored.list_file_clicks, 1);
+    assert_eq!(restored.list_folder_clicks, 2);
+    assert_eq!(restored.grid_file_clicks, 1);
+    assert_eq!(restored.grid_folder_clicks, 2);
+    assert_eq!(restored.explorer_file_clicks, 1);
+    assert_eq!(restored.explorer_folder_clicks, 2);
+}
+
+#[test]
+fn preview_volume_preferences_round_trip() {
+    let preferences = Preferences {
+        preview_muted: true,
+        preview_volume: 0.3,
+        ..Preferences::default()
+    };
+
+    let serialized = toml::to_string(&preferences).expect("preferences should serialize");
+    let restored: Preferences =
+        toml::from_str(&serialized).expect("preferences should deserialize");
+
+    assert!(restored.preview_muted);
+    assert_eq!(restored.preview_volume, 0.3);
+}
+
+#[test]
+fn legacy_preferences_default_preview_unmuted_at_full_volume() {
+    let preferences: Preferences = toml::from_str(
+        r#"
+mode = "theme"
+theme = "azure-glow"
+"#,
+    )
+    .expect("legacy preferences should remain valid");
+
+    assert!(!preferences.preview_muted);
+    assert_eq!(preferences.preview_volume, 1.0);
 }
 
 #[test]
@@ -370,4 +418,66 @@ fn video_preview_backends_round_trip_and_invalid_values_fall_back() {
         configured_video_preview_backend(&invalid),
         MediaPreviewBackend::Automatic
     );
+}
+
+#[test]
+fn sidebar_order_defaults_to_the_canonical_place_list() {
+    let preferences = Preferences::default();
+    assert_eq!(
+        preferences.sidebar_order,
+        ["desktop", "documents", "downloads", "pictures", "videos"]
+    );
+}
+
+#[test]
+fn sidebar_order_round_trips_through_toml() {
+    let preferences = Preferences {
+        sidebar_order: vec!["videos".to_owned(), "desktop".to_owned()],
+        ..Preferences::default()
+    };
+    let serialized = toml::to_string(&preferences).expect("preferences should serialize");
+    let restored: Preferences =
+        toml::from_str(&serialized).expect("preferences should deserialize");
+    assert_eq!(restored.sidebar_order, ["videos", "desktop"]);
+}
+
+#[test]
+fn legacy_preferences_without_sidebar_order_default_to_the_canonical_list() {
+    let preferences: Preferences = toml::from_str(
+        r#"
+mode = "theme"
+theme = "azure-glow"
+"#,
+    )
+    .expect("legacy preferences without sidebar_order should remain valid");
+    assert_eq!(
+        preferences.sidebar_order,
+        ["desktop", "documents", "downloads", "pictures", "videos"]
+    );
+}
+
+#[test]
+fn a_channel_change_reaches_only_the_views_that_still_exist() {
+    let ran = RefCell::new(Vec::new());
+    let live = notify_live(
+        vec![(1, true), (2, false), (3, true)],
+        |(_, alive)| *alive,
+        |(id, _)| ran.borrow_mut().push(*id),
+    );
+
+    assert_eq!(ran.into_inner(), vec![1, 3]);
+    assert_eq!(live, vec![(1, true), (3, true)]);
+}
+
+#[test]
+fn a_channel_change_with_no_surviving_views_clears_the_registry() {
+    let ran = RefCell::new(0_u32);
+    let live = notify_live(
+        vec![(1, false)],
+        |(_, alive)| *alive,
+        |_| *ran.borrow_mut() += 1,
+    );
+
+    assert_eq!(ran.into_inner(), 0);
+    assert!(live.is_empty());
 }

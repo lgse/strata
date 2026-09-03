@@ -25,12 +25,32 @@ mod tests;
 use super::{
     blur::BlurBin,
     browser::{BrowserView, dismiss_modal_layer, modal_layer},
+    browser_modes::{BrowserMode, ClickActivation, ClickCount},
     controls::{form_entry, menu_option, modal_layout, segmented_control},
     theme::{Theme, ThemeManager, ThemeTokens},
 };
 
 type ThemeCards = Rc<RefCell<Vec<(String, gtk::Button, gtk::Image)>>>;
 pub(super) type UpdateNoticeHandler = Rc<dyn Fn(Option<(ReleaseMetadata, String, UpdateMethod)>)>;
+
+struct UpdateCheckRow {
+    row: gtk::Box,
+    run_check: Rc<dyn Fn(bool)>,
+    responsive_action: (gtk::Box, gtk::Button),
+    install_underway: Rc<dyn Fn() -> bool>,
+}
+
+struct ResponsiveContent {
+    flows: Vec<(gtk::FlowBox, u32)>,
+    actions: Vec<(gtk::Box, gtk::Button)>,
+    setting_rows: Vec<gtk::Box>,
+    activation_rows: Vec<ResponsiveActivationRow>,
+}
+
+pub struct ResponsiveActivationRow {
+    row: gtk::Box,
+    options: Vec<gtk::Box>,
+}
 
 /// Shared "an install is running" guard across the update row and update
 /// dialog, the two places [`services::install_update`] is called. Without one
@@ -82,6 +102,8 @@ mod responsive_bin {
         pub navigation_contents: RefCell<Vec<gtk::Box>>,
         pub responsive_flows: RefCell<Vec<(gtk::FlowBox, u32)>>,
         pub responsive_actions: RefCell<Vec<(gtk::Box, gtk::Button)>>,
+        pub responsive_setting_rows: RefCell<Vec<gtk::Box>>,
+        pub responsive_activation_rows: RefCell<Vec<ResponsiveActivationRow>>,
     }
 
     #[glib::object_subclass]
@@ -147,6 +169,35 @@ mod responsive_bin {
                     });
                     action.set_halign(gtk::Align::Fill);
                 }
+                for row in self.responsive_setting_rows.borrow().iter() {
+                    row.set_orientation(if compact {
+                        gtk::Orientation::Vertical
+                    } else {
+                        gtk::Orientation::Horizontal
+                    });
+                    row.set_spacing(if compact { 8 } else { 16 });
+                }
+                for responsive_row in self.responsive_activation_rows.borrow().iter() {
+                    responsive_row.row.set_orientation(if compact {
+                        gtk::Orientation::Vertical
+                    } else {
+                        gtk::Orientation::Horizontal
+                    });
+                    responsive_row.row.set_spacing(if compact { 4 } else { 12 });
+                    for option in &responsive_row.options {
+                        option.set_orientation(if compact {
+                            gtk::Orientation::Vertical
+                        } else {
+                            gtk::Orientation::Horizontal
+                        });
+                        option.set_spacing(if compact { 2 } else { 6 });
+                    }
+                    if compact {
+                        responsive_row.row.add_css_class("compact");
+                    } else {
+                        responsive_row.row.remove_css_class("compact");
+                    }
+                }
             }
             let x = ((width - child_width) / 2) as f32;
             let y = ((height - child_height) / 2) as f32;
@@ -169,8 +220,7 @@ impl ResponsiveBin {
         navigation_heading: &gtk::Label,
         navigation_labels: Vec<gtk::Label>,
         navigation_contents: Vec<gtk::Box>,
-        responsive_flows: Vec<(gtk::FlowBox, u32)>,
-        responsive_actions: Vec<(gtk::Box, gtk::Button)>,
+        responsive: ResponsiveContent,
     ) -> Self {
         let bin: Self = glib::Object::new();
         let imp = bin.imp();
@@ -179,8 +229,11 @@ impl ResponsiveBin {
             .replace(Some(navigation_heading.clone()));
         imp.navigation_labels.replace(navigation_labels);
         imp.navigation_contents.replace(navigation_contents);
-        imp.responsive_flows.replace(responsive_flows);
-        imp.responsive_actions.replace(responsive_actions);
+        imp.responsive_flows.replace(responsive.flows);
+        imp.responsive_actions.replace(responsive.actions);
+        imp.responsive_setting_rows.replace(responsive.setting_rows);
+        imp.responsive_activation_rows
+            .replace(responsive.activation_rows);
         child.set_parent(&bin);
         bin
     }
@@ -254,7 +307,9 @@ pub fn build_layer(
         .hexpand(true)
         .vexpand(true)
         .build();
-    stack.add_named(&general_page(browser, themes.clone()), Some("general"));
+    let (general, responsive_setting_rows, responsive_activation_rows) =
+        general_page(browser, themes.clone());
+    stack.add_named(&general, Some("general"));
     let (updates, responsive_actions) = updates_page(themes.clone(), update_notice, install_guard);
     stack.add_named(&updates, Some("updates"));
     stack.add_named(&keybindings_page(), Some("keybindings"));
@@ -307,8 +362,12 @@ pub fn build_layer(
         &navigation_heading,
         navigation_labels,
         navigation_contents,
-        responsive_flows,
-        responsive_actions,
+        ResponsiveContent {
+            flows: responsive_flows,
+            actions: responsive_actions,
+            setting_rows: responsive_setting_rows,
+            activation_rows: responsive_activation_rows,
+        },
     );
     responsive_panel.set_hexpand(false);
     responsive_panel.set_vexpand(false);
@@ -387,7 +446,10 @@ fn hide(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin) {
     });
 }
 
-fn general_page(browser: &BrowserView, manager: Rc<ThemeManager>) -> gtk::Widget {
+fn general_page(
+    browser: &BrowserView,
+    manager: Rc<ThemeManager>,
+) -> (gtk::Widget, Vec<gtk::Box>, Vec<ResponsiveActivationRow>) {
     let preferences = page_content();
     append_heading(&preferences, "BROWSING");
     let peeking_enabled = manager.folder_peeking();
@@ -499,12 +561,53 @@ fn general_page(browser: &BrowserView, manager: Rc<ThemeManager>) -> gtk::Widget
         "Disable nonessential interface animations.",
         manager.reduce_motion(),
     );
+    let manager_for_motion = manager.clone();
     reduce_motion.connect_active_notify(move |toggle| {
-        manager.set_reduce_motion(toggle.is_active());
+        manager_for_motion.set_reduce_motion(toggle.is_active());
     });
     preferences.append(&motion_row);
 
-    scrollable_page(&preferences, None)
+    append_heading(&preferences, "CLICK ACTIVATION");
+    let activation_options = gtk::Box::new(gtk::Orientation::Vertical, 4);
+    let mut responsive_activation_rows = Vec::new();
+    activation_options.add_css_class("settings-option");
+    activation_options.add_css_class("click-activation-options");
+    for (label, mode) in [
+        ("List", BrowserMode::Columns),
+        ("Grid", BrowserMode::Grid),
+        ("Explorer", BrowserMode::Explorer),
+    ] {
+        let activation = manager.click_activation(mode);
+        browser.set_click_activation(mode, activation);
+        let (row, options, file_buttons, folder_buttons) =
+            click_activation_option(label, activation);
+        let update = Rc::new({
+            let browser = browser.clone();
+            let manager = manager.clone();
+            move |files, folders| {
+                let activation = ClickActivation { files, folders };
+                browser.set_click_activation(mode, activation);
+                manager.set_click_activation(mode, activation);
+            }
+        });
+        connect_click_activation_buttons(&file_buttons, &folder_buttons, update.clone());
+        connect_click_activation_buttons(
+            &folder_buttons,
+            &file_buttons,
+            Rc::new(move |folders, files| {
+                update(files, folders);
+            }),
+        );
+        activation_options.append(&row);
+        responsive_activation_rows.push(ResponsiveActivationRow { row, options });
+    }
+    preferences.append(&activation_options);
+
+    (
+        scrollable_page(&preferences, None),
+        vec![video_row],
+        responsive_activation_rows,
+    )
 }
 
 fn updates_page(
@@ -520,7 +623,12 @@ fn updates_page(
         "Check for updates to see the latest release notes.",
     );
     let update_method = services::update_method();
-    let (update_row, run_check, responsive_action) = update_check_row(
+    let UpdateCheckRow {
+        row: update_row,
+        run_check,
+        responsive_action,
+        install_underway,
+    } = update_check_row(
         manager.clone(),
         update_notice.clone(),
         available_notes.clone(),
@@ -531,12 +639,20 @@ fn updates_page(
     let auto_check_enabled = manager.checks_for_updates();
     let (auto_check_row, auto_check) = settings_option(
         "Automatically check for updates",
-        "Check GitHub for a newer release when Strata starts.",
+        match update_method {
+            UpdateMethod::InPlace => "Check GitHub for a newer release when Strata starts.",
+            UpdateMethod::Omarchy => {
+                "Check the Omarchy package repository for a newer release when Strata starts."
+            }
+            UpdateMethod::Pacman => {
+                "Check the configured package repositories for a newer release when Strata starts."
+            }
+        },
         auto_check_enabled,
     );
     preferences.append(&auto_check_row);
 
-    let channel_row = channel_option(manager.clone(), run_check.clone());
+    let (channel_row, sync_channel_selection) = channel_option(manager.clone());
     channel_row.set_sensitive(auto_check_enabled);
     channel_row.set_visible(!update_method.is_package_managed());
     preferences.append(&channel_row);
@@ -560,25 +676,33 @@ fn updates_page(
         manager_for_updates.set_checks_for_updates(enabled);
         channel_row.set_sensitive(enabled);
         if enabled {
-            toggled_check();
+            toggled_check(false);
         } else {
             update_notice(None);
         }
     });
     if auto_check_enabled {
-        run_check();
+        run_check(false);
     }
 
-    (scrollable_page(&preferences, None), vec![responsive_action])
+    let page = scrollable_page(&preferences, None);
+    let broadcast_check = run_check.clone();
+    manager.on_release_channel_changed(
+        &page,
+        Rc::new(move || {
+            sync_channel_selection();
+            if !install_underway() {
+                broadcast_check(false);
+            }
+        }),
+    );
+    (page, vec![responsive_action])
 }
 
 const RELEASE_CHANNEL_TITLE: &str = "Release channel";
 const RELEASE_CHANNEL_DESCRIPTION: &str = "Preview receives alpha, beta, and release-candidate builds. Nightly also receives daily development builds.";
 
-/// A three-way release-channel selector. Changing it persists immediately and
-/// starts a fresh check, so an offer from the previously selected channel is
-/// superseded without waiting for the next automatic check.
-fn channel_option(manager: Rc<ThemeManager>, run_check: Rc<dyn Fn()>) -> gtk::Box {
+fn channel_option(manager: Rc<ThemeManager>) -> (gtk::Box, Rc<dyn Fn()>) {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 12);
     row.add_css_class("settings-option");
 
@@ -594,28 +718,48 @@ fn channel_option(manager: Rc<ThemeManager>, run_check: Rc<dyn Fn()>) -> gtk::Bo
     copy.append(&description);
     row.append(&copy);
 
-    let selected = match manager.release_channel() {
-        Channel::Stable => 0,
-        Channel::Preview => 1,
-        Channel::Nightly => 2,
-    };
-    let (control, buttons) = segmented_control(&["Stable", "Preview", "Nightly"], selected);
-    for (button, channel) in
-        buttons
-            .into_iter()
-            .zip([Channel::Stable, Channel::Preview, Channel::Nightly])
-    {
+    let (control, buttons) = segmented_control(
+        &["Stable", "Preview", "Nightly"],
+        channel_index(manager.release_channel()),
+    );
+    let weak_buttons: Vec<glib::WeakRef<gtk::ToggleButton>> =
+        buttons.iter().map(|button| button.downgrade()).collect();
+    for (button, channel) in buttons.into_iter().zip(CHANNEL_ORDER) {
         let manager = manager.clone();
-        let run_check = run_check.clone();
         button.connect_active_notify(move |button| {
             if button.is_active() {
                 manager.set_release_channel(channel);
-                run_check();
             }
         });
     }
     row.append(&control);
-    row
+
+    let sync = {
+        let manager = manager.clone();
+        Rc::new(move || {
+            let Some(button) = weak_buttons
+                .get(channel_index(manager.release_channel()))
+                .and_then(glib::WeakRef::upgrade)
+            else {
+                return;
+            };
+            if !button.is_active() {
+                button.set_active(true);
+            }
+        }) as Rc<dyn Fn()>
+    };
+
+    (row, sync)
+}
+
+const CHANNEL_ORDER: [Channel; 3] = [Channel::Stable, Channel::Preview, Channel::Nightly];
+
+fn channel_index(channel: Channel) -> usize {
+    match channel {
+        Channel::Stable => 0,
+        Channel::Preview => 1,
+        Channel::Nightly => 2,
+    }
 }
 
 fn release_notes_label() -> gtk::Label {
@@ -867,7 +1011,7 @@ fn update_check_row(
     available_notes: ReleaseNotesCard,
     install_guard: InstallGuard,
     update_method: UpdateMethod,
-) -> (gtk::Box, Rc<dyn Fn()>, (gtk::Box, gtk::Button)) {
+) -> UpdateCheckRow {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
     row.add_css_class("settings-option");
     let summary = gtk::Box::new(gtk::Orientation::Horizontal, 16);
@@ -910,6 +1054,12 @@ fn update_check_row(
     let pending_download = Rc::new(RefCell::new(None::<PendingInstall>));
     // Set once an install finishes, so the next click restarts instead of re-checking.
     let installed = Rc::new(Cell::new(false));
+    let installing = Rc::new(Cell::new(false));
+    let install_underway: Rc<dyn Fn() -> bool> = Rc::new({
+        let installed = installed.clone();
+        let installing = installing.clone();
+        move || installed.get() || installing.get()
+    });
     let managed_update_available = Rc::new(Cell::new(false));
     // The generation of the most recently started check. Each call to
     // `run_check` captures the next value and compares against this when its
@@ -920,7 +1070,7 @@ fn update_check_row(
     // `is_stale_check` exists to prevent. See its doc comment.
     let generation = Rc::new(Cell::new(0_u64));
 
-    let run_check: Rc<dyn Fn()> = Rc::new({
+    let run_check: Rc<dyn Fn(bool)> = Rc::new({
         let checking = checking.clone();
         let generation = generation.clone();
         let status = status.clone();
@@ -932,7 +1082,7 @@ fn update_check_row(
         let progress = progress.clone();
         let available_notes = available_notes.clone();
         let manager = manager.clone();
-        move || {
+        move |force: bool| {
             // Always start a fresh check rather than dropping it: a channel
             // toggle must never be silently ignored just because a previous
             // check (for the old channel) is still in flight. The stale
@@ -961,8 +1111,12 @@ fn update_check_row(
             // mid-session channel toggle must be reflected by the very next
             // check, including this one if it was triggered by that toggle.
             let channel = effective_update_channel(manager.release_channel(), update_method);
-            let receiver =
-                services::check_for_updates(channel, crate::build_info::installed_version());
+            let receiver = services::check_for_updates(
+                channel,
+                crate::build_info::installed_version(),
+                update_method,
+                force,
+            );
             let checking = checking.clone();
             let generation = generation.clone();
             let status = status.clone();
@@ -1083,7 +1237,7 @@ fn update_check_row(
                 // installing a prerelease the user has since opted out of;
                 // `clicked_check` clears the sidebar notice and relabels the
                 // button on its way.
-                clicked_check();
+                clicked_check(true);
                 return;
             }
             let PendingInstall {
@@ -1094,6 +1248,7 @@ fn update_check_row(
             if checking.replace(true) {
                 return;
             }
+            installing.set(true);
             status.set_text(if returns_to_stable {
                 "Downloading stable release…"
             } else {
@@ -1109,6 +1264,7 @@ fn update_check_row(
             let status_for_installed = status.clone();
             let button_for_installed = button.clone();
             let installed_for_installed = installed.clone();
+            let installing_for_failed = installing.clone();
             let checking_for_failed = checking.clone();
             let status_for_failed = status.clone();
             let button_for_failed = button.clone();
@@ -1140,6 +1296,7 @@ fn update_check_row(
                     button_for_failed.set_label("Check now");
                     button_for_failed.set_sensitive(true);
                     checking_for_failed.set(false);
+                    installing_for_failed.set(false);
                 },
             );
             if let Err(request) = started {
@@ -1156,6 +1313,7 @@ fn update_check_row(
                 });
                 button.set_sensitive(true);
                 checking.set(false);
+                installing.set(false);
                 *pending_download.borrow_mut() = Some(PendingInstall {
                     kind: offered_kind,
                     returns_to_stable,
@@ -1163,10 +1321,15 @@ fn update_check_row(
                 });
             }
         } else {
-            clicked_check();
+            clicked_check(true);
         }
     });
-    (row, run_check, (summary, button))
+    UpdateCheckRow {
+        row,
+        run_check,
+        responsive_action: (summary, button),
+        install_underway,
+    }
 }
 
 /// The three non-terminal states [`drive_install`] reports through
@@ -1489,6 +1652,32 @@ pub(super) fn show_update_dialog(
     // the current channel, which turns the action button into a plain Close.
     let withdrawn = Rc::new(Cell::new(false));
     let offered_kind = release.kind;
+    let withdraw: Rc<dyn Fn()> = Rc::new({
+        let withdrawn = withdrawn.clone();
+        let status = status.clone();
+        let action = action.clone();
+        move || {
+            withdrawn.set(true);
+            status.set_text(
+                "This build is no longer offered on your update channel — check for updates again.",
+            );
+            action.set_label("Close");
+        }
+    });
+    ThemeManager::shared().on_release_channel_changed(&layer, {
+        let withdraw = withdraw.clone();
+        let withdrawn = withdrawn.clone();
+        let started = started.clone();
+        let installed = installed.clone();
+        Rc::new(move || {
+            if started.get() || installed.get() || withdrawn.get() {
+                return;
+            }
+            if !offer_still_eligible(ThemeManager::shared().release_channel(), offered_kind) {
+                withdraw();
+            }
+        })
+    });
     let action_layer = layer.clone();
     let action_overlay = window_overlay.clone();
     let action_root = blurred_root.clone();
@@ -1526,11 +1715,7 @@ pub(super) fn show_update_dialog(
         // another window. `withdrawn` rather than `started` so Cancel and
         // Escape keep dismissing normally.
         if !offer_still_eligible(ThemeManager::shared().release_channel(), offered_kind) {
-            withdrawn.set(true);
-            status.set_text(
-                "This build is no longer offered on your update channel — check for updates again.",
-            );
-            button.set_label("Close");
+            withdraw();
             return;
         }
         if started.replace(true) {
@@ -2397,6 +2582,71 @@ fn page_content() -> gtk::Box {
     content
 }
 
+fn click_activation_option(
+    mode: &str,
+    activation: ClickActivation,
+) -> (
+    gtk::Box,
+    Vec<gtk::Box>,
+    Vec<gtk::ToggleButton>,
+    Vec<gtk::ToggleButton>,
+) {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    row.add_css_class("click-activation-row");
+    let title = gtk::Label::new(Some(mode));
+    title.set_xalign(0.0);
+    title.set_width_chars(8);
+    title.add_css_class("settings-option-title");
+    row.append(&title);
+
+    let selected = |count| usize::from(count == ClickCount::Two);
+    let (file_control, file_buttons) =
+        segmented_control(&["1 click", "2 clicks"], selected(activation.files));
+    let (folder_control, folder_buttons) =
+        segmented_control(&["1 click", "2 clicks"], selected(activation.folders));
+    let mut options = Vec::new();
+    for (label, control) in [("Files", &file_control), ("Folders", &folder_control)] {
+        let option = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        option.set_hexpand(true);
+        let label = gtk::Label::new(Some(label));
+        label.set_xalign(0.0);
+        label.set_width_chars(7);
+        label.add_css_class("settings-option-description");
+        control.set_hexpand(true);
+        control.add_css_class("click-activation-control");
+        option.append(&label);
+        option.append(control);
+        row.append(&option);
+        options.push(option);
+    }
+    (row, options, file_buttons, folder_buttons)
+}
+
+fn connect_click_activation_buttons(
+    buttons: &[gtk::ToggleButton],
+    other_buttons: &[gtk::ToggleButton],
+    update: Rc<dyn Fn(ClickCount, ClickCount)>,
+) {
+    for button in buttons {
+        let buttons = buttons.to_vec();
+        let other_buttons = other_buttons.to_vec();
+        let update = update.clone();
+        button.connect_toggled(move |button| {
+            if !button.is_active() {
+                return;
+            }
+            let selected = |buttons: &[gtk::ToggleButton]| {
+                if buttons.get(1).is_some_and(gtk::ToggleButton::is_active) {
+                    ClickCount::Two
+                } else {
+                    ClickCount::One
+                }
+            };
+            update(selected(&buttons), selected(&other_buttons));
+        });
+    }
+}
+
 fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, gtk::Switch) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     row.add_css_class("settings-option");
@@ -2405,6 +2655,8 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
     copy.set_valign(gtk::Align::Center);
     let title_label = gtk::Label::new(Some(title));
     title_label.set_xalign(0.0);
+    title_label.set_wrap(true);
+    title_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     title_label.add_css_class("settings-option-title");
     let description_label = gtk::Label::new(Some(description));
     description_label.set_xalign(0.0);
@@ -2491,8 +2743,11 @@ fn video_preview_option(
         });
     }
     toggle.set_sensitive(toggle_sensitive);
-    row.append(&backend);
-    row.append(&toggle);
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    controls.set_valign(gtk::Align::Center);
+    controls.append(&backend);
+    controls.append(&toggle);
+    row.append(&controls);
     (row, toggle, backend)
 }
 

@@ -59,46 +59,9 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
 
 Arch Linux and Omarchy are the primary supported environments. Current binaries require **glibc 2.39 or newer** and the runtime libraries listed below.
 
-### Omarchy
-
-Install Strata from the Omarchy Package Repository:
-
-```bash
-omarchy pkg add strata
-```
-
-> [!TIP]
-> **Optional integrations**
->
-> Video and standard image thumbnails work with the required packages installed alongside Strata. For SMB network shares and the broadest camera RAW preview support, add the optional integrations:
->
-> ```bash
-> omarchy pkg add gvfs-smb imagemagick libraw dcraw
-> ```
-
-Omarchy keeps this installation current through `omarchy update`. Strata still checks for stable releases and shows their notes, but detects that its executable is package-owned, hides the in-app release-channel selector, and does not replace it with the in-app updater. When an update is available, **Open Omarchy Update** launches the interactive updater in your configured terminal.
-
-#### Switch a manual installation to OPR
-
-Close Strata, install the OPR package, and remove the per-user executable and desktop metadata that would otherwise take precedence over the package:
-
-```bash
-omarchy pkg add strata
-rm -f ~/.local/bin/strata \
-  ~/.local/share/applications/io.github.lgse.Strata.desktop \
-  ~/.local/share/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg
-update-desktop-database ~/.local/share/applications 2>/dev/null || true
-gtk-update-icon-cache -qtf ~/.local/share/icons/hicolor 2>/dev/null || true
-hash -r
-command -v strata
-pacman -Qo "$(command -v strata)"
-```
-
-The final commands should identify `/usr/bin/strata` as package-owned. Preferences and custom themes remain in place.
-
 ### AI-assisted installation
 
-Use this option for supported systems other than Omarchy, where the OPR package above is not available.
+Use this option to have a coding agent install and verify the latest release archive.
 
 Give this prompt to a coding agent with terminal access:
 
@@ -132,7 +95,7 @@ Then:
 
 ### Manual release installation
 
-Use the release archive when the Omarchy package is not available or a per-user installation is preferred.
+Install the release archive directly to receive stable releases as soon as they are published and to select any available release channel.
 
 #### 1. Check the architecture and install dependencies
 
@@ -151,8 +114,8 @@ On Arch Linux or Omarchy:
 ```bash
 sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
   gst-libav gst-plugins-good gtk4 gtksourceview5 poppler-glib
-# Optional SMB support:
-sudo pacman -S --needed gvfs-smb
+# Optional SMB and broader camera RAW support:
+sudo pacman -S --needed gvfs-smb imagemagick libraw dcraw
 ```
 
 GTK **4.12 or newer** and glibc **2.39 or newer** are required. Other glibc-based distributions may work when they provide equivalent runtime libraries, but their package names and binary compatibility vary. Systems with an older glibc must [build Strata from source](#development-and-documentation).

@@ -22,6 +22,37 @@ thread_local! {
     static SHARED_MANAGER: RefCell<std::rc::Weak<ThemeManager>> = const { RefCell::new(std::rc::Weak::new()) };
     static SOURCE_STYLE_PATH_INSTALLED: Cell<bool> = const { Cell::new(false) };
     static SOURCE_BUFFERS: RefCell<Vec<glib::WeakRef<sourceview5::Buffer>>> = const { RefCell::new(Vec::new()) };
+    static CHANNEL_LISTENERS: RefCell<Vec<ChannelListener>> = const { RefCell::new(Vec::new()) };
+}
+
+struct ChannelListener {
+    anchor: glib::WeakRef<gtk::Widget>,
+    refresh: Rc<dyn Fn()>,
+}
+
+fn notify_release_channel_changed() {
+    let taken = CHANNEL_LISTENERS.with(|listeners| std::mem::take(&mut *listeners.borrow_mut()));
+    let mut live = notify_live(
+        taken,
+        |listener| listener.anchor.upgrade().is_some(),
+        |listener| (listener.refresh)(),
+    );
+    CHANNEL_LISTENERS.with(|listeners| {
+        let mut listeners = listeners.borrow_mut();
+        live.extend(listeners.drain(..));
+        *listeners = live;
+    });
+}
+
+fn notify_live<T>(listeners: Vec<T>, is_live: impl Fn(&T) -> bool, run: impl Fn(&T)) -> Vec<T> {
+    let live: Vec<T> = listeners
+        .into_iter()
+        .filter(|entry| is_live(entry))
+        .collect();
+    for entry in &live {
+        run(entry);
+    }
+    live
 }
 
 const THEME_CATALOG: &str = include_str!("../../data/themes/catalog.toml");
@@ -80,6 +111,20 @@ struct Preferences {
     browser_mode: String,
     #[serde(default = "default_browser_density")]
     browser_density: String,
+    #[serde(default = "default_file_clicks")]
+    list_file_clicks: u8,
+    #[serde(default = "default_folder_clicks")]
+    list_folder_clicks: u8,
+    #[serde(default = "default_file_clicks")]
+    grid_file_clicks: u8,
+    #[serde(default = "default_double_clicks")]
+    grid_folder_clicks: u8,
+    #[serde(default = "default_file_clicks")]
+    explorer_file_clicks: u8,
+    #[serde(default = "default_double_clicks")]
+    explorer_folder_clicks: u8,
+    #[serde(default = "default_sidebar_order")]
+    sidebar_order: Vec<String>,
     #[serde(default)]
     show_hidden: bool,
     #[serde(default = "default_enabled")]
@@ -90,6 +135,10 @@ struct Preferences {
     sort_direction: String,
     #[serde(default = "default_enabled")]
     check_for_updates: bool,
+    #[serde(default)]
+    preview_muted: bool,
+    #[serde(default = "default_full_volume")]
+    preview_volume: f64,
     #[serde(default)]
     auto_refresh_interval: u32,
     #[serde(default = "default_release_channel")]
@@ -109,11 +158,20 @@ impl Default for Preferences {
             reduce_motion: false,
             browser_mode: default_browser_mode(),
             browser_density: default_browser_density(),
+            list_file_clicks: default_file_clicks(),
+            list_folder_clicks: default_folder_clicks(),
+            grid_file_clicks: default_file_clicks(),
+            grid_folder_clicks: default_double_clicks(),
+            explorer_file_clicks: default_file_clicks(),
+            explorer_folder_clicks: default_double_clicks(),
+            sidebar_order: default_sidebar_order(),
             show_hidden: false,
             folders_first: true,
             sort_key: default_sort_key(),
             sort_direction: default_sort_direction(),
             check_for_updates: true,
+            preview_muted: false,
+            preview_volume: default_full_volume(),
             auto_refresh_interval: 0,
             release_channel: default_release_channel(),
         }
@@ -140,12 +198,38 @@ fn default_browser_density() -> String {
     "compact".to_owned()
 }
 
+fn default_file_clicks() -> u8 {
+    2
+}
+
+fn default_folder_clicks() -> u8 {
+    1
+}
+
+fn default_double_clicks() -> u8 {
+    2
+}
+
+fn default_sidebar_order() -> Vec<String> {
+    vec![
+        "desktop".to_owned(),
+        "documents".to_owned(),
+        "downloads".to_owned(),
+        "pictures".to_owned(),
+        "videos".to_owned(),
+    ]
+}
+
 fn default_sort_key() -> String {
     "name".to_owned()
 }
 
 fn default_sort_direction() -> String {
     "ascending".to_owned()
+}
+
+fn default_full_volume() -> f64 {
+    1.0
 }
 
 pub struct ThemeManager {
@@ -298,6 +382,24 @@ impl ThemeManager {
         self.save_preferences();
     }
 
+    pub fn preview_muted(&self) -> bool {
+        self.preferences.borrow().preview_muted
+    }
+
+    pub fn set_preview_muted(&self, muted: bool) {
+        self.preferences.borrow_mut().preview_muted = muted;
+        self.save_preferences();
+    }
+
+    pub fn preview_volume(&self) -> f64 {
+        self.preferences.borrow().preview_volume
+    }
+
+    pub fn set_preview_volume(&self, volume: f64) {
+        self.preferences.borrow_mut().preview_volume = volume.clamp(0.0, 1.0);
+        self.save_preferences();
+    }
+
     pub fn auto_refresh_interval(&self) -> u32 {
         self.preferences.borrow().auto_refresh_interval
     }
@@ -312,10 +414,28 @@ impl ThemeManager {
     }
 
     pub fn set_release_channel(&self, channel: Channel) {
+        if self.release_channel() == channel {
+            return;
+        }
         self.preferences.borrow_mut().release_channel = channel.as_str().to_owned();
         self.save_preferences();
+        notify_release_channel_changed();
     }
 
+    pub fn on_release_channel_changed(
+        &self,
+        anchor: &impl IsA<gtk::Widget>,
+        refresh: Rc<dyn Fn()>,
+    ) {
+        let weak = glib::WeakRef::new();
+        weak.set(Some(anchor.as_ref()));
+        CHANNEL_LISTENERS.with(|listeners| {
+            listeners.borrow_mut().push(ChannelListener {
+                anchor: weak,
+                refresh,
+            });
+        });
+    }
     pub fn browser_mode(&self) -> super::browser_modes::BrowserMode {
         match self.preferences.borrow().browser_mode.as_str() {
             "grid" => super::browser_modes::BrowserMode::Grid,
@@ -347,6 +467,65 @@ impl ThemeManager {
             super::browser_modes::BrowserDensity::Airy => "airy",
         }
         .to_owned();
+        self.save_preferences();
+    }
+
+    pub fn click_activation(
+        &self,
+        mode: super::browser_modes::BrowserMode,
+    ) -> super::browser_modes::ClickActivation {
+        use super::browser_modes::{BrowserMode, ClickActivation, ClickCount};
+
+        let preferences = self.preferences.borrow();
+        let (files, folders) = match mode {
+            BrowserMode::Columns => (preferences.list_file_clicks, preferences.list_folder_clicks),
+            BrowserMode::Grid => (preferences.grid_file_clicks, preferences.grid_folder_clicks),
+            BrowserMode::Explorer => (
+                preferences.explorer_file_clicks,
+                preferences.explorer_folder_clicks,
+            ),
+        };
+        let defaults = ClickActivation::default_for(mode);
+        ClickActivation {
+            files: ClickCount::from_stored(files).unwrap_or(defaults.files),
+            folders: ClickCount::from_stored(folders).unwrap_or(defaults.folders),
+        }
+    }
+
+    pub fn set_click_activation(
+        &self,
+        mode: super::browser_modes::BrowserMode,
+        activation: super::browser_modes::ClickActivation,
+    ) {
+        use super::browser_modes::BrowserMode;
+
+        let mut preferences = self.preferences.borrow_mut();
+        let files = activation.files.stored();
+        let folders = activation.folders.stored();
+        match mode {
+            BrowserMode::Columns => {
+                preferences.list_file_clicks = files;
+                preferences.list_folder_clicks = folders;
+            }
+            BrowserMode::Grid => {
+                preferences.grid_file_clicks = files;
+                preferences.grid_folder_clicks = folders;
+            }
+            BrowserMode::Explorer => {
+                preferences.explorer_file_clicks = files;
+                preferences.explorer_folder_clicks = folders;
+            }
+        }
+        drop(preferences);
+        self.save_preferences();
+    }
+
+    pub fn sidebar_order(&self) -> Vec<String> {
+        self.preferences.borrow().sidebar_order.clone()
+    }
+
+    pub fn set_sidebar_order(&self, order: Vec<String>) {
+        self.preferences.borrow_mut().sidebar_order = order;
         self.save_preferences();
     }
 

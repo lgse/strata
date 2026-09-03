@@ -5,12 +5,12 @@ use std::rc::Rc;
 use crate::services::{BuildKind, Channel, ReleaseMetadata, UpdateCheck, UpdateMethod, Version};
 
 use super::{
-    COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
-    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, effective_update_channel, install_guard,
-    installed_version_status, is_stale_check, offer_still_eligible, omarchy_update_command,
-    responsive_dialog_size, shows_available_release_notes, theme_background_is_light,
-    theme_name_matches, update_check_message, uses_compact_navigation, video_preview_backend_label,
-    video_preview_control_state,
+    CHANNEL_ORDER, COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
+    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, channel_index, effective_update_channel,
+    install_guard, installed_version_status, is_stale_check, offer_still_eligible,
+    omarchy_update_command, responsive_dialog_size, shows_available_release_notes,
+    theme_background_is_light, theme_name_matches, update_check_message, uses_compact_navigation,
+    video_preview_backend_label, video_preview_control_state,
 };
 use crate::sandbox::MediaPreviewBackend;
 
@@ -245,4 +245,11 @@ fn every_window_installs_behind_one_process_wide_guard() {
         "an install started in one window must be visible in every other"
     );
     first.set(false);
+}
+
+#[test]
+fn the_selector_highlights_the_button_for_the_persisted_channel() {
+    for (index, channel) in CHANNEL_ORDER.into_iter().enumerate() {
+        assert_eq!(channel_index(channel), index);
+    }
 }

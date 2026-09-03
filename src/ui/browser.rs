@@ -28,7 +28,7 @@ use crate::{
 
 use super::{
     blur::BlurBin,
-    browser_modes::{BrowserDensity, BrowserMode, ModeViews},
+    browser_modes::{BrowserDensity, BrowserMode, ClickActivation, ClickCount, ModeViews},
     controls::{
         ModalTone, form_check_button, form_entry, form_label, form_password_entry, menu_option,
         message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
@@ -77,6 +77,8 @@ struct ColumnView {
     new_entry_row: gtk::Box,
     new_entry_icon: gtk::Image,
     new_entry_entry: gtk::Entry,
+    show_hidden: Rc<Cell<bool>>,
+    filter: gtk::CustomFilter,
 }
 
 struct ActiveRename {
@@ -286,6 +288,7 @@ pub(super) struct ViewState {
     peek_behavior: PeekBehavior,
     peek_enabled: Cell<bool>,
     single_click_previews: Cell<bool>,
+    columns_click_activation: Cell<ClickActivation>,
     active_rename: RefCell<Option<ActiveRename>>,
     active_new_entry: RefCell<Option<ActiveNewEntry>>,
     delete_progress: RefCell<Option<DeleteProgressView>>,
@@ -433,6 +436,7 @@ impl BrowserView {
             peek_behavior,
             peek_enabled: Cell::new(true),
             single_click_previews: Cell::new(true),
+            columns_click_activation: Cell::new(ClickActivation::default()),
             active_rename: RefCell::new(None),
             active_new_entry: RefCell::new(None),
             delete_progress: RefCell::new(None),
@@ -788,6 +792,17 @@ impl BrowserView {
             .mode_views
             .borrow()
             .set_single_click_previews(enabled);
+    }
+
+    pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {
+        if mode == BrowserMode::Columns {
+            self.state.columns_click_activation.set(activation);
+        } else {
+            self.state
+                .mode_views
+                .borrow()
+                .set_click_activation(mode, activation);
+        }
     }
 
     pub fn create_new_folder(&self) {
@@ -3654,6 +3669,13 @@ impl ViewState {
                     column.presentation.show_loading();
                 }
             }
+            BrowserEvent::HiddenToggled { show_hidden } => {
+                for column in self.columns.borrow().iter() {
+                    column.show_hidden.set(show_hidden);
+                    column.filter.changed(gtk::FilterChange::Different);
+                }
+                self.mode_views.borrow().set_show_hidden(show_hidden);
+            }
             BrowserEvent::LoadFinished { depth, truncated } => {
                 if let Some(column) = self.columns.borrow().get(depth) {
                     if column.selection.model().is_none() {
@@ -4099,17 +4121,12 @@ impl ViewState {
         let entry_count = Rc::new(Cell::new(0));
         let model = gtk::StringList::new(&[]);
         let filter_query = Rc::new(RefCell::new(String::new()));
-        let query = filter_query.clone();
-        let filter = gtk::CustomFilter::new(move |item| {
-            let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
-                return false;
-            };
-            let query = query.borrow();
-            query.is_empty()
-                || model_display_name(&item.string())
-                    .to_lowercase()
-                    .contains(query.as_str())
-        });
+        let initial_show_hidden = self
+            .browser
+            .column_preferences(depth)
+            .map_or_else(|| self.browser.preferences().show_hidden, |p| p.show_hidden);
+        let show_hidden = Rc::new(Cell::new(initial_show_hidden));
+        let filter = entry_filter(show_hidden.clone(), filter_query.clone());
         let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
         let selection = gtk::MultiSelection::new(Some(filtered_model.clone()));
         let syncing_selection = Rc::new(Cell::new(false));
@@ -4120,6 +4137,7 @@ impl ViewState {
         let filtered_for_selection = filtered_model.clone();
         let syncing_selection_changed = syncing_selection.clone();
         let focused_filtered_changed = focused_filtered.clone();
+        let filter_for_column = filter.clone();
         selection.connect_selection_changed(move |selection, position, count| {
             if syncing_selection_changed.get() {
                 return;
@@ -4388,16 +4406,28 @@ impl ViewState {
                 if let (Some(state), Some(source_position)) =
                     (weak_state_for_click.upgrade(), source_position)
                 {
-                    // GtkListView owns double-click activation through its `activate`
-                    // signal. This gesture only handles selection and single-click previews;
-                    // activating here as well would open files twice.
-                    if should_preview_pointer_press(press_count, control, shift, preserve_group) {
-                        let entry = state.browser.entry_at(depth, source_position);
-                        if entry.as_ref().is_some_and(|entry| {
-                            entry_responds_to_single_click(entry, state.single_click_previews.get())
-                        }) {
-                            state.browser.preview(depth, source_position);
-                        }
+                    let entry = state.browser.entry_at(depth, source_position);
+                    if entry.as_ref().is_some_and(|entry| {
+                        should_activate_single_click(
+                            press_count,
+                            entry.is_directory(),
+                            state.columns_click_activation.get(),
+                            control,
+                            shift,
+                            preserve_group,
+                        )
+                    }) {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        state.browser.activate(depth, source_position);
+                    } else if should_preview_pointer_press(
+                        press_count,
+                        control,
+                        shift,
+                        preserve_group,
+                    ) && entry.as_ref().is_some_and(|entry| {
+                        entry_responds_to_preview_click(entry, state.single_click_previews.get())
+                    }) {
+                        state.browser.preview(depth, source_position);
                     }
                 }
             });
@@ -4738,6 +4768,8 @@ impl ViewState {
             new_entry_row,
             new_entry_icon,
             new_entry_entry,
+            show_hidden,
+            filter: filter_for_column,
         });
 
         self.refresh_active_path_rows();
@@ -5654,8 +5686,8 @@ pub(super) fn install_item_context_menu(
     widget.add_controller(click);
 }
 
-fn entry_responds_to_single_click(entry: &FileEntry, previews_enabled: bool) -> bool {
-    entry.is_directory() || (previews_enabled && entry_supports_quick_preview(entry))
+fn entry_responds_to_preview_click(entry: &FileEntry, previews_enabled: bool) -> bool {
+    previews_enabled && !entry.is_directory() && entry_supports_quick_preview(entry)
 }
 
 pub(super) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
@@ -6471,6 +6503,22 @@ fn set_location_files_clipboard(locations: &[Location]) -> bool {
     })
 }
 
+fn should_activate_single_click(
+    press_count: i32,
+    is_directory: bool,
+    activation: ClickActivation,
+    control: bool,
+    shift: bool,
+    preserve_group: bool,
+) -> bool {
+    let configured = if is_directory {
+        activation.folders
+    } else {
+        activation.files
+    };
+    press_count == 1 && configured == ClickCount::One && !control && !shift && !preserve_group
+}
+
 fn should_preview_pointer_press(
     press_count: i32,
     control: bool,
@@ -6873,7 +6921,7 @@ pub(super) fn rename_stem_end(name: &str) -> i32 {
     name[..end].chars().count().min(i32::MAX as usize) as i32
 }
 
-fn entry_model_value(entry: &FileEntry) -> String {
+pub(super) fn entry_model_value(entry: &FileEntry) -> String {
     let kind = if entry.is_broken_symbolic_link() {
         'x'
     } else if entry.is_directory() {
@@ -6883,7 +6931,8 @@ fn entry_model_value(entry: &FileEntry) -> String {
     } else {
         'f'
     };
-    format!("{kind}\t{}", entry.display_name)
+    let hidden = if entry.is_hidden { 'h' } else { 'v' };
+    format!("{kind}{hidden}\t{}", entry.display_name)
 }
 
 fn model_display_name(value: &str) -> &str {
@@ -6891,7 +6940,31 @@ fn model_display_name(value: &str) -> &str {
 }
 
 fn model_is_directory(value: &str) -> bool {
-    value.starts_with("d\t")
+    value.starts_with("d")
+}
+
+pub(super) fn model_is_hidden(value: &str) -> bool {
+    value.as_bytes().get(1) == Some(&b'h')
+}
+
+pub(super) fn entry_filter(
+    show_hidden: Rc<Cell<bool>>,
+    filter_query: Rc<RefCell<String>>,
+) -> gtk::CustomFilter {
+    gtk::CustomFilter::new(move |item| {
+        let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
+            return false;
+        };
+        let value = item.string();
+        if !show_hidden.get() && model_is_hidden(&value) {
+            return false;
+        }
+        let query = filter_query.borrow();
+        query.is_empty()
+            || model_display_name(&value)
+                .to_lowercase()
+                .contains(query.as_str())
+    })
 }
 
 pub(super) fn entry_icon(entry: &FileEntry) -> &'static str {

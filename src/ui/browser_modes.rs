@@ -60,6 +60,53 @@ pub enum BrowserDensity {
     Airy,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ClickCount {
+    One,
+    Two,
+}
+
+impl ClickCount {
+    pub fn from_stored(value: u8) -> Option<Self> {
+        match value {
+            1 => Some(Self::One),
+            2 => Some(Self::Two),
+            _ => None,
+        }
+    }
+
+    pub fn stored(self) -> u8 {
+        match self {
+            Self::One => 1,
+            Self::Two => 2,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ClickActivation {
+    pub files: ClickCount,
+    pub folders: ClickCount,
+}
+
+impl ClickActivation {
+    pub fn default_for(mode: BrowserMode) -> Self {
+        Self {
+            files: ClickCount::Two,
+            folders: match mode {
+                BrowserMode::Columns => ClickCount::One,
+                BrowserMode::Grid | BrowserMode::Explorer => ClickCount::Two,
+            },
+        }
+    }
+}
+
+impl Default for ClickActivation {
+    fn default() -> Self {
+        Self::default_for(BrowserMode::Columns)
+    }
+}
+
 struct ActiveModeRename {
     field: gtk::Entry,
     label: gtk::Label,
@@ -100,6 +147,8 @@ struct Pane {
     empty_trash_button: Option<gtk::Button>,
     new_entry_placeholder: Option<gtk::StringList>,
     new_entry_is_directory: Option<Rc<Cell<bool>>>,
+    show_hidden: Rc<Cell<bool>>,
+    filter: gtk::CustomFilter,
 }
 
 pub struct ModeViews {
@@ -110,6 +159,8 @@ pub struct ModeViews {
     explorer_pane: Option<Pane>,
     browser: Rc<Browser>,
     single_click_previews: Rc<Cell<bool>>,
+    grid_click_activation: Rc<Cell<ClickActivation>>,
+    explorer_click_activation: Rc<Cell<ClickActivation>>,
     transfer_handler: TransferHandlerSlot,
     cut_locations: Rc<RefCell<HashSet<Location>>>,
     context_state: RefCell<Option<Weak<super::browser::ViewState>>>,
@@ -168,6 +219,12 @@ impl ModeViews {
             explorer_pane: None,
             browser,
             single_click_previews: Rc::new(Cell::new(true)),
+            grid_click_activation: Rc::new(Cell::new(ClickActivation::default_for(
+                BrowserMode::Grid,
+            ))),
+            explorer_click_activation: Rc::new(Cell::new(ClickActivation::default_for(
+                BrowserMode::Explorer,
+            ))),
             transfer_handler: Rc::new(RefCell::new(None)),
             cut_locations: Rc::new(RefCell::new(HashSet::new())),
             context_state: RefCell::new(None),
@@ -181,6 +238,13 @@ impl ModeViews {
 
     pub fn widget(&self) -> gtk::Stack {
         self.stack.clone()
+    }
+
+    pub fn set_show_hidden(&self, show_hidden: bool) {
+        for pane in self.all_panes() {
+            pane.show_hidden.set(show_hidden);
+            pane.filter.changed(gtk::FilterChange::Different);
+        }
     }
 
     pub fn mode(&self) -> BrowserMode {
@@ -455,6 +519,14 @@ impl ModeViews {
         self.single_click_previews.set(enabled);
     }
 
+    pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {
+        match mode {
+            BrowserMode::Columns => {}
+            BrowserMode::Grid => self.grid_click_activation.set(activation),
+            BrowserMode::Explorer => self.explorer_click_activation.set(activation),
+        }
+    }
+
     pub fn set_transfer_handler(&self, handler: TransferHandler) {
         self.transfer_handler.replace(Some(handler));
     }
@@ -516,7 +588,10 @@ impl ModeViews {
                 self.grid_panes.clear();
                 let pane = build_grid_pane(
                     self.browser.clone(),
-                    self.single_click_previews.clone(),
+                    ModeClickOptions {
+                        previews: self.single_click_previews.clone(),
+                        activation: self.grid_click_activation.clone(),
+                    },
                     self.transfer_handler.clone(),
                     self.cut_locations.clone(),
                     GridOptions {
@@ -535,7 +610,10 @@ impl ModeViews {
                 clear_box(&self.explorer_root);
                 let pane = build_explorer_pane(
                     self.browser.clone(),
-                    self.single_click_previews.clone(),
+                    ModeClickOptions {
+                        previews: self.single_click_previews.clone(),
+                        activation: self.explorer_click_activation.clone(),
+                    },
                     self.transfer_handler.clone(),
                     self.cut_locations.clone(),
                     self.active_new_entry.clone(),
@@ -549,12 +627,13 @@ impl ModeViews {
             BrowserEvent::EntriesInserted { depth, insertions } => {
                 for pane in self.panes_at(*depth) {
                     for insertion in insertions {
-                        let values: Vec<_> = insertion
+                        let values: Vec<String> = insertion
                             .entries
                             .iter()
-                            .map(|entry| entry.display_name.as_str())
+                            .map(super::browser::entry_model_value)
                             .collect();
-                        pane.model.splice(insertion.position as u32, 0, &values);
+                        let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
+                        pane.model.splice(insertion.position as u32, 0, &values_ref);
                     }
                     if !pane.spinner.is_spinning() {
                         show_count(pane);
@@ -583,13 +662,17 @@ impl ModeViews {
             BrowserEvent::EntriesSpliced { depth, splices, .. } => {
                 for pane in self.panes_at(*depth) {
                     for splice in splices {
-                        let values: Vec<_> = splice
+                        let values: Vec<String> = splice
                             .entries
                             .iter()
-                            .map(|entry| entry.display_name.as_str())
+                            .map(super::browser::entry_model_value)
                             .collect();
-                        pane.model
-                            .splice(splice.position as u32, splice.removed as u32, &values);
+                        let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
+                        pane.model.splice(
+                            splice.position as u32,
+                            splice.removed as u32,
+                            &values_ref,
+                        );
                     }
                     show_count(pane);
                 }
@@ -681,6 +764,13 @@ impl ModeViews {
         }
     }
 
+    fn all_panes(&self) -> Vec<&Pane> {
+        self.grid_panes
+            .iter()
+            .chain(self.explorer_pane.as_ref())
+            .collect()
+    }
+
     fn panes_at(&self, depth: usize) -> Vec<&Pane> {
         match self.mode {
             BrowserMode::Columns => Vec::new(),
@@ -755,7 +845,10 @@ impl ModeViews {
         self.grid_panes.clear();
         let pane = build_grid_pane(
             self.browser.clone(),
-            self.single_click_previews.clone(),
+            ModeClickOptions {
+                previews: self.single_click_previews.clone(),
+                activation: self.grid_click_activation.clone(),
+            },
             self.transfer_handler.clone(),
             self.cut_locations.clone(),
             GridOptions {
@@ -783,7 +876,10 @@ impl ModeViews {
         clear_box(&self.explorer_root);
         let pane = build_explorer_pane(
             self.browser.clone(),
-            self.single_click_previews.clone(),
+            ModeClickOptions {
+                previews: self.single_click_previews.clone(),
+                activation: self.explorer_click_activation.clone(),
+            },
             self.transfer_handler.clone(),
             self.cut_locations.clone(),
             self.active_new_entry.clone(),
@@ -809,6 +905,12 @@ struct GridOptions {
     peek_state: Option<Weak<super::browser::ViewState>>,
     thumbnail_size: Rc<Cell<i32>>,
     active_new_entry: Rc<RefCell<Option<ActiveModeNewEntry>>>,
+}
+
+#[derive(Clone)]
+struct ModeClickOptions {
+    previews: Rc<Cell<bool>>,
+    activation: Rc<Cell<ClickActivation>>,
 }
 
 fn submit_mode_new_entry(
@@ -989,7 +1091,7 @@ fn grid_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> Gr
 
 fn build_grid_pane(
     browser: Rc<Browser>,
-    single_click_previews: Rc<Cell<bool>>,
+    click_options: ModeClickOptions,
     transfer_handler: TransferHandlerSlot,
     cut_locations: Rc<RefCell<HashSet<Location>>>,
     options: GridOptions,
@@ -1010,15 +1112,13 @@ fn build_grid_pane(
     }
     content.append(&controls.filter_revealer);
     let filter_query = Rc::new(RefCell::new(String::new()));
-    let query = filter_query.clone();
-    let filter = gtk::CustomFilter::new(move |item| {
-        let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
-            return false;
-        };
-        let query = query.borrow();
-        query.is_empty() || item.string().to_lowercase().contains(query.as_str())
-    });
+    let initial_show_hidden = browser
+        .column_preferences(depth)
+        .map_or_else(|| browser.preferences().show_hidden, |p| p.show_hidden);
+    let show_hidden = Rc::new(Cell::new(initial_show_hidden));
+    let filter = super::browser::entry_filter(show_hidden.clone(), filter_query.clone());
     let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
+    let filter_for_pane = filter.clone();
     let new_entry_placeholder = gtk::StringList::new(&[]);
     let new_entry_is_directory = Rc::new(Cell::new(true));
     let flattened_models = gio::ListStore::new::<gio::ListModel>();
@@ -1037,7 +1137,8 @@ fn build_grid_pane(
     let selection_for_setup = selection.clone();
     let selection_anchor = Rc::new(Cell::new(None::<u32>));
     let browser_for_setup = Rc::downgrade(&browser);
-    let previews_for_setup = single_click_previews.clone();
+    let previews_for_setup = click_options.previews;
+    let activation_for_setup = click_options.activation;
     let source_for_setup = model.clone();
     let filtered_for_setup = view_model.clone().upcast::<gio::ListModel>();
     let transfers_for_setup = transfer_handler.clone();
@@ -1111,6 +1212,7 @@ fn build_grid_pane(
             item,
             browser_for_setup.clone(),
             previews_for_setup.clone(),
+            activation_for_setup.clone(),
             depth,
             Some((source_for_setup.clone(), filtered_for_setup.clone())),
         );
@@ -1294,6 +1396,8 @@ fn build_grid_pane(
         empty_trash_button: controls.empty_trash_button,
         new_entry_placeholder: Some(new_entry_placeholder),
         new_entry_is_directory: Some(new_entry_is_directory),
+        show_hidden,
+        filter: filter_for_pane,
     }
 }
 
@@ -1598,7 +1702,7 @@ fn explorer_navigation(browser: &Rc<Browser>) -> gtk::Box {
 
 fn build_explorer_pane(
     browser: Rc<Browser>,
-    single_click_previews: Rc<Cell<bool>>,
+    click_options: ModeClickOptions,
     transfer_handler: TransferHandlerSlot,
     cut_locations: Rc<RefCell<HashSet<Location>>>,
     active_new_entry: Rc<RefCell<Option<ActiveModeNewEntry>>>,
@@ -1630,15 +1734,13 @@ fn build_explorer_pane(
     }
     content.append(&filter_revealer);
     let filter_query = Rc::new(RefCell::new(String::new()));
-    let query = filter_query.clone();
-    let filter = gtk::CustomFilter::new(move |item| {
-        let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
-            return false;
-        };
-        let query = query.borrow();
-        query.is_empty() || item.string().to_lowercase().contains(query.as_str())
-    });
+    let initial_show_hidden = browser
+        .column_preferences(depth)
+        .map_or_else(|| browser.preferences().show_hidden, |p| p.show_hidden);
+    let show_hidden = Rc::new(Cell::new(initial_show_hidden));
+    let filter = super::browser::entry_filter(show_hidden.clone(), filter_query.clone());
     let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
+    let filter_for_pane = filter.clone();
     filter_entry.connect_changed(move |entry| {
         *filter_query.borrow_mut() = entry.text().to_lowercase();
         filter.changed(gtk::FilterChange::Different);
@@ -1662,7 +1764,8 @@ fn build_explorer_pane(
     let selection_for_setup = selection.clone();
     let selection_anchor = Rc::new(Cell::new(None::<u32>));
     let browser_for_setup = Rc::downgrade(&browser);
-    let previews_for_setup = single_click_previews.clone();
+    let previews_for_setup = click_options.previews;
+    let activation_for_setup = click_options.activation;
     let transfers_for_setup = transfer_handler.clone();
     let active_for_setup = active_new_entry.clone();
     let source_for_setup = model.clone();
@@ -1743,6 +1846,7 @@ fn build_explorer_pane(
             item,
             browser_for_setup.clone(),
             previews_for_setup.clone(),
+            activation_for_setup.clone(),
             depth,
             Some((source_for_setup.clone(), view_model_for_setup.clone())),
         );
@@ -1838,9 +1942,8 @@ fn build_explorer_pane(
     let view = gtk::ListView::new(Some(selection.clone()), Some(factory));
     view.add_css_class("explorer-list");
     view.set_enable_rubberband(false);
-    // GTK's single-click activation also selects rows on hover, which replaces any
-    // multi-selection as soon as the pointer crosses a row. Explorer activates on a
-    // double click instead, matching the grid and column views.
+    // GTK bundles single-click activation with hover selection, which collapses
+    // multi-selection. Per-row gestures honor the configured click behavior instead.
     view.set_single_click_activate(false);
     let weak_browser = Rc::downgrade(&browser);
     let source_for_activation = model.clone();
@@ -1910,6 +2013,8 @@ fn build_explorer_pane(
         empty_trash_button: is_trash.then_some(empty_trash),
         new_entry_placeholder: Some(new_entry_placeholder),
         new_entry_is_directory: Some(new_entry_is_directory),
+        show_hidden,
+        filter: filter_for_pane,
     }
 }
 
@@ -2335,6 +2440,7 @@ fn install_preview_click(
     item: &gtk::ListItem,
     browser: Weak<Browser>,
     enabled: Rc<Cell<bool>>,
+    click_activation: Rc<Cell<ClickActivation>>,
     depth: usize,
     position_map: Option<(gtk::StringList, gio::ListModel)>,
 ) {
@@ -2342,9 +2448,6 @@ fn install_preview_click(
     click.set_button(1);
     let item = item.clone();
     click.connect_released(move |gesture, press_count, _, _| {
-        if press_count != 1 || !enabled.get() {
-            return;
-        }
         let modifiers = gesture.current_event_state();
         if modifiers
             .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
@@ -2369,11 +2472,32 @@ fn install_preview_click(
         let Some(entry) = browser.entry_at(depth, position) else {
             return;
         };
-        if !entry.is_directory() && super::browser::entry_supports_quick_preview(&entry) {
+        if should_activate_pointer_click(press_count, entry.is_directory(), click_activation.get())
+        {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+            browser.activate_in_place(depth, position);
+        } else if press_count == 1
+            && enabled.get()
+            && !entry.is_directory()
+            && super::browser::entry_supports_quick_preview(&entry)
+        {
             browser.preview(depth, position);
         }
     });
     widget.add_controller(click);
+}
+
+fn should_activate_pointer_click(
+    press_count: i32,
+    is_directory: bool,
+    activation: ClickActivation,
+) -> bool {
+    let configured = if is_directory {
+        activation.folders
+    } else {
+        activation.files
+    };
+    press_count == 1 && configured == ClickCount::One
 }
 
 fn connect_selection(
@@ -2437,11 +2561,12 @@ fn refresh_cut_pane(pane: &Pane, browser: &Browser, cuts: &[Location]) {
 }
 
 fn replace_entries(pane: &Pane, entries: &[FileEntry]) {
-    let values: Vec<_> = entries
+    let values: Vec<String> = entries
         .iter()
-        .map(|entry| entry.display_name.as_str())
+        .map(super::browser::entry_model_value)
         .collect();
-    pane.model.splice(0, pane.model.n_items(), &values);
+    let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
+    pane.model.splice(0, pane.model.n_items(), &values_ref);
     show_count(pane);
 }
 
