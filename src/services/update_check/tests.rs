@@ -493,7 +493,7 @@ fn a_cached_release_round_trips_every_field() {
 }
 
 #[test]
-fn a_cached_release_with_an_unparseable_tag_is_dropped() {
+fn a_cached_release_with_an_unparsable_tag_is_dropped() {
     let mut cached = to_cached_release(&release_summary("v0.8.0"));
     cached.tag = "not-a-version".to_owned();
     assert!(from_cached_release(&cached).is_none());
