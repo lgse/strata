@@ -22,7 +22,7 @@ use crate::{
         ArchiveFormat, FileSource, LoadHandle, LocationValidationError, OperationProvider,
         PasteItem, PreviewContent, SearchEvent, TransferConflict, UriCredentials,
         backend_unavailable_message, content_family, has_plain_text_extension, index_tree,
-        sanitize_uri_credentials, validate_basename,
+        is_extensionless_dotfile, sanitize_uri_credentials, validate_basename,
     },
 };
 
@@ -5702,6 +5702,7 @@ pub(super) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
     !matches!(content_family(&content_type), PreviewContent::Unsupported)
         || gio::content_type_is_a(&content_type, "text/plain")
         || has_plain_text_extension(&entry.native_name)
+        || is_extensionless_dotfile(&entry.native_name)
 }
 
 struct TrashSummary {

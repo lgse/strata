@@ -21,7 +21,10 @@ pub use operations::{
 pub use preview::{
     Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,
 };
-pub(crate) use preview::{content_family, has_plain_text_extension};
+pub(crate) use preview::{
+    content_family, has_plain_text_extension, is_extensionless_dotfile,
+    is_non_executable_extensionless_dotfile,
+};
 // `best_update`, `rollback_target`, and `ReleaseSummary` are deliberately not
 // re-exported here: `rollback_target` is the never-downgrade bypass, and only
 // `update_check` (which imports them directly from `release_channel`) has any

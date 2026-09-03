@@ -268,6 +268,10 @@ fn quick_preview_is_offered_only_for_supported_files() {
         "notes.txt",
         crate::model::EntryKind::FileSymbolicLink,
     )));
+    assert!(entry_supports_quick_preview(&entry(
+        ".steampath",
+        crate::model::EntryKind::File,
+    )));
     assert!(!entry_supports_quick_preview(&entry(
         "archive.zip",
         crate::model::EntryKind::File,
