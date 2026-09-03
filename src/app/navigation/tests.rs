@@ -24,6 +24,7 @@ fn named_entry(path: &str, name: &str) -> FileEntry {
         kind: EntryKind::Directory,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
     }
 }
 

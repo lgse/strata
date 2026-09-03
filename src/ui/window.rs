@@ -251,6 +251,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
                 kind: EntryKind::File,
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
             });
         }
     });

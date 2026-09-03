@@ -73,6 +73,9 @@ pub enum BrowserEvent {
     ColumnReloaded {
         depth: usize,
     },
+    HiddenToggled {
+        show_hidden: bool,
+    },
     LoadFinished {
         depth: usize,
         truncated: bool,
@@ -479,7 +482,6 @@ impl Browser {
                 id: request_id,
                 location,
                 batch_size: 128,
-                include_hidden: self.preferences.get().show_hidden,
                 max_entries: PEEK_MAX_ENTRIES,
                 time_budget: PEEK_TIME_BUDGET,
             },
@@ -568,22 +570,12 @@ impl Browser {
         self.preferences.set(preferences);
         self.notify_preferences_observers();
 
-        let locations = {
-            let mut state = self.state.borrow_mut();
-            state.set_show_hidden(preferences.show_hidden);
-            state
-                .columns
-                .iter()
-                .map(|column| column.location.clone())
-                .collect::<Vec<_>>()
-        };
-        for (depth, location) in locations.into_iter().enumerate() {
-            self.refresh_column(depth);
-            let monitor = self.install_monitor(depth, location);
-            if let Some(slot) = self.monitors.borrow_mut().get_mut(depth) {
-                *slot = monitor;
-            }
-        }
+        self.state
+            .borrow_mut()
+            .set_show_hidden(preferences.show_hidden);
+        self.emit(BrowserEvent::HiddenToggled {
+            show_hidden: preferences.show_hidden,
+        });
     }
 
     fn apply_column_preferences(
@@ -1431,7 +1423,6 @@ impl Browser {
                 id: request_id,
                 location,
                 batch_size: 128,
-                include_hidden: self.preferences.get().show_hidden,
                 max_entries: MAX_DIRECTORY_ENTRIES,
                 time_budget: DIRECTORY_LOAD_TIME_BUDGET,
             },

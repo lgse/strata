@@ -11,6 +11,7 @@ fn terminal_shortcut_prefers_one_selected_directory() {
         kind,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
     };
     let directory = entry("selected", crate::model::EntryKind::Directory);
     let file = entry("notes.txt", crate::model::EntryKind::File);
@@ -183,6 +184,7 @@ fn delete_confirmation_labels_distinguish_files_and_folders() {
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Known(10),
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
     };
     let mut folder = file.clone();
     folder.kind = crate::model::EntryKind::Directory;
@@ -255,6 +257,7 @@ fn quick_preview_is_offered_only_for_supported_files() {
         kind,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
     };
 
     assert!(entry_supports_quick_preview(&entry(
@@ -356,6 +359,7 @@ fn multi_selection_summary_lists_at_most_three_names() {
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
     };
 
     assert_eq!(

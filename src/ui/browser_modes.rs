@@ -96,6 +96,8 @@ struct Pane {
     empty_trash_button: Option<gtk::Button>,
     new_entry_placeholder: Option<gtk::StringList>,
     new_entry_is_directory: Option<Rc<Cell<bool>>>,
+    show_hidden: Rc<Cell<bool>>,
+    filter: gtk::CustomFilter,
 }
 
 pub struct ModeViews {
@@ -177,6 +179,13 @@ impl ModeViews {
 
     pub fn widget(&self) -> gtk::Stack {
         self.stack.clone()
+    }
+
+    pub fn set_show_hidden(&self, show_hidden: bool) {
+        for pane in self.all_panes() {
+            pane.show_hidden.set(show_hidden);
+            pane.filter.changed(gtk::FilterChange::Different);
+        }
     }
 
     pub fn mode(&self) -> BrowserMode {
@@ -666,6 +675,13 @@ impl ModeViews {
         }
     }
 
+    fn all_panes(&self) -> Vec<&Pane> {
+        self.grid_panes
+            .iter()
+            .chain(self.explorer_pane.as_ref())
+            .collect()
+    }
+
     fn panes_at(&self, depth: usize) -> Vec<&Pane> {
         match self.mode {
             BrowserMode::Columns => Vec::new(),
@@ -994,15 +1010,10 @@ fn build_grid_pane(
     }
     content.append(&controls.filter_revealer);
     let filter_query = Rc::new(RefCell::new(String::new()));
-    let query = filter_query.clone();
-    let filter = gtk::CustomFilter::new(move |item| {
-        let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
-            return false;
-        };
-        let query = query.borrow();
-        query.is_empty() || item.string().to_lowercase().contains(query.as_str())
-    });
+    let show_hidden = Rc::new(Cell::new(false));
+    let filter = super::browser::entry_filter(show_hidden.clone(), filter_query.clone());
     let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
+    let filter_for_pane = filter.clone();
     let new_entry_placeholder = gtk::StringList::new(&[]);
     let new_entry_is_directory = Rc::new(Cell::new(true));
     let flattened_models = gio::ListStore::new::<gio::ListModel>();
@@ -1275,6 +1286,8 @@ fn build_grid_pane(
         empty_trash_button: controls.empty_trash_button,
         new_entry_placeholder: Some(new_entry_placeholder),
         new_entry_is_directory: Some(new_entry_is_directory),
+        show_hidden,
+        filter: filter_for_pane,
     }
 }
 
@@ -1591,15 +1604,10 @@ fn build_explorer_pane(
     }
     content.append(&filter_revealer);
     let filter_query = Rc::new(RefCell::new(String::new()));
-    let query = filter_query.clone();
-    let filter = gtk::CustomFilter::new(move |item| {
-        let Some(item) = item.downcast_ref::<gtk::StringObject>() else {
-            return false;
-        };
-        let query = query.borrow();
-        query.is_empty() || item.string().to_lowercase().contains(query.as_str())
-    });
+    let show_hidden = Rc::new(Cell::new(false));
+    let filter = super::browser::entry_filter(show_hidden.clone(), filter_query.clone());
     let filtered_model = gtk::FilterListModel::new(Some(model.clone()), Some(filter.clone()));
+    let filter_for_pane = filter.clone();
     filter_entry.connect_changed(move |entry| {
         *filter_query.borrow_mut() = entry.text().to_lowercase();
         filter.changed(gtk::FilterChange::Different);
@@ -1864,6 +1872,8 @@ fn build_explorer_pane(
         empty_trash_button: is_trash.then_some(empty_trash),
         new_entry_placeholder: Some(new_entry_placeholder),
         new_entry_is_directory: Some(new_entry_is_directory),
+        show_hidden,
+        filter: filter_for_pane,
     }
 }
 
