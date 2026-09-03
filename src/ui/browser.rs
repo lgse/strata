@@ -7809,6 +7809,9 @@ fn mount_error_is_authentication_failure(location: &Location, error: &glib::Erro
     if location.uri_value().is_none() {
         return false;
     }
+    if mount_error_is_host_key_rejection(error) {
+        return false;
+    }
     if error.matches(gio::IOErrorEnum::PermissionDenied) {
         return true;
     }
@@ -7819,8 +7822,26 @@ fn mount_error_is_authentication_failure(location: &Location, error: &glib::Erro
     [
         "permission denied",
         "authentication failed",
+        "authentication required",
+        "auth fail",
         "logon failure",
         "invalid credentials",
+        "too many authentication failures",
+    ]
+    .iter()
+    .any(|reason| message.contains(reason))
+}
+
+/// Host-key problems reach us as generic failures whose message is the only
+/// signal. They must not be replayed as rejected credentials, or declining a
+/// key would immediately reopen the sign-in prompt.
+fn mount_error_is_host_key_rejection(error: &glib::Error) -> bool {
+    let message = error.message().to_ascii_lowercase();
+    [
+        "host key",
+        "host identification",
+        "fingerprint",
+        "known_hosts",
     ]
     .iter()
     .any(|reason| message.contains(reason))
@@ -7842,7 +7863,80 @@ fn mount_failure_message(location: &Location, error: &glib::Error) -> Option<Str
             location.uri_value().unwrap_or_default(),
         ));
     }
-    Some(error.to_string())
+    if mount_error_is_host_key_rejection(error) {
+        return Some(
+            "The remote computer’s host key could not be verified, so the connection was \
+             refused. Confirm the new key with whoever runs the server and remove the stale \
+             entry from your known_hosts file before trying again."
+                .to_owned(),
+        );
+    }
+    if let Some(message) = transport_failure_message(error) {
+        return Some(message);
+    }
+    Some(sanitize_failure_message(&error.to_string()))
+}
+
+/// Turns the transport failures a remote mount can hit into guidance the user
+/// can act on, instead of the backend's own terse wording.
+fn transport_failure_message(error: &glib::Error) -> Option<String> {
+    if error.matches(gio::IOErrorEnum::HostNotFound) {
+        return Some(
+            "That host couldn’t be found. Check the address for typos and confirm the name \
+             resolves on this network."
+                .to_owned(),
+        );
+    }
+    if error.matches(gio::IOErrorEnum::ConnectionRefused) {
+        return Some(
+            "The host refused the connection. Check that the service is running and that you \
+             used the right port."
+                .to_owned(),
+        );
+    }
+    if error.matches(gio::IOErrorEnum::TimedOut) {
+        return Some(
+            "The connection timed out. Check that the host is reachable and that a firewall \
+             isn’t blocking the port."
+                .to_owned(),
+        );
+    }
+    if error.matches(gio::IOErrorEnum::HostUnreachable)
+        || error.matches(gio::IOErrorEnum::NetworkUnreachable)
+    {
+        return Some(
+            "That host is unreachable from this network. Check your connection, then try again."
+                .to_owned(),
+        );
+    }
+    None
+}
+
+/// Strips URI user-info secrets from a backend message, so a password typed
+/// into the address bar cannot resurface in an error dialog.
+fn sanitize_failure_message(message: &str) -> String {
+    message
+        .split_inclusive(char::is_whitespace)
+        .map(|token| {
+            let Some((scheme, rest)) = token.split_once("://") else {
+                return token.to_owned();
+            };
+            let authority_end = rest.find('/').unwrap_or(rest.len());
+            let Some(userinfo_end) = rest[..authority_end].rfind('@') else {
+                return token.to_owned();
+            };
+            let user = rest[..userinfo_end]
+                .split([':', ';'])
+                .next()
+                .unwrap_or_default();
+            let remainder = &rest[userinfo_end + 1..];
+            if user.is_empty() {
+                format!("{scheme}://{remainder}")
+            } else {
+                format!("{scheme}://{user}@{remainder}")
+            }
+        })
+        .collect()
 }
 
 pub(super) fn is_trash_root(location: &Location) -> bool {
