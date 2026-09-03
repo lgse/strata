@@ -81,6 +81,7 @@ mod responsive_bin {
         pub navigation_labels: RefCell<Vec<gtk::Label>>,
         pub navigation_contents: RefCell<Vec<gtk::Box>>,
         pub responsive_flows: RefCell<Vec<(gtk::FlowBox, u32)>>,
+        pub responsive_actions: RefCell<Vec<(gtk::Box, gtk::Button)>>,
     }
 
     #[glib::object_subclass]
@@ -138,6 +139,14 @@ mod responsive_bin {
                 for (flow, expanded_columns) in self.responsive_flows.borrow().iter() {
                     flow.set_max_children_per_line(if compact { 1 } else { *expanded_columns });
                 }
+                for (row, action) in self.responsive_actions.borrow().iter() {
+                    row.set_orientation(if compact {
+                        gtk::Orientation::Vertical
+                    } else {
+                        gtk::Orientation::Horizontal
+                    });
+                    action.set_halign(gtk::Align::Fill);
+                }
             }
             let x = ((width - child_width) / 2) as f32;
             let y = ((height - child_height) / 2) as f32;
@@ -161,6 +170,7 @@ impl ResponsiveBin {
         navigation_labels: Vec<gtk::Label>,
         navigation_contents: Vec<gtk::Box>,
         responsive_flows: Vec<(gtk::FlowBox, u32)>,
+        responsive_actions: Vec<(gtk::Box, gtk::Button)>,
     ) -> Self {
         let bin: Self = glib::Object::new();
         let imp = bin.imp();
@@ -170,6 +180,7 @@ impl ResponsiveBin {
         imp.navigation_labels.replace(navigation_labels);
         imp.navigation_contents.replace(navigation_contents);
         imp.responsive_flows.replace(responsive_flows);
+        imp.responsive_actions.replace(responsive_actions);
         child.set_parent(&bin);
         bin
     }
@@ -244,10 +255,8 @@ pub fn build_layer(
         .vexpand(true)
         .build();
     stack.add_named(&general_page(browser, themes.clone()), Some("general"));
-    stack.add_named(
-        &updates_page(themes.clone(), update_notice, install_guard),
-        Some("updates"),
-    );
+    let (updates, responsive_actions) = updates_page(themes.clone(), update_notice, install_guard);
+    stack.add_named(&updates, Some("updates"));
     stack.add_named(&keybindings_page(), Some("keybindings"));
     let (theme_page, responsive_flows) = theme_page(themes);
     stack.add_named(&theme_page, Some("theme"));
@@ -299,6 +308,7 @@ pub fn build_layer(
         navigation_labels,
         navigation_contents,
         responsive_flows,
+        responsive_actions,
     );
     responsive_panel.set_hexpand(false);
     responsive_panel.set_vexpand(false);
@@ -501,7 +511,7 @@ fn updates_page(
     manager: Rc<ThemeManager>,
     update_notice: UpdateNoticeHandler,
     install_guard: InstallGuard,
-) -> gtk::Widget {
+) -> (gtk::Widget, Vec<(gtk::Box, gtk::Button)>) {
     let preferences = page_content();
     append_heading(&preferences, "UPDATE PREFERENCES");
 
@@ -510,7 +520,7 @@ fn updates_page(
         "Check for updates to see the latest release notes.",
     );
     let update_method = services::update_method();
-    let (update_row, run_check) = update_check_row(
+    let (update_row, run_check, responsive_action) = update_check_row(
         manager.clone(),
         update_notice.clone(),
         available_notes.clone(),
@@ -558,7 +568,7 @@ fn updates_page(
         run_check();
     }
 
-    scrollable_page(&preferences, None)
+    (scrollable_page(&preferences, None), vec![responsive_action])
 }
 
 const RELEASE_CHANNEL_TITLE: &str = "Release channel";
@@ -848,7 +858,7 @@ fn update_check_row(
     available_notes: ReleaseNotesCard,
     install_guard: InstallGuard,
     update_method: UpdateMethod,
-) -> (gtk::Box, Rc<dyn Fn()>) {
+) -> (gtk::Box, Rc<dyn Fn()>, (gtk::Box, gtk::Button)) {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
     row.add_css_class("settings-option");
     let summary = gtk::Box::new(gtk::Orientation::Horizontal, 16);
@@ -1149,7 +1159,7 @@ fn update_check_row(
             clicked_check();
         }
     });
-    (row, run_check)
+    (row, run_check, (summary, button))
 }
 
 /// The three non-terminal states [`drive_install`] reports through

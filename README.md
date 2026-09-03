@@ -67,6 +67,15 @@ Install Strata from the Omarchy Package Repository:
 omarchy pkg add strata
 ```
 
+> [!TIP]
+> **Optional integrations**
+>
+> Video and standard image thumbnails work with the required packages installed alongside Strata. For SMB network shares and the broadest camera RAW preview support, add the optional integrations:
+>
+> ```bash
+> omarchy pkg add gvfs-smb imagemagick libraw dcraw
+> ```
+
 Omarchy keeps this installation current through `omarchy update`. Strata still checks for new releases and shows their notes, but detects that its executable is package-owned and does not replace it with the in-app updater. When an update is available, **Open Omarchy Update** launches the interactive updater in your configured terminal.
 
 #### Switch a manual installation to OPR
