@@ -1825,7 +1825,10 @@ fn build_explorer_pane(
     let view = gtk::ListView::new(Some(selection.clone()), Some(factory));
     view.add_css_class("explorer-list");
     view.set_enable_rubberband(false);
-    view.set_single_click_activate(true);
+    // GTK's single-click activation also selects rows on hover, which replaces any
+    // multi-selection as soon as the pointer crosses a row. Explorer activates on a
+    // double click instead, matching the grid and column views.
+    view.set_single_click_activate(false);
     let weak_browser = Rc::downgrade(&browser);
     let source_for_activation = model.clone();
     let view_model_for_activation = view_model_object.clone();
