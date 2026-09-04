@@ -1608,7 +1608,7 @@ fn build_grid_view(
                 26,
                 thumbnail_size_for_bind.get(),
             );
-            if let Some(position) = metadata_fill_position(source_position, &entry)
+            if let Some(position) = metadata_fill_position(source_position, &entry, false)
                 && let Some(browser) = browser.as_ref()
             {
                 browser.request_metadata_fill(depth, position, entry.location.clone());
@@ -2353,7 +2353,7 @@ fn build_explorer_pane(
                 18,
                 18,
             );
-            if let Some(position) = metadata_fill_position(source_position, &entry)
+            if let Some(position) = metadata_fill_position(source_position, &entry, true)
                 && let Some(browser) = browser.as_ref()
             {
                 browser.request_metadata_fill(depth, position, entry.location.clone());
@@ -2867,8 +2867,15 @@ fn source_position_for_view(
         .map(|position| position as usize)
 }
 
-fn metadata_fill_position(position: Option<usize>, entry: &FileEntry) -> Option<usize> {
-    position.filter(|_| super::browser::metadata_needs_fill(entry))
+fn metadata_fill_position(
+    position: Option<usize>,
+    entry: &FileEntry,
+    include_mode: bool,
+) -> Option<usize> {
+    position.filter(|_| {
+        super::browser::metadata_needs_fill(entry)
+            || (include_mode && entry.mode == MetadataValue::Unknown)
+    })
 }
 
 fn view_position_for_source(

@@ -223,13 +223,14 @@ pub enum MetadataOutcome {
     Cancelled,
 }
 
-/// Fresh size/mtime for one listed entry. Either field may stay `Unknown`/`Unavailable`
+/// Fresh metadata for one listed entry. Fields may stay `Unknown`/`Unavailable`
 /// when the stat failed; the row keeps its placeholder for a later retry.
 #[derive(Clone, Debug)]
 pub struct MetadataUpdate {
     pub location: Location,
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
+    pub mode: MetadataValue<u32>,
 }
 
 #[derive(Clone, Debug)]

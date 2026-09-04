@@ -6,7 +6,7 @@ use std::{
     ffi::OsString,
     fs,
     io::{ErrorKind, Read},
-    os::unix::ffi::OsStringExt,
+    os::unix::{ffi::OsStringExt, fs::MetadataExt},
     path::{Path, PathBuf},
     rc::Rc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -106,6 +106,14 @@ fn info_is_symlink(info: &gio::FileInfo) -> bool {
     info.has_attribute(gio::FILE_ATTRIBUTE_STANDARD_IS_SYMLINK) && info.is_symlink()
 }
 
+fn info_mode(info: &gio::FileInfo) -> MetadataValue<u32> {
+    if info.has_attribute(gio::FILE_ATTRIBUTE_UNIX_MODE) {
+        MetadataValue::Known(info.attribute_uint32(gio::FILE_ATTRIBUTE_UNIX_MODE))
+    } else {
+        MetadataValue::Unavailable
+    }
+}
+
 fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
     let native_name = info.name().into_os_string();
     let kind = match (info.file_type(), info_is_symlink(&info)) {
@@ -147,10 +155,7 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         kind,
         size,
         modified_unix_seconds,
-        mode: match info.attribute_uint32("unix::mode") {
-            0 => MetadataValue::Unknown,
-            m => MetadataValue::Known(m),
-        },
+        mode: info_mode(&info),
         is_hidden: info_is_hidden(&info),
     }
 }
@@ -193,6 +198,7 @@ fn fill_native_entry_metadata(entry: &mut FileEntry) {
     let Ok(metadata) = fs::metadata(path) else {
         entry.size = MetadataValue::Unknown;
         entry.modified_unix_seconds = MetadataValue::Unknown;
+        entry.mode = MetadataValue::Unknown;
         return;
     };
     entry.size = if metadata.is_dir() {
@@ -206,6 +212,7 @@ fn fill_native_entry_metadata(entry: &mut FileEntry) {
         .and_then(unix_seconds)
         .map(MetadataValue::Known)
         .unwrap_or(MetadataValue::Unavailable);
+    entry.mode = MetadataValue::Known(metadata.mode());
 }
 
 fn native_hidden_names(path: &Path) -> HashSet<OsString> {
@@ -684,6 +691,7 @@ impl FileSource for LocalFileSource {
                             location: location.clone(),
                             size: MetadataValue::Unknown,
                             modified_unix_seconds: MetadataValue::Unknown,
+                            mode: MetadataValue::Unknown,
                         },
                         false,
                     ),
@@ -872,6 +880,7 @@ fn fill_parallel_with(
                                         location: location.clone(),
                                         size: MetadataValue::Unknown,
                                         modified_unix_seconds: MetadataValue::Unknown,
+                                        mode: MetadataValue::Unknown,
                                     },
                                     false,
                                 ),
@@ -945,12 +954,16 @@ fn update_from_info(info: &gio::FileInfo, location: &Location) -> (MetadataUpdat
         .modification_date_time()
         .map(|modified| MetadataValue::Known(modified.to_unix()))
         .unwrap_or(MetadataValue::Unavailable);
-    let ok = size != MetadataValue::Unknown || modified_unix_seconds != MetadataValue::Unknown;
+    let mode = info_mode(info);
+    let ok = size != MetadataValue::Unknown
+        || modified_unix_seconds != MetadataValue::Unknown
+        || mode != MetadataValue::Unknown;
     (
         MetadataUpdate {
             location: location.clone(),
             size,
             modified_unix_seconds,
+            mode,
         },
         ok,
     )

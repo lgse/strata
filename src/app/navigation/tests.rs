@@ -686,6 +686,7 @@ fn metadata_update(path: &str, size: u64, modified: i64) -> MetadataUpdate {
         location: location(path),
         size: MetadataValue::Known(size),
         modified_unix_seconds: MetadataValue::Known(modified),
+        mode: MetadataValue::Unknown,
     }
 }
 
@@ -816,6 +817,7 @@ fn fill_updates_never_clobber_known_fields() {
             location: location("/fixture/half"),
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Known(300),
+            mode: MetadataValue::Known(0o100640),
         }],
     );
     assert!(matches!(applied, Some((0, ref positions)) if positions == &[0]));
@@ -824,6 +826,10 @@ fn fill_updates_never_clobber_known_fields() {
         state.columns[0].entries[0].modified_unix_seconds,
         MetadataValue::Known(300)
     );
+    assert_eq!(
+        state.columns[0].entries[0].mode,
+        MetadataValue::Known(0o100640)
+    );
 
     let applied = state.apply_metadata(
         RequestId(1),
@@ -831,6 +837,7 @@ fn fill_updates_never_clobber_known_fields() {
             location: location("/fixture/half"),
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
+            mode: MetadataValue::Unknown,
         }],
     );
     assert_eq!(applied, None);

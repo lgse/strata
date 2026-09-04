@@ -1732,6 +1732,7 @@ impl FileSource for SortFillSource {
                         location: location.clone(),
                         size: MetadataValue::Known(size),
                         modified_unix_seconds: MetadataValue::Unknown,
+                        mode: MetadataValue::Unknown,
                     }
                 })
                 .collect(),
@@ -2064,6 +2065,7 @@ impl ScriptedSource {
                     location: locate(name),
                     size: MetadataValue::Known(*size),
                     modified_unix_seconds: MetadataValue::Known(7),
+                    mode: MetadataValue::Unknown,
                 })
                 .collect(),
         };
@@ -2363,6 +2365,7 @@ fn navigation_cancels_an_awaiting_sort_without_stale_commit() {
             location: Location::local("/fixture/alpha"),
             size: MetadataValue::Known(1),
             modified_unix_seconds: MetadataValue::Known(7),
+            mode: MetadataValue::Unknown,
         }],
     });
     old_emit(DirectoryEvent::MetadataFinished {
@@ -2452,6 +2455,7 @@ fn viewport_flush_never_disturbs_an_active_sort() {
             location: Location::local("/fixture/alpha"),
             size: MetadataValue::Known(30),
             modified_unix_seconds: MetadataValue::Known(7),
+            mode: MetadataValue::Unknown,
         }],
     });
     viewport_emit(DirectoryEvent::MetadataFinished {
@@ -2469,11 +2473,13 @@ fn viewport_flush_never_disturbs_an_active_sort() {
                 location: Location::local("/fixture/alpha"),
                 size: MetadataValue::Known(30),
                 modified_unix_seconds: MetadataValue::Known(7),
+                mode: MetadataValue::Unknown,
             },
             MetadataUpdate {
                 location: Location::local("/fixture/beta"),
                 size: MetadataValue::Known(10),
                 modified_unix_seconds: MetadataValue::Known(7),
+                mode: MetadataValue::Unknown,
             },
         ],
     });
@@ -2662,6 +2668,7 @@ fn shifted_viewport_rows_go_stale_without_repaint() {
             location: Location::local("/fixture/beta"),
             size: MetadataValue::Known(10),
             modified_unix_seconds: MetadataValue::Known(7),
+            mode: MetadataValue::Unknown,
         }],
     });
     assert_eq!(replaced_count(&events), 1);
@@ -2748,11 +2755,13 @@ fn modified_sort_fills_directory_mtimes() {
                 location: Location::local("/fixture/sub"),
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Known(200),
+                mode: MetadataValue::Unknown,
             },
             MetadataUpdate {
                 location: Location::local("/fixture/b.txt"),
                 size: MetadataValue::Known(10),
                 modified_unix_seconds: MetadataValue::Known(100),
+                mode: MetadataValue::Unknown,
             },
         ],
     });

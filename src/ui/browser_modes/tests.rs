@@ -83,13 +83,16 @@ fn alternate_modes_request_missing_metadata_for_bound_entries() {
         is_hidden: false,
     };
 
-    assert_eq!(metadata_fill_position(Some(7), &entry), Some(7));
-    assert_eq!(metadata_fill_position(None, &entry), None);
+    assert_eq!(metadata_fill_position(Some(7), &entry, false), Some(7));
+    assert_eq!(metadata_fill_position(None, &entry, false), None);
 
     entry.size = MetadataValue::Known(100);
-    assert_eq!(metadata_fill_position(Some(7), &entry), Some(7));
+    assert_eq!(metadata_fill_position(Some(7), &entry, false), Some(7));
     entry.modified_unix_seconds = MetadataValue::Known(1);
-    assert_eq!(metadata_fill_position(Some(7), &entry), None);
+    assert_eq!(metadata_fill_position(Some(7), &entry, false), None);
+    assert_eq!(metadata_fill_position(Some(7), &entry, true), Some(7));
+    entry.mode = MetadataValue::Known(0o100644);
+    assert_eq!(metadata_fill_position(Some(7), &entry, true), None);
 }
 
 #[test]
