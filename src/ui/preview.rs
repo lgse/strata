@@ -3,6 +3,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::HashMap,
+    path::Path,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -28,6 +29,12 @@ const PDF_MIN_ZOOM: f64 = 1.0;
 const PDF_MAX_ZOOM: f64 = 4.0;
 const MEDIA_PLUGIN_INSTALL_COMMAND: &str = "sudo pacman -S --needed gst-plugins-good gst-libav";
 
+struct PrintProgress {
+    window: gtk::Window,
+    status: gtk::Label,
+    progress: gtk::ProgressBar,
+}
+
 struct PreviewState {
     provider: Rc<dyn PreviewProvider>,
     revealer: gtk::Revealer,
@@ -52,6 +59,7 @@ struct PreviewState {
     load: RefCell<Option<LoadHandle>>,
     pdf_loads: Rc<RefCell<HashMap<i32, LoadHandle>>>,
     print_load: RefCell<Option<LoadHandle>>,
+    print_progress: RefCell<Option<PrintProgress>>,
     print_request: Cell<Option<PreviewRequestId>>,
     current_request: Cell<Option<PreviewRequestId>>,
     next_request: Cell<u64>,
@@ -169,6 +177,7 @@ impl PreviewDrawer {
             load: RefCell::new(None),
             pdf_loads: Rc::new(RefCell::new(HashMap::new())),
             print_load: RefCell::new(None),
+            print_progress: RefCell::new(None),
             print_request: Cell::new(None),
             current_request: Cell::new(None),
             next_request: Cell::new(1),
@@ -412,8 +421,7 @@ impl PreviewState {
         self.current_request.set(None);
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
-        self.print_request.set(None);
-        self.print_load.take();
+        self.cancel_print();
         self.clear_content();
         self.revealer.set_transition_duration(0);
         self.revealer.set_reveal_child(false);
@@ -432,10 +440,97 @@ impl PreviewState {
     }
 
     fn print_entry(self: &Rc<Self>, entry: FileEntry) {
+        self.cancel_print();
+        let parent = self.pane.root().and_downcast::<gtk::Window>();
+        let (content_type, _) =
+            gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
+        if content_type == "application/pdf" {
+            self.show_print_progress(parent.as_ref());
+        }
+        self.load_print_page(entry, parent, 0, Rc::new(RefCell::new(Vec::new())));
+    }
+
+    fn cancel_print(&self) {
         self.print_request.set(None);
         self.print_load.take();
-        let parent = self.pane.root().and_downcast::<gtk::Window>();
-        self.load_print_page(entry, parent, 0, Rc::new(RefCell::new(Vec::new())));
+        self.dismiss_print_progress();
+    }
+
+    fn show_print_progress(self: &Rc<Self>, parent: Option<&gtk::Window>) {
+        if self.print_progress.borrow().is_some() {
+            return;
+        }
+
+        let window = gtk::Window::builder()
+            .title("Preparing PDF")
+            .default_width(380)
+            .modal(true)
+            .resizable(false)
+            .build();
+        if let Some(parent) = parent {
+            window.set_transient_for(Some(parent));
+        }
+
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 14);
+        content.set_margin_top(24);
+        content.set_margin_bottom(24);
+        content.set_margin_start(24);
+        content.set_margin_end(24);
+        let heading = gtk::Label::new(Some("Preparing PDF for printing…"));
+        heading.add_css_class("title-3");
+        heading.set_xalign(0.0);
+        let status = gtk::Label::new(Some("Rendering pages…"));
+        status.set_xalign(0.0);
+        let progress = gtk::ProgressBar::new();
+        let cancel = gtk::Button::with_label("Cancel");
+        cancel.set_halign(gtk::Align::End);
+        content.append(&heading);
+        content.append(&status);
+        content.append(&progress);
+        content.append(&cancel);
+        window.set_child(Some(&content));
+
+        self.print_progress.replace(Some(PrintProgress {
+            window: window.clone(),
+            status,
+            progress,
+        }));
+        let weak = Rc::downgrade(self);
+        cancel.connect_clicked(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.cancel_print();
+            }
+        });
+        let weak = Rc::downgrade(self);
+        window.connect_close_request(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.cancel_print();
+            }
+            glib::Propagation::Proceed
+        });
+        window.present();
+    }
+
+    fn update_print_progress(
+        self: &Rc<Self>,
+        completed: i32,
+        total: i32,
+        parent: Option<&gtk::Window>,
+    ) {
+        self.show_print_progress(parent);
+        let progress = self.print_progress.borrow();
+        let Some(dialog) = progress.as_ref() else {
+            return;
+        };
+        let (status, fraction) = print_progress_for_page(completed, total);
+        dialog.status.set_text(&status);
+        dialog.progress.set_fraction(fraction);
+    }
+
+    fn dismiss_print_progress(&self) {
+        if let Some(dialog) = self.print_progress.take() {
+            dialog.window.set_visible(false);
+        }
     }
 
     fn load_print_page(
@@ -492,14 +587,19 @@ impl PreviewState {
                 self.print_load.take();
                 match preview.content {
                     PreviewContent::Rasterized { png } => {
+                        self.dismiss_print_progress();
                         print_rasterized(vec![png], &entry.display_name, parent.as_ref());
                     }
                     PreviewContent::Pdf { png, page, pages } => {
                         rendered.borrow_mut().push(png);
                         let page_count = pages.clamp(1, 10_000);
+                        let completed =
+                            i32::try_from(rendered.borrow().len()).unwrap_or(page_count);
                         if page.saturating_add(1) < page_count {
+                            self.update_print_progress(completed, page_count, parent.as_ref());
                             self.load_print_page(entry, parent, page.saturating_add(1), rendered);
                         } else {
+                            self.dismiss_print_progress();
                             let pages = std::mem::take(&mut *rendered.borrow_mut());
                             print_rasterized(pages, &entry.display_name, parent.as_ref());
                         }
@@ -511,9 +611,19 @@ impl PreviewState {
                     | PreviewContent::Unsupported => {}
                 }
             }
-            PreviewEvent::Failed { request_id, .. } if request_id == expected => {
+            PreviewEvent::Failed {
+                request_id,
+                message,
+                ..
+            } if request_id == expected => {
                 self.print_request.set(None);
                 self.print_load.take();
+                self.dismiss_print_progress();
+                let dialog = gtk::AlertDialog::builder()
+                    .message("Unable to prepare file for printing")
+                    .detail(message)
+                    .build();
+                dialog.show(parent.as_ref());
             }
             PreviewEvent::Ready(_) | PreviewEvent::Failed { .. } => {}
         }
@@ -1320,6 +1430,15 @@ impl PreviewState {
         }
         self.content.append(&box_);
     }
+}
+
+fn print_progress_for_page(completed: i32, total: i32) -> (String, f64) {
+    let total = total.max(1);
+    let completed = completed.clamp(0, total);
+    (
+        format!("Rendering page {completed} of {total}"),
+        f64::from(completed) / f64::from(total),
+    )
 }
 
 /// Opens the native print dialog and prints the rasterized pages as a job named `job_name`.

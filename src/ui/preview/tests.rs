@@ -3,7 +3,7 @@
 use super::{
     MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, format_file_size, format_media_time,
     media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
-    preview_width_for_empty_space, print_fit,
+    preview_width_for_empty_space, print_fit, print_progress_for_page,
 };
 
 #[test]
@@ -39,6 +39,22 @@ fn print_fit_rejects_zero_sized_inputs() {
     assert_eq!(print_fit(595.0, 0.0, 100.0, 100.0), None);
     assert_eq!(print_fit(595.0, 842.0, 0.0, 100.0), None);
     assert_eq!(print_fit(595.0, 842.0, 100.0, -1.0), None);
+}
+
+#[test]
+fn print_progress_reports_completed_pages() {
+    assert_eq!(
+        print_progress_for_page(3, 8),
+        ("Rendering page 3 of 8".to_owned(), 0.375)
+    );
+}
+
+#[test]
+fn print_progress_clamps_invalid_counts() {
+    assert_eq!(
+        print_progress_for_page(3, 0),
+        ("Rendering page 1 of 1".to_owned(), 1.0)
+    );
 }
 
 #[test]
