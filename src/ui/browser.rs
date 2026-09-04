@@ -4513,9 +4513,11 @@ impl ViewState {
                             let Some(sm) = weak_sm.upgrade() else {
                                 return glib::ControlFlow::Break;
                             };
-                            let labels: Vec<_> = items.iter().map(|i| i.name.as_str()).collect();
-                            sm.splice(0, sm.n_items(), &labels);
+                            let labels: Vec<_> =
+                                items.iter().map(|item| item.name.clone()).collect();
                             results.replace(items);
+                            let labels: Vec<_> = labels.iter().map(String::as_str).collect();
+                            sm.splice(0, sm.n_items(), &labels);
                             if let Some(fm) = weak_filtered.upgrade() {
                                 fm.items_changed(0, sm.n_items(), sm.n_items());
                             }
@@ -4867,7 +4869,17 @@ impl ViewState {
             set_active_path_style(&row, active);
             set_cut_path_style(&row, false);
             if let Some(entry) = entry.as_ref() {
-                super::thumbnail::set_thumbnail_or_icon(&icon, entry, entry_icon(entry), 17, 17);
+                if entry.is_directory() {
+                    super::thumbnail::show_fallback_icon(&icon, crate::assets::icons::FOLDER, 17);
+                } else {
+                    super::thumbnail::set_thumbnail_or_icon(
+                        &icon,
+                        entry,
+                        entry_icon(entry),
+                        17,
+                        17,
+                    );
+                }
                 icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
                 chevron.set_visible(entry.is_directory());
             } else {
