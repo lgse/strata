@@ -370,6 +370,7 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       image: archlinux:base-devel
+    environment: package-automation
     permissions:
       contents: write
       pull-requests: write
@@ -383,11 +384,12 @@ jobs:
         with:
           ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 0
+          token: ${{ secrets.PACKAGE_PR_TOKEN }}
 
       - name: Regenerate packages and open a pull request
         env:
           BRANCH: build/aur-v${{ needs.prepare.outputs.version }}
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.PACKAGE_PR_TOKEN }}
           MODE: ${{ inputs.mode }}
           VERSION: ${{ needs.prepare.outputs.version }}
         run: |
