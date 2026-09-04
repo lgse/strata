@@ -3,6 +3,25 @@
 use super::*;
 
 #[test]
+fn recursive_search_arrows_select_and_clamp_results() {
+    assert_eq!(search_result_navigation_position(None, 3, 1), Some(0));
+    assert_eq!(search_result_navigation_position(None, 3, -1), Some(2));
+    assert_eq!(search_result_navigation_position(Some(0), 3, -1), Some(0));
+    assert_eq!(search_result_navigation_position(Some(1), 3, 1), Some(2));
+    assert_eq!(search_result_navigation_position(Some(2), 3, 1), Some(2));
+    assert_eq!(search_result_navigation_position(None, 0, 1), None);
+}
+
+#[test]
+fn recursive_search_activation_accepts_enter_and_right_arrow() {
+    assert!(recursive_search_activation_key(gtk::gdk::Key::Return));
+    assert!(recursive_search_activation_key(gtk::gdk::Key::KP_Enter));
+    assert!(recursive_search_activation_key(gtk::gdk::Key::Right));
+    assert!(!recursive_search_activation_key(gtk::gdk::Key::Left));
+    assert!(!recursive_search_activation_key(gtk::gdk::Key::Down));
+}
+
+#[test]
 fn terminal_shortcut_prefers_one_selected_directory() {
     let entry = |name: &str, kind| FileEntry {
         location: Location::local(format!("/fixture/{name}")),
@@ -12,6 +31,7 @@ fn terminal_shortcut_prefers_one_selected_directory() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
     let directory = entry("selected", crate::model::EntryKind::Directory);
     let file = entry("notes.txt", crate::model::EntryKind::File);
@@ -34,6 +54,7 @@ fn duplicate_transfer_uses_the_selected_entries_parent() {
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        mode: crate::model::MetadataValue::Unknown,
         is_hidden: false,
     };
     let first = entry("/fixture/selected/first.txt");
@@ -213,6 +234,7 @@ fn delete_confirmation_labels_distinguish_files_and_folders() {
         size: crate::model::MetadataValue::Known(10),
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
     let mut folder = file.clone();
     folder.kind = crate::model::EntryKind::Directory;
@@ -399,6 +421,7 @@ fn quick_preview_is_offered_only_for_supported_files() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
 
     assert!(entry_supports_quick_preview(&entry(
@@ -429,6 +452,41 @@ fn quick_preview_is_offered_only_for_supported_files() {
     assert!(!entry_responds_to_preview_click(&supported, false));
     assert!(!entry_responds_to_preview_click(&unsupported, true));
     assert!(!entry_responds_to_preview_click(&directory, true));
+}
+
+#[test]
+fn printing_is_offered_for_text_code_images_and_pdfs() {
+    let entry = |name: &str, kind| FileEntry {
+        location: Location::local(format!("/fixture/{name}")),
+        native_name: name.into(),
+        display_name: name.into(),
+        kind,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        mode: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    for name in [
+        "notes.txt",
+        "main.rs",
+        "settings.toml",
+        "photo.png",
+        "guide.pdf",
+    ] {
+        assert!(entry_supports_printing(&entry(
+            name,
+            crate::model::EntryKind::File
+        )));
+    }
+    assert!(!entry_supports_printing(&entry(
+        "archive.zip",
+        crate::model::EntryKind::File,
+    )));
+    assert!(!entry_supports_printing(&entry(
+        "notes.txt",
+        crate::model::EntryKind::Directory,
+    )));
 }
 
 #[test]
@@ -505,6 +563,7 @@ fn multi_selection_summary_lists_at_most_three_names() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
 
     assert_eq!(
@@ -805,6 +864,43 @@ fn cut_clipboard_locations_match_regardless_of_order() {
             Location::local("/fixture/second")
         ]
     ));
+}
+
+#[test]
+fn cut_matches_gio_equivalent_representations() {
+    let native = Location::local("/fixture/first");
+    let uri = Location::uri("file:///fixture/first");
+
+    assert!(locations_equal(&native, &uri));
+    assert!(same_locations(
+        std::slice::from_ref(&native),
+        std::slice::from_ref(&uri)
+    ));
+    assert!(!same_locations(
+        std::slice::from_ref(&native),
+        std::slice::from_ref(&Location::uri("file:///fixture/other"))
+    ));
+}
+
+#[test]
+fn cleared_shared_cut_is_not_revived_by_stale_view_state() {
+    let native = Location::local("/fixture/first");
+    let uri = Location::uri("file:///fixture/first");
+
+    set_shared_cut(std::slice::from_ref(&native));
+    assert!(is_cut_match(std::slice::from_ref(&uri)));
+
+    clear_shared_cut();
+    assert!(!is_cut_match(std::slice::from_ref(&native)));
+}
+
+#[test]
+fn completed_moves_match_gio_equivalent_cut_entries() {
+    let mut cut = vec![Location::local("/fixture/first")];
+
+    retain_untransferred(&mut cut, &[Location::uri("file:///fixture/first")]);
+
+    assert!(cut.is_empty());
 }
 
 #[test]
@@ -1264,6 +1360,7 @@ fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
     let hidden = FileEntry {
         location: Location::local("/fixture/.config"),
@@ -1273,6 +1370,7 @@ fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: true,
+        mode: crate::model::MetadataValue::Unknown,
     };
 
     let encoded_visible = entry_model_value(&visible);
@@ -1341,6 +1439,7 @@ fn pinning_requires_an_available_non_trash_directory() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
     let directory = entry(
         Location::local("/fixture/folder"),
@@ -1403,6 +1502,7 @@ fn retryable_delete_entries_keeps_only_the_named_locations() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
     let retryable = entry("share-file.txt");
     let denied = entry("locked-file.txt");
@@ -1423,9 +1523,35 @@ fn retryable_delete_entries_is_empty_when_nothing_matches() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
 
     let kept = retryable_delete_entries(vec![entry], &[]);
 
     assert!(kept.is_empty());
+}
+
+#[test]
+fn move_to_trash_hides_only_for_a_confirmed_unsupported_location() {
+    assert!(!move_to_trash_is_visible(false, Some(false)));
+}
+
+#[test]
+fn move_to_trash_shows_for_a_confirmed_supported_location() {
+    assert!(move_to_trash_is_visible(false, Some(true)));
+}
+
+#[test]
+fn move_to_trash_defaults_to_visible_before_the_check_resolves() {
+    // `None` covers both "the load hasn't finished yet" and "the check itself
+    // couldn't be answered" -- neither should ever hide the only delete option.
+    assert!(move_to_trash_is_visible(false, None));
+}
+
+#[test]
+fn move_to_trash_stays_visible_inside_trash_regardless_of_can_trash() {
+    // Inside Trash this button is really "Permanently delete" under a shared
+    // label; an ordinary location's Trash support is irrelevant there.
+    assert!(move_to_trash_is_visible(true, Some(false)));
+    assert!(move_to_trash_is_visible(true, None));
 }

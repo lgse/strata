@@ -1384,8 +1384,10 @@ switch:checked slider {
   box-shadow: none;
   color: @theme_text;
   min-height: 30px;
+  outline: 1px solid transparent;
+  outline-offset: -1px;
   padding: 3px 8px;
-  transition: background 160ms ease-out, transform 160ms ease-out;
+  transition: background 220ms ease-out, outline-color 220ms ease-out, transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
 }
 
 .sidebar-row:hover {
@@ -1410,10 +1412,11 @@ switch:checked slider {
   opacity: 0.52;
 }
 
-.sidebar-row.reorderable:drop(active) {
+.sidebar-row.reorderable:drop(active),
+.sidebar-row:drop(active) {
   background: alpha(@theme_highlight, 0.46);
-  outline: 1px solid alpha(@theme_accent, 0.72);
-  outline-offset: -1px;
+  outline-color: alpha(@theme_accent, 0.72);
+  transform: scale(1.02);
 }
 
 .sidebar-row:focus {
@@ -1423,6 +1426,33 @@ switch:checked slider {
 
 .sidebar-row image {
   color: @theme_border;
+}
+
+.sidebar-device {
+  padding-right: 2px;
+}
+
+.sidebar-eject {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  box-shadow: none;
+  margin: 3px 0;
+  min-height: 24px;
+  min-width: 24px;
+  opacity: 0.75;
+  padding: 2px;
+}
+
+.sidebar-eject:hover {
+  background: alpha(@theme_accent, 0.15);
+  opacity: 1;
+}
+
+.sidebar-eject:focus {
+  opacity: 1;
+  outline: 1px solid @theme_accent;
+  outline-offset: -1px;
 }
 
 .sidebar-separator {
@@ -1464,7 +1494,7 @@ paned > separator {
 }
 
 .preview-title {
-  color: @theme_accent;
+  color: @theme_text;
   font-weight: 700;
 }
 
@@ -1525,6 +1555,15 @@ paned > separator {
 .preview-content scrolledwindow,
 .preview-content viewport {
   background: @theme_surface;
+  transition: opacity 200ms ease-out, transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.preview-content.dragging {
+  opacity: 0.48;
+}
+
+.preview-content.slide-out {
+  animation: slide-out-up 240ms ease-out;
 }
 
 .preview-text,
@@ -1543,7 +1582,14 @@ paned > separator {
 .preview-image,
 .preview-media {
   background: alpha(@theme_bg, 0.55);
+  border-radius: 8px;
   margin: 12px;
+  transition: transform 240ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 200ms ease-out, box-shadow 200ms ease-out;
+}
+
+.preview-image:hover,
+.preview-media:hover {
+  box-shadow: 0 4px 16px alpha(@theme_bg, 0.45);
 }
 
 .preview-note {
@@ -2650,6 +2696,14 @@ colorchooser colorswatch overlay {
   transition: background 160ms ease-out, color 160ms ease-out;
 }
 
+.file-row,
+.grid-card,
+.explorer-row {
+  outline: 1px solid transparent;
+  outline-offset: -1px;
+  transition: background 220ms ease-out, color 180ms ease-out, outline-color 220ms ease-out, transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 200ms ease-out;
+}
+
 .file-row {
   border-radius: 6px;
   color: @theme_text;
@@ -2664,11 +2718,38 @@ colorchooser colorswatch overlay {
   opacity: 0.48;
 }
 
-.file-row:drop(active) {
+@keyframes slide-in-down {
+  from { transform: translate(0, -10px); }
+  to { transform: translate(0, 0); }
+}
+
+@keyframes slide-out-up {
+  from { transform: translate(0, 0); opacity: 1; }
+  to { transform: translate(0, -14px); opacity: 0; }
+}
+
+.file-row.just-dropped {
+  animation: slide-in-down 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+.file-row.slide-out {
+  animation: slide-out-up 240ms ease-out;
+}
+
+.file-appear {
+  opacity: 0;
+  transform: translate(0, 6px);
+}
+
+.file-row:drop(active),
+.file-row.drop-destination {
   background: alpha(@theme_highlight, 0.72);
   color: @theme_accent;
-  outline: 1px solid @theme_accent;
-  outline-offset: -1px;
+  outline-color: @theme_accent;
+}
+
+.file-drop-zone {
+  transition: box-shadow 220ms ease-out;
 }
 
 .file-drop-zone:drop(active) {
@@ -3239,11 +3320,11 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   color: @theme_text;
 }
 
-.grid-card.drop-destination {
+.grid-card.drop-destination,
+.grid-card:drop(active) {
   background: alpha(@theme_highlight, 0.82);
   color: @theme_accent;
-  outline: 1px solid @theme_accent;
-  outline-offset: -1px;
+  outline-color: @theme_accent;
 }
 
 .grid-card.dragging {
@@ -3407,11 +3488,11 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   color: @theme_text;
 }
 
-.explorer-row.drop-destination {
+.explorer-row.drop-destination,
+.explorer-row:drop(active) {
   background: alpha(@theme_highlight, 0.82);
   color: @theme_accent;
-  outline: 1px solid @theme_accent;
-  outline-offset: -1px;
+  outline-color: @theme_accent;
 }
 
 .explorer-row.dragging {

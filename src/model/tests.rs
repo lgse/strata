@@ -148,3 +148,35 @@ fn folder_color_values_parse_and_resolve_hex() {
         "#34d399"
     );
 }
+
+#[test]
+fn transfer_targets_keep_the_item_name_under_the_destination() {
+    assert_eq!(
+        Location::local("/home/user/report.txt")
+            .transfer_target(&Location::local("/home/user/archive")),
+        Some(Location::local("/home/user/archive/report.txt"))
+    );
+    assert_eq!(
+        Location::uri("smb://host/share/notes/report.txt")
+            .transfer_target(&Location::uri("smb://host/share/archive")),
+        Some(Location::uri("smb://host/share/archive/report.txt"))
+    );
+    assert_eq!(
+        Location::local("/home/user/a b.txt").transfer_target(&Location::uri("smb://host/share")),
+        Some(Location::uri("smb://host/share/a%20b.txt"))
+    );
+}
+
+#[test]
+fn children_reject_names_that_would_escape_the_parent() {
+    let parent = Location::local("/home/user");
+
+    for name in ["", ".", "..", "nested/child"] {
+        assert_eq!(parent.child(std::ffi::OsStr::new(name)), None);
+    }
+    assert_eq!(
+        Location::local("/").transfer_target(&parent),
+        None,
+        "a root has no name to carry into a destination"
+    );
+}
