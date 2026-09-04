@@ -676,6 +676,7 @@ fn file_entry(path: &str, name: &str) -> FileEntry {
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        mode: MetadataValue::Unknown,
         is_hidden: false,
     }
 }

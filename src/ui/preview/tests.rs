@@ -71,6 +71,7 @@ fn preview_drag_entries_wraps_loaded_file_entry() {
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Known(100),
         modified_unix_seconds: crate::model::MetadataValue::Known(1),
+        mode: crate::model::MetadataValue::Unknown,
         is_hidden: false,
     };
     let dragged = preview_drag_entries(Some(&entry));

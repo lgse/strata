@@ -79,6 +79,7 @@ fn alternate_modes_request_missing_metadata_for_bound_entries() {
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        mode: MetadataValue::Unknown,
         is_hidden: false,
     };
 

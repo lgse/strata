@@ -35,6 +35,7 @@ fn duplicate_transfer_uses_the_selected_entries_parent() {
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        mode: crate::model::MetadataValue::Unknown,
         is_hidden: false,
     };
     let first = entry("/fixture/selected/first.txt");

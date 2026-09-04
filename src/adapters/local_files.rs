@@ -291,6 +291,7 @@ fn scan_native_directory(
             kind,
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
+            mode: MetadataValue::Unknown,
             is_hidden,
         });
     }

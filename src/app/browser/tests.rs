@@ -1642,6 +1642,7 @@ fn batch_entry(name: &str) -> FileEntry {
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        mode: MetadataValue::Unknown,
         is_hidden: false,
     }
 }
@@ -2041,6 +2042,7 @@ impl ScriptedSource {
             },
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
+            mode: MetadataValue::Unknown,
             is_hidden: false,
         }
     }
@@ -2859,6 +2861,7 @@ fn staged_entry(name: &str, kind: EntryKind, size: MetadataValue<u64>, modified:
         kind,
         size,
         modified_unix_seconds: MetadataValue::Known(modified),
+        mode: MetadataValue::Unknown,
         is_hidden: false,
     }
 }
