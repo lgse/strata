@@ -59,11 +59,18 @@ platform choosers, such as GTK's color dialog, are also kept native.
 ### Browser presentation modes
 
 Browser presentations consume the same `BrowserEvent` stream and send intents back to the same
-application controller. Miller list columns, the single-pane grid, and the single-pane explorer must not
-own independent filesystem or navigation state. Mode-specific widget construction and interaction
-policy live behind the UI presentation boundary (`ui/browser_modes.rs`); shared operations stay in
-the application layer. A future mode should therefore add a renderer rather than add mode checks to
-filesystem, navigation, or operation code.
+application controller. Miller columns, the icon grid, the list table, and the tree must not own
+independent navigation state. Mode-specific widget construction and interaction policy live behind
+the UI presentation boundary (`ui/browser_modes.rs`); shared operations stay in the application
+layer. A future mode should therefore add a renderer rather than add mode checks to filesystem,
+navigation, or operation code.
+
+The tree is the one presentation that holds entries of its own, because an expanded branch shows a
+directory the navigation state does not track. It still asks the application layer to read and order
+them (`Browser::list_directory`, `Browser::sorted_entries`), so listing budgets, sort order and
+hidden-file rules stay in one place, and it drops every branch when its column reloads rather than
+keeping a second view of the filesystem alive. Only the tree's root level maps back to positions in
+the active column, so selection, renames and item menus apply there.
 
 ## Capability boundaries
 

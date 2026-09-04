@@ -6,6 +6,10 @@
 //! same application events and emits the same navigation/selection intents, so adding another
 //! presentation does not require scattering mode checks throughout the main browser view.
 
+pub(super) mod tree;
+
+pub(super) use tree::TreeStep;
+
 use std::{
     cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
@@ -54,6 +58,7 @@ pub enum BrowserMode {
     Columns,
     Grid,
     Explorer,
+    Tree,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -98,7 +103,7 @@ impl ClickActivation {
             files: ClickCount::Two,
             folders: match mode {
                 BrowserMode::Columns => ClickCount::One,
-                BrowserMode::Grid | BrowserMode::Explorer => ClickCount::Two,
+                BrowserMode::Grid | BrowserMode::Explorer | BrowserMode::Tree => ClickCount::Two,
             },
         }
     }
@@ -154,6 +159,7 @@ struct Pane {
     sections: Rc<RefCell<Vec<PaneSection>>>,
     groups: Option<Rc<GridGroups>>,
     grid: Option<Rc<GridContext>>,
+    tree: Option<Rc<tree::TreeContext>>,
     targets: super::marquee::MarqueeTargets,
     /// Set while a reload has detached the pane's models from their views.
     detached: Rc<Cell<bool>>,
@@ -200,12 +206,15 @@ pub struct ModeViews {
     stack: gtk::Stack,
     grid_root: gtk::Box,
     explorer_root: gtk::Box,
+    tree_root: gtk::Box,
     grid_panes: Vec<Pane>,
     explorer_pane: Option<Pane>,
+    tree_pane: Option<Pane>,
     browser: Rc<Browser>,
     single_click_previews: Rc<Cell<bool>>,
     grid_click_activation: Rc<Cell<ClickActivation>>,
     explorer_click_activation: Rc<Cell<ClickActivation>>,
+    tree_click_activation: Rc<Cell<ClickActivation>>,
     transfer_handler: TransferHandlerSlot,
     cut_locations: Rc<RefCell<HashSet<Location>>>,
     context_state: RefCell<Option<Weak<super::browser::ViewState>>>,
@@ -247,6 +256,11 @@ impl ModeViews {
             .vexpand(true)
             .build();
 
+        let tree_root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        tree_root.add_css_class("mode-tree");
+        tree_root.set_hexpand(true);
+        tree_root.set_vexpand(true);
+
         let stack = gtk::Stack::builder()
             .transition_type(gtk::StackTransitionType::None)
             .hexpand(true)
@@ -255,14 +269,17 @@ impl ModeViews {
         stack.add_named(columns, Some("columns"));
         stack.add_named(&grid_scroll, Some("grid"));
         stack.add_named(&explorer_scroll, Some("explorer"));
+        stack.add_named(&tree_root, Some("tree"));
         stack.set_visible_child_name("columns");
 
         Self {
             stack,
             grid_root,
             explorer_root,
+            tree_root,
             grid_panes: Vec::new(),
             explorer_pane: None,
+            tree_pane: None,
             browser,
             single_click_previews: Rc::new(Cell::new(true)),
             grid_click_activation: Rc::new(Cell::new(ClickActivation::default_for(
@@ -270,6 +287,9 @@ impl ModeViews {
             ))),
             explorer_click_activation: Rc::new(Cell::new(ClickActivation::default_for(
                 BrowserMode::Explorer,
+            ))),
+            tree_click_activation: Rc::new(Cell::new(ClickActivation::default_for(
+                BrowserMode::Tree,
             ))),
             transfer_handler: Rc::new(RefCell::new(None)),
             cut_locations: Rc::new(RefCell::new(HashSet::new())),
@@ -298,23 +318,36 @@ impl ModeViews {
         self.mode
     }
 
+    /// The panes the alternate presentations own, whichever one is showing.
+    fn mode_panes(&self) -> impl Iterator<Item = &Pane> {
+        self.grid_panes
+            .iter()
+            .chain(self.explorer_pane.iter())
+            .chain(self.tree_pane.iter())
+    }
+
+    /// The pane the current mode shows at `depth`, if it is showing one.
+    fn single_pane(&self, depth: Option<usize>) -> Option<&Pane> {
+        let pane = match self.mode {
+            BrowserMode::Columns => return None,
+            BrowserMode::Grid => self.grid_panes.first(),
+            BrowserMode::Explorer => self.explorer_pane.as_ref(),
+            BrowserMode::Tree => self.tree_pane.as_ref(),
+        }?;
+        match depth {
+            Some(depth) if pane.depth != depth => None,
+            _ => Some(pane),
+        }
+    }
+
     /// The marquee of the pane nearest the window's start edge, so chrome outside the
     /// panes can run a drag into whichever view the current mode shows.
     pub(super) fn leading_marquee(&self) -> Option<super::marquee::Marquee> {
-        let pane = match self.mode {
-            BrowserMode::Columns => return None,
-            BrowserMode::Grid => self.grid_panes.first(),
-            BrowserMode::Explorer => self.explorer_pane.as_ref(),
-        }?;
-        Some(pane.marquee.clone())
+        Some(self.single_pane(None)?.marquee.clone())
     }
 
     pub fn selected_positions(&self) -> Option<(usize, Vec<usize>)> {
-        let pane = match self.mode {
-            BrowserMode::Columns => return None,
-            BrowserMode::Grid => self.grid_panes.first(),
-            BrowserMode::Explorer => self.explorer_pane.as_ref(),
-        }?;
+        let pane = self.single_pane(None)?;
         let mut positions: Vec<usize> = pane
             .item_sections()
             .iter()
@@ -349,15 +382,7 @@ impl ModeViews {
     pub fn begin_new_entry(&self, depth: usize, is_directory: bool) -> bool {
         self.cancel_new_entry();
         self.cancel_rename();
-        let pane = match self.mode {
-            BrowserMode::Columns => return false,
-            BrowserMode::Grid => self.grid_panes.iter().find(|pane| pane.depth == depth),
-            BrowserMode::Explorer => self
-                .explorer_pane
-                .as_ref()
-                .filter(|pane| pane.depth == depth),
-        };
-        let Some(pane) = pane else {
+        let Some(pane) = self.single_pane(Some(depth)) else {
             return false;
         };
         let Some(placeholder) = pane.new_entry_placeholder.as_ref() else {
@@ -423,15 +448,7 @@ impl ModeViews {
 
     pub fn begin_rename(&self, depth: usize, source_position: usize, entry: &FileEntry) -> bool {
         self.cancel_rename();
-        let pane = match self.mode {
-            BrowserMode::Columns => return false,
-            BrowserMode::Grid => self.grid_panes.iter().find(|pane| pane.depth == depth),
-            BrowserMode::Explorer => self
-                .explorer_pane
-                .as_ref()
-                .filter(|pane| pane.depth == depth),
-        };
-        let Some(pane) = pane else {
+        let Some(pane) = self.single_pane(Some(depth)) else {
             return false;
         };
         let widget = pane.item_sections().iter().find_map(|section| {
@@ -482,41 +499,29 @@ impl ModeViews {
 
     pub fn filter_has_focus(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
-        self.grid_panes
-            .iter()
-            .chain(self.explorer_pane.iter())
+        self.mode_panes()
             .filter_map(|pane| pane.filter_entry.as_ref())
             .any(|entry| widget_has_focus(entry, focused.as_ref()))
     }
 
     pub fn item_view_has_focus(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
-        self.grid_panes
-            .iter()
-            .chain(self.explorer_pane.iter())
-            .any(|pane| {
-                pane.all_sections()
-                    .iter()
-                    .any(|section| widget_has_focus(&section.view, focused.as_ref()))
-            })
+        self.mode_panes().any(|pane| {
+            pane.all_sections()
+                .iter()
+                .any(|section| widget_has_focus(&section.view, focused.as_ref()))
+        })
     }
 
     pub fn empty_filter_has_focus(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
-        self.grid_panes
-            .iter()
-            .chain(self.explorer_pane.iter())
+        self.mode_panes()
             .filter_map(|pane| pane.filter_entry.as_ref())
             .any(|entry| entry.text().is_empty() && widget_has_focus(entry, focused.as_ref()))
     }
 
     pub fn show_filter(&self) -> bool {
-        let pane = match self.mode {
-            BrowserMode::Columns => None,
-            BrowserMode::Grid => self.grid_panes.first(),
-            BrowserMode::Explorer => self.explorer_pane.as_ref(),
-        };
-        let Some(pane) = pane else {
+        let Some(pane) = self.single_pane(None) else {
             return false;
         };
         let (Some(entry), Some(button)) = (pane.filter_entry.as_ref(), pane.filter_button.as_ref())
@@ -530,16 +535,11 @@ impl ModeViews {
 
     pub fn dismiss_focused_filter(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
-        let Some(pane) = self
-            .grid_panes
-            .iter()
-            .chain(self.explorer_pane.iter())
-            .find(|pane| {
-                pane.filter_entry
-                    .as_ref()
-                    .is_some_and(|entry| widget_has_focus(entry, focused.as_ref()))
-            })
-        else {
+        let Some(pane) = self.mode_panes().find(|pane| {
+            pane.filter_entry
+                .as_ref()
+                .is_some_and(|entry| widget_has_focus(entry, focused.as_ref()))
+        }) else {
             return false;
         };
         if let Some(button) = pane.filter_button.as_ref() {
@@ -556,11 +556,7 @@ impl ModeViews {
         self.cancel_new_entry();
         self.cancel_rename();
         self.mode = mode;
-        match mode {
-            BrowserMode::Columns => {}
-            BrowserMode::Grid => self.rebuild_grid(),
-            BrowserMode::Explorer => self.rebuild_explorer(),
-        }
+        self.rebuild_mode(mode);
     }
 
     pub fn show_mode(&self, mode: BrowserMode) {
@@ -568,6 +564,7 @@ impl ModeViews {
             BrowserMode::Columns => "columns",
             BrowserMode::Grid => "grid",
             BrowserMode::Explorer => "explorer",
+            BrowserMode::Tree => "tree",
         });
         if let Some(depth) = self.browser.active_depth() {
             self.focus_visible_pane(depth);
@@ -582,6 +579,7 @@ impl ModeViews {
             BrowserMode::Columns => {}
             BrowserMode::Grid => self.clear_grid(),
             BrowserMode::Explorer => self.clear_explorer(),
+            BrowserMode::Tree => self.clear_tree(),
         }
     }
 
@@ -594,6 +592,7 @@ impl ModeViews {
             BrowserMode::Columns => {}
             BrowserMode::Grid => self.grid_click_activation.set(activation),
             BrowserMode::Explorer => self.explorer_click_activation.set(activation),
+            BrowserMode::Tree => self.tree_click_activation.set(activation),
         }
     }
 
@@ -608,7 +607,7 @@ impl ModeViews {
     pub fn set_cut_locations(&self, locations: &[Location]) {
         self.cut_locations
             .replace(locations.iter().cloned().collect());
-        for pane in self.grid_panes.iter().chain(self.explorer_pane.iter()) {
+        for pane in self.mode_panes() {
             refresh_cut_pane(pane, &self.browser, locations);
         }
     }
@@ -618,7 +617,7 @@ impl ModeViews {
         for pane in &self.grid_panes {
             configure_grid_density(pane, density);
         }
-        for root in [&self.grid_root, &self.explorer_root] {
+        for root in [&self.grid_root, &self.explorer_root, &self.tree_root] {
             root.remove_css_class("density-compact");
             root.remove_css_class("density-airy");
             root.add_css_class(match density {
@@ -635,10 +634,17 @@ impl ModeViews {
         self.cancel_new_entry();
         self.cancel_rename();
         self.group_by_type = enabled;
-        match self.mode {
+        self.rebuild_mode(self.mode);
+    }
+
+    /// Rebuilds whichever presentation `mode` names. The tree groups by hierarchy, so
+    /// the file-type grouping preference does not reach it.
+    fn rebuild_mode(&mut self, mode: BrowserMode) {
+        match mode {
             BrowserMode::Columns => {}
             BrowserMode::Grid => self.rebuild_grid(),
             BrowserMode::Explorer => self.rebuild_explorer(),
+            BrowserMode::Tree => self.rebuild_tree(),
         }
     }
 
@@ -653,24 +659,15 @@ impl ModeViews {
         }
         match event {
             BrowserEvent::Reset => {
-                clear_box(&self.grid_root);
-                self.grid_panes.clear();
-                clear_box(&self.explorer_root);
-                self.explorer_pane = None;
+                self.clear_grid();
+                self.clear_explorer();
+                self.clear_tree();
             }
-            BrowserEvent::ColumnsTruncated { .. } => match self.mode {
-                BrowserMode::Columns => {}
-                BrowserMode::Grid => self.rebuild_grid(),
-                BrowserMode::Explorer => self.rebuild_explorer(),
-            },
+            BrowserEvent::ColumnsTruncated { .. } => self.rebuild_mode(self.mode),
             BrowserEvent::ColumnAdded { depth, .. }
                 if self.browser.active_depth() == Some(*depth) =>
             {
-                match self.mode {
-                    BrowserMode::Columns => {}
-                    BrowserMode::Grid => self.rebuild_grid(),
-                    BrowserMode::Explorer => self.rebuild_explorer(),
-                }
+                self.rebuild_mode(self.mode);
             }
             BrowserEvent::ColumnAdded { .. } => {}
             BrowserEvent::EntriesInserted { depth, insertions } => {
@@ -768,6 +765,9 @@ impl ModeViews {
             }
             BrowserEvent::ColumnReloaded { depth } => {
                 for pane in self.panes_at(*depth) {
+                    if let Some(tree) = pane.tree.as_ref() {
+                        tree.reset();
+                    }
                     pane.detached.set(true);
                     for section in pane.all_sections() {
                         section.syncing.set(true);
@@ -839,48 +839,17 @@ impl ModeViews {
     }
 
     fn focus_visible_pane(&self, depth: usize) {
-        match self.mode {
-            BrowserMode::Columns => {}
-            BrowserMode::Grid => {
-                if let Some(pane) = self.grid_panes.iter().find(|pane| pane.depth == depth) {
-                    pane.focus_view().grab_focus();
-                }
-            }
-            BrowserMode::Explorer => {
-                if let Some(pane) = self
-                    .explorer_pane
-                    .as_ref()
-                    .filter(|pane| pane.depth == depth)
-                {
-                    pane.focus_view().grab_focus();
-                }
-            }
+        if let Some(pane) = self.single_pane(Some(depth)) {
+            pane.focus_view().grab_focus();
         }
     }
 
     fn all_panes(&self) -> Vec<&Pane> {
-        self.grid_panes
-            .iter()
-            .chain(self.explorer_pane.as_ref())
-            .collect()
+        self.mode_panes().collect()
     }
 
     fn panes_at(&self, depth: usize) -> Vec<&Pane> {
-        match self.mode {
-            BrowserMode::Columns => Vec::new(),
-            BrowserMode::Grid => self
-                .grid_panes
-                .iter()
-                .find(|pane| pane.depth == depth)
-                .into_iter()
-                .collect(),
-            BrowserMode::Explorer => self
-                .explorer_pane
-                .as_ref()
-                .filter(|pane| pane.depth == depth)
-                .into_iter()
-                .collect(),
-        }
+        self.single_pane(Some(depth)).into_iter().collect()
     }
 
     /// The menu for the pane's own background. Item menus belong to the sections that
@@ -919,6 +888,60 @@ impl ModeViews {
     fn clear_explorer(&mut self) {
         clear_box(&self.explorer_root);
         self.explorer_pane = None;
+    }
+
+    fn clear_tree(&mut self) {
+        clear_box(&self.tree_root);
+        self.tree_pane = None;
+    }
+
+    fn rebuild_tree(&mut self) {
+        let Some(depth) = self.browser.active_depth() else {
+            self.clear_tree();
+            return;
+        };
+        let Some(snapshot) = self.browser.column_snapshot(depth) else {
+            return;
+        };
+        self.clear_tree();
+        let pane = tree::build_pane(
+            self.browser.clone(),
+            ModeClickOptions {
+                previews: self.single_click_previews.clone(),
+                activation: self.tree_click_activation.clone(),
+            },
+            self.transfer_handler.clone(),
+            self.cut_locations.clone(),
+            tree::TreeOptions {
+                state: self.context_state.borrow().clone(),
+                active_new_entry: self.active_new_entry.clone(),
+            },
+            depth,
+            &snapshot.location.display_name(),
+        );
+        apply_snapshot(&pane, &snapshot, &self.browser);
+        self.install_context_menu(&pane);
+        self.tree_root.append(&pane.shell);
+        self.tree_pane = Some(pane);
+    }
+
+    /// Moves through the tree, expanding or collapsing folders in place. Reports whether
+    /// the tree consumed the keystroke; only the tree mode ever does.
+    pub fn tree_step(&self, step: TreeStep) -> bool {
+        self.showing_tree()
+            .is_some_and(|pane| tree::step(pane, step))
+    }
+
+    /// Activates the tree's focused row. Rows inside an expanded branch are the tree's
+    /// own, so only it can act on them.
+    pub fn activate_tree_focus(&self) -> bool {
+        self.showing_tree().is_some_and(tree::activate_focused)
+    }
+
+    fn showing_tree(&self) -> Option<&Pane> {
+        self.tree_pane
+            .as_ref()
+            .filter(|_| self.mode == BrowserMode::Tree)
     }
 
     fn rebuild_grid(&mut self) {
@@ -1393,6 +1416,7 @@ fn build_grid_pane(
         sections,
         groups,
         grid: Some(context),
+        tree: None,
         targets,
         detached: Rc::new(Cell::new(false)),
         stack,
@@ -2462,6 +2486,7 @@ fn build_explorer_pane(
         sections,
         groups: None,
         grid: None,
+        tree: None,
         targets,
         detached: Rc::new(Cell::new(false)),
         stack,
@@ -2868,9 +2893,14 @@ fn source_position_for_view(
     let Some(filtered) = filtered else {
         return Some(position as usize);
     };
-    let item = filtered.item(position)?;
+    source_position_for_item(source, &filtered.item(position)?)
+}
+
+/// Where a view's item sits in the pane's own model. Items a view owns outright, such
+/// as a tree row below the root level, belong to no source position.
+fn source_position_for_item(source: &gtk::StringList, item: &glib::Object) -> Option<usize> {
     (0..source.n_items())
-        .find(|candidate| source.item(*candidate).is_some_and(|value| value == item))
+        .find(|candidate| source.item(*candidate).is_some_and(|value| &value == item))
         .map(|position| position as usize)
 }
 
@@ -2986,6 +3016,36 @@ fn connect_selection(
                 .last()
                 .copied();
             sync_browser_selection(&sections, &browser, depth, &source, focused);
+        });
+}
+
+/// Mirrors a tree's selection into the browser, but only while it holds root rows.
+/// Rows inside an expanded branch have no position in the browser's column, so
+/// reporting them would clear the selection the view just made.
+fn connect_tree_selection(
+    section: &PaneSection,
+    browser: &Rc<Browser>,
+    depth: usize,
+    source: gtk::StringList,
+) {
+    let syncing = section.syncing.clone();
+    let view_model = section.view_model.clone();
+    let browser = Rc::downgrade(browser);
+    section
+        .selection
+        .connect_selection_changed(move |selection, _, _| {
+            if syncing.get() {
+                return;
+            }
+            let Some(browser) = browser.upgrade() else {
+                return;
+            };
+            let positions = selected_source_positions(&source, &view_model, selection);
+            if positions.is_empty() && selection.selection().size() > 0 {
+                return;
+            }
+            let focused = positions.last().copied();
+            browser.set_selection(depth, &positions, focused);
         });
 }
 

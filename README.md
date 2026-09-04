@@ -20,7 +20,7 @@
 
 </div>
 
-Strata combines spatial Miller-column navigation with familiar Grid and Explorer views, instant fuzzy filename search, rich previews, and native Linux desktop integration. It is designed for Omarchy and works on compatible GTK4 Linux environments.
+Strata combines spatial Miller-column navigation with familiar Icons, List, and Tree views, instant fuzzy filename search, rich previews, and native Linux desktop integration. It is designed for Omarchy and works on compatible GTK4 Linux environments.
 
 ## Contents
 
@@ -45,7 +45,7 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
 
 ## Features
 
-- **Three browser modes:** navigable Miller columns, a thumbnail Grid, and a sortable Explorer table.
+- **Four browser modes:** navigable Miller Columns, a thumbnail Icons grid, a sortable List table, and a Tree that expands folders in place.
 - **Keyboard-first control:** Vim-style movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews.
 - **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed.
 - **Rich previews and thumbnails:** bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application.

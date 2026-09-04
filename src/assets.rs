@@ -21,6 +21,7 @@ pub mod icons {
     pub const ARROW_UP_NARROW_WIDE: &str = "strata-arrow-up-narrow-wide";
     pub const CHECK: &str = "strata-check";
     pub const CHECK_ON_PRIMARY: &str = "strata-check-on-primary";
+    pub const CHEVRON_DOWN: &str = "strata-chevron-down";
     pub const CHEVRON_RIGHT: &str = "strata-chevron-right";
     pub const CLIPBOARD_PASTE: &str = "strata-clipboard-paste";
     pub const COPY: &str = "strata-copy";
@@ -44,6 +45,7 @@ pub mod icons {
     pub const LIST: &str = "strata-list";
     pub const LIST_ACTIVE: &str = "strata-list-active";
     pub const LIST_CHECKS: &str = "strata-list-checks";
+    pub const LIST_TREE: &str = "strata-list-tree";
     pub const KEY: &str = "strata-key";
     pub const KEYBOARD: &str = "strata-keyboard";
     pub const MONITOR: &str = "strata-monitor";

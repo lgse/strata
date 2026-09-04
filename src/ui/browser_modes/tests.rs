@@ -2,8 +2,10 @@
 
 use super::{
     BrowserMode, ClickActivation, ClickCount, EXPLORER_COLUMN_MIN_WIDTHS, EXPLORER_COLUMN_WIDTHS,
-    compare_type_groups, explorer_column_width, metadata_fill_position,
-    should_activate_pointer_click, type_groups_of, value_type_group,
+    TreeStep, compare_type_groups, explorer_column_width, metadata_fill_position,
+    should_activate_pointer_click,
+    tree::{TreeMove, TreeRowState, keeps_row, resolve_step},
+    type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 
@@ -47,7 +49,7 @@ fn click_activation_defaults_follow_view_conventions() {
             folders: ClickCount::One,
         }
     );
-    for mode in [BrowserMode::Grid, BrowserMode::Explorer] {
+    for mode in [BrowserMode::Grid, BrowserMode::Explorer, BrowserMode::Tree] {
         assert_eq!(
             ClickActivation::default_for(mode),
             ClickActivation {
@@ -136,4 +138,108 @@ fn entries_of_one_type_share_a_group() {
         value_type_group(&value('f', "notes.md")),
         value_type_group(&value('f', "notes.json"))
     );
+}
+
+/// A row in the middle of a tree, with a parent above it and rows below it.
+fn tree_row() -> TreeRowState {
+    TreeRowState {
+        position: 3,
+        count: 8,
+        expandable: false,
+        expanded: false,
+        parent: Some(1),
+    }
+}
+
+#[test]
+fn tree_steps_move_between_neighbouring_rows() {
+    assert_eq!(
+        resolve_step(TreeStep::Next, tree_row()),
+        Some(TreeMove::To(4))
+    );
+    assert_eq!(
+        resolve_step(TreeStep::Previous, tree_row()),
+        Some(TreeMove::To(2))
+    );
+}
+
+#[test]
+fn tree_steps_stop_at_the_ends_of_the_list() {
+    let first = TreeRowState {
+        position: 0,
+        ..tree_row()
+    };
+    let last = TreeRowState {
+        position: 7,
+        ..tree_row()
+    };
+
+    assert_eq!(resolve_step(TreeStep::Previous, first), None);
+    assert_eq!(resolve_step(TreeStep::Next, last), None);
+}
+
+#[test]
+fn expanding_applies_only_to_a_collapsed_folder() {
+    let folder = TreeRowState {
+        expandable: true,
+        ..tree_row()
+    };
+
+    assert_eq!(
+        resolve_step(TreeStep::Expand, folder),
+        Some(TreeMove::Expand)
+    );
+    assert_eq!(resolve_step(TreeStep::Expand, tree_row()), None);
+    assert_eq!(
+        resolve_step(
+            TreeStep::Expand,
+            TreeRowState {
+                expanded: true,
+                ..folder
+            }
+        ),
+        None
+    );
+}
+
+#[test]
+fn collapsing_closes_a_folder_before_walking_to_its_parent() {
+    let expanded = TreeRowState {
+        expandable: true,
+        expanded: true,
+        ..tree_row()
+    };
+
+    assert_eq!(
+        resolve_step(TreeStep::Collapse, expanded),
+        Some(TreeMove::Collapse)
+    );
+    assert_eq!(
+        resolve_step(TreeStep::Collapse, tree_row()),
+        Some(TreeMove::To(1))
+    );
+}
+
+/// A collapse at the root level belongs to the window, which leaves the directory.
+#[test]
+fn collapsing_a_root_row_is_left_to_the_window() {
+    assert_eq!(
+        resolve_step(
+            TreeStep::Collapse,
+            TreeRowState {
+                parent: None,
+                ..tree_row()
+            }
+        ),
+        None
+    );
+}
+
+#[test]
+fn tree_rows_honor_hidden_files_and_the_filter_at_every_level() {
+    assert!(keeps_row(false, "", false, "notes.md"));
+    assert!(!keeps_row(false, "", true, ".notes.md"));
+    assert!(keeps_row(true, "", true, ".notes.md"));
+    assert!(keeps_row(false, "note", false, "Notes.md"));
+    assert!(!keeps_row(false, "report", false, "notes.md"));
 }

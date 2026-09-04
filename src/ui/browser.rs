@@ -28,7 +28,9 @@ use crate::{
 
 use super::{
     blur::BlurBin,
-    browser_modes::{BrowserDensity, BrowserMode, ClickActivation, ClickCount, ModeViews},
+    browser_modes::{
+        BrowserDensity, BrowserMode, ClickActivation, ClickCount, ModeViews, TreeStep,
+    },
     controls::{
         ModalTone, form_check_button, form_entry, form_label, form_password_entry, menu_option,
         message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
@@ -653,7 +655,7 @@ impl BrowserView {
         self.state.mode_views.borrow().show_mode(mode);
         match previous {
             BrowserMode::Columns => self.state.truncate(0),
-            BrowserMode::Grid | BrowserMode::Explorer => self
+            BrowserMode::Grid | BrowserMode::Explorer | BrowserMode::Tree => self
                 .state
                 .mode_views
                 .borrow_mut()
@@ -680,7 +682,16 @@ impl BrowserView {
             .set_group_by_type(enabled);
     }
 
+    /// Moves through an expanded tree. Other modes leave the keystroke to the window's
+    /// usual selection handling.
+    pub fn tree_step(&self, step: TreeStep) -> bool {
+        self.state.mode_views.borrow().tree_step(step)
+    }
+
     pub fn activate_focused(&self) {
+        if self.state.mode_views.borrow().activate_tree_focus() {
+            return;
+        }
         if self.view_mode() != BrowserMode::Columns {
             self.state.browser.activate_focused_in_place();
         } else {
@@ -7975,7 +7986,7 @@ pub(super) fn entry_model_value(entry: &FileEntry) -> String {
     value
 }
 
-fn model_display_name(value: &str) -> &str {
+pub(super) fn model_display_name(value: &str) -> &str {
     value.split_once('\t').map_or(value, |(_, name)| name)
 }
 
@@ -8117,7 +8128,7 @@ enum PeekOriginBounds {
 fn peek_origin_bounds(mode: BrowserMode) -> PeekOriginBounds {
     match mode {
         BrowserMode::Columns => PeekOriginBounds::Column,
-        BrowserMode::Grid | BrowserMode::Explorer => PeekOriginBounds::Anchor,
+        BrowserMode::Grid | BrowserMode::Explorer | BrowserMode::Tree => PeekOriginBounds::Anchor,
     }
 }
 
