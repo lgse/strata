@@ -8940,7 +8940,7 @@ fn with_execute_permissions(mode: u32, executable: bool) -> u32 {
     }
 }
 
-fn format_permissions(mode: u32) -> String {
+pub fn format_permissions(mode: u32) -> String {
     let kind = if mode & 0o170000 == 0o040000 {
         'd'
     } else {

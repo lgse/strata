@@ -25,8 +25,8 @@ use crate::{
 
 const LIST_ATTRIBUTES: &str =
     "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink";
-const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,time::modified";
-const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified";
+const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,time::modified,unix::mode";
+const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified,unix::mode";
 const MAX_PENDING_MONITOR_CHANGES: usize = 256;
 const MAX_HIDDEN_FILE_BYTES: u64 = 1024 * 1024;
 
@@ -147,6 +147,10 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         kind,
         size,
         modified_unix_seconds,
+        mode: match info.attribute_uint32("unix::mode") {
+            0 => MetadataValue::Unknown,
+            m => MetadataValue::Known(m),
+        },
         is_hidden: info_is_hidden(&info),
     }
 }

@@ -19,8 +19,8 @@ use crate::{
     model::{FileEntry, Location, MetadataValue, SortDirection, SortKey},
 };
 
-const EXPLORER_COLUMN_WIDTHS: [i32; 4] = [160, 90, 120, 150];
-const EXPLORER_COLUMN_MIN_WIDTHS: [i32; 4] = [160, 70, 80, 110];
+const EXPLORER_COLUMN_WIDTHS: [i32; 5] = [160, 110, 90, 120, 150];
+const EXPLORER_COLUMN_MIN_WIDTHS: [i32; 5] = [160, 80, 70, 80, 110];
 const DEFAULT_GRID_THUMBNAIL_SIZE: i32 = 64;
 /// Margin and padding a grid card adds around its own width.
 const GRID_CARD_SPACING: i32 = 4;
@@ -39,7 +39,7 @@ impl ExplorerColumnLayout {
     fn new() -> Self {
         Self {
             widths: Rc::new(EXPLORER_COLUMN_WIDTHS.into_iter().map(Cell::new).collect()),
-            cells: Rc::new((0..4).map(|_| RefCell::new(Vec::new())).collect()),
+            cells: Rc::new((0..5).map(|_| RefCell::new(Vec::new())).collect()),
             name_manually_resized: Rc::new(Cell::new(false)),
         }
     }
@@ -1883,10 +1883,15 @@ fn explorer_headings(
     let arrows: Rc<RefCell<Vec<(SortKey, gtk::Image)>>> = Rc::new(RefCell::new(Vec::new()));
 
     for (index, (text, key, width)) in [
-        ("Name", SortKey::Name, EXPLORER_COLUMN_WIDTHS[0]),
-        ("Size", SortKey::Size, EXPLORER_COLUMN_WIDTHS[1]),
-        ("Type", SortKey::Type, EXPLORER_COLUMN_WIDTHS[2]),
-        ("Modified", SortKey::Modified, EXPLORER_COLUMN_WIDTHS[3]),
+        ("Name", Some(SortKey::Name), EXPLORER_COLUMN_WIDTHS[0]),
+        ("Mode", None, EXPLORER_COLUMN_WIDTHS[1]),
+        ("Size", Some(SortKey::Size), EXPLORER_COLUMN_WIDTHS[2]),
+        ("Type", Some(SortKey::Type), EXPLORER_COLUMN_WIDTHS[3]),
+        (
+            "Modified",
+            Some(SortKey::Modified),
+            EXPLORER_COLUMN_WIDTHS[4],
+        ),
     ]
     .into_iter()
     .enumerate()
@@ -1907,50 +1912,52 @@ fn explorer_headings(
             },
             12,
         );
-        arrow.set_visible(preferences.sort_key == key);
+        arrow.set_visible(key.is_some_and(|k| preferences.sort_key == k));
         row.append(&label);
         row.append(&arrow);
         let button = gtk::Button::builder().child(&row).build();
         button.add_css_class("explorer-heading-button");
         button.set_hexpand(true);
-        let weak_browser = Rc::downgrade(browser);
-        let sorting_for_click = sorting.clone();
-        let arrows_for_click = arrows.clone();
-        button.connect_clicked(move |_| {
-            let (current_key, current_direction) = sorting_for_click.get();
-            let direction = if current_key == key {
-                match current_direction {
-                    SortDirection::Ascending => SortDirection::Descending,
-                    SortDirection::Descending => SortDirection::Ascending,
+        if let Some(key) = key {
+            let weak_browser = Rc::downgrade(browser);
+            let sorting_for_click = sorting.clone();
+            let arrows_for_click = arrows.clone();
+            button.connect_clicked(move |_| {
+                let (current_key, current_direction) = sorting_for_click.get();
+                let direction = if current_key == key {
+                    match current_direction {
+                        SortDirection::Ascending => SortDirection::Descending,
+                        SortDirection::Descending => SortDirection::Ascending,
+                    }
+                } else {
+                    SortDirection::Ascending
+                };
+                sorting_for_click.set((key, direction));
+                for (arrow_key, arrow) in arrows_for_click.borrow().iter() {
+                    arrow.set_visible(*arrow_key == key);
+                    if *arrow_key == key {
+                        crate::assets::set_primary_icon(
+                            arrow,
+                            if direction == SortDirection::Ascending {
+                                crate::assets::icons::ARROW_UP
+                            } else {
+                                crate::assets::icons::ARROW_DOWN
+                            },
+                        );
+                    }
                 }
-            } else {
-                SortDirection::Ascending
-            };
-            sorting_for_click.set((key, direction));
-            for (arrow_key, arrow) in arrows_for_click.borrow().iter() {
-                arrow.set_visible(*arrow_key == key);
-                if *arrow_key == key {
-                    crate::assets::set_primary_icon(
-                        arrow,
-                        if direction == SortDirection::Ascending {
-                            crate::assets::icons::ARROW_UP
-                        } else {
-                            crate::assets::icons::ARROW_DOWN
-                        },
-                    );
+                if let Some(browser) = weak_browser.upgrade() {
+                    browser.set_sort(depth, key, direction);
                 }
-            }
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.set_sort(depth, key, direction);
-            }
-        });
+            });
+            arrows.borrow_mut().push((key, arrow));
+        }
         let button_overlay = gtk::Overlay::new();
         button_overlay.set_child(Some(&button));
         button_overlay.set_hexpand(true);
         button_overlay.add_overlay(&column_resize_handle(columns.clone(), index, width));
         cell.append(&button_overlay);
         headings.append(&cell);
-        arrows.borrow_mut().push((key, arrow));
     }
     headings
 }
@@ -2243,11 +2250,13 @@ fn build_explorer_pane(
         name_cell.append(&icon);
         name_cell.append(&name);
         name_cell.append(&field);
+        let mode = explorer_metadata_label();
         let size = explorer_metadata_label();
         let kind = explorer_metadata_label();
         let modified = explorer_metadata_label();
         for (index, widget) in [
             name_cell.clone().upcast::<gtk::Widget>(),
+            mode.clone().upcast(),
             size.clone().upcast(),
             kind.clone().upcast(),
             modified.clone().upcast(),
@@ -2258,6 +2267,7 @@ fn build_explorer_pane(
             register_explorer_column_cell(&columns, index, &widget);
         }
         row.append(&name_cell);
+        row.append(&mode);
         row.append(&size);
         row.append(&kind);
         row.append(&modified);
@@ -2311,7 +2321,10 @@ fn build_explorer_pane(
         let Some(field) = name.next_sibling().and_downcast::<gtk::Entry>() else {
             return;
         };
-        let Some(size) = name_cell.next_sibling().and_downcast::<gtk::Label>() else {
+        let Some(mode) = name_cell.next_sibling().and_downcast::<gtk::Label>() else {
+            return;
+        };
+        let Some(size) = mode.next_sibling().and_downcast::<gtk::Label>() else {
             return;
         };
         let Some(kind) = size.next_sibling().and_downcast::<gtk::Label>() else {
@@ -2346,6 +2359,7 @@ fn build_explorer_pane(
                 browser.request_metadata_fill(depth, position, entry.location.clone());
             }
             name.set_label(&entry.display_name);
+            mode.set_label(&entry_mode(&entry));
             size.set_label(&entry_size(&entry));
             kind.set_label(entry_type(&entry));
             crate::util::set_modified_date(&modified, Some(&entry), "—");
@@ -2359,6 +2373,7 @@ fn build_explorer_pane(
             crate::assets::set_primary_icon(&icon, icon_name);
             name.set_visible(false);
             field.set_visible(true);
+            mode.set_label("");
             size.set_label("");
             kind.set_label("");
             crate::util::set_modified_date(&modified, None, "");
@@ -3095,6 +3110,13 @@ fn entry_type(entry: &FileEntry) -> &'static str {
         EntryKind::FileSymbolicLink => "File link",
         EntryKind::SymbolicLink => "Broken link",
         EntryKind::Other => "Other",
+    }
+}
+
+fn entry_mode(entry: &FileEntry) -> String {
+    match entry.mode {
+        MetadataValue::Known(mode) => super::browser::format_permissions(mode),
+        MetadataValue::Unknown | MetadataValue::Unavailable => String::new(),
     }
 }
 

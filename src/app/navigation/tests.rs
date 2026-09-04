@@ -25,6 +25,7 @@ fn named_entry(path: &str, name: &str) -> FileEntry {
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        mode: MetadataValue::Unknown,
     }
 }
 
@@ -395,6 +396,7 @@ fn hidden_entry(path: &str, name: &str) -> FileEntry {
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: true,
+        mode: MetadataValue::Unknown,
     }
 }
 

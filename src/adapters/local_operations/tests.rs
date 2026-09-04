@@ -51,6 +51,7 @@ fn file_entry(path: &std::path::Path) -> FileEntry {
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        mode: MetadataValue::Unknown,
     }
 }
 
@@ -858,6 +859,7 @@ fn test_file_entry(path: &Path) -> FileEntry {
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        mode: MetadataValue::Unknown,
     }
 }
 

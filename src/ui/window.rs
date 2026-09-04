@@ -266,6 +266,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
+                mode: MetadataValue::Unknown,
             });
         }
     });
