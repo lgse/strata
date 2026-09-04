@@ -460,6 +460,22 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         }
     });
     window.add_controller(rename_cancel);
+    let location_cancel_view = browser.clone();
+    let location_cancel = gtk::GestureClick::new();
+    location_cancel.set_propagation_phase(gtk::PropagationPhase::Capture);
+    location_cancel.connect_pressed(move |gesture, _, x, y| {
+        if !location_cancel_view.location_edit_is_active() {
+            return;
+        }
+        let on_location_edit = gesture
+            .widget()
+            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
+            .is_some_and(|target| location_cancel_view.location_edit_contains(&target));
+        if !on_location_edit {
+            location_cancel_view.cancel_location_edit();
+        }
+    });
+    window.add_controller(location_cancel);
     install_modal_focus_trap(&window);
     install_keyboard_navigation(&window, &browser, &sidebar, &sidebar_toggle, &preview);
     let browser_controller = browser.browser();

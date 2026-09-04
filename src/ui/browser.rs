@@ -547,7 +547,7 @@ impl BrowserView {
             let clicked_button = gesture
                 .widget()
                 .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
-                .is_some_and(is_breadcrumb_target);
+                .is_some_and(is_breadcrumb_button_target);
             if !clicked_button && let Some(state) = weak_state.upgrade() {
                 state.begin_location_edit();
             }
@@ -833,6 +833,15 @@ impl BrowserView {
                 .and_then(|root| root.focus())
                 .as_ref()
                 .is_some_and(|focused| focused == entry || focused.is_ancestor(entry))
+    }
+
+    pub(super) fn location_edit_is_active(&self) -> bool {
+        self.state.location_stack.visible_child_name().as_deref() == Some("entry")
+    }
+
+    pub(super) fn location_edit_contains(&self, target: &gtk::Widget) -> bool {
+        let location_stack = self.state.location_stack.upcast_ref::<gtk::Widget>();
+        target == location_stack || target.is_ancestor(location_stack)
     }
 
     pub fn cancel_location_edit(&self) {
@@ -7875,13 +7884,9 @@ fn is_file_row_target(target: gtk::Widget) -> bool {
     file_row_target(target).is_some()
 }
 
-fn is_breadcrumb_target(mut target: gtk::Widget) -> bool {
+fn is_breadcrumb_button_target(mut target: gtk::Widget) -> bool {
     loop {
-        if target.is::<gtk::Button>()
-            || target.has_css_class("breadcrumb")
-            || target.has_css_class("breadcrumb-separator")
-            || target.has_css_class("current-breadcrumb")
-        {
+        if target.is::<gtk::Button>() {
             return true;
         }
         let Some(parent) = target.parent() else {
