@@ -2093,6 +2093,9 @@ fn keybindings_page() -> gtk::Widget {
         append_keybinding(&content, label, keys);
     }
 
+    append_heading(&content, "VIEW");
+    append_keybinding(&content, "Toggle hidden files", "Ctrl + H  or  Ctrl + .");
+
     append_heading(&content, "FILE OPERATIONS");
     for (label, keys) in [
         ("Create new folder", "Ctrl + Shift + N"),

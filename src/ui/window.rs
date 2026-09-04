@@ -670,7 +670,7 @@ fn install_keyboard_navigation(
             view.select_all();
             return glib::Propagation::Stop;
         }
-        if control && key == gtk::gdk::Key::h {
+        if is_toggle_hidden_shortcut(key, modifiers) {
             browser.toggle_hidden();
             return glib::Propagation::Stop;
         }
@@ -819,6 +819,16 @@ fn is_open_terminal_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierTy
         && !modifiers
             .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
         && matches!(key, gtk::gdk::Key::t | gtk::gdk::Key::T)
+}
+
+fn is_toggle_hidden_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+        && !modifiers
+            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
+        && matches!(
+            key,
+            gtk::gdk::Key::h | gtk::gdk::Key::H | gtk::gdk::Key::period
+        )
 }
 
 fn is_refresh_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
@@ -1011,13 +1021,14 @@ fn build_appearance_menu(
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     content.append(&group_by_type);
-    let (hidden, hidden_check, hidden_icon) = appearance_option(
+    let (hidden, hidden_check, hidden_icon) = appearance_option_with_shortcut(
         if hidden_files_shown {
             crate::assets::icons::EYE
         } else {
             crate::assets::icons::EYE_OFF
         },
         "Hidden files",
+        "Ctrl + H",
         hidden_files_shown,
         true,
     );
@@ -1069,6 +1080,16 @@ fn appearance_option(
     checked: bool,
     sensitive: bool,
 ) -> (gtk::Button, gtk::Image, gtk::Image) {
+    appearance_option_with_shortcut(icon, label, "", checked, sensitive)
+}
+
+fn appearance_option_with_shortcut(
+    icon: &str,
+    label: &str,
+    shortcut: &str,
+    checked: bool,
+    sensitive: bool,
+) -> (gtk::Button, gtk::Image, gtk::Image) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let check = crate::assets::primary_icon(crate::assets::icons::CHECK, 16);
     check.set_visible(checked);
@@ -1078,6 +1099,11 @@ fn appearance_option(
     label.set_hexpand(true);
     row.append(&option);
     row.append(&label);
+    if !shortcut.is_empty() {
+        let shortcut = gtk::Label::new(Some(shortcut));
+        shortcut.add_css_class("folder-context-shortcut");
+        row.append(&shortcut);
+    }
     row.append(&check);
     let button = gtk::Button::builder()
         .child(&row)

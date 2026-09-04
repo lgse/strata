@@ -5325,6 +5325,20 @@ pub(super) fn install_folder_context_menu(
     let paste = context_menu_option(crate::assets::icons::CLIPBOARD_PASTE, "Paste", "Ctrl+V");
     let select_all = context_menu_option(crate::assets::icons::LIST_CHECKS, "Select All", "Ctrl+A");
     let refresh = context_menu_option(crate::assets::icons::REFRESH, "Refresh", "F5");
+    let hidden_files_shown = state.browser.preferences().show_hidden;
+    let (toggle_hidden, toggle_hidden_icon, toggle_hidden_label) = context_menu_toggle_option(
+        if hidden_files_shown {
+            crate::assets::icons::EYE
+        } else {
+            crate::assets::icons::EYE_OFF
+        },
+        if hidden_files_shown {
+            "Hide Hidden Files"
+        } else {
+            "Show Hidden Files"
+        },
+        "Ctrl+H",
+    );
     let properties = context_menu_option(crate::assets::icons::INFO, "Properties", "");
     content.append(&new_folder);
     content.append(&new_file);
@@ -5333,6 +5347,7 @@ pub(super) fn install_folder_context_menu(
     content.append(&paste);
     content.append(&select_all);
     content.append(&refresh);
+    content.append(&toggle_hidden);
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     content.append(&properties);
 
@@ -5400,6 +5415,16 @@ pub(super) fn install_folder_context_menu(
         }
     });
     let weak = Rc::downgrade(state);
+    let toggle_hidden_popover = popover.downgrade();
+    toggle_hidden.connect_clicked(move |_| {
+        if let Some(popover) = toggle_hidden_popover.upgrade() {
+            popover.popdown();
+        }
+        if let Some(state) = weak.upgrade() {
+            state.browser.toggle_hidden();
+        }
+    });
+    let weak = Rc::downgrade(state);
     let properties_popover = popover.downgrade();
     let properties_location = location.clone();
     properties.connect_clicked(move |_| {
@@ -5425,6 +5450,7 @@ pub(super) fn install_folder_context_menu(
     let menu_click = gtk::GestureClick::new();
     menu_click.set_button(3);
     let popover_for_click = popover.clone();
+    let browser_for_click = state.browser.clone();
     menu_click.connect_pressed(move |gesture, _, x, y| {
         let over_item = gesture
             .widget()
@@ -5442,6 +5468,20 @@ pub(super) fn install_folder_context_menu(
         }));
         select_all.set_sensitive(has_entries());
         open_terminal.set_sensitive(can_open_terminal(&location));
+        let hidden_files_shown = browser_for_click.preferences().show_hidden;
+        toggle_hidden_label.set_text(if hidden_files_shown {
+            "Hide Hidden Files"
+        } else {
+            "Show Hidden Files"
+        });
+        crate::assets::set_primary_icon(
+            &toggle_hidden_icon,
+            if hidden_files_shown {
+                crate::assets::icons::EYE
+            } else {
+                crate::assets::icons::EYE_OFF
+            },
+        );
         if popover_for_click.parent().is_none()
             && let Some(parent) = gesture.widget()
         {
@@ -6795,9 +6835,11 @@ fn item_context_option_with_icon(icon: gtk::Image, label: &str, accelerator: &st
     button
 }
 
-fn context_menu_option(icon: &str, label: &str, accelerator: &str) -> gtk::Button {
-    let button = gtk::Button::new();
-    button.add_css_class("folder-context-option");
+fn context_menu_row(
+    icon: &str,
+    label: &str,
+    accelerator: &str,
+) -> (gtk::Box, gtk::Image, gtk::Label) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let icon = crate::assets::primary_icon(icon, 15);
     icon.add_css_class("folder-context-icon");
@@ -6811,8 +6853,27 @@ fn context_menu_option(icon: &str, label: &str, accelerator: &str) -> gtk::Butto
         shortcut.add_css_class("folder-context-shortcut");
         row.append(&shortcut);
     }
+    (row, icon, title)
+}
+
+fn context_menu_option(icon: &str, label: &str, accelerator: &str) -> gtk::Button {
+    let (row, _, _) = context_menu_row(icon, label, accelerator);
+    let button = gtk::Button::new();
+    button.add_css_class("folder-context-option");
     button.set_child(Some(&row));
     button
+}
+
+fn context_menu_toggle_option(
+    icon: &str,
+    label: &str,
+    accelerator: &str,
+) -> (gtk::Button, gtk::Image, gtk::Label) {
+    let (row, icon, title) = context_menu_row(icon, label, accelerator);
+    let button = gtk::Button::new();
+    button.add_css_class("folder-context-option");
+    button.set_child(Some(&row));
+    (button, icon, title)
 }
 
 pub(super) fn pane_refresh_button(browser: &Rc<Browser>, depth: usize) -> gtk::Button {

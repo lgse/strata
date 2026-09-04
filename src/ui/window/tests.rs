@@ -6,11 +6,11 @@ use crate::services::{BuildKind, ReleaseMetadata};
 
 use super::{
     MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, is_open_terminal_shortcut,
-    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location, is_undo_trash_shortcut,
-    mouse_history_action, parse_pinned_drag_source, parse_pinned_places, pin_status,
-    remove_pinned_place, reorder_pinned_places, reorder_places, resolve_place_order,
-    serialize_pinned_places, should_show_standard_place, sidebar_update_label, standard_place,
-    vim_focus_direction,
+    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location,
+    is_toggle_hidden_shortcut, is_undo_trash_shortcut, mouse_history_action,
+    parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
+    reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
+    should_show_standard_place, sidebar_update_label, standard_place, vim_focus_direction,
 };
 
 fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
@@ -89,6 +89,30 @@ fn undo_trash_shortcut_requires_control_without_shift_or_alt() {
     ));
     assert!(!is_undo_trash_shortcut(gtk::gdk::Key::z, control | shift));
     assert!(!is_undo_trash_shortcut(gtk::gdk::Key::z, control | alt));
+}
+
+#[test]
+fn toggle_hidden_shortcut_accepts_h_or_period_with_only_control() {
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+    let shift = gtk::gdk::ModifierType::SHIFT_MASK;
+    let alt = gtk::gdk::ModifierType::ALT_MASK;
+
+    assert!(is_toggle_hidden_shortcut(gtk::gdk::Key::h, control));
+    assert!(is_toggle_hidden_shortcut(gtk::gdk::Key::H, control));
+    assert!(is_toggle_hidden_shortcut(gtk::gdk::Key::period, control));
+    assert!(!is_toggle_hidden_shortcut(
+        gtk::gdk::Key::h,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(!is_toggle_hidden_shortcut(
+        gtk::gdk::Key::h,
+        control | shift
+    ));
+    assert!(!is_toggle_hidden_shortcut(gtk::gdk::Key::h, control | alt));
+    assert!(!is_toggle_hidden_shortcut(
+        gtk::gdk::Key::period,
+        control | shift
+    ));
 }
 
 #[test]
