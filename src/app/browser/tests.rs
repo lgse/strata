@@ -21,6 +21,7 @@ fn deleted_trash_entries_refresh_the_trash_root() {
         size: MetadataValue::Known(10),
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        mode: MetadataValue::Unknown,
     };
 
     assert_eq!(
@@ -103,6 +104,7 @@ impl FileSource for WatchingFileSource {
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
+                mode: MetadataValue::Unknown,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -177,6 +179,7 @@ impl FileSource for RetryFileSource {
                     size: MetadataValue::Unknown,
                     modified_unix_seconds: MetadataValue::Unknown,
                     is_hidden: false,
+                    mode: MetadataValue::Unknown,
                 }],
             });
             emit(DirectoryEvent::Finished {
@@ -232,6 +235,7 @@ impl FileSource for FilePreviewSource {
                 size: MetadataValue::Known(12),
                 modified_unix_seconds: MetadataValue::Known(1),
                 is_hidden: false,
+                mode: MetadataValue::Unknown,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -256,6 +260,7 @@ impl FileSource for RestoredSortingSource {
             size: MetadataValue::Known(size),
             modified_unix_seconds: MetadataValue::Unknown,
             is_hidden: false,
+            mode: MetadataValue::Unknown,
         };
         emit(DirectoryEvent::Batch {
             request_id: request.id,
@@ -285,6 +290,7 @@ impl FileSource for FakeFileSource {
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
+                mode: MetadataValue::Unknown,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -313,6 +319,7 @@ impl FileSource for TrashFileSource {
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
+                mode: MetadataValue::Unknown,
             }],
         });
         emit(DirectoryEvent::Finished {
@@ -595,6 +602,7 @@ fn a_completed_trash_operation_can_be_undone_once() {
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        mode: MetadataValue::Unknown,
     };
 
     browser.delete(vec![entry], false);
@@ -621,6 +629,7 @@ fn another_browser_can_undo_the_latest_trash_operation() {
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        mode: MetadataValue::Unknown,
     };
 
     deleting_browser.delete(vec![entry], false);
@@ -813,6 +822,7 @@ fn permanent_delete_preserves_the_previous_trash_undo() {
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        mode: MetadataValue::Unknown,
     };
     let permanently_deleted = FileEntry {
         location: Location::local("/fixture/draft.txt"),
@@ -886,6 +896,7 @@ fn renaming_on_a_remote_location_refreshes_the_open_column() {
             size: MetadataValue::Known(1),
             modified_unix_seconds: MetadataValue::Unknown,
             is_hidden: false,
+            mode: MetadataValue::Unknown,
         },
         "new-name.txt".to_owned(),
     );
@@ -1012,6 +1023,7 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
         size: MetadataValue::Known(4),
         modified_unix_seconds: MetadataValue::Known(1),
         is_hidden: false,
+        mode: MetadataValue::Unknown,
     }));
 
     assert!(events.borrow().iter().any(|event| matches!(
@@ -1831,6 +1843,7 @@ fn batch_entry(name: &str) -> FileEntry {
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
+        mode: MetadataValue::Unknown,
         is_hidden: false,
     }
 }
@@ -1920,6 +1933,7 @@ impl FileSource for SortFillSource {
                         location: location.clone(),
                         size: MetadataValue::Known(size),
                         modified_unix_seconds: MetadataValue::Unknown,
+                        mode: MetadataValue::Unknown,
                     }
                 })
                 .collect(),
@@ -2230,6 +2244,7 @@ impl ScriptedSource {
             },
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
+            mode: MetadataValue::Unknown,
             is_hidden: false,
         }
     }
@@ -2251,6 +2266,7 @@ impl ScriptedSource {
                     location: locate(name),
                     size: MetadataValue::Known(*size),
                     modified_unix_seconds: MetadataValue::Known(7),
+                    mode: MetadataValue::Unknown,
                 })
                 .collect(),
         };
@@ -2550,6 +2566,7 @@ fn navigation_cancels_an_awaiting_sort_without_stale_commit() {
             location: Location::local("/fixture/alpha"),
             size: MetadataValue::Known(1),
             modified_unix_seconds: MetadataValue::Known(7),
+            mode: MetadataValue::Unknown,
         }],
     });
     old_emit(DirectoryEvent::MetadataFinished {
@@ -2639,6 +2656,7 @@ fn viewport_flush_never_disturbs_an_active_sort() {
             location: Location::local("/fixture/alpha"),
             size: MetadataValue::Known(30),
             modified_unix_seconds: MetadataValue::Known(7),
+            mode: MetadataValue::Unknown,
         }],
     });
     viewport_emit(DirectoryEvent::MetadataFinished {
@@ -2656,11 +2674,13 @@ fn viewport_flush_never_disturbs_an_active_sort() {
                 location: Location::local("/fixture/alpha"),
                 size: MetadataValue::Known(30),
                 modified_unix_seconds: MetadataValue::Known(7),
+                mode: MetadataValue::Unknown,
             },
             MetadataUpdate {
                 location: Location::local("/fixture/beta"),
                 size: MetadataValue::Known(10),
                 modified_unix_seconds: MetadataValue::Known(7),
+                mode: MetadataValue::Unknown,
             },
         ],
     });
@@ -2849,6 +2869,7 @@ fn shifted_viewport_rows_go_stale_without_repaint() {
             location: Location::local("/fixture/beta"),
             size: MetadataValue::Known(10),
             modified_unix_seconds: MetadataValue::Known(7),
+            mode: MetadataValue::Unknown,
         }],
     });
     assert_eq!(replaced_count(&events), 1);
@@ -2935,11 +2956,13 @@ fn modified_sort_fills_directory_mtimes() {
                 location: Location::local("/fixture/sub"),
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Known(200),
+                mode: MetadataValue::Unknown,
             },
             MetadataUpdate {
                 location: Location::local("/fixture/b.txt"),
                 size: MetadataValue::Known(10),
                 modified_unix_seconds: MetadataValue::Known(100),
+                mode: MetadataValue::Unknown,
             },
         ],
     });
@@ -3048,6 +3071,7 @@ fn staged_entry(name: &str, kind: EntryKind, size: MetadataValue<u64>, modified:
         kind,
         size,
         modified_unix_seconds: MetadataValue::Known(modified),
+        mode: MetadataValue::Unknown,
         is_hidden: false,
     }
 }
@@ -3517,6 +3541,7 @@ impl FileSource for MixedPeekFileSource {
                     size: MetadataValue::Unknown,
                     modified_unix_seconds: MetadataValue::Unknown,
                     is_hidden: true,
+                    mode: MetadataValue::Unknown,
                 },
                 FileEntry {
                     location: Location::local("/fixture/normal.txt"),
@@ -3526,6 +3551,7 @@ impl FileSource for MixedPeekFileSource {
                     size: MetadataValue::Unknown,
                     modified_unix_seconds: MetadataValue::Unknown,
                     is_hidden: false,
+                    mode: MetadataValue::Unknown,
                 },
             ],
         });

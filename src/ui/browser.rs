@@ -241,6 +241,7 @@ impl Default for PeekBehavior {
 
 type PinHandler = Rc<dyn Fn(Location, String)>;
 type PinStatusHandler = Rc<dyn Fn(&Location) -> PinStatus>;
+type PrintHandler = Rc<dyn Fn(FileEntry)>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PinStatus {
@@ -314,6 +315,7 @@ pub(super) struct ViewState {
     file_operation_progress: Cell<(usize, usize)>,
     pin_handler: RefCell<Option<PinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
+    print_handler: RefCell<Option<PrintHandler>>,
     pending_select: RefCell<Vec<String>>,
     pending_extract_retry: RefCell<Option<(FileEntry, Location)>>,
     /// The entries a just-dispatched, non-permanent delete requested,
@@ -409,6 +411,7 @@ impl BrowserView {
             .vscrollbar_policy(gtk::PolicyType::Never)
             .hexpand(true)
             .build();
+        breadcrumb_scroller.add_css_class("fixed-scrollbar");
         let location_stack = gtk::Stack::builder()
             .hhomogeneous(false)
             .vhomogeneous(false)
@@ -471,6 +474,7 @@ impl BrowserView {
             file_operation_progress: Cell::new((0, 0)),
             pin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
+            print_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
             pending_extract_retry: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
@@ -570,6 +574,10 @@ impl BrowserView {
     pub(super) fn set_pin_handlers(&self, handler: PinHandler, status_handler: PinStatusHandler) {
         self.state.pin_handler.replace(Some(handler));
         self.state.pin_status_handler.replace(Some(status_handler));
+    }
+
+    pub(super) fn set_print_handler(&self, handler: PrintHandler) {
+        self.state.print_handler.replace(Some(handler));
     }
 
     pub fn set_operation_provider(&self, provider: Rc<dyn OperationProvider>) {
@@ -4666,6 +4674,13 @@ impl ViewState {
             };
             let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
             row.add_css_class("file-row");
+            row.add_css_class("file-appear");
+            let weak_row = row.downgrade();
+            glib::idle_add_local_once(move || {
+                if let Some(row) = weak_row.upgrade() {
+                    row.remove_css_class("file-appear");
+                }
+            });
             let icon = gtk::Image::new();
             icon.add_css_class("file-icon");
             icon.set_pixel_size(17);
@@ -4742,7 +4757,9 @@ impl ViewState {
             let weak_state_for_drag = weak_state.clone();
             let dragged_item = item.clone();
             let map_for_drag = map_for_hover.clone();
+            let prepare_row = row.clone();
             drag.connect_prepare(move |source, x, y| {
+                prepare_row.remove_css_class("slide-out");
                 let state = weak_state_for_drag.upgrade()?;
                 let source_position = map_for_drag.source_position(dragged_item.position())?;
                 let entry = state.browser.entry_at(depth, source_position)?;
@@ -4762,15 +4779,25 @@ impl ViewState {
             let dragged_row = row.clone();
             drag.connect_drag_begin(move |_, _| dragged_row.add_css_class("dragging"));
             let dragged_row = row.clone();
-            drag.connect_drag_end(move |_, _, _| dragged_row.remove_css_class("dragging"));
+            drag.connect_drag_end(move |_, _, _| {
+                dragged_row.remove_css_class("dragging");
+                slide_out(&dragged_row);
+            });
             row.add_controller(drag);
 
             let drop = gtk::DropTarget::new(
                 gtk::gdk::FileList::static_type(),
                 gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
             );
-            drop.connect_enter(|target, _, _| file_drop_action(target));
-            drop.connect_motion(|target, _, _| file_drop_action(target));
+            let highlighted_row = row.clone();
+            let highlight = move |target: &gtk::DropTarget, _, _| {
+                highlighted_row.add_css_class("drop-destination");
+                file_drop_action(target)
+            };
+            drop.connect_enter(highlight.clone());
+            drop.connect_motion(highlight);
+            let highlighted_row = row.clone();
+            drop.connect_leave(move |_| highlighted_row.remove_css_class("drop-destination"));
             let weak_state_for_accept = weak_state.clone();
             let accepted_item = item.clone();
             let map_for_accept = map_for_hover.clone();
@@ -4791,7 +4818,9 @@ impl ViewState {
             let weak_state_for_drop = weak_state.clone();
             let dropped_item = item.clone();
             let map_for_drop = map_for_hover.clone();
+            let dropped_row = row.clone();
             drop.connect_drop(move |target, value, _, _| {
+                dropped_row.remove_css_class("drop-destination");
                 let Some(state) = weak_state_for_drop.upgrade() else {
                     return false;
                 };
@@ -4803,7 +4832,15 @@ impl ViewState {
                 else {
                     return false;
                 };
-                transfer_dropped_files(&state, target, value, destination)
+                let Some(sources) = locations_from_file_list_value(value) else {
+                    return false;
+                };
+                let move_sources = file_drop_action(target) == gtk::gdk::DragAction::MOVE;
+                slide_in_down(&dropped_row);
+                glib::timeout_add_local_once(Duration::from_millis(300), move || {
+                    state.start_transfer(destination, sources, move_sources);
+                });
+                true
             });
             row.add_controller(drop);
 
@@ -6129,6 +6166,7 @@ pub(super) fn install_item_context_menu(
     let open_terminal =
         item_context_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
     let preview = item_context_option(crate::assets::icons::EYE, "Quick preview", "Space");
+    let print = item_context_option(crate::assets::icons::PRINTER, "Print", "");
     let restore = item_context_option(crate::assets::icons::FOLDER, "Restore", "");
     restore.set_visible(in_trash);
     let pin = item_context_option(crate::assets::icons::PIN, "Pin to sidebar", "P");
@@ -6163,6 +6201,7 @@ pub(super) fn install_item_context_menu(
     single.append(&open);
     single.append(&open_terminal);
     single.append(&preview);
+    single.append(&print);
     single.append(&restore);
     single.append(&extract);
     single.append(&extract_to);
@@ -6263,6 +6302,23 @@ pub(super) fn install_item_context_menu(
             && !entry.is_directory()
         {
             state.browser.preview(depth, position);
+        }
+    });
+    let weak = Rc::downgrade(state);
+    let print_target = target.clone();
+    let print_popover = popover.downgrade();
+    print.connect_clicked(move |_| {
+        if let Some(popover) = print_popover.upgrade() {
+            popover.popdown();
+        }
+        let Some((_, entry)) = print_target.borrow().clone() else {
+            return;
+        };
+        if let Some(state) = weak.upgrade()
+            && let Some(print) = state.print_handler.borrow().as_ref()
+            && entry_supports_printing(&entry)
+        {
+            print(entry);
         }
     });
     let weak = Rc::downgrade(state);
@@ -6404,6 +6460,7 @@ pub(super) fn install_item_context_menu(
         target.replace(Some((resolved_position, entry.clone())));
         let entries = state.browser.selected_entries();
         preview.set_visible(entry_supports_quick_preview(&entry));
+        print.set_visible(entry_supports_printing(&entry));
         open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
         permanent_delete.set_visible(!in_trash);
         permanent_delete_multiple.set_visible(!in_trash);
@@ -6455,6 +6512,21 @@ pub(super) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
         gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
     !matches!(content_family(&content_type), PreviewContent::Unsupported)
         || gio::content_type_is_a(&content_type, "text/plain")
+        || has_plain_text_extension(&entry.native_name)
+        || is_extensionless_dotfile(&entry.native_name)
+}
+
+fn entry_supports_printing(entry: &FileEntry) -> bool {
+    if !matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink) {
+        return false;
+    }
+
+    let (content_type, _) =
+        gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
+    matches!(
+        content_family(&content_type),
+        PreviewContent::Text { .. } | PreviewContent::Image | PreviewContent::Pdf { .. }
+    ) || gio::content_type_is_a(&content_type, "text/plain")
         || has_plain_text_extension(&entry.native_name)
         || is_extensionless_dotfile(&entry.native_name)
 }
@@ -8368,6 +8440,30 @@ pub(super) fn animate_out(layer: &gtk::Box, on_done: impl FnOnce() + 'static) {
     glib::timeout_add_local_once(Duration::from_millis(200), on_done);
 }
 
+pub(super) fn slide_out(widget: &impl IsA<gtk::Widget>) {
+    let w = widget.as_ref();
+    w.remove_css_class("slide-out");
+    w.add_css_class("slide-out");
+    let weak = w.downgrade();
+    glib::timeout_add_local_once(Duration::from_millis(240), move || {
+        if let Some(w) = weak.upgrade() {
+            w.remove_css_class("slide-out");
+        }
+    });
+}
+
+pub(super) fn slide_in_down(widget: &impl IsA<gtk::Widget>) {
+    let w = widget.as_ref();
+    w.remove_css_class("just-dropped");
+    w.add_css_class("just-dropped");
+    let weak = w.downgrade();
+    glib::timeout_add_local_once(Duration::from_millis(200), move || {
+        if let Some(w) = weak.upgrade() {
+            w.remove_css_class("just-dropped");
+        }
+    });
+}
+
 pub(super) fn dismiss_modal_layer(
     layer: &gtk::Box,
     overlay: &gtk::Overlay,
@@ -8986,7 +9082,7 @@ fn with_execute_permissions(mode: u32, executable: bool) -> u32 {
     }
 }
 
-fn format_permissions(mode: u32) -> String {
+pub fn format_permissions(mode: u32) -> String {
     let kind = if mode & 0o170000 == 0o040000 {
         'd'
     } else {
