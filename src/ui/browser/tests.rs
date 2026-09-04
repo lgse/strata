@@ -13,6 +13,15 @@ fn recursive_search_arrows_select_and_clamp_results() {
 }
 
 #[test]
+fn recursive_search_activation_accepts_enter_and_right_arrow() {
+    assert!(recursive_search_activation_key(gtk::gdk::Key::Return));
+    assert!(recursive_search_activation_key(gtk::gdk::Key::KP_Enter));
+    assert!(recursive_search_activation_key(gtk::gdk::Key::Right));
+    assert!(!recursive_search_activation_key(gtk::gdk::Key::Left));
+    assert!(!recursive_search_activation_key(gtk::gdk::Key::Down));
+}
+
+#[test]
 fn terminal_shortcut_prefers_one_selected_directory() {
     let entry = |name: &str, kind| FileEntry {
         location: Location::local(format!("/fixture/{name}")),

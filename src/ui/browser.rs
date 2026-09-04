@@ -5162,6 +5162,8 @@ impl ViewState {
         let selection_for_navigation = selection.clone();
         let syncing_for_navigation = syncing_selection.clone();
         let list_for_navigation = list.clone();
+        let browser_for_navigation = Rc::downgrade(&self.browser);
+        let results_for_navigation = search_results.clone();
         search_navigation.connect_key_pressed(move |_, key, _, modifiers| {
             if !search_active_for_navigation.get()
                 || modifiers.intersects(
@@ -5173,14 +5175,27 @@ impl ViewState {
             {
                 return glib::Propagation::Proceed;
             }
+            let current = bitset_positions(&selection_for_navigation.selection())
+                .last()
+                .copied();
+            if recursive_search_activation_key(key) {
+                return if current.is_some_and(|position| {
+                    activate_recursive_search_result(
+                        &browser_for_navigation,
+                        &results_for_navigation,
+                        position,
+                    )
+                }) {
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                };
+            }
             let direction = match key {
                 gtk::gdk::Key::Down => 1,
                 gtk::gdk::Key::Up => -1,
                 _ => return glib::Propagation::Proceed,
             };
-            let current = bitset_positions(&selection_for_navigation.selection())
-                .last()
-                .copied();
             let Some(next) = search_result_navigation_position(
                 current,
                 selection_for_navigation.n_items(),
@@ -5238,16 +5253,11 @@ impl ViewState {
         let search_results_for_activate = search_results.clone();
         list.connect_activate(move |_, position| {
             if search_handle_for_activate.borrow().is_some() {
-                if let Some(item) = search_results_for_activate.borrow().get(position as usize) {
-                    let location = Location::local(item.path.clone());
-                    if let Some(browser) = weak_browser.upgrade() {
-                        if item.is_directory {
-                            browser.navigate(location);
-                        } else if let Some(parent) = item.path.parent() {
-                            browser.navigate(Location::local(parent));
-                        }
-                    }
-                }
+                activate_recursive_search_result(
+                    &weak_browser,
+                    &search_results_for_activate,
+                    position,
+                );
                 return;
             }
             let source_position = map_for_activation.source_position(position);
@@ -6028,6 +6038,34 @@ impl ViewMap {
             })
             .collect()
     }
+}
+
+pub(crate) fn recursive_search_activation_key(key: gtk::gdk::Key) -> bool {
+    matches!(
+        key,
+        gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter | gtk::gdk::Key::Right
+    )
+}
+
+fn activate_recursive_search_result(
+    browser: &Weak<Browser>,
+    results: &RefCell<Vec<crate::services::SearchItem>>,
+    position: u32,
+) -> bool {
+    let Some(item) = results.borrow().get(position as usize).cloned() else {
+        return false;
+    };
+    let Some(browser) = browser.upgrade() else {
+        return false;
+    };
+    if item.is_directory {
+        browser.navigate(Location::local(item.path));
+    } else if let Some(parent) = item.path.parent() {
+        browser.navigate(Location::local(parent));
+    } else {
+        return false;
+    }
+    true
 }
 
 pub(crate) fn search_result_navigation_position(
