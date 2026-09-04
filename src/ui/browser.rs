@@ -19,10 +19,10 @@ use crate::{
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, SortDirection, SortKey},
     services::{
-        ArchiveFormat, FileSource, LoadHandle, LocationValidationError, OperationProvider,
-        PasteItem, PreviewContent, SearchEvent, TransferConflict, UriCredentials,
-        backend_unavailable_message, content_family, has_plain_text_extension, index_tree,
-        is_extensionless_dotfile, sanitize_uri_credentials, validate_basename,
+        ArchiveFormat, FileSource, LoadHandle, LocationValidationError, MoveRecord,
+        OperationProvider, PasteItem, PreviewContent, SearchEvent, TransferConflict, UndoMoveItem,
+        UriCredentials, backend_unavailable_message, content_family, has_plain_text_extension,
+        index_tree, is_extensionless_dotfile, sanitize_uri_credentials, validate_basename,
     },
 };
 
@@ -1033,7 +1033,10 @@ impl BrowserView {
         true
     }
 
-    pub fn undo_last_trash(&self) -> bool {
+    pub fn undo_last_operation(&self) -> bool {
+        if let Some((generation, records)) = self.state.browser.pending_undo_move() {
+            return self.state.undo_move(generation, records);
+        }
         self.state.browser.undo_last_trash()
     }
 
@@ -1299,6 +1302,133 @@ impl ViewState {
             return;
         }
         let source = collisions.remove(0);
+        let name = source.display_name();
+        let explanation = format!(
+            "An item named \u{201c}{name}\u{201d} already exists in {}. Replacing it will overwrite its contents.",
+            compact_display_path(&destination)
+        );
+        let state = self.clone();
+        self.confirm_replace_conflict(
+            &name,
+            &explanation,
+            !collisions.is_empty(),
+            Rc::new(move |choice, apply_to_all| {
+                let mut accepted = accepted.clone();
+                let mut remaining = collisions.clone();
+                match choice {
+                    ConflictChoice::Replace => {
+                        accepted.push(PasteItem {
+                            source: source.clone(),
+                            conflict: TransferConflict::ReplaceExisting,
+                        });
+                        if apply_to_all {
+                            accepted.extend(remaining.drain(..).map(|source| PasteItem {
+                                source,
+                                conflict: TransferConflict::ReplaceExisting,
+                            }));
+                        }
+                    }
+                    ConflictChoice::Skip if apply_to_all => remaining.clear(),
+                    ConflictChoice::Skip => {}
+                }
+                state.resolve_transfer_collisions(
+                    destination.clone(),
+                    remaining,
+                    accepted,
+                    move_sources,
+                );
+            }),
+        );
+    }
+
+    /// Moves the latest completed transfer back, confirming any item that would
+    /// overwrite something created since the move.
+    fn undo_move(self: &Rc<Self>, generation: u64, records: Vec<MoveRecord>) -> bool {
+        let mut accepted = Vec::new();
+        let mut collisions = Vec::new();
+        for record in records {
+            if !location_exists(&record.current) {
+                continue;
+            }
+            if location_exists(&record.original) {
+                collisions.push(record);
+            } else {
+                accepted.push(UndoMoveItem {
+                    record,
+                    conflict: TransferConflict::FailIfExists,
+                });
+            }
+        }
+        if accepted.is_empty() && collisions.is_empty() {
+            self.browser.discard_pending_undo(generation);
+            return false;
+        }
+        self.resolve_undo_collisions(generation, collisions, accepted);
+        true
+    }
+
+    fn resolve_undo_collisions(
+        self: &Rc<Self>,
+        generation: u64,
+        mut collisions: Vec<MoveRecord>,
+        accepted: Vec<UndoMoveItem>,
+    ) {
+        if collisions.is_empty() {
+            if accepted.is_empty() {
+                self.browser.discard_pending_undo(generation);
+            } else {
+                self.browser.undo_move(generation, accepted);
+            }
+            return;
+        }
+        let record = collisions.remove(0);
+        let name = record.original.display_name();
+        let parent = record
+            .original
+            .parent()
+            .unwrap_or_else(|| record.original.clone());
+        let explanation = format!(
+            "An item named \u{201c}{name}\u{201d} already exists in {}. Undoing the move will overwrite its contents.",
+            compact_display_path(&parent)
+        );
+        let state = self.clone();
+        self.confirm_replace_conflict(
+            &name,
+            &explanation,
+            !collisions.is_empty(),
+            Rc::new(move |choice, apply_to_all| {
+                let mut accepted = accepted.clone();
+                let mut remaining = collisions.clone();
+                match choice {
+                    ConflictChoice::Replace => {
+                        accepted.push(UndoMoveItem {
+                            record: record.clone(),
+                            conflict: TransferConflict::ReplaceExisting,
+                        });
+                        if apply_to_all {
+                            accepted.extend(remaining.drain(..).map(|record| UndoMoveItem {
+                                record,
+                                conflict: TransferConflict::ReplaceExisting,
+                            }));
+                        }
+                    }
+                    ConflictChoice::Skip if apply_to_all => remaining.clear(),
+                    ConflictChoice::Skip => {}
+                }
+                state.resolve_undo_collisions(generation, remaining, accepted);
+            }),
+        );
+    }
+
+    /// Asks whether one conflicting item should be replaced or skipped.
+    /// Cancelling abandons the whole operation, so `on_choice` never runs.
+    fn confirm_replace_conflict(
+        &self,
+        name: &str,
+        explanation: &str,
+        has_more_conflicts: bool,
+        on_choice: Rc<dyn Fn(ConflictChoice, bool)>,
+    ) {
         let Some(window_overlay) = self
             .overlay
             .root()
@@ -1313,21 +1443,16 @@ impl ViewState {
             root.set_blurred(true);
         }
 
-        let name = source.display_name();
         let layout = message_dialog_layout(
             crate::assets::icons::COPY,
             "File already exists",
-            &name,
+            name,
             "Replace",
             ModalTone::Danger,
         );
-        let explanation = message_dialog_description(&format!(
-            "An item named “{name}” already exists in {}. Replacing it will overwrite its contents.",
-            compact_display_path(&destination)
-        ));
-        layout.body.append(&explanation);
+        layout.body.append(&message_dialog_description(explanation));
         let apply_all = form_check_button("Apply this choice to all remaining conflicts");
-        apply_all.set_visible(!collisions.is_empty());
+        apply_all.set_visible(has_more_conflicts);
         layout.body.append(&apply_all);
         let skip = gtk::Button::with_label("Skip");
         skip.add_css_class("action-dialog-cancel");
@@ -1347,56 +1472,20 @@ impl ViewState {
             dismiss_modal_layer(&cancel_layer, &cancel_overlay, cancel_root.as_ref());
         });
 
-        let skipped_layer = layer.clone();
-        let skipped_overlay = window_overlay.clone();
-        let skipped_root = blurred_root.clone();
-        let skipped_state = self.clone();
-        let skipped_destination = destination.clone();
-        let skipped_collisions = collisions.clone();
-        let skipped_accepted = accepted.clone();
-        let skip_all = apply_all.clone();
-        skip.connect_clicked(move |_| {
-            dismiss_modal_layer(&skipped_layer, &skipped_overlay, skipped_root.as_ref());
-            skipped_state.resolve_transfer_collisions(
-                skipped_destination.clone(),
-                if skip_all.is_active() {
-                    Vec::new()
-                } else {
-                    skipped_collisions.clone()
-                },
-                skipped_accepted.clone(),
-                move_sources,
-            );
-        });
-
-        let replaced_layer = layer.clone();
-        let replaced_overlay = window_overlay.clone();
-        let replaced_root = blurred_root.clone();
-        let replaced_state = self.clone();
-        let replace_all = apply_all;
-        replace.connect_clicked(move |_| {
-            dismiss_modal_layer(&replaced_layer, &replaced_overlay, replaced_root.as_ref());
-            let mut accepted = accepted.clone();
-            accepted.push(PasteItem {
-                source: source.clone(),
-                conflict: TransferConflict::ReplaceExisting,
+        for (button, choice) in [
+            (skip.clone(), ConflictChoice::Skip),
+            (replace.clone(), ConflictChoice::Replace),
+        ] {
+            let chosen_layer = layer.clone();
+            let chosen_overlay = window_overlay.clone();
+            let chosen_root = blurred_root.clone();
+            let chosen_apply_all = apply_all.clone();
+            let chosen = on_choice.clone();
+            button.connect_clicked(move |_| {
+                dismiss_modal_layer(&chosen_layer, &chosen_overlay, chosen_root.as_ref());
+                chosen(choice, chosen_apply_all.is_active());
             });
-            let remaining = if replace_all.is_active() {
-                accepted.extend(collisions.iter().cloned().map(|source| PasteItem {
-                    source,
-                    conflict: TransferConflict::ReplaceExisting,
-                }));
-                Vec::new()
-            } else {
-                collisions.clone()
-            };
-            replaced_state.resolve_transfer_collisions(
-                destination.clone(),
-                remaining,
-                accepted,
-                move_sources,
-            );
-        });
+        }
 
         let escape = gtk::EventControllerKey::new();
         escape.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -7038,6 +7127,16 @@ fn install_directory_drop_target(
         transfer_dropped_files(&state, target, value, destination.clone())
     });
     widget.add_controller(drop);
+}
+
+#[derive(Clone, Copy)]
+enum ConflictChoice {
+    Replace,
+    Skip,
+}
+
+fn location_exists(location: &Location) -> bool {
+    gio_file_for_location(location).query_exists(None::<&gio::Cancellable>)
 }
 
 fn transfer_has_collision(source: &Location, destination: &Location) -> bool {

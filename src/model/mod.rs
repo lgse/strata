@@ -75,6 +75,39 @@ impl Location {
         self.native_path().is_some_and(std::path::Path::is_absolute)
     }
 
+    /// Byte-safe file name for native paths, and the decoded final segment for URIs.
+    pub fn file_name(&self) -> Option<OsString> {
+        match &self.kind {
+            LocationKind::Native(path) => path.file_name().map(OsString::from),
+            LocationKind::Uri(uri) => gio::File::for_uri(uri)
+                .basename()?
+                .file_name()
+                .map(OsString::from),
+        }
+    }
+
+    /// Resolves a direct child by name, rejecting names that would escape `self`.
+    pub fn child(&self, name: &std::ffi::OsStr) -> Option<Self> {
+        if name.is_empty() || matches!(name.as_encoded_bytes(), b"." | b"..") {
+            return None;
+        }
+        if name.as_encoded_bytes().contains(&b'/') {
+            return None;
+        }
+        match &self.kind {
+            LocationKind::Native(path) => Some(Self::local(path.join(name))),
+            LocationKind::Uri(uri) => {
+                let child = gio::File::for_uri(uri).child(name.to_str()?);
+                Some(Self::uri(child.uri().to_string()))
+            }
+        }
+    }
+
+    /// Where an item lands when transferred into `destination` without renaming.
+    pub fn transfer_target(&self, destination: &Self) -> Option<Self> {
+        destination.child(&self.file_name()?)
+    }
+
     pub fn rebase(&self, from: &Self, to: &Self) -> Option<Self> {
         let suffix = self.native_path()?.strip_prefix(from.native_path()?).ok()?;
         Some(Self::local(to.native_path()?.join(suffix)))

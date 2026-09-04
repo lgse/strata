@@ -699,7 +699,7 @@ fn install_keyboard_navigation(
             }
             return glib::Propagation::Proceed;
         }
-        if !text_has_focus && is_undo_trash_shortcut(key, modifiers) && view.undo_last_trash() {
+        if !text_has_focus && is_undo_shortcut(key, modifiers) && view.undo_last_operation() {
             return glib::Propagation::Stop;
         }
         if alt
@@ -889,7 +889,7 @@ fn install_keyboard_navigation(
     window.add_controller(keys);
 }
 
-fn is_undo_trash_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+fn is_undo_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
     modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
         && !modifiers
             .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)

@@ -7,7 +7,7 @@ use crate::{
     model::{EntryKind, MetadataValue},
     services::{
         CancelledOperation, CompressRequest, ExtractRequest, LoadHandle, MetadataOutcome,
-        MetadataRequest, MetadataUpdate,
+        MetadataRequest, MetadataUpdate, UndoMoveRequest,
     },
 };
 
@@ -480,6 +480,10 @@ fn transfer_failure_reports_moves_completed_before_the_error() {
     )));
 }
 
+thread_local! {
+    static UNDO_MOVE_REQUESTS: RefCell<Vec<Vec<MoveRecord>>> = const { RefCell::new(Vec::new()) };
+}
+
 struct ImmediateOperationProvider;
 
 impl OperationProvider for ImmediateOperationProvider {
@@ -516,6 +520,27 @@ impl OperationProvider for ImmediateOperationProvider {
         emit(OperationEvent::Pasted {
             request_id: request.id,
             locations: request.items.into_iter().map(|item| item.source).collect(),
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn undo_move(&self, request: UndoMoveRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        UNDO_MOVE_REQUESTS.with(|requests| {
+            requests.borrow_mut().push(
+                request
+                    .items
+                    .iter()
+                    .map(|item| item.record.clone())
+                    .collect(),
+            )
+        });
+        emit(OperationEvent::Pasted {
+            request_id: request.id,
+            locations: request
+                .items
+                .into_iter()
+                .map(|item| item.record.current)
+                .collect(),
         });
         LoadHandle::new(|| {})
     }
@@ -575,8 +600,8 @@ fn a_completed_trash_operation_can_be_undone_once() {
     browser.delete(vec![entry], false);
 
     assert_eq!(
-        pending_trash_undo().as_slice(),
-        std::slice::from_ref(&location)
+        pending_undo_entry(),
+        Some(UndoEntry::Trash(vec![location.clone()]))
     );
     assert!(browser.undo_last_trash());
     assert!(!browser.undo_last_trash());
@@ -602,6 +627,178 @@ fn another_browser_can_undo_the_latest_trash_operation() {
 
     assert!(undoing_browser.undo_last_trash());
     assert!(!deleting_browser.undo_last_trash());
+}
+
+#[test]
+fn a_completed_move_records_where_each_item_landed() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+
+    browser.transfer(
+        Location::local("/fixture/archive"),
+        vec![PasteItem {
+            source: Location::local("/fixture/report.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        true,
+    );
+
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Move(vec![MoveRecord {
+            original: Location::local("/fixture/report.txt"),
+            current: Location::local("/fixture/archive/report.txt"),
+        }]))
+    );
+}
+
+#[test]
+fn a_copy_records_no_undo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+
+    browser.transfer(
+        Location::local("/fixture/archive"),
+        vec![PasteItem {
+            source: Location::local("/fixture/report.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        false,
+    );
+
+    assert_eq!(pending_undo_entry(), None);
+}
+
+#[test]
+fn a_move_into_the_items_own_directory_records_no_undo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+
+    browser.transfer(
+        Location::local("/fixture"),
+        vec![PasteItem {
+            source: Location::local("/fixture/report.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        true,
+    );
+
+    assert_eq!(pending_undo_entry(), None);
+}
+
+#[test]
+fn undoing_a_move_transfers_items_back_once() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    UNDO_MOVE_REQUESTS.with(|requests| requests.borrow_mut().clear());
+    browser.transfer(
+        Location::local("/fixture/archive"),
+        vec![PasteItem {
+            source: Location::local("/fixture/report.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        true,
+    );
+    let (generation, records) = browser.pending_undo_move().expect("pending move undo");
+
+    assert!(
+        browser.undo_move(
+            generation,
+            records
+                .iter()
+                .cloned()
+                .map(|record| UndoMoveItem {
+                    record,
+                    conflict: TransferConflict::FailIfExists,
+                })
+                .collect(),
+        )
+    );
+
+    assert_eq!(
+        UNDO_MOVE_REQUESTS.with(|requests| requests.borrow().clone()),
+        vec![records]
+    );
+    assert_eq!(pending_undo_entry(), None);
+    assert!(browser.pending_undo_move().is_none());
+    assert!(!browser.undo_last_trash());
+}
+
+#[test]
+fn an_undo_claim_from_an_earlier_operation_is_rejected() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let record = MoveRecord {
+        original: Location::local("/fixture/report.txt"),
+        current: Location::local("/fixture/archive/report.txt"),
+    };
+    replace_pending_undo(UndoEntry::Move(vec![record.clone()]));
+    let (stale_generation, _) = peek_pending_undo().expect("pending undo");
+    replace_pending_undo(UndoEntry::Trash(vec![Location::local("/fixture/note.txt")]));
+
+    assert!(!browser.undo_move(
+        stale_generation,
+        vec![UndoMoveItem {
+            record,
+            conflict: TransferConflict::FailIfExists,
+        }],
+    ));
+    assert!(browser.undo_last_trash());
+}
+
+#[test]
+fn a_partial_move_undo_keeps_the_items_still_to_move_back() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let first = MoveRecord {
+        original: Location::local("/fixture/first.txt"),
+        current: Location::local("/fixture/archive/first.txt"),
+    };
+    let second = MoveRecord {
+        original: Location::local("/fixture/second.txt"),
+        current: Location::local("/fixture/archive/second.txt"),
+    };
+    replace_pending_undo(UndoEntry::Move(vec![first.clone(), second.clone()]));
+    let (generation, entry) = claim_pending_undo(None).expect("undo claim");
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(true));
+    browser.undo_claim.replace(Some((generation, entry)));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::TransferFailed {
+        request_id,
+        completed_locations: vec![first.current.clone()],
+        message: "injected failure".to_owned(),
+    });
+
+    assert_eq!(pending_undo_entry(), Some(UndoEntry::Move(vec![second])));
+}
+
+#[test]
+fn undoing_a_move_leaves_a_pending_cut_untouched() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let record = MoveRecord {
+        original: Location::local("/fixture/report.txt"),
+        current: Location::local("/fixture/archive/report.txt"),
+    };
+    replace_pending_undo(UndoEntry::Move(vec![record.clone()]));
+    let (generation, entry) = claim_pending_undo(None).expect("undo claim");
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(true));
+    browser.undo_claim.replace(Some((generation, entry)));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::Pasted {
+        request_id,
+        locations: vec![record.current.clone()],
+    });
+
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::TransferFinished { moved_locations } if moved_locations.is_empty()
+    )));
 }
 
 #[test]
@@ -634,16 +831,20 @@ fn permanent_delete_preserves_the_previous_trash_undo() {
 fn failed_and_partial_undo_operations_can_be_retried() {
     let first = Location::local("/fixture/first.txt");
     let second = Location::local("/fixture/second.txt");
-    replace_pending_trash_undo(vec![first.clone(), second.clone()]);
-    let (generation, _) = claim_pending_trash_undo().expect("undo claim");
+    replace_pending_undo(UndoEntry::Trash(vec![first.clone(), second.clone()]));
+    let (generation, _) = claim_pending_undo(None).expect("undo claim");
 
-    mark_trash_undo_restored(generation, &first);
-    finish_trash_undo(generation, false);
+    mark_undo_item_completed(generation, &first);
+    finish_undo(generation, false);
 
-    assert_eq!(pending_trash_undo(), vec![second.clone()]);
-    let (retry_generation, retry) = claim_pending_trash_undo().expect("retry claim");
-    assert_eq!(retry, vec![second]);
-    finish_trash_undo(retry_generation, true);
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Trash(vec![second.clone()]))
+    );
+    let (retry_generation, retry) = claim_pending_undo(None).expect("retry claim");
+    assert_eq!(retry, UndoEntry::Trash(vec![second]));
+    finish_undo(retry_generation, true);
+    assert_eq!(pending_undo_entry(), None);
 }
 
 #[test]
