@@ -352,6 +352,38 @@ fn non_media_sandboxes_never_expose_gpu_devices_or_sysfs() {
 }
 
 #[test]
+fn video_thumbnails_execute_directly_inside_the_bounded_sandbox() {
+    let command = sandbox_command(
+        Path::new("/tmp/strata"),
+        Path::new("/home/alice/Videos/untrusted.mkv"),
+        Path::new("/tmp/private-output"),
+        ParseOperation::ThumbnailVideo,
+        128,
+        MediaPreviewBackend::Software,
+        &[],
+    );
+    let joined = command
+        .get_args()
+        .map(|argument| argument.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    assert!(joined.contains("--unshare-all"));
+    assert!(joined.contains("--ro-bind /home/alice/Videos/untrusted.mkv /input.mkv"));
+    assert!(joined.contains("--bind /tmp/private-output /output"));
+    assert!(joined.contains("--as=2147483648"));
+    assert!(joined.contains("--cpu=10"));
+    assert!(joined.contains("--fsize=33554432"));
+    assert!(
+        joined
+            .contains("/usr/bin/ffmpegthumbnailer -i /input.mkv -o /output/result.png -s 128 -q 8")
+    );
+    assert!(!joined.contains("/app/strata"));
+    assert!(!joined.contains("--preview-helper"));
+    assert!(!joined.contains("--share-net"));
+}
+
+#[test]
 fn accepts_only_bounded_png_webm_or_mp4_outputs() {
     assert!(valid_output(ParseOperation::ThumbnailImage, &png(256, 256)));
     assert!(!valid_output(ParseOperation::ThumbnailImage, &png(257, 1)));

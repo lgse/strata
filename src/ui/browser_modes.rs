@@ -248,8 +248,7 @@ impl ModeViews {
             .build();
 
         let stack = gtk::Stack::builder()
-            .transition_type(gtk::StackTransitionType::Crossfade)
-            .transition_duration(120)
+            .transition_type(gtk::StackTransitionType::None)
             .hexpand(true)
             .vexpand(true)
             .build();
@@ -550,31 +549,39 @@ impl ModeViews {
         true
     }
 
-    pub fn set_mode(&mut self, mode: BrowserMode) {
+    pub fn prepare_mode(&mut self, mode: BrowserMode) {
+        if self.mode == mode {
+            return;
+        }
         self.cancel_new_entry();
         self.cancel_rename();
         self.mode = mode;
+        match mode {
+            BrowserMode::Columns => {}
+            BrowserMode::Grid => self.rebuild_grid(),
+            BrowserMode::Explorer => self.rebuild_explorer(),
+        }
+    }
+
+    pub fn show_mode(&self, mode: BrowserMode) {
         self.stack.set_visible_child_name(match mode {
             BrowserMode::Columns => "columns",
             BrowserMode::Grid => "grid",
             BrowserMode::Explorer => "explorer",
         });
-        match mode {
-            BrowserMode::Columns => {
-                self.clear_grid();
-                self.clear_explorer();
-            }
-            BrowserMode::Grid => {
-                self.clear_explorer();
-                self.rebuild_grid();
-            }
-            BrowserMode::Explorer => {
-                self.clear_grid();
-                self.rebuild_explorer();
-            }
-        }
         if let Some(depth) = self.browser.active_depth() {
             self.focus_visible_pane(depth);
+        }
+    }
+
+    pub fn clear_inactive_mode(&mut self, mode: BrowserMode) {
+        if self.mode == mode {
+            return;
+        }
+        match mode {
+            BrowserMode::Columns => {}
+            BrowserMode::Grid => self.clear_grid(),
+            BrowserMode::Explorer => self.clear_explorer(),
         }
     }
 
@@ -683,9 +690,40 @@ impl ModeViews {
                     }
                 }
             }
-            BrowserEvent::EntriesReplaced { depth, entries } => {
+            BrowserEvent::EntriesReplaced { depth, count } => {
                 for pane in self.panes_at(*depth) {
-                    replace_entries(pane, entries);
+                    if *count > 0 {
+                        pane.spinner.stop();
+                        pane.spinner.set_visible(false);
+                    }
+                    replace_entries(pane, &self.browser, *count);
+                }
+            }
+            BrowserEvent::EntriesPublished {
+                depth,
+                position,
+                count,
+            } => {
+                for pane in self.panes_at(*depth) {
+                    let values = self
+                        .browser
+                        .with_entries(
+                            *depth,
+                            *position..position.saturating_add(*count),
+                            |entries| {
+                                entries
+                                    .iter()
+                                    .map(super::browser::entry_model_value)
+                                    .collect::<Vec<_>>()
+                            },
+                        )
+                        .unwrap_or_default();
+                    let values: Vec<_> = values.iter().map(String::as_str).collect();
+                    pane.model.splice(*position as u32, 0, &values);
+                    sync_grid_groups(pane);
+                    if !pane.spinner.is_spinning() {
+                        show_count(pane);
+                    }
                 }
             }
             BrowserEvent::SortingStarted { depth } => {
@@ -904,7 +942,7 @@ impl ModeViews {
             &snapshot.location.display_name(),
         );
         configure_grid_density(&pane, self.density);
-        apply_snapshot(&pane, &snapshot);
+        apply_snapshot(&pane, &snapshot, &self.browser);
         self.install_context_menu(&pane);
         self.grid_root.append(&pane.shell);
         self.grid_panes.push(pane);
@@ -935,7 +973,7 @@ impl ModeViews {
             depth,
             &snapshot.location.display_name(),
         );
-        apply_snapshot(&pane, &snapshot);
+        apply_snapshot(&pane, &snapshot, &self.browser);
         self.install_context_menu(&pane);
         self.explorer_root.append(&pane.shell);
         self.explorer_pane = Some(pane);
@@ -1546,7 +1584,8 @@ fn build_grid_view(
         };
         let source_position =
             source_position_for_view(&source_for_bind, Some(&filtered_for_bind), item.position());
-        let entry = browser_for_bind.upgrade().and_then(|browser| {
+        let browser = browser_for_bind.upgrade();
+        let entry = browser.as_ref().and_then(|browser| {
             source_position.and_then(|position| browser.entry_at(depth, position))
         });
         if let Some(entry) = entry {
@@ -1562,6 +1601,11 @@ fn build_grid_view(
                 26,
                 thumbnail_size_for_bind.get(),
             );
+            if let Some(position) = metadata_fill_position(source_position, &entry)
+                && let Some(browser) = browser.as_ref()
+            {
+                browser.request_metadata_fill(depth, position, entry.location.clone());
+            }
             icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
         } else {
             card.remove_css_class("cut-item");
@@ -2267,7 +2311,8 @@ fn build_explorer_pane(
             Some(&view_model_for_bind),
             item.position(),
         );
-        let entry = browser_for_bind.upgrade().and_then(|browser| {
+        let browser = browser_for_bind.upgrade();
+        let entry = browser.as_ref().and_then(|browser| {
             source_position.and_then(|position| browser.entry_at(depth, position))
         });
         if let Some(entry) = entry {
@@ -2281,6 +2326,11 @@ fn build_explorer_pane(
                 18,
                 18,
             );
+            if let Some(position) = metadata_fill_position(source_position, &entry)
+                && let Some(browser) = browser.as_ref()
+            {
+                browser.request_metadata_fill(depth, position, entry.location.clone());
+            }
             name.set_label(&entry.display_name);
             size.set_label(&entry_size(&entry));
             kind.set_label(entry_type(&entry));
@@ -2788,6 +2838,10 @@ fn source_position_for_view(
         .map(|position| position as usize)
 }
 
+fn metadata_fill_position(position: Option<usize>, entry: &FileEntry) -> Option<usize> {
+    position.filter(|_| super::browser::metadata_needs_fill(entry))
+}
+
 fn view_position_for_source(
     source: &gtk::StringList,
     filtered: Option<&gio::ListModel>,
@@ -2932,11 +2986,15 @@ fn refresh_cut_pane(pane: &Pane, browser: &Browser, cuts: &[Location]) {
     }
 }
 
-fn replace_entries(pane: &Pane, entries: &[FileEntry]) {
-    let values: Vec<String> = entries
-        .iter()
-        .map(super::browser::entry_model_value)
-        .collect();
+fn replace_entries(pane: &Pane, browser: &Browser, count: usize) {
+    let values = browser
+        .with_entries(pane.depth, 0..count, |entries| {
+            entries
+                .iter()
+                .map(super::browser::entry_model_value)
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
     let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
     pane.model.splice(0, pane.model.n_items(), &values_ref);
     sync_grid_groups(pane);
@@ -2970,8 +3028,8 @@ fn show_count(pane: &Pane) {
     }
 }
 
-fn apply_snapshot(pane: &Pane, snapshot: &BrowserColumnSnapshot) {
-    replace_entries(pane, &snapshot.entries);
+fn apply_snapshot(pane: &Pane, snapshot: &BrowserColumnSnapshot, browser: &Browser) {
+    replace_entries(pane, browser, snapshot.count);
     set_selections(pane, &snapshot.selected_positions);
     pane.truncated_hint.set_visible(snapshot.truncated);
     if snapshot.loading {

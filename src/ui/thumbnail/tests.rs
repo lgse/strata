@@ -9,9 +9,11 @@ use gtk::glib;
 
 use super::{
     ACTIVE_REQUESTS, ActiveRequest, CacheHit, CachedThumbnail, MAX_CACHE_ENTRIES,
-    MAX_QUEUED_THUMBNAILS, MAX_THUMBNAIL_WORKERS, PENDING_THUMBNAILS, PendingTarget,
-    PendingThumbnail, THUMBNAIL_QUEUE, ThumbnailCache, ThumbnailKey, ThumbnailKind, ThumbnailQueue,
-    cancel_thumbnail, finish_thumbnail_targets, retry_deferred_thumbnail, schedule_or_defer,
+    MAX_PERSIST_QUEUE, MAX_QUEUED_THUMBNAILS, MAX_THUMBNAIL_WORKERS, METADATA_WAITERS,
+    MetadataWaiter, PENDING_THUMBNAILS, PendingTarget, PendingThumbnail, PersistJob, PersistQueue,
+    SETTLE_VIEWS, SettledPark, THUMBNAIL_QUEUE, ThumbnailCache, ThumbnailKey, ThumbnailKind,
+    ThumbnailQueue, ViewSettle, cancel_thumbnail, finish_thumbnail_targets,
+    fire_settled_thumbnails, note_metadata, retry_deferred_thumbnail, schedule_or_defer,
     take_pending_targets, thumbnail_kind,
 };
 
@@ -76,16 +78,19 @@ fn thumbnail_queue_bounds_waiting_and_running_jobs() {
     }
     assert!(!queue.enqueue(key(MAX_QUEUED_THUMBNAILS)));
 
-    for _ in 0..MAX_THUMBNAIL_WORKERS {
-        assert!(queue.begin_next().is_some());
+    for index in 0..MAX_THUMBNAIL_WORKERS {
+        assert_eq!(queue.begin_next(), Some(key(index)));
     }
     assert!(queue.begin_next().is_none());
     queue.finish();
-    assert!(queue.begin_next().is_some());
+    assert_eq!(queue.begin_next(), Some(key(MAX_THUMBNAIL_WORKERS)));
 }
 
 #[test]
 fn saturated_queue_defers_the_live_request() {
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
     let image_id = 99;
     let request = 7;
     ACTIVE_REQUESTS.with(|requests| {
@@ -115,7 +120,12 @@ fn saturated_queue_defers_the_live_request() {
             image: glib::WeakRef::new(),
         },
     );
-
+    fire_settled_thumbnails();
+    SETTLE_VIEWS.with(|views| {
+        let settle = &views.borrow()[&0];
+        assert!(settle.timer.is_none());
+        assert!(settle.pending.is_empty());
+    });
     ACTIVE_REQUESTS.with(|requests| {
         let requests = requests.borrow();
         let deferred = requests[&image_id]
@@ -259,4 +269,167 @@ fn failed_thumbnails_expire_and_share_the_cache_bound() {
 fn rejects_files_without_a_thumbnail_provider() {
     assert_eq!(thumbnail_kind(Path::new("README.md")), None);
     assert_eq!(thumbnail_kind(Path::new("no-extension")), None);
+}
+
+#[test]
+fn viewport_eligibility_covers_visible_plus_overscan() {
+    use super::rect_eligible;
+    assert!(rect_eligible(10.0, 10.0, 100.0, 40.0, 1000.0, 760.0));
+    assert!(rect_eligible(-20.0, 100.0, 100.0, 40.0, 1000.0, 760.0));
+    assert!(rect_eligible(950.0, 100.0, 100.0, 40.0, 1000.0, 760.0));
+    assert!(rect_eligible(100.0, -20.0, 100.0, 40.0, 1000.0, 760.0));
+    assert!(rect_eligible(100.0, 750.0, 100.0, 40.0, 1000.0, 760.0));
+    assert!(rect_eligible(100.0, -190.0, 100.0, 40.0, 1000.0, 760.0));
+    assert!(rect_eligible(
+        100.0,
+        760.0 + 100.0,
+        100.0,
+        40.0,
+        1000.0,
+        760.0
+    ));
+    assert!(!rect_eligible(100.0, -300.0, 100.0, 40.0, 1000.0, 760.0));
+    assert!(!rect_eligible(
+        100.0,
+        760.0 + 500.0,
+        100.0,
+        40.0,
+        1000.0,
+        760.0
+    ));
+    assert!(!rect_eligible(2000.0, 100.0, 100.0, 40.0, 1000.0, 760.0));
+    assert!(!rect_eligible(-500.0, 100.0, 100.0, 40.0, 1000.0, 760.0));
+    assert!(!rect_eligible(0.0, 4.0, 0.0, 0.0, 1000.0, 760.0));
+    assert!(!rect_eligible(0.0, 4.0, -1.0, 40.0, 1000.0, 760.0));
+    assert!(!rect_eligible(0.0, 0.0, 100.0, 40.0, 0.0, 0.0));
+}
+
+#[test]
+fn metadata_fill_updates_thumbnail_waiting_for_settle() {
+    let path = PathBuf::from("pending.png");
+    SETTLE_VIEWS.with(|views| {
+        views.borrow_mut().insert(
+            0,
+            ViewSettle {
+                viewport: glib::WeakRef::new(),
+                pending: vec![SettledPark {
+                    key: ThumbnailKey {
+                        path: path.clone(),
+                        modified: None,
+                        file_size: None,
+                        thumbnail_size: 64,
+                    },
+                    kind: ThumbnailKind::Image,
+                    target: PendingTarget {
+                        image_id: 1,
+                        request: 1,
+                        image: glib::WeakRef::new(),
+                    },
+                    wait_for_metadata: true,
+                }],
+                timer: None,
+                first_park: None,
+                hooked: false,
+            },
+        );
+    });
+
+    note_metadata(&path, Some(42), Some(99));
+
+    SETTLE_VIEWS.with(|views| {
+        let mut views = views.borrow_mut();
+        let park = &views[&0].pending[0];
+        assert_eq!(park.key.modified, Some(42));
+        assert_eq!(park.key.file_size, Some(99));
+        assert!(!park.wait_for_metadata);
+        views.clear();
+    });
+}
+
+#[test]
+fn unavailable_metadata_releases_settled_thumbnail_work() {
+    let path = PathBuf::from("unavailable.png");
+    SETTLE_VIEWS.with(|views| {
+        views.borrow_mut().insert(
+            0,
+            ViewSettle {
+                viewport: glib::WeakRef::new(),
+                pending: vec![SettledPark {
+                    key: ThumbnailKey {
+                        path: path.clone(),
+                        modified: None,
+                        file_size: None,
+                        thumbnail_size: 64,
+                    },
+                    kind: ThumbnailKind::Image,
+                    target: PendingTarget {
+                        image_id: 1,
+                        request: 1,
+                        image: glib::WeakRef::new(),
+                    },
+                    wait_for_metadata: true,
+                }],
+                timer: None,
+                first_park: None,
+                hooked: false,
+            },
+        );
+    });
+
+    note_metadata(&path, None, None);
+
+    SETTLE_VIEWS.with(|views| {
+        let mut views = views.borrow_mut();
+        let park = &views[&0].pending[0];
+        assert_eq!(park.key.modified, None);
+        assert!(!park.wait_for_metadata);
+        views.clear();
+    });
+}
+
+#[test]
+fn cancellation_removes_metadata_waiters() {
+    let path = PathBuf::from("cancelled.png");
+    METADATA_WAITERS.with(|waiters| {
+        waiters.borrow_mut().insert(
+            path.clone(),
+            vec![MetadataWaiter {
+                group: 0,
+                kind: ThumbnailKind::Image,
+                target: PendingTarget {
+                    image_id: 7,
+                    request: 1,
+                    image: glib::WeakRef::new(),
+                },
+                file_size: None,
+                thumbnail_size: 64,
+            }],
+        );
+    });
+
+    cancel_thumbnail(7);
+
+    METADATA_WAITERS.with(|waiters| assert!(!waiters.borrow().contains_key(&path)));
+}
+
+#[test]
+fn persist_queue_bounds_and_drains_oldest_first() {
+    let mut queue = PersistQueue::new();
+    for index in 0..MAX_PERSIST_QUEUE + 5 {
+        queue.push(PersistJob {
+            path: PathBuf::from(index.to_string()),
+            mtime: 1,
+            png: vec![1],
+        });
+    }
+    assert_eq!(queue.len(), MAX_PERSIST_QUEUE);
+    assert_eq!(
+        queue.pop_front().expect("queue should drain").path,
+        PathBuf::from("5")
+    );
+    let mut drained = 1;
+    while queue.pop_front().is_some() {
+        drained += 1;
+    }
+    assert_eq!(drained, MAX_PERSIST_QUEUE);
 }

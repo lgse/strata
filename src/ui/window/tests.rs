@@ -442,3 +442,56 @@ fn desktop_is_hidden_when_it_points_to_home() {
     ));
     assert!(should_show_standard_place("documents", home, home));
 }
+
+#[test]
+fn sidebar_sync_runs_only_for_location_changes() {
+    use super::SidebarState;
+    use crate::app::BrowserEvent;
+    use crate::model::Location;
+
+    assert!(SidebarState::event_changes_active_place(
+        &BrowserEvent::Reset
+    ));
+    assert!(SidebarState::event_changes_active_place(
+        &BrowserEvent::ColumnAdded {
+            depth: 1,
+            location: Location::local("/fixture/sub"),
+        }
+    ));
+    assert!(SidebarState::event_changes_active_place(
+        &BrowserEvent::ColumnsTruncated { len: 1 }
+    ));
+    assert!(SidebarState::event_changes_active_place(
+        &BrowserEvent::FocusChanged {
+            depth: 0,
+            position: Some(2),
+        }
+    ));
+    assert!(!SidebarState::event_changes_active_place(
+        &BrowserEvent::EntriesInserted {
+            depth: 0,
+            insertions: Vec::new(),
+        }
+    ));
+    assert!(!SidebarState::event_changes_active_place(
+        &BrowserEvent::MetadataFilled {
+            depth: 0,
+            updates: Vec::new(),
+        }
+    ));
+    assert!(!SidebarState::event_changes_active_place(
+        &BrowserEvent::SortingStarted { depth: 0 }
+    ));
+    assert!(!SidebarState::event_changes_active_place(
+        &BrowserEvent::SortingFinished { depth: 0 }
+    ));
+    assert!(!SidebarState::event_changes_active_place(
+        &BrowserEvent::LoadFinished {
+            depth: 0,
+            truncated: false,
+        }
+    ));
+    assert!(!SidebarState::event_changes_active_place(
+        &BrowserEvent::TransferCompleted
+    ));
+}

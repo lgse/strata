@@ -10,7 +10,7 @@ use std::{
     future::Future,
     io,
     os::{
-        fd::{AsFd, OwnedFd},
+        fd::{AsFd, AsRawFd, OwnedFd},
         unix::{
             ffi::{OsStrExt, OsStringExt},
             fs::PermissionsExt,
@@ -71,6 +71,71 @@ fn transfer_is_noop(source: &gio::File, destination: &gio::File, target: &gio::F
     source.equal(target) || source.equal(destination) || destination.has_prefix(source)
 }
 
+fn parse_copy_suffix(stem: &OsStr) -> (&OsStr, Option<u64>) {
+    let bytes = stem.as_bytes();
+    if let Some(without_closing_parenthesis) = bytes.strip_suffix(b")")
+        && let Some(separator) = without_closing_parenthesis
+            .windows(b" (".len())
+            .rposition(|window| window == b" (")
+    {
+        let suffix = &without_closing_parenthesis[separator + b" (".len()..];
+        if !suffix.is_empty()
+            && suffix[0] != b'0'
+            && suffix.iter().all(u8::is_ascii_digit)
+            && let Ok(suffix) = std::str::from_utf8(suffix)
+            && let Ok(number) = suffix.parse::<u64>()
+            && number < u64::MAX
+        {
+            return (OsStr::from_bytes(&bytes[..separator]), Some(number));
+        }
+    }
+    (stem, None)
+}
+
+fn duplicate_candidate_name(
+    base_stem: &OsStr,
+    extension: Option<&OsStr>,
+    copy_number: u64,
+) -> OsString {
+    let mut candidate = base_stem.as_bytes().to_vec();
+    candidate.extend_from_slice(b" (");
+    candidate.extend_from_slice(copy_number.to_string().as_bytes());
+    candidate.push(b')');
+    if let Some(extension) = extension {
+        candidate.push(b'.');
+        candidate.extend_from_slice(extension.as_bytes());
+    }
+    OsString::from_vec(candidate)
+}
+
+fn duplicate_target(
+    destination: &gio::File,
+    name: &Path,
+    is_directory: bool,
+    cancellable: &gio::Cancellable,
+) -> Result<gio::File, glib::Error> {
+    cancellable.set_error_if_cancelled()?;
+    let name = name.as_os_str();
+    let (stem, extension) = if is_directory {
+        (name, None)
+    } else {
+        let path = Path::new(name);
+        let extension = path.extension().filter(|extension| !extension.is_empty());
+        (path.file_stem().unwrap_or(name), extension)
+    };
+    let (base_stem, copy_num) = parse_copy_suffix(stem);
+    let start_index = copy_num.map_or(1, |number| number + 1);
+    for index in start_index..=u64::MAX {
+        cancellable.set_error_if_cancelled()?;
+        let candidate_name = duplicate_candidate_name(base_stem, extension, index);
+        let candidate = destination.child(&candidate_name);
+        if !candidate.query_exists(Some(cancellable)) {
+            return Ok(candidate);
+        }
+    }
+    Err(io_error("Could not find an unused duplicate name"))
+}
+
 fn was_cancelled(error: &glib::Error) -> bool {
     error.matches(gio::IOErrorEnum::Cancelled)
 }
@@ -83,6 +148,257 @@ fn is_trash_unsupported_failure(permanent: bool, error: &glib::Error) -> bool {
     !permanent && error.matches(gio::IOErrorEnum::NotSupported)
 }
 
+fn cancelled_local_operation() -> glib::Error {
+    glib::Error::new(gio::IOErrorEnum::Cancelled, "Operation cancelled")
+}
+
+async fn run_local_fs_step<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, String> + Send + 'static,
+) -> Result<T, glib::Error> {
+    gio::spawn_blocking(work)
+        .await
+        .map_err(|_| io_error("Local filesystem task panicked"))?
+        .map_err(io_error)
+}
+
+fn open_local_child_directory<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<OwnedFd, String> {
+    // RESOLVE_NO_SYMLINKS (stronger than O_NOFOLLOW) plus RESOLVE_BENEATH and
+    // RESOLVE_NO_MAGICLINKS: if `name` changed to a symlink (or a magic
+    // link) since it was last inspected, this fails closed instead of
+    // opening whatever it now points to.
+    rustix::fs::openat2(
+        parent,
+        name,
+        rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+        rustix::fs::ResolveFlags::BENEATH
+            | rustix::fs::ResolveFlags::NO_SYMLINKS
+            | rustix::fs::ResolveFlags::NO_MAGICLINKS,
+    )
+    .map_err(|error| {
+        format!(
+            "{} changed while it was being read: {error}",
+            name.to_string_lossy()
+        )
+    })
+}
+
+fn local_directory_children<Fd: AsFd>(handle: &Fd) -> Result<Vec<OsString>, String> {
+    let mut children = Vec::new();
+    for entry in rustix::fs::Dir::read_from(handle).map_err(|error| error.to_string())? {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let entry_name = entry.file_name();
+        if entry_name == c"." || entry_name == c".." {
+            continue;
+        }
+        children.push(OsString::from_vec(entry_name.to_bytes().to_vec()));
+    }
+    Ok(children)
+}
+
+/// The outcome of resolving one copy source entry relative to its parent
+/// directory's file descriptor. The type is re-read from disk here rather
+/// than trusted from any earlier listing, so a symlink swapped in for a
+/// directory is copied as the symlink it now is instead of being opened as
+/// a directory.
+enum LocalCopySource {
+    /// An open file description for a regular file. Kept alive until the
+    /// GIO copy that reads through it has finished, so `/proc/self/fd/<n>`
+    /// always resolves to this exact file no matter what happens to its
+    /// name afterward.
+    File(std::fs::File),
+    /// A symlink and the path it points to, copied as a new symlink rather
+    /// than by following it.
+    Symlink(OsString),
+    Directory {
+        handle: OwnedFd,
+        children: Vec<OsString>,
+    },
+}
+
+fn open_local_copy_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<LocalCopySource, String> {
+    let stat = rustix::fs::statat(parent, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
+        .map_err(|error| format!("Could not inspect {}: {error}", name.to_string_lossy()))?;
+    match rustix::fs::FileType::from_raw_mode(stat.st_mode) {
+        rustix::fs::FileType::Symlink => {
+            let link = rustix::fs::readlinkat(parent, name, Vec::new()).map_err(|error| {
+                format!("Could not read link {}: {error}", name.to_string_lossy())
+            })?;
+            Ok(LocalCopySource::Symlink(OsString::from_vec(
+                link.into_bytes(),
+            )))
+        }
+        rustix::fs::FileType::Directory => {
+            let handle = open_local_child_directory(parent, name)?;
+            let children = local_directory_children(&handle)?;
+            Ok(LocalCopySource::Directory { handle, children })
+        }
+        _ => {
+            let file = rustix::fs::openat2(
+                parent,
+                name,
+                rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC,
+                rustix::fs::Mode::empty(),
+                rustix::fs::ResolveFlags::BENEATH
+                    | rustix::fs::ResolveFlags::NO_SYMLINKS
+                    | rustix::fs::ResolveFlags::NO_MAGICLINKS,
+            )
+            .map_err(|error| {
+                format!(
+                    "{} changed while it was being copied: {error}",
+                    name.to_string_lossy()
+                )
+            })?;
+            Ok(LocalCopySource::File(std::fs::File::from(file)))
+        }
+    }
+}
+
+/// Recursively copies the entry named `name` inside `parent` to `target`,
+/// walking descriptor-relative to each already-open source directory
+/// instead of re-resolving paths, so a component swapped out from under an
+/// in-progress copy cannot redirect what gets read. Regular files are
+/// hand-ed to GIO's own copy (preserving its metadata handling and any
+/// reflink optimisation) through a `/proc/self/fd` reference pinned to the
+/// exact file just verified, rather than the original, re-resolvable path.
+fn copy_recursively_local(
+    parent: OwnedFd,
+    name: OsString,
+    target: gio::File,
+    overwrite_existing: bool,
+    cancellable: gio::Cancellable,
+    created_root: Option<Rc<Cell<bool>>>,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    Box::pin(async move {
+        if cancellable.is_cancelled() {
+            return Err(cancelled_local_operation());
+        }
+        let step_parent = parent.try_clone().map_err(io_error)?;
+        let step_name = name.clone();
+        let step =
+            run_local_fs_step(move || open_local_copy_source(&step_parent, &step_name)).await?;
+        match step {
+            LocalCopySource::Symlink(link_target) => {
+                let target_path = target
+                    .path()
+                    .ok_or_else(|| io_error("Copy destination must be a local path"))?;
+                run_local_fs_step(move || {
+                    rustix::fs::symlink(&link_target, &target_path).map_err(|error| {
+                        format!("Could not recreate {}: {error}", target_path.display())
+                    })
+                })
+                .await
+            }
+            LocalCopySource::File(file) => {
+                // Deliberately no NOFOLLOW_SYMLINKS here: `/proc/self/fd/<n>`
+                // is itself reported as a symlink by lstat, even though the
+                // fd it names was already verified to be a plain file. GIO
+                // must follow it to reach that file's actual content rather
+                // than copying the magic-link's target text as a new symlink.
+                let source_ref = gio::File::for_path(format!("/proc/self/fd/{}", file.as_raw_fd()));
+                let flags = gio::FileCopyFlags::ALL_METADATA
+                    | if overwrite_existing {
+                        gio::FileCopyFlags::OVERWRITE
+                    } else {
+                        gio::FileCopyFlags::NONE
+                    };
+                let result = await_cancellable(
+                    &source_ref,
+                    &cancellable,
+                    move |source, cancellable, result| {
+                        source.copy_async(
+                            &target,
+                            flags,
+                            glib::Priority::DEFAULT,
+                            Some(cancellable),
+                            None,
+                            move |output| result.resolve(output),
+                        );
+                    },
+                )
+                .await;
+                // Keeps `file` open (and its fd number stable) for the
+                // duration of the copy above; only drop it once resolved.
+                drop(file);
+                result
+            }
+            LocalCopySource::Directory { handle, children } => {
+                if !overwrite_existing || !target.query_exists(Some(&cancellable)) {
+                    await_cancellable(&target, &cancellable, |target, cancellable, result| {
+                        target.make_directory_async(
+                            glib::Priority::DEFAULT,
+                            Some(cancellable),
+                            move |output| result.resolve(output),
+                        );
+                    })
+                    .await?;
+                    if let Some(created_root) = &created_root {
+                        created_root.set(true);
+                    }
+                }
+                for child_name in children {
+                    if cancellable.is_cancelled() {
+                        return Err(cancelled_local_operation());
+                    }
+                    let child_parent = handle.try_clone().map_err(io_error)?;
+                    let child_target = target.child(&child_name);
+                    copy_recursively_local(
+                        child_parent,
+                        child_name,
+                        child_target,
+                        overwrite_existing,
+                        cancellable.clone(),
+                        None,
+                    )
+                    .await?;
+                }
+                Ok(())
+            }
+        }
+    })
+}
+
+/// Entry point for locally copying a source path: opens its parent
+/// directory once, then hands off to the descriptor-relative walk in
+/// [`copy_recursively_local`] for everything below it.
+fn copy_recursively_local_path(
+    source_path: PathBuf,
+    target: gio::File,
+    overwrite_existing: bool,
+    cancellable: gio::Cancellable,
+    created_root: Option<Rc<Cell<bool>>>,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    Box::pin(async move {
+        let Some(parent_path) = source_path.parent().map(Path::to_path_buf) else {
+            return Err(io_error("Cannot copy the filesystem root"));
+        };
+        let Some(name) = source_path.file_name().map(OsStr::to_os_string) else {
+            return Err(io_error("Invalid copy source"));
+        };
+        let parent = run_local_fs_step(move || {
+            rustix::fs::open(
+                &parent_path,
+                rustix::fs::OFlags::RDONLY
+                    | rustix::fs::OFlags::DIRECTORY
+                    | rustix::fs::OFlags::NOFOLLOW
+                    | rustix::fs::OFlags::CLOEXEC,
+                rustix::fs::Mode::empty(),
+            )
+            .map_err(|error| format!("Could not open {}: {error}", parent_path.display()))
+        })
+        .await?;
+        copy_recursively_local(
+            parent,
+            name,
+            target,
+            overwrite_existing,
+            cancellable,
+            created_root,
+        )
+        .await
+    })
+}
+
 fn copy_recursively(
     source: gio::File,
     target: gio::File,
@@ -90,6 +406,21 @@ fn copy_recursively(
     cancellable: gio::Cancellable,
     created_root: Option<Rc<Cell<bool>>>,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    if source.is_native()
+        && target.is_native()
+        && let Some(source_path) = source.path()
+    {
+        // Remote (GVfs) locations have no local descriptor to walk against,
+        // so anything not fully local keeps the GIO path-based copy below
+        // rather than claiming an equivalent guarantee.
+        return copy_recursively_local_path(
+            source_path,
+            target,
+            overwrite_existing,
+            cancellable,
+            created_root,
+        );
+    }
     Box::pin(async move {
         let info = await_cancellable(&source, &cancellable, |source, cancellable, result| {
             source.query_info_async(
@@ -580,11 +911,34 @@ enum LocalDeleteStep {
     },
 }
 
+/// Fails closed if an opened directory is no longer at its original name.
+fn ensure_local_delete_target_unchanged<ParentFd: AsFd, TargetFd: AsFd>(
+    parent: &ParentFd,
+    name: &OsStr,
+    target: &TargetFd,
+) -> Result<(), String> {
+    let named = rustix::fs::statat(parent, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW).map_err(
+        |error| {
+            format!(
+                "{} changed while it was being deleted: {error}",
+                name.to_string_lossy()
+            )
+        },
+    )?;
+    let opened = rustix::fs::fstat(target)
+        .map_err(|error| format!("Could not recheck {}: {error}", name.to_string_lossy()))?;
+    if named.st_dev != opened.st_dev || named.st_ino != opened.st_ino {
+        return Err(format!(
+            "{} changed while it was being deleted",
+            name.to_string_lossy()
+        ));
+    }
+    Ok(())
+}
+
 /// Inspects and, for non-directories, immediately deletes the entry named
 /// `name` inside `parent`. The type is re-read from disk here rather than
-/// trusted from any earlier listing, so a symlink swapped in for a
-/// directory is deleted as the symlink it now is instead of being opened as
-/// a directory.
+/// trusted from any earlier listing.
 fn open_local_delete_target<Fd: AsFd>(
     parent: &Fd,
     name: &OsStr,
@@ -668,15 +1022,55 @@ fn permanently_delete_local(
             if cancellable.is_cancelled() {
                 return Err(cancelled_local_delete());
             }
+            let checked_parent = parent.try_clone().map_err(io_error)?;
+            let checked_handle = handle.try_clone().map_err(io_error)?;
+            let checked_name = name.clone();
+            run_local_delete_step(move || {
+                ensure_local_delete_target_unchanged(
+                    &checked_parent,
+                    &checked_name,
+                    &checked_handle,
+                )
+            })
+            .await?;
             let child_parent = handle.try_clone().map_err(io_error)?;
             permanently_delete_local(child_parent, child, cancellable.clone()).await?;
         }
         run_local_delete_step(move || {
+            ensure_local_delete_target_unchanged(&parent, &name, &handle)?;
             rustix::fs::unlinkat(&parent, &name, rustix::fs::AtFlags::REMOVEDIR)
                 .map_err(|error| format!("Could not delete {}: {error}", name.to_string_lossy()))
         })
         .await
     })
+}
+
+fn open_local_delete_parent(parent_path: &Path) -> Result<OwnedFd, String> {
+    if !parent_path.is_absolute() {
+        return Err("A local delete target must use an absolute path".to_owned());
+    }
+    let root = rustix::fs::open(
+        c"/",
+        rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+    )
+    .map_err(|error| format!("Could not open the filesystem root: {error}"))?;
+    let relative = parent_path
+        .strip_prefix(Path::new("/"))
+        .map_err(|_| "A local delete target must use an absolute path".to_owned())?;
+    if relative.as_os_str().is_empty() {
+        return Ok(root);
+    }
+    rustix::fs::openat2(
+        &root,
+        relative,
+        rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+        rustix::fs::ResolveFlags::BENEATH
+            | rustix::fs::ResolveFlags::NO_SYMLINKS
+            | rustix::fs::ResolveFlags::NO_MAGICLINKS,
+    )
+    .map_err(|error| format!("Could not safely open {}: {error}", parent_path.display()))
 }
 
 /// Entry point for permanently deleting a local path: opens the target's
@@ -693,18 +1087,7 @@ fn permanently_delete_local_path(
         let Some(name) = path.file_name().map(OsStr::to_os_string) else {
             return Err(io_error("Invalid delete target"));
         };
-        let parent = run_local_delete_step(move || {
-            rustix::fs::open(
-                &parent_path,
-                rustix::fs::OFlags::RDONLY
-                    | rustix::fs::OFlags::DIRECTORY
-                    | rustix::fs::OFlags::NOFOLLOW
-                    | rustix::fs::OFlags::CLOEXEC,
-                rustix::fs::Mode::empty(),
-            )
-            .map_err(|error| format!("Could not open {}: {error}", parent_path.display()))
-        })
-        .await?;
+        let parent = run_local_delete_step(move || open_local_delete_parent(&parent_path)).await?;
         permanently_delete_local(parent, name, cancellable).await
     })
 }
@@ -1238,8 +1621,9 @@ impl OperationProvider for LocalOperationProvider {
                     });
                     return;
                 };
-                let target = destination.child(name);
-                if transfer_is_noop(&source, &destination, &target) {
+                let default_target = destination.child(&name);
+                let is_duplicate = !request.move_sources && source.equal(&default_target);
+                if !is_duplicate && transfer_is_noop(&source, &destination, &default_target) {
                     completed.push(item.source.clone());
                     emit(OperationEvent::TransferProgress {
                         request_id: request.id,
@@ -1248,11 +1632,84 @@ impl OperationProvider for LocalOperationProvider {
                     });
                     continue;
                 }
+                let target = if is_duplicate {
+                    let is_directory = match await_cancellable(
+                        &source,
+                        &operation_cancellable,
+                        |source, cancellable, result| {
+                            source.query_info_async(
+                                "standard::type",
+                                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                                glib::Priority::DEFAULT,
+                                Some(cancellable),
+                                move |output| result.resolve(output),
+                            );
+                        },
+                    )
+                    .await
+                    {
+                        Ok(info) => info.file_type() == gio::FileType::Directory,
+                        Err(error) => {
+                            if was_cancelled(&error) {
+                                emit(cancelled_event(
+                                    request.id,
+                                    completed,
+                                    vec![item.source.clone()],
+                                    request.items[index + 1..]
+                                        .iter()
+                                        .map(|item| item.source.clone())
+                                        .collect(),
+                                    affected_locations,
+                                ));
+                                return;
+                            }
+                            emit(OperationEvent::TransferFailed {
+                                request_id: request.id,
+                                completed_locations: completed,
+                                message: error.to_string(),
+                            });
+                            return;
+                        }
+                    };
+                    match duplicate_target(
+                        &destination,
+                        &name,
+                        is_directory,
+                        &operation_cancellable,
+                    ) {
+                        Ok(target) => target,
+                        Err(error) => {
+                            if was_cancelled(&error) {
+                                emit(cancelled_event(
+                                    request.id,
+                                    completed,
+                                    vec![item.source.clone()],
+                                    request.items[index + 1..]
+                                        .iter()
+                                        .map(|item| item.source.clone())
+                                        .collect(),
+                                    affected_locations,
+                                ));
+                                return;
+                            }
+                            emit(OperationEvent::TransferFailed {
+                                request_id: request.id,
+                                completed_locations: completed,
+                                message: error.to_string(),
+                            });
+                            return;
+                        }
+                    }
+                } else {
+                    default_target
+                };
                 affected_locations.insert(item.source.clone());
                 if let Some(target) = location_for_file(&target) {
                     affected_locations.insert(target);
                 }
-                let result = if item.conflict == TransferConflict::ReplaceExisting {
+                let result = if is_duplicate {
+                    copy_new_recursively(source, target, operation_cancellable.clone()).await
+                } else if item.conflict == TransferConflict::ReplaceExisting {
                     replace_local(
                         source,
                         target,

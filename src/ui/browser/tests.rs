@@ -25,6 +25,34 @@ fn terminal_shortcut_prefers_one_selected_directory() {
     assert_eq!(selected_terminal_location(&[]), None);
 }
 
+#[test]
+fn duplicate_transfer_uses_the_selected_entries_parent() {
+    let entry = |path: &str| FileEntry {
+        location: Location::local(path),
+        native_name: Path::new(path).file_name().unwrap_or_default().to_owned(),
+        display_name: path.to_owned(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let first = entry("/fixture/selected/first.txt");
+    let second = entry("/fixture/selected/second.txt");
+
+    assert_eq!(
+        duplicate_transfer(&[first.clone(), second.clone()]),
+        Some((
+            Location::local("/fixture/selected"),
+            vec![first.location, second.location]
+        ))
+    );
+    assert_eq!(
+        duplicate_transfer(&[entry("/fixture/one.txt"), entry("/other/two.txt")]),
+        None
+    );
+    assert_eq!(duplicate_transfer(&[]), None);
+}
+
 #[cfg(unix)]
 #[test]
 fn terminal_directory_argument_preserves_native_path_bytes() {
@@ -508,6 +536,10 @@ fn transfer_collisions_detect_existing_destination_items() -> Result<(), Box<dyn
         &Location::local(&source),
         &Location::local(&destination)
     ));
+    assert!(!transfer_has_collision(
+        &Location::local(&source),
+        &Location::local(&source_dir)
+    ));
     std::fs::write(destination.join("photo.jpg"), b"old")?;
     assert!(transfer_has_collision(
         &Location::local(&source),
@@ -758,6 +790,43 @@ fn cut_clipboard_locations_match_regardless_of_order() {
             Location::local("/fixture/second")
         ]
     ));
+}
+
+#[test]
+fn cut_matches_gio_equivalent_representations() {
+    let native = Location::local("/fixture/first");
+    let uri = Location::uri("file:///fixture/first");
+
+    assert!(locations_equal(&native, &uri));
+    assert!(same_locations(
+        std::slice::from_ref(&native),
+        std::slice::from_ref(&uri)
+    ));
+    assert!(!same_locations(
+        std::slice::from_ref(&native),
+        std::slice::from_ref(&Location::uri("file:///fixture/other"))
+    ));
+}
+
+#[test]
+fn cleared_shared_cut_is_not_revived_by_stale_view_state() {
+    let native = Location::local("/fixture/first");
+    let uri = Location::uri("file:///fixture/first");
+
+    set_shared_cut(std::slice::from_ref(&native));
+    assert!(is_cut_match(std::slice::from_ref(&uri)));
+
+    clear_shared_cut();
+    assert!(!is_cut_match(std::slice::from_ref(&native)));
+}
+
+#[test]
+fn completed_moves_match_gio_equivalent_cut_entries() {
+    let mut cut = vec![Location::local("/fixture/first")];
+
+    retain_untransferred(&mut cut, &[Location::uri("file:///fixture/first")]);
+
+    assert!(cut.is_empty());
 }
 
 #[test]

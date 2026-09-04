@@ -4,8 +4,8 @@ use std::{
     cell::{Cell, RefCell},
     process::{Command, Stdio},
     rc::Rc,
-    sync::mpsc::TryRecvError,
-    time::Duration,
+    sync::{OnceLock, mpsc::TryRecvError},
+    time::{Duration, Instant},
 };
 
 use gtk::{gdk, gio, glib, prelude::*, subclass::prelude::*};
@@ -27,7 +27,7 @@ use super::{
     browser::{BrowserView, dismiss_modal_layer, modal_layer},
     browser_modes::{BrowserMode, ClickActivation, ClickCount},
     controls::{form_entry, menu_option, modal_layout, segmented_control},
-    theme::{Theme, ThemeManager, ThemeTokens},
+    theme::{TextSize, Theme, ThemeManager, ThemeTokens},
 };
 
 type ThemeCards = Rc<RefCell<Vec<(String, gtk::Button, gtk::Image)>>>;
@@ -76,13 +76,111 @@ thread_local! {
 /// deliberately never released: it is one `bool`, and the guard's
 /// correctness should not depend on some window or in-flight install
 /// happening to still hold a strong reference.
-///
-/// This bounds races to *this* process. A second `strata` process can
-/// still install over the same executable, but `update_install` stages
-/// into a unique path and lands it with a single atomic rename, so that
-/// case degrades to last-writer-wins rather than a corrupted binary.
 pub(super) fn install_guard() -> InstallGuard {
-    INSTALL_GUARD.with(Rc::clone)
+    INSTALL_GUARD.with(|guard| guard.clone())
+}
+
+thread_local! {
+    /// Shared by the due scheduler so every window uses one TTL.
+    static LAST_COMPLETED_CHECK: Cell<Option<Instant>> = const { Cell::new(None) };
+    static CHECK_IN_FLIGHT: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Detection spawns a package-manager child, so it resolves asynchronously
+/// on first need, never during startup.
+static UPDATE_METHOD_CACHE: OnceLock<UpdateMethod> = OnceLock::new();
+
+/// Invokes `callback` on the GTK thread, detecting on a worker thread on a cache miss.
+pub(super) fn resolve_update_method_async(callback: impl FnOnce(UpdateMethod) + 'static) {
+    if let Some(method) = UPDATE_METHOD_CACHE.get().copied() {
+        callback(method);
+        return;
+    }
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let spawned = std::thread::Builder::new()
+        .name("strata-update-method".into())
+        .spawn(move || {
+            let method = *UPDATE_METHOD_CACHE.get_or_init(services::update_method);
+            let _sent = sender.send(method);
+        });
+    if spawned.is_err() {
+        let method = *UPDATE_METHOD_CACHE.get_or_init(services::update_method);
+        callback(method);
+        return;
+    }
+    let mut callback = Some(callback);
+    glib::timeout_add_local(Duration::from_millis(50), move || {
+        match receiver.try_recv() {
+            Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+            resolved => {
+                let method = match resolved {
+                    Ok(method) => method,
+                    Err(TryRecvError::Disconnected) => {
+                        *UPDATE_METHOD_CACHE.get_or_init(services::update_method)
+                    }
+                    Err(TryRecvError::Empty) => return glib::ControlFlow::Continue,
+                };
+                if let Some(callback) = callback.take() {
+                    callback(method);
+                }
+                glib::ControlFlow::Break
+            }
+        }
+    });
+}
+const UPDATE_DUE_INTERVAL: Duration = Duration::from_secs(24 * 3600);
+
+fn update_check_due(last: Option<Instant>, now: Instant) -> bool {
+    last.is_none_or(|completed| now.duration_since(completed) >= UPDATE_DUE_INTERVAL)
+}
+
+pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &UpdateNoticeHandler) {
+    if !manager.checks_for_updates() || CHECK_IN_FLIGHT.get() {
+        return;
+    }
+    if !update_check_due(LAST_COMPLETED_CHECK.get(), Instant::now()) {
+        return;
+    }
+    CHECK_IN_FLIGHT.set(true);
+    let channel = manager.release_channel();
+    let weak_manager = Rc::downgrade(manager);
+    let notice = notice.clone();
+    resolve_update_method_async(move |method| {
+        let receiver = services::check_for_updates(
+            channel,
+            crate::build_info::installed_version(),
+            method,
+            false,
+        );
+        glib::timeout_add_local(Duration::from_millis(100), move || {
+            match receiver.try_recv() {
+                Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
+                Err(TryRecvError::Disconnected) => {
+                    CHECK_IN_FLIGHT.set(false);
+                    glib::ControlFlow::Break
+                }
+                Ok(UpdateCheck::Available {
+                    release,
+                    download_url,
+                }) => {
+                    CHECK_IN_FLIGHT.set(false);
+                    LAST_COMPLETED_CHECK.set(Some(Instant::now()));
+                    if weak_manager.upgrade().is_some_and(|manager| {
+                        manager.checks_for_updates() && manager.release_channel() == channel
+                    }) {
+                        notice(Some((release, download_url, method)));
+                    }
+                    glib::ControlFlow::Break
+                }
+                Ok(_) => {
+                    // Failed stays uncached so the next launch retries on transient errors.
+                    CHECK_IN_FLIGHT.set(false);
+                    LAST_COMPLETED_CHECK.set(Some(Instant::now()));
+                    glib::ControlFlow::Break
+                }
+            }
+        });
+    });
 }
 
 const DIALOG_WIDTH: i32 = 920;
@@ -237,6 +335,26 @@ impl ResponsiveBin {
         child.set_parent(&bin);
         bin
     }
+
+    fn add_navigation(&self, label: gtk::Label, content: gtk::Box) {
+        let imp = self.imp();
+        imp.navigation_labels.borrow_mut().push(label);
+        imp.navigation_contents.borrow_mut().push(content);
+    }
+
+    fn add_flow(&self, flow: gtk::FlowBox, columns: u32) {
+        self.imp()
+            .responsive_flows
+            .borrow_mut()
+            .push((flow, columns));
+    }
+
+    fn add_action(&self, row: gtk::Box, button: gtk::Button) {
+        self.imp()
+            .responsive_actions
+            .borrow_mut()
+            .push((row, button));
+    }
 }
 
 fn responsive_dialog_size(width: i32, height: i32) -> (i32, i32) {
@@ -310,17 +428,45 @@ pub fn build_layer(
     let (general, responsive_setting_rows, responsive_activation_rows) =
         general_page(browser, themes.clone());
     stack.add_named(&general, Some("general"));
-    let (updates, responsive_actions) = updates_page(themes.clone(), update_notice, install_guard);
-    stack.add_named(&updates, Some("updates"));
     stack.add_named(&keybindings_page(), Some("keybindings"));
-    let (theme_page, responsive_flows) = theme_page(themes);
-    stack.add_named(&theme_page, Some("theme"));
     stack.add_named(&about_page(), Some("about"));
+    // Heavy pages build on first selection, never during startup: the
+    // Updates page spawns package-manager detection plus release-note
+    // network work, and the theme page builds its swatch flows.
+    let updates_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    updates_container.set_hexpand(true);
+    updates_container.set_vexpand(true);
+    let updates_spinner = gtk::Spinner::new();
+    updates_spinner.start();
+    updates_spinner.set_halign(gtk::Align::Center);
+    updates_spinner.set_valign(gtk::Align::Center);
+    updates_spinner.set_vexpand(true);
+    updates_container.append(&updates_spinner);
+    stack.add_named(&updates_container, Some("updates"));
     page.append(&stack);
 
+    // Created before the navigation loop so lazy builders can register
+    // their responsive rows and flows as pages materialize.
+    let responsive_panel = ResponsiveBin::new(
+        &panel,
+        &navigation,
+        &navigation_heading,
+        Vec::new(),
+        Vec::new(),
+        ResponsiveContent {
+            flows: Vec::new(),
+            actions: Vec::new(),
+            setting_rows: responsive_setting_rows,
+            activation_rows: responsive_activation_rows,
+        },
+    );
+    // Navigation entries register as their buttons are created, so the
+    // responsive panel compacts correctly even with lazy pages.
+    let responsive_for_nav = responsive_panel.clone();
+    let built: Rc<RefCell<std::collections::HashSet<&'static str>>> = Rc::new(RefCell::new(
+        ["general", "keybindings", "about"].into_iter().collect(),
+    ));
     let nav_buttons: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
-    let mut navigation_labels = Vec::new();
-    let mut navigation_contents = Vec::new();
     for (label, icon, name) in [
         ("General", icons::SLIDERS, "general"),
         ("Keybindings", icons::KEYBOARD, "keybindings"),
@@ -330,8 +476,7 @@ pub fn build_layer(
     ] {
         let active = name == "general";
         let (button, navigation_label, navigation_content) = navigation_button(icon, label);
-        navigation_labels.push(navigation_label);
-        navigation_contents.push(navigation_content);
+        responsive_for_nav.add_navigation(navigation_label, navigation_content);
         if active {
             button.add_css_class("settings-nav-active");
         }
@@ -340,12 +485,49 @@ pub fn build_layer(
         let stack = stack.clone();
         let title = title.clone();
         let page_title = label.to_owned();
+        let built = built.clone();
+        let themes = themes.clone();
+        let update_notice = update_notice.clone();
+        let install_guard = install_guard.clone();
+        let updates_container = updates_container.clone();
+        let responsive_panel = responsive_panel.clone();
         button.connect_clicked(move |clicked| {
             for candidate in buttons.borrow().iter() {
                 if candidate == clicked {
                     candidate.add_css_class("settings-nav-active");
                 } else {
                     candidate.remove_css_class("settings-nav-active");
+                }
+            }
+            if built.borrow_mut().insert(name) {
+                match name {
+                    "theme" => {
+                        let (theme_widget, flows) = theme_page(themes.clone());
+                        stack.add_named(&theme_widget, Some("theme"));
+                        for (flow, columns) in flows {
+                            responsive_panel.add_flow(flow, columns);
+                        }
+                    }
+                    "updates" => {
+                        let container = updates_container.clone();
+                        let panel = responsive_panel.clone();
+                        let themes = themes.clone();
+                        let update_notice = update_notice.clone();
+                        let install_guard = install_guard.clone();
+                        let _ = stack;
+                        resolve_update_method_async(move |method| {
+                            let (updates, actions) =
+                                updates_page(themes, update_notice, install_guard, method);
+                            while let Some(child) = container.first_child() {
+                                container.remove(&child);
+                            }
+                            container.append(&updates);
+                            for (row, button) in actions {
+                                panel.add_action(row, button);
+                            }
+                        });
+                    }
+                    _ => {}
                 }
             }
             stack.set_visible_child_name(name);
@@ -356,19 +538,6 @@ pub fn build_layer(
 
     panel.append(&navigation);
     panel.append(&page);
-    let responsive_panel = ResponsiveBin::new(
-        &panel,
-        &navigation,
-        &navigation_heading,
-        navigation_labels,
-        navigation_contents,
-        ResponsiveContent {
-            flows: responsive_flows,
-            actions: responsive_actions,
-            setting_rows: responsive_setting_rows,
-            activation_rows: responsive_activation_rows,
-        },
-    );
     responsive_panel.set_hexpand(false);
     responsive_panel.set_vexpand(false);
     let top = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -614,6 +783,7 @@ fn updates_page(
     manager: Rc<ThemeManager>,
     update_notice: UpdateNoticeHandler,
     install_guard: InstallGuard,
+    update_method: UpdateMethod,
 ) -> (gtk::Widget, Vec<(gtk::Box, gtk::Button)>) {
     let preferences = page_content();
     append_heading(&preferences, "UPDATE PREFERENCES");
@@ -626,7 +796,6 @@ fn updates_page(
         "Available release",
         "Check for updates to see the latest release notes.",
     );
-    let update_method = services::update_method();
     let UpdateCheckRow {
         row: update_row,
         run_check,
@@ -686,9 +855,7 @@ fn updates_page(
             update_notice(None);
         }
     });
-    if auto_check_enabled {
-        run_check(false);
-    }
+    // No automatic check here: the due scheduler owns background checks process-wide.
 
     let page = scrollable_page(&preferences, None);
     let broadcast_check = run_check.clone();
@@ -2235,6 +2402,41 @@ fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<(gtk::FlowBox, u32
         system.append(&copy);
         system.append(&follow);
         content.append(&system);
+    }
+
+    append_heading(&content, "TYPOGRAPHY");
+    let text_sizes = [TextSize::Small, TextSize::Medium, TextSize::Large];
+    let active_text_size = text_sizes
+        .iter()
+        .position(|&size| size == manager.text_size())
+        .unwrap_or(1);
+    let (text_size_control, text_size_buttons) =
+        segmented_control(&["Small", "Medium", "Large"], active_text_size);
+    let text_size_row = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    text_size_row.add_css_class("settings-option");
+    let text_size_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    text_size_copy.set_hexpand(true);
+    let text_size_title = gtk::Label::new(Some("Text size"));
+    text_size_title.set_xalign(0.0);
+    text_size_title.add_css_class("settings-option-title");
+    let text_size_description = gtk::Label::new(Some(
+        "Scale interface text across menus, labels, and lists.",
+    ));
+    text_size_description.set_xalign(0.0);
+    text_size_description.set_wrap(true);
+    text_size_description.add_css_class("settings-option-description");
+    text_size_copy.append(&text_size_title);
+    text_size_copy.append(&text_size_description);
+    text_size_row.append(&text_size_copy);
+    text_size_row.append(&text_size_control);
+    content.append(&text_size_row);
+    for (button, size) in text_size_buttons.into_iter().zip(text_sizes) {
+        let manager = manager.clone();
+        button.connect_toggled(move |toggled| {
+            if toggled.is_active() {
+                manager.set_text_size(size);
+            }
+        });
     }
 
     append_heading(&content, "THEMES");

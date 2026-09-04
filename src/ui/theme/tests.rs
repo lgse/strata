@@ -3,7 +3,7 @@
 use std::{cell::RefCell, collections::HashSet};
 
 use super::{
-    Preferences, Theme, azure_tokens, blend, builtins, configured_hardware_acceleration,
+    Preferences, TextSize, Theme, azure_tokens, blend, builtins, configured_hardware_acceleration,
     configured_video_preview_backend, is_omarchy_theme_event, merge_builtin_and_custom_themes,
     notify_live, slugify, sort_preferences, title_case_slug, tokens_from_quattro, validate_tokens,
 };
@@ -368,6 +368,56 @@ theme = "azure-glow"
         Channel::parse(&preferences.release_channel),
         Channel::Stable
     );
+}
+
+#[test]
+fn text_size_defaults_to_medium() {
+    let preferences = Preferences::default();
+    assert_eq!(preferences.text_size, "medium");
+    assert_eq!(TextSize::parse(&preferences.text_size), TextSize::Medium);
+}
+
+#[test]
+fn small_and_large_text_sizes_round_trip_through_toml() {
+    for size in [TextSize::Small, TextSize::Large] {
+        let preferences = Preferences {
+            text_size: size.as_str().to_owned(),
+            ..Preferences::default()
+        };
+        let serialized = toml::to_string(&preferences).expect("preferences should serialize");
+        let restored: Preferences =
+            toml::from_str(&serialized).expect("preferences should deserialize");
+        assert_eq!(TextSize::parse(&restored.text_size), size);
+    }
+}
+
+#[test]
+fn unknown_text_size_value_parses_to_medium() {
+    assert_eq!(TextSize::parse("huge"), TextSize::Medium);
+}
+
+#[test]
+fn text_sizes_map_to_a_strictly_increasing_root_font_size() {
+    let small = TextSize::Small.root_font_px();
+    let medium = TextSize::Medium.root_font_px();
+    let large = TextSize::Large.root_font_px();
+    assert!(small < medium);
+    assert!(medium < large);
+    assert_eq!(medium, 13, "medium should match the unscaled base size");
+}
+
+#[test]
+fn legacy_preferences_without_text_size_default_to_medium() {
+    let preferences: Preferences = toml::from_str(
+        r#"
+mode = "theme"
+theme = "azure-glow"
+"#,
+    )
+    .expect("legacy preferences without text_size should remain valid");
+
+    assert_eq!(preferences.text_size, "medium");
+    assert_eq!(TextSize::parse(&preferences.text_size), TextSize::Medium);
 }
 
 #[test]
