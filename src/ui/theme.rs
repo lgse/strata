@@ -226,7 +226,7 @@ impl TextSize {
 
     fn root_font_px(self) -> u32 {
         match self {
-            TextSize::Small => 12,
+            TextSize::Small => 11,
             TextSize::Medium => 13,
             TextSize::Large => 15,
         }
