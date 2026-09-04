@@ -76,7 +76,7 @@ This is currently an official Strata metadata format for these two AUR packages,
 
 The release workflow performs steps 2 and 4 automatically for every non-nightly release. Stable releases regenerate the stable package and update the Preview package only when that would not downgrade it; staged prereleases update the Preview package under the same ordering rule. Its protected `package-automation` environment must provide a fine-grained `PACKAGE_PR_TOKEN` with Contents and Pull requests read/write access. Using a token rather than the workflow's built-in token ensures the generated pull request runs the normal CI workflows.
 
-Publishing uses the protected `aur-production` environment and its `AUR_SSH_PRIVATE_KEY` secret. The key's AUR account must maintain both package bases. A manual workflow dispatch can safely retry an interrupted or already-current publication.
+Publishing uses the protected `aur-production` environment and its `AUR_SSH_PRIVATE_KEY` secret. The key's AUR account must maintain both package bases. The publish job remains disabled unless the repository variable `AUR_PUBLISH_ENABLED` is exactly `true`; keep it disabled until both package bases and their maintainer account exist. A manual workflow dispatch can safely retry an interrupted or already-current publication after enabling it.
 
 ### `pkgver` mangling
 

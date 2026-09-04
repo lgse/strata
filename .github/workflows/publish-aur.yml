@@ -20,6 +20,7 @@ concurrency:
 jobs:
   publish:
     name: Push reviewed packages to the AUR
+    if: vars.AUR_PUBLISH_ENABLED == 'true'
     runs-on: ubuntu-24.04
     environment: aur-production
 
