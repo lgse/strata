@@ -409,6 +409,7 @@ impl BrowserView {
             .vscrollbar_policy(gtk::PolicyType::Never)
             .hexpand(true)
             .build();
+        breadcrumb_scroller.add_css_class("fixed-scrollbar");
         let location_stack = gtk::Stack::builder()
             .hhomogeneous(false)
             .vhomogeneous(false)
