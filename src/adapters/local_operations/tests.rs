@@ -1243,6 +1243,82 @@ fn permanent_delete_does_not_follow_a_symlink_nested_inside_the_tree() -> Result
 }
 
 #[test]
+fn permanent_delete_rejects_a_symlink_in_the_parent_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual_parent = root.path().join("actual");
+    let linked_parent = root.path().join("linked");
+    let target = actual_parent.join("target.txt");
+    fs::create_dir(&actual_parent)?;
+    fs::write(&target, b"keep")?;
+    std::os::unix::fs::symlink(&actual_parent, &linked_parent)?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.delete(
+        DeleteRequest {
+            id: OperationRequestId(22),
+            entries: vec![file_entry(&linked_parent.join("target.txt"))],
+            permanent: true,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    let context = glib::MainContext::default();
+    while !events
+        .borrow()
+        .iter()
+        .any(|event| matches!(event, OperationEvent::CompletedWithErrors { .. }))
+    {
+        context.iteration(true);
+    }
+
+    assert_eq!(fs::read(target)?, b"keep");
+    Ok(())
+}
+
+#[test]
+fn permanent_delete_stops_if_an_open_directory_is_moved() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let target = root.path().join("target");
+    let moved = root.path().join("moved");
+    fs::create_dir(&target)?;
+    for index in 0..64 {
+        fs::write(target.join(format!("item-{index}.txt")), b"keep")?;
+    }
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.delete(
+        DeleteRequest {
+            id: OperationRequestId(23),
+            entries: vec![directory_entry(&target)],
+            permanent: true,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    let context = glib::MainContext::default();
+    while fs::read_dir(&target)?.count() == 64 {
+        context.iteration(true);
+    }
+    fs::rename(&target, &moved)?;
+    while !events
+        .borrow()
+        .iter()
+        .any(|event| matches!(event, OperationEvent::CompletedWithErrors { .. }))
+    {
+        context.iteration(true);
+    }
+
+    assert!(fs::read_dir(&moved)?.next().is_some());
+    Ok(())
+}
+
+#[test]
 fn cancelling_recursive_delete_leaves_the_unfinished_root_in_place() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()

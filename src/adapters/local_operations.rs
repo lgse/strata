@@ -644,11 +644,34 @@ enum LocalDeleteStep {
     },
 }
 
+/// Fails closed if an opened directory is no longer at its original name.
+fn ensure_local_delete_target_unchanged<ParentFd: AsFd, TargetFd: AsFd>(
+    parent: &ParentFd,
+    name: &OsStr,
+    target: &TargetFd,
+) -> Result<(), String> {
+    let named = rustix::fs::statat(parent, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW).map_err(
+        |error| {
+            format!(
+                "{} changed while it was being deleted: {error}",
+                name.to_string_lossy()
+            )
+        },
+    )?;
+    let opened = rustix::fs::fstat(target)
+        .map_err(|error| format!("Could not recheck {}: {error}", name.to_string_lossy()))?;
+    if named.st_dev != opened.st_dev || named.st_ino != opened.st_ino {
+        return Err(format!(
+            "{} changed while it was being deleted",
+            name.to_string_lossy()
+        ));
+    }
+    Ok(())
+}
+
 /// Inspects and, for non-directories, immediately deletes the entry named
 /// `name` inside `parent`. The type is re-read from disk here rather than
-/// trusted from any earlier listing, so a symlink swapped in for a
-/// directory is deleted as the symlink it now is instead of being opened as
-/// a directory.
+/// trusted from any earlier listing.
 fn open_local_delete_target<Fd: AsFd>(
     parent: &Fd,
     name: &OsStr,
@@ -732,15 +755,55 @@ fn permanently_delete_local(
             if cancellable.is_cancelled() {
                 return Err(cancelled_local_delete());
             }
+            let checked_parent = parent.try_clone().map_err(io_error)?;
+            let checked_handle = handle.try_clone().map_err(io_error)?;
+            let checked_name = name.clone();
+            run_local_delete_step(move || {
+                ensure_local_delete_target_unchanged(
+                    &checked_parent,
+                    &checked_name,
+                    &checked_handle,
+                )
+            })
+            .await?;
             let child_parent = handle.try_clone().map_err(io_error)?;
             permanently_delete_local(child_parent, child, cancellable.clone()).await?;
         }
         run_local_delete_step(move || {
+            ensure_local_delete_target_unchanged(&parent, &name, &handle)?;
             rustix::fs::unlinkat(&parent, &name, rustix::fs::AtFlags::REMOVEDIR)
                 .map_err(|error| format!("Could not delete {}: {error}", name.to_string_lossy()))
         })
         .await
     })
+}
+
+fn open_local_delete_parent(parent_path: &Path) -> Result<OwnedFd, String> {
+    if !parent_path.is_absolute() {
+        return Err("A local delete target must use an absolute path".to_owned());
+    }
+    let root = rustix::fs::open(
+        c"/",
+        rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+    )
+    .map_err(|error| format!("Could not open the filesystem root: {error}"))?;
+    let relative = parent_path
+        .strip_prefix(Path::new("/"))
+        .map_err(|_| "A local delete target must use an absolute path".to_owned())?;
+    if relative.as_os_str().is_empty() {
+        return Ok(root);
+    }
+    rustix::fs::openat2(
+        &root,
+        relative,
+        rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+        rustix::fs::ResolveFlags::BENEATH
+            | rustix::fs::ResolveFlags::NO_SYMLINKS
+            | rustix::fs::ResolveFlags::NO_MAGICLINKS,
+    )
+    .map_err(|error| format!("Could not safely open {}: {error}", parent_path.display()))
 }
 
 /// Entry point for permanently deleting a local path: opens the target's
@@ -757,18 +820,7 @@ fn permanently_delete_local_path(
         let Some(name) = path.file_name().map(OsStr::to_os_string) else {
             return Err(io_error("Invalid delete target"));
         };
-        let parent = run_local_delete_step(move || {
-            rustix::fs::open(
-                &parent_path,
-                rustix::fs::OFlags::RDONLY
-                    | rustix::fs::OFlags::DIRECTORY
-                    | rustix::fs::OFlags::NOFOLLOW
-                    | rustix::fs::OFlags::CLOEXEC,
-                rustix::fs::Mode::empty(),
-            )
-            .map_err(|error| format!("Could not open {}: {error}", parent_path.display()))
-        })
-        .await?;
+        let parent = run_local_delete_step(move || open_local_delete_parent(&parent_path)).await?;
         permanently_delete_local(parent, name, cancellable).await
     })
 }
