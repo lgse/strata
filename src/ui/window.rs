@@ -899,38 +899,12 @@ fn build_appearance_menu(
         current_mode == BrowserMode::Explorer,
         true,
     );
-    for (button, mode) in [
-        (&list, BrowserMode::Columns),
-        (&grid, BrowserMode::Grid),
-        (&explorer, BrowserMode::Explorer),
-    ] {
-        let view = view.clone();
-        let list_check = list_check.clone();
-        let grid_check = grid_check.clone();
-        let explorer_check = explorer_check.clone();
-        let preferences = preferences.clone();
-        let popover_weak = popover_weak.clone();
-        button.connect_clicked(move |_| {
-            view.set_view_mode(mode);
-            preferences.set_browser_mode(mode);
-            list_check.set_visible(mode == BrowserMode::Columns);
-            grid_check.set_visible(mode == BrowserMode::Grid);
-            explorer_check.set_visible(mode == BrowserMode::Explorer);
-            if let Some(popover) = popover_weak.upgrade() {
-                popover.popdown();
-            }
-        });
-    }
-    content.append(&list);
-    content.append(&grid);
-    content.append(&explorer);
-
     let grouped = preferences.group_by_type();
     let (group_by_type, group_check, _) = appearance_option(
-        crate::assets::icons::ROWS,
+        crate::assets::icons::LIST_CHECKS,
         "Group by file type",
         grouped,
-        true,
+        current_mode != BrowserMode::Columns,
     );
     group_by_type.set_tooltip_text(Some(
         "Group Explorer and Grid entries under file-type headings",
@@ -951,7 +925,33 @@ fn build_appearance_menu(
             }
         });
     }
-    content.append(&group_by_type);
+    for (button, mode) in [
+        (&list, BrowserMode::Columns),
+        (&grid, BrowserMode::Grid),
+        (&explorer, BrowserMode::Explorer),
+    ] {
+        let view = view.clone();
+        let list_check = list_check.clone();
+        let grid_check = grid_check.clone();
+        let explorer_check = explorer_check.clone();
+        let group_by_type = group_by_type.clone();
+        let preferences = preferences.clone();
+        let popover_weak = popover_weak.clone();
+        button.connect_clicked(move |_| {
+            view.set_view_mode(mode);
+            preferences.set_browser_mode(mode);
+            list_check.set_visible(mode == BrowserMode::Columns);
+            grid_check.set_visible(mode == BrowserMode::Grid);
+            explorer_check.set_visible(mode == BrowserMode::Explorer);
+            group_by_type.set_sensitive(mode != BrowserMode::Columns);
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+            }
+        });
+    }
+    content.append(&list);
+    content.append(&grid);
+    content.append(&explorer);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     append_menu_heading(&content, "DENSITY");
@@ -1002,6 +1002,7 @@ fn build_appearance_menu(
     content.append(&airy);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    content.append(&group_by_type);
     let (hidden, hidden_check, hidden_icon) = appearance_option(
         if hidden_files_shown {
             crate::assets::icons::EYE
