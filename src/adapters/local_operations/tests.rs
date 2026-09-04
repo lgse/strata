@@ -4,10 +4,10 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashSet,
     error::Error,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs,
     io::{Cursor, Write},
-    os::unix::fs::PermissionsExt,
+    os::unix::{ffi::OsStringExt, fs::PermissionsExt},
     path::Path,
     rc::Rc,
     sync::{
@@ -23,17 +23,18 @@ use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 
 use super::{
     LocalOperationProvider, await_cancellable, copy_new_recursively, copy_recursively,
-    deletion_error_message, deletion_error_summary, extract_7z_from_reader, extract_tar,
-    extract_zip_from_archive, home_trash_entries_at, is_trash_unsupported_failure, move_local_with,
-    operation_error_summary, replace_local, replace_local_with, transfer_is_noop,
-    validated_archive_path, validated_child, write_staged_archive,
+    deletion_error_message, deletion_error_summary, duplicate_candidate_name,
+    extract_7z_from_reader, extract_tar, extract_zip_from_archive, home_trash_entries_at, io_error,
+    is_trash_unsupported_failure, move_local_with, operation_error_summary, parse_copy_suffix,
+    replace_local, replace_local_with, transfer_is_noop, validated_archive_path, validated_child,
+    write_staged_archive,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{
-        ArchiveFormat, CompressRequest, DeleteRequest, LoadHandle, OperationEvent,
+        ArchiveFormat, CompressRequest, DeleteRequest, LoadHandle, MoveRecord, OperationEvent,
         OperationProvider, OperationRequestId, PasteItem, PasteRequest, RestoreRequest,
-        RestoreSource, TransferConflict,
+        RestoreSource, TransferConflict, UndoMoveItem, UndoMoveRequest,
     },
 };
 
@@ -50,6 +51,7 @@ fn file_entry(path: &std::path::Path) -> FileEntry {
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        mode: MetadataValue::Unknown,
     }
 }
 
@@ -219,6 +221,90 @@ fn recursive_copy_preserves_nested_directory_contents() -> Result<(), Box<dyn Er
     ));
     assert!(overwrite.is_ok());
     assert_eq!(fs::read(target.join("top.txt"))?, b"replacement");
+
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn copy_recursively_does_not_follow_a_symlink_nested_inside_the_tree() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("strata-copy-symlink-test-{unique}"));
+    let source = root.join("source");
+    let outside = root.join("outside");
+    let target = root.join("target");
+    fs::create_dir_all(source.join("nested"))?;
+    fs::create_dir_all(&outside)?;
+    fs::write(outside.join("secret.txt"), b"do not copy me")?;
+    fs::write(source.join("nested/visible.txt"), b"contents")?;
+    std::os::unix::fs::symlink(&outside, source.join("nested/decoy"))?;
+
+    let result = glib::MainContext::default().block_on(copy_recursively(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok());
+    assert_eq!(fs::read(target.join("nested/visible.txt"))?, b"contents");
+    let decoy_dest = target.join("nested/decoy");
+    let decoy_metadata = fs::symlink_metadata(&decoy_dest)?;
+    assert!(
+        decoy_metadata.file_type().is_symlink(),
+        "the decoy must be copied as a symlink, not followed into a real directory"
+    );
+    assert_eq!(fs::read_link(&decoy_dest)?, outside);
+    // `is_symlink` above already rules out a real directory of copied
+    // content existing under this name; confirm the thing it still points
+    // at (unavoidably reachable by following the recreated symlink, same as
+    // the original) was left untouched rather than overwritten.
+    assert_eq!(fs::read(outside.join("secret.txt"))?, b"do not copy me");
+
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn copy_recursively_of_a_symlink_creates_a_symlink_not_a_recursive_copy()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("strata-copy-symlink-top-test-{unique}"));
+    let outside = root.join("outside");
+    let decoy = root.join("decoy");
+    let target = root.join("target-link");
+    fs::create_dir_all(&outside)?;
+    fs::write(outside.join("secret.txt"), b"do not copy me")?;
+    std::os::unix::fs::symlink(&outside, &decoy)?;
+
+    let result = glib::MainContext::default().block_on(copy_recursively(
+        gio::File::for_path(&decoy),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok());
+    let target_metadata = fs::symlink_metadata(&target)?;
+    assert!(
+        target_metadata.file_type().is_symlink(),
+        "copying a symlink must produce a symlink, not a recursive copy of its target"
+    );
+    assert_eq!(fs::read_link(&target)?, outside);
+    assert_eq!(fs::read(outside.join("secret.txt"))?, b"do not copy me");
 
     fs::remove_dir_all(root)?;
     Ok(())
@@ -475,6 +561,96 @@ fn staged_file_replacement_commits_then_removes_a_moved_source() -> Result<(), B
 }
 
 #[test]
+fn replacement_move_does_not_delete_a_substituted_source() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.txt");
+    let original_source = root.path().join("original-source.txt");
+    let target = root.path().join("target.txt");
+    fs::write(&source, b"replacement")?;
+    fs::write(&target, b"original target")?;
+
+    let replaced_source = source.clone();
+    let new_source = source.clone();
+    let preserved_source = original_source.clone();
+    let result = glib::MainContext::default().block_on(replace_local_with(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        true,
+        gio::Cancellable::new(),
+        None,
+        Rc::new(move |_, staged, _, _| {
+            let replaced_source = replaced_source.clone();
+            let new_source = new_source.clone();
+            let preserved_source = preserved_source.clone();
+            Box::pin(async move {
+                fs::write(staged.path().unwrap_or_default(), b"replacement").map_err(io_error)?;
+                fs::rename(replaced_source, preserved_source).map_err(io_error)?;
+                fs::write(new_source, b"new arrival").map_err(io_error)
+            })
+        }),
+    ));
+
+    let error = result.expect_err("a substituted source must fail identity validation");
+    assert!(error.to_string().contains("changed"), "{error}");
+    assert_eq!(fs::read(target)?, b"replacement");
+    assert_eq!(fs::read(source)?, b"new arrival");
+    assert_eq!(fs::read(original_source)?, b"replacement");
+    Ok(())
+}
+
+#[test]
+fn replacement_stops_before_exchanging_a_substituted_target() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.txt");
+    let target = root.path().join("target.txt");
+    let original_target = root.path().join("original-target.txt");
+    fs::write(&source, b"replacement")?;
+    fs::write(&target, b"original target")?;
+    let staged_path = Rc::new(RefCell::new(None));
+    let recorded_staged_path = staged_path.clone();
+    let replaced_target = target.clone();
+    let new_target = target.clone();
+    let preserved_target = original_target.clone();
+
+    let result = glib::MainContext::default().block_on(replace_local_with(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+        Rc::new(move |_, staged, _, _| {
+            let staged = staged.path().unwrap_or_default();
+            *recorded_staged_path.borrow_mut() = Some(staged.clone());
+            let replaced_target = replaced_target.clone();
+            let new_target = new_target.clone();
+            let preserved_target = preserved_target.clone();
+            Box::pin(async move {
+                fs::write(&staged, b"replacement").map_err(io_error)?;
+                fs::rename(replaced_target, preserved_target).map_err(io_error)?;
+                fs::write(new_target, b"new arrival").map_err(io_error)
+            })
+        }),
+    ));
+
+    let error = result.expect_err("a substituted target must fail identity validation");
+    assert!(error.to_string().contains("changed"), "{error}");
+    assert_eq!(fs::read(target)?, b"new arrival");
+    assert_eq!(fs::read(original_target)?, b"original target");
+    let staged_path = staged_path
+        .borrow()
+        .clone()
+        .ok_or("the staging path was not recorded")?;
+    assert!(!staged_path.exists());
+    Ok(())
+}
+
+#[test]
 fn cancelled_replacement_move_tracks_the_modified_source_and_target_roots()
 -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -624,6 +800,55 @@ fn staged_directory_replacement_does_not_merge_old_contents() -> Result<(), Box<
     Ok(())
 }
 
+#[test]
+fn replacing_a_directory_cleans_up_a_symlink_in_the_old_contents_without_following_it()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("strata-replace-symlink-cleanup-test-{unique}"));
+    let source = root.join("source");
+    let target = root.join("target");
+    let outside = root.join("outside");
+    fs::create_dir_all(&source)?;
+    fs::write(source.join("item.txt"), b"new")?;
+    fs::create_dir_all(&target)?;
+    fs::write(target.join("keep.txt"), b"old")?;
+    fs::create_dir_all(&outside)?;
+    fs::write(outside.join("secret.txt"), b"do not delete me")?;
+    std::os::unix::fs::symlink(&outside, target.join("decoy"))?;
+
+    let result = glib::MainContext::default().block_on(replace_local(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(fs::read(target.join("item.txt"))?, b"new");
+    assert!(
+        !target.join("keep.txt").exists(),
+        "the replaced directory's old contents must be gone"
+    );
+    assert!(
+        !target.join("decoy").exists() && !target.join("decoy").is_symlink(),
+        "the old decoy symlink itself must be gone from the replaced directory"
+    );
+    assert_eq!(
+        fs::read(outside.join("secret.txt"))?,
+        b"do not delete me",
+        "cleaning up the old target must never follow a symlink it contained"
+    );
+
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
 fn test_file_entry(path: &Path) -> FileEntry {
     let name = path.file_name().unwrap_or_default().to_os_string();
     FileEntry {
@@ -634,6 +859,7 @@ fn test_file_entry(path: &Path) -> FileEntry {
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        mode: MetadataValue::Unknown,
     }
 }
 
@@ -1144,6 +1370,180 @@ fn cancelling_recursive_copy_removes_only_its_staging_output() -> Result<(), Box
 }
 
 #[test]
+fn permanent_delete_removes_a_symlink_standing_in_for_a_directory_without_following_it()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let outside = std::env::temp_dir().join(format!("strata-delete-symlink-outside-{unique}"));
+    let decoy = std::env::temp_dir().join(format!("strata-delete-symlink-decoy-{unique}"));
+    fs::create_dir_all(&outside)?;
+    let sentinel = outside.join("sentinel.txt");
+    fs::write(&sentinel, b"do not delete me")?;
+    // `directory_entry` reports `kind: Directory` even though the entry is
+    // actually a symlink on disk, standing in for a `FileEntry` whose type
+    // went stale because the real directory was swapped for a symlink.
+    std::os::unix::fs::symlink(&outside, &decoy)?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.delete(
+        DeleteRequest {
+            id: OperationRequestId(20),
+            entries: vec![directory_entry(&decoy)],
+            permanent: true,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    let context = glib::MainContext::default();
+    while !events
+        .borrow()
+        .iter()
+        .any(|event| matches!(event, OperationEvent::Deleted { .. }))
+    {
+        context.iteration(true);
+    }
+
+    assert!(
+        sentinel.exists(),
+        "deleting the symlink must never touch what it points to"
+    );
+    assert_eq!(fs::read_dir(&outside)?.count(), 1);
+    assert!(!decoy.exists() && !decoy.is_symlink());
+
+    fs::remove_dir_all(outside)?;
+    Ok(())
+}
+
+#[test]
+fn permanent_delete_does_not_follow_a_symlink_nested_inside_the_tree() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("strata-delete-nested-symlink-test-{unique}"));
+    let outside = std::env::temp_dir().join(format!("strata-delete-nested-outside-{unique}"));
+    let nested = root.join("nested");
+    fs::create_dir_all(&nested)?;
+    fs::create_dir_all(&outside)?;
+    let sentinel = outside.join("sentinel.txt");
+    fs::write(&sentinel, b"do not delete me")?;
+    fs::write(nested.join("visible.txt"), b"contents")?;
+    std::os::unix::fs::symlink(&outside, nested.join("decoy"))?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.delete(
+        DeleteRequest {
+            id: OperationRequestId(21),
+            entries: vec![directory_entry(&root)],
+            permanent: true,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    let context = glib::MainContext::default();
+    while !events
+        .borrow()
+        .iter()
+        .any(|event| matches!(event, OperationEvent::Deleted { .. }))
+    {
+        context.iteration(true);
+    }
+
+    assert!(
+        sentinel.exists(),
+        "a symlink nested inside the deleted tree must never lead outside it"
+    );
+    assert_eq!(fs::read_dir(&outside)?.count(), 1);
+    assert!(!root.exists());
+
+    fs::remove_dir_all(outside)?;
+    Ok(())
+}
+
+#[test]
+fn permanent_delete_rejects_a_symlink_in_the_parent_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual_parent = root.path().join("actual");
+    let linked_parent = root.path().join("linked");
+    let target = actual_parent.join("target.txt");
+    fs::create_dir(&actual_parent)?;
+    fs::write(&target, b"keep")?;
+    std::os::unix::fs::symlink(&actual_parent, &linked_parent)?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.delete(
+        DeleteRequest {
+            id: OperationRequestId(22),
+            entries: vec![file_entry(&linked_parent.join("target.txt"))],
+            permanent: true,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    let context = glib::MainContext::default();
+    while !events
+        .borrow()
+        .iter()
+        .any(|event| matches!(event, OperationEvent::CompletedWithErrors { .. }))
+    {
+        context.iteration(true);
+    }
+
+    assert_eq!(fs::read(target)?, b"keep");
+    Ok(())
+}
+
+#[test]
+fn permanent_delete_stops_if_an_open_directory_is_moved() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let target = root.path().join("target");
+    let moved = root.path().join("moved");
+    fs::create_dir(&target)?;
+    for index in 0..64 {
+        fs::write(target.join(format!("item-{index}.txt")), b"keep")?;
+    }
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.delete(
+        DeleteRequest {
+            id: OperationRequestId(23),
+            entries: vec![directory_entry(&target)],
+            permanent: true,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    let context = glib::MainContext::default();
+    while fs::read_dir(&target)?.count() == 64 {
+        context.iteration(true);
+    }
+    fs::rename(&target, &moved)?;
+    while !events
+        .borrow()
+        .iter()
+        .any(|event| matches!(event, OperationEvent::CompletedWithErrors { .. }))
+    {
+        context.iteration(true);
+    }
+
+    assert!(fs::read_dir(&moved)?.next().is_some());
+    Ok(())
+}
+
+#[test]
 fn cancelling_recursive_delete_leaves_the_unfinished_root_in_place() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -1396,5 +1796,492 @@ fn cancelling_restore_before_io_reports_every_item_as_unattempted() -> Result<()
                 && result.failed.is_empty()
                 && result.not_attempted == [entries[0].location.clone()]
     ));
+    Ok(())
+}
+
+#[test]
+fn copy_suffix_parsing_and_candidate_naming() {
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name")),
+        (OsStr::new("name"), None)
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name (1)")),
+        (OsStr::new("name"), Some(1))
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name (2)")),
+        (OsStr::new("name"), Some(2))
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name (42)")),
+        (OsStr::new("name"), Some(42))
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name (foo)")),
+        (OsStr::new("name (foo)"), None)
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name (0)")),
+        (OsStr::new("name (0)"), None)
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name (2")),
+        (OsStr::new("name (2"), None)
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name (18446744073709551615)")),
+        (OsStr::new("name (18446744073709551615)"), None)
+    );
+
+    assert_eq!(
+        duplicate_candidate_name(OsStr::new("name"), Some(OsStr::new("ext")), 1),
+        OsString::from("name (1).ext")
+    );
+    assert_eq!(
+        duplicate_candidate_name(OsStr::new("name"), Some(OsStr::new("ext")), 2),
+        OsString::from("name (2).ext")
+    );
+    assert_eq!(
+        duplicate_candidate_name(OsStr::new("name"), None, 1),
+        OsString::from("name (1)")
+    );
+    assert_eq!(
+        duplicate_candidate_name(OsStr::new("name"), None, 2),
+        OsString::from("name (2)")
+    );
+}
+
+#[test]
+fn duplicating_a_file_generates_numbered_name() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source = destination.join("photo.jpg");
+    fs::write(&source, b"original-content")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(10),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(source.exists());
+    assert_eq!(fs::read(&source)?, b"original-content");
+    let duplicate = destination.join("photo (1).jpg");
+    assert!(duplicate.exists());
+    assert_eq!(fs::read(&duplicate)?, b"original-content");
+    Ok(())
+}
+
+#[test]
+fn duplicating_a_file_preserves_non_utf8_name_bytes() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source_name = OsString::from_vec(b"photo-\xff.jpg".to_vec());
+    let source = destination.join(&source_name);
+    fs::write(&source, b"original-content")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(15),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    let duplicate_name = OsString::from_vec(b"photo-\xff (1).jpg".to_vec());
+    let duplicate = destination.join(duplicate_name);
+    assert_eq!(fs::read(duplicate)?, b"original-content");
+    Ok(())
+}
+
+#[test]
+fn duplicating_an_existing_numbered_name_advances_its_index() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source = destination.join("photo (1).jpg");
+    fs::write(&source, b"copy-content")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(11),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(source.exists());
+    assert_eq!(fs::read(&source)?, b"copy-content");
+    let duplicate = destination.join("photo (2).jpg");
+    assert!(duplicate.exists());
+    assert_eq!(fs::read(&duplicate)?, b"copy-content");
+    Ok(())
+}
+
+#[test]
+fn duplicating_file_with_existing_numbered_name_advances_to_next_index()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source = destination.join("photo.jpg");
+    fs::write(&source, b"original")?;
+    fs::write(destination.join("photo (1).jpg"), b"first copy")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(12),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert_eq!(fs::read(destination.join("photo (2).jpg"))?, b"original");
+    assert_eq!(fs::read(destination.join("photo (1).jpg"))?, b"first copy");
+    Ok(())
+}
+
+#[test]
+fn duplicating_a_directory_generates_numbered_name() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source = destination.join("documents");
+    fs::create_dir_all(&source)?;
+    fs::write(source.join("notes.txt"), b"nested-file")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(13),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(source.is_dir());
+    let duplicate = destination.join("documents (1)");
+    assert!(duplicate.is_dir());
+    assert_eq!(fs::read(duplicate.join("notes.txt"))?, b"nested-file");
+    Ok(())
+}
+
+#[test]
+fn cutting_in_the_same_folder_remains_a_noop() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let file = destination.join("document.txt");
+    let directory = destination.join("folder");
+    fs::write(&file, b"content")?;
+    fs::create_dir_all(&directory)?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(14),
+            destination: Location::local(&destination),
+            items: vec![
+                PasteItem {
+                    source: Location::local(&file),
+                    conflict: TransferConflict::FailIfExists,
+                },
+                PasteItem {
+                    source: Location::local(&directory),
+                    conflict: TransferConflict::FailIfExists,
+                },
+            ],
+            move_sources: true,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(file.exists());
+    assert!(directory.is_dir());
+    assert!(!destination.join("document (1).txt").exists());
+    assert!(!destination.join("folder (1)").exists());
+    Ok(())
+}
+
+fn drive_until_transfer_settles(events: &Rc<RefCell<Vec<OperationEvent>>>) {
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. }
+                | OperationEvent::TransferFailed { .. }
+                | OperationEvent::Cancelled { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+}
+
+#[test]
+fn undoing_a_move_returns_each_item_to_its_original_directory() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let origin = root.path().join("origin");
+    let archive = root.path().join("archive");
+    fs::create_dir_all(&origin)?;
+    fs::create_dir_all(&archive)?;
+    let moved = archive.join("report.txt");
+    fs::write(&moved, b"contents")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.undo_move(
+        UndoMoveRequest {
+            id: OperationRequestId(40),
+            items: vec![UndoMoveItem {
+                record: MoveRecord {
+                    original: Location::local(origin.join("report.txt")),
+                    current: Location::local(&moved),
+                },
+                conflict: TransferConflict::FailIfExists,
+            }],
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    drive_until_transfer_settles(&events);
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(!moved.exists());
+    assert_eq!(fs::read(origin.join("report.txt"))?, b"contents");
+    Ok(())
+}
+
+#[test]
+fn undoing_a_move_stops_at_an_unconfirmed_conflict() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let origin = root.path().join("origin");
+    let archive = root.path().join("archive");
+    fs::create_dir_all(&origin)?;
+    fs::create_dir_all(&archive)?;
+    let blocked = origin.join("report.txt");
+    fs::write(&blocked, b"newer")?;
+    let first = archive.join("notes.txt");
+    let second = archive.join("report.txt");
+    fs::write(&first, b"first")?;
+    fs::write(&second, b"second")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.undo_move(
+        UndoMoveRequest {
+            id: OperationRequestId(41),
+            items: vec![
+                UndoMoveItem {
+                    record: MoveRecord {
+                        original: Location::local(origin.join("notes.txt")),
+                        current: Location::local(&first),
+                    },
+                    conflict: TransferConflict::FailIfExists,
+                },
+                UndoMoveItem {
+                    record: MoveRecord {
+                        original: Location::local(&blocked),
+                        current: Location::local(&second),
+                    },
+                    conflict: TransferConflict::FailIfExists,
+                },
+            ],
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    drive_until_transfer_settles(&events);
+
+    let completed = match events.borrow().last() {
+        Some(OperationEvent::TransferFailed {
+            completed_locations,
+            ..
+        }) => completed_locations.clone(),
+        other => panic!("expected a transfer failure, got {other:?}"),
+    };
+    assert_eq!(completed, vec![Location::local(&first)]);
+    assert_eq!(fs::read(&blocked)?, b"newer");
+    assert_eq!(fs::read(&second)?, b"second");
+    assert_eq!(fs::read(origin.join("notes.txt"))?, b"first");
+    Ok(())
+}
+
+#[test]
+fn a_confirmed_undo_conflict_replaces_the_newer_item() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let origin = root.path().join("origin");
+    let archive = root.path().join("archive");
+    fs::create_dir_all(&origin)?;
+    fs::create_dir_all(&archive)?;
+    let original = origin.join("report.txt");
+    let moved = archive.join("report.txt");
+    fs::write(&original, b"newer")?;
+    fs::write(&moved, b"moved")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.undo_move(
+        UndoMoveRequest {
+            id: OperationRequestId(42),
+            items: vec![UndoMoveItem {
+                record: MoveRecord {
+                    original: Location::local(&original),
+                    current: Location::local(&moved),
+                },
+                conflict: TransferConflict::ReplaceExisting,
+            }],
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    drive_until_transfer_settles(&events);
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(!moved.exists());
+    assert_eq!(fs::read(&original)?, b"moved");
     Ok(())
 }

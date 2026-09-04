@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::path::Path;
+use std::{cell::Cell, path::Path};
 
 use crate::services::{BuildKind, ReleaseMetadata};
 
 use super::{
-    MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, is_open_terminal_shortcut,
-    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location,
-    is_toggle_hidden_shortcut, is_undo_trash_shortcut, mouse_history_action,
-    parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
-    reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
-    should_show_standard_place, sidebar_update_label, standard_place, vim_focus_direction,
+    MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, begin_media_release,
+    is_open_terminal_shortcut, is_sidebar_focus_shortcut, is_smb_location,
+    is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut, media_release_label,
+    mount_release_action, mouse_history_action, parse_pinned_drag_source, parse_pinned_places,
+    pin_status, remove_pinned_place, reorder_pinned_places, reorder_places, resolve_place_order,
+    serialize_pinned_places, should_show_standard_place, sidebar_update_label, standard_place,
+    vim_focus_direction, volume_release_action,
 };
 
 fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
@@ -76,19 +77,19 @@ fn open_terminal_shortcut_requires_only_control() {
 }
 
 #[test]
-fn undo_trash_shortcut_requires_control_without_shift_or_alt() {
+fn undo_shortcut_requires_control_without_shift_or_alt() {
     let control = gtk::gdk::ModifierType::CONTROL_MASK;
     let shift = gtk::gdk::ModifierType::SHIFT_MASK;
     let alt = gtk::gdk::ModifierType::ALT_MASK;
 
-    assert!(is_undo_trash_shortcut(gtk::gdk::Key::z, control));
-    assert!(is_undo_trash_shortcut(gtk::gdk::Key::Z, control));
-    assert!(!is_undo_trash_shortcut(
+    assert!(is_undo_shortcut(gtk::gdk::Key::z, control));
+    assert!(is_undo_shortcut(gtk::gdk::Key::Z, control));
+    assert!(!is_undo_shortcut(
         gtk::gdk::Key::z,
         gtk::gdk::ModifierType::empty()
     ));
-    assert!(!is_undo_trash_shortcut(gtk::gdk::Key::z, control | shift));
-    assert!(!is_undo_trash_shortcut(gtk::gdk::Key::z, control | alt));
+    assert!(!is_undo_shortcut(gtk::gdk::Key::z, control | shift));
+    assert!(!is_undo_shortcut(gtk::gdk::Key::z, control | alt));
 }
 
 #[test]
@@ -441,4 +442,117 @@ fn desktop_is_hidden_when_it_points_to_home() {
         home
     ));
     assert!(should_show_standard_place("documents", home, home));
+}
+
+#[test]
+fn sidebar_sync_runs_only_for_location_changes() {
+    use super::SidebarState;
+    use crate::app::BrowserEvent;
+    use crate::model::Location;
+
+    assert!(SidebarState::event_changes_active_place(
+        &BrowserEvent::Reset
+    ));
+    assert!(SidebarState::event_changes_active_place(
+        &BrowserEvent::ColumnAdded {
+            depth: 1,
+            location: Location::local("/fixture/sub"),
+        }
+    ));
+    assert!(SidebarState::event_changes_active_place(
+        &BrowserEvent::ColumnsTruncated { len: 1 }
+    ));
+    assert!(SidebarState::event_changes_active_place(
+        &BrowserEvent::FocusChanged {
+            depth: 0,
+            position: Some(2),
+        }
+    ));
+    assert!(!SidebarState::event_changes_active_place(
+        &BrowserEvent::EntriesInserted {
+            depth: 0,
+            insertions: Vec::new(),
+        }
+    ));
+    assert!(!SidebarState::event_changes_active_place(
+        &BrowserEvent::MetadataFilled {
+            depth: 0,
+            updates: Vec::new(),
+        }
+    ));
+    assert!(!SidebarState::event_changes_active_place(
+        &BrowserEvent::SortingStarted { depth: 0 }
+    ));
+    assert!(!SidebarState::event_changes_active_place(
+        &BrowserEvent::SortingFinished { depth: 0 }
+    ));
+    assert!(!SidebarState::event_changes_active_place(
+        &BrowserEvent::LoadFinished {
+            depth: 0,
+            truncated: false,
+        }
+    ));
+    assert!(!SidebarState::event_changes_active_place(
+        &BrowserEvent::TransferCompleted
+    ));
+}
+
+#[test]
+fn volume_release_prefers_eject_and_hides_fixed_disks() {
+    assert_eq!(
+        volume_release_action(true, false, false),
+        Some(MediaRelease::EjectVolume)
+    );
+    assert_eq!(
+        volume_release_action(true, true, true),
+        Some(MediaRelease::EjectVolume)
+    );
+    assert_eq!(
+        volume_release_action(false, true, false),
+        Some(MediaRelease::EjectMount)
+    );
+    assert_eq!(
+        volume_release_action(false, true, true),
+        Some(MediaRelease::EjectMount)
+    );
+    assert_eq!(
+        volume_release_action(false, false, true),
+        Some(MediaRelease::UnmountMount)
+    );
+    assert_eq!(volume_release_action(false, false, false), None);
+}
+
+#[test]
+fn mount_release_prefers_eject_and_hides_fixed_disks() {
+    assert_eq!(
+        mount_release_action(true, false),
+        Some(MediaRelease::EjectMount)
+    );
+    assert_eq!(
+        mount_release_action(true, true),
+        Some(MediaRelease::EjectMount)
+    );
+    assert_eq!(
+        mount_release_action(false, true),
+        Some(MediaRelease::UnmountMount)
+    );
+    assert_eq!(mount_release_action(false, false), None);
+}
+
+#[test]
+fn media_release_labels_match_nautilus_wording() {
+    assert_eq!(media_release_label(MediaRelease::EjectVolume), "Eject");
+    assert_eq!(media_release_label(MediaRelease::EjectMount), "Eject");
+    assert_eq!(media_release_label(MediaRelease::UnmountMount), "Unmount");
+}
+
+#[test]
+fn media_release_guard_rejects_repeated_actions_until_completion() {
+    let in_flight = Cell::new(false);
+
+    assert!(begin_media_release(&in_flight));
+    assert!(!begin_media_release(&in_flight));
+
+    in_flight.set(false);
+    assert!(begin_media_release(&in_flight));
 }

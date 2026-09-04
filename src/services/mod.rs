@@ -11,16 +11,17 @@ mod update_install;
 
 pub use file_source::{
     DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
-    LocationValidationError, RequestId, UriCredentials, backend_unavailable_message,
-    sanitize_uri_credentials, validate_uri_credentials,
+    LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
+    UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
+    validate_uri_credentials,
 };
 pub(crate) use install_source::ensure_self_managed;
 pub use install_source::{InstallSource, ManagedInstall};
 pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
-    DeleteRequest, ExtractRequest, OperationEvent, OperationProvider, OperationRequestId,
-    PasteItem, PasteRequest, RenameRequest, RestoreRequest, RestoreSource, TransferConflict,
-    validate_basename,
+    DeleteRequest, ExtractRequest, MoveRecord, OperationEvent, OperationProvider,
+    OperationRequestId, PasteItem, PasteRequest, RenameRequest, RestoreRequest, RestoreSource,
+    TransferConflict, UndoMoveItem, UndoMoveRequest, validate_basename,
 };
 pub use preview::{
     Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,

@@ -12,6 +12,7 @@ fn terminal_shortcut_prefers_one_selected_directory() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
     let directory = entry("selected", crate::model::EntryKind::Directory);
     let file = entry("notes.txt", crate::model::EntryKind::File);
@@ -23,6 +24,35 @@ fn terminal_shortcut_prefers_one_selected_directory() {
     assert_eq!(selected_terminal_location(&[directory, file.clone()]), None);
     assert_eq!(selected_terminal_location(&[file]), None);
     assert_eq!(selected_terminal_location(&[]), None);
+}
+
+#[test]
+fn duplicate_transfer_uses_the_selected_entries_parent() {
+    let entry = |path: &str| FileEntry {
+        location: Location::local(path),
+        native_name: Path::new(path).file_name().unwrap_or_default().to_owned(),
+        display_name: path.to_owned(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        mode: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let first = entry("/fixture/selected/first.txt");
+    let second = entry("/fixture/selected/second.txt");
+
+    assert_eq!(
+        duplicate_transfer(&[first.clone(), second.clone()]),
+        Some((
+            Location::local("/fixture/selected"),
+            vec![first.location, second.location]
+        ))
+    );
+    assert_eq!(
+        duplicate_transfer(&[entry("/fixture/one.txt"), entry("/other/two.txt")]),
+        None
+    );
+    assert_eq!(duplicate_transfer(&[]), None);
 }
 
 #[cfg(unix)]
@@ -185,6 +215,7 @@ fn delete_confirmation_labels_distinguish_files_and_folders() {
         size: crate::model::MetadataValue::Known(10),
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
     let mut folder = file.clone();
     folder.kind = crate::model::EntryKind::Directory;
@@ -356,6 +387,7 @@ fn quick_preview_is_offered_only_for_supported_files() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
 
     assert!(entry_supports_quick_preview(&entry(
@@ -386,6 +418,41 @@ fn quick_preview_is_offered_only_for_supported_files() {
     assert!(!entry_responds_to_preview_click(&supported, false));
     assert!(!entry_responds_to_preview_click(&unsupported, true));
     assert!(!entry_responds_to_preview_click(&directory, true));
+}
+
+#[test]
+fn printing_is_offered_for_text_code_images_and_pdfs() {
+    let entry = |name: &str, kind| FileEntry {
+        location: Location::local(format!("/fixture/{name}")),
+        native_name: name.into(),
+        display_name: name.into(),
+        kind,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        mode: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    for name in [
+        "notes.txt",
+        "main.rs",
+        "settings.toml",
+        "photo.png",
+        "guide.pdf",
+    ] {
+        assert!(entry_supports_printing(&entry(
+            name,
+            crate::model::EntryKind::File
+        )));
+    }
+    assert!(!entry_supports_printing(&entry(
+        "archive.zip",
+        crate::model::EntryKind::File,
+    )));
+    assert!(!entry_supports_printing(&entry(
+        "notes.txt",
+        crate::model::EntryKind::Directory,
+    )));
 }
 
 #[test]
@@ -462,6 +529,7 @@ fn multi_selection_summary_lists_at_most_three_names() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
 
     assert_eq!(
@@ -507,6 +575,10 @@ fn transfer_collisions_detect_existing_destination_items() -> Result<(), Box<dyn
     assert!(!transfer_has_collision(
         &Location::local(&source),
         &Location::local(&destination)
+    ));
+    assert!(!transfer_has_collision(
+        &Location::local(&source),
+        &Location::local(&source_dir)
     ));
     std::fs::write(destination.join("photo.jpg"), b"old")?;
     assert!(transfer_has_collision(
@@ -758,6 +830,43 @@ fn cut_clipboard_locations_match_regardless_of_order() {
             Location::local("/fixture/second")
         ]
     ));
+}
+
+#[test]
+fn cut_matches_gio_equivalent_representations() {
+    let native = Location::local("/fixture/first");
+    let uri = Location::uri("file:///fixture/first");
+
+    assert!(locations_equal(&native, &uri));
+    assert!(same_locations(
+        std::slice::from_ref(&native),
+        std::slice::from_ref(&uri)
+    ));
+    assert!(!same_locations(
+        std::slice::from_ref(&native),
+        std::slice::from_ref(&Location::uri("file:///fixture/other"))
+    ));
+}
+
+#[test]
+fn cleared_shared_cut_is_not_revived_by_stale_view_state() {
+    let native = Location::local("/fixture/first");
+    let uri = Location::uri("file:///fixture/first");
+
+    set_shared_cut(std::slice::from_ref(&native));
+    assert!(is_cut_match(std::slice::from_ref(&uri)));
+
+    clear_shared_cut();
+    assert!(!is_cut_match(std::slice::from_ref(&native)));
+}
+
+#[test]
+fn completed_moves_match_gio_equivalent_cut_entries() {
+    let mut cut = vec![Location::local("/fixture/first")];
+
+    retain_untransferred(&mut cut, &[Location::uri("file:///fixture/first")]);
+
+    assert!(cut.is_empty());
 }
 
 #[test]
@@ -1217,6 +1326,7 @@ fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
     let hidden = FileEntry {
         location: Location::local("/fixture/.config"),
@@ -1226,6 +1336,7 @@ fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: true,
+        mode: crate::model::MetadataValue::Unknown,
     };
 
     let encoded_visible = entry_model_value(&visible);
@@ -1294,6 +1405,7 @@ fn pinning_requires_an_available_non_trash_directory() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
     let directory = entry(
         Location::local("/fixture/folder"),
@@ -1356,6 +1468,7 @@ fn retryable_delete_entries_keeps_only_the_named_locations() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
     let retryable = entry("share-file.txt");
     let denied = entry("locked-file.txt");
@@ -1376,6 +1489,7 @@ fn retryable_delete_entries_is_empty_when_nothing_matches() {
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
         is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
     };
 
     let kept = retryable_delete_entries(vec![entry], &[]);

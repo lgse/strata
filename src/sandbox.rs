@@ -235,24 +235,52 @@ fn spawn_renderer(command: &mut Command) -> io::Result<Child> {
     command.process_group(0).spawn()
 }
 
+/// `None` on kernels without pidfd support; wait loops fall back to interval polling.
+fn child_pidfd(child: &Child) -> Option<rustix::fd::OwnedFd> {
+    let pid = rustix::process::Pid::from_raw(i32::try_from(child.id()).ok()?)?;
+    rustix::process::pidfd_open(pid, rustix::process::PidfdFlags::empty()).ok()
+}
+
+/// A pidfd wakes on child exit; poll errors degrade to a short sleep, and the
+/// deadline bounds every path.
+fn wait_step(pidfd: Option<&rustix::fd::OwnedFd>, deadline: Instant) {
+    use rustix::event::{PollFd, PollFlags, Timespec, poll};
+    let remaining = deadline.saturating_duration_since(Instant::now());
+    let quantum = remaining.min(Duration::from_millis(20));
+    let Some(pidfd) = pidfd else {
+        thread::sleep(quantum);
+        return;
+    };
+    let timespec = Timespec {
+        tv_sec: quantum.as_secs() as i64,
+        tv_nsec: i64::from(quantum.subsec_nanos()),
+    };
+    let mut fds = [PollFd::new(pidfd, PollFlags::IN)];
+    if poll(&mut fds, Some(&timespec)).is_err() {
+        thread::sleep(Duration::from_millis(1));
+    }
+}
+
 fn wait_for_renderer(
     child: &mut Child,
     cancellation: &Cancellation,
     wall_time_limit: Duration,
 ) -> Result<ExitStatus, String> {
     let started = Instant::now();
+    let deadline = started + wall_time_limit;
+    let pidfd = child_pidfd(child);
     loop {
         if cancellation.is_cancelled() {
             terminate(child);
             return Err("Preview cancelled".to_owned());
         }
-        if started.elapsed() >= wall_time_limit {
+        if Instant::now() >= deadline {
             terminate(child);
             return Err("The preview renderer timed out".to_owned());
         }
         match child.try_wait() {
             Ok(Some(status)) => return Ok(status),
-            Ok(None) => thread::sleep(Duration::from_millis(20)),
+            Ok(None) => wait_step(pidfd.as_ref(), deadline),
             Err(error) => {
                 terminate(child);
                 return Err(format!("Unable to monitor the preview renderer: {error}"));
@@ -281,6 +309,8 @@ fn wait_for_renderer_output(
         let _sent = sender.send(result);
     });
     let started = Instant::now();
+    let deadline = started + wall_time_limit;
+    let pidfd = child_pidfd(child);
     let mut status = None;
     let mut output = None;
     loop {
@@ -289,7 +319,7 @@ fn wait_for_renderer_output(
             let _joined = reader.join();
             return Err("Preview cancelled".to_owned());
         }
-        if started.elapsed() >= wall_time_limit {
+        if Instant::now() >= deadline {
             terminate(child);
             let _joined = reader.join();
             return Err("The preview renderer timed out".to_owned());
@@ -331,7 +361,7 @@ fn wait_for_renderer_output(
             let _joined = reader.join();
             return Ok((status, output));
         }
-        thread::sleep(Duration::from_millis(20));
+        wait_step(pidfd.as_ref(), deadline);
     }
 }
 
@@ -392,10 +422,11 @@ fn sandbox_command(
         "--ro-bind-try",
         "/etc/ImageMagick-6",
         "/etc/ImageMagick-6",
-        "--ro-bind",
     ]);
     let sandbox_input = sandbox_input_path(input);
-    command.arg(executable).arg("/app/strata");
+    if operation != ParseOperation::ThumbnailVideo {
+        command.arg("--ro-bind").arg(executable).arg("/app/strata");
+    }
     command.arg("--ro-bind").arg(input).arg(&sandbox_input);
     if operation != ParseOperation::PreviewMedia {
         command.arg("--bind").arg(output).arg("/output");
@@ -417,8 +448,24 @@ fn sandbox_command(
             .arg("/usr/bin/prlimit")
             .arg(format!("--as={ADDRESS_SPACE_LIMIT_BYTES}"))
             .arg("--cpu=10")
-            .arg(format!("--fsize={FILE_SIZE_LIMIT_BYTES}"))
+            .arg(format!(
+                "--fsize={}",
+                if operation == ParseOperation::ThumbnailVideo {
+                    MAX_OUTPUT_BYTES
+                } else {
+                    FILE_SIZE_LIMIT_BYTES
+                }
+            ))
             .arg("--");
+    }
+    if operation == ParseOperation::ThumbnailVideo {
+        command
+            .args(["/usr/bin/ffmpegthumbnailer", "-i", &sandbox_input, "-o"])
+            .arg(format!("/output/{}", operation.output_name()))
+            .arg("-s")
+            .arg(value.to_string())
+            .args(["-q", "8"]);
+        return command;
     }
     command.args([
         "/app/strata",

@@ -24,6 +24,7 @@ use super::{
     motion::{animations_enabled, emphasized_deceleration},
     preview::PreviewDrawer,
     search::SearchDialog,
+    theme::ThemeManager,
 };
 
 const SIDEBAR_WIDTH: i32 = 208;
@@ -51,9 +52,14 @@ pub fn present(application: &gtk::Application) {
 }
 
 pub fn present_location(application: &gtk::Application, location: Option<PathBuf>) {
+    let present_started = std::time::Instant::now();
     crate::assets::register_icon_theme();
     let theme_manager = super::theme::ThemeManager::shared();
     load_styles();
+    tracing::debug!(
+        elapsed_ms = present_started.elapsed().as_millis() as u64,
+        "present theme and styles ready"
+    );
 
     let window = gtk::ApplicationWindow::builder()
         .application(application)
@@ -77,14 +83,14 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     let preview_for_selection = preview.clone();
     let weak_controller = Rc::downgrade(&controller);
     controller.observe(move |event| match event {
-        BrowserEvent::PreviewRequested { entry } => preview_for_selection.show(entry),
+        BrowserEvent::PreviewRequested { entry } => preview_for_selection.show(entry.clone()),
         BrowserEvent::FocusChanged {
             depth,
             position: Some(position),
         } if preview_for_selection.is_open() => {
             if let Some(entry) = weak_controller
                 .upgrade()
-                .and_then(|browser| browser.entry_at(depth, position))
+                .and_then(|browser| browser.entry_at(*depth, *position))
             {
                 if entry.is_directory() {
                     preview_for_selection.close();
@@ -168,6 +174,8 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         }),
         Rc::new(move |location| pin_status(&pinned_places.borrow(), location)),
     );
+    let preview_for_print = preview.clone();
+    browser.set_print_handler(Rc::new(move |entry| preview_for_print.print_entry(entry)));
     sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
     browser.add_marquee_origin(&sidebar.widget);
     content.set_start_child(Some(&sidebar.widget));
@@ -260,6 +268,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
                 size: MetadataValue::Unknown,
                 modified_unix_seconds: MetadataValue::Unknown,
                 is_hidden: false,
+                mode: MetadataValue::Unknown,
             });
         }
     });
@@ -383,23 +392,42 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
             update_area.set_visible(false);
         }
     });
-    let settings_layer = super::settings::build_layer(
-        &browser,
-        &settings,
-        &blurred_root,
-        theme_manager,
-        update_notice,
-        install_guard,
-    );
-    window_overlay.add_overlay(&settings_layer);
-    let shown_settings = settings_layer.clone();
+    let settings_layer: Rc<RefCell<Option<gtk::Box>>> = Rc::new(RefCell::new(None));
+    let ensure_settings_layer = {
+        let browser = browser.clone();
+        let settings_button = settings.clone();
+        let blurred = blurred_root.clone();
+        let themes = theme_manager.clone();
+        let notice = update_notice.clone();
+        let guard = install_guard.clone();
+        let overlay = window_overlay.clone();
+        let layers = settings_layer.clone();
+        Rc::new(move || {
+            if let Some(layer) = layers.borrow().clone() {
+                return layer;
+            }
+            let layer = super::settings::build_layer(
+                &browser,
+                &settings_button,
+                &blurred,
+                themes.clone(),
+                notice.clone(),
+                guard.clone(),
+            );
+            overlay.add_overlay(&layer);
+            layers.borrow_mut().replace(layer.clone());
+            layer
+        })
+    };
+    let shown_settings = ensure_settings_layer.clone();
     let settings_button = settings.clone();
     let settings_blurred_root = blurred_root.clone();
     settings.connect_clicked(move |_| {
-        show_settings(&shown_settings, &settings_button, &settings_blurred_root);
+        let layer = shown_settings();
+        show_settings(&layer, &settings_button, &settings_blurred_root);
     });
     let settings_shortcut = gtk::EventControllerKey::new();
-    let shown_settings = settings_layer.clone();
+    let shown_settings = ensure_settings_layer.clone();
     let settings_button = settings.clone();
     let shortcut_blurred_root = blurred_root.clone();
     settings_shortcut.connect_key_pressed(move |_, key, _, modifiers| {
@@ -407,7 +435,8 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         {
             return glib::Propagation::Proceed;
         }
-        show_settings(&shown_settings, &settings_button, &shortcut_blurred_root);
+        let layer = shown_settings();
+        show_settings(&layer, &settings_button, &shortcut_blurred_root);
         glib::Propagation::Stop
     });
     window.add_controller(settings_shortcut);
@@ -431,19 +460,83 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         }
     });
     window.add_controller(rename_cancel);
+    let location_cancel_view = browser.clone();
+    let location_cancel = gtk::GestureClick::new();
+    location_cancel.set_propagation_phase(gtk::PropagationPhase::Capture);
+    location_cancel.connect_pressed(move |gesture, _, x, y| {
+        if !location_cancel_view.location_edit_is_active() {
+            return;
+        }
+        let on_location_edit = gesture
+            .widget()
+            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
+            .is_some_and(|target| location_cancel_view.location_edit_contains(&target));
+        if !on_location_edit {
+            location_cancel_view.cancel_location_edit();
+        }
+    });
+    window.add_controller(location_cancel);
     install_modal_focus_trap(&window);
     install_keyboard_navigation(&window, &browser, &sidebar, &sidebar_toggle, &preview);
-    browser.navigate(location.unwrap_or_else(home_directory));
-
     let browser_controller = browser.browser();
+    schedule_after_first_paint(&window, &sidebar);
     window.connect_destroy(move |_| {
         browser_controller.clear_observer();
         sidebar.disconnect();
     });
     window.present();
     crate::metrics::mark_window_presented();
+    let pending_location = location.unwrap_or_else(home_directory);
+    let idle_browser = browser.clone();
+    glib::idle_add_local_once(move || {
+        let started = std::time::Instant::now();
+        idle_browser.navigate(pending_location);
+        tracing::debug!(
+            elapsed_ms = started.elapsed().as_millis() as u64,
+            "present navigation started"
+        );
+    });
+    schedule_due_update_check(&theme_manager, &update_notice);
 }
 
+fn schedule_after_first_paint(window: &gtk::ApplicationWindow, sidebar: &SidebarView) {
+    let state = sidebar.state.clone();
+    let armed = Cell::new(false);
+    window.connect_map(move |window| {
+        if armed.get() {
+            return;
+        }
+        let Some(clock) = window.frame_clock() else {
+            return;
+        };
+        armed.set(true);
+        let handler = Rc::new(RefCell::new(None));
+        let handler_for_paint = handler.clone();
+        let state = state.clone();
+        let id = clock.connect_after_paint(move |clock| {
+            if let Some(id) = handler_for_paint.borrow_mut().take() {
+                clock.disconnect(id);
+            }
+            crate::metrics::mark_first_themed_frame();
+            let state = state.clone();
+            glib::idle_add_local_once(move || state.rebuild());
+        });
+        handler.replace(Some(id));
+    });
+}
+
+fn schedule_due_update_check(
+    manager: &Rc<ThemeManager>,
+    notice: &super::settings::UpdateNoticeHandler,
+) {
+    let manager = manager.clone();
+    let notice = notice.clone();
+    glib::timeout_add_local_once(std::time::Duration::from_secs(8), move || {
+        glib::idle_add_local_once(move || {
+            super::settings::maybe_run_due_update_check(&manager, &notice);
+        });
+    });
+}
 fn animate_sidebar(
     paned: &gtk::Paned,
     sidebar: &gtk::Widget,
@@ -625,7 +718,7 @@ fn install_keyboard_navigation(
             }
             return glib::Propagation::Proceed;
         }
-        if !text_has_focus && is_undo_trash_shortcut(key, modifiers) && view.undo_last_trash() {
+        if !text_has_focus && is_undo_shortcut(key, modifiers) && view.undo_last_operation() {
             return glib::Propagation::Stop;
         }
         if alt
@@ -652,6 +745,14 @@ fn install_keyboard_navigation(
                 return glib::Propagation::Proceed;
             }
             if view.copy_selection() {
+                return glib::Propagation::Stop;
+            }
+        }
+        if control && !shift && matches!(key, gtk::gdk::Key::d | gtk::gdk::Key::D) {
+            if view.filter_has_focus() {
+                return glib::Propagation::Proceed;
+            }
+            if view.duplicate_selection() {
                 return glib::Propagation::Stop;
             }
         }
@@ -807,7 +908,7 @@ fn install_keyboard_navigation(
     window.add_controller(keys);
 }
 
-fn is_undo_trash_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+fn is_undo_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
     modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
         && !modifiers
             .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
@@ -1164,6 +1265,12 @@ impl SidebarState {
         }
         self.place_rows.borrow_mut().clear();
 
+        self.append_static_places();
+        self.append_devices();
+        self.sync_active_place();
+    }
+
+    fn append_static_places(self: &Rc<Self>) {
         self.append_place(
             crate::assets::icons::HOME,
             "Home",
@@ -1201,7 +1308,9 @@ impl SidebarState {
                 self.append_pinned_place(index, &name, location);
             }
         }
+    }
 
+    fn append_devices(self: &Rc<Self>) {
         let volumes = self.volume_monitor.volumes();
         let mounts: Vec<_> = self
             .volume_monitor
@@ -1224,11 +1333,32 @@ impl SidebarState {
                 if is_smb_location(&location) {
                     self.append_smb_mount(&name, location, mount);
                 } else {
-                    self.append_place(crate::assets::icons::HARD_DRIVE, &name, location);
+                    let action = mount_release_action(mount.can_eject(), mount.can_unmount());
+                    let release = action.map(|action| {
+                        let release_mount = mount.clone();
+                        let release_browser = self.browser.clone();
+                        let release_parent = self.view.widget();
+                        let release_in_flight = Rc::new(Cell::new(false));
+                        let on_release: Rc<dyn Fn()> = Rc::new(move || {
+                            release_device_mount(
+                                &release_mount,
+                                action,
+                                &release_parent,
+                                &release_browser,
+                                &release_in_flight,
+                            );
+                        });
+                        (action, on_release)
+                    });
+                    self.append_device_place(
+                        crate::assets::icons::HARD_DRIVE,
+                        &name,
+                        location,
+                        release,
+                    );
                 }
             }
         }
-        self.sync_active_place();
     }
 
     fn pin_location(self: &Rc<Self>, location: Location, name: String) {
@@ -1245,6 +1375,15 @@ impl SidebarState {
             save_pinned_places(&self.pinned_places.borrow());
             self.rebuild();
         }
+    }
+    fn event_changes_active_place(event: &BrowserEvent) -> bool {
+        matches!(
+            event,
+            BrowserEvent::Reset
+                | BrowserEvent::ColumnAdded { .. }
+                | BrowserEvent::ColumnsTruncated { .. }
+                | BrowserEvent::FocusChanged { .. }
+        )
     }
 
     fn sync_active_place(&self) {
@@ -1473,7 +1612,9 @@ impl SidebarState {
         let weak_browser = Rc::downgrade(&self.browser);
         let sidebar = self.widget.clone();
         let selected_row = row.clone();
+        let clicked_volume = volume.clone();
         row.connect_clicked(move |button| {
+            let volume = clicked_volume.clone();
             select_sidebar_row(&sidebar, &selected_row);
             let Some(browser) = weak_browser.upgrade() else {
                 return;
@@ -1485,7 +1626,6 @@ impl SidebarState {
 
             let window = button.root().and_downcast::<gtk::Window>();
             let operation = gtk::MountOperation::new(window.as_ref());
-            let volume = volume.clone();
             glib::MainContext::default().spawn_local(async move {
                 match volume
                     .mount_future(gio::MountMountFlags::NONE, Some(&operation))
@@ -1507,7 +1647,36 @@ impl SidebarState {
                 }
             });
         });
-        self.widget.append(&row);
+        let (mount_can_eject, mount_can_unmount) = volume
+            .get_mount()
+            .map(|mount| (mount.can_eject(), mount.can_unmount()))
+            .unwrap_or((false, false));
+        match volume_release_action(volume.can_eject(), mount_can_eject, mount_can_unmount) {
+            Some(action) => {
+                let release_volume = volume.clone();
+                let release_browser = self.browser.clone();
+                let release_parent = self.view.widget();
+                let release_in_flight = Rc::new(Cell::new(false));
+                let on_release: Rc<dyn Fn()> = Rc::new(move || {
+                    release_device_volume(
+                        &release_volume,
+                        action,
+                        &release_parent,
+                        &release_browser,
+                        &release_in_flight,
+                    );
+                });
+                let eject = sidebar_eject_button(action, {
+                    let on_release = on_release.clone();
+                    move || on_release()
+                });
+                attach_device_release_menu(&row, action, on_release);
+                self.widget.append(&sidebar_device_row(&row, &eject));
+            }
+            None => {
+                self.widget.append(&row);
+            }
+        }
     }
 
     fn append_smb_mount(self: &Rc<Self>, name: &str, location: Location, mount: gio::Mount) {
@@ -1649,6 +1818,16 @@ impl SidebarState {
     }
 
     fn append_place(&self, icon: &str, name: &str, location: Location) -> gtk::Button {
+        self.append_device_place(icon, name, location, None)
+    }
+
+    fn append_device_place(
+        &self,
+        icon: &str,
+        name: &str,
+        location: Location,
+        release: Option<(MediaRelease, Rc<dyn Fn()>)>,
+    ) -> gtk::Button {
         let row = sidebar_button(icon, name);
         row.set_tooltip_text(Some(&location.display_path()));
         self.place_rows
@@ -1663,7 +1842,19 @@ impl SidebarState {
                 browser.navigate_location(location.clone());
             }
         });
-        self.widget.append(&row);
+        match release {
+            Some((action, on_release)) => {
+                let eject = sidebar_eject_button(action, {
+                    let on_release = on_release.clone();
+                    move || on_release()
+                });
+                attach_device_release_menu(&row, action, on_release);
+                self.widget.append(&sidebar_device_row(&row, &eject));
+            }
+            None => {
+                self.widget.append(&row);
+            }
+        }
         row
     }
 }
@@ -1671,12 +1862,23 @@ impl SidebarState {
 fn select_sidebar_row(sidebar: &gtk::Box, selected: &gtk::Button) {
     let mut child = sidebar.first_child();
     while let Some(widget) = child {
-        if let Ok(row) = widget.clone().downcast::<gtk::Button>() {
+        if let Some(row) = sidebar_row_button(&widget) {
             row.remove_css_class("active");
         }
         child = widget.next_sibling();
     }
     selected.add_css_class("active");
+}
+
+/// Resolves the navigable row button for a sidebar child. Device rows wrap
+/// their button with an eject sibling, so look one level down when the child
+/// itself is a container.
+fn sidebar_row_button(widget: &gtk::Widget) -> Option<gtk::Button> {
+    widget.clone().downcast::<gtk::Button>().ok().or_else(|| {
+        widget
+            .first_child()
+            .and_then(|child| child.downcast::<gtk::Button>().ok())
+    })
 }
 
 fn reorder_places(order: &mut Vec<&'static str>, source: &str, target: &str, after: bool) -> bool {
@@ -1744,6 +1946,179 @@ fn is_smb_location(location: &Location) -> bool {
         uri.get(..4)
             .is_some_and(|scheme| scheme.eq_ignore_ascii_case("smb:"))
     })
+}
+
+/// Safe-removal action for a sidebar device row. Eject is preferred whenever
+/// the drive reports it (USB sticks, optical discs); plain unmount covers
+/// mounts without ejectable media. `None` means fixed internal storage with
+/// no actionable release.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MediaRelease {
+    EjectVolume,
+    EjectMount,
+    UnmountMount,
+}
+
+fn volume_release_action(
+    can_eject_volume: bool,
+    mount_can_eject: bool,
+    mount_can_unmount: bool,
+) -> Option<MediaRelease> {
+    if can_eject_volume {
+        Some(MediaRelease::EjectVolume)
+    } else if mount_can_eject {
+        Some(MediaRelease::EjectMount)
+    } else if mount_can_unmount {
+        Some(MediaRelease::UnmountMount)
+    } else {
+        None
+    }
+}
+
+fn mount_release_action(can_eject: bool, can_unmount: bool) -> Option<MediaRelease> {
+    if can_eject {
+        Some(MediaRelease::EjectMount)
+    } else if can_unmount {
+        Some(MediaRelease::UnmountMount)
+    } else {
+        None
+    }
+}
+
+fn media_release_label(action: MediaRelease) -> &'static str {
+    match action {
+        MediaRelease::EjectVolume | MediaRelease::EjectMount => "Eject",
+        MediaRelease::UnmountMount => "Unmount",
+    }
+}
+
+fn media_release_error_title(action: MediaRelease) -> &'static str {
+    match action {
+        MediaRelease::EjectVolume | MediaRelease::EjectMount => "Unable to eject device",
+        MediaRelease::UnmountMount => "Unable to unmount device",
+    }
+}
+
+fn navigate_home_if_within(browser: &Rc<Browser>, root: &gio::File) {
+    let Some(device) = location_for_file(root) else {
+        return;
+    };
+    let active = browser.active_location();
+    if active
+        .as_ref()
+        .is_some_and(|active| active == &device || active.is_within(&device))
+    {
+        browser.navigate(Location::local(home_directory()));
+    }
+}
+
+fn begin_media_release(in_flight: &Cell<bool>) -> bool {
+    !in_flight.replace(true)
+}
+
+fn release_device_volume(
+    volume: &gio::Volume,
+    action: MediaRelease,
+    parent: &gtk::Widget,
+    browser: &Rc<Browser>,
+    in_flight: &Rc<Cell<bool>>,
+) {
+    if !begin_media_release(in_flight) {
+        return;
+    }
+    let mount = volume.get_mount();
+    let away_root = mount.as_ref().map(gio::Mount::root);
+    let window = parent.root().and_downcast::<gtk::Window>();
+    let operation = gtk::MountOperation::new(window.as_ref());
+    let error_parent = parent.clone();
+    let browser = browser.clone();
+    let volume = volume.clone();
+    let in_flight = in_flight.clone();
+    let title = media_release_error_title(action);
+    glib::MainContext::default().spawn_local(async move {
+        let result = match action {
+            MediaRelease::EjectVolume => {
+                volume
+                    .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                    .await
+            }
+            MediaRelease::EjectMount => match mount {
+                Some(mount) => {
+                    mount
+                        .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                        .await
+                }
+                None => {
+                    in_flight.set(false);
+                    return;
+                }
+            },
+            MediaRelease::UnmountMount => match mount {
+                Some(mount) => {
+                    mount
+                        .unmount_with_operation_future(
+                            gio::MountUnmountFlags::NONE,
+                            Some(&operation),
+                        )
+                        .await
+                }
+                None => {
+                    in_flight.set(false);
+                    return;
+                }
+            },
+        };
+        in_flight.set(false);
+        match result {
+            Ok(()) => {
+                if let Some(root) = away_root {
+                    navigate_home_if_within(&browser, &root);
+                }
+            }
+            Err(error) if error.matches(gio::IOErrorEnum::Cancelled) => {}
+            Err(error) => show_error_dialog(&error_parent, title, &error.to_string()),
+        }
+    });
+}
+
+fn release_device_mount(
+    mount: &gio::Mount,
+    action: MediaRelease,
+    parent: &gtk::Widget,
+    browser: &Rc<Browser>,
+    in_flight: &Rc<Cell<bool>>,
+) {
+    if !begin_media_release(in_flight) {
+        return;
+    }
+    let away_root = mount.root();
+    let window = parent.root().and_downcast::<gtk::Window>();
+    let operation = gtk::MountOperation::new(window.as_ref());
+    let error_parent = parent.clone();
+    let browser = browser.clone();
+    let mount = mount.clone();
+    let in_flight = in_flight.clone();
+    let title = media_release_error_title(action);
+    glib::MainContext::default().spawn_local(async move {
+        let result = match action {
+            MediaRelease::EjectVolume | MediaRelease::EjectMount => {
+                mount
+                    .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                    .await
+            }
+            MediaRelease::UnmountMount => {
+                mount
+                    .unmount_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                    .await
+            }
+        };
+        in_flight.set(false);
+        match result {
+            Ok(()) => navigate_home_if_within(&browser, &away_root),
+            Err(error) if error.matches(gio::IOErrorEnum::Cancelled) => {}
+            Err(error) => show_error_dialog(&error_parent, title, &error.to_string()),
+        }
+    });
 }
 
 fn is_standard_place_location(location: &Location) -> bool {
@@ -1857,6 +2232,72 @@ fn sidebar_button(icon: &str, name: &str) -> gtk::Button {
     row
 }
 
+fn sidebar_eject_button(action: MediaRelease, on_release: impl Fn() + 'static) -> gtk::Button {
+    let button = gtk::Button::builder()
+        .tooltip_text(media_release_label(action))
+        .build();
+    button.set_child(Some(&crate::assets::primary_icon(
+        crate::assets::icons::EJECT,
+        14,
+    )));
+    button.add_css_class("sidebar-eject");
+    button.set_has_frame(false);
+    button.set_valign(gtk::Align::Center);
+    button.connect_clicked(move |_| on_release());
+    button
+}
+
+fn sidebar_device_row(row: &gtk::Button, eject: &gtk::Button) -> gtk::Box {
+    let shell = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    shell.add_css_class("sidebar-device");
+    row.set_hexpand(true);
+    shell.append(row);
+    shell.append(eject);
+    shell
+}
+
+fn attach_device_release_menu(row: &gtk::Button, action: MediaRelease, on_release: Rc<dyn Fn()>) {
+    let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    menu.add_css_class("folder-context-menu");
+    let release = sidebar_context_option(
+        crate::assets::icons::EJECT,
+        media_release_label(action),
+        false,
+    );
+    menu.append(&release);
+    let popover = gtk::Popover::builder()
+        .child(&menu)
+        .autohide(true)
+        .has_arrow(false)
+        .build();
+    popover.add_css_class("folder-context-popover");
+    popover.set_parent(row);
+    let release_popover = popover.downgrade();
+    release.connect_clicked(move |_| {
+        if let Some(popover) = release_popover.upgrade() {
+            popover.popdown();
+        }
+        on_release();
+    });
+    let context = gtk::GestureClick::new();
+    context.set_button(3);
+    let weak_popover = popover.downgrade();
+    context.connect_pressed(move |gesture, _, x, y| {
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        let Some(popover) = weak_popover.upgrade() else {
+            return;
+        };
+        popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
+            x.round() as i32,
+            y.round() as i32,
+            1,
+            1,
+        )));
+        popover.popup();
+    });
+    row.add_controller(context);
+}
+
 fn navigate_to_gio_file(browser: &Rc<Browser>, file: &gio::File) {
     if let Some(location) = location_for_file(file) {
         browser.navigate(location);
@@ -1934,7 +2375,10 @@ fn build_sidebar(view: BrowserView, theme_manager: Rc<super::theme::ThemeManager
     });
 
     let weak = Rc::downgrade(&state);
-    state.browser.observe(move |_| {
+    state.browser.observe(move |event| {
+        if !SidebarState::event_changes_active_place(event) {
+            return;
+        }
         if let Some(state) = weak.upgrade() {
             state.sync_active_place();
         }
@@ -1977,8 +2421,8 @@ fn build_sidebar(view: BrowserView, theme_manager: Rc<super::theme::ThemeManager
             state.rebuild();
         }
     }));
-    state.rebuild();
-
+    state.append_static_places();
+    state.sync_active_place();
     SidebarView {
         widget: shell.upcast(),
         state,
