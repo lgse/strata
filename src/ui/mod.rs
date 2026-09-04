@@ -8,6 +8,7 @@ mod entry_list_model;
 mod marquee;
 mod motion;
 mod preview;
+mod scrolling;
 mod search;
 mod settings;
 mod theme;

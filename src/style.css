@@ -1294,25 +1294,37 @@ switch:checked slider {
   transition: none;
 }
 
+/* The trough is widened to a practical grab target while slider margins keep the
+   visible bar as narrow as before. */
 .fixed-scrollbar scrollbar.vertical {
-  min-width: 5px;
+  min-width: 14px;
 }
 
 .fixed-scrollbar scrollbar.horizontal {
-  min-height: 5px;
+  min-height: 14px;
 }
 
 .fixed-scrollbar scrollbar > range > trough > slider {
   border-width: 1px;
-  margin: 0;
 }
 
 .fixed-scrollbar scrollbar.vertical > range > trough > slider {
+  margin: 0 5px;
   min-width: 3px;
 }
 
 .fixed-scrollbar scrollbar.horizontal > range > trough > slider {
+  margin: 5px 0;
   min-height: 3px;
+}
+
+.autoscroll-anchor {
+  background: alpha(@theme_surface, 0.92);
+  border: 1px solid alpha(@theme_border, 0.9);
+  border-radius: 50%;
+  box-shadow: 0 1px 4px alpha(#000000, 0.35);
+  min-height: 22px;
+  min-width: 22px;
 }
 
 .sidebar {

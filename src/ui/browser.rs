@@ -1077,6 +1077,22 @@ impl BrowserView {
             })
     }
 
+    /// Moves the focus by about one viewport of the focused view, so `Page Up` and
+    /// `Page Down` act on the active pane or column only.
+    pub fn page_selection(&self, direction: i32) -> bool {
+        let focused = self.state.overlay.root().and_then(|root| root.focus());
+        let Some((view, scroll)) = focused
+            .as_ref()
+            .and_then(super::scrolling::focused_collection)
+        else {
+            return false;
+        };
+        let page = super::scrolling::page(&view, &scroll);
+        self.state.browser.page_selection(direction, page.items);
+        super::scrolling::reveal_selection(&view, &scroll, direction, &page);
+        true
+    }
+
     pub fn dismiss_empty_focused_filter(&self) -> bool {
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let empty = self.state.mode_views.borrow().empty_filter_has_focus()
@@ -4990,6 +5006,7 @@ impl ViewState {
             .vexpand(true)
             .build();
         scroll.add_css_class("fixed-scrollbar");
+        super::scrolling::install_autoscroll(&scroll, &self.overlay);
         let rows_for_marquee = bound_rows.clone();
         let marquee = super::marquee::install(super::marquee::MarqueeSetup {
             view: list.clone().upcast(),

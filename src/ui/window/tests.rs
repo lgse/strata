@@ -8,10 +8,11 @@ use super::{
     MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, begin_media_release,
     is_open_terminal_shortcut, is_sidebar_focus_shortcut, is_smb_location,
     is_standard_place_location, is_toggle_hidden_shortcut, is_undo_trash_shortcut,
-    media_release_label, mount_release_action, mouse_history_action, parse_pinned_drag_source,
-    parse_pinned_places, pin_status, remove_pinned_place, reorder_pinned_places, reorder_places,
-    resolve_place_order, serialize_pinned_places, should_show_standard_place, sidebar_update_label,
-    standard_place, vim_focus_direction, volume_release_action,
+    media_release_label, mount_release_action, mouse_history_action, page_direction,
+    parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
+    reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
+    should_show_standard_place, sidebar_update_label, standard_place, vim_focus_direction,
+    volume_release_action,
 };
 
 fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
@@ -90,6 +91,15 @@ fn undo_trash_shortcut_requires_control_without_shift_or_alt() {
     ));
     assert!(!is_undo_trash_shortcut(gtk::gdk::Key::z, control | shift));
     assert!(!is_undo_trash_shortcut(gtk::gdk::Key::z, control | alt));
+}
+
+#[test]
+fn page_keys_map_to_a_scroll_direction() {
+    assert_eq!(page_direction(gtk::gdk::Key::Page_Up), Some(-1));
+    assert_eq!(page_direction(gtk::gdk::Key::KP_Page_Up), Some(-1));
+    assert_eq!(page_direction(gtk::gdk::Key::Page_Down), Some(1));
+    assert_eq!(page_direction(gtk::gdk::Key::KP_Page_Down), Some(1));
+    assert_eq!(page_direction(gtk::gdk::Key::Home), None);
 }
 
 #[test]

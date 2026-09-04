@@ -477,6 +477,53 @@ fn keyboard_selection_is_bounded_and_tracks_the_active_column() {
 }
 
 #[test]
+fn paging_moves_by_a_page_and_stops_at_the_ends() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    let entries = (0..12)
+        .map(|index| entry(&format!("/home/item-{index:02}")))
+        .collect();
+    state.apply_batch(RequestId(1), entries);
+
+    assert_eq!(state.page_selection(1, 5), Some((0, 0)));
+    assert_eq!(state.page_selection(1, 5), Some((0, 5)));
+    assert_eq!(state.page_selection(1, 5), Some((0, 10)));
+    assert_eq!(state.page_selection(1, 5), Some((0, 11)));
+    assert_eq!(state.page_selection(-1, 5), Some((0, 6)));
+    assert_eq!(state.page_selection(-1, 5), Some((0, 1)));
+    assert_eq!(state.page_selection(-1, 5), Some((0, 0)));
+    assert_eq!(state.selected_entries().len(), 1);
+}
+
+#[test]
+fn paging_skips_hidden_entries_when_hidden_files_are_not_shown() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/home/alpha", "alpha"),
+            hidden_entry("/home/bravo", "bravo"),
+            named_entry("/home/charlie", "charlie"),
+            named_entry("/home/delta", "delta"),
+        ],
+    );
+
+    assert!(state.select(0, 0));
+    assert_eq!(state.page_selection(1, 1), Some((0, 2)));
+    assert_eq!(state.page_selection(-1, 1), Some((0, 0)));
+}
+
+#[test]
+fn paging_an_empty_column_keeps_the_selection_unchanged() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(RequestId(1), Vec::new());
+
+    assert_eq!(state.page_selection(1, 4), None);
+}
+
+#[test]
 fn moving_between_parent_and_child_columns_restores_their_selections() {
     let mut state = NavigationState::default();
     state.navigate(location("/home"), RequestId(1));

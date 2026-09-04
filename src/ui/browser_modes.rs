@@ -2555,6 +2555,7 @@ fn collection_with_marquee(
     overlay.set_child(Some(&scroll));
     overlay.set_hexpand(true);
     overlay.set_vexpand(true);
+    super::scrolling::install_autoscroll(&scroll, &overlay);
 
     let marquee = super::marquee::install(super::marquee::MarqueeSetup {
         view: view.clone(),

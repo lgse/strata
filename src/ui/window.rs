@@ -237,6 +237,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         gesture.set_state(gtk::EventSequenceState::Claimed);
     });
     root.add_controller(mouse_history);
+    super::scrolling::install_autoscroll_stop(&root);
 
     let window_overlay = gtk::Overlay::new();
     let blurred_root = BlurBin::new(&root);
@@ -603,6 +604,9 @@ fn install_keyboard_navigation(
             }
             return glib::Propagation::Proceed;
         }
+        if key == gtk::gdk::Key::Escape && super::scrolling::stop_autoscroll() {
+            return glib::Propagation::Stop;
+        }
         let alt = modifiers.contains(gtk::gdk::ModifierType::ALT_MASK);
         let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
@@ -823,6 +827,13 @@ fn install_keyboard_navigation(
         if !control && !alt && !view.item_view_has_focus() && !header_left_boundary {
             return glib::Propagation::Proceed;
         }
+        if !control
+            && !alt
+            && let Some(direction) = page_direction(key)
+            && view.page_selection(direction)
+        {
+            return glib::Propagation::Stop;
+        }
         if !control && !alt && matches!(key, gtk::gdk::Key::y | gtk::gdk::Key::Y) {
             view.copy_path();
             return glib::Propagation::Stop;
@@ -887,6 +898,14 @@ fn install_keyboard_navigation(
         glib::Propagation::Stop
     });
     window.add_controller(keys);
+}
+
+fn page_direction(key: gtk::gdk::Key) -> Option<i32> {
+    match key {
+        gtk::gdk::Key::Page_Up | gtk::gdk::Key::KP_Page_Up => Some(-1),
+        gtk::gdk::Key::Page_Down | gtk::gdk::Key::KP_Page_Down => Some(1),
+        _ => None,
+    }
 }
 
 fn is_undo_trash_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {

@@ -1677,6 +1677,17 @@ impl Browser {
         }
     }
 
+    /// Moves the focus by `page` visible entries, for `Page Up` and `Page Down`.
+    pub fn page_selection(&self, direction: i32, page: usize) {
+        let moved = self.state.borrow_mut().page_selection(direction, page);
+        if let Some((depth, position)) = moved {
+            self.emit(BrowserEvent::FocusChanged {
+                depth,
+                position: Some(position),
+            });
+        }
+    }
+
     pub fn extend_selection(&self, direction: i32) {
         let extended = self.state.borrow_mut().extend_selection(direction);
         if let Some((depth, focused, positions)) = extended {

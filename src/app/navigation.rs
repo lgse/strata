@@ -862,12 +862,42 @@ impl NavigationState {
                 }
             }
         };
-        column.selected = Some(position);
-        column.selected_locations.clear();
-        column
-            .selected_locations
-            .insert(column.entries[position].location.clone());
-        column.selection_anchor = Some(column.entries[position].location.clone());
+        focus_only(column, position);
+        self.active_column = Some(depth);
+        Some((depth, position))
+    }
+
+    /// Moves the focus `page` visible entries at a time, clamped to the first and
+    /// last visible entry, for page-sized keyboard navigation.
+    pub fn page_selection(&mut self, direction: i32, page: usize) -> Option<(usize, usize)> {
+        if direction == 0 {
+            return None;
+        }
+        let depth = self
+            .active_column
+            .or_else(|| self.columns.len().checked_sub(1))?;
+        let column = self.columns.get_mut(depth)?;
+        let show_hidden = column.preferences.show_hidden;
+        let visible: Vec<usize> = column
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| show_hidden || !entry.is_hidden)
+            .map(|(position, _)| position)
+            .collect();
+        let last = visible.len().checked_sub(1)?;
+        let steps = page.max(1);
+        let current = column
+            .selected
+            .and_then(|selected| visible.iter().position(|position| *position >= selected));
+        let target = match (current, direction < 0) {
+            (None, true) => last,
+            (None, false) => 0,
+            (Some(current), true) => current.saturating_sub(steps),
+            (Some(current), false) => current.saturating_add(steps).min(last),
+        };
+        let position = visible[target];
+        focus_only(column, position);
         self.active_column = Some(depth);
         Some((depth, position))
     }
@@ -967,6 +997,17 @@ impl NavigationState {
             .enumerate()
             .find(|(_, column)| column.request_id == request_id)
     }
+}
+
+/// Collapses a column's selection onto a single entry and anchors further
+/// range selections there.
+fn focus_only(column: &mut ColumnState, position: usize) {
+    column.selected = Some(position);
+    column.selected_locations.clear();
+    column
+        .selected_locations
+        .insert(column.entries[position].location.clone());
+    column.selection_anchor = Some(column.entries[position].location.clone());
 }
 
 fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool {
