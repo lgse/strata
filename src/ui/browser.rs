@@ -689,7 +689,11 @@ impl BrowserView {
     }
 
     pub fn activate_focused(&self) {
-        if self.state.mode_views.borrow().activate_tree_focus() {
+        // Bound first: the browser emits back into the mode views, so the borrow has to
+        // be released before the activation runs.
+        let tree_activation = self.state.mode_views.borrow().tree_activation();
+        if let Some(activation) = tree_activation {
+            activation.perform(&self.state.browser);
             return;
         }
         if self.view_mode() != BrowserMode::Columns {

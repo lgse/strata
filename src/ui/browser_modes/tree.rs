@@ -224,19 +224,51 @@ pub(super) fn step(pane: &Pane, step: TreeStep) -> bool {
     true
 }
 
-/// Activates the tree's focused row, opening files and entering directories in place.
-pub(super) fn activate_focused(pane: &Pane) -> bool {
-    let Some(context) = pane.tree.clone() else {
-        return false;
-    };
-    let Some(position) = super::bitset_positions(&pane.section.selection.selection())
+/// What activating a tree row should do. The tree reports the intent instead of
+/// running it, so a caller holding the mode views can release that borrow before the
+/// browser emits the resulting events straight back into them.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum TreeActivation {
+    /// A root row, which the browser's active column still owns.
+    Column {
+        depth: usize,
+        position: usize,
+    },
+    Directory(Location),
+    File(Location),
+}
+
+impl TreeActivation {
+    pub(crate) fn perform(self, browser: &Rc<Browser>) {
+        match self {
+            Self::Column { depth, position } => browser.activate_in_place(depth, position),
+            Self::Directory(location) => browser.navigate(location),
+            Self::File(location) => browser.open_location(location),
+        }
+    }
+}
+
+/// Rows below the root level have no position in the browser's column, so they name
+/// their location outright.
+pub(super) fn activation_for(
+    depth: usize,
+    source: Option<usize>,
+    entry: FileEntry,
+) -> TreeActivation {
+    match source {
+        Some(position) => TreeActivation::Column { depth, position },
+        None if entry.is_directory() => TreeActivation::Directory(entry.location),
+        None => TreeActivation::File(entry.location),
+    }
+}
+
+/// What activating the tree's focused row should do.
+pub(super) fn focused_activation(pane: &Pane) -> Option<TreeActivation> {
+    let context = pane.tree.as_ref()?;
+    let position = super::bitset_positions(&pane.section.selection.selection())
         .last()
-        .copied()
-    else {
-        return false;
-    };
-    activate_position(&context, position as u32);
-    true
+        .copied()?;
+    activation_at(context, position as u32)
 }
 
 fn focus_position(section: &PaneSection, position: u32) -> bool {
@@ -562,7 +594,9 @@ pub(super) fn build_pane(
         let Some(context) = context_for_activation.upgrade() else {
             return;
         };
-        activate_position(&context, position);
+        if let Some(activation) = activation_at(&context, position) {
+            activation.perform(&context.browser);
+        }
     });
     let section = PaneSection {
         view: view.clone().upcast(),
@@ -623,23 +657,15 @@ pub(super) fn build_pane(
     pane
 }
 
-fn activate_position(context: &Rc<TreeContext>, position: u32) {
-    let Some(object) = context
+fn activation_at(context: &Rc<TreeContext>, position: u32) -> Option<TreeActivation> {
+    let object = context
         .model
         .borrow()
         .as_ref()
-        .and_then(|model| model.item(position))
-    else {
-        return;
-    };
-    let Some(entry) = context.entry_for(&object) else {
-        return;
-    };
-    match source_position_for_item(&context.source, &object) {
-        Some(position) => context.browser.activate_in_place(context.depth, position),
-        None if entry.is_directory() => context.browser.navigate(entry.location),
-        None => context.browser.open_location(entry.location),
-    }
+        .and_then(|model| model.item(position))?;
+    let entry = context.entry_for(&object)?;
+    let source = source_position_for_item(&context.source, &object);
+    Some(activation_for(context.depth, source, entry))
 }
 
 fn install_click(
@@ -668,11 +694,7 @@ fn install_click(
         let source = source_position_for_item(&context.source, &object);
         if should_activate_pointer_click(press_count, entry.is_directory(), activation.get()) {
             gesture.set_state(gtk::EventSequenceState::Claimed);
-            match source {
-                Some(position) => context.browser.activate_in_place(context.depth, position),
-                None if entry.is_directory() => context.browser.navigate(entry.location),
-                None => context.browser.open_location(entry.location),
-            }
+            activation_for(context.depth, source, entry).perform(&context.browser);
         } else if press_count == 1
             && previews.get()
             && !entry.is_directory()

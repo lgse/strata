@@ -8,7 +8,7 @@
 
 pub(super) mod tree;
 
-pub(super) use tree::TreeStep;
+pub(super) use tree::{TreeActivation, TreeStep};
 
 use std::{
     cell::{Cell, RefCell},
@@ -932,10 +932,11 @@ impl ModeViews {
             .is_some_and(|pane| tree::step(pane, step))
     }
 
-    /// Activates the tree's focused row. Rows inside an expanded branch are the tree's
-    /// own, so only it can act on them.
-    pub fn activate_tree_focus(&self) -> bool {
-        self.showing_tree().is_some_and(tree::activate_focused)
+    /// What activating the tree's focused row should do, for the caller to run once it
+    /// has let go of the mode views: performing it here would re-enter them, because the
+    /// browser emits the resulting events back into `handle`.
+    pub fn tree_activation(&self) -> Option<TreeActivation> {
+        self.showing_tree().and_then(tree::focused_activation)
     }
 
     fn showing_tree(&self) -> Option<&Pane> {
