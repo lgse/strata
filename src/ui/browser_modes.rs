@@ -559,10 +559,19 @@ impl ModeViews {
             BrowserMode::Grid => "grid",
             BrowserMode::Explorer => "explorer",
         });
-        if mode == BrowserMode::Grid {
-            self.rebuild_grid();
-        } else if mode == BrowserMode::Explorer {
-            self.rebuild_explorer();
+        match mode {
+            BrowserMode::Columns => {
+                self.clear_grid();
+                self.clear_explorer();
+            }
+            BrowserMode::Grid => {
+                self.clear_explorer();
+                self.rebuild_grid();
+            }
+            BrowserMode::Explorer => {
+                self.clear_grid();
+                self.rebuild_explorer();
+            }
         }
         if let Some(depth) = self.browser.active_depth() {
             self.focus_visible_pane(depth);
@@ -642,62 +651,21 @@ impl ModeViews {
                 clear_box(&self.explorer_root);
                 self.explorer_pane = None;
             }
-            BrowserEvent::ColumnsTruncated { len } => {
-                while self.grid_panes.len() > *len {
-                    if let Some(pane) = self.grid_panes.pop() {
-                        self.grid_root.remove(&pane.shell);
-                    }
+            BrowserEvent::ColumnsTruncated { .. } => match self.mode {
+                BrowserMode::Columns => {}
+                BrowserMode::Grid => self.rebuild_grid(),
+                BrowserMode::Explorer => self.rebuild_explorer(),
+            },
+            BrowserEvent::ColumnAdded { depth, .. }
+                if self.browser.active_depth() == Some(*depth) =>
+            {
+                match self.mode {
+                    BrowserMode::Columns => {}
+                    BrowserMode::Grid => self.rebuild_grid(),
+                    BrowserMode::Explorer => self.rebuild_explorer(),
                 }
-                self.rebuild_grid();
-                self.rebuild_explorer();
             }
-            BrowserEvent::ColumnAdded { depth, location } => {
-                clear_box(&self.grid_root);
-                self.grid_panes.clear();
-                let pane = build_grid_pane(
-                    self.browser.clone(),
-                    ModeClickOptions {
-                        previews: self.single_click_previews.clone(),
-                        activation: self.grid_click_activation.clone(),
-                    },
-                    self.transfer_handler.clone(),
-                    self.cut_locations.clone(),
-                    GridOptions {
-                        state: self.context_state.borrow().clone(),
-                        thumbnail_size: self.grid_thumbnail_size.clone(),
-                        active_new_entry: self.active_new_entry.clone(),
-                        group_by_type: self.group_by_type,
-                        density: self.density,
-                    },
-                    *depth,
-                    &location.display_name(),
-                );
-                configure_grid_density(&pane, self.density);
-                self.install_context_menu(&pane);
-                self.grid_root.append(&pane.shell);
-                self.grid_panes.push(pane);
-
-                clear_box(&self.explorer_root);
-                let pane = build_explorer_pane(
-                    self.browser.clone(),
-                    ModeClickOptions {
-                        previews: self.single_click_previews.clone(),
-                        activation: self.explorer_click_activation.clone(),
-                    },
-                    self.transfer_handler.clone(),
-                    self.cut_locations.clone(),
-                    ExplorerOptions {
-                        state: self.context_state.borrow().clone(),
-                        active_new_entry: self.active_new_entry.clone(),
-                        group_by_type: self.group_by_type,
-                    },
-                    *depth,
-                    &location.display_name(),
-                );
-                self.install_context_menu(&pane);
-                self.explorer_root.append(&pane.shell);
-                self.explorer_pane = Some(pane);
-            }
+            BrowserEvent::ColumnAdded { .. } => {}
             BrowserEvent::EntriesInserted { depth, insertions } => {
                 for pane in self.panes_at(*depth) {
                     for insertion in insertions {
@@ -898,15 +866,25 @@ impl ModeViews {
         );
     }
 
+    fn clear_grid(&mut self) {
+        clear_box(&self.grid_root);
+        self.grid_panes.clear();
+    }
+
+    fn clear_explorer(&mut self) {
+        clear_box(&self.explorer_root);
+        self.explorer_pane = None;
+    }
+
     fn rebuild_grid(&mut self) {
         let Some(depth) = self.browser.active_depth() else {
+            self.clear_grid();
             return;
         };
         let Some(snapshot) = self.browser.column_snapshot(depth) else {
             return;
         };
-        clear_box(&self.grid_root);
-        self.grid_panes.clear();
+        self.clear_grid();
         let pane = build_grid_pane(
             self.browser.clone(),
             ModeClickOptions {
@@ -934,12 +912,13 @@ impl ModeViews {
 
     fn rebuild_explorer(&mut self) {
         let Some(depth) = self.browser.active_depth() else {
+            self.clear_explorer();
             return;
         };
         let Some(snapshot) = self.browser.column_snapshot(depth) else {
             return;
         };
-        clear_box(&self.explorer_root);
+        self.clear_explorer();
         let pane = build_explorer_pane(
             self.browser.clone(),
             ModeClickOptions {
@@ -2994,11 +2973,18 @@ fn show_count(pane: &Pane) {
 fn apply_snapshot(pane: &Pane, snapshot: &BrowserColumnSnapshot) {
     replace_entries(pane, &snapshot.entries);
     set_selections(pane, &snapshot.selected_positions);
+    pane.truncated_hint.set_visible(snapshot.truncated);
     if snapshot.loading {
         pane.spinner.start();
         pane.stack.set_visible_child_name("loading");
     } else {
         pane.spinner.stop();
+        if let Some(message) = snapshot.error.as_deref() {
+            pane.status
+                .set_label(&format!("Unable to read this directory\n{message}"));
+            pane.status.add_css_class("error");
+            pane.stack.set_visible_child_name("status");
+        }
     }
 }
 

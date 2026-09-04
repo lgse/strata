@@ -24,9 +24,9 @@ use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 use super::{
     LocalOperationProvider, await_cancellable, copy_new_recursively, copy_recursively,
     deletion_error_message, deletion_error_summary, extract_7z_from_reader, extract_tar,
-    extract_zip_from_archive, home_trash_entries_at, operation_error_summary, replace_local,
-    replace_local_with, transfer_is_noop, validated_archive_path, validated_child,
-    write_staged_archive,
+    extract_zip_from_archive, home_trash_entries_at, is_trash_unsupported_failure, move_local_with,
+    operation_error_summary, replace_local, replace_local_with, transfer_is_noop,
+    validated_archive_path, validated_child, write_staged_archive,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
@@ -97,6 +97,26 @@ fn a_backend_without_trash_support_gets_an_actionable_message() {
     let permanent_message = deletion_error_message("share-folder", true, &error);
     assert!(!permanent_message.contains("Trash"));
     assert!(permanent_message.contains("trash not supported"));
+}
+
+#[test]
+fn a_trash_attempt_that_fails_as_unsupported_is_retryable() {
+    let error = glib::Error::new(gio::IOErrorEnum::NotSupported, "trash not supported");
+    assert!(is_trash_unsupported_failure(false, &error));
+}
+
+#[test]
+fn an_already_permanent_delete_failure_is_never_retryable() {
+    // Nothing left to fall back to if a *permanent* delete itself failed
+    // with `NotSupported` -- retrying it the same way would just fail again.
+    let error = glib::Error::new(gio::IOErrorEnum::NotSupported, "trash not supported");
+    assert!(!is_trash_unsupported_failure(true, &error));
+}
+
+#[test]
+fn an_unrelated_trash_failure_is_not_retryable() {
+    let error = glib::Error::new(gio::IOErrorEnum::PermissionDenied, "access denied");
+    assert!(!is_trash_unsupported_failure(false, &error));
 }
 
 #[test]
@@ -245,6 +265,120 @@ fn staged_file_replacement_preserves_the_destination_on_disk_full() -> Result<()
     assert!(result.is_err());
     assert_eq!(fs::read(&target)?, b"original");
     assert_eq!(fs::read_dir(&root)?.count(), 2);
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+fn always_would_recurse() -> super::MoveAttempt {
+    Rc::new(|_, _, _| {
+        Box::pin(async {
+            Err(glib::Error::new(
+                gio::IOErrorEnum::WouldRecurse,
+                "injected cross-filesystem move failure",
+            ))
+        })
+    })
+}
+
+#[test]
+fn moving_a_directory_falls_back_to_a_safe_copy_when_the_move_would_recurse()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("strata-move-fallback-test-{unique}"));
+    let source = root.join("source");
+    let target = root.join("target");
+    fs::create_dir_all(source.join("nested"))?;
+    fs::write(source.join("top.txt"), b"top")?;
+    fs::write(source.join("nested/child.txt"), b"child")?;
+
+    let result = glib::MainContext::default().block_on(move_local_with(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        always_would_recurse(),
+    ));
+
+    assert!(result.is_ok());
+    assert!(!source.exists());
+    assert_eq!(fs::read(target.join("top.txt"))?, b"top");
+    assert_eq!(fs::read(target.join("nested/child.txt"))?, b"child");
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn a_non_would_recurse_move_failure_is_returned_without_falling_back() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("strata-move-real-failure-test-{unique}"));
+    let source = root.join("source");
+    let target = root.join("target");
+    fs::create_dir_all(&source)?;
+    fs::write(source.join("top.txt"), b"top")?;
+
+    let result = glib::MainContext::default().block_on(move_local_with(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        Rc::new(|_, _, _| {
+            Box::pin(async {
+                Err(glib::Error::new(
+                    gio::IOErrorEnum::PermissionDenied,
+                    "injected permission failure",
+                ))
+            })
+        }),
+    ));
+
+    assert!(result.is_err_and(|error| error.matches(gio::IOErrorEnum::PermissionDenied)));
+    assert_eq!(fs::read(source.join("top.txt"))?, b"top");
+    assert!(!target.exists());
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn a_successful_move_attempt_is_used_without_falling_back_to_copy() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("strata-move-success-test-{unique}"));
+    let source = root.join("source");
+    let target = root.join("target");
+    fs::create_dir_all(&source)?;
+    fs::write(source.join("top.txt"), b"top")?;
+
+    let result = glib::MainContext::default().block_on(move_local_with(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        Rc::new(|source, target, _| {
+            Box::pin(async move {
+                fs::rename(
+                    source.path().expect("native source"),
+                    target.path().expect("native target"),
+                )
+                .map_err(super::io_error)
+            })
+        }),
+    ));
+
+    assert!(result.is_ok());
+    assert!(!source.exists());
+    assert_eq!(fs::read(target.join("top.txt"))?, b"top");
     fs::remove_dir_all(root)?;
     Ok(())
 }

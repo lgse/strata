@@ -855,6 +855,19 @@ fn ambiguous_filesystem_notifications_fall_back_to_reload() {
 }
 
 #[test]
+fn column_snapshots_preserve_load_errors() {
+    let browser = Browser::new(Rc::new(RetryFileSource {
+        attempts: Rc::new(Cell::new(0)),
+    }));
+
+    browser.navigate(Location::local("/fixture"));
+
+    let snapshot = browser.column_snapshot(0).expect("column should exist");
+    assert_eq!(snapshot.error.as_deref(), Some("temporarily unavailable"));
+    assert!(!snapshot.loading);
+}
+
+#[test]
 fn retrying_a_failed_column_preserves_navigation_history() {
     let attempts = Rc::new(Cell::new(0));
     let browser = Browser::new(Rc::new(RetryFileSource {
@@ -1026,6 +1039,47 @@ fn valid_location_input_navigates_through_the_controller() {
         BrowserEvent::ColumnAdded { depth: 0, location }
             if location == &Location::local("/accepted")
     )));
+}
+
+#[test]
+fn location_input_expands_trimmed_home_relative_paths() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let home = glib::home_dir();
+
+    assert_eq!(browser.navigate_input("  ~  "), Ok(()));
+    assert_eq!(browser.active_location(), Some(Location::local(&home)));
+
+    assert_eq!(browser.navigate_input("  ~/Documents  "), Ok(()));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::local(home.join("Documents")))
+    );
+}
+
+#[test]
+fn home_relative_input_preserves_the_native_home_path() {
+    let home = Path::new("/home/fixture");
+
+    assert_eq!(
+        location_from_input_with_home("~", home),
+        Ok(Location::local("/home/fixture"))
+    );
+    assert_eq!(
+        location_from_input_with_home("~/Documents/project", home),
+        Ok(Location::local("/home/fixture/Documents/project"))
+    );
+    assert_eq!(
+        location_from_input_with_home("~//Documents", home),
+        Ok(Location::local("/home/fixture/Documents"))
+    );
+}
+
+#[test]
+fn other_users_home_shorthand_is_rejected() {
+    assert!(matches!(
+        location_from_input_with_home("~other-user/Documents", Path::new("/home/fixture")),
+        Err(LocationValidationError::UnsupportedShorthand(_))
+    ));
 }
 
 #[test]
@@ -1253,6 +1307,10 @@ fn invalid_location_text_is_rejected_before_the_provider() {
 
     assert_eq!(
         browser.navigate_input(""),
+        Err(LocationValidationError::Empty)
+    );
+    assert_eq!(
+        browser.navigate_input("   "),
         Err(LocationValidationError::Empty)
     );
     assert_eq!(

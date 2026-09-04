@@ -75,6 +75,14 @@ fn was_cancelled(error: &glib::Error) -> bool {
     error.matches(gio::IOErrorEnum::Cancelled)
 }
 
+/// Whether a delete failure is retryable as a permanent delete: it was a
+/// trash attempt (never a permanent one, which has no further fallback),
+/// and the destination doesn't support Trash at all rather than some other,
+/// unrelated failure.
+fn is_trash_unsupported_failure(permanent: bool, error: &glib::Error) -> bool {
+    !permanent && error.matches(gio::IOErrorEnum::NotSupported)
+}
+
 fn copy_recursively(
     source: gio::File,
     target: gio::File,
@@ -254,6 +262,60 @@ async fn copy_new_recursively(
         let _cleanup_result = permanently_delete(target, true, cleanup).await;
     }
     result
+}
+
+type MoveAttempt = Rc<
+    dyn Fn(
+        gio::File,
+        gio::File,
+        gio::Cancellable,
+    ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>>,
+>;
+
+async fn move_local_with(
+    source: gio::File,
+    target: gio::File,
+    cancellable: gio::Cancellable,
+    attempt_move: MoveAttempt,
+) -> Result<(), glib::Error> {
+    let result = attempt_move(source.clone(), target.clone(), cancellable.clone()).await;
+    match result {
+        Err(error) if error.matches(gio::IOErrorEnum::WouldRecurse) => {
+            copy_new_recursively(source.clone(), target, cancellable.clone()).await?;
+            permanently_delete(source, true, cancellable).await
+        }
+        other => other,
+    }
+}
+
+async fn move_local(
+    source: gio::File,
+    target: gio::File,
+    cancellable: gio::Cancellable,
+) -> Result<(), glib::Error> {
+    move_local_with(
+        source,
+        target,
+        cancellable,
+        Rc::new(|source, target, cancellable| {
+            Box::pin(async move {
+                let flags =
+                    gio::FileCopyFlags::ALL_METADATA | gio::FileCopyFlags::NOFOLLOW_SYMLINKS;
+                await_cancellable(&source, &cancellable, move |source, cancellable, result| {
+                    source.move_async(
+                        &target,
+                        flags,
+                        glib::Priority::DEFAULT,
+                        Some(cancellable),
+                        None,
+                        move |output| result.resolve(output),
+                    );
+                })
+                .await
+            })
+        }),
+    )
+    .await
 }
 
 enum StagedSibling {
@@ -1036,23 +1098,7 @@ impl OperationProvider for LocalOperationProvider {
                     )
                     .await
                 } else if request.move_sources {
-                    let flags =
-                        gio::FileCopyFlags::ALL_METADATA | gio::FileCopyFlags::NOFOLLOW_SYMLINKS;
-                    await_cancellable(
-                        &source,
-                        &operation_cancellable,
-                        move |source, cancellable, result| {
-                            source.move_async(
-                                &target,
-                                flags,
-                                glib::Priority::DEFAULT,
-                                Some(cancellable),
-                                None,
-                                move |output| result.resolve(output),
-                            );
-                        },
-                    )
-                    .await
+                    move_local(source, target, operation_cancellable.clone()).await
                 } else {
                     copy_new_recursively(source, target, operation_cancellable.clone()).await
                 };
@@ -1099,6 +1145,7 @@ impl OperationProvider for LocalOperationProvider {
             let mut errors = Vec::new();
             let mut deleted_locations = Vec::new();
             let mut failed_locations = Vec::new();
+            let mut retryable_locations = Vec::new();
             let mut affected_locations = HashSet::new();
             for entry in &request.entries {
                 if let Some(parent) = entry.location.parent() {
@@ -1182,6 +1229,9 @@ impl OperationProvider for LocalOperationProvider {
                         ));
                         return;
                     }
+                    if is_trash_unsupported_failure(request.permanent, &error) {
+                        retryable_locations.push(entry.location.clone());
+                    }
                     errors.push(deletion_error_message(
                         &entry.display_name,
                         request.permanent,
@@ -1206,9 +1256,12 @@ impl OperationProvider for LocalOperationProvider {
                     locations: deleted_locations,
                 });
             } else {
+                let has_non_retryable_failures = errors.len() > retryable_locations.len();
                 emit(OperationEvent::CompletedWithErrors {
                     request_id: request.id,
                     deleted_locations,
+                    retryable_locations,
+                    has_non_retryable_failures,
                     message: deletion_error_summary(&errors),
                 });
             }
@@ -1268,22 +1321,7 @@ impl OperationProvider for LocalOperationProvider {
                     if let Some(parent) = original_target.parent() {
                         affected_locations.insert(parent);
                     }
-                    await_cancellable(
-                        &source,
-                        &operation_cancellable,
-                        move |source, cancellable, result| {
-                            source.move_async(
-                                &target,
-                                gio::FileCopyFlags::ALL_METADATA
-                                    | gio::FileCopyFlags::NOFOLLOW_SYMLINKS,
-                                glib::Priority::DEFAULT,
-                                Some(cancellable),
-                                None,
-                                move |output| result.resolve(output),
-                            );
-                        },
-                    )
-                    .await
+                    move_local(source, target, operation_cancellable.clone()).await
                 } else {
                     match await_cancellable(
                         &source,
@@ -1310,22 +1348,7 @@ impl OperationProvider for LocalOperationProvider {
                                 {
                                     affected_locations.insert(parent);
                                 }
-                                await_cancellable(
-                                    &source,
-                                    &operation_cancellable,
-                                    move |source, cancellable, result| {
-                                        source.move_async(
-                                            &target,
-                                            gio::FileCopyFlags::ALL_METADATA
-                                                | gio::FileCopyFlags::NOFOLLOW_SYMLINKS,
-                                            glib::Priority::DEFAULT,
-                                            Some(cancellable),
-                                            None,
-                                            move |output| result.resolve(output),
-                                        );
-                                    },
-                                )
-                                .await
+                                move_local(source, target, operation_cancellable.clone()).await
                             }
                             None => Err(glib::Error::new(
                                 gio::IOErrorEnum::NotFound,

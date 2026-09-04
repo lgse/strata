@@ -670,10 +670,29 @@ fn pressing_an_item_in_a_multi_selection_preserves_the_drag_group() {
 
 #[test]
 fn paste_prefers_the_hovered_pane_then_the_deepest_pane() {
-    assert_eq!(paste_destination_depth(Some(1), 3), Some(1));
-    assert_eq!(paste_destination_depth(None, 3), Some(2));
-    assert_eq!(paste_destination_depth(Some(4), 3), Some(2));
-    assert_eq!(paste_destination_depth(None, 0), None);
+    assert_eq!(
+        paste_destination_depth(BrowserMode::Columns, Some(1), Some(2), 3),
+        Some(1)
+    );
+    assert_eq!(
+        paste_destination_depth(BrowserMode::Columns, None, Some(1), 3),
+        Some(2)
+    );
+    assert_eq!(
+        paste_destination_depth(BrowserMode::Columns, Some(4), Some(1), 3),
+        Some(2)
+    );
+    assert_eq!(
+        paste_destination_depth(BrowserMode::Columns, None, None, 0),
+        None
+    );
+}
+
+#[test]
+fn single_pane_paste_uses_the_active_browser_depth() {
+    for mode in [BrowserMode::Grid, BrowserMode::Explorer] {
+        assert_eq!(paste_destination_depth(mode, None, Some(2), 0), Some(2));
+    }
 }
 
 #[test]
@@ -1313,4 +1332,41 @@ fn repeated_lookups_of_one_suffix_agree() {
 
     assert_eq!(first, second);
     assert_ne!(first, "File");
+}
+
+#[test]
+fn retryable_delete_entries_keeps_only_the_named_locations() {
+    let entry = |name: &str| FileEntry {
+        location: Location::local(format!("/fixture/{name}")),
+        native_name: name.into(),
+        display_name: name.into(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let retryable = entry("share-file.txt");
+    let denied = entry("locked-file.txt");
+    let entries = vec![retryable.clone(), denied];
+
+    let kept = retryable_delete_entries(entries, std::slice::from_ref(&retryable.location));
+
+    assert_eq!(kept, vec![retryable]);
+}
+
+#[test]
+fn retryable_delete_entries_is_empty_when_nothing_matches() {
+    let entry = FileEntry {
+        location: Location::local("/fixture/photo"),
+        native_name: "photo".into(),
+        display_name: "photo".into(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    let kept = retryable_delete_entries(vec![entry], &[]);
+
+    assert!(kept.is_empty());
 }

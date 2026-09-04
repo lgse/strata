@@ -3,7 +3,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::HashSet,
-    path::PathBuf,
+    path::{Path, PathBuf},
     rc::{Rc, Weak},
     time::Duration,
 };
@@ -39,6 +39,8 @@ pub struct BrowserColumnSnapshot {
     pub entries: Vec<FileEntry>,
     pub selected_positions: Vec<usize>,
     pub loading: bool,
+    pub error: Option<String>,
+    pub truncated: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -147,6 +149,11 @@ pub enum BrowserEvent {
     },
     OperationCompletedWithErrors {
         message: String,
+        /// Entries a retry with `permanent: true` would likely delete
+        /// successfully, e.g. ones that failed only because this location
+        /// doesn't support Trash. Always empty for a restore failure.
+        retryable_locations: Vec<Location>,
+        has_non_retryable_failures: bool,
     },
     OperationCancelled {
         completed: usize,
@@ -324,6 +331,7 @@ impl Browser {
     }
 
     pub fn navigate_input(self: &Rc<Self>, input: &str) -> Result<(), LocationValidationError> {
+        let input = input.trim();
         if input.is_empty() {
             return Err(LocationValidationError::Empty);
         }
@@ -765,6 +773,11 @@ impl Browser {
             entries: column.entries.clone(),
             selected_positions: state.selected_positions(depth),
             loading: column.load_state == crate::app::navigation::LoadState::Loading,
+            error: match &column.load_state {
+                crate::app::navigation::LoadState::Error(message) => Some(message.clone()),
+                _ => None,
+            },
+            truncated: column.truncated,
         })
     }
 
@@ -1300,11 +1313,17 @@ impl Browser {
                 }
                 OperationEvent::CompletedWithErrors {
                     deleted_locations,
+                    retryable_locations,
+                    has_non_retryable_failures,
                     message,
                     ..
                 } => {
                     browser.remove_deleted_locations(&deleted_locations);
-                    browser.emit(BrowserEvent::OperationCompletedWithErrors { message });
+                    browser.emit(BrowserEvent::OperationCompletedWithErrors {
+                        message,
+                        retryable_locations,
+                        has_non_retryable_failures,
+                    });
                 }
                 OperationEvent::Deleted { locations, .. }
                 | OperationEvent::Restored { locations, .. } => {
@@ -1316,7 +1335,11 @@ impl Browser {
                     ..
                 } => {
                     browser.remove_deleted_locations(&restored_locations);
-                    browser.emit(BrowserEvent::OperationCompletedWithErrors { message });
+                    browser.emit(BrowserEvent::OperationCompletedWithErrors {
+                        message,
+                        retryable_locations: Vec::new(),
+                        has_non_retryable_failures: true,
+                    });
                 }
                 OperationEvent::Cancelled { result, .. } => {
                     let mut affected_locations = refresh_locations.clone();
@@ -1806,7 +1829,7 @@ impl Browser {
                 truncated,
             } => {
                 let mut state = self.state.borrow_mut();
-                if let Some(depth) = state.finish(request_id) {
+                if let Some(depth) = state.finish(request_id, truncated) {
                     drop(state);
                     self.emit(BrowserEvent::LoadFinished { depth, truncated });
                 } else if state.finish_peek(request_id) {
@@ -1867,6 +1890,24 @@ fn deletion_parent_location(location: &Location) -> Option<Location> {
 }
 
 fn location_from_input(input: &str) -> Result<Location, LocationValidationError> {
+    location_from_input_with_home(input, &glib::home_dir())
+}
+
+fn location_from_input_with_home(
+    input: &str,
+    home: &Path,
+) -> Result<Location, LocationValidationError> {
+    if input == "~" {
+        return Ok(Location::local(home));
+    }
+    if let Some(relative) = input.strip_prefix("~/") {
+        return Ok(Location::local(home.join(relative.trim_start_matches('/'))));
+    }
+    if input.starts_with('~') {
+        return Err(LocationValidationError::UnsupportedShorthand(
+            "Only ~ and ~/ paths are supported for the current user's home directory.".to_owned(),
+        ));
+    }
     if !is_uri_like(input) {
         return Ok(Location::local(PathBuf::from(input)));
     }
