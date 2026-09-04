@@ -60,6 +60,7 @@ struct BoundRow {
 #[derive(Clone)]
 struct ColumnView {
     shell: gtk::Box,
+    user_width: Rc<Cell<Option<i32>>>,
     animation_generation: Rc<Cell<u64>>,
     presentation: LoadPresentation,
     model: gtk::StringList,
@@ -543,6 +544,14 @@ impl BrowserView {
         });
         breadcrumb_scroller.add_controller(edit_location);
 
+        let weak_state = Rc::downgrade(&state);
+        let adjustment = state.scroller.hadjustment();
+        adjustment.connect_changed(move |_| {
+            if let Some(state) = weak_state.upgrade() {
+                state.apply_column_widths();
+            }
+        });
+
         Self { state }
     }
 
@@ -599,8 +608,9 @@ impl BrowserView {
             .columns
             .borrow()
             .iter()
-            .map(|column| column.shell.width().max(COLUMN_WIDTH))
+            .map(|column| column.shell.width())
             .fold(0, i32::saturating_add)
+            .min(self.state.scroller.width())
     }
 
     /// Lets a marquee drag begin on blank chrome beside the file panes — the sidebar —
@@ -4939,12 +4949,16 @@ impl ViewState {
         resize_handle.set_cursor_from_name(Some("col-resize"));
         let resize = gtk::GestureDrag::new();
         resize.set_button(1);
+        let user_width = Rc::new(Cell::new(None));
         let resize_start = Rc::new(Cell::new(COLUMN_WIDTH));
         let pointer_start = Rc::new(Cell::new(None));
         let last_press = Rc::new(Cell::new(0u64));
         let shell_for_resize_start = shell.clone();
-        let shell_for_autofit = shell.clone();
         let column_for_autofit = column.clone();
+        let user_width_for_begin = user_width.clone();
+        let user_width_for_drag = user_width.clone();
+        let weak_for_autofit = Rc::downgrade(self);
+        let weak_for_resize = Rc::downgrade(self);
         let resize_start_for_begin = resize_start.clone();
         let pointer_start_for_begin = pointer_start.clone();
         let last_press_for_begin = last_press.clone();
@@ -4955,7 +4969,10 @@ impl ViewState {
             if now.wrapping_sub(prev) <= 400_000 {
                 let max_natural =
                     max_child_natural_width(column_for_autofit.upcast_ref::<gtk::Widget>());
-                shell_for_autofit.set_size_request(max_natural.max(COLUMN_WIDTH), -1);
+                user_width_for_begin.set(Some(max_natural.max(COLUMN_WIDTH)));
+                if let Some(state) = weak_for_autofit.upgrade() {
+                    state.apply_column_widths();
+                }
                 gesture.set_state(gtk::EventSequenceState::Denied);
                 return;
             }
@@ -4966,7 +4983,6 @@ impl ViewState {
             }
             gesture.set_state(gtk::EventSequenceState::Claimed);
         });
-        let shell_for_resize = shell.clone();
         resize.connect_drag_update(move |gesture, fallback_offset_x, _| {
             let pointer_x = gesture
                 .current_event()
@@ -4976,8 +4992,10 @@ impl ViewState {
                 .get()
                 .zip(pointer_x)
                 .map_or(fallback_offset_x, |(start, current)| current - start);
-            shell_for_resize
-                .set_size_request(resized_column_width(resize_start.get(), offset_x), -1);
+            user_width_for_drag.set(Some(resized_column_width(resize_start.get(), offset_x)));
+            if let Some(state) = weak_for_resize.upgrade() {
+                state.apply_column_widths();
+            }
         });
         resize_handle.add_controller(resize);
         resize_handle.set_halign(gtk::Align::End);
@@ -4992,6 +5010,7 @@ impl ViewState {
             .insert_child_after(&shell, previous.as_ref());
         self.columns.borrow_mut().push(ColumnView {
             shell: shell.clone(),
+            user_width,
             animation_generation: animation_generation.clone(),
             presentation,
             model,
@@ -5015,9 +5034,28 @@ impl ViewState {
             filter: filter_for_column,
         });
 
+        self.apply_column_widths();
         self.refresh_active_path_rows();
         animate_column_entry(&shell, &column, &animation_generation);
         self.reveal_column(shell);
+    }
+
+    fn apply_column_widths(&self) {
+        let available = self.scroller.width();
+        if available <= 0 {
+            return;
+        }
+        let columns = self.columns.borrow();
+        let user_widths: Vec<_> = columns
+            .iter()
+            .map(|column| column.user_width.get())
+            .collect();
+        for (column, width) in columns
+            .iter()
+            .zip(adaptive_column_widths(available, &user_widths))
+        {
+            column.shell.set_size_request(width, -1);
+        }
     }
 
     fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {
@@ -5281,6 +5319,7 @@ impl ViewState {
             .borrow()
             .last()
             .map(|column| column.shell.clone());
+        self.apply_column_widths();
         if let Some(retained) = retained {
             self.reveal_column(retained);
         }
@@ -7600,6 +7639,38 @@ fn resized_column_width(initial_width: i32, horizontal_offset: f64) -> i32 {
     (f64::from(initial_width) + horizontal_offset)
         .round()
         .max(f64::from(COLUMN_WIDTH)) as i32
+}
+
+// ponytail: equal split, no width animation. Weight the focused column or ease
+// size_request if the reflow feels abrupt.
+fn adaptive_column_widths(available: i32, user_widths: &[Option<i32>]) -> Vec<i32> {
+    let auto_count = user_widths.iter().filter(|width| width.is_none()).count();
+    let used = user_widths
+        .iter()
+        .filter_map(|width| *width)
+        .fold(0, i32::saturating_add);
+    if auto_count == 0 {
+        return user_widths
+            .iter()
+            .map(|width| width.unwrap_or(COLUMN_WIDTH))
+            .collect();
+    }
+    let auto_total = available
+        .saturating_sub(used)
+        .max(COLUMN_WIDTH.saturating_mul(auto_count as i32));
+    let base = auto_total / auto_count as i32;
+    let mut extra = auto_total % auto_count as i32;
+    user_widths
+        .iter()
+        .map(|width| match width {
+            Some(width) => *width,
+            None => {
+                let bonus = i32::from(extra > 0);
+                extra = extra.saturating_sub(1);
+                (base + bonus).max(COLUMN_WIDTH)
+            }
+        })
+        .collect()
 }
 
 pub(super) fn max_child_natural_width(widget: &gtk::Widget) -> i32 {
