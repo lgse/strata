@@ -75,12 +75,28 @@ fn main() -> gtk::glib::ExitCode {
         .flags(gio::ApplicationFlags::HANDLES_OPEN)
         .build();
 
+    application.connect_startup(export_file_manager_interface);
     application.connect_activate(ui::present);
     application.connect_open(|application, files, _| {
         let location = files.first().and_then(gio::File::path);
         ui::present_location(application, location);
     });
     application.run()
+}
+
+/// Answers "Open file location" from browsers and other desktop apps, which
+/// call `org.freedesktop.FileManager1` instead of the `inode/directory`
+/// handler.
+fn export_file_manager_interface(application: &gtk::Application) {
+    let Some(connection) = application.dbus_connection() else {
+        return;
+    };
+    let target = application.clone();
+    if let Err(error) = adapters::export_file_manager(&connection, move |request| {
+        ui::present_reveal(&target, request);
+    }) {
+        tracing::warn!(%error, "unable to export the file manager interface");
+    }
 }
 
 fn restart_with_local_vfs_if_gvfs_is_unresponsive() {

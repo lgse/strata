@@ -52,6 +52,14 @@ package() {
     warning "Strata ${_releasever} ships no desktop entry or application icon; installing without a launcher."
   fi
 
+  # Owns org.freedesktop.FileManager1 so "Open file location" in other apps
+  # reaches Strata. The file name is Strata's own so it never collides with
+  # another file manager's package.
+  if [[ -f "${dist}/io.github.lgse.Strata.FileManager1.service" ]]; then
+    install -Dm644 "${dist}/io.github.lgse.Strata.FileManager1.service" \
+      "${pkgdir}/usr/share/dbus-1/services/io.github.lgse.Strata.FileManager1.service"
+  fi
+
   install -Dm644 /dev/stdin "${pkgdir}/usr/share/strata/install-source.toml" <<'MARKER'
 manager = "pacman"
 package = "strata-bin"

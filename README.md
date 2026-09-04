@@ -123,7 +123,9 @@ Then:
 - Ask whether I want a per-user desktop entry and inode/directory association;
   if yes, install the archive's io.github.lgse.Strata.desktop and io.github.lgse.Strata.svg
   under ~/.local/share, pointing Exec at the installed binary, then refresh the
-  desktop database and icon cache.
+  desktop database and icon cache. Install the archive's
+  io.github.lgse.Strata.FileManager1.service the same way so "Open file location"
+  in other applications reveals files in Strata.
 - Launch `strata`, report its installed version/source release, and verify the
   desktop association if one was requested. Do not weaken the preview sandbox.
 ```
@@ -225,7 +227,26 @@ xdg-mime query default inode/directory
 
 The final command should print `io.github.lgse.Strata.desktop`. The desktop entry's filename matches the `io.github.lgse.Strata` application ID that Strata's windows report, so desktop shells match a running window to this entry and draw its `Icon` value. Log out and back in if a shell caches launcher icons.
 
-When building from source, `make install-local` installs the binary, icon, and desktop entry in the same locations, and `make uninstall-local` removes them.
+When building from source, `make install-local` installs the binary, icon, desktop entry, and file-manager service in the same locations, and `make uninstall-local` removes them.
+
+### "Open file location" from other applications
+
+Browsers and GTK/GNOME applications reveal a file by calling the `org.freedesktop.FileManager1` D-Bus interface instead of consulting the `inode/directory` association, so they need Strata registered as an activatable service as well:
+
+```bash
+cd ~/Downloads/"${archive%.tar.gz}"
+install -d ~/.local/share/dbus-1/services
+sed "s|^Exec=/usr/bin/strata |Exec=$HOME/.local/bin/strata |" \
+  io.github.lgse.Strata.FileManager1.service \
+  > ~/.local/share/dbus-1/services/io.github.lgse.Strata.FileManager1.service
+```
+
+The per-user file takes precedence over the one shipped by another file manager. Strata then answers `ShowFolders`, `ShowItems`, and `ShowItemProperties`, opening the directory that holds the named items with those items selected:
+
+```bash
+busctl --user call org.freedesktop.FileManager1 /org/freedesktop/FileManager1 \
+  org.freedesktop.FileManager1 ShowItems ass 1 "file://$HOME/Downloads" ""
+```
 
 ### Make Strata the Omarchy file manager
 

@@ -11,7 +11,10 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
-    adapters::{LocalFileSource, LocalOperationProvider, LocalPreviewProvider, location_for_file},
+    adapters::{
+        LocalFileSource, LocalOperationProvider, LocalPreviewProvider, RevealRequest,
+        location_for_file,
+    },
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{BuildKind, ReleaseMetadata, sanitize_uri_credentials},
@@ -48,10 +51,35 @@ fn mouse_history_action(button: u32) -> Option<MouseHistoryAction> {
 }
 
 pub fn present(application: &gtk::Application) {
-    present_location(application, None);
+    present_target(application, None, Vec::new(), false);
 }
 
 pub fn present_location(application: &gtk::Application, location: Option<PathBuf>) {
+    present_target(
+        application,
+        location.map(Location::local),
+        Vec::new(),
+        false,
+    );
+}
+
+/// Opens the window an `org.freedesktop.FileManager1` caller asked for: the
+/// directory holding the named items, with those items selected.
+pub fn present_reveal(application: &gtk::Application, request: RevealRequest) {
+    present_target(
+        application,
+        Some(request.directory),
+        request.selection,
+        request.properties,
+    );
+}
+
+fn present_target(
+    application: &gtk::Application,
+    location: Option<Location>,
+    selection: Vec<String>,
+    properties: bool,
+) {
     let present_started = std::time::Instant::now();
     crate::assets::register_icon_theme();
     let theme_manager = super::theme::ThemeManager::shared();
@@ -486,11 +514,14 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     });
     window.present();
     crate::metrics::mark_window_presented();
-    let pending_location = location.unwrap_or_else(home_directory);
+    let pending_location = location.unwrap_or_else(|| Location::local(home_directory()));
+    if !selection.is_empty() {
+        browser.select_after_load(selection, properties);
+    }
     let idle_browser = browser.clone();
     glib::idle_add_local_once(move || {
         let started = std::time::Instant::now();
-        idle_browser.navigate(pending_location);
+        idle_browser.navigate_location(pending_location);
         tracing::debug!(
             elapsed_ms = started.elapsed().as_millis() as u64,
             "present navigation started"

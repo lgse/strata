@@ -323,6 +323,9 @@ pub(super) struct ViewState {
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     print_handler: RefCell<Option<PrintHandler>>,
     pending_select: RefCell<Vec<String>>,
+    /// Set when the pending selection came from a properties request, so the
+    /// dialog opens once the entry it describes is actually loaded.
+    pending_select_properties: Cell<bool>,
     pending_extract_retry: RefCell<Option<(FileEntry, Location)>>,
     /// The entries a just-dispatched, non-permanent delete requested,
     /// snapshotted so a `CompletedWithErrors` response naming entries that
@@ -482,6 +485,7 @@ impl BrowserView {
             pin_status_handler: RefCell::new(None),
             print_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
+            pending_select_properties: Cell::new(false),
             pending_extract_retry: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
             pending_navigate: RefCell::new(None),
@@ -567,10 +571,15 @@ impl BrowserView {
         self.state.overlay.clone().upcast()
     }
 
-    pub fn navigate(&self, path: impl AsRef<Path>) {
-        self.state
-            .browser
-            .navigate(Location::local(path.as_ref().to_path_buf()));
+    pub fn navigate_location(&self, location: Location) {
+        self.state.browser.navigate(location);
+    }
+
+    /// Selects `names` in the active column once it finishes loading,
+    /// optionally opening the properties dialog for the focused one.
+    pub fn select_after_load(&self, names: Vec<String>, properties: bool) {
+        self.state.pending_select.borrow_mut().extend(names);
+        self.state.pending_select_properties.set(properties);
     }
 
     pub fn browser(&self) -> Rc<Browser> {
@@ -4084,11 +4093,15 @@ impl ViewState {
                 }
                 if self.browser.active_depth() == Some(*depth) {
                     let names = self.pending_select.take();
+                    let properties = self.pending_select_properties.replace(false);
                     if !names.is_empty() {
                         let weak = Rc::downgrade(self);
                         glib::idle_add_local_once(move || {
                             if let Some(state) = weak.upgrade() {
                                 state.browser.select_entries_by_name(&names);
+                                if properties && let Some(entry) = state.browser.focused_entry() {
+                                    state.show_entry_properties(entry);
+                                }
                             }
                         });
                     }
