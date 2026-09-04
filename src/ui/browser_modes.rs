@@ -8,7 +8,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     rc::{Rc, Weak},
 };
 
@@ -723,6 +723,13 @@ impl ModeViews {
                     sync_grid_groups(pane);
                     if !pane.spinner.is_spinning() {
                         show_count(pane);
+                    }
+                }
+            }
+            BrowserEvent::MetadataFilled { depth, updates } => {
+                if self.mode == BrowserMode::Explorer {
+                    for pane in self.panes_at(*depth) {
+                        update_bound_explorer_metadata(pane, updates);
                     }
                 }
             }
@@ -3124,6 +3131,47 @@ fn entry_mode(entry: &FileEntry) -> String {
     match entry.mode {
         MetadataValue::Known(mode) => super::browser::format_permissions(mode),
         MetadataValue::Unknown | MetadataValue::Unavailable => String::new(),
+    }
+}
+
+fn update_bound_explorer_metadata(pane: &Pane, updates: &[(usize, FileEntry)]) {
+    let updates: HashMap<usize, &FileEntry> = updates
+        .iter()
+        .map(|(position, entry)| (*position, entry))
+        .collect();
+    for section in pane.item_sections() {
+        section.bound_items.borrow_mut().retain(|bound| {
+            let (Some(item), Some(row)) = (bound.item.upgrade(), bound.widget.upgrade()) else {
+                return false;
+            };
+            let Some(position) =
+                source_position_for_view(&pane.model, Some(&section.view_model), item.position())
+            else {
+                return true;
+            };
+            let Some(entry) = updates.get(&position) else {
+                return true;
+            };
+            let Some(name_cell) = row.first_child().and_downcast::<gtk::Box>() else {
+                return true;
+            };
+            let Some(mode) = name_cell.next_sibling().and_downcast::<gtk::Label>() else {
+                return true;
+            };
+            let Some(size) = mode.next_sibling().and_downcast::<gtk::Label>() else {
+                return true;
+            };
+            let Some(kind) = size.next_sibling().and_downcast::<gtk::Label>() else {
+                return true;
+            };
+            let Some(modified) = kind.next_sibling().and_downcast::<gtk::Label>() else {
+                return true;
+            };
+            mode.set_label(&entry_mode(entry));
+            size.set_label(&entry_size(entry));
+            crate::util::set_modified_date(&modified, Some(entry), "—");
+            true
+        });
     }
 }
 
