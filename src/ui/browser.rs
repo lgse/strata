@@ -4149,7 +4149,26 @@ impl ViewState {
                 }
             }
         }
-        self.browser.focus_active();
+        self.focus_rebuilt_active_column();
+    }
+
+    fn focus_rebuilt_active_column(&self) {
+        let Some(depth) = self.browser.active_depth() else {
+            return;
+        };
+        let columns = self.columns.borrow();
+        let Some(column) = columns.get(depth) else {
+            return;
+        };
+        if let Some((focused_depth, position, _)) = self.browser.focused_item()
+            && focused_depth == depth
+            && let Some(position) = filtered_position_for_source(column, position)
+        {
+            column
+                .list
+                .scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+        }
+        column.list.grab_focus();
     }
 
     fn refresh_active_path_rows(&self) {
