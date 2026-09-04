@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::path::Path;
+use std::{cell::Cell, path::Path};
 
 use crate::services::{BuildKind, ReleaseMetadata};
 
 use super::{
-    MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, is_open_terminal_shortcut,
-    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location,
-    is_toggle_hidden_shortcut, is_undo_trash_shortcut, media_release_label, mount_release_action,
-    mouse_history_action, parse_pinned_drag_source, parse_pinned_places, pin_status,
-    remove_pinned_place, reorder_pinned_places, reorder_places, resolve_place_order,
-    serialize_pinned_places, should_show_standard_place, sidebar_update_label, standard_place,
-    vim_focus_direction, volume_release_action,
+    MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, begin_media_release,
+    is_open_terminal_shortcut, is_sidebar_focus_shortcut, is_smb_location,
+    is_standard_place_location, is_toggle_hidden_shortcut, is_undo_trash_shortcut,
+    media_release_label, mount_release_action, mouse_history_action, parse_pinned_drag_source,
+    parse_pinned_places, pin_status, remove_pinned_place, reorder_pinned_places, reorder_places,
+    resolve_place_order, serialize_pinned_places, should_show_standard_place, sidebar_update_label,
+    standard_place, vim_focus_direction, volume_release_action,
 };
 
 fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
@@ -544,4 +544,15 @@ fn media_release_labels_match_nautilus_wording() {
     assert_eq!(media_release_label(MediaRelease::EjectVolume), "Eject");
     assert_eq!(media_release_label(MediaRelease::EjectMount), "Eject");
     assert_eq!(media_release_label(MediaRelease::UnmountMount), "Unmount");
+}
+
+#[test]
+fn media_release_guard_rejects_repeated_actions_until_completion() {
+    let in_flight = Cell::new(false);
+
+    assert!(begin_media_release(&in_flight));
+    assert!(!begin_media_release(&in_flight));
+
+    in_flight.set(false);
+    assert!(begin_media_release(&in_flight));
 }

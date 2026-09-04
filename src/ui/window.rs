@@ -1319,12 +1319,14 @@ impl SidebarState {
                         let release_mount = mount.clone();
                         let release_browser = self.browser.clone();
                         let release_parent = self.view.widget();
+                        let release_in_flight = Rc::new(Cell::new(false));
                         let on_release: Rc<dyn Fn()> = Rc::new(move || {
                             release_device_mount(
                                 &release_mount,
                                 action,
                                 &release_parent,
                                 &release_browser,
+                                &release_in_flight,
                             );
                         });
                         (action, on_release)
@@ -1635,12 +1637,14 @@ impl SidebarState {
                 let release_volume = volume.clone();
                 let release_browser = self.browser.clone();
                 let release_parent = self.view.widget();
+                let release_in_flight = Rc::new(Cell::new(false));
                 let on_release: Rc<dyn Fn()> = Rc::new(move || {
                     release_device_volume(
                         &release_volume,
                         action,
                         &release_parent,
                         &release_browser,
+                        &release_in_flight,
                     );
                 });
                 let eject = sidebar_eject_button(action, {
@@ -1989,35 +1993,63 @@ fn navigate_home_if_within(browser: &Rc<Browser>, root: &gio::File) {
     }
 }
 
+fn begin_media_release(in_flight: &Cell<bool>) -> bool {
+    !in_flight.replace(true)
+}
+
 fn release_device_volume(
     volume: &gio::Volume,
     action: MediaRelease,
     parent: &gtk::Widget,
     browser: &Rc<Browser>,
+    in_flight: &Rc<Cell<bool>>,
 ) {
-    let away_root = volume.get_mount().map(|mount| mount.root());
+    if !begin_media_release(in_flight) {
+        return;
+    }
+    let mount = volume.get_mount();
+    let away_root = mount.as_ref().map(gio::Mount::root);
     let window = parent.root().and_downcast::<gtk::Window>();
     let operation = gtk::MountOperation::new(window.as_ref());
     let error_parent = parent.clone();
     let browser = browser.clone();
     let volume = volume.clone();
+    let in_flight = in_flight.clone();
     let title = media_release_error_title(action);
     glib::MainContext::default().spawn_local(async move {
         let result = match action {
-            MediaRelease::EjectVolume | MediaRelease::EjectMount => {
+            MediaRelease::EjectVolume => {
                 volume
                     .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
                     .await
             }
-            MediaRelease::UnmountMount => {
-                let Some(mount) = volume.get_mount() else {
+            MediaRelease::EjectMount => match mount {
+                Some(mount) => {
+                    mount
+                        .eject_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
+                        .await
+                }
+                None => {
+                    in_flight.set(false);
                     return;
-                };
-                mount
-                    .unmount_with_operation_future(gio::MountUnmountFlags::NONE, Some(&operation))
-                    .await
-            }
+                }
+            },
+            MediaRelease::UnmountMount => match mount {
+                Some(mount) => {
+                    mount
+                        .unmount_with_operation_future(
+                            gio::MountUnmountFlags::NONE,
+                            Some(&operation),
+                        )
+                        .await
+                }
+                None => {
+                    in_flight.set(false);
+                    return;
+                }
+            },
         };
+        in_flight.set(false);
         match result {
             Ok(()) => {
                 if let Some(root) = away_root {
@@ -2035,13 +2067,18 @@ fn release_device_mount(
     action: MediaRelease,
     parent: &gtk::Widget,
     browser: &Rc<Browser>,
+    in_flight: &Rc<Cell<bool>>,
 ) {
+    if !begin_media_release(in_flight) {
+        return;
+    }
     let away_root = mount.root();
     let window = parent.root().and_downcast::<gtk::Window>();
     let operation = gtk::MountOperation::new(window.as_ref());
     let error_parent = parent.clone();
     let browser = browser.clone();
     let mount = mount.clone();
+    let in_flight = in_flight.clone();
     let title = media_release_error_title(action);
     glib::MainContext::default().spawn_local(async move {
         let result = match action {
@@ -2056,6 +2093,7 @@ fn release_device_mount(
                     .await
             }
         };
+        in_flight.set(false);
         match result {
             Ok(()) => navigate_home_if_within(&browser, &away_root),
             Err(error) if error.matches(gio::IOErrorEnum::Cancelled) => {}
