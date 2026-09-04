@@ -429,6 +429,7 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
         kind,
         size: crate::model::MetadataValue::Unknown,
         modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        mode: crate::model::MetadataValue::Unknown,
         is_hidden: false,
     };
 
