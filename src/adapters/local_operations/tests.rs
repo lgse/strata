@@ -225,6 +225,90 @@ fn recursive_copy_preserves_nested_directory_contents() -> Result<(), Box<dyn Er
 }
 
 #[test]
+fn copy_recursively_does_not_follow_a_symlink_nested_inside_the_tree() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("strata-copy-symlink-test-{unique}"));
+    let source = root.join("source");
+    let outside = root.join("outside");
+    let target = root.join("target");
+    fs::create_dir_all(source.join("nested"))?;
+    fs::create_dir_all(&outside)?;
+    fs::write(outside.join("secret.txt"), b"do not copy me")?;
+    fs::write(source.join("nested/visible.txt"), b"contents")?;
+    std::os::unix::fs::symlink(&outside, source.join("nested/decoy"))?;
+
+    let result = glib::MainContext::default().block_on(copy_recursively(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok());
+    assert_eq!(fs::read(target.join("nested/visible.txt"))?, b"contents");
+    let decoy_dest = target.join("nested/decoy");
+    let decoy_metadata = fs::symlink_metadata(&decoy_dest)?;
+    assert!(
+        decoy_metadata.file_type().is_symlink(),
+        "the decoy must be copied as a symlink, not followed into a real directory"
+    );
+    assert_eq!(fs::read_link(&decoy_dest)?, outside);
+    // `is_symlink` above already rules out a real directory of copied
+    // content existing under this name; confirm the thing it still points
+    // at (unavoidably reachable by following the recreated symlink, same as
+    // the original) was left untouched rather than overwritten.
+    assert_eq!(fs::read(outside.join("secret.txt"))?, b"do not copy me");
+
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn copy_recursively_of_a_symlink_creates_a_symlink_not_a_recursive_copy()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("strata-copy-symlink-top-test-{unique}"));
+    let outside = root.join("outside");
+    let decoy = root.join("decoy");
+    let target = root.join("target-link");
+    fs::create_dir_all(&outside)?;
+    fs::write(outside.join("secret.txt"), b"do not copy me")?;
+    std::os::unix::fs::symlink(&outside, &decoy)?;
+
+    let result = glib::MainContext::default().block_on(copy_recursively(
+        gio::File::for_path(&decoy),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok());
+    let target_metadata = fs::symlink_metadata(&target)?;
+    assert!(
+        target_metadata.file_type().is_symlink(),
+        "copying a symlink must produce a symlink, not a recursive copy of its target"
+    );
+    assert_eq!(fs::read_link(&target)?, outside);
+    assert_eq!(fs::read(outside.join("secret.txt"))?, b"do not copy me");
+
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
 fn staged_file_replacement_preserves_the_destination_on_disk_full() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
