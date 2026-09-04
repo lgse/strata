@@ -809,6 +809,18 @@ fn cut_matches_gio_equivalent_representations() {
 }
 
 #[test]
+fn cleared_shared_cut_is_not_revived_by_stale_view_state() {
+    let native = Location::local("/fixture/first");
+    let uri = Location::uri("file:///fixture/first");
+
+    set_shared_cut(std::slice::from_ref(&native));
+    assert!(is_cut_match(std::slice::from_ref(&uri)));
+
+    clear_shared_cut();
+    assert!(!is_cut_match(std::slice::from_ref(&native)));
+}
+
+#[test]
 fn completed_moves_match_gio_equivalent_cut_entries() {
     let mut cut = vec![Location::local("/fixture/first")];
 

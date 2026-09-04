@@ -8,7 +8,7 @@ use std::{
     path::Path,
     pin::Pin,
     process::{Command, Stdio},
-    rc::Rc,
+    rc::{Rc, Weak},
     time::{Duration, Instant},
 };
 
@@ -293,7 +293,6 @@ pub(super) struct ViewState {
     mode_views: RefCell<ModeViews>,
     columns: RefCell<Vec<ColumnView>>,
     hovered_column: Cell<Option<usize>>,
-    cut_locations: RefCell<Vec<Location>>,
     horizontal_scroll_generation: Rc<Cell<u64>>,
     peek: RefCell<Option<PeekView>>,
     pending_peek: RefCell<Option<glib::SourceId>>,
@@ -449,7 +448,6 @@ impl BrowserView {
             mode_views: RefCell::new(mode_views),
             columns: RefCell::new(Vec::new()),
             hovered_column: Cell::new(None),
-            cut_locations: RefCell::new(Vec::new()),
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
             peek: RefCell::new(None),
             pending_peek: RefCell::new(None),
@@ -480,6 +478,8 @@ impl BrowserView {
 
         // Columns are laid out from the start edge, so the blank strip beside the last
         // one is the natural place to begin a marquee that runs into it.
+        register_cut_view(&state);
+
         let weak_state = Rc::downgrade(&state);
         super::marquee::install_shared_origin_surface(&state.scroller, move |surface, _, x, _| {
             let state = weak_state.upgrade()?;
@@ -1413,34 +1413,24 @@ impl ViewState {
     }
 
     fn copy_entries(&self, entries: &[FileEntry]) {
-        self.sync_mode_selection();
         if set_files_clipboard(entries) {
             self.clear_cut();
         }
     }
 
     fn cut_entries(&self, entries: &[FileEntry]) {
-        self.sync_mode_selection();
         if set_files_clipboard(entries) {
             let locations: Vec<Location> =
                 entries.iter().map(|entry| entry.location.clone()).collect();
-            self.cut_locations.replace(locations.clone());
             set_shared_cut(&locations);
-            self.refresh_cut_rows();
         }
     }
 
     fn clear_cut(&self) {
         clear_shared_cut();
-        if self.cut_locations.borrow().is_empty() {
-            return;
-        }
-        self.cut_locations.borrow_mut().clear();
-        self.refresh_cut_rows();
     }
 
     fn complete_cut_transfer(&self, transferred: &[Location]) {
-        retain_untransferred(&mut self.cut_locations.borrow_mut(), transferred);
         retain_shared_untransferred(transferred);
         let remaining = shared_cut_locations();
         if remaining.is_empty() {
@@ -1452,11 +1442,10 @@ impl ViewState {
         } else {
             let _set = set_location_files_clipboard(&remaining);
         }
-        self.refresh_cut_rows();
     }
 
     fn refresh_cut_rows(&self) {
-        let cut = self.cut_locations.borrow();
+        let cut = shared_cut_locations();
         self.mode_views.borrow().set_cut_locations(&cut);
         let cut_lookup: HashSet<_> = cut.iter().collect();
         for (depth, column) in self.columns.borrow().iter().enumerate() {
@@ -1499,7 +1488,7 @@ impl ViewState {
                 .filter_map(|file| location_for_file(&file))
                 .collect::<Vec<_>>();
             if let Some(state) = weak.upgrade() {
-                let move_sources = is_cut_match(&sources, &state.cut_locations.borrow());
+                let move_sources = is_cut_match(&sources);
                 state.start_transfer(destination, sources, move_sources);
             }
         });
@@ -4760,9 +4749,9 @@ impl ViewState {
             set_cut_path_style(
                 &row,
                 entry.as_ref().is_some_and(|entry| {
-                    state
-                        .as_ref()
-                        .is_some_and(|state| state.cut_locations.borrow().contains(&entry.location))
+                    shared_cut_locations()
+                        .iter()
+                        .any(|cut| locations_equal(cut, &entry.location))
                 }),
             );
             if let Some(entry) = entry.as_ref() {
@@ -6318,6 +6307,7 @@ fn context_entries(
     state: &ViewState,
     target: &RefCell<Option<(usize, FileEntry)>>,
 ) -> Vec<FileEntry> {
+    state.sync_mode_selection();
     let entries = state.browser.selected_entries();
     if entries.is_empty() {
         target
@@ -6876,12 +6866,28 @@ fn needs_shell_escape(c: char) -> bool {
 }
 
 // Process-wide cut intent shared by every window. The GDK clipboard only
-// carries a `FileList` with no cut marker, and each `ViewState` keeps its own
-// `cut_locations` for dimming, so a cut in one window always pasted as a copy
-// in another. This thread-local (GTK stays on the main thread) is the source
-// of truth for "was this a cut", while the per-view list stays for styling.
+// carries a `FileList` with no cut marker, so this thread-local (GTK stays on
+// the main thread) is the source of truth for both paste behavior and styling.
 thread_local! {
     static SHARED_CUT_LOCATIONS: RefCell<Vec<Location>> = const { RefCell::new(Vec::new()) };
+    static CUT_VIEWS: RefCell<Vec<Weak<ViewState>>> = const { RefCell::new(Vec::new()) };
+}
+
+fn register_cut_view(state: &Rc<ViewState>) {
+    CUT_VIEWS.with(|views| views.borrow_mut().push(Rc::downgrade(state)));
+    state.refresh_cut_rows();
+}
+
+fn refresh_cut_views() {
+    let views = CUT_VIEWS.with(|views| {
+        let mut views = views.borrow_mut();
+        let live = views.iter().filter_map(Weak::upgrade).collect::<Vec<_>>();
+        views.retain(|view| view.strong_count() > 0);
+        live
+    });
+    for view in views {
+        view.refresh_cut_rows();
+    }
 }
 
 fn shared_cut_locations() -> Vec<Location> {
@@ -6890,21 +6896,21 @@ fn shared_cut_locations() -> Vec<Location> {
 
 fn set_shared_cut(locations: &[Location]) {
     SHARED_CUT_LOCATIONS.with(|cut| cut.replace(locations.to_vec()));
+    refresh_cut_views();
 }
 
 fn clear_shared_cut() {
     SHARED_CUT_LOCATIONS.with(|cut| cut.borrow_mut().clear());
+    refresh_cut_views();
 }
 
 fn retain_shared_untransferred(transferred: &[Location]) {
     SHARED_CUT_LOCATIONS.with(|cut| retain_untransferred(&mut cut.borrow_mut(), transferred));
+    refresh_cut_views();
 }
 
-/// True when the clipboard sources match a pending cut, checking the local
-/// view first and falling back to the process-wide cut list so cross-window
-/// paste still moves.
-fn is_cut_match(sources: &[Location], local_cut: &[Location]) -> bool {
-    same_locations(sources, local_cut) || same_locations(sources, &shared_cut_locations())
+fn is_cut_match(sources: &[Location]) -> bool {
+    same_locations(sources, &shared_cut_locations())
 }
 
 fn set_files_clipboard(entries: &[FileEntry]) -> bool {
