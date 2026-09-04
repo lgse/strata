@@ -49,7 +49,6 @@ jobs:
           preview=$(grep -m1 '^_releasever=' packaging/aur/strata-rc-bin/PKGBUILD | cut -d= -f2)
           python3 scripts/update_aur.py --stable "$stable" --preview "$preview" --check
 
-      # makepkg refuses to run as root, and --syncdeps shells out to pacman.
       - name: Create an unprivileged build user
         run: |
           useradd --create-home builder
@@ -64,11 +63,7 @@ jobs:
             echo "::endgroup::"
           done
 
-      # namcap exits 0 even when it reports something, so a failing check has
-      # to come from its output. Only `E:` lines fail the build: warnings are
-      # advisory and include one that is expected here -- namcap flags
-      # `bubblewrap` as unneeded because it only inspects ELF linkage and
-      # cannot see that Strata execs `bwrap` to sandbox every render.
+      # namcap reports findings without a failing exit status.
       - name: Check the packages with namcap
         run: |
           status=0
@@ -95,8 +90,6 @@ jobs:
             marker=$(bsdtar -xOf "$archive" usr/share/strata/install-source.toml)
             printf '%s\n' "$marker" | grep -qx "package = \"$package\""
             printf '%s\n' "$marker" | grep -qx "channel = \"$channel\""
-            # pacman cannot update an AUR package, so the marker must leave the
-            # command to Strata's helper detection rather than pinning one.
             if printf '%s\n' "$marker" | grep -q '^update_command'; then
               echo "$package pins an update_command; AUR packages must not." >&2
               exit 1

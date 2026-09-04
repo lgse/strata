@@ -1,35 +1,5 @@
 #!/usr/bin/env python3
-"""Render the AUR packages in `packaging/aur/` for a published release.
-
-Both packages are generated from the single template
-`packaging/aur/PKGBUILD.in`: `strata-bin` tracks stable releases and
-`strata-rc-bin` tracks the newest non-nightly Preview-channel release. The AUR requires a
-self-contained `PKGBUILD`, so the rendered files are committed rather than
-sourced from the template at build time.
-
-Nightly releases are deliberately not packaged. A nightly's download URL
-carries its own tag, and `makepkg` fetches `source` before `pkgver()` runs,
-so a package cannot discover the newest nightly and download it in the same
-build; pinning each one instead would mean an AUR push per nightly. Nightly
-users install manually and update in-app.
-
-Checksums are read from the `.sha256` files published alongside each release
-archive, so a mistyped version fails loudly instead of pinning a wrong digest.
-
-Each package is rendered only when its own flag is passed. Release automation
-updates both packages for a final release, only the Preview package for alpha,
-beta, or RC releases, and neither package for nightlies.
-
-Usage:
-
-    python3 scripts/update_aur.py --stable 0.9.0
-    python3 scripts/update_aur.py --stable 0.9.0 --preview 0.9.0
-    python3 scripts/update_aur.py --preview 0.10.0-rc.1
-
-`.SRCINFO` is regenerated with `makepkg --printsrcinfo`, which requires Arch's
-pacman tooling; pass `--skip-srcinfo` on a non-Arch machine and regenerate it
-before publishing. See `docs/packaging.md` for the full release procedure.
-"""
+"""Render Strata's AUR packages from `packaging/aur/PKGBUILD.in`."""
 
 from __future__ import annotations
 
@@ -63,23 +33,11 @@ PACKAGES = {
 
 
 class PackagingError(ValueError):
-    """Raised for an invalid version, a missing release, or a bad checksum."""
+    pass
 
 
 def package_version(release_version: str) -> str:
-    """Converts a release version into a valid `pkgver`.
-
-    `pkgver` forbids `-` and `:` but allows `.`, so only the hyphen
-    separating the prerelease is removed: `0.8.0-rc.1` becomes `0.8.0rc.1`.
-
-    Dots are deliberately kept. `vercmp` splits on non-alphanumerics and
-    compares segment by segment, so dropping them would concatenate a
-    prerelease's components into one number -- `0.8.0-nightly.20260901.2`
-    would mangle to `0.8.0nightly202609012`, which orders *above*
-    `0.8.0nightly20260902`. Keeping the separator makes every component its
-    own segment, which orders correctly for every form of the tag grammar:
-    `0.8.0rc.1 < 0.8.0rc.2 < 0.8.0rc.10 < 0.8.0`.
-    """
+    """Remove only the prerelease hyphen, preserving `vercmp` ordering."""
     version = release_version.strip().removeprefix("v")
     match = RELEASE_VERSION_PATTERN.match(version)
     if match is None:
@@ -124,12 +82,6 @@ def checksum_url(version: str, target: str) -> str:
 
 
 def parse_checksum(contents: str, expected_archive: str) -> str:
-    """Reads the digest out of a `sha256sum` line, checking the filename.
-
-    The filename check is what makes a wrong `--stable`/`--preview` pairing
-    fail here rather than silently pinning one release's digest to another
-    release's URL.
-    """
     for line in contents.splitlines():
         parts = line.split()
         if len(parts) != 2:

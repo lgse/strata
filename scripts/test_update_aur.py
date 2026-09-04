@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""Tests for `scripts/update_aur.py`.
-
-Run with:
-
-    python3 scripts/test_update_aur.py
-
-or, to run every script test in the repo the same way CI does:
-
-    python3 -m unittest discover -s scripts -p 'test_*.py'
-
-Stdlib `unittest` only -- no dependencies, matching the script it tests. Only
-the pure functions are covered; downloading checksums and shelling out to
-`makepkg` are exercised by the packaging CI job instead.
-"""
+"""Tests for `scripts/update_aur.py`."""
 
 from __future__ import annotations
 
@@ -36,7 +23,6 @@ OTHER_DIGEST = "1" * 64
 
 
 class PackageVersionTests(unittest.TestCase):
-    """`pkgver` mangling, which must preserve `vercmp` ordering."""
 
     def test_a_stable_version_is_unchanged(self):
         self.assertEqual(package_version("0.7.0"), "0.7.0")
@@ -50,8 +36,6 @@ class PackageVersionTests(unittest.TestCase):
         self.assertEqual(package_version("0.8.0-alpha.10"), "0.8.0alpha.10")
 
     def test_a_nightly_keeps_its_date_and_disambiguator_separate(self):
-        # Concatenating these would make the second nightly of one day
-        # (...202609012) order above the next day's (...20260902).
         self.assertEqual(
             package_version("0.8.0-nightly.20260901"), "0.8.0nightly.20260901"
         )
@@ -60,8 +44,6 @@ class PackageVersionTests(unittest.TestCase):
         )
 
     def test_the_result_never_contains_a_character_pkgver_forbids(self):
-        # makepkg's check_pkgver rejects colons, slashes, hyphens and
-        # whitespace. Dots are legal and are what keeps ordering correct.
         for version in (
             "0.7.0",
             "0.8.0-rc.1",
@@ -147,8 +129,6 @@ class PackageValuesTests(unittest.TestCase):
         self.assertEqual(values["ALTERNATE"], "strata-rc-bin")
 
     def test_no_package_names_a_pacman_update_command(self):
-        # pacman cannot update an AUR package; Strata picks an installed AUR
-        # helper at runtime instead, so the marker must not pin a command.
         for pkgname in PACKAGES:
             values = package_values(pkgname, "0.7.0", 1, self.checksums)
             self.assertNotIn("UPDATE_COMMAND", values)

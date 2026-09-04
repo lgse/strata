@@ -5,8 +5,6 @@ use std::path::{Path, PathBuf};
 use super::{InstallSource, ManagedInstall, ensure_self_managed, marker_path_for_executable};
 use crate::services::Channel;
 
-/// The marker exactly as `packaging/aur/PKGBUILD.in` writes it, so a change
-/// to either side that stops them agreeing fails here.
 const PACKAGED_MARKER: &str = r#"
 manager = "pacman"
 package = "strata-bin"
@@ -29,9 +27,6 @@ fn load(contents: &str) -> InstallSource {
 
 #[test]
 fn a_missing_marker_means_a_user_owned_install() {
-    // Absence is decided by the path lookup, not by reading: a marker that
-    // exists but cannot be read must stay Managed (see
-    // `an_unreadable_marker_still_counts_as_packaged`).
     assert_eq!(
         InstallSource::from_marker_path(None),
         InstallSource::SelfManaged
@@ -97,7 +92,6 @@ fn the_update_command_falls_back_when_no_helper_is_installed() {
 
 #[test]
 fn an_explicit_update_command_wins_over_helper_detection() {
-    // How a .deb or .rpm package, which has one fixed command, opts in.
     let managed = load(
         r#"
         manager = "apt"
@@ -125,8 +119,6 @@ fn the_packaging_channel_maps_onto_the_app_channel() {
             .tracked_channel()
     };
 
-    // The AUR package is named `strata-rc-bin`, but the app persists this
-    // channel as `preview`; `Channel::parse` would fail closed to Stable.
     assert_eq!(tracked("rc"), Some(Channel::Preview));
     assert_eq!(tracked("stable"), Some(Channel::Stable));
     assert_eq!(tracked("preview"), Some(Channel::Preview));
@@ -144,9 +136,6 @@ fn the_packaging_channel_maps_onto_the_app_channel() {
 #[test]
 fn an_unreadable_marker_still_counts_as_packaged() {
     let (_directory, path) = marker("");
-    // Invalid UTF-8: what a truncated write leaves behind. The file exists,
-    // so treating it as self-managed would re-enable a rename over
-    // package-owned files.
     std::fs::write(&path, [0xff, 0xfe, 0x00]).expect("the marker to be written");
 
     assert_eq!(

@@ -133,9 +133,6 @@ struct AurPackage {
     version: String,
 }
 
-/// Returns the version currently published for this official Strata AUR
-/// package. GitHub releases are not advertised until the package users can
-/// actually install has reached the same version.
 pub(super) fn aur_repository_version() -> Result<Version, String> {
     let package = InstallSource::detect()
         .managed()
