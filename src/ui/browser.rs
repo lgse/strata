@@ -628,11 +628,21 @@ impl BrowserView {
 
     pub fn set_view_mode(&self, mode: BrowserMode) {
         let previous = self.state.mode_views.borrow().mode();
-        self.state.mode_views.borrow_mut().set_mode(mode);
-        if mode == BrowserMode::Columns && previous != BrowserMode::Columns {
+        if mode == previous {
+            return;
+        }
+        self.state.mode_views.borrow_mut().prepare_mode(mode);
+        if mode == BrowserMode::Columns {
             self.state.rebuild_columns();
-        } else if mode != BrowserMode::Columns {
-            self.state.truncate(0);
+        }
+        self.state.mode_views.borrow().show_mode(mode);
+        match previous {
+            BrowserMode::Columns => self.state.truncate(0),
+            BrowserMode::Grid | BrowserMode::Explorer => self
+                .state
+                .mode_views
+                .borrow_mut()
+                .clear_inactive_mode(previous),
         }
     }
 
@@ -881,6 +891,16 @@ impl BrowserView {
             return false;
         }
         self.state.copy_entries(&entries);
+        true
+    }
+
+    pub fn duplicate_selection(&self) -> bool {
+        self.state.sync_mode_selection();
+        let entries = self.state.browser.selected_entries();
+        let Some((destination, sources)) = duplicate_transfer(&entries) else {
+            return false;
+        };
+        self.state.start_transfer(destination, sources, false);
         true
     }
 
@@ -6941,6 +6961,18 @@ fn terminal_destination_depth(
     hovered
         .filter(|depth| *depth < pane_count)
         .or_else(|| new_folder_destination_depth(focused, active, pane_count))
+}
+
+fn duplicate_transfer(entries: &[FileEntry]) -> Option<(Location, Vec<Location>)> {
+    let destination = entries.first()?.location.parent()?;
+    if !entries
+        .iter()
+        .all(|entry| entry.location.parent().as_ref() == Some(&destination))
+    {
+        return None;
+    }
+    let sources = entries.iter().map(|entry| entry.location.clone()).collect();
+    Some((destination, sources))
 }
 
 fn same_locations(left: &[Location], right: &[Location]) -> bool {

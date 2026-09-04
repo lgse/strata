@@ -655,6 +655,14 @@ fn install_keyboard_navigation(
                 return glib::Propagation::Stop;
             }
         }
+        if control && !shift && matches!(key, gtk::gdk::Key::d | gtk::gdk::Key::D) {
+            if view.filter_has_focus() {
+                return glib::Propagation::Proceed;
+            }
+            if view.duplicate_selection() {
+                return glib::Propagation::Stop;
+            }
+        }
         if control && !shift && key == gtk::gdk::Key::x {
             if view.filter_has_focus() {
                 return glib::Propagation::Proceed;

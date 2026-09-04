@@ -248,8 +248,7 @@ impl ModeViews {
             .build();
 
         let stack = gtk::Stack::builder()
-            .transition_type(gtk::StackTransitionType::Crossfade)
-            .transition_duration(120)
+            .transition_type(gtk::StackTransitionType::None)
             .hexpand(true)
             .vexpand(true)
             .build();
@@ -550,31 +549,39 @@ impl ModeViews {
         true
     }
 
-    pub fn set_mode(&mut self, mode: BrowserMode) {
+    pub fn prepare_mode(&mut self, mode: BrowserMode) {
+        if self.mode == mode {
+            return;
+        }
         self.cancel_new_entry();
         self.cancel_rename();
         self.mode = mode;
+        match mode {
+            BrowserMode::Columns => {}
+            BrowserMode::Grid => self.rebuild_grid(),
+            BrowserMode::Explorer => self.rebuild_explorer(),
+        }
+    }
+
+    pub fn show_mode(&self, mode: BrowserMode) {
         self.stack.set_visible_child_name(match mode {
             BrowserMode::Columns => "columns",
             BrowserMode::Grid => "grid",
             BrowserMode::Explorer => "explorer",
         });
-        match mode {
-            BrowserMode::Columns => {
-                self.clear_grid();
-                self.clear_explorer();
-            }
-            BrowserMode::Grid => {
-                self.clear_explorer();
-                self.rebuild_grid();
-            }
-            BrowserMode::Explorer => {
-                self.clear_grid();
-                self.rebuild_explorer();
-            }
-        }
         if let Some(depth) = self.browser.active_depth() {
             self.focus_visible_pane(depth);
+        }
+    }
+
+    pub fn clear_inactive_mode(&mut self, mode: BrowserMode) {
+        if self.mode == mode {
+            return;
+        }
+        match mode {
+            BrowserMode::Columns => {}
+            BrowserMode::Grid => self.clear_grid(),
+            BrowserMode::Explorer => self.clear_explorer(),
         }
     }
 

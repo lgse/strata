@@ -71,6 +71,71 @@ fn transfer_is_noop(source: &gio::File, destination: &gio::File, target: &gio::F
     source.equal(target) || source.equal(destination) || destination.has_prefix(source)
 }
 
+fn parse_copy_suffix(stem: &OsStr) -> (&OsStr, Option<u64>) {
+    let bytes = stem.as_bytes();
+    if let Some(without_closing_parenthesis) = bytes.strip_suffix(b")")
+        && let Some(separator) = without_closing_parenthesis
+            .windows(b" (".len())
+            .rposition(|window| window == b" (")
+    {
+        let suffix = &without_closing_parenthesis[separator + b" (".len()..];
+        if !suffix.is_empty()
+            && suffix[0] != b'0'
+            && suffix.iter().all(u8::is_ascii_digit)
+            && let Ok(suffix) = std::str::from_utf8(suffix)
+            && let Ok(number) = suffix.parse::<u64>()
+            && number < u64::MAX
+        {
+            return (OsStr::from_bytes(&bytes[..separator]), Some(number));
+        }
+    }
+    (stem, None)
+}
+
+fn duplicate_candidate_name(
+    base_stem: &OsStr,
+    extension: Option<&OsStr>,
+    copy_number: u64,
+) -> OsString {
+    let mut candidate = base_stem.as_bytes().to_vec();
+    candidate.extend_from_slice(b" (");
+    candidate.extend_from_slice(copy_number.to_string().as_bytes());
+    candidate.push(b')');
+    if let Some(extension) = extension {
+        candidate.push(b'.');
+        candidate.extend_from_slice(extension.as_bytes());
+    }
+    OsString::from_vec(candidate)
+}
+
+fn duplicate_target(
+    destination: &gio::File,
+    name: &Path,
+    is_directory: bool,
+    cancellable: &gio::Cancellable,
+) -> Result<gio::File, glib::Error> {
+    cancellable.set_error_if_cancelled()?;
+    let name = name.as_os_str();
+    let (stem, extension) = if is_directory {
+        (name, None)
+    } else {
+        let path = Path::new(name);
+        let extension = path.extension().filter(|extension| !extension.is_empty());
+        (path.file_stem().unwrap_or(name), extension)
+    };
+    let (base_stem, copy_num) = parse_copy_suffix(stem);
+    let start_index = copy_num.map_or(1, |number| number + 1);
+    for index in start_index..=u64::MAX {
+        cancellable.set_error_if_cancelled()?;
+        let candidate_name = duplicate_candidate_name(base_stem, extension, index);
+        let candidate = destination.child(&candidate_name);
+        if !candidate.query_exists(Some(cancellable)) {
+            return Ok(candidate);
+        }
+    }
+    Err(io_error("Could not find an unused duplicate name"))
+}
+
 fn was_cancelled(error: &glib::Error) -> bool {
     error.matches(gio::IOErrorEnum::Cancelled)
 }
@@ -1074,8 +1139,9 @@ impl OperationProvider for LocalOperationProvider {
                     });
                     return;
                 };
-                let target = destination.child(name);
-                if transfer_is_noop(&source, &destination, &target) {
+                let default_target = destination.child(&name);
+                let is_duplicate = !request.move_sources && source.equal(&default_target);
+                if !is_duplicate && transfer_is_noop(&source, &destination, &default_target) {
                     completed.push(item.source.clone());
                     emit(OperationEvent::TransferProgress {
                         request_id: request.id,
@@ -1084,11 +1150,84 @@ impl OperationProvider for LocalOperationProvider {
                     });
                     continue;
                 }
+                let target = if is_duplicate {
+                    let is_directory = match await_cancellable(
+                        &source,
+                        &operation_cancellable,
+                        |source, cancellable, result| {
+                            source.query_info_async(
+                                "standard::type",
+                                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                                glib::Priority::DEFAULT,
+                                Some(cancellable),
+                                move |output| result.resolve(output),
+                            );
+                        },
+                    )
+                    .await
+                    {
+                        Ok(info) => info.file_type() == gio::FileType::Directory,
+                        Err(error) => {
+                            if was_cancelled(&error) {
+                                emit(cancelled_event(
+                                    request.id,
+                                    completed,
+                                    vec![item.source.clone()],
+                                    request.items[index + 1..]
+                                        .iter()
+                                        .map(|item| item.source.clone())
+                                        .collect(),
+                                    affected_locations,
+                                ));
+                                return;
+                            }
+                            emit(OperationEvent::TransferFailed {
+                                request_id: request.id,
+                                completed_locations: completed,
+                                message: error.to_string(),
+                            });
+                            return;
+                        }
+                    };
+                    match duplicate_target(
+                        &destination,
+                        &name,
+                        is_directory,
+                        &operation_cancellable,
+                    ) {
+                        Ok(target) => target,
+                        Err(error) => {
+                            if was_cancelled(&error) {
+                                emit(cancelled_event(
+                                    request.id,
+                                    completed,
+                                    vec![item.source.clone()],
+                                    request.items[index + 1..]
+                                        .iter()
+                                        .map(|item| item.source.clone())
+                                        .collect(),
+                                    affected_locations,
+                                ));
+                                return;
+                            }
+                            emit(OperationEvent::TransferFailed {
+                                request_id: request.id,
+                                completed_locations: completed,
+                                message: error.to_string(),
+                            });
+                            return;
+                        }
+                    }
+                } else {
+                    default_target
+                };
                 affected_locations.insert(item.source.clone());
                 if let Some(target) = location_for_file(&target) {
                     affected_locations.insert(target);
                 }
-                let result = if item.conflict == TransferConflict::ReplaceExisting {
+                let result = if is_duplicate {
+                    copy_new_recursively(source, target, operation_cancellable.clone()).await
+                } else if item.conflict == TransferConflict::ReplaceExisting {
                     replace_local(
                         source,
                         target,

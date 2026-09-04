@@ -4,10 +4,10 @@ use std::{
     cell::{Cell, RefCell},
     collections::HashSet,
     error::Error,
-    ffi::OsString,
+    ffi::{OsStr, OsString},
     fs,
     io::{Cursor, Write},
-    os::unix::fs::PermissionsExt,
+    os::unix::{ffi::OsStringExt, fs::PermissionsExt},
     path::Path,
     rc::Rc,
     sync::{
@@ -23,10 +23,11 @@ use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 
 use super::{
     LocalOperationProvider, await_cancellable, copy_new_recursively, copy_recursively,
-    deletion_error_message, deletion_error_summary, extract_7z_from_reader, extract_tar,
-    extract_zip_from_archive, home_trash_entries_at, is_trash_unsupported_failure, move_local_with,
-    operation_error_summary, replace_local, replace_local_with, transfer_is_noop,
-    validated_archive_path, validated_child, write_staged_archive,
+    deletion_error_message, deletion_error_summary, duplicate_candidate_name,
+    extract_7z_from_reader, extract_tar, extract_zip_from_archive, home_trash_entries_at,
+    is_trash_unsupported_failure, move_local_with, operation_error_summary, parse_copy_suffix,
+    replace_local, replace_local_with, transfer_is_noop, validated_archive_path, validated_child,
+    write_staged_archive,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
@@ -1396,5 +1397,339 @@ fn cancelling_restore_before_io_reports_every_item_as_unattempted() -> Result<()
                 && result.failed.is_empty()
                 && result.not_attempted == [entries[0].location.clone()]
     ));
+    Ok(())
+}
+
+#[test]
+fn copy_suffix_parsing_and_candidate_naming() {
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name")),
+        (OsStr::new("name"), None)
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name (1)")),
+        (OsStr::new("name"), Some(1))
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name (2)")),
+        (OsStr::new("name"), Some(2))
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name (42)")),
+        (OsStr::new("name"), Some(42))
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name (foo)")),
+        (OsStr::new("name (foo)"), None)
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name (0)")),
+        (OsStr::new("name (0)"), None)
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name (2")),
+        (OsStr::new("name (2"), None)
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("name (18446744073709551615)")),
+        (OsStr::new("name (18446744073709551615)"), None)
+    );
+
+    assert_eq!(
+        duplicate_candidate_name(OsStr::new("name"), Some(OsStr::new("ext")), 1),
+        OsString::from("name (1).ext")
+    );
+    assert_eq!(
+        duplicate_candidate_name(OsStr::new("name"), Some(OsStr::new("ext")), 2),
+        OsString::from("name (2).ext")
+    );
+    assert_eq!(
+        duplicate_candidate_name(OsStr::new("name"), None, 1),
+        OsString::from("name (1)")
+    );
+    assert_eq!(
+        duplicate_candidate_name(OsStr::new("name"), None, 2),
+        OsString::from("name (2)")
+    );
+}
+
+#[test]
+fn duplicating_a_file_generates_numbered_name() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source = destination.join("photo.jpg");
+    fs::write(&source, b"original-content")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(10),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(source.exists());
+    assert_eq!(fs::read(&source)?, b"original-content");
+    let duplicate = destination.join("photo (1).jpg");
+    assert!(duplicate.exists());
+    assert_eq!(fs::read(&duplicate)?, b"original-content");
+    Ok(())
+}
+
+#[test]
+fn duplicating_a_file_preserves_non_utf8_name_bytes() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source_name = OsString::from_vec(b"photo-\xff.jpg".to_vec());
+    let source = destination.join(&source_name);
+    fs::write(&source, b"original-content")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(15),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    let duplicate_name = OsString::from_vec(b"photo-\xff (1).jpg".to_vec());
+    let duplicate = destination.join(duplicate_name);
+    assert_eq!(fs::read(duplicate)?, b"original-content");
+    Ok(())
+}
+
+#[test]
+fn duplicating_an_existing_numbered_name_advances_its_index() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source = destination.join("photo (1).jpg");
+    fs::write(&source, b"copy-content")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(11),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(source.exists());
+    assert_eq!(fs::read(&source)?, b"copy-content");
+    let duplicate = destination.join("photo (2).jpg");
+    assert!(duplicate.exists());
+    assert_eq!(fs::read(&duplicate)?, b"copy-content");
+    Ok(())
+}
+
+#[test]
+fn duplicating_file_with_existing_numbered_name_advances_to_next_index()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source = destination.join("photo.jpg");
+    fs::write(&source, b"original")?;
+    fs::write(destination.join("photo (1).jpg"), b"first copy")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(12),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert_eq!(fs::read(destination.join("photo (2).jpg"))?, b"original");
+    assert_eq!(fs::read(destination.join("photo (1).jpg"))?, b"first copy");
+    Ok(())
+}
+
+#[test]
+fn duplicating_a_directory_generates_numbered_name() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source = destination.join("documents");
+    fs::create_dir_all(&source)?;
+    fs::write(source.join("notes.txt"), b"nested-file")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(13),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(source.is_dir());
+    let duplicate = destination.join("documents (1)");
+    assert!(duplicate.is_dir());
+    assert_eq!(fs::read(duplicate.join("notes.txt"))?, b"nested-file");
+    Ok(())
+}
+
+#[test]
+fn cutting_in_the_same_folder_remains_a_noop() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let file = destination.join("document.txt");
+    let directory = destination.join("folder");
+    fs::write(&file, b"content")?;
+    fs::create_dir_all(&directory)?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(14),
+            destination: Location::local(&destination),
+            items: vec![
+                PasteItem {
+                    source: Location::local(&file),
+                    conflict: TransferConflict::FailIfExists,
+                },
+                PasteItem {
+                    source: Location::local(&directory),
+                    conflict: TransferConflict::FailIfExists,
+                },
+            ],
+            move_sources: true,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(file.exists());
+    assert!(directory.is_dir());
+    assert!(!destination.join("document (1).txt").exists());
+    assert!(!destination.join("folder (1)").exists());
     Ok(())
 }
