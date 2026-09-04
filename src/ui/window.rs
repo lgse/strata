@@ -478,6 +478,38 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         );
     });
     schedule_due_update_check(&theme_manager, &update_notice);
+    schedule_omarchy_setup_prompt(&window, &theme_manager);
+}
+
+/// Offers the one-time Omarchy default-file-manager setup, once the window is
+/// up and only while something is actually missing. Declining is persisted, so
+/// the prompt never returns; Settings keeps the action available.
+fn schedule_omarchy_setup_prompt(window: &gtk::ApplicationWindow, manager: &Rc<ThemeManager>) {
+    if manager.omarchy_default_prompt_answered() {
+        return;
+    }
+    let window = window.clone().upcast::<gtk::Window>();
+    let manager = manager.clone();
+    glib::timeout_add_local_once(std::time::Duration::from_secs(2), move || {
+        if manager.omarchy_default_prompt_answered() {
+            return;
+        }
+        let Some(integration) = crate::services::omarchy_integration() else {
+            return;
+        };
+        if integration.is_complete() {
+            manager.set_omarchy_default_prompt_answered(true);
+            return;
+        }
+        let manager_for_answer = manager.clone();
+        super::settings::show_omarchy_setup_dialog(
+            &window,
+            integration,
+            Rc::new(move |_applied| {
+                manager_for_answer.set_omarchy_default_prompt_answered(true);
+            }),
+        );
+    });
 }
 
 fn schedule_after_first_paint(window: &gtk::ApplicationWindow, sidebar: &SidebarView) {

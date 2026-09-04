@@ -150,6 +150,8 @@ struct Preferences {
     auto_refresh_interval: u32,
     #[serde(default = "default_release_channel")]
     release_channel: String,
+    #[serde(default)]
+    omarchy_default_prompt_answered: bool,
 }
 
 impl Default for Preferences {
@@ -183,6 +185,7 @@ impl Default for Preferences {
             preview_volume: default_full_volume(),
             auto_refresh_interval: 0,
             release_channel: default_release_channel(),
+            omarchy_default_prompt_answered: false,
         }
     }
 }
@@ -633,6 +636,23 @@ impl ThemeManager {
         }
         self.previewing.set(false);
         self.apply_selected();
+        self.save_preferences();
+    }
+
+    /// Whether the one-time "make Strata the default file manager" prompt has
+    /// been answered. Declining is remembered so it never reappears; the
+    /// Settings action stays available either way.
+    pub fn omarchy_default_prompt_answered(&self) -> bool {
+        self.preferences.borrow().omarchy_default_prompt_answered
+    }
+
+    pub fn set_omarchy_default_prompt_answered(&self, answered: bool) {
+        if self.preferences.borrow().omarchy_default_prompt_answered == answered {
+            return;
+        }
+        self.preferences
+            .borrow_mut()
+            .omarchy_default_prompt_answered = answered;
         self.save_preferences();
     }
 

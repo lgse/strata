@@ -26,7 +26,10 @@ use super::{
     blur::BlurBin,
     browser::{BrowserView, dismiss_modal_layer, modal_layer},
     browser_modes::{BrowserMode, ClickActivation, ClickCount},
-    controls::{form_entry, menu_option, modal_layout, segmented_control},
+    controls::{
+        MESSAGE_DIALOG_WIDTH_CHARS, form_entry, menu_option, message_dialog_description,
+        modal_layout, segmented_control,
+    },
     theme::{TextSize, Theme, ThemeManager, ThemeTokens},
 };
 
@@ -736,6 +739,11 @@ fn general_page(
     });
     preferences.append(&motion_row);
 
+    if let Some(row) = omarchy_integration_row(&manager) {
+        append_heading(&preferences, "OMARCHY INTEGRATION");
+        preferences.append(&row);
+    }
+
     append_heading(&preferences, "CLICK ACTIVATION");
     let activation_options = gtk::Box::new(gtk::Orientation::Vertical, 4);
     let mut responsive_activation_rows = Vec::new();
@@ -777,6 +785,184 @@ fn general_page(
         vec![video_row],
         responsive_activation_rows,
     )
+}
+
+const OMARCHY_SETUP_TITLE: &str = "Make Strata your file manager?";
+const OMARCHY_SETUP_EXPLANATION: &str = "Strata will become the default application for folders and will take over Omarchy's file-manager shortcuts, which currently launch Nautilus. Only your own Hyprland configuration is edited, and it is backed up first.";
+const OMARCHY_SETUP_MANUAL: &str =
+    "https://github.com/lgse/strata#make-strata-the-omarchy-file-manager";
+
+/// The shared "make Strata the default file manager" dialog, used by both the
+/// one-time first-run prompt and the Settings action.
+pub(super) fn show_omarchy_setup_dialog(
+    parent: &gtk::Window,
+    integration: services::OmarchyIntegration,
+    on_answered: Rc<dyn Fn(bool)>,
+) {
+    let Some(window_overlay) = parent.child().and_downcast::<gtk::Overlay>() else {
+        on_answered(false);
+        return;
+    };
+    let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
+    if let Some(root) = blurred_root.as_ref() {
+        root.set_blurred(true);
+    }
+
+    let repairing = integration.folder_association || integration.shortcuts;
+    let layout = modal_layout(
+        icons::FOLDER,
+        if repairing {
+            "Finish the Omarchy setup?"
+        } else {
+            OMARCHY_SETUP_TITLE
+        },
+        &integration.status_summary(),
+        if repairing { "Repair" } else { "Make Default" },
+    );
+    layout.content.add_css_class("message-dialog");
+    layout.content.set_size_request(560, -1);
+    layout.cancel.set_label("Not Now");
+    layout
+        .body
+        .append(&message_dialog_description(OMARCHY_SETUP_EXPLANATION));
+    let target = gtk::Label::new(Some(&format!(
+        "Shortcuts: {}",
+        integration.bindings_path.display()
+    )));
+    target.add_css_class("settings-option-description");
+    target.set_xalign(0.0);
+    target.set_wrap(true);
+    target.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    target.set_max_width_chars(MESSAGE_DIALOG_WIDTH_CHARS as i32);
+    layout.body.append(&target);
+    let status = gtk::Label::new(None);
+    status.add_css_class("update-dialog-status");
+    status.set_xalign(0.0);
+    status.set_wrap(true);
+    status.set_visible(false);
+    layout.body.append(&status);
+    let manual = gtk::LinkButton::with_label(OMARCHY_SETUP_MANUAL, "Set this up manually");
+    manual.add_css_class("release-notes-fallback");
+    manual.set_halign(gtk::Align::Start);
+    manual.set_visible(false);
+    layout.body.append(&manual);
+
+    let content = layout.content.clone();
+    let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+    window_overlay.add_overlay(&layer);
+    layout.confirm.grab_focus();
+
+    let answered = Rc::new(Cell::new(false));
+    let dismiss: Rc<dyn Fn(bool)> = Rc::new({
+        let layer = layer.clone();
+        let overlay = window_overlay.clone();
+        let root = blurred_root.clone();
+        let answered = answered.clone();
+        let on_answered = on_answered.clone();
+        move |applied| {
+            if answered.replace(true) {
+                return;
+            }
+            dismiss_modal_layer(&layer, &overlay, root.as_ref());
+            on_answered(applied);
+        }
+    });
+
+    for button in [&layout.cancel, &layout.close] {
+        let dismiss = dismiss.clone();
+        button.connect_clicked(move |_| dismiss(false));
+    }
+    let escape = gtk::EventControllerKey::new();
+    let escape_dismiss = dismiss.clone();
+    escape.connect_key_pressed(move |_, key, _, _| {
+        if key == gtk::gdk::Key::Escape {
+            escape_dismiss(false);
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    });
+    layer.add_controller(escape);
+
+    let confirm_dismiss = dismiss.clone();
+    let confirm_cancel = layout.cancel.clone();
+    layout.confirm.connect_clicked(move |button| {
+        button.set_sensitive(false);
+        match integration.apply() {
+            Ok(()) => confirm_dismiss(true),
+            Err(error) => {
+                button.set_sensitive(true);
+                status.set_text(&format!("{}: {}", error.summary, error.detail));
+                status.set_visible(true);
+                manual.set_visible(true);
+                confirm_cancel.set_label("Close");
+            }
+        }
+    });
+}
+
+/// The Settings entry point, so the integration can be applied or repaired
+/// later without resetting first-run state.
+fn omarchy_integration_row(manager: &Rc<ThemeManager>) -> Option<gtk::Box> {
+    let integration = services::omarchy_integration()?;
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    row.add_css_class("settings-option");
+    let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    copy.set_hexpand(true);
+    let title = gtk::Label::new(Some("Default file manager"));
+    title.set_xalign(0.0);
+    title.add_css_class("settings-option-title");
+    let description = gtk::Label::new(Some(&integration.status_summary()));
+    description.set_xalign(0.0);
+    description.set_wrap(true);
+    description.add_css_class("settings-option-description");
+    copy.append(&title);
+    copy.append(&description);
+    let action = gtk::Button::with_label(if integration.is_complete() {
+        "Repair"
+    } else {
+        "Make Default"
+    });
+    action.add_css_class("settings-action");
+    action.set_valign(gtk::Align::Center);
+    row.append(&copy);
+    row.append(&action);
+
+    let manager = manager.clone();
+    let description_for_click = description.clone();
+    let action_for_click = action.clone();
+    action.connect_clicked(move |button| {
+        let Some(parent) = button.root().and_downcast::<gtk::Window>() else {
+            return;
+        };
+        let Some(integration) = services::omarchy_integration() else {
+            description_for_click.set_text("Strata could not identify this Omarchy installation.");
+            button.set_sensitive(false);
+            return;
+        };
+        let manager = manager.clone();
+        let description = description_for_click.clone();
+        let action = action_for_click.clone();
+        show_omarchy_setup_dialog(
+            &parent,
+            integration,
+            Rc::new(move |applied| {
+                if applied {
+                    manager.set_omarchy_default_prompt_answered(true);
+                }
+                if let Some(current) = services::omarchy_integration() {
+                    description.set_text(&current.status_summary());
+                    action.set_label(if current.is_complete() {
+                        "Repair"
+                    } else {
+                        "Make Default"
+                    });
+                }
+            }),
+        );
+    });
+
+    Some(row)
 }
 
 fn updates_page(

@@ -2,6 +2,7 @@
 
 mod file_source;
 mod install_source;
+mod omarchy_setup;
 mod operations;
 mod preview;
 mod release_channel;
@@ -17,6 +18,7 @@ pub use file_source::{
 };
 pub(crate) use install_source::ensure_self_managed;
 pub use install_source::{InstallSource, ManagedInstall};
+pub(crate) use omarchy_setup::{OmarchyIntegration, integration as omarchy_integration};
 pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
     DeleteRequest, ExtractRequest, OperationEvent, OperationProvider, OperationRequestId,

@@ -194,9 +194,13 @@ When building from source, `make install-local` installs the binary, icon, and d
 
 ### Make Strata the Omarchy file manager
 
-The XDG association above handles folders opened by applications. On current Lua-based Omarchy releases, also override the stock Nautilus shortcuts in `~/.config/hypr/bindings.lua` so Omarchy launches Strata directly.
+The XDG association above handles folders opened by applications. Omarchy's own file-manager shortcuts launch Nautilus directly and never consult that association, so both have to be changed.
 
-First inspect the active bindings and back up your user configuration:
+On a supported Omarchy installation Strata offers to do this for you the first time it starts, and the same action is always available under **Settings → General → Omarchy integration**. Accepting sets the `inode/directory` handler and adds a marked block of file-manager bindings to your own Hyprland configuration — `~/.config/hypr/bindings.lua` on Omarchy Quattro, `~/.config/hypr/bindings.conf` on Omarchy 3.x. Your file is backed up first, the rest of it is left alone, and if `hyprctl configerrors` reports a problem the previous bindings are restored. Re-running the action repairs the block rather than adding a second copy; deleting the block restores Omarchy's defaults.
+
+Files under `/usr/share/omarchy/` are never touched, so these overrides survive Omarchy updates.
+
+To do it by hand instead, first inspect the active bindings and back up your user configuration:
 
 ```bash
 omarchy menu keybindings --print | grep -i "file manager"
@@ -228,7 +232,16 @@ hyprctl configerrors
 omarchy menu keybindings --print | grep -i "file manager"
 ```
 
-`hyprctl configerrors` should produce no errors. These user overrides survive Omarchy updates; do not edit files under `/usr/share/omarchy/`.
+`hyprctl configerrors` should produce no errors. Do not edit files under `/usr/share/omarchy/`; they are package-owned and are replaced on update.
+
+On Omarchy 3.x the same overrides go in `~/.config/hypr/bindings.conf` using Hyprland's own syntax:
+
+```ini
+unbind = SUPER SHIFT, F
+unbind = SUPER ALT SHIFT, F
+bindd = SUPER SHIFT, F, File manager, exec, uwsm-app -- strata
+bindd = SUPER ALT SHIFT, F, File manager (cwd), exec, uwsm-app -- strata "$(omarchy-cmd-terminal-cwd)"
+```
 
 ### Network shares
 

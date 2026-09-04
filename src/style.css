@@ -999,6 +999,38 @@ menubutton.form-control:disabled > button {
   color: @theme_accent;
 }
 
+.settings-action {
+  background: alpha(@theme_accent, 0.1);
+  border: 1px solid @theme_accent;
+  border-radius: 5px;
+  box-shadow: none;
+  color: @theme_accent;
+  min-height: 26px;
+  padding: 2px 11px;
+  transition: transform 160ms ease-out, background 160ms ease-out;
+}
+
+.settings-action:hover {
+  background: alpha(@theme_accent, 0.18);
+}
+
+.settings-action:active {
+  background: alpha(@theme_accent, 0.28);
+  transform: scale(0.97);
+}
+
+.settings-action:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: 1px;
+}
+
+.settings-action:disabled {
+  background: alpha(@theme_muted, 0.3);
+  border-color: alpha(@theme_border, 0.38);
+  color: @theme_dim_text;
+  opacity: 0.7;
+}
+
 .click-activation-options {
   padding: 6px 10px;
 }
