@@ -259,7 +259,7 @@ async fn copy_new_recursively(
     .await;
     if result.as_ref().is_err_and(was_cancelled) && created_root.get() {
         let cleanup = gio::Cancellable::new();
-        let _cleanup_result = permanently_delete(target, true, cleanup).await;
+        let _cleanup_result = permanently_delete_maybe_local(target, true, cleanup).await;
     }
     result
 }
@@ -282,7 +282,7 @@ async fn move_local_with(
     match result {
         Err(error) if error.matches(gio::IOErrorEnum::WouldRecurse) => {
             copy_new_recursively(source.clone(), target, cancellable.clone()).await?;
-            permanently_delete(source, true, cancellable).await
+            permanently_delete_maybe_local(source, true, cancellable).await
         }
         other => other,
     }
@@ -462,13 +462,14 @@ async fn replace_local_with(
     }
 
     if let Err(error) =
-        permanently_delete(staged_file, target_is_directory, gio::Cancellable::new()).await
+        permanently_delete_maybe_local(staged_file, target_is_directory, gio::Cancellable::new())
+            .await
     {
         discard_staged(staged).await;
         return Err(error);
     }
     if move_source {
-        permanently_delete(source, source_is_directory, cancellable).await?;
+        permanently_delete_maybe_local(source, source_is_directory, cancellable).await?;
     }
     Ok(())
 }
@@ -706,6 +707,26 @@ fn permanently_delete_local_path(
         .await?;
         permanently_delete_local(parent, name, cancellable).await
     })
+}
+
+/// Deletes `file` through the descriptor-relative local walk when it names a
+/// local path, or through the path-based GIO delete otherwise. Used for
+/// every permanent delete this module performs on the caller's behalf --
+/// not just the user-requested ones -- so that cleaning up a staged
+/// replacement's old target, or a move's now-copied source, gets the same
+/// race safety and doesn't act on whatever type that entry was earlier in
+/// the operation rather than what it actually is right before deletion.
+fn permanently_delete_maybe_local(
+    file: gio::File,
+    directory: bool,
+    cancellable: gio::Cancellable,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    if file.is_native()
+        && let Some(path) = file.path()
+    {
+        return permanently_delete_local_path(path, cancellable);
+    }
+    permanently_delete(file, directory, cancellable)
 }
 
 fn operation_error_summary(errors: &[String], action: &str) -> String {
@@ -1335,17 +1356,8 @@ impl OperationProvider for LocalOperationProvider {
                             },
                         )
                         .await
-                    } else if let Some(native_path) = entry.location.native_path() {
-                        permanently_delete_local_path(
-                            native_path.to_path_buf(),
-                            operation_cancellable.clone(),
-                        )
-                        .await
                     } else {
-                        // Remote (GVfs) locations have no local file descriptor to
-                        // walk against, so this falls back to the path-based
-                        // GIO delete rather than claiming an equivalent guarantee.
-                        permanently_delete(
+                        permanently_delete_maybe_local(
                             file,
                             entry.is_directory(),
                             operation_cancellable.clone(),

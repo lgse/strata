@@ -624,6 +624,55 @@ fn staged_directory_replacement_does_not_merge_old_contents() -> Result<(), Box<
     Ok(())
 }
 
+#[test]
+fn replacing_a_directory_cleans_up_a_symlink_in_the_old_contents_without_following_it()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("strata-replace-symlink-cleanup-test-{unique}"));
+    let source = root.join("source");
+    let target = root.join("target");
+    let outside = root.join("outside");
+    fs::create_dir_all(&source)?;
+    fs::write(source.join("item.txt"), b"new")?;
+    fs::create_dir_all(&target)?;
+    fs::write(target.join("keep.txt"), b"old")?;
+    fs::create_dir_all(&outside)?;
+    fs::write(outside.join("secret.txt"), b"do not delete me")?;
+    std::os::unix::fs::symlink(&outside, target.join("decoy"))?;
+
+    let result = glib::MainContext::default().block_on(replace_local(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(fs::read(target.join("item.txt"))?, b"new");
+    assert!(
+        !target.join("keep.txt").exists(),
+        "the replaced directory's old contents must be gone"
+    );
+    assert!(
+        !target.join("decoy").exists() && !target.join("decoy").is_symlink(),
+        "the old decoy symlink itself must be gone from the replaced directory"
+    );
+    assert_eq!(
+        fs::read(outside.join("secret.txt"))?,
+        b"do not delete me",
+        "cleaning up the old target must never follow a symlink it contained"
+    );
+
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
 fn test_file_entry(path: &Path) -> FileEntry {
     let name = path.file_name().unwrap_or_default().to_os_string();
     FileEntry {
