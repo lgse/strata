@@ -59,22 +59,6 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
 
 Arch Linux and Omarchy are the primary supported environments. Current binaries require **glibc 2.39 or newer** and the runtime libraries listed below.
 
-### Arch Linux (AUR)
-
-```bash
-paru -S strata-bin        # or: yay -S strata-bin
-```
-
-`strata-bin` installs the latest stable release; `strata-rc-bin` tracks the newest non-nightly Preview-channel release, including a final release when it is newer than the latest prerelease. The packages conflict, so switch channels by installing the other package. Nightly builds are not packaged; install those manually and update in-app.
-
-Update through your AUR helper — `pacman` cannot update an AUR package because no configured repository carries it:
-
-```bash
-paru -Syu strata-bin      # or: yay -Syu strata-bin
-```
-
-Package-managed installs report new releases in **Settings → Updates**, but never overwrite the binary owned by pacman. Maintainers: see [`docs/packaging.md`](docs/packaging.md).
-
 ### AI-assisted installation
 
 Use this option to have a coding agent install and verify the latest release archive.

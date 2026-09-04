@@ -1,6 +1,6 @@
 # Distribution packaging
 
-Strata is packaged for Arch Linux through the AUR. Two packages are published from the same template, and both install `/usr/bin/strata`:
+Strata's proposed AUR packages are generated from the same template and both install `/usr/bin/strata`. They are not published yet; AUR publication remains disabled until a maintainer account and both package bases are available:
 
 | Package | Tracks | Example `pkgver` |
 | --- | --- | --- |
