@@ -696,21 +696,30 @@ fn single_pane_paste_uses_the_active_browser_depth() {
 }
 
 #[test]
-fn new_folder_prefers_the_hovered_pane_then_falls_back_safely() {
+fn new_folder_prefers_the_focused_pane_then_falls_back_safely() {
+    assert_eq!(new_folder_destination_depth(Some(1), Some(2), 3), Some(1));
+    assert_eq!(new_folder_destination_depth(None, Some(2), 3), Some(2));
+    assert_eq!(new_folder_destination_depth(Some(5), Some(1), 3), Some(1));
+    assert_eq!(new_folder_destination_depth(None, None, 3), Some(2));
+    assert_eq!(new_folder_destination_depth(None, None, 0), None);
+}
+
+#[test]
+fn open_terminal_prefers_the_hovered_pane_then_falls_back_safely() {
     assert_eq!(
-        new_folder_destination_depth(Some(1), Some(0), Some(2), 3),
+        terminal_destination_depth(Some(1), Some(0), Some(2), 3),
         Some(1)
     );
     assert_eq!(
-        new_folder_destination_depth(None, Some(0), Some(2), 3),
+        terminal_destination_depth(None, Some(0), Some(2), 3),
         Some(0)
     );
     assert_eq!(
-        new_folder_destination_depth(Some(4), Some(5), Some(1), 3),
+        terminal_destination_depth(Some(4), Some(5), Some(1), 3),
         Some(1)
     );
-    assert_eq!(new_folder_destination_depth(None, None, None, 3), Some(2));
-    assert_eq!(new_folder_destination_depth(None, None, None, 0), None);
+    assert_eq!(terminal_destination_depth(None, None, None, 3), Some(2));
+    assert_eq!(terminal_destination_depth(None, None, None, 0), None);
 }
 
 #[test]
@@ -1292,4 +1301,72 @@ fn pinning_requires_an_available_non_trash_directory() {
     assert!(!can_pin_entry(&directory, PinStatus::Unavailable));
     assert!(!can_pin_entry(&file, PinStatus::Available));
     assert!(!can_pin_entry(&trash_directory, PinStatus::Available));
+}
+
+#[test]
+fn type_groups_name_folders_and_broken_links_directly() {
+    assert_eq!(model_type_group("dv\tprojects"), FOLDER_TYPE_GROUP);
+    assert_eq!(model_type_group("dv\tlinked"), FOLDER_TYPE_GROUP);
+    assert_eq!(model_type_group("xv\tdangling"), "Broken link");
+}
+
+#[test]
+fn files_of_an_unrecognized_type_share_one_group() {
+    assert_eq!(model_type_group("fv\tblob.qqqqq"), "File");
+    assert_eq!(model_type_group("fv\tarchive-index"), "File");
+}
+
+#[test]
+fn type_groups_come_from_the_shared_mime_database() {
+    let expected = gio::content_type_get_description(
+        &gio::content_type_guess(Some(Path::new("notes.json")), None::<&[u8]>).0,
+    );
+
+    assert_eq!(model_type_group("fv\tnotes.json"), expected);
+}
+
+#[test]
+fn repeated_lookups_of_one_suffix_agree() {
+    let first = model_type_group("fv\tone.py");
+    let second = model_type_group("fv\ttwo.py");
+
+    assert_eq!(first, second);
+    assert_ne!(first, "File");
+}
+
+#[test]
+fn retryable_delete_entries_keeps_only_the_named_locations() {
+    let entry = |name: &str| FileEntry {
+        location: Location::local(format!("/fixture/{name}")),
+        native_name: name.into(),
+        display_name: name.into(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let retryable = entry("share-file.txt");
+    let denied = entry("locked-file.txt");
+    let entries = vec![retryable.clone(), denied];
+
+    let kept = retryable_delete_entries(entries, std::slice::from_ref(&retryable.location));
+
+    assert_eq!(kept, vec![retryable]);
+}
+
+#[test]
+fn retryable_delete_entries_is_empty_when_nothing_matches() {
+    let entry = FileEntry {
+        location: Location::local("/fixture/photo"),
+        native_name: "photo".into(),
+        display_name: "photo".into(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    let kept = retryable_delete_entries(vec![entry], &[]);
+
+    assert!(kept.is_empty());
 }

@@ -13,7 +13,9 @@ use serde::{Deserialize, Serialize};
 use super::release_channel::{
     BuildKind, Channel, ReleaseSummary, Version, best_update, rollback_target,
 };
-use super::update_install::{UpdateMethod, omarchy_repository_version, package_repository_version};
+use super::update_install::{
+    UpdateMethod, aur_repository_version, omarchy_repository_version, package_repository_version,
+};
 
 const API_ROOT: &str = "https://api.github.com/repos/lgse/strata/releases";
 const COMMITS_ROOT: &str = "https://api.github.com/repos/lgse/strata/commits";
@@ -843,6 +845,7 @@ pub fn check_for_updates(
         .spawn(move || {
             let result = match update_method {
                 UpdateMethod::InPlace => fetch_update(channel, &installed, force),
+                UpdateMethod::Aur => fetch_package_update(&installed, aur_repository_version),
                 UpdateMethod::Omarchy => {
                     fetch_package_update(&installed, omarchy_repository_version)
                 }

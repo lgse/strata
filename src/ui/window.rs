@@ -65,6 +65,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     let browser = BrowserView::new(Rc::new(LocalFileSource), PeekBehavior::default());
     browser.set_view_mode(theme_manager.browser_mode());
     browser.set_density(theme_manager.browser_density());
+    browser.set_group_by_type(theme_manager.group_by_type());
     browser.set_operation_provider(Rc::new(LocalOperationProvider));
     browser.set_auto_refresh_interval(theme_manager.auto_refresh_interval());
     let controller = browser.browser();
@@ -353,6 +354,14 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
                 crate::services::UpdateMethod::InPlace => {
                     format!("Install Strata v{}", release.version)
                 }
+                crate::services::UpdateMethod::Aur => format!(
+                    "Strata v{} is available through {}",
+                    release.version,
+                    crate::services::InstallSource::detect()
+                        .managed()
+                        .map(crate::services::ManagedInstall::manager)
+                        .unwrap_or("your package manager")
+                ),
                 crate::services::UpdateMethod::Omarchy => {
                     format!("Strata v{} is available through Omarchy", release.version)
                 }
@@ -898,6 +907,32 @@ fn build_appearance_menu(
         current_mode == BrowserMode::Explorer,
         true,
     );
+    let grouped = preferences.group_by_type();
+    let (group_by_type, group_check, _) = appearance_option(
+        crate::assets::icons::LIST_CHECKS,
+        "Group by file type",
+        grouped,
+        current_mode != BrowserMode::Columns,
+    );
+    group_by_type.set_tooltip_text(Some(
+        "Group Explorer and Grid entries under file-type headings",
+    ));
+    {
+        let view = view.clone();
+        let preferences = preferences.clone();
+        let popover_weak = popover_weak.clone();
+        let grouped = Cell::new(grouped);
+        group_by_type.connect_clicked(move |_| {
+            let enabled = !grouped.get();
+            grouped.set(enabled);
+            view.set_group_by_type(enabled);
+            preferences.set_group_by_type(enabled);
+            group_check.set_visible(enabled);
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+            }
+        });
+    }
     for (button, mode) in [
         (&list, BrowserMode::Columns),
         (&grid, BrowserMode::Grid),
@@ -907,6 +942,7 @@ fn build_appearance_menu(
         let list_check = list_check.clone();
         let grid_check = grid_check.clone();
         let explorer_check = explorer_check.clone();
+        let group_by_type = group_by_type.clone();
         let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
         button.connect_clicked(move |_| {
@@ -915,6 +951,7 @@ fn build_appearance_menu(
             list_check.set_visible(mode == BrowserMode::Columns);
             grid_check.set_visible(mode == BrowserMode::Grid);
             explorer_check.set_visible(mode == BrowserMode::Explorer);
+            group_by_type.set_sensitive(mode != BrowserMode::Columns);
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
@@ -973,6 +1010,7 @@ fn build_appearance_menu(
     content.append(&airy);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    content.append(&group_by_type);
     let (hidden, hidden_check, hidden_icon) = appearance_option(
         if hidden_files_shown {
             crate::assets::icons::EYE

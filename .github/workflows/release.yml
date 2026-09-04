@@ -362,3 +362,89 @@ jobs:
           else
             gh release create "v$VERSION" dist/* --verify-tag --generate-notes --title "Strata v$VERSION"
           fi
+
+  package:
+    name: Prepare AUR package update
+    needs: [prepare, release]
+    if: inputs.mode != 'nightly'
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:base-devel
+    environment: package-automation
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Install automation tools
+        run: pacman -Syu --noconfirm --needed github-cli python
+
+      - name: Check out the default branch
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.PACKAGE_PR_TOKEN }}
+
+      - name: Regenerate packages and open a pull request
+        env:
+          BRANCH: build/aur-v${{ needs.prepare.outputs.version }}
+          GH_TOKEN: ${{ secrets.PACKAGE_PR_TOKEN }}
+          MODE: ${{ inputs.mode }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          args=()
+          if [[ "$MODE" == stable ]]; then
+            args+=(--stable "$VERSION")
+          fi
+
+          candidate=$(python3 -c 'import sys; from scripts.update_aur import package_version; print(package_version(sys.argv[1]))' "$VERSION")
+          current=$(grep -m1 '^pkgver=' packaging/aur/strata-rc-bin/PKGBUILD | cut -d= -f2)
+          if (( $(vercmp "$candidate" "$current") >= 0 )); then
+            args+=(--preview "$VERSION")
+          fi
+
+          if (( ${#args[@]} == 0 )); then
+            echo "v$VERSION is older than the packaged Preview release."
+            exit 0
+          fi
+          python3 scripts/update_aur.py "${args[@]}"
+
+          if git diff --quiet -- packaging/aur; then
+            echo "AUR packages already describe v$VERSION."
+            exit 0
+          fi
+
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add packaging/aur
+          git commit -m "build(arch): update AUR packages for v$VERSION"
+          if remote_sha=$(git ls-remote --exit-code --heads origin "$BRANCH" | cut -f1); then
+            git push --force-with-lease="$BRANCH:$remote_sha" origin "HEAD:$BRANCH"
+          else
+            git push origin "HEAD:$BRANCH"
+          fi
+
+          if gh pr view "$BRANCH" >/dev/null 2>&1; then
+            exit 0
+          fi
+          cat > /tmp/aur-package-pr.md <<EOF
+          ## Description
+
+          Updates the reviewed AUR package sources for Strata v$VERSION.
+
+          ## How to test
+
+          Install either generated package and confirm its version is v$VERSION.
+
+          ## Visual evidence
+
+          N/A — generated package metadata only.
+          EOF
+          gh pr create \
+            --base "${{ github.event.repository.default_branch }}" \
+            --head "$BRANCH" \
+            --title "build(arch): update AUR packages for v$VERSION" \
+            --body-file /tmp/aur-package-pr.md

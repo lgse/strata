@@ -19,12 +19,22 @@ const AUTO_SCROLL_INTERVAL: Duration = Duration::from_millis(16);
 pub(super) type ItemVisitor = Rc<dyn Fn(&mut dyn FnMut(u32, &gtk::Widget))>;
 pub(super) type ItemPredicate = Rc<dyn Fn(&gtk::Widget) -> bool>;
 
+/// One collection view a drag can select in. A grouped view contributes one target
+/// per group, since each group renders through its own view and selection model.
+pub(super) struct MarqueeTarget {
+    pub selection: gtk::MultiSelection,
+    pub visit_items: ItemVisitor,
+}
+
+/// Targets shared with the caller, so a view that rebuilds its groups can replace
+/// them without reinstalling the drag.
+pub(super) type MarqueeTargets = Rc<RefCell<Vec<MarqueeTarget>>>;
+
 pub(super) struct MarqueeSetup {
     pub view: gtk::Widget,
     pub scroll: gtk::ScrolledWindow,
     pub overlay: gtk::Overlay,
-    pub selection: gtk::MultiSelection,
-    pub visit_items: ItemVisitor,
+    pub targets: MarqueeTargets,
     pub is_item: ItemPredicate,
 }
 
@@ -38,8 +48,7 @@ struct MarqueeState {
     scroll: gtk::ScrolledWindow,
     overlay: gtk::Overlay,
     band: gtk::Box,
-    selection: gtk::MultiSelection,
-    visit_items: ItemVisitor,
+    targets: MarqueeTargets,
     is_item: ItemPredicate,
     active: Cell<bool>,
     /// Anchor in the view's own coordinates, so it stays glued to the content
@@ -48,7 +57,8 @@ struct MarqueeState {
     /// Last pointer position in the scrolled window's coordinates, which do not
     /// move while the content scrolls.
     pointer: Cell<(f64, f64)>,
-    initial: RefCell<gtk::Bitset>,
+    /// Selection of every target as the drag began, one entry per target.
+    initial: RefCell<Vec<gtk::Bitset>>,
     modifiers: Cell<(bool, bool)>,
     auto_scroll: RefCell<Option<glib::SourceId>>,
 }
@@ -70,13 +80,12 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
         scroll: setup.scroll,
         overlay: setup.overlay,
         band,
-        selection: setup.selection,
-        visit_items: setup.visit_items,
+        targets: setup.targets,
         is_item: setup.is_item,
         active: Cell::new(false),
         anchor: Cell::new((0.0, 0.0)),
         pointer: Cell::new((0.0, 0.0)),
-        initial: RefCell::new(gtk::Bitset::new_empty()),
+        initial: RefCell::new(Vec::new()),
         modifiers: Cell::new((false, false)),
         auto_scroll: RefCell::new(None),
     });
@@ -243,7 +252,13 @@ impl MarqueeState {
         self.anchor.set(anchor);
         self.pointer
             .set(translate(&self.view, &self.scroll, anchor).unwrap_or_default());
-        self.initial.replace(self.selection.selection().copy());
+        self.initial.replace(
+            self.targets
+                .borrow()
+                .iter()
+                .map(|target| target.selection.selection().copy())
+                .collect(),
+        );
         self.modifiers.set((
             modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK),
             modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
@@ -293,32 +308,36 @@ impl MarqueeState {
     }
 
     fn apply_selection(&self, left: f64, top: f64, right: f64, bottom: f64) {
-        let initial = self.initial.borrow();
+        let initials = self.initial.borrow();
         let (control, shift) = self.modifiers.get();
-        let selected = if control || shift {
-            initial.copy()
-        } else {
-            gtk::Bitset::new_empty()
-        };
         let view = self.view.clone();
-        (self.visit_items)(&mut |position, widget| {
-            if position == gtk::INVALID_LIST_POSITION {
-                return;
-            }
-            let Some(bounds) = widget.compute_bounds(&view) else {
-                return;
-            };
-            if !intersects(&bounds, left, top, right, bottom) {
-                return;
-            }
-            if control && initial.contains(position) {
-                selected.remove(position);
+        let empty = gtk::Bitset::new_empty();
+        for (index, target) in self.targets.borrow().iter().enumerate() {
+            let initial = initials.get(index).unwrap_or(&empty);
+            let selected = if control || shift {
+                initial.copy()
             } else {
-                selected.add(position);
-            }
-        });
-        let mask = gtk::Bitset::new_range(0, self.selection.n_items());
-        self.selection.set_selection(&selected, &mask);
+                gtk::Bitset::new_empty()
+            };
+            (target.visit_items)(&mut |position, widget| {
+                if position == gtk::INVALID_LIST_POSITION {
+                    return;
+                }
+                let Some(bounds) = widget.compute_bounds(&view) else {
+                    return;
+                };
+                if !intersects(&bounds, left, top, right, bottom) {
+                    return;
+                }
+                if control && initial.contains(position) {
+                    selected.remove(position);
+                } else {
+                    selected.add(position);
+                }
+            });
+            let mask = gtk::Bitset::new_range(0, target.selection.n_items());
+            target.selection.set_selection(&selected, &mask);
+        }
     }
 
     fn stop_auto_scroll(&self) {

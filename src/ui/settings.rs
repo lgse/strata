@@ -8,14 +8,14 @@ use std::{
     time::Duration,
 };
 
-use gtk::{gdk, glib, prelude::*, subclass::prelude::*};
+use gtk::{gdk, gio, glib, prelude::*, subclass::prelude::*};
 
 use crate::{
     assets::icons,
     sandbox::MediaPreviewBackend,
     services::{
-        self, BuildKind, Channel, InstallRequest, ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes,
-        UpdateCheck, UpdateInstall, UpdateMethod, Version,
+        self, BuildKind, Channel, InstallRequest, InstallSource, ManagedInstall, ReleaseMetadata,
+        ReleaseNoteBlock, ReleaseNotes, UpdateCheck, UpdateInstall, UpdateMethod, Version,
     },
 };
 
@@ -617,6 +617,10 @@ fn updates_page(
 ) -> (gtk::Widget, Vec<(gtk::Box, gtk::Button)>) {
     let preferences = page_content();
     append_heading(&preferences, "UPDATE PREFERENCES");
+    let managed = InstallSource::detect().managed();
+    if let Some(managed) = managed {
+        preferences.append(&managed_install_row(managed));
+    }
 
     let available_notes = release_notes_card(
         "Available release",
@@ -641,6 +645,7 @@ fn updates_page(
         "Automatically check for updates",
         match update_method {
             UpdateMethod::InPlace => "Check GitHub for a newer release when Strata starts.",
+            UpdateMethod::Aur => "Check the AUR for a newer packaged release when Strata starts.",
             UpdateMethod::Omarchy => {
                 "Check the Omarchy package repository for a newer release when Strata starts."
             }
@@ -652,9 +657,9 @@ fn updates_page(
     );
     preferences.append(&auto_check_row);
 
-    let (channel_row, sync_channel_selection) = channel_option(manager.clone());
+    let (channel_row, sync_channel_selection) = channel_option(manager.clone(), managed);
     channel_row.set_sensitive(auto_check_enabled);
-    channel_row.set_visible(!update_method.is_package_managed());
+    channel_row.set_visible(managed.is_some() || !update_method.is_package_managed());
     preferences.append(&channel_row);
     preferences.append(&update_row);
 
@@ -702,7 +707,10 @@ fn updates_page(
 const RELEASE_CHANNEL_TITLE: &str = "Release channel";
 const RELEASE_CHANNEL_DESCRIPTION: &str = "Preview receives alpha, beta, and release-candidate builds. Nightly also receives daily development builds.";
 
-fn channel_option(manager: Rc<ThemeManager>) -> (gtk::Box, Rc<dyn Fn()>) {
+fn channel_option(
+    manager: Rc<ThemeManager>,
+    managed: Option<&ManagedInstall>,
+) -> (gtk::Box, Rc<dyn Fn()>) {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 12);
     row.add_css_class("settings-option");
 
@@ -710,7 +718,14 @@ fn channel_option(manager: Rc<ThemeManager>) -> (gtk::Box, Rc<dyn Fn()>) {
     let title = gtk::Label::new(Some(RELEASE_CHANNEL_TITLE));
     title.set_xalign(0.0);
     title.add_css_class("settings-option-title");
-    let description = gtk::Label::new(Some(RELEASE_CHANNEL_DESCRIPTION));
+    let locked_channel = managed.and_then(ManagedInstall::tracked_channel);
+    if let Some(channel) = locked_channel {
+        manager.set_release_channel(channel);
+    }
+    let description = gtk::Label::new(Some(&match managed {
+        Some(managed) => managed_channel_description(managed),
+        None => RELEASE_CHANNEL_DESCRIPTION.to_owned(),
+    }));
     description.set_xalign(0.0);
     description.set_wrap(true);
     description.add_css_class("settings-option-description");
@@ -732,6 +747,7 @@ fn channel_option(manager: Rc<ThemeManager>) -> (gtk::Box, Rc<dyn Fn()>) {
             }
         });
     }
+    control.set_sensitive(managed.is_none());
     row.append(&control);
 
     let sync = {
@@ -759,6 +775,17 @@ fn channel_index(channel: Channel) -> usize {
         Channel::Stable => 0,
         Channel::Preview => 1,
         Channel::Nightly => 2,
+    }
+}
+
+fn managed_channel_description(managed: &ManagedInstall) -> String {
+    let tracked = match managed.channel() {
+        Some(channel) => format!("This install tracks the {channel} release channel."),
+        None => "The installed package decides the release channel.".to_owned(),
+    };
+    match managed.alternate_instruction() {
+        Some(alternate) => format!("{tracked} {alternate}"),
+        None => tracked,
     }
 }
 
@@ -959,6 +986,32 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
 /// fetch in flight when the user flips back to Stable could still offer an
 /// RC to a Stable user: the result carries no channel of its own, so
 /// nothing but generation order distinguishes it from a current one.
+fn managed_install_row(managed: &ManagedInstall) -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    row.add_css_class("settings-option");
+    let title = gtk::Label::new(Some("Package-managed installation"));
+    title.set_xalign(0.0);
+    title.add_css_class("settings-option-title");
+    let description = gtk::Label::new(Some(&managed_install_summary(managed)));
+    description.set_xalign(0.0);
+    description.set_wrap(true);
+    description.set_selectable(true);
+    description.add_css_class("settings-option-description");
+    row.append(&title);
+    row.append(&description);
+    row
+}
+
+fn managed_install_summary(managed: &ManagedInstall) -> String {
+    let mut lines = vec![managed.ownership_summary()];
+    if let Some(channel) = managed.channel() {
+        lines.push(format!("Tracking the {channel} release channel."));
+    }
+    lines.push(managed.update_instruction());
+    lines.extend(managed.alternate_instruction());
+    lines.join("\n")
+}
+
 fn is_stale_check(result_generation: u64, current_generation: u64) -> bool {
     result_generation != current_generation
 }
@@ -990,10 +1043,9 @@ struct PendingInstall {
 /// makes the preference authoritative regardless of how many views cached
 /// an offer under the old one.
 fn effective_update_channel(selected: Channel, update_method: UpdateMethod) -> Channel {
-    if update_method.is_package_managed() {
-        Channel::Stable
-    } else {
-        selected
+    match update_method {
+        UpdateMethod::InPlace | UpdateMethod::Aur => selected,
+        UpdateMethod::Omarchy | UpdateMethod::Pacman => Channel::Stable,
     }
 }
 
@@ -1142,17 +1194,25 @@ fn update_check_row(
                                     && crate::build_info::build_kind() != BuildKind::Stable
                                     && release.kind == BuildKind::Stable
                         );
-                        if returns_to_stable && !update_method.is_package_managed() {
-                            if let UpdateCheck::Available { release, .. } = &result {
-                                status.set_markup(&format!(
-                                    "Stable channel target: <a href=\"{}\">v{}</a>",
-                                    glib::markup_escape_text(&release.url),
-                                    glib::markup_escape_text(&release.version),
-                                ));
-                            }
+                        let message = if returns_to_stable
+                            && matches!(update_method, UpdateMethod::InPlace | UpdateMethod::Aur)
+                        {
+                            let UpdateCheck::Available { release, .. } = &result else {
+                                unreachable!();
+                            };
+                            format!(
+                                "Stable channel target: <a href=\"{}\">v{}</a>",
+                                glib::markup_escape_text(&release.url),
+                                glib::markup_escape_text(&release.version),
+                            )
                         } else {
-                            status.set_markup(&update_check_message(&result, update_method));
-                        }
+                            update_check_message(&result, update_method)
+                        };
+                        status.set_markup(&update_status_markup(
+                            message,
+                            &result,
+                            InstallSource::detect(),
+                        ));
                         available_notes
                             .container
                             .set_visible(shows_available_release_notes(&result));
@@ -1176,6 +1236,7 @@ fn update_check_row(
                                 if update_method.is_package_managed() {
                                     managed_update_available.set(true);
                                     button.set_label(match update_method {
+                                        UpdateMethod::Aur => aur_update_action_label(),
                                         UpdateMethod::Omarchy => "Open Omarchy Update",
                                         UpdateMethod::Pacman => "Check again",
                                         UpdateMethod::InPlace => unreachable!(),
@@ -1218,6 +1279,13 @@ fn update_check_row(
 
     let clicked_check = run_check.clone();
     button.connect_clicked(move |button| {
+        if update_method == UpdateMethod::Aur && managed_update_available.get() {
+            match launch_aur_update() {
+                Ok(message) => status.set_text(message),
+                Err(error) => status.set_text(&format!("Couldn’t open AUR update: {error}")),
+            }
+            return;
+        }
         if update_method == UpdateMethod::Omarchy && managed_update_available.get() {
             match launch_omarchy_update() {
                 Ok(()) => status.set_text("Omarchy Update opened in your terminal."),
@@ -1529,6 +1597,7 @@ pub(super) fn show_update_dialog(
         root.set_blurred(true);
     }
 
+    let aur_action = aur_update_action_label();
     let layout = modal_layout(
         icons::DOWNLOADS,
         &format!("Strata v{} is available", release.version),
@@ -1539,6 +1608,7 @@ pub(super) fn show_update_dialog(
         ),
         match update_method {
             UpdateMethod::InPlace => "Download update",
+            UpdateMethod::Aur => aur_action,
             UpdateMethod::Omarchy => "Open Omarchy Update",
             UpdateMethod::Pacman => "Close",
         },
@@ -1581,15 +1651,24 @@ pub(super) fn show_update_dialog(
     let fallback = gtk::LinkButton::with_label(&release.url, "View release on GitHub");
     fallback.add_css_class("release-notes-fallback");
     fallback.set_halign(gtk::Align::Start);
-    let status = gtk::Label::new(Some(match update_method {
-        UpdateMethod::InPlace => "Review the release notes before downloading the update.",
+    let status_message = match update_method {
+        UpdateMethod::InPlace => {
+            "Review the release notes before downloading the update.".to_owned()
+        }
+        UpdateMethod::Aur => InstallSource::detect()
+            .managed()
+            .map(update_dialog_status)
+            .unwrap_or_else(|| "This installation is managed by its package manager.".to_owned()),
         UpdateMethod::Omarchy => {
             "This installation is managed by Omarchy. Run “omarchy update” to install it."
+                .to_owned()
         }
         UpdateMethod::Pacman => {
             "This installation is managed by pacman. Install it through a full system update."
+                .to_owned()
         }
-    }));
+    };
+    let status = gtk::Label::new(Some(&status_message));
     status.add_css_class("update-dialog-status");
     status.set_xalign(0.0);
     status.set_wrap(true);
@@ -1684,6 +1763,21 @@ pub(super) fn show_update_dialog(
     let application = parent.application();
     let action_close = close.clone();
     action.connect_clicked(move |button| {
+        if update_method == UpdateMethod::Aur {
+            if aur_action == "Close" {
+                dismiss_modal_layer(&action_layer, &action_overlay, action_root.as_ref());
+                button.set_sensitive(false);
+                return;
+            }
+            match launch_aur_update() {
+                Ok(_) => {
+                    dismiss_modal_layer(&action_layer, &action_overlay, action_root.as_ref());
+                    button.set_sensitive(false);
+                }
+                Err(error) => status.set_text(&format!("Couldn’t open AUR update: {error}")),
+            }
+            return;
+        }
         if update_method == UpdateMethod::Omarchy {
             match launch_omarchy_update() {
                 Ok(()) => {
@@ -1808,6 +1902,43 @@ pub(super) fn show_update_dialog(
     });
 }
 
+fn aur_update_action_label() -> &'static str {
+    match InstallSource::detect().managed() {
+        Some(managed) if managed.aur_update_target().is_some() => "Open AUR Update",
+        Some(managed) if managed.package().is_some() => "View on AUR",
+        _ => "Close",
+    }
+}
+
+fn aur_update_command(helper: &str, package: &str) -> Command {
+    let mut command = Command::new("xdg-terminal-exec");
+    command
+        .args(["--", helper, "-Syu", package])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    command
+}
+
+fn launch_aur_update() -> Result<&'static str, String> {
+    let managed = InstallSource::detect()
+        .managed()
+        .ok_or_else(|| "missing package metadata".to_owned())?;
+    if let Some((helper, package)) = managed.aur_update_target() {
+        return aur_update_command(helper, package)
+            .spawn()
+            .map(|_child| "AUR update opened in your terminal.")
+            .map_err(|error| error.to_string());
+    }
+    let package = managed
+        .package()
+        .ok_or_else(|| "missing AUR package name".to_owned())?;
+    let uri = format!("https://aur.archlinux.org/packages/{package}");
+    gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>)
+        .map(|()| "AUR package page opened.")
+        .map_err(|error| error.to_string())
+}
+
 fn omarchy_update_command() -> Command {
     let mut command = Command::new("xdg-terminal-exec");
     command
@@ -1891,9 +2022,34 @@ fn installed_version_status(
     };
     match update_method {
         UpdateMethod::InPlace => version,
+        UpdateMethod::Aur => format!(
+            "{version} · Managed by {}",
+            InstallSource::detect()
+                .managed()
+                .map(ManagedInstall::manager)
+                .unwrap_or("a package manager")
+        ),
         UpdateMethod::Omarchy => format!("{version} · Managed by Omarchy"),
         UpdateMethod::Pacman => format!("{version} · Managed by pacman"),
     }
+}
+
+fn update_status_markup(message: String, result: &UpdateCheck, source: &InstallSource) -> String {
+    match (source.managed(), result) {
+        (Some(managed), UpdateCheck::Available { .. }) => format!(
+            "{message}\n{}",
+            glib::markup_escape_text(&managed.update_instruction())
+        ),
+        _ => message,
+    }
+}
+
+fn update_dialog_status(managed: &ManagedInstall) -> String {
+    format!(
+        "{} {}",
+        managed.ownership_summary(),
+        managed.update_instruction()
+    )
 }
 
 fn update_check_message(result: &UpdateCheck, update_method: UpdateMethod) -> String {
@@ -1906,7 +2062,7 @@ fn update_check_message(result: &UpdateCheck, update_method: UpdateMethod) -> St
         }
         UpdateCheck::Available { release, .. } => {
             let instruction = match update_method {
-                UpdateMethod::InPlace => "",
+                UpdateMethod::InPlace | UpdateMethod::Aur => "",
                 UpdateMethod::Omarchy => " · Run “omarchy update” to install",
                 UpdateMethod::Pacman => " · Install through a full system update",
             };

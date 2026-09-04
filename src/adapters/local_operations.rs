@@ -75,6 +75,14 @@ fn was_cancelled(error: &glib::Error) -> bool {
     error.matches(gio::IOErrorEnum::Cancelled)
 }
 
+/// Whether a delete failure is retryable as a permanent delete: it was a
+/// trash attempt (never a permanent one, which has no further fallback),
+/// and the destination doesn't support Trash at all rather than some other,
+/// unrelated failure.
+fn is_trash_unsupported_failure(permanent: bool, error: &glib::Error) -> bool {
+    !permanent && error.matches(gio::IOErrorEnum::NotSupported)
+}
+
 fn copy_recursively(
     source: gio::File,
     target: gio::File,
@@ -1099,6 +1107,7 @@ impl OperationProvider for LocalOperationProvider {
             let mut errors = Vec::new();
             let mut deleted_locations = Vec::new();
             let mut failed_locations = Vec::new();
+            let mut retryable_locations = Vec::new();
             let mut affected_locations = HashSet::new();
             for entry in &request.entries {
                 if let Some(parent) = entry.location.parent() {
@@ -1182,6 +1191,9 @@ impl OperationProvider for LocalOperationProvider {
                         ));
                         return;
                     }
+                    if is_trash_unsupported_failure(request.permanent, &error) {
+                        retryable_locations.push(entry.location.clone());
+                    }
                     errors.push(deletion_error_message(
                         &entry.display_name,
                         request.permanent,
@@ -1206,9 +1218,12 @@ impl OperationProvider for LocalOperationProvider {
                     locations: deleted_locations,
                 });
             } else {
+                let has_non_retryable_failures = errors.len() > retryable_locations.len();
                 emit(OperationEvent::CompletedWithErrors {
                     request_id: request.id,
                     deleted_locations,
+                    retryable_locations,
+                    has_non_retryable_failures,
                     message: deletion_error_summary(&errors),
                 });
             }

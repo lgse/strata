@@ -2,7 +2,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     ffi::OsString,
     future::Future,
     path::Path,
@@ -312,6 +312,11 @@ pub(super) struct ViewState {
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     pending_select: RefCell<Vec<String>>,
     pending_extract_retry: RefCell<Option<(FileEntry, Location)>>,
+    /// The entries a just-dispatched, non-permanent delete requested,
+    /// snapshotted so a `CompletedWithErrors` response naming entries that
+    /// failed only because the location doesn't support Trash can offer a
+    /// permanent-delete retry for exactly those entries.
+    pending_delete_entries: RefCell<Vec<FileEntry>>,
     pending_navigate: RefCell<Option<Location>>,
     pending_location_credentials: RefCell<Option<MountCredentials>>,
     pending_trash_summary: RefCell<Option<LoadHandle>>,
@@ -463,6 +468,7 @@ impl BrowserView {
             pin_status_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
             pending_extract_retry: RefCell::new(None),
+            pending_delete_entries: RefCell::new(Vec::new()),
             pending_navigate: RefCell::new(None),
             pending_location_credentials: RefCell::new(None),
             pending_trash_summary: RefCell::new(None),
@@ -638,6 +644,15 @@ impl BrowserView {
             BrowserDensity::Compact => "density-compact",
             BrowserDensity::Airy => "density-airy",
         });
+    }
+
+    /// Groups Explorer and Grid entries under file-type headings. The Miller-column
+    /// mode is unaffected.
+    pub fn set_group_by_type(&self, enabled: bool) {
+        self.state
+            .mode_views
+            .borrow_mut()
+            .set_group_by_type(enabled);
     }
 
     pub fn activate_focused(&self) {
@@ -830,7 +845,6 @@ impl BrowserView {
         let mode = self.view_mode();
         let depth = if mode == BrowserMode::Columns {
             new_folder_destination_depth(
-                self.state.hovered_column.get(),
                 self.state.focused_column_depth(),
                 self.state.browser.active_depth(),
                 self.state.columns.borrow().len(),
@@ -929,7 +943,7 @@ impl BrowserView {
         let location = selected_terminal_location(&selected).or_else(|| {
             let mode = self.view_mode();
             let depth = if mode == BrowserMode::Columns {
-                new_folder_destination_depth(
+                terminal_destination_depth(
                     self.state.hovered_column.get(),
                     self.state.focused_column_depth(),
                     self.state.browser.active_depth(),
@@ -2231,6 +2245,7 @@ impl ViewState {
         if permanent {
             self.show_delete_confirmation(entries);
         } else {
+            self.pending_delete_entries.replace(entries.clone());
             self.browser.delete(entries, false);
             self.browser.focus_active();
         }
@@ -3977,8 +3992,31 @@ impl ViewState {
                 }
                 show_error_dialog(&self.overlay, "Unable to complete operation", &message);
             }
-            BrowserEvent::OperationCompletedWithErrors { message } => {
-                show_error_dialog(&self.overlay, "Completed with errors", &message);
+            BrowserEvent::OperationCompletedWithErrors {
+                message,
+                retryable_locations,
+                has_non_retryable_failures,
+            } => {
+                let retryable_entries = retryable_delete_entries(
+                    self.pending_delete_entries.take(),
+                    &retryable_locations,
+                );
+                if retryable_entries.is_empty() {
+                    show_error_dialog(&self.overlay, "Completed with errors", &message);
+                } else if has_non_retryable_failures {
+                    let weak_state = Rc::downgrade(self);
+                    show_delete_error_dialog(
+                        &self.overlay,
+                        &message,
+                        Rc::new(move || {
+                            if let Some(state) = weak_state.upgrade() {
+                                state.show_delete_confirmation(retryable_entries.clone());
+                            }
+                        }),
+                    );
+                } else {
+                    self.show_delete_confirmation(retryable_entries);
+                }
             }
             BrowserEvent::OperationCancelled {
                 completed,
@@ -4712,17 +4750,19 @@ impl ViewState {
             view: list.clone().upcast(),
             scroll: scroll.clone(),
             overlay: self.overlay.clone(),
-            selection: selection.clone(),
-            visit_items: Rc::new(move |visit| {
-                rows_for_marquee.borrow_mut().retain(|bound| {
-                    let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade())
-                    else {
-                        return false;
-                    };
-                    visit(item.position(), row.upcast_ref());
-                    true
-                });
-            }),
+            targets: Rc::new(RefCell::new(vec![super::marquee::MarqueeTarget {
+                selection: selection.clone(),
+                visit_items: Rc::new(move |visit| {
+                    rows_for_marquee.borrow_mut().retain(|bound| {
+                        let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade())
+                        else {
+                            return false;
+                        };
+                        visit(item.position(), row.upcast_ref());
+                        true
+                    });
+                }),
+            }])),
             is_item: Rc::new(|widget| is_file_row_target(widget.clone())),
         });
         marquee.add_origin_surface(&header);
@@ -4770,7 +4810,10 @@ impl ViewState {
         install_folder_context_menu(
             self,
             presentation.stack.upcast_ref(),
-            &selection,
+            {
+                let entries = selection.clone();
+                Rc::new(move || entries.n_items() > 0)
+            },
             Rc::new(|picked| is_file_row_target(picked.clone())),
             depth,
             location.clone(),
@@ -4795,6 +4838,7 @@ impl ViewState {
             &selection,
             pick_position,
             source_position,
+            Rc::new(|| {}),
             depth,
         );
         column.append(&new_entry_row);
@@ -5317,7 +5361,7 @@ fn filtered_position_for_source(column: &ColumnView, source_position: usize) -> 
 pub(super) fn install_folder_context_menu(
     state: &Rc<ViewState>,
     parent: &gtk::Widget,
-    selection: &gtk::MultiSelection,
+    has_entries: Rc<dyn Fn() -> bool>,
     is_item_target: Rc<dyn Fn(&gtk::Widget) -> bool>,
     depth: usize,
     location: Location,
@@ -5441,7 +5485,6 @@ pub(super) fn install_folder_context_menu(
 
     let menu_click = gtk::GestureClick::new();
     menu_click.set_button(3);
-    let selection = selection.clone();
     let popover_for_click = popover.clone();
     menu_click.connect_pressed(move |gesture, _, x, y| {
         let over_item = gesture
@@ -5458,7 +5501,7 @@ pub(super) fn install_folder_context_menu(
                 .formats()
                 .contains_type(gtk::gdk::FileList::static_type())
         }));
-        select_all.set_sensitive(selection.n_items() > 0);
+        select_all.set_sensitive(has_entries());
         open_terminal.set_sensitive(can_open_terminal(&location));
         if popover_for_click.parent().is_none()
             && let Some(parent) = gesture.widget()
@@ -5487,6 +5530,7 @@ pub(super) fn install_item_context_menu(
     selection: &gtk::MultiSelection,
     pick_position: ContextPickPosition,
     source_position: ContextSourcePosition,
+    clear_other_selections: Rc<dyn Fn()>,
     depth: usize,
 ) {
     let in_trash = state
@@ -5787,6 +5831,7 @@ pub(super) fn install_item_context_menu(
         };
         gesture.set_state(gtk::EventSequenceState::Claimed);
         if !selection.is_selected(filtered_position) {
+            clear_other_selections();
             selection.select_item(filtered_position, true);
         }
         target.replace(Some((resolved_position, entry.clone())));
@@ -6754,7 +6799,20 @@ fn paste_destination_depth(
         .or_else(|| pane_count.checked_sub(1))
 }
 
+/// Keyboard-triggered folder creation must ignore the pointer so a resting mouse
+/// cannot redirect the new folder into a pane the keyboard never visited.
 fn new_folder_destination_depth(
+    focused: Option<usize>,
+    active: Option<usize>,
+    pane_count: usize,
+) -> Option<usize> {
+    focused
+        .filter(|depth| *depth < pane_count)
+        .or_else(|| active.filter(|depth| *depth < pane_count))
+        .or_else(|| pane_count.checked_sub(1))
+}
+
+fn terminal_destination_depth(
     hovered: Option<usize>,
     focused: Option<usize>,
     active: Option<usize>,
@@ -6762,9 +6820,7 @@ fn new_folder_destination_depth(
 ) -> Option<usize> {
     hovered
         .filter(|depth| *depth < pane_count)
-        .or_else(|| focused.filter(|depth| *depth < pane_count))
-        .or_else(|| active.filter(|depth| *depth < pane_count))
-        .or_else(|| pane_count.checked_sub(1))
+        .or_else(|| new_folder_destination_depth(focused, active, pane_count))
 }
 
 fn same_locations(left: &[Location], right: &[Location]) -> bool {
@@ -7163,6 +7219,68 @@ pub(super) fn model_is_hidden(value: &str) -> bool {
     value.as_bytes().get(1) == Some(&b'h')
 }
 
+fn model_is_broken_link(value: &str) -> bool {
+    value.starts_with("x")
+}
+
+/// Directories lead a grouped view, and files whose type the shared MIME database
+/// cannot name fall back to a plain label.
+pub(super) const FOLDER_TYPE_GROUP: &str = "Folder";
+const UNTYPED_TYPE_GROUP: &str = "File";
+
+/// The user-facing file-type label a model value belongs to when the browser groups
+/// entries by type. Labels come from the shared MIME database, so they read the way
+/// they do elsewhere on the desktop: "JSON document", "Python script", and so on.
+pub(super) fn model_type_group(value: &str) -> String {
+    if model_is_directory(value) {
+        return FOLDER_TYPE_GROUP.to_owned();
+    }
+    if model_is_broken_link(value) {
+        return "Broken link".to_owned();
+    }
+    let name = model_display_name(value);
+    TYPE_GROUPS.with_borrow_mut(|cache| {
+        if let Some(label) = cache.get(type_group_key(name)) {
+            return label.clone();
+        }
+        let label = guess_type_group(name);
+        // A directory listing holds far more entries than distinct types, and the
+        // cache is keyed by suffix, so it stays small; clear it if that ever fails.
+        if cache.len() >= TYPE_GROUP_CACHE_LIMIT {
+            cache.clear();
+        }
+        cache.insert(type_group_key(name).to_owned(), label.clone());
+        label
+    })
+}
+
+/// Names sharing a suffix share a type, so the cache is keyed by suffix where there
+/// is one and by the whole name otherwise.
+fn type_group_key(name: &str) -> &str {
+    match name.rfind('.') {
+        Some(position) if position > 0 => &name[position..],
+        _ => name,
+    }
+}
+
+fn guess_type_group(name: &str) -> String {
+    let (content_type, _) = gio::content_type_guess(Some(Path::new(name)), None::<&[u8]>);
+    if content_type.is_empty() || content_type == "application/octet-stream" {
+        return UNTYPED_TYPE_GROUP.to_owned();
+    }
+    let description = gio::content_type_get_description(&content_type);
+    if description.is_empty() {
+        return UNTYPED_TYPE_GROUP.to_owned();
+    }
+    description.to_string()
+}
+
+const TYPE_GROUP_CACHE_LIMIT: usize = 2048;
+
+thread_local! {
+    static TYPE_GROUPS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
 pub(super) fn entry_filter(
     show_hidden: Rc<Cell<bool>>,
     filter_query: Rc<RefCell<String>>,
@@ -7427,6 +7545,20 @@ fn entry_kind_summary(entries: &[FileEntry]) -> String {
         (0, directories) => format!("{directories} folders"),
         _ => item_count_label(entries.len()),
     }
+}
+
+/// Narrows a just-attempted delete's entries down to the ones a completed
+/// operation named as retryable, so a permanent-delete retry (issue #179)
+/// re-targets exactly those and not, say, ones that already succeeded or
+/// failed for an unrelated reason.
+fn retryable_delete_entries(
+    entries: Vec<FileEntry>,
+    retryable_locations: &[Location],
+) -> Vec<FileEntry> {
+    entries
+        .into_iter()
+        .filter(|entry| retryable_locations.contains(&entry.location))
+        .collect()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -8246,6 +8378,80 @@ fn show_error_dialog_after_close(
     });
     layer.add_controller(escape);
     close.grab_focus();
+}
+
+/// Like [`show_error_dialog`], but for a `Completed with errors` delete
+/// result where every failure was caused by the destination not supporting
+/// Trash (issue #179): rather than a dead-end "Done" button, this offers an
+/// actionable "Delete Permanently" button that invokes `on_retry` -- the
+/// caller's job is to re-run the delete for just the retryable entries,
+/// e.g. via `show_delete_confirmation(retryable_entries)`.
+fn show_delete_error_dialog(parent: &impl IsA<gtk::Widget>, detail: &str, on_retry: Rc<dyn Fn()>) {
+    let Some(window_overlay) = parent
+        .root()
+        .and_downcast::<gtk::Window>()
+        .and_then(|window| window.child())
+        .and_downcast::<gtk::Overlay>()
+    else {
+        return;
+    };
+    let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
+    if let Some(root) = blurred_root.as_ref() {
+        root.set_blurred(true);
+    }
+
+    let layout = message_dialog_layout(
+        crate::assets::icons::X,
+        "Completed with errors",
+        "Some items could not be processed",
+        "Delete Permanently",
+        ModalTone::Danger,
+    );
+    layout.cancel.set_label("Done");
+    let explanation = message_dialog_description(detail);
+    explanation.set_selectable(true);
+    layout.body.append(&explanation);
+    let content = layout.content;
+    let close_icon = layout.close;
+    let cancel = layout.cancel;
+    let confirm = layout.confirm;
+
+    let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+    window_overlay.add_overlay(&layer);
+    let dismissed = Rc::new(Cell::new(false));
+
+    let dismiss_layer = layer.clone();
+    let dismiss_overlay = window_overlay.clone();
+    let dismiss_root = blurred_root.clone();
+    let dismissed_for_dismiss = dismissed.clone();
+    let dismiss = Rc::new(move || {
+        if dismissed_for_dismiss.replace(true) {
+            return;
+        }
+        dismiss_modal_layer(&dismiss_layer, &dismiss_overlay, dismiss_root.as_ref());
+    });
+
+    let clicked_dismiss = dismiss.clone();
+    cancel.connect_clicked(move |_| clicked_dismiss());
+    let icon_dismiss = dismiss.clone();
+    close_icon.connect_clicked(move |_| icon_dismiss());
+    let confirm_dismiss = dismiss.clone();
+    confirm.connect_clicked(move |_| {
+        confirm_dismiss();
+        on_retry();
+    });
+    let escape = gtk::EventControllerKey::new();
+    let escape_dismiss = dismiss.clone();
+    escape.connect_key_pressed(move |_, key, _, _| {
+        if key == gtk::gdk::Key::Escape {
+            escape_dismiss();
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    });
+    layer.add_controller(escape);
+    cancel.grab_focus();
 }
 
 #[cfg(test)]

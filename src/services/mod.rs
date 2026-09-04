@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod file_source;
+mod install_source;
 mod operations;
 mod preview;
 mod release_channel;
@@ -13,6 +14,8 @@ pub use file_source::{
     LocationValidationError, RequestId, UriCredentials, backend_unavailable_message,
     sanitize_uri_credentials, validate_uri_credentials,
 };
+pub(crate) use install_source::ensure_self_managed;
+pub use install_source::{InstallSource, ManagedInstall};
 pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
     DeleteRequest, ExtractRequest, OperationEvent, OperationProvider, OperationRequestId,

@@ -39,7 +39,7 @@ Dependencies point inward. A filesystem adapter must not manipulate widgets, and
 - `NavigationPath`: committed locations represented by Miller columns
 - `PeekState`: temporary location, origin, request generation, and lifecycle
 - `SelectionState`: active column, focused item, and multi-selection
-- `ViewPreferences`: mode, density, sorting, hidden files, and thumbnail policy
+- `ViewPreferences`: mode, density, type grouping, sorting, hidden files, and thumbnail policy
 - `Operation`: queued file mutation with progress and final outcome
 - `PreviewRequest` / `Preview`: bounded request and renderable result
 - `SearchQuery` / `SearchResult`: explicit scope and streaming result

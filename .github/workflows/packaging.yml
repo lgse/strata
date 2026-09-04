@@ -1,0 +1,109 @@
+name: Packaging
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'packaging/**'
+      - 'scripts/update_aur.py'
+      - 'scripts/test_update_aur.py'
+      - '.github/workflows/packaging.yml'
+      - '.github/workflows/publish-aur.yml'
+      - '.github/workflows/release.yml'
+  pull_request:
+    paths:
+      - 'packaging/**'
+      - 'scripts/update_aur.py'
+      - 'scripts/test_update_aur.py'
+      - '.github/workflows/packaging.yml'
+      - '.github/workflows/publish-aur.yml'
+      - '.github/workflows/release.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  arch:
+    name: Build and inspect the Arch packages
+    runs-on: ubuntu-24.04
+    container:
+      image: archlinux:base-devel
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install packaging tools
+        run: pacman -Syu --noconfirm --needed namcap
+
+      - name: Test the package renderer
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
+      - name: Create an unprivileged build user
+        run: |
+          useradd --create-home builder
+          printf 'builder ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builder
+          chown -R builder .
+
+      - name: Verify committed packages are generated
+        run: |
+          su builder -c '
+            stable=$(grep -m1 "^_releasever=" packaging/aur/strata-bin/PKGBUILD | cut -d= -f2)
+            preview=$(grep -m1 "^_releasever=" packaging/aur/strata-rc-bin/PKGBUILD | cut -d= -f2)
+            python3 scripts/update_aur.py --stable "$stable" --preview "$preview" --check
+          '
+
+      - name: Build the packages
+        run: |
+          for package in strata-bin strata-rc-bin; do
+            echo "::group::makepkg $package"
+            su builder -c "cd packaging/aur/$package && makepkg --cleanbuild --syncdeps --noconfirm"
+            echo "::endgroup::"
+          done
+
+      # namcap reports findings without a failing exit status.
+      - name: Check the packages with namcap
+        run: |
+          status=0
+          for package in strata-bin strata-rc-bin; do
+            echo "::group::namcap $package"
+            report=$(su builder -c "cd packaging/aur/$package && namcap PKGBUILD ./*.pkg.tar.zst")
+            printf '%s\n' "$report"
+            echo "::endgroup::"
+            if printf '%s\n' "$report" | grep -q " E: "; then
+              echo "namcap reported an error for $package (see the group above)." >&2
+              status=1
+            fi
+          done
+          exit "$status"
+
+      - name: Verify the installed paths and packaging marker
+        run: |
+          set -- strata-bin stable strata-rc-bin rc
+          while (( $# )); do
+            package=$1 channel=$2
+            shift 2
+            archive=$(echo packaging/aur/"$package"/*.pkg.tar.zst)
+            bsdtar -tf "$archive" | grep -qx 'usr/bin/strata'
+            marker=$(bsdtar -xOf "$archive" usr/share/strata/install-source.toml)
+            printf '%s\n' "$marker" | grep -qx "package = \"$package\""
+            printf '%s\n' "$marker" | grep -qx "channel = \"$channel\""
+            if printf '%s\n' "$marker" | grep -q '^update_command'; then
+              echo "$package pins an update_command; AUR packages must not." >&2
+              exit 1
+            fi
+          done
+
+      - name: Confirm packaging does not modify the published binary
+        run: |
+          archive=$(echo packaging/aur/strata-bin/*.pkg.tar.zst)
+          packaged=$(bsdtar -xOf "$archive" usr/bin/strata | sha256sum | cut -d' ' -f1)
+          upstream=$(tar -xOzf packaging/aur/strata-bin/strata-*.tar.gz --wildcards '*/strata' | sha256sum | cut -d' ' -f1)
+          if [[ "$packaged" != "$upstream" ]]; then
+            echo "The packaged binary differs from the published release artifact, which breaks provenance verification." >&2
+            exit 1
+          fi

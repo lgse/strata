@@ -24,9 +24,9 @@ use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 use super::{
     LocalOperationProvider, await_cancellable, copy_new_recursively, copy_recursively,
     deletion_error_message, deletion_error_summary, extract_7z_from_reader, extract_tar,
-    extract_zip_from_archive, home_trash_entries_at, operation_error_summary, replace_local,
-    replace_local_with, transfer_is_noop, validated_archive_path, validated_child,
-    write_staged_archive,
+    extract_zip_from_archive, home_trash_entries_at, is_trash_unsupported_failure,
+    operation_error_summary, replace_local, replace_local_with, transfer_is_noop,
+    validated_archive_path, validated_child, write_staged_archive,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
@@ -97,6 +97,26 @@ fn a_backend_without_trash_support_gets_an_actionable_message() {
     let permanent_message = deletion_error_message("share-folder", true, &error);
     assert!(!permanent_message.contains("Trash"));
     assert!(permanent_message.contains("trash not supported"));
+}
+
+#[test]
+fn a_trash_attempt_that_fails_as_unsupported_is_retryable() {
+    let error = glib::Error::new(gio::IOErrorEnum::NotSupported, "trash not supported");
+    assert!(is_trash_unsupported_failure(false, &error));
+}
+
+#[test]
+fn an_already_permanent_delete_failure_is_never_retryable() {
+    // Nothing left to fall back to if a *permanent* delete itself failed
+    // with `NotSupported` -- retrying it the same way would just fail again.
+    let error = glib::Error::new(gio::IOErrorEnum::NotSupported, "trash not supported");
+    assert!(!is_trash_unsupported_failure(true, &error));
+}
+
+#[test]
+fn an_unrelated_trash_failure_is_not_retryable() {
+    let error = glib::Error::new(gio::IOErrorEnum::PermissionDenied, "access denied");
+    assert!(!is_trash_unsupported_failure(false, &error));
 }
 
 #[test]
