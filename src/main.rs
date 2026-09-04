@@ -15,7 +15,7 @@ mod test_support;
 mod ui;
 mod util;
 
-use std::{process::Stdio, time::Duration};
+use std::{os::unix::process::CommandExt, process::Stdio, time::Duration};
 
 use gtk::{gio, prelude::*};
 
@@ -44,9 +44,7 @@ fn main() -> gtk::glib::ExitCode {
         return gtk::glib::ExitCode::SUCCESS;
     }
 
-    if let Some(exit_code) = restart_with_local_vfs_if_gvfs_is_unresponsive() {
-        return exit_code;
-    }
+    restart_with_local_vfs_if_gvfs_is_unresponsive();
 
     metrics::initialize();
     if let Err(error) = tracing_subscriber::fmt::try_init() {
@@ -70,12 +68,12 @@ fn main() -> gtk::glib::ExitCode {
     application.run()
 }
 
-fn restart_with_local_vfs_if_gvfs_is_unresponsive() -> Option<gtk::glib::ExitCode> {
+fn restart_with_local_vfs_if_gvfs_is_unresponsive() {
     if std::env::var_os("GIO_USE_VFS").is_some() {
-        return None;
+        return;
     }
     let Ok(executable) = std::env::current_exe() else {
-        return None;
+        return;
     };
     let responsive = sandbox_helper::run_command_with_timeout(
         std::process::Command::new(&executable)
@@ -87,20 +85,13 @@ fn restart_with_local_vfs_if_gvfs_is_unresponsive() -> Option<gtk::glib::ExitCod
     )
     .unwrap_or(true);
     if responsive {
-        return None;
+        return;
     }
 
     eprintln!("GVFS is unresponsive; using local filesystem support for this session.");
-    match std::process::Command::new(executable)
+    let error = std::process::Command::new(executable)
         .args(std::env::args_os().skip(1))
         .env("GIO_USE_VFS", "local")
-        .status()
-    {
-        Ok(status) if status.success() => Some(gtk::glib::ExitCode::SUCCESS),
-        Ok(_) => Some(gtk::glib::ExitCode::FAILURE),
-        Err(error) => {
-            eprintln!("Unable to restart Strata with local filesystem support: {error}");
-            None
-        }
-    }
+        .exec();
+    eprintln!("Unable to restart Strata with local filesystem support: {error}");
 }
