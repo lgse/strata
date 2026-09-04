@@ -6,12 +6,18 @@ on:
     paths:
       - 'packaging/**'
       - 'scripts/update_aur.py'
+      - 'scripts/test_update_aur.py'
       - '.github/workflows/packaging.yml'
+      - '.github/workflows/publish-aur.yml'
+      - '.github/workflows/release.yml'
   pull_request:
     paths:
       - 'packaging/**'
       - 'scripts/update_aur.py'
+      - 'scripts/test_update_aur.py'
       - '.github/workflows/packaging.yml'
+      - '.github/workflows/publish-aur.yml'
+      - '.github/workflows/release.yml'
 
 permissions:
   contents: read
@@ -33,6 +39,15 @@ jobs:
 
       - name: Install packaging tools
         run: pacman -Syu --noconfirm --needed namcap
+
+      - name: Test the package renderer
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
+
+      - name: Verify committed packages are generated
+        run: |
+          stable=$(grep -m1 '^_releasever=' packaging/aur/strata-bin/PKGBUILD | cut -d= -f2)
+          preview=$(grep -m1 '^_releasever=' packaging/aur/strata-rc-bin/PKGBUILD | cut -d= -f2)
+          python3 scripts/update_aur.py --stable "$stable" --preview "$preview" --check
 
       # makepkg refuses to run as root, and --syncdeps shells out to pacman.
       - name: Create an unprivileged build user

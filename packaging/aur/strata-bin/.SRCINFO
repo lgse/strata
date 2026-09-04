@@ -1,6 +1,6 @@
 pkgbase = strata-bin
 	pkgdesc = A fast, keyboard-first file manager for Linux
-	pkgver = 0.7.0
+	pkgver = 0.9.0
 	pkgrel = 1
 	url = https://github.com/lgse/strata
 	arch = x86_64
@@ -19,14 +19,14 @@ pkgbase = strata-bin
 	optdepends = gvfs-smb: SMB network locations
 	optdepends = imagemagick: RAW image previews
 	optdepends = libraw: RAW image previews when ImageMagick is unavailable
-	provides = strata=0.7.0
+	provides = strata=0.9.0
 	conflicts = strata
 	conflicts = strata-rc-bin
 	options = !strip
 	options = !debug
-	source_x86_64 = https://github.com/lgse/strata/releases/download/v0.7.0/strata-0.7.0-x86_64-unknown-linux-gnu.tar.gz
-	sha256sums_x86_64 = 55c9ca1a0c21a24191318bc161e99bcd64bc36a37794ab94501f1e7cdd9e2695
-	source_aarch64 = https://github.com/lgse/strata/releases/download/v0.7.0/strata-0.7.0-aarch64-unknown-linux-gnu.tar.gz
-	sha256sums_aarch64 = 1dec8cf16917929887adad61dfc3bca897991f21cc0ece8da0e0f6169328f0a4
+	source_x86_64 = https://github.com/lgse/strata/releases/download/v0.9.0/strata-0.9.0-x86_64-unknown-linux-gnu.tar.gz
+	sha256sums_x86_64 = 708ff61000ae78790813c4e842ab6d7b49be6d85a728d22e1ff59cc34f54599d
+	source_aarch64 = https://github.com/lgse/strata/releases/download/v0.9.0/strata-0.9.0-aarch64-unknown-linux-gnu.tar.gz
+	sha256sums_aarch64 = 361be021c83bdf8af503ac8c487f3e1e6b2900211dcaef237fd8c9b699277713
 
 pkgname = strata-bin

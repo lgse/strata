@@ -4,8 +4,8 @@ Strata is packaged for Arch Linux through the AUR. Two packages are published fr
 
 | Package | Tracks | Example `pkgver` |
 | --- | --- | --- |
-| `strata-bin` | Stable releases | `0.7.0` |
-| `strata-rc-bin` | The newest release candidate | `0.7.1rc.2` |
+| `strata-bin` | Latest stable release | `0.9.0` |
+| `strata-rc-bin` | Newest non-nightly Preview release | `0.9.0` or `0.10.0rc.1` |
 
 They declare `provides=("strata=${pkgver}")` and conflict with each other, reserving the `strata` name for a future source-built package.
 
@@ -39,13 +39,13 @@ aur_helpers = ["yay", "paru", "pikaur", "trizen"]
 alternate_package = "strata-rc-bin"
 ```
 
-There is no `update_command`. pacman cannot update an AUR package -- no configured repository carries `strata-bin`, so `pacman -Syu strata-bin` fails with `target not found` -- and which helper to name depends on what the user has installed. The marker lists candidates and Strata names the first one on `PATH`, falling back to generic AUR-helper wording when none is. A `.deb` or `.rpm` package, which does have one fixed command, sets `update_command` instead; it takes precedence.
+There is no `update_command`. pacman cannot update an AUR package -- no configured repository carries `strata-bin`, so `pacman -Syu strata-bin` fails with `target not found` -- and which helper to name depends on what the user has installed. The marker lists candidates and Strata names the first one on `PATH`, falling back to generic AUR-helper wording when none is.
 
 `channel` is the packaging channel, named after the package (`stable`, `rc`). Strata maps it onto its own persisted channel -- `rc` becomes `preview`, the in-app channel that accepts alpha, beta, and RC builds -- and then locks the **Settings -> Updates** channel selector to it. The channel is a property of the installed package, not a preference: switching channels means installing the other package.
 
-Strata reads it relative to its own install prefix (`<prefix>/share/strata/install-source.toml`, falling back to `/usr/share`). When it is present, Strata still checks for and reports new releases, but **Settings → Updates** shows the owning package and its update command instead of an install action, and `services::install_update` refuses outright. Every field is optional; unknown keys are ignored, so a marker written by a newer package never breaks an older binary. A marker that exists but cannot be parsed still counts as a packaged install, which fails safe.
+Strata reads it relative to its own install prefix (`<prefix>/share/strata/install-source.toml`). When it is present, Strata checks the AUR first and reports a release only after that package version is available. **Settings → Updates** shows the owning package and its update command instead of an install action, and `services::install_update` refuses outright. Every field is optional and unknown keys are ignored, so the parser can evolve without breaking an older binary. A marker that exists but cannot be parsed still counts as packaged, which fails safe.
 
-Any future `.deb`, `.rpm`, or Flatpak package opts into the same behavior by installing this file.
+This is currently an official Strata metadata format for these two AUR packages, not a public cross-distribution packaging API. Supporting Debian, RPM, Flatpak, or other providers requires an explicit design for ownership, availability checks, channels, and update actions rather than assuming AUR semantics.
 
 ## Updating the packages for a release
 
@@ -53,14 +53,14 @@ Any future `.deb`, `.rpm`, or Flatpak package opts into the same behavior by ins
 2. Render the packages. Checksums are downloaded from the release, so a wrong version fails instead of pinning a bad digest:
 
    ```bash
-   python3 scripts/update_aur.py --stable 0.7.0                  # stable only
-   python3 scripts/update_aur.py --rc 0.8.0-rc.1                 # rc only
-   python3 scripts/update_aur.py --stable 0.7.0 --rc 0.7.1-rc.2  # both
+   python3 scripts/update_aur.py --stable 0.9.0                    # stable only
+   python3 scripts/update_aur.py --preview 0.10.0-rc.1             # preview only
+   python3 scripts/update_aur.py --stable 0.9.0 --preview 0.9.0    # both
    ```
 
-   Each channel is rendered only when its own flag is passed. `--stable` must not re-render `strata-rc-bin`: a stable release published after a newer RC would roll the RC package's `pkgver` backwards, and pacman would stop offering the upgrade to everyone already on it.
+   Each package is rendered only when its own flag is passed. Stable releases update `strata-bin` and also update `strata-rc-bin` when they are not older than its current version. Alpha, beta, and RC releases update only `strata-rc-bin`, again without allowing a downgrade. Nightlies update neither package.
 
-   Pass `--pkgrel` when repackaging the same release, and `--skip-srcinfo` on a machine without `makepkg` (regenerate `.SRCINFO` before publishing).
+   Pass `--pkgrel` when repackaging the same release, and `--skip-srcinfo` on a machine without `makepkg` (regenerate `.SRCINFO` before publishing). `--check` verifies that committed files still match the template.
 3. Validate in a clean chroot:
 
    ```bash
@@ -72,15 +72,11 @@ Any future `.deb`, `.rpm`, or Flatpak package opts into the same behavior by ins
    strata --version
    ```
 4. Commit the rendered `PKGBUILD` and `.SRCINFO` through a pull request.
-5. Publish to the AUR:
+5. Merge the reviewed package update. `.github/workflows/publish-aur.yml` then pushes both package repositories to the AUR.
 
-   ```bash
-   git clone ssh://aur@aur.archlinux.org/strata-bin.git aur-strata-bin
-   cp packaging/aur/strata-bin/{PKGBUILD,.SRCINFO} aur-strata-bin/
-   cd aur-strata-bin && git commit -am "upgpkg: strata-bin 0.7.0-1" && git push
-   ```
+The release workflow performs steps 2 and 4 automatically for every non-nightly release. Stable releases regenerate the stable package and update the Preview package only when that would not downgrade it; staged prereleases update the Preview package under the same ordering rule. The repository must allow GitHub Actions to create pull requests.
 
-AUR pushes are deliberately manual. Automating them would put an AUR SSH key with push rights into repository secrets, next to the release workflow that already produces the binaries those packages ship.
+Publishing uses the protected `aur-production` environment and its `AUR_SSH_PRIVATE_KEY` secret. The key's AUR account must maintain both package bases. A manual workflow dispatch can safely retry an interrupted or already-current publication.
 
 ### `pkgver` mangling
 
@@ -104,4 +100,4 @@ The launcher and application icon are installed from the release archive, not fr
 
 ## Other distributions
 
-Debian/Ubuntu, Fedora, Flatpak, and AppImage each have their own dependency, sandboxing, update, and review requirements and are tracked as separate issues. The install layout and the `install-source.toml` contract above are intended to be reused by all of them.
+Debian/Ubuntu, Fedora, Flatpak, and AppImage each have their own dependency, sandboxing, update, and review requirements and are tracked as separate issues. The AUR marker must not be reused for them until those provider-specific semantics are designed.

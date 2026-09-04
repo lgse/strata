@@ -3,7 +3,7 @@
 
 Both packages are generated from the single template
 `packaging/aur/PKGBUILD.in`: `strata-bin` tracks stable releases and
-`strata-rc-bin` tracks the newest release candidate. The AUR requires a
+`strata-rc-bin` tracks the newest non-nightly Preview-channel release. The AUR requires a
 self-contained `PKGBUILD`, so the rendered files are committed rather than
 sourced from the template at build time.
 
@@ -16,15 +16,15 @@ users install manually and update in-app.
 Checksums are read from the `.sha256` files published alongside each release
 archive, so a mistyped version fails loudly instead of pinning a wrong digest.
 
-Each channel is rendered only when its own flag is passed. Rendering the RC
-package from `--stable` would let a stable release silently roll the RC
-package's `pkgver` backwards past a newer release candidate.
+Each package is rendered only when its own flag is passed. Release automation
+updates both packages for a final release, only the Preview package for alpha,
+beta, or RC releases, and neither package for nightlies.
 
 Usage:
 
-    python3 scripts/update_aur.py --stable 0.7.0
-    python3 scripts/update_aur.py --stable 0.7.0 --rc 0.7.1-rc.2
-    python3 scripts/update_aur.py --rc 0.8.0-rc.1
+    python3 scripts/update_aur.py --stable 0.9.0
+    python3 scripts/update_aur.py --stable 0.9.0 --preview 0.9.0
+    python3 scripts/update_aur.py --preview 0.10.0-rc.1
 
 `.SRCINFO` is regenerated with `makepkg --printsrcinfo`, which requires Arch's
 pacman tooling; pass `--skip-srcinfo` on a non-Arch machine and regenerate it
@@ -45,7 +45,7 @@ REPOSITORY_URL = "https://github.com/lgse/strata"
 TARGETS = ("x86_64", "aarch64")
 
 RELEASE_VERSION_PATTERN = re.compile(
-    r"^(?P<core>\d+\.\d+\.\d+)(?:-(?P<prerelease>[0-9A-Za-z.]+))?$"
+    r"^(?P<core>\d+\.\d+\.\d+)(?:-(?P<prerelease>(?:alpha|beta|rc)\.\d+|nightly\.\d{8}(?:\.\d+)?))?$"
 )
 
 PACKAGES = {
@@ -57,9 +57,7 @@ PACKAGES = {
     "strata-rc-bin": {
         "channel": "rc",
         "alternate": "strata-bin",
-        "description": (
-            "A fast, keyboard-first file manager for Linux (release candidates)"
-        ),
+        "description": "A fast, keyboard-first file manager for Linux (preview channel)",
     },
 }
 
@@ -98,6 +96,20 @@ def release_version(version: str) -> str:
     """Normalizes a release version, rejecting anything the tag grammar forbids."""
     normalized = version.strip().removeprefix("v")
     package_version(normalized)
+    return normalized
+
+
+def stable_release_version(version: str) -> str:
+    normalized = release_version(version)
+    if "-" in normalized:
+        raise PackagingError("--stable requires a final release version")
+    return normalized
+
+
+def preview_release_version(version: str) -> str:
+    normalized = release_version(version)
+    if "-nightly." in normalized:
+        raise PackagingError("nightly releases are not packaged")
     return normalized
 
 
@@ -176,9 +188,9 @@ def package_values(
     }
 
 
-def write_srcinfo(directory: pathlib.Path) -> None:
+def generated_srcinfo(directory: pathlib.Path) -> str:
     try:
-        srcinfo = subprocess.run(
+        return subprocess.run(
             ["makepkg", "--printsrcinfo"],
             cwd=directory,
             check=True,
@@ -192,30 +204,48 @@ def write_srcinfo(directory: pathlib.Path) -> None:
         ) from error
     except subprocess.CalledProcessError as error:
         raise PackagingError(f"makepkg --printsrcinfo failed: {error.stderr}") from error
-    (directory / ".SRCINFO").write_text(srcinfo)
+
+
+def write_srcinfo(directory: pathlib.Path) -> None:
+    (directory / ".SRCINFO").write_text(generated_srcinfo(directory))
 
 
 def update_package(
-    root: pathlib.Path, pkgname: str, version: str, pkgrel: int, skip_srcinfo: bool
+    root: pathlib.Path,
+    pkgname: str,
+    version: str,
+    pkgrel: int,
+    skip_srcinfo: bool,
+    check: bool,
 ) -> None:
     template = (root / "packaging" / "aur" / "PKGBUILD.in").read_text()
     checksums = {target: fetch_checksum(version, target) for target in TARGETS}
     directory = root / "packaging" / "aur" / pkgname
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / "PKGBUILD").write_text(
-        render(template, package_values(pkgname, version, pkgrel, checksums))
-    )
-    if not skip_srcinfo:
-        write_srcinfo(directory)
+    pkgbuild = directory / "PKGBUILD"
+    rendered = render(template, package_values(pkgname, version, pkgrel, checksums))
+    if check:
+        if not pkgbuild.is_file() or pkgbuild.read_text() != rendered:
+            raise PackagingError(f"{pkgbuild} is not generated from PKGBUILD.in")
+        if not skip_srcinfo:
+            srcinfo = directory / ".SRCINFO"
+            if not srcinfo.is_file() or srcinfo.read_text() != generated_srcinfo(directory):
+                raise PackagingError(f"{srcinfo} is not generated from PKGBUILD")
+    else:
+        pkgbuild.write_text(rendered)
+        if not skip_srcinfo:
+            write_srcinfo(directory)
     print(f"{pkgname}: {package_version(version)}-{pkgrel} (release v{version})")
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--stable", help="stable release version, e.g. 0.7.0")
+    parser.add_argument("--stable", help="stable release version, e.g. 0.9.0")
     parser.add_argument(
+        "--preview",
         "--rc",
-        help="release-candidate version, e.g. 0.7.1-rc.2",
+        dest="preview",
+        help="newest non-nightly Preview-channel version, e.g. 0.10.0-rc.1 or 0.9.0",
     )
     parser.add_argument("--pkgrel", type=int, default=1, help="package release number")
     parser.add_argument(
@@ -223,10 +253,17 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="do not regenerate .SRCINFO (for machines without makepkg)",
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="verify generated files without changing them",
+    )
     arguments = parser.parse_args(argv)
 
-    if arguments.stable is None and arguments.rc is None:
-        parser.error("pass --stable, --rc, or both")
+    if arguments.stable is None and arguments.preview is None:
+        parser.error("pass --stable, --preview, or both")
+    if arguments.pkgrel < 1:
+        parser.error("--pkgrel must be at least 1")
 
     root = pathlib.Path(__file__).resolve().parent.parent
     try:
@@ -234,17 +271,19 @@ def main(argv: list[str] | None = None) -> int:
             update_package(
                 root,
                 "strata-bin",
-                release_version(arguments.stable),
+                stable_release_version(arguments.stable),
                 arguments.pkgrel,
                 arguments.skip_srcinfo,
+                arguments.check,
             )
-        if arguments.rc is not None:
+        if arguments.preview is not None:
             update_package(
                 root,
                 "strata-rc-bin",
-                release_version(arguments.rc),
+                preview_release_version(arguments.preview),
                 arguments.pkgrel,
                 arguments.skip_srcinfo,
+                arguments.check,
             )
     except PackagingError as error:
         print(f"error: {error}", file=sys.stderr)

@@ -25,8 +25,10 @@ from update_aur import (
     package_values,
     package_version,
     parse_checksum,
+    preview_release_version,
     release_version,
     render,
+    stable_release_version,
 )
 
 DIGEST = "0" * 64
@@ -77,7 +79,14 @@ class PackageVersionTests(unittest.TestCase):
             self.assertNotIn("-", package_version(version))
 
     def test_a_malformed_version_is_rejected(self):
-        for version in ("0.8", "0.8.0.1", "latest", "0.8.0-rc 1", ""):
+        for version in (
+            "0.8",
+            "0.8.0.1",
+            "latest",
+            "0.8.0-rc 1",
+            "0.8.0-preview.1",
+            "",
+        ):
             with self.assertRaises(PackagingError):
                 package_version(version)
 
@@ -174,6 +183,18 @@ class ReleaseVersionTests(unittest.TestCase):
     def test_an_invalid_version_is_rejected(self):
         with self.assertRaises(PackagingError):
             release_version("main")
+
+    def test_stable_rejects_prereleases(self):
+        with self.assertRaises(PackagingError):
+            stable_release_version("0.10.0-rc.1")
+
+    def test_preview_accepts_final_and_staged_prereleases(self):
+        for version in ("0.9.0", "0.10.0-alpha.1", "0.10.0-beta.2", "0.10.0-rc.3"):
+            self.assertEqual(preview_release_version(version), version)
+
+    def test_preview_rejects_nightly(self):
+        with self.assertRaises(PackagingError):
+            preview_release_version("0.10.0-nightly.20260901")
 
 
 if __name__ == "__main__":

@@ -65,7 +65,7 @@ Arch Linux and Omarchy are the primary supported environments. Current binaries 
 paru -S strata-bin        # or: yay -S strata-bin
 ```
 
-`strata-bin` installs the stable release; `strata-rc-bin` tracks the newest release candidate. The packages conflict, so switch channels by installing the other package. Nightly builds are not packaged; install those manually and update in-app.
+`strata-bin` installs the latest stable release; `strata-rc-bin` tracks the newest non-nightly Preview-channel release, including a final release when it is newer than the latest prerelease. The packages conflict, so switch channels by installing the other package. Nightly builds are not packaged; install those manually and update in-app.
 
 Update through your AUR helper — `pacman` cannot update an AUR package because no configured repository carries it:
 
