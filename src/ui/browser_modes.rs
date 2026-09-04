@@ -1638,7 +1638,13 @@ fn build_grid_view(
         install_exclusive_section_click(&section, context);
     }
     if let Some(state) = context.state.as_ref().and_then(Weak::upgrade) {
-        install_section_context_menu(&state, &section, &context.source, depth);
+        install_section_context_menu(
+            &state,
+            &section,
+            context.sections.clone(),
+            &context.source,
+            depth,
+        );
     }
     section
 }
@@ -2356,7 +2362,7 @@ fn build_explorer_pane(
         model.clone(),
     );
     if let Some(state) = options.state.as_ref().and_then(Weak::upgrade) {
-        install_section_context_menu(&state, &section, &model, depth);
+        install_section_context_menu(&state, &section, Rc::downgrade(&sections), &model, depth);
     }
     let scroll = gtk::ScrolledWindow::builder()
         .child(&view)
@@ -3248,6 +3254,7 @@ fn section_item_position(section: &PaneSection, picked: &gtk::Widget) -> Option<
 fn install_section_context_menu(
     state: &Rc<super::browser::ViewState>,
     section: &PaneSection,
+    sections: Weak<RefCell<Vec<PaneSection>>>,
     source: &gtk::StringList,
     depth: usize,
 ) {
@@ -3258,12 +3265,27 @@ fn install_section_context_menu(
     let source_position = Rc::new(move |position| {
         source_position_for_view(&source_model, Some(&view_model), position)
     });
+    let owner_view = section.view.clone();
+    let clear_other_selections = Rc::new(move || {
+        let Some(sections) = sections.upgrade() else {
+            return;
+        };
+        for other in sections.borrow().iter() {
+            if other.view == owner_view {
+                continue;
+            }
+            other.syncing.set(true);
+            other.selection.unselect_all();
+            other.syncing.set(false);
+        }
+    });
     super::browser::install_item_context_menu(
         state,
         &section.view,
         &section.selection,
         pick_position,
         source_position,
+        clear_other_selections,
         depth,
     );
 }

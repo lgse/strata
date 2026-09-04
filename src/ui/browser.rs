@@ -4771,6 +4771,7 @@ impl ViewState {
             &selection,
             pick_position,
             source_position,
+            Rc::new(|| {}),
             depth,
         );
         column.append(&new_entry_row);
@@ -5437,6 +5438,7 @@ pub(super) fn install_item_context_menu(
     selection: &gtk::MultiSelection,
     pick_position: ContextPickPosition,
     source_position: ContextSourcePosition,
+    clear_other_selections: Rc<dyn Fn()>,
     depth: usize,
 ) {
     let in_trash = state
@@ -5737,6 +5739,7 @@ pub(super) fn install_item_context_menu(
         };
         gesture.set_state(gtk::EventSequenceState::Claimed);
         if !selection.is_selected(filtered_position) {
+            clear_other_selections();
             selection.select_item(filtered_position, true);
         }
         target.replace(Some((resolved_position, entry.clone())));
