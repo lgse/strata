@@ -645,9 +645,7 @@ fn updates_page(
         "Automatically check for updates",
         match update_method {
             UpdateMethod::InPlace => "Check GitHub for a newer release when Strata starts.",
-            UpdateMethod::Aur => {
-                "Check the AUR for a newer packaged release when Strata starts."
-            }
+            UpdateMethod::Aur => "Check the AUR for a newer packaged release when Strata starts.",
             UpdateMethod::Omarchy => {
                 "Check the Omarchy package repository for a newer release when Strata starts."
             }
