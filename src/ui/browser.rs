@@ -828,7 +828,6 @@ impl BrowserView {
         let mode = self.view_mode();
         let depth = if mode == BrowserMode::Columns {
             new_folder_destination_depth(
-                self.state.hovered_column.get(),
                 self.state.focused_column_depth(),
                 self.state.browser.active_depth(),
                 self.state.columns.borrow().len(),
@@ -924,7 +923,7 @@ impl BrowserView {
         let location = selected_terminal_location(&selected).or_else(|| {
             let mode = self.view_mode();
             let depth = if mode == BrowserMode::Columns {
-                new_folder_destination_depth(
+                terminal_destination_depth(
                     self.state.hovered_column.get(),
                     self.state.focused_column_depth(),
                     self.state.browser.active_depth(),
@@ -6715,7 +6714,20 @@ fn paste_destination_depth(hovered: Option<usize>, pane_count: usize) -> Option<
         .or_else(|| pane_count.checked_sub(1))
 }
 
+/// Keyboard-triggered folder creation must ignore the pointer so a resting mouse
+/// cannot redirect the new folder into a pane the keyboard never visited.
 fn new_folder_destination_depth(
+    focused: Option<usize>,
+    active: Option<usize>,
+    pane_count: usize,
+) -> Option<usize> {
+    focused
+        .filter(|depth| *depth < pane_count)
+        .or_else(|| active.filter(|depth| *depth < pane_count))
+        .or_else(|| pane_count.checked_sub(1))
+}
+
+fn terminal_destination_depth(
     hovered: Option<usize>,
     focused: Option<usize>,
     active: Option<usize>,
@@ -6723,9 +6735,7 @@ fn new_folder_destination_depth(
 ) -> Option<usize> {
     hovered
         .filter(|depth| *depth < pane_count)
-        .or_else(|| focused.filter(|depth| *depth < pane_count))
-        .or_else(|| active.filter(|depth| *depth < pane_count))
-        .or_else(|| pane_count.checked_sub(1))
+        .or_else(|| new_folder_destination_depth(focused, active, pane_count))
 }
 
 fn same_locations(left: &[Location], right: &[Location]) -> bool {
