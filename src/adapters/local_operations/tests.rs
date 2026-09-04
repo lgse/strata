@@ -1144,6 +1144,104 @@ fn cancelling_recursive_copy_removes_only_its_staging_output() -> Result<(), Box
 }
 
 #[test]
+fn permanent_delete_removes_a_symlink_standing_in_for_a_directory_without_following_it()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let outside = std::env::temp_dir().join(format!("strata-delete-symlink-outside-{unique}"));
+    let decoy = std::env::temp_dir().join(format!("strata-delete-symlink-decoy-{unique}"));
+    fs::create_dir_all(&outside)?;
+    let sentinel = outside.join("sentinel.txt");
+    fs::write(&sentinel, b"do not delete me")?;
+    // `directory_entry` reports `kind: Directory` even though the entry is
+    // actually a symlink on disk, standing in for a `FileEntry` whose type
+    // went stale because the real directory was swapped for a symlink.
+    std::os::unix::fs::symlink(&outside, &decoy)?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.delete(
+        DeleteRequest {
+            id: OperationRequestId(20),
+            entries: vec![directory_entry(&decoy)],
+            permanent: true,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    let context = glib::MainContext::default();
+    while !events
+        .borrow()
+        .iter()
+        .any(|event| matches!(event, OperationEvent::Deleted { .. }))
+    {
+        context.iteration(true);
+    }
+
+    assert!(
+        sentinel.exists(),
+        "deleting the symlink must never touch what it points to"
+    );
+    assert_eq!(fs::read_dir(&outside)?.count(), 1);
+    assert!(!decoy.exists() && !decoy.is_symlink());
+
+    fs::remove_dir_all(outside)?;
+    Ok(())
+}
+
+#[test]
+fn permanent_delete_does_not_follow_a_symlink_nested_inside_the_tree() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("strata-delete-nested-symlink-test-{unique}"));
+    let outside = std::env::temp_dir().join(format!("strata-delete-nested-outside-{unique}"));
+    let nested = root.join("nested");
+    fs::create_dir_all(&nested)?;
+    fs::create_dir_all(&outside)?;
+    let sentinel = outside.join("sentinel.txt");
+    fs::write(&sentinel, b"do not delete me")?;
+    fs::write(nested.join("visible.txt"), b"contents")?;
+    std::os::unix::fs::symlink(&outside, nested.join("decoy"))?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.delete(
+        DeleteRequest {
+            id: OperationRequestId(21),
+            entries: vec![directory_entry(&root)],
+            permanent: true,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    let context = glib::MainContext::default();
+    while !events
+        .borrow()
+        .iter()
+        .any(|event| matches!(event, OperationEvent::Deleted { .. }))
+    {
+        context.iteration(true);
+    }
+
+    assert!(
+        sentinel.exists(),
+        "a symlink nested inside the deleted tree must never lead outside it"
+    );
+    assert_eq!(fs::read_dir(&outside)?.count(), 1);
+    assert!(!root.exists());
+
+    fs::remove_dir_all(outside)?;
+    Ok(())
+}
+
+#[test]
 fn cancelling_recursive_delete_leaves_the_unfinished_root_in_place() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
