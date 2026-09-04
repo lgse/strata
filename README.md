@@ -13,7 +13,7 @@
 
 <picture>
   <source media="(prefers-reduced-motion: no-preference)" srcset="docs/assets/strata-demo.gif">
-  <img src="docs/assets/strata-columns.png" alt="Strata showing Miller-column navigation, fuzzy search, general settings, and theme selection" width="1280">
+  <img src="docs/assets/strata-columns.png" alt="Strata browsing files and showing settings, themes, Icons view, and folder creation" width="1280">
 </picture>
 
 <sub>The animation respects reduced-motion preferences. View the [static preview](docs/assets/strata-columns.png).</sub>
