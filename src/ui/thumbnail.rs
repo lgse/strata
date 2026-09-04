@@ -20,6 +20,7 @@ const MAX_CACHE_ENTRIES: usize = 256;
 const MAX_CACHE_BYTES: usize = 64 * 1024 * 1024;
 const MAX_THUMBNAIL_WORKERS: usize = 1;
 const MAX_QUEUED_THUMBNAILS: usize = 64;
+const MAX_LOOKAHEAD_ITEMS: usize = 16;
 const FAILED_THUMBNAIL_TTL: Duration = Duration::from_secs(30);
 
 thread_local! {
@@ -147,28 +148,87 @@ impl CachedThumbnail {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ThumbnailPriority {
+    High,
+    Low,
+}
+
 #[derive(Default)]
 struct ThumbnailQueue {
     running: usize,
     queued: VecDeque<ThumbnailKey>,
+    low_priority: VecDeque<ThumbnailKey>,
 }
 
 impl ThumbnailQueue {
+    #[cfg(test)]
     fn enqueue(&mut self, key: ThumbnailKey) -> bool {
-        if self.queued.len() >= MAX_QUEUED_THUMBNAILS {
-            return false;
+        self.enqueue_with_priority(key, ThumbnailPriority::High)
+    }
+
+    fn enqueue_with_priority(&mut self, key: ThumbnailKey, priority: ThumbnailPriority) -> bool {
+        match priority {
+            ThumbnailPriority::High => {
+                if self.queued.contains(&key) {
+                    return true;
+                }
+                if let Some(pos) = self
+                    .low_priority
+                    .iter()
+                    .position(|candidate| candidate == &key)
+                {
+                    if let Some(key) = self.low_priority.remove(pos) {
+                        self.queued.push_back(key);
+                    }
+                    return true;
+                }
+                if self.queued.len() >= MAX_QUEUED_THUMBNAILS {
+                    return false;
+                }
+                self.queued.push_back(key);
+                true
+            }
+            ThumbnailPriority::Low => {
+                if self.queued.contains(&key) || self.low_priority.contains(&key) {
+                    return true;
+                }
+                if self.low_priority.len() >= MAX_LOOKAHEAD_ITEMS {
+                    return false;
+                }
+                if self.queued.len() + self.low_priority.len() >= MAX_QUEUED_THUMBNAILS {
+                    return false;
+                }
+                self.low_priority.push_back(key);
+                true
+            }
         }
-        self.queued.push_back(key);
-        true
+    }
+
+    fn promote(&mut self, key: &ThumbnailKey) {
+        if let Some(pos) = self
+            .low_priority
+            .iter()
+            .position(|candidate| candidate == key)
+            && let Some(key) = self.low_priority.remove(pos)
+        {
+            self.queued.push_back(key);
+        }
     }
 
     fn begin_next(&mut self) -> Option<ThumbnailKey> {
         if self.running >= MAX_THUMBNAIL_WORKERS {
             return None;
         }
-        let key = self.queued.pop_front()?;
-        self.running += 1;
-        Some(key)
+        if let Some(key) = self.queued.pop_front() {
+            self.running += 1;
+            return Some(key);
+        }
+        if let Some(key) = self.low_priority.pop_front() {
+            self.running += 1;
+            return Some(key);
+        }
+        None
     }
 
     fn finish(&mut self) {
@@ -177,6 +237,11 @@ impl ThumbnailQueue {
 
     fn cancel(&mut self, key: &ThumbnailKey) {
         self.queued.retain(|queued| queued != key);
+        self.low_priority.retain(|queued| queued != key);
+    }
+
+    fn clear_low_priority(&mut self) -> Vec<ThumbnailKey> {
+        self.low_priority.drain(..).collect()
     }
 }
 
@@ -226,6 +291,90 @@ pub(super) fn set_thumbnail_or_icon_for_path(
         icon_size,
         thumbnail_size,
     );
+}
+
+pub(super) fn update_lookahead(entries: &[FileEntry], thumbnail_size: i32) {
+    let thumbnail_size = thumbnail_size.clamp(16, 256);
+    let pruned = THUMBNAIL_QUEUE.with(|queue| queue.borrow_mut().clear_low_priority());
+    PENDING_THUMBNAILS.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        for key in pruned {
+            if pending
+                .get(&key)
+                .is_some_and(|item| item.targets.is_empty())
+            {
+                pending.remove(&key);
+            }
+        }
+    });
+
+    for entry in entries.iter().take(MAX_LOOKAHEAD_ITEMS) {
+        let Some(path) = entry.location.native_path() else {
+            continue;
+        };
+        let Some(kind) = thumbnail_kind(path) else {
+            continue;
+        };
+        let key = ThumbnailKey {
+            path: path.to_path_buf(),
+            modified: known_metadata(&entry.modified_unix_seconds),
+            file_size: known_metadata(&entry.size),
+            thumbnail_size,
+        };
+
+        let is_cached = THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().get(&key).is_some());
+        if is_cached {
+            continue;
+        }
+
+        PENDING_THUMBNAILS.with(|pending| {
+            let mut pending = pending.borrow_mut();
+            if pending.contains_key(&key) {
+                return;
+            }
+            let queued = THUMBNAIL_QUEUE.with(|queue| {
+                queue
+                    .borrow_mut()
+                    .enqueue_with_priority(key.clone(), ThumbnailPriority::Low)
+            });
+            if queued {
+                pending.insert(
+                    key.clone(),
+                    PendingThumbnail {
+                        id: NEXT_REQUEST.fetch_add(1, Ordering::Relaxed),
+                        kind,
+                        cancellation: Cancellation::default(),
+                        targets: Vec::new(),
+                    },
+                );
+            }
+        });
+    }
+
+    start_thumbnail_jobs();
+}
+
+pub(super) fn clear_lookahead() {
+    let pruned = THUMBNAIL_QUEUE.with(|queue| queue.borrow_mut().clear_low_priority());
+    PENDING_THUMBNAILS.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        for key in pruned {
+            if pending
+                .get(&key)
+                .is_some_and(|item| item.targets.is_empty())
+            {
+                pending.remove(&key);
+            }
+        }
+        pending.retain(|_, item| {
+            if item.targets.is_empty() {
+                item.cancellation.cancel();
+                false
+            } else {
+                true
+            }
+        });
+    });
 }
 
 fn set_thumbnail_for_path(
@@ -301,9 +450,14 @@ fn schedule_thumbnail(key: ThumbnailKey, kind: ThumbnailKind, target: PendingTar
         let mut pending = pending.borrow_mut();
         if let Some(pending) = pending.get_mut(&key) {
             pending.targets.push(target);
+            THUMBNAIL_QUEUE.with(|queue| queue.borrow_mut().promote(&key));
             true
         } else {
-            let queued = THUMBNAIL_QUEUE.with(|queue| queue.borrow_mut().enqueue(key.clone()));
+            let queued = THUMBNAIL_QUEUE.with(|queue| {
+                queue
+                    .borrow_mut()
+                    .enqueue_with_priority(key.clone(), ThumbnailPriority::High)
+            });
             if queued {
                 pending.insert(
                     key.clone(),
@@ -531,10 +685,11 @@ fn cancel_thumbnail(image_id: usize) {
         let mut pending = pending.borrow_mut();
         let mut cancelled = Vec::new();
         pending.retain(|key, thumbnail| {
+            let had_targets = !thumbnail.targets.is_empty();
             thumbnail
                 .targets
                 .retain(|target| target.image_id != image_id);
-            if thumbnail.targets.is_empty() {
+            if had_targets && thumbnail.targets.is_empty() {
                 thumbnail.cancellation.cancel();
                 cancelled.push(key.clone());
                 false

@@ -551,6 +551,7 @@ impl ModeViews {
     }
 
     pub fn set_mode(&mut self, mode: BrowserMode) {
+        super::thumbnail::clear_lookahead();
         self.cancel_new_entry();
         self.cancel_rename();
         self.mode = mode;
@@ -1522,6 +1523,7 @@ fn build_grid_view(
     let cuts_for_bind = context.cuts.clone();
     let thumbnail_size_for_bind = context.thumbnail_size.clone();
     let entry_kind_for_bind = context.new_entry_is_directory.clone();
+    let lookahead = ViewportLookaheadTracker::default();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -1563,6 +1565,15 @@ fn build_grid_view(
                 thumbnail_size_for_bind.get(),
             );
             icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
+            schedule_viewport_lookahead(
+                &browser_for_bind,
+                depth,
+                &source_for_bind,
+                &filtered_for_bind,
+                item.position(),
+                &lookahead,
+                thumbnail_size_for_bind.get(),
+            );
         } else {
             card.remove_css_class("cut-item");
             let icon_name = if entry_kind_for_bind.get() {
@@ -2234,6 +2245,7 @@ fn build_explorer_pane(
     let view_model_for_bind = view_model_object.clone();
     let cuts_for_bind = cut_locations.clone();
     let entry_kind_for_bind = new_entry_is_directory.clone();
+    let lookahead = ViewportLookaheadTracker::default();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -2285,6 +2297,15 @@ fn build_explorer_pane(
             size.set_label(&entry_size(&entry));
             kind.set_label(entry_type(&entry));
             crate::util::set_modified_date(&modified, Some(&entry), "—");
+            schedule_viewport_lookahead(
+                &browser_for_bind,
+                depth,
+                &source_for_bind,
+                &view_model_for_bind,
+                item.position(),
+                &lookahead,
+                18,
+            );
         } else {
             row.remove_css_class("cut-item");
             let icon_name = if entry_kind_for_bind.get() {
@@ -2799,6 +2820,80 @@ fn view_position_for_source(
     let item = source.item(position as u32)?;
     (0..filtered.n_items())
         .find(|candidate| filtered.item(*candidate).is_some_and(|value| value == item))
+}
+
+#[derive(Clone, Default)]
+struct ViewportLookaheadTracker {
+    last_position: Rc<Cell<Option<u32>>>,
+    pending_idle: Rc<Cell<bool>>,
+}
+
+const LOOKAHEAD_COUNT: usize = 16;
+
+fn schedule_viewport_lookahead(
+    browser: &Weak<Browser>,
+    depth: usize,
+    source: &gtk::StringList,
+    filtered: &gio::ListModel,
+    bound_position: u32,
+    tracker: &ViewportLookaheadTracker,
+    thumbnail_size: i32,
+) {
+    let previous = tracker.last_position.get();
+    let scrolling_down = previous.is_none_or(|prev| bound_position >= prev);
+    tracker.last_position.set(Some(bound_position));
+
+    if tracker.pending_idle.get() {
+        return;
+    }
+    tracker.pending_idle.set(true);
+
+    let browser = browser.clone();
+    let source = source.clone();
+    let filtered = filtered.clone();
+    let last_pos = tracker.last_position.clone();
+    let pending = tracker.pending_idle.clone();
+
+    glib::idle_add_local_once(move || {
+        pending.set(false);
+        let Some(current_position) = last_pos.get() else {
+            return;
+        };
+        let Some(browser) = browser.upgrade() else {
+            return;
+        };
+
+        let total_items = filtered.n_items();
+        let mut entries = Vec::with_capacity(LOOKAHEAD_COUNT);
+        if scrolling_down {
+            let start = current_position.saturating_add(1);
+            let end = (current_position
+                .saturating_add(1)
+                .saturating_add(LOOKAHEAD_COUNT as u32))
+            .min(total_items);
+            for pos in start..end {
+                if let Some(src_pos) = source_position_for_view(&source, Some(&filtered), pos)
+                    && let Some(entry) = browser.entry_at(depth, src_pos)
+                {
+                    entries.push(entry);
+                }
+            }
+        } else {
+            let start = current_position.saturating_sub(LOOKAHEAD_COUNT as u32);
+            let end = current_position;
+            for pos in (start..end).rev() {
+                if let Some(src_pos) = source_position_for_view(&source, Some(&filtered), pos)
+                    && let Some(entry) = browser.entry_at(depth, src_pos)
+                {
+                    entries.push(entry);
+                }
+            }
+        }
+
+        if !entries.is_empty() {
+            super::thumbnail::update_lookahead(&entries, thumbnail_size);
+        }
+    });
 }
 
 fn install_preview_click(

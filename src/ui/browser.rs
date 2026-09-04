@@ -3725,10 +3725,12 @@ impl ViewState {
         self.mode_views.borrow_mut().handle(&event);
         match event {
             BrowserEvent::Reset => {
+                super::thumbnail::clear_lookahead();
                 self.pending_location_credentials.take();
                 self.truncate(0);
             }
             BrowserEvent::ColumnsTruncated { len } => {
+                super::thumbnail::clear_lookahead();
                 self.truncate(len);
                 self.sync_active_location();
             }
@@ -3762,6 +3764,7 @@ impl ViewState {
                 }
             }
             BrowserEvent::EntriesReplaced { depth, entries } => {
+                super::thumbnail::clear_lookahead();
                 if self.mode_views.borrow().mode() == BrowserMode::Columns
                     && let Some(column) = self.columns.borrow().get(depth).cloned()
                 {
@@ -4681,6 +4684,7 @@ impl ViewState {
         let source_for_bind = model.clone();
         let filtered_for_bind = filtered_model.clone();
         let weak_state_for_bind = Rc::downgrade(self);
+        let lookahead = ColumnLookaheadTracker::default();
         factory.connect_bind(move |_, item| {
             let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
                 return;
@@ -4743,6 +4747,15 @@ impl ViewState {
                 super::thumbnail::set_thumbnail_or_icon(&icon, entry, entry_icon(entry), 17, 17);
                 icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
                 chevron.set_visible(entry.is_directory());
+                schedule_column_viewport_lookahead(
+                    &weak_state_for_bind,
+                    depth,
+                    &source_for_bind,
+                    &filtered_for_bind,
+                    item.position(),
+                    &lookahead,
+                    17,
+                );
             } else {
                 super::thumbnail::show_fallback_icon(&icon, crate::assets::icons::DOCUMENTS, 17);
                 icon.set_opacity(0.72);
@@ -5401,6 +5414,80 @@ fn source_positions_for_filtered(
             None
         })
         .collect()
+}
+
+#[derive(Clone, Default)]
+struct ColumnLookaheadTracker {
+    last_position: Rc<Cell<Option<u32>>>,
+    pending_idle: Rc<Cell<bool>>,
+}
+
+const COLUMN_LOOKAHEAD_COUNT: usize = 16;
+
+fn schedule_column_viewport_lookahead(
+    state: &std::rc::Weak<ViewState>,
+    depth: usize,
+    source: &gtk::StringList,
+    filtered: &gtk::FilterListModel,
+    bound_position: u32,
+    tracker: &ColumnLookaheadTracker,
+    thumbnail_size: i32,
+) {
+    let previous = tracker.last_position.get();
+    let scrolling_down = previous.is_none_or(|prev| bound_position >= prev);
+    tracker.last_position.set(Some(bound_position));
+
+    if tracker.pending_idle.get() {
+        return;
+    }
+    tracker.pending_idle.set(true);
+
+    let state = state.clone();
+    let source = source.clone();
+    let filtered = filtered.clone();
+    let last_pos = tracker.last_position.clone();
+    let pending = tracker.pending_idle.clone();
+
+    glib::idle_add_local_once(move || {
+        pending.set(false);
+        let Some(current_position) = last_pos.get() else {
+            return;
+        };
+        let Some(state) = state.upgrade() else {
+            return;
+        };
+
+        let total_items = filtered.n_items();
+        let mut entries = Vec::with_capacity(COLUMN_LOOKAHEAD_COUNT);
+        if scrolling_down {
+            let start = current_position.saturating_add(1);
+            let end = (current_position
+                .saturating_add(1)
+                .saturating_add(COLUMN_LOOKAHEAD_COUNT as u32))
+            .min(total_items);
+            for pos in start..end {
+                if let Some(src_pos) = source_position_for_filtered(&source, &filtered, pos)
+                    && let Some(entry) = state.browser.entry_at(depth, src_pos)
+                {
+                    entries.push(entry);
+                }
+            }
+        } else {
+            let start = current_position.saturating_sub(COLUMN_LOOKAHEAD_COUNT as u32);
+            let end = current_position;
+            for pos in (start..end).rev() {
+                if let Some(src_pos) = source_position_for_filtered(&source, &filtered, pos)
+                    && let Some(entry) = state.browser.entry_at(depth, src_pos)
+                {
+                    entries.push(entry);
+                }
+            }
+        }
+
+        if !entries.is_empty() {
+            super::thumbnail::update_lookahead(&entries, thumbnail_size);
+        }
+    });
 }
 
 fn set_column_selection(column: &ColumnView, position: u32) {

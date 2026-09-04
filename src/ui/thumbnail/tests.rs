@@ -9,10 +9,11 @@ use gtk::glib;
 
 use super::{
     ACTIVE_REQUESTS, ActiveRequest, CacheHit, CachedThumbnail, MAX_CACHE_ENTRIES,
-    MAX_QUEUED_THUMBNAILS, MAX_THUMBNAIL_WORKERS, PENDING_THUMBNAILS, PendingTarget,
-    PendingThumbnail, THUMBNAIL_QUEUE, ThumbnailCache, ThumbnailKey, ThumbnailKind, ThumbnailQueue,
-    cancel_thumbnail, finish_thumbnail_targets, retry_deferred_thumbnail, schedule_or_defer,
-    take_pending_targets, thumbnail_kind,
+    MAX_LOOKAHEAD_ITEMS, MAX_QUEUED_THUMBNAILS, MAX_THUMBNAIL_WORKERS, PENDING_THUMBNAILS,
+    PendingTarget, PendingThumbnail, THUMBNAIL_QUEUE, ThumbnailCache, ThumbnailKey, ThumbnailKind,
+    ThumbnailPriority, ThumbnailQueue, cancel_thumbnail, clear_lookahead, finish_thumbnail_targets,
+    retry_deferred_thumbnail, schedule_or_defer, take_pending_targets, thumbnail_kind,
+    update_lookahead,
 };
 
 fn key(index: usize) -> ThumbnailKey {
@@ -259,4 +260,154 @@ fn failed_thumbnails_expire_and_share_the_cache_bound() {
 fn rejects_files_without_a_thumbnail_provider() {
     assert_eq!(thumbnail_kind(Path::new("README.md")), None);
     assert_eq!(thumbnail_kind(Path::new("no-extension")), None);
+}
+
+fn test_entry(index: usize) -> crate::model::FileEntry {
+    let name = format!("photo-{index}.png");
+    crate::model::FileEntry {
+        location: crate::model::Location::local(PathBuf::from(&name)),
+        native_name: std::ffi::OsString::from(&name),
+        display_name: name,
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Known(100),
+        modified_unix_seconds: crate::model::MetadataValue::Known(1),
+        is_hidden: false,
+    }
+}
+
+#[test]
+fn high_priority_thumbnails_run_before_low_priority_lookahead() {
+    let mut queue = ThumbnailQueue::default();
+    assert!(queue.enqueue_with_priority(key(1), ThumbnailPriority::Low));
+    assert!(queue.enqueue_with_priority(key(2), ThumbnailPriority::Low));
+    assert!(queue.enqueue_with_priority(key(99), ThumbnailPriority::High));
+
+    let first = queue.begin_next();
+    assert_eq!(first, Some(key(99)));
+    queue.finish();
+
+    let second = queue.begin_next();
+    assert_eq!(second, Some(key(1)));
+    queue.finish();
+
+    let third = queue.begin_next();
+    assert_eq!(third, Some(key(2)));
+    queue.finish();
+
+    assert!(queue.begin_next().is_none());
+}
+
+#[test]
+fn lookahead_item_promoted_when_live_target_is_scheduled() {
+    let mut queue = ThumbnailQueue::default();
+    assert!(queue.enqueue_with_priority(key(5), ThumbnailPriority::Low));
+    assert!(queue.low_priority.contains(&key(5)));
+    assert!(!queue.queued.contains(&key(5)));
+
+    queue.promote(&key(5));
+    assert!(!queue.low_priority.contains(&key(5)));
+    assert!(queue.queued.contains(&key(5)));
+}
+
+#[test]
+fn lookahead_queue_bounds_speculative_items() {
+    let mut queue = ThumbnailQueue::default();
+    for index in 0..MAX_LOOKAHEAD_ITEMS {
+        assert!(queue.enqueue_with_priority(key(index), ThumbnailPriority::Low));
+    }
+    assert!(!queue.enqueue_with_priority(key(MAX_LOOKAHEAD_ITEMS), ThumbnailPriority::Low));
+}
+
+#[test]
+fn update_lookahead_clears_unstarted_speculative_items() {
+    PENDING_THUMBNAILS.with(|pending| pending.borrow_mut().clear());
+    THUMBNAIL_QUEUE.with(|queue| {
+        queue.borrow_mut().queued.clear();
+        queue.borrow_mut().low_priority.clear();
+    });
+
+    let first_batch = vec![test_entry(1), test_entry(2)];
+    update_lookahead(&first_batch, 64);
+
+    let key1 = ThumbnailKey {
+        path: PathBuf::from("photo-1.png"),
+        modified: Some(1),
+        file_size: Some(100),
+        thumbnail_size: 64,
+    };
+    let key2 = ThumbnailKey {
+        path: PathBuf::from("photo-2.png"),
+        modified: Some(1),
+        file_size: Some(100),
+        thumbnail_size: 64,
+    };
+    let key3 = ThumbnailKey {
+        path: PathBuf::from("photo-3.png"),
+        modified: Some(1),
+        file_size: Some(100),
+        thumbnail_size: 64,
+    };
+
+    PENDING_THUMBNAILS.with(|pending| {
+        let pending = pending.borrow();
+        assert!(pending.contains_key(&key1));
+        assert!(pending.contains_key(&key2));
+    });
+
+    let second_batch = vec![test_entry(3)];
+    update_lookahead(&second_batch, 64);
+
+    PENDING_THUMBNAILS.with(|pending| {
+        let pending = pending.borrow();
+        assert!(!pending.contains_key(&key2));
+        assert!(pending.contains_key(&key3));
+    });
+
+    clear_lookahead();
+    PENDING_THUMBNAILS.with(|pending| {
+        assert!(pending.borrow().is_empty());
+    });
+    THUMBNAIL_QUEUE.with(|queue| {
+        assert!(queue.borrow().low_priority.is_empty());
+    });
+}
+
+#[test]
+fn cancel_thumbnail_does_not_cancel_unrelated_lookahead_jobs() {
+    PENDING_THUMBNAILS.with(|pending| pending.borrow_mut().clear());
+    THUMBNAIL_QUEUE.with(|queue| {
+        queue.borrow_mut().queued.clear();
+        queue.borrow_mut().low_priority.clear();
+    });
+
+    let lookahead_key = key(42);
+    PENDING_THUMBNAILS.with(|pending| {
+        pending.borrow_mut().insert(
+            lookahead_key.clone(),
+            PendingThumbnail {
+                id: 100,
+                kind: ThumbnailKind::Image,
+                cancellation: crate::sandbox::Cancellation::default(),
+                targets: Vec::new(),
+            },
+        );
+    });
+    THUMBNAIL_QUEUE.with(|queue| {
+        assert!(
+            queue
+                .borrow_mut()
+                .enqueue_with_priority(lookahead_key.clone(), ThumbnailPriority::Low)
+        );
+    });
+
+    cancel_thumbnail(999);
+
+    PENDING_THUMBNAILS.with(|pending| {
+        assert!(pending.borrow().contains_key(&lookahead_key));
+        pending.borrow_mut().clear();
+    });
+    THUMBNAIL_QUEUE.with(|queue| {
+        assert!(queue.borrow().low_priority.contains(&lookahead_key));
+        queue.borrow_mut().low_priority.clear();
+    });
 }
