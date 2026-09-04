@@ -2397,10 +2397,6 @@ menubutton.column-header-action > button:active {
   min-width: 360px;
 }
 
-.customize-dialog .action-dialog-header {
-  min-height: 52px;
-}
-
 .customize-dialog .action-dialog-body {
   padding: 16px 20px;
 }

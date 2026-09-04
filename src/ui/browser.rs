@@ -3055,23 +3055,6 @@ impl ViewState {
         let location_value = properties_row(&details, "LOCATION", &compact_display_path(&location));
         location_value.set_tooltip_text(Some(&location.display_path()));
         let trash_root = is_trash_root(&location);
-        if is_directory
-            && !trash_root
-            && let Some(native_path) = location.native_path()
-        {
-            let path_buf = native_path.to_path_buf();
-            let modal_path = path_buf.clone();
-            let modal_icon = layout.icon.clone();
-            let color_bar = build_folder_color_bar(
-                super::theme::ThemeManager::shared().folder_color(&path_buf),
-                move |selected_color| {
-                    super::theme::ThemeManager::shared()
-                        .set_folder_color(&modal_path, selected_color);
-                    super::thumbnail::show_customized_icon(&modal_icon, &modal_path, icon_name, 21);
-                },
-            );
-            properties_widget_row(&details, "COLOR", &color_bar.container);
-        }
         let initial_size = if trash_root {
             "Calculating…".to_owned()
         } else {
@@ -6474,8 +6457,8 @@ pub(super) fn install_item_context_menu(
     single.append(&rename);
     single.append(&compress);
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
-    single.append(&properties);
     single.append(&customize);
+    single.append(&properties);
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     single.append(&move_to_trash);
     single.append(&permanent_delete);
@@ -9247,17 +9230,6 @@ fn properties_row(parent: &gtk::Box, label: &str, value: &str) -> gtk::Label {
     value
 }
 
-fn properties_widget_row(parent: &gtk::Box, label: &str, widget: &impl IsA<gtk::Widget>) {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    row.add_css_class("properties-row");
-    let label = gtk::Label::new(Some(label));
-    label.add_css_class("properties-row-label");
-    label.set_xalign(0.0);
-    row.append(&label);
-    row.append(widget);
-    parent.append(&row);
-}
-
 fn rgba_to_hex(rgba: &gdk::RGBA) -> String {
     format!(
         "#{:02x}{:02x}{:02x}",
@@ -9444,7 +9416,6 @@ fn show_customize_modal(
         .subtitle
         .set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     layout.subtitle.set_max_width_chars(36);
-    layout.close.set_visible(false);
     layout.cancel.set_visible(false);
 
     let theme_manager = super::theme::ThemeManager::shared();
@@ -9468,7 +9439,9 @@ fn show_customize_modal(
     let clear = gtk::Button::with_label("Clear");
     clear.add_css_class("action-dialog-cancel");
     clear.set_sensitive(initial_color.is_some() || initial_icon.is_some());
-    layout.actions.prepend(&clear);
+    layout
+        .actions
+        .insert_child_after(&clear, Some(&layout.cancel));
 
     let color_bar = if is_directory {
         let section = gtk::Box::new(gtk::Orientation::Vertical, 8);
@@ -9613,12 +9586,15 @@ fn show_customize_modal(
     let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
     window_overlay.add_overlay(&layer);
 
-    let done_layer = layer.clone();
-    let done_overlay = window_overlay.clone();
-    let done_root = blurred_root.clone();
-    confirm.connect_clicked(move |_| {
-        dismiss_modal_layer(&done_layer, &done_overlay, done_root.as_ref());
-    });
+    let dismiss = {
+        let layer = layer.clone();
+        let overlay = window_overlay.clone();
+        let root = blurred_root.clone();
+        move || dismiss_modal_layer(&layer, &overlay, root.as_ref())
+    };
+    let done_dismiss = dismiss.clone();
+    confirm.connect_clicked(move |_| done_dismiss());
+    layout.close.connect_clicked(move |_| dismiss());
 
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);

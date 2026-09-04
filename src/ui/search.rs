@@ -374,7 +374,7 @@ fn result_row(item: &SearchItem, root: &Path) -> gtk::ListBoxRow {
     } else {
         crate::assets::icons::DOCUMENTS
     };
-    super::thumbnail::set_thumbnail_or_icon_for_path(&icon, &item.path, fallback, 19, 32);
+    super::thumbnail::show_customized_icon(&icon, &item.path, fallback, 19);
     content.append(&icon);
     let labels = gtk::Box::new(gtk::Orientation::Vertical, 2);
     labels.set_hexpand(true);
