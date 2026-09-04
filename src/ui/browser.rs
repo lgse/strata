@@ -6435,8 +6435,10 @@ fn entry_supports_printing(entry: &FileEntry) -> bool {
         gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
     matches!(
         content_family(&content_type),
-        PreviewContent::Image | PreviewContent::Pdf { .. }
-    )
+        PreviewContent::Text { .. } | PreviewContent::Image | PreviewContent::Pdf { .. }
+    ) || gio::content_type_is_a(&content_type, "text/plain")
+        || has_plain_text_extension(&entry.native_name)
+        || is_extensionless_dotfile(&entry.native_name)
 }
 
 struct TrashSummary {

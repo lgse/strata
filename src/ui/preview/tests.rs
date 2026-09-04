@@ -3,7 +3,7 @@
 use super::{
     MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, format_file_size, format_media_time,
     media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
-    preview_width_for_empty_space, print_fit, print_progress_for_page,
+    preview_width_for_empty_space, print_fit, print_page_starts, print_progress_for_page,
 };
 
 #[test]
@@ -39,6 +39,14 @@ fn print_fit_rejects_zero_sized_inputs() {
     assert_eq!(print_fit(595.0, 0.0, 100.0, 100.0), None);
     assert_eq!(print_fit(595.0, 842.0, 0.0, 100.0), None);
     assert_eq!(print_fit(595.0, 842.0, 100.0, -1.0), None);
+}
+
+#[test]
+fn text_print_pages_start_on_line_boundaries() {
+    assert_eq!(
+        print_page_starts(&[(0.0, 12.0), (12.0, 24.0), (24.0, 36.0)], 25.0),
+        vec![0.0, 24.0]
+    );
 }
 
 #[test]
