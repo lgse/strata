@@ -129,6 +129,8 @@ struct Preferences {
     sidebar_order: Vec<String>,
     #[serde(default)]
     show_hidden: bool,
+    #[serde(default = "default_text_size")]
+    text_size: String,
     #[serde(default = "default_enabled")]
     folders_first: bool,
     #[serde(default = "default_sort_key")]
@@ -169,6 +171,7 @@ impl Default for Preferences {
             explorer_folder_clicks: default_double_clicks(),
             sidebar_order: default_sidebar_order(),
             show_hidden: false,
+            text_size: default_text_size(),
             folders_first: true,
             sort_key: default_sort_key(),
             sort_direction: default_sort_direction(),
@@ -187,6 +190,47 @@ fn default_enabled() -> bool {
 
 fn default_release_channel() -> String {
     "stable".to_owned()
+}
+
+fn default_text_size() -> String {
+    TextSize::default().as_str().to_owned()
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum TextSize {
+    Small,
+    #[default]
+    Medium,
+    Large,
+}
+
+impl TextSize {
+    /// The persisted/config-file representation of this size.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TextSize::Small => "small",
+            TextSize::Medium => "medium",
+            TextSize::Large => "large",
+        }
+    }
+
+    /// Parses a persisted text size value, falling back to [`TextSize::Medium`]
+    /// for anything unrecognised.
+    pub fn parse(value: &str) -> TextSize {
+        match value {
+            "small" => TextSize::Small,
+            "large" => TextSize::Large,
+            _ => TextSize::Medium,
+        }
+    }
+
+    fn root_font_px(self) -> u32 {
+        match self {
+            TextSize::Small => 12,
+            TextSize::Medium => 13,
+            TextSize::Large => 15,
+        }
+    }
 }
 
 fn default_browser_mode() -> String {
@@ -473,6 +517,16 @@ impl ThemeManager {
         self.save_preferences();
     }
 
+    pub fn text_size(&self) -> TextSize {
+        TextSize::parse(&self.preferences.borrow().text_size)
+    }
+
+    pub fn set_text_size(&self, size: TextSize) {
+        self.preferences.borrow_mut().text_size = size.as_str().to_owned();
+        self.apply_selected();
+        self.save_preferences();
+    }
+
     pub fn group_by_type(&self) -> bool {
         self.preferences.borrow().group_by_type
     }
@@ -682,7 +736,8 @@ impl ThemeManager {
     }
 
     fn apply_tokens(&self, tokens: &ThemeTokens) {
-        self.provider.load_from_string(&tokens_css(tokens));
+        self.provider
+            .load_from_string(&tokens_css(tokens, self.text_size().root_font_px()));
         crate::assets::set_primary_icon_color(&tokens.accent);
         crate::assets::set_danger_icon_color(&tokens.danger);
         install_source_style_scheme(tokens);
@@ -1015,9 +1070,9 @@ fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
     )
 }
 
-fn tokens_css(tokens: &ThemeTokens) -> String {
+fn tokens_css(tokens: &ThemeTokens, root_font_px: u32) -> String {
     format!(
-        "@define-color theme_bg {};\n@define-color theme_surface {};\n@define-color theme_text {};\n@define-color theme_accent {};\n@define-color theme_danger {};\n@define-color theme_muted {};\n@define-color theme_highlight {};\n@define-color theme_border {};\n@define-color theme_dim_text {};\n",
+        "@define-color theme_bg {};\n@define-color theme_surface {};\n@define-color theme_text {};\n@define-color theme_accent {};\n@define-color theme_danger {};\n@define-color theme_muted {};\n@define-color theme_highlight {};\n@define-color theme_border {};\n@define-color theme_dim_text {};\nwindow {{ font-size: {root_font_px}px; }}\n",
         tokens.background,
         tokens.surface,
         tokens.text,
