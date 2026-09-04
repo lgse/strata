@@ -22,6 +22,7 @@ use crate::{
 const EXPLORER_COLUMN_WIDTHS: [i32; 5] = [160, 110, 90, 120, 150];
 const EXPLORER_COLUMN_MIN_WIDTHS: [i32; 5] = [160, 80, 70, 80, 110];
 const DEFAULT_GRID_THUMBNAIL_SIZE: i32 = 64;
+const GRID_SCROLL_SETTLE_DELAY: std::time::Duration = std::time::Duration::from_millis(80);
 /// Margin and padding a grid card adds around its own width.
 const GRID_CARD_SPACING: i32 = 4;
 const FALLBACK_GRID_COLUMN_WIDTH: i32 = 160;
@@ -1278,6 +1279,7 @@ struct GridContext {
     new_entry_is_directory: Rc<Cell<bool>>,
     source_index: SourceIndexMap,
     sections: Weak<RefCell<Vec<PaneSection>>>,
+    scrolling: Rc<Cell<bool>>,
     density: Cell<BrowserDensity>,
 }
 
@@ -1348,6 +1350,7 @@ fn build_grid_pane(
         new_entry_is_directory: new_entry_is_directory.clone(),
         source_index: source_index.clone(),
         sections: Rc::downgrade(&sections),
+        scrolling: Rc::new(Cell::new(false)),
         density: Cell::new(options.density),
     });
     let (root, pane_section, groups) = if options.group_by_type {
@@ -1440,6 +1443,7 @@ fn build_grid_pane(
         .vexpand(true)
         .build();
     scroll.add_css_class("fixed-scrollbar");
+    install_grid_scroll_settle(&scroll, &context);
     if let Some(groups) = groups.clone() {
         let context = Rc::downgrade(&context);
         scroll
@@ -1647,6 +1651,7 @@ fn build_grid_view(
     });
     let browser_for_bind = Rc::downgrade(&context.browser);
     let source_index_for_bind = context.source_index.clone();
+    let scrolling_for_bind = context.scrolling.clone();
     let cuts_for_bind = context.cuts.clone();
     let thumbnail_size_for_bind = context.thumbnail_size.clone();
     let entry_kind_for_bind = context.new_entry_is_directory.clone();
@@ -1685,17 +1690,22 @@ fn build_grid_view(
             set_mode_cut_style(&card, cuts_for_bind.borrow().contains(&entry.location));
             label.set_label(&entry.display_name);
             label.set_tooltip_text(Some(&entry.display_name));
-            super::thumbnail::set_thumbnail_or_icon(
-                &icon,
-                &entry,
-                super::browser::entry_icon(&entry),
-                26,
-                thumbnail_size_for_bind.get(),
-            );
-            if let Some(position) = metadata_fill_position(source_position, &entry, false)
-                && let Some(browser) = browser.as_ref()
-            {
-                browser.request_metadata_fill(depth, position, entry.location.clone());
+            let fallback = super::browser::entry_icon(&entry);
+            if scrolling_for_bind.get() {
+                super::thumbnail::show_fallback_icon(&icon, fallback, 26);
+            } else {
+                super::thumbnail::set_thumbnail_or_icon(
+                    &icon,
+                    &entry,
+                    fallback,
+                    26,
+                    thumbnail_size_for_bind.get(),
+                );
+                if let Some(position) = metadata_fill_position(source_position, &entry, false)
+                    && let Some(browser) = browser.as_ref()
+                {
+                    browser.request_metadata_fill(depth, position, entry.location.clone());
+                }
             }
             icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
         } else {
@@ -1880,12 +1890,69 @@ fn refresh_marquee_targets(pane: &Pane) {
         .collect();
 }
 
+fn install_grid_scroll_settle(scroll: &gtk::ScrolledWindow, context: &Rc<GridContext>) {
+    let pending = Rc::new(RefCell::new(None::<glib::SourceId>));
+    for adjustment in [scroll.vadjustment(), scroll.hadjustment()] {
+        let pending = pending.clone();
+        let context = Rc::downgrade(context);
+        adjustment.connect_value_changed(move |_| {
+            let Some(context) = context.upgrade() else {
+                return;
+            };
+            context.scrolling.set(true);
+            if let Some(source) = pending.borrow_mut().take() {
+                source.remove();
+            }
+            let pending_for_timeout = pending.clone();
+            let context = Rc::downgrade(&context);
+            pending.replace(Some(glib::timeout_add_local_once(
+                GRID_SCROLL_SETTLE_DELAY,
+                move || {
+                    pending_for_timeout.borrow_mut().take();
+                    let Some(context) = context.upgrade() else {
+                        return;
+                    };
+                    context.scrolling.set(false);
+                    refresh_grid_expensive_content(&context);
+                },
+            )));
+        });
+    }
+}
+
+fn refresh_grid_expensive_content(context: &GridContext) {
+    let Some(sections) = context.sections.upgrade() else {
+        return;
+    };
+    for section in sections.borrow().iter() {
+        refresh_grid_section(
+            &Rc::downgrade(&context.browser),
+            context.depth,
+            &context.source_index,
+            section,
+            context.thumbnail_size.get(),
+            true,
+        );
+    }
+}
+
 fn refresh_grid_thumbnail_size(
     browser: &Weak<Browser>,
     depth: usize,
     source_index: &SourceIndexMap,
     section: &PaneSection,
     size: i32,
+) {
+    refresh_grid_section(browser, depth, source_index, section, size, false);
+}
+
+fn refresh_grid_section(
+    browser: &Weak<Browser>,
+    depth: usize,
+    source_index: &SourceIndexMap,
+    section: &PaneSection,
+    size: i32,
+    request_metadata: bool,
 ) {
     let Some(browser) = browser.upgrade() else {
         return;
@@ -1920,6 +1987,11 @@ fn refresh_grid_thumbnail_size(
             26,
             size,
         );
+        if request_metadata
+            && let Some(position) = metadata_fill_position(Some(position), &entry, false)
+        {
+            browser.request_metadata_fill(depth, position, entry.location.clone());
+        }
         icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
     });
 }
