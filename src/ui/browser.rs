@@ -1413,20 +1413,25 @@ impl ViewState {
     }
 
     fn copy_entries(&self, entries: &[FileEntry]) {
+        self.sync_mode_selection();
         if set_files_clipboard(entries) {
             self.clear_cut();
         }
     }
 
     fn cut_entries(&self, entries: &[FileEntry]) {
+        self.sync_mode_selection();
         if set_files_clipboard(entries) {
-            self.cut_locations
-                .replace(entries.iter().map(|entry| entry.location.clone()).collect());
+            let locations: Vec<Location> =
+                entries.iter().map(|entry| entry.location.clone()).collect();
+            self.cut_locations.replace(locations.clone());
+            set_shared_cut(&locations);
             self.refresh_cut_rows();
         }
     }
 
     fn clear_cut(&self) {
+        clear_shared_cut();
         if self.cut_locations.borrow().is_empty() {
             return;
         }
@@ -1436,7 +1441,8 @@ impl ViewState {
 
     fn complete_cut_transfer(&self, transferred: &[Location]) {
         retain_untransferred(&mut self.cut_locations.borrow_mut(), transferred);
-        let remaining = self.cut_locations.borrow().clone();
+        retain_shared_untransferred(transferred);
+        let remaining = shared_cut_locations();
         if remaining.is_empty() {
             if let Some(display) = gtk::gdk::Display::default() {
                 let _result = display
@@ -1493,7 +1499,7 @@ impl ViewState {
                 .filter_map(|file| location_for_file(&file))
                 .collect::<Vec<_>>();
             if let Some(state) = weak.upgrade() {
-                let move_sources = same_locations(&sources, &state.cut_locations.borrow());
+                let move_sources = is_cut_match(&sources, &state.cut_locations.borrow());
                 state.start_transfer(destination, sources, move_sources);
             }
         });
@@ -6869,6 +6875,38 @@ fn needs_shell_escape(c: char) -> bool {
         )
 }
 
+// Process-wide cut intent shared by every window. The GDK clipboard only
+// carries a `FileList` with no cut marker, and each `ViewState` keeps its own
+// `cut_locations` for dimming, so a cut in one window always pasted as a copy
+// in another. This thread-local (GTK stays on the main thread) is the source
+// of truth for "was this a cut", while the per-view list stays for styling.
+thread_local! {
+    static SHARED_CUT_LOCATIONS: RefCell<Vec<Location>> = const { RefCell::new(Vec::new()) };
+}
+
+fn shared_cut_locations() -> Vec<Location> {
+    SHARED_CUT_LOCATIONS.with(|cut| cut.borrow().clone())
+}
+
+fn set_shared_cut(locations: &[Location]) {
+    SHARED_CUT_LOCATIONS.with(|cut| cut.replace(locations.to_vec()));
+}
+
+fn clear_shared_cut() {
+    SHARED_CUT_LOCATIONS.with(|cut| cut.borrow_mut().clear());
+}
+
+fn retain_shared_untransferred(transferred: &[Location]) {
+    SHARED_CUT_LOCATIONS.with(|cut| retain_untransferred(&mut cut.borrow_mut(), transferred));
+}
+
+/// True when the clipboard sources match a pending cut, checking the local
+/// view first and falling back to the process-wide cut list so cross-window
+/// paste still moves.
+fn is_cut_match(sources: &[Location], local_cut: &[Location]) -> bool {
+    same_locations(sources, local_cut) || same_locations(sources, &shared_cut_locations())
+}
+
 fn set_files_clipboard(entries: &[FileEntry]) -> bool {
     set_location_files_clipboard(
         &entries
@@ -6975,18 +7013,44 @@ fn duplicate_transfer(entries: &[FileEntry]) -> Option<(Location, Vec<Location>)
     Some((destination, sources))
 }
 
+/// Location equality that also accepts GIO-level equivalence (URI
+/// normalization, `file://` vs native path for the same file). Mounts such as
+/// NFS can round-trip through the clipboard with a different but equivalent
+/// representation, and strict `PathBuf` equality alone would degrade a cut to
+/// a copy.
+fn locations_equal(left: &Location, right: &Location) -> bool {
+    left == right || gio_file_for_location(left).equal(&gio_file_for_location(right))
+}
+
 fn same_locations(left: &[Location], right: &[Location]) -> bool {
     if left.is_empty() || left.len() != right.len() {
         return false;
     }
-    let left: HashSet<_> = left.iter().collect();
-    let right: HashSet<_> = right.iter().collect();
-    left.len() == right.len() && left == right
+    let left_set: HashSet<_> = left.iter().collect();
+    let right_set: HashSet<_> = right.iter().collect();
+    if left_set.len() == right_set.len() && left_set == right_set {
+        return true;
+    }
+    let mut used = vec![false; right.len()];
+    left.iter().all(|location| {
+        let Some((index, _)) = right
+            .iter()
+            .enumerate()
+            .find(|(index, candidate)| !used[*index] && locations_equal(location, candidate))
+        else {
+            return false;
+        };
+        used[index] = true;
+        true
+    })
 }
 
 fn retain_untransferred(cut: &mut Vec<Location>, transferred: &[Location]) {
-    let transferred: HashSet<_> = transferred.iter().collect();
-    cut.retain(|location| !transferred.contains(location));
+    cut.retain(|location| {
+        !transferred
+            .iter()
+            .any(|moved| locations_equal(location, moved))
+    });
 }
 
 fn item_context_option(icon: &str, label: &str, accelerator: &str) -> gtk::Button {

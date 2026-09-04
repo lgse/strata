@@ -793,6 +793,31 @@ fn cut_clipboard_locations_match_regardless_of_order() {
 }
 
 #[test]
+fn cut_matches_gio_equivalent_representations() {
+    let native = Location::local("/fixture/first");
+    let uri = Location::uri("file:///fixture/first");
+
+    assert!(locations_equal(&native, &uri));
+    assert!(same_locations(
+        std::slice::from_ref(&native),
+        std::slice::from_ref(&uri)
+    ));
+    assert!(!same_locations(
+        std::slice::from_ref(&native),
+        std::slice::from_ref(&Location::uri("file:///fixture/other"))
+    ));
+}
+
+#[test]
+fn completed_moves_match_gio_equivalent_cut_entries() {
+    let mut cut = vec![Location::local("/fixture/first")];
+
+    retain_untransferred(&mut cut, &[Location::uri("file:///fixture/first")]);
+
+    assert!(cut.is_empty());
+}
+
+#[test]
 fn completed_moves_are_removed_from_the_cut_list() {
     let first = Location::local("/fixture/first");
     let second = Location::local("/fixture/second");
