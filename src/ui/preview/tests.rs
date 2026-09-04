@@ -2,8 +2,82 @@
 
 use super::{
     MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, format_file_size, format_media_time,
-    media_error_feedback, pdf_zoom_after_scroll, preview_width_for_empty_space,
+    media_error_feedback, pdf_zoom_after_scroll, preview_width_for_empty_space, print_fit,
+    printable_page,
 };
+
+use crate::services::PreviewContent;
+
+#[test]
+fn print_fit_centers_landscape_image_on_portrait_page() {
+    let (x, y, width, height, scale) = print_fit(595.0, 842.0, 1920.0, 1080.0)
+        .expect("print_fit with valid dimensions should return a layout");
+    assert!((scale - 0.3098).abs() < 0.001);
+    assert!((width - 595.0).abs() < 0.001);
+    assert!((height - 334.7).abs() < 0.5);
+    assert!(x.abs() < f64::EPSILON);
+    assert!((y - (842.0 - height) / 2.0).abs() < 0.5);
+}
+
+#[test]
+fn print_fit_keeps_tall_image_inside_page() {
+    let (x, y, width, height, scale) = print_fit(595.0, 842.0, 1000.0, 2000.0)
+        .expect("print_fit with valid dimensions should return a layout");
+    let page_scale = 842.0 / 2000.0;
+    assert!((scale - page_scale).abs() < 0.001);
+    assert!((height - 842.0).abs() < 0.001);
+    assert!((width - 1000.0 * page_scale).abs() < 0.001);
+    assert!((x - (595.0 - width) / 2.0).abs() < 0.5);
+    assert!(y.abs() < f64::EPSILON);
+    assert!(
+        (y + height / 2.0 - 842.0 / 2.0).abs() < 0.5,
+        "image is vertically centered"
+    );
+}
+
+#[test]
+fn print_fit_rejects_zero_sized_inputs() {
+    assert_eq!(print_fit(0.0, 842.0, 100.0, 100.0), None);
+    assert_eq!(print_fit(595.0, 0.0, 100.0, 100.0), None);
+    assert_eq!(print_fit(595.0, 842.0, 0.0, 100.0), None);
+    assert_eq!(print_fit(595.0, 842.0, 100.0, -1.0), None);
+}
+
+#[test]
+fn printable_page_exposes_rasterized_png() {
+    let png = vec![1, 2, 3];
+    assert_eq!(
+        printable_page(&PreviewContent::Rasterized { png: png.clone() }),
+        Some(png.clone())
+    );
+}
+
+#[test]
+fn printable_page_exposes_pdf_page_png() {
+    let png = vec![4, 5, 6];
+    assert_eq!(
+        printable_page(&PreviewContent::Pdf {
+            png: png.clone(),
+            page: 0,
+            pages: 1,
+        }),
+        Some(png.clone())
+    );
+}
+
+#[test]
+fn printable_page_ignores_non_page_content() {
+    assert_eq!(
+        printable_page(&PreviewContent::Text {
+            content: "hi".into(),
+            truncated: false
+        }),
+        None
+    );
+    assert_eq!(printable_page(&PreviewContent::Image), None);
+    assert_eq!(printable_page(&PreviewContent::Media), None);
+    assert_eq!(printable_page(&PreviewContent::Unsupported), None);
+}
 
 #[test]
 fn formats_preview_file_sizes() {

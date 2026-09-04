@@ -54,6 +54,7 @@ pub mod icons {
     pub const PIN: &str = "strata-pin";
     pub const PLAY: &str = "strata-play";
     pub const PLUS: &str = "strata-plus";
+    pub const PRINTER: &str = "strata-printer";
     pub const PICTURES: &str = "strata-image";
     pub const ROWS: &str = "strata-rows";
     pub const SCISSORS: &str = "strata-scissors";

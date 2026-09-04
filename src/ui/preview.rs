@@ -48,6 +48,8 @@ struct PreviewState {
     current: RefCell<Option<FileEntry>>,
     load: RefCell<Option<LoadHandle>>,
     pdf_loads: Rc<RefCell<HashMap<i32, LoadHandle>>>,
+    print_page: RefCell<Option<Vec<u8>>>,
+    print_load: RefCell<Option<LoadHandle>>,
     current_request: Cell<Option<PreviewRequestId>>,
     next_request: Cell<u64>,
     opened: Cell<bool>,
@@ -86,6 +88,15 @@ impl PreviewDrawer {
             16,
         )));
         open.add_css_class("preview-header-action");
+        let print = gtk::Button::builder()
+            .tooltip_text("Print")
+            .valign(gtk::Align::Center)
+            .build();
+        print.set_child(Some(&crate::assets::primary_icon(
+            crate::assets::icons::PRINTER,
+            16,
+        )));
+        print.add_css_class("preview-header-action");
         let close = gtk::Button::builder()
             .tooltip_text("Close preview (Space)")
             .valign(gtk::Align::Center)
@@ -99,6 +110,7 @@ impl PreviewDrawer {
         header.append(&icon);
         header.append(&title);
         header.append(&open);
+        header.append(&print);
         header.append(&close);
         pane.append(&header);
 
@@ -144,6 +156,8 @@ impl PreviewDrawer {
             current: RefCell::new(None),
             load: RefCell::new(None),
             pdf_loads: Rc::new(RefCell::new(HashMap::new())),
+            print_page: RefCell::new(None),
+            print_load: RefCell::new(None),
             current_request: Cell::new(None),
             next_request: Cell::new(1),
             opened: Cell::new(false),
@@ -166,6 +180,15 @@ impl PreviewDrawer {
                     stream.set_playing(false);
                 }
                 super::browser::open_location(&location, &state.pane);
+            }
+        });
+        let weak = Rc::downgrade(&state);
+        print.connect_clicked(move |_| {
+            if let Some(state) = weak.upgrade() {
+                if let Some(stream) = state.media.borrow().as_ref() {
+                    stream.set_playing(false);
+                }
+                state.print();
             }
         });
         let weak = Rc::downgrade(&state);
@@ -285,6 +308,10 @@ impl PreviewDrawer {
             self.show(entry);
         }
     }
+
+    pub fn print_entry(&self, entry: FileEntry) {
+        self.state.print_entry(entry);
+    }
 }
 
 impl PreviewState {
@@ -372,6 +399,7 @@ impl PreviewState {
         self.current_request.set(None);
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
+        self.print_load.take();
         self.clear_content();
         self.revealer.set_transition_duration(0);
         self.revealer.set_reveal_child(false);
@@ -380,6 +408,67 @@ impl PreviewState {
             split.set_end_child(None::<&gtk::Widget>);
         }
         self.pane.set_size_request(MIN_WIDTH, -1);
+    }
+
+    fn print(self: &Rc<Self>) {
+        let Some(entry) = self.current.borrow().clone() else {
+            return;
+        };
+        let Some(png) = self.print_page.borrow().clone() else {
+            return;
+        };
+        let parent = self.pane.root().and_downcast::<gtk::Window>();
+        print_rasterized(png, &entry.display_name, parent.as_ref());
+    }
+
+    fn print_entry(self: &Rc<Self>, entry: FileEntry) {
+        let job_name = entry.display_name.clone();
+        let parent = self.pane.root().and_downcast::<gtk::Window>();
+        let request_id = PreviewRequestId(self.next_request.get());
+        self.next_request
+            .set(self.next_request.get().saturating_add(1));
+        let weak = Rc::downgrade(self);
+        let emit = Rc::new(move |event| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.print_entry_event(request_id, job_name.clone(), parent.clone(), event);
+        });
+        let load = self.provider.load(
+            PreviewRequest {
+                id: request_id,
+                entry,
+                text_byte_limit: TEXT_BYTE_LIMIT,
+                pdf_page: 0,
+            },
+            emit,
+        );
+        self.print_load.replace(Some(load));
+    }
+
+    fn print_entry_event(
+        self: &Rc<Self>,
+        expected: PreviewRequestId,
+        job_name: String,
+        parent: Option<gtk::Window>,
+        event: PreviewEvent,
+    ) {
+        match event {
+            PreviewEvent::Ready(preview) if preview.request_id == expected => {
+                self.print_load.take();
+                if let Some(png) = printable_page(&preview.content) {
+                    print_rasterized(png, &job_name, parent.as_ref());
+                }
+            }
+            PreviewEvent::Failed {
+                request_id,
+                entry: _,
+                message: _,
+            } if request_id == expected => {
+                self.print_load.take();
+            }
+            PreviewEvent::Ready(_) | PreviewEvent::Failed { .. } => {}
+        }
     }
 
     fn load(self: &Rc<Self>, entry: FileEntry, pdf_page: i32) {
@@ -485,6 +574,7 @@ impl PreviewState {
                 }
             }
             PreviewContent::Rasterized { png } => {
+                self.print_page.replace(Some(png.clone()));
                 let bytes = glib::Bytes::from_owned(png);
                 match gtk::gdk::Texture::from_bytes(&bytes) {
                     Ok(texture) => {
@@ -610,6 +700,7 @@ impl PreviewState {
                 );
             }
             PreviewContent::Pdf { png, page, pages } => {
+                self.print_page.replace(Some(png.clone()));
                 self.render_pdf_viewer(preview.entry, png, page, pages);
             }
             PreviewContent::Unsupported => {
@@ -1114,6 +1205,7 @@ impl PreviewState {
         self.media_toggle_mute.replace(None);
         self.media_volume_slider.replace(None);
         self.media_volume_icon.replace(None);
+        self.print_page.take();
         clear_box(&self.content);
     }
 
@@ -1175,6 +1267,96 @@ impl PreviewState {
         }
         self.content.append(&box_);
     }
+}
+
+/// Opens the native print dialog and prints `png` as a single page named `job_name`.
+fn print_rasterized(png: Vec<u8>, job_name: &str, parent: Option<&gtk::Window>) {
+    let operation = gtk::PrintOperation::new();
+    operation.set_job_name(job_name);
+    operation.set_allow_async(true);
+    operation.set_n_pages(1);
+    operation.connect_draw_page(move |_, context, page| {
+        if page != 0 {
+            return;
+        }
+        let Ok(surface) = cairo::ImageSurface::create_from_png(&mut &png[..]) else {
+            return;
+        };
+        let cr = context.cairo_context();
+        let _ = paint_print_page(&cr, &surface, context.width(), context.height());
+    });
+    if let Err(error) = operation.run(gtk::PrintOperationAction::PrintDialog, parent) {
+        tracing::warn!(
+            error_domain = ?error.domain(),
+            error_code = error.code(),
+            "unable to open print dialog"
+        );
+    }
+}
+
+/// Returns the page's rasterized PNG for a printable preview, or `None` when the content has no
+/// single renderable page (text, media, unsupported).
+fn printable_page(content: &PreviewContent) -> Option<Vec<u8>> {
+    match content {
+        PreviewContent::Rasterized { png } => Some(png.clone()),
+        PreviewContent::Pdf { png, .. } => Some(png.clone()),
+        PreviewContent::Text { .. }
+        | PreviewContent::Image
+        | PreviewContent::Media
+        | PreviewContent::SandboxedMedia { .. }
+        | PreviewContent::Unsupported => None,
+    }
+}
+
+/// Returns `(x, y, dest_width, dest_height, scale)` so `image` fits `page` preserving aspect ratio.
+fn print_fit(
+    page_width: f64,
+    page_height: f64,
+    image_width: f64,
+    image_height: f64,
+) -> Option<(f64, f64, f64, f64, f64)> {
+    if page_width <= 0.0 || page_height <= 0.0 || image_width <= 0.0 || image_height <= 0.0 {
+        return None;
+    }
+    let scale = (page_width / image_width).min(page_height / image_height);
+    let dest_width = image_width * scale;
+    let dest_height = image_height * scale;
+    Some((
+        (page_width - dest_width) / 2.0,
+        (page_height - dest_height) / 2.0,
+        dest_width,
+        dest_height,
+        scale,
+    ))
+}
+
+fn paint_print_page(
+    cr: &cairo::Context,
+    surface: &cairo::ImageSurface,
+    page_width: f64,
+    page_height: f64,
+) -> bool {
+    let Some((x, y, dest_width, dest_height, scale)) = print_fit(
+        page_width,
+        page_height,
+        surface.width() as f64,
+        surface.height() as f64,
+    ) else {
+        return false;
+    };
+    if cr.save().is_err() {
+        return false;
+    }
+    cr.rectangle(x, y, dest_width, dest_height);
+    cr.clip();
+    cr.scale(scale, scale);
+    if cr.set_source_surface(surface, x / scale, y / scale).is_ok() {
+        let painted = cr.paint().is_ok();
+        let _ = cr.restore();
+        return painted;
+    }
+    let _ = cr.restore();
+    false
 }
 
 fn copyable_command(command: &str) -> gtk::Overlay {

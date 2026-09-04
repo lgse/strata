@@ -168,6 +168,8 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         }),
         Rc::new(move |location| pin_status(&pinned_places.borrow(), location)),
     );
+    let preview_for_print = preview.clone();
+    browser.set_print_handler(Rc::new(move |entry| preview_for_print.print_entry(entry)));
     sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
     browser.add_marquee_origin(&sidebar.widget);
     content.set_start_child(Some(&sidebar.widget));

@@ -237,6 +237,7 @@ impl Default for PeekBehavior {
 
 type PinHandler = Rc<dyn Fn(Location, String)>;
 type PinStatusHandler = Rc<dyn Fn(&Location) -> PinStatus>;
+type PrintHandler = Rc<dyn Fn(FileEntry)>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum PinStatus {
@@ -310,6 +311,7 @@ pub(super) struct ViewState {
     file_operation_progress: Cell<(usize, usize)>,
     pin_handler: RefCell<Option<PinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
+    print_handler: RefCell<Option<PrintHandler>>,
     pending_select: RefCell<Vec<String>>,
     pending_extract_retry: RefCell<Option<(FileEntry, Location)>>,
     /// The entries a just-dispatched, non-permanent delete requested,
@@ -466,6 +468,7 @@ impl BrowserView {
             file_operation_progress: Cell::new((0, 0)),
             pin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
+            print_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
             pending_extract_retry: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
@@ -563,6 +566,10 @@ impl BrowserView {
     pub(super) fn set_pin_handlers(&self, handler: PinHandler, status_handler: PinStatusHandler) {
         self.state.pin_handler.replace(Some(handler));
         self.state.pin_status_handler.replace(Some(status_handler));
+    }
+
+    pub(super) fn set_print_handler(&self, handler: PrintHandler) {
+        self.state.print_handler.replace(Some(handler));
     }
 
     pub fn set_operation_provider(&self, provider: Rc<dyn OperationProvider>) {
@@ -5581,6 +5588,7 @@ pub(super) fn install_item_context_menu(
     let open_terminal =
         item_context_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
     let preview = item_context_option(crate::assets::icons::EYE, "Quick preview", "Space");
+    let print = item_context_option(crate::assets::icons::PRINTER, "Print", "");
     let restore = item_context_option(crate::assets::icons::FOLDER, "Restore", "");
     restore.set_visible(in_trash);
     let pin = item_context_option(crate::assets::icons::PIN, "Pin to sidebar", "P");
@@ -5615,6 +5623,7 @@ pub(super) fn install_item_context_menu(
     single.append(&open);
     single.append(&open_terminal);
     single.append(&preview);
+    single.append(&print);
     single.append(&restore);
     single.append(&extract);
     single.append(&extract_to);
@@ -5715,6 +5724,23 @@ pub(super) fn install_item_context_menu(
             && !entry.is_directory()
         {
             state.browser.preview(depth, position);
+        }
+    });
+    let weak = Rc::downgrade(state);
+    let print_target = target.clone();
+    let print_popover = popover.downgrade();
+    print.connect_clicked(move |_| {
+        if let Some(popover) = print_popover.upgrade() {
+            popover.popdown();
+        }
+        let Some((_, entry)) = print_target.borrow().clone() else {
+            return;
+        };
+        if let Some(state) = weak.upgrade()
+            && let Some(print) = state.print_handler.borrow().as_ref()
+            && entry_supports_printing(&entry)
+        {
+            print(entry);
         }
     });
     let weak = Rc::downgrade(state);
@@ -5856,6 +5882,7 @@ pub(super) fn install_item_context_menu(
         target.replace(Some((resolved_position, entry.clone())));
         let entries = state.browser.selected_entries();
         preview.set_visible(entry_supports_quick_preview(&entry));
+        print.set_visible(entry_supports_printing(&entry));
         open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
         permanent_delete.set_visible(!in_trash);
         permanent_delete_multiple.set_visible(!in_trash);
@@ -5909,6 +5936,19 @@ pub(super) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
         || gio::content_type_is_a(&content_type, "text/plain")
         || has_plain_text_extension(&entry.native_name)
         || is_extensionless_dotfile(&entry.native_name)
+}
+
+fn entry_supports_printing(entry: &FileEntry) -> bool {
+    if !matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink) {
+        return false;
+    }
+
+    let (content_type, _) =
+        gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
+    matches!(
+        content_family(&content_type),
+        PreviewContent::Image | PreviewContent::Pdf { .. }
+    )
 }
 
 struct TrashSummary {
