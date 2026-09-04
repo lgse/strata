@@ -1630,3 +1630,40 @@ fn notify_filter_query_skips_unchanged_folded_text() {
             .expect("isolated GTK filter-query test should start");
     assert!(status.success(), "isolated GTK filter-query test failed");
 }
+
+const SCROLL_PIN_GTK_CHILD: &str = "STRATA_SCROLL_PIN_GTK_CHILD";
+const SCROLL_PIN_TEST: &str =
+    "ui::browser::tests::waiting_to_scroll_does_not_pin_an_unallocated_view";
+
+fn assert_waiting_to_scroll_does_not_pin_an_unallocated_view() {
+    let model = gtk::StringList::new(&["fv\talpha"]);
+    let selection = gtk::NoSelection::new(Some(model));
+    let list = gtk::ListView::new(Some(selection), Some(gtk::SignalListItemFactory::new()));
+    let weak = list.downgrade();
+    scroll_collection_when_allocated(list.upcast_ref(), 0);
+    drop(list);
+    while glib::MainContext::default().iteration(false) {}
+    assert!(
+        weak.upgrade().is_none(),
+        "deferred scroll must not pin the collection view"
+    );
+}
+
+#[test]
+fn waiting_to_scroll_does_not_pin_an_unallocated_view() {
+    if std::env::var_os(SCROLL_PIN_GTK_CHILD).is_some() {
+        if gtk::init().is_err() {
+            return;
+        }
+        assert_waiting_to_scroll_does_not_pin_an_unallocated_view();
+        return;
+    }
+
+    let status =
+        std::process::Command::new(std::env::current_exe().expect("test executable should exist"))
+            .args(["--exact", SCROLL_PIN_TEST])
+            .env(SCROLL_PIN_GTK_CHILD, "1")
+            .status()
+            .expect("isolated GTK scroll pin test should start");
+    assert!(status.success(), "isolated GTK scroll pin test failed");
+}

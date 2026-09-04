@@ -4439,14 +4439,11 @@ impl ViewState {
             scroll_column_to(column, position);
         }
         column.list.grab_focus();
-        let list = column.list.clone();
+        let list = column.list.downgrade();
         glib::idle_add_local_once(move || {
-            if let Some(position) = position
-                && position < list.model().map_or(0, |model| model.n_items())
-            {
-                list.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+            if let Some(list) = list.upgrade() {
+                list.grab_focus();
             }
-            list.grab_focus();
         });
     }
 
@@ -4905,15 +4902,26 @@ impl ViewState {
                 gtk::gdk::FileList::static_type(),
                 gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
             );
-            let highlighted_row = row.clone();
-            let highlight = move |target: &gtk::DropTarget, _, _| {
-                highlighted_row.add_css_class("drop-destination");
+            let highlighted_row = row.downgrade();
+            drop.connect_enter(move |target, _, _| {
+                if let Some(row) = highlighted_row.upgrade() {
+                    row.add_css_class("drop-destination");
+                }
                 file_drop_action(target)
-            };
-            drop.connect_enter(highlight.clone());
-            drop.connect_motion(highlight);
-            let highlighted_row = row.clone();
-            drop.connect_leave(move |_| highlighted_row.remove_css_class("drop-destination"));
+            });
+            let highlighted_row = row.downgrade();
+            drop.connect_motion(move |target, _, _| {
+                if let Some(row) = highlighted_row.upgrade() {
+                    row.add_css_class("drop-destination");
+                }
+                file_drop_action(target)
+            });
+            let highlighted_row = row.downgrade();
+            drop.connect_leave(move |_| {
+                if let Some(row) = highlighted_row.upgrade() {
+                    row.remove_css_class("drop-destination");
+                }
+            });
             let weak_state_for_accept = weak_state.clone();
             let accepted_item = item.downgrade();
             let map_for_accept = map_for_hover.clone();
@@ -4937,8 +4945,11 @@ impl ViewState {
             let weak_state_for_drop = weak_state.clone();
             let dropped_item = item.downgrade();
             let map_for_drop = map_for_hover.clone();
-            let dropped_row = row.clone();
+            let dropped_row = row.downgrade();
             drop.connect_drop(move |target, value, _, _| {
+                let Some(dropped_row) = dropped_row.upgrade() else {
+                    return false;
+                };
                 dropped_row.remove_css_class("drop-destination");
                 let Some(state) = weak_state_for_drop.upgrade() else {
                     return false;
@@ -5368,8 +5379,12 @@ impl ViewState {
             self,
             presentation.stack.upcast_ref(),
             {
-                let entries = selection.clone();
-                Rc::new(move || entries.n_items() > 0)
+                let entries = selection.downgrade();
+                Rc::new(move || {
+                    entries
+                        .upgrade()
+                        .is_some_and(|entries| entries.n_items() > 0)
+                })
             },
             Rc::new(|picked| is_file_row_target(picked.clone())),
             depth,
@@ -5922,6 +5937,45 @@ fn set_filter_placeholder(column: &ColumnView, count: usize) {
 
 pub(crate) const FILTER_DEBOUNCE_DELAY: Duration = Duration::from_millis(200);
 
+/// `scroll_to` before the view has a real height leaves ListView/GridView with a
+/// one-row widget pool, so scrolling after a mode switch stays janky.
+pub(crate) fn scroll_collection_when_allocated(view: &gtk::Widget, position: u32) {
+    if view.height() > 1 {
+        apply_collection_scroll(view, position);
+        return;
+    }
+    // ponytail: a few frames is enough for the first layout. Upgrade: a real
+    // allocate listener if GTK grows one that is safe to scroll from.
+    let frames = Cell::new(0u8);
+    view.add_tick_callback(move |view, _| {
+        if view.height() > 1 {
+            apply_collection_scroll(view, position);
+            return glib::ControlFlow::Break;
+        }
+        let waited = frames.get().saturating_add(1);
+        frames.set(waited);
+        if waited >= 8 {
+            glib::ControlFlow::Break
+        } else {
+            glib::ControlFlow::Continue
+        }
+    });
+}
+
+fn apply_collection_scroll(view: &gtk::Widget, position: u32) {
+    if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
+        if position < list.model().map_or(0, |model| model.n_items()) {
+            list.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+        }
+        return;
+    }
+    if let Ok(grid) = view.clone().downcast::<gtk::GridView>()
+        && position < grid.model().map_or(0, |model| model.n_items())
+    {
+        grid.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+    }
+}
+
 pub(crate) fn detach_collection_view(view: &impl IsA<gtk::Widget>) {
     let view = view.as_ref();
     if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
@@ -6205,18 +6259,7 @@ fn scroll_column_to(column: &ColumnView, position: u32) {
     if position >= column.selection.n_items() {
         return;
     }
-    column
-        .list
-        .scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
-    if column.list.is_mapped() && column.list.height() > 1 {
-        return;
-    }
-    let list = column.list.clone();
-    glib::idle_add_local_once(move || {
-        if position < list.model().map_or(0, |model| model.n_items()) {
-            list.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
-        }
-    });
+    scroll_collection_when_allocated(column.list.upcast_ref(), position);
 }
 
 fn set_column_selection(column: &ColumnView, position: u32) {

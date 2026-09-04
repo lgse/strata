@@ -956,11 +956,15 @@ impl ModeViews {
             return;
         };
         let sections = Rc::downgrade(&pane.sections);
-        let entries = pane.model.clone();
+        let entries = pane.model.downgrade();
         super::browser::install_folder_context_menu(
             &state,
             pane.stack.upcast_ref(),
-            Rc::new(move || entries.n_items() > 0),
+            Rc::new(move || {
+                entries
+                    .upgrade()
+                    .is_some_and(|entries| entries.n_items() > 0)
+            }),
             Rc::new(move |picked| {
                 sections.upgrade().is_some_and(|sections| {
                     sections
@@ -1380,6 +1384,7 @@ fn build_grid_pane(
         flattened_models.append(&filtered_model.clone().upcast::<gio::ListModel>());
         let view_model = gtk::FlattenListModel::new(Some(flattened_models));
         let section = build_grid_view(&context, &view_model, true);
+        section.view.set_vexpand(true);
         sections.borrow_mut().push(section.clone());
         (section.view.clone(), section, None)
     };
@@ -2462,6 +2467,7 @@ fn build_explorer_pane(
         view.set_header_factory(Some(&type_group_header_factory()));
     }
     view.set_enable_rubberband(false);
+    view.set_vexpand(true);
     // GTK bundles single-click activation with hover selection, which collapses
     // multi-selection. Per-row gestures honor the configured click behavior instead.
     view.set_single_click_activate(false);
@@ -3136,25 +3142,7 @@ fn scroll_pane_to_source(pane: &Pane, source_position: usize) {
 }
 
 fn scroll_collection_to(view: &gtk::Widget, position: u32) {
-    apply_collection_scroll(view, position);
-    let view = view.clone();
-    glib::idle_add_local_once(move || {
-        apply_collection_scroll(&view, position);
-    });
-}
-
-fn apply_collection_scroll(view: &gtk::Widget, position: u32) {
-    if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
-        if position < list.model().map_or(0, |model| model.n_items()) {
-            list.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
-        }
-        return;
-    }
-    if let Ok(grid) = view.clone().downcast::<gtk::GridView>()
-        && position < grid.model().map_or(0, |model| model.n_items())
-    {
-        grid.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
-    }
+    super::browser::scroll_collection_when_allocated(view, position);
 }
 
 fn set_mode_cut_style(widget: &impl IsA<gtk::Widget>, cut: bool) {
