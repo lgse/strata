@@ -134,13 +134,19 @@ fn update_check_due(last: Option<Instant>, now: Instant) -> bool {
     last.is_none_or(|completed| now.duration_since(completed) >= UPDATE_DUE_INTERVAL)
 }
 
+fn force_due_update_check(last: Option<Instant>) -> bool {
+    last.is_none()
+}
+
 pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &UpdateNoticeHandler) {
     if !manager.checks_for_updates() || CHECK_IN_FLIGHT.get() {
         return;
     }
-    if !update_check_due(LAST_COMPLETED_CHECK.get(), Instant::now()) {
+    let last_completed = LAST_COMPLETED_CHECK.get();
+    if !update_check_due(last_completed, Instant::now()) {
         return;
     }
+    let force = force_due_update_check(last_completed);
     CHECK_IN_FLIGHT.set(true);
     let channel = manager.release_channel();
     let weak_manager = Rc::downgrade(manager);
@@ -150,7 +156,7 @@ pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &Up
             channel,
             crate::build_info::installed_version(),
             method,
-            false,
+            force,
         );
         glib::timeout_add_local(Duration::from_millis(100), move || {
             match receiver.try_recv() {
