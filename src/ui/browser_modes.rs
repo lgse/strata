@@ -3377,8 +3377,7 @@ fn update_bound_explorer_metadata(pane: &Pane, updates: &[(usize, FileEntry)]) {
                 &pane.source_index,
                 Some(&section.view_model),
                 item.position(),
-            )
-            else {
+            ) else {
                 return true;
             };
             let Some(entry) = updates.get(&position) else {
