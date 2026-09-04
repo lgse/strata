@@ -650,11 +650,13 @@ impl BrowserView {
         if mode == previous {
             return;
         }
+        self.state.mode_views.borrow().show_mode(mode);
         self.state.mode_views.borrow_mut().prepare_mode(mode);
         if mode == BrowserMode::Columns {
             self.state.rebuild_columns();
+        } else if let Some(depth) = self.state.browser.active_depth() {
+            self.state.mode_views.borrow().focus_visible_pane(depth);
         }
-        self.state.mode_views.borrow().show_mode(mode);
         match previous {
             BrowserMode::Columns => self.state.truncate(0),
             BrowserMode::Grid | BrowserMode::Explorer => self
@@ -4150,9 +4152,7 @@ impl ViewState {
                         && self.active_new_entry.borrow().is_none()
                     {
                         if let Some(focused) = column.map.view_position(*focused) {
-                            column
-                                .list
-                                .scroll_to(focused, gtk::ListScrollFlags::FOCUS, None);
+                            scroll_column_to(column, focused);
                         }
                         if *take_focus && self.mode_views.borrow().mode() == BrowserMode::Columns {
                             column.list.grab_focus();
@@ -4169,11 +4169,7 @@ impl ViewState {
                     {
                         set_column_selection(column, filtered_position);
                         if !editing {
-                            column.list.scroll_to(
-                                filtered_position,
-                                gtk::ListScrollFlags::FOCUS,
-                                None,
-                            );
+                            scroll_column_to(column, filtered_position);
                         }
                     }
                     if !editing && self.mode_views.borrow().mode() == BrowserMode::Columns {
@@ -4431,15 +4427,27 @@ impl ViewState {
         let Some(column) = columns.get(depth) else {
             return;
         };
-        if let Some((focused_depth, position, _)) = self.browser.focused_item()
-            && focused_depth == depth
-            && let Some(position) = column.map.view_position(position)
-        {
-            column
-                .list
-                .scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+        let position = self
+            .browser
+            .focused_item()
+            .and_then(|(focused_depth, position, _)| {
+                (focused_depth == depth)
+                    .then(|| column.map.view_position(position))
+                    .flatten()
+            });
+        if let Some(position) = position {
+            scroll_column_to(column, position);
         }
         column.list.grab_focus();
+        let list = column.list.clone();
+        glib::idle_add_local_once(move || {
+            if let Some(position) = position
+                && position < list.model().map_or(0, |model| model.n_items())
+            {
+                list.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+            }
+            list.grab_focus();
+        });
     }
 
     fn event_refreshes_active_path(event: &BrowserEvent) -> bool {
@@ -4820,18 +4828,22 @@ impl ViewState {
             row.append(&middle);
             row.append(&chevron);
             let motion = gtk::EventControllerMotion::new();
-            let list_item = item.clone();
-            let anchor: gtk::Widget = row.clone().upcast();
+            let list_item = item.downgrade();
             let weak_state_for_enter = weak_state.clone();
             let map_for_enter = map_for_hover.clone();
-            motion.connect_enter(move |_, _, _| {
+            motion.connect_enter(move |controller, _, _| {
+                let Some(item) = list_item.upgrade() else {
+                    return;
+                };
                 if let Some(state) = weak_state_for_enter.upgrade() {
-                    let source_position = map_for_enter.source_position(list_item.position());
+                    let source_position = map_for_enter.source_position(item.position());
                     let entry = source_position
                         .and_then(|position| state.browser.entry_at(depth, position));
                     if let Some(entry) = entry {
                         if entry.is_directory() {
-                            state.schedule_peek(depth, entry.location, anchor.clone());
+                            if let Some(anchor) = controller.widget() {
+                                state.schedule_peek(depth, entry.location, anchor);
+                            }
                         } else {
                             cancel_source(&state.pending_peek);
                             state.browser.close_peek();
@@ -4851,12 +4863,14 @@ impl ViewState {
                 .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
                 .build();
             let weak_state_for_drag = weak_state.clone();
-            let dragged_item = item.clone();
+            let dragged_item = item.downgrade();
             let map_for_drag = map_for_hover.clone();
-            let prepare_row = row.clone();
+            let prepare_row = row.downgrade();
             drag.connect_prepare(move |source, x, y| {
+                let prepare_row = prepare_row.upgrade()?;
                 prepare_row.remove_css_class("slide-out");
                 let state = weak_state_for_drag.upgrade()?;
+                let dragged_item = dragged_item.upgrade()?;
                 let source_position = map_for_drag.source_position(dragged_item.position())?;
                 let entry = state.browser.entry_at(depth, source_position)?;
                 let selected = state.browser.selected_entries();
@@ -4872,12 +4886,18 @@ impl ViewState {
                 source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);
                 file_drag_content(&entries)
             });
-            let dragged_row = row.clone();
-            drag.connect_drag_begin(move |_, _| dragged_row.add_css_class("dragging"));
-            let dragged_row = row.clone();
+            let dragged_row = row.downgrade();
+            drag.connect_drag_begin(move |_, _| {
+                if let Some(row) = dragged_row.upgrade() {
+                    row.add_css_class("dragging");
+                }
+            });
+            let dragged_row = row.downgrade();
             drag.connect_drag_end(move |_, _, _| {
-                dragged_row.remove_css_class("dragging");
-                slide_out(&dragged_row);
+                if let Some(row) = dragged_row.upgrade() {
+                    row.remove_css_class("dragging");
+                    slide_out(&row);
+                }
             });
             row.add_controller(drag);
 
@@ -4895,10 +4915,13 @@ impl ViewState {
             let highlighted_row = row.clone();
             drop.connect_leave(move |_| highlighted_row.remove_css_class("drop-destination"));
             let weak_state_for_accept = weak_state.clone();
-            let accepted_item = item.clone();
+            let accepted_item = item.downgrade();
             let map_for_accept = map_for_hover.clone();
             drop.connect_accept(move |_, offered| {
                 let Some(state) = weak_state_for_accept.upgrade() else {
+                    return false;
+                };
+                let Some(accepted_item) = accepted_item.upgrade() else {
                     return false;
                 };
                 let entry = map_for_accept
@@ -4912,12 +4935,15 @@ impl ViewState {
                 })
             });
             let weak_state_for_drop = weak_state.clone();
-            let dropped_item = item.clone();
+            let dropped_item = item.downgrade();
             let map_for_drop = map_for_hover.clone();
             let dropped_row = row.clone();
             drop.connect_drop(move |target, value, _, _| {
                 dropped_row.remove_css_class("drop-destination");
                 let Some(state) = weak_state_for_drop.upgrade() else {
+                    return false;
+                };
+                let Some(dropped_item) = dropped_item.upgrade() else {
                     return false;
                 };
                 let Some(destination) = map_for_drop
@@ -4944,12 +4970,15 @@ impl ViewState {
             let weak_state_for_click = weak_state.clone();
             selection_click.set_button(1);
             selection_click.set_propagation_phase(gtk::PropagationPhase::Capture);
-            let clicked_item = item.clone();
+            let clicked_item = item.downgrade();
             let selection_for_click = selection_for_rows.clone();
             let selection_anchor_for_click = mouse_selection_anchor.clone();
             let modified_for_click = modified_selection_for_rows.clone();
             let map_for_click = map_for_hover.clone();
             selection_click.connect_pressed(move |gesture, press_count, _, _| {
+                let Some(clicked_item) = clicked_item.upgrade() else {
+                    return;
+                };
                 let position = clicked_item.position();
                 if position == gtk::INVALID_LIST_POSITION {
                     return;
@@ -5096,11 +5125,10 @@ impl ViewState {
             } else {
                 source_position.and_then(|position| browser?.entry_at(depth, position))
             };
-            let active = source_position.is_some_and(|position| {
+            let active = entry.as_ref().is_some_and(|entry| {
                 browser
                     .as_ref()
-                    .and_then(|browser| browser.active_child_position(depth))
-                    == Some(position)
+                    .is_some_and(|browser| browser.is_open_child(depth, &entry.location))
             });
             set_active_path_style(&row, active);
             set_cut_path_style(
@@ -5388,9 +5416,9 @@ impl ViewState {
         let resize_start = Rc::new(Cell::new(COLUMN_WIDTH));
         let pointer_start = Rc::new(Cell::new(None));
         let last_press = Rc::new(Cell::new(0u64));
-        let shell_for_resize_start = shell.clone();
-        let shell_for_autofit = shell.clone();
-        let column_for_autofit = column.clone();
+        let shell_for_resize_start = shell.downgrade();
+        let shell_for_autofit = shell.downgrade();
+        let column_for_autofit = column.downgrade();
         let resize_start_for_begin = resize_start.clone();
         let pointer_start_for_begin = pointer_start.clone();
         let last_press_for_begin = last_press.clone();
@@ -5398,9 +5426,17 @@ impl ViewState {
             let now = glib::monotonic_time() as u64;
             let prev = last_press_for_begin.get();
             last_press_for_begin.set(now);
+            let Some(shell_for_autofit) = shell_for_autofit.upgrade() else {
+                return;
+            };
+            let Some(shell_for_resize_start) = shell_for_resize_start.upgrade() else {
+                return;
+            };
             if now.wrapping_sub(prev) <= 400_000 {
-                let max_natural =
-                    max_child_natural_width(column_for_autofit.upcast_ref::<gtk::Widget>());
+                let max_natural = column_for_autofit
+                    .upgrade()
+                    .map(|column| max_child_natural_width(column.upcast_ref::<gtk::Widget>()))
+                    .unwrap_or(COLUMN_WIDTH);
                 shell_for_autofit.set_size_request(max_natural.max(COLUMN_WIDTH), -1);
                 gesture.set_state(gtk::EventSequenceState::Denied);
                 return;
@@ -5412,8 +5448,11 @@ impl ViewState {
             }
             gesture.set_state(gtk::EventSequenceState::Claimed);
         });
-        let shell_for_resize = shell.clone();
+        let shell_for_resize = shell.downgrade();
         resize.connect_drag_update(move |gesture, fallback_offset_x, _| {
+            let Some(shell_for_resize) = shell_for_resize.upgrade() else {
+                return;
+            };
             let pointer_x = gesture
                 .current_event()
                 .and_then(|event| event.position())
@@ -5480,9 +5519,12 @@ impl ViewState {
         let animation_id = self.horizontal_scroll_generation.get().saturating_add(1);
         self.horizontal_scroll_generation.set(animation_id);
         let weak = Rc::downgrade(self);
-        let measured_shell = shell;
+        let measured_shell = shell.downgrade();
         let _tick = self.scroller.add_tick_callback(move |_, _| {
             let Some(state) = weak.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let Some(measured_shell) = measured_shell.upgrade() else {
                 return glib::ControlFlow::Break;
             };
             if state.horizontal_scroll_generation.get() != animation_id
@@ -5729,6 +5771,10 @@ impl ViewState {
             column
                 .animation_generation
                 .set(column.animation_generation.get().saturating_add(1));
+            column.syncing_selection.set(true);
+            column.selection.set_model(None::<&gio::ListModel>);
+            column.filtered_model.set_model(None::<&gio::ListModel>);
+            detach_collection_view(&column.list);
             self.columns_widget.remove(&column.shell);
             self.overlay.remove_overlay(&column.marquee.band());
         }
@@ -5876,6 +5922,17 @@ fn set_filter_placeholder(column: &ColumnView, count: usize) {
 
 pub(crate) const FILTER_DEBOUNCE_DELAY: Duration = Duration::from_millis(200);
 
+pub(crate) fn detach_collection_view(view: &impl IsA<gtk::Widget>) {
+    let view = view.as_ref();
+    if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
+        list.set_factory(None::<&gtk::ListItemFactory>);
+        list.set_model(None::<&gtk::SelectionModel>);
+    } else if let Ok(grid) = view.clone().downcast::<gtk::GridView>() {
+        grid.set_factory(None::<&gtk::ListItemFactory>);
+        grid.set_model(None::<&gtk::SelectionModel>);
+    }
+}
+
 pub(crate) fn debounce_filter_entry(entry: &gtk::Entry, on_settled: impl Fn(String) + 'static) {
     let pending: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
     let on_settled = Rc::new(on_settled);
@@ -5901,6 +5958,21 @@ pub(crate) fn filter_change_for(previous: &str, settled: &str) -> gtk::FilterCha
     } else {
         gtk::FilterChange::Different
     }
+}
+
+pub(crate) fn notify_filter_query(
+    filter: &gtk::CustomFilter,
+    query: &RefCell<String>,
+    text: String,
+) {
+    let settled = text.to_lowercase();
+    let previous = query.borrow().clone();
+    if previous == settled {
+        return;
+    }
+    let change = filter_change_for(&previous, &settled);
+    *query.borrow_mut() = settled;
+    filter.changed(change);
 }
 
 pub(crate) fn apply_filter_query(
@@ -6127,6 +6199,24 @@ fn touch_source_model(column: &ColumnView) {
     column
         .model_generation
         .set(column.model_generation.get().saturating_add(1));
+}
+
+fn scroll_column_to(column: &ColumnView, position: u32) {
+    if position >= column.selection.n_items() {
+        return;
+    }
+    column
+        .list
+        .scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+    if column.list.is_mapped() && column.list.height() > 1 {
+        return;
+    }
+    let list = column.list.clone();
+    glib::idle_add_local_once(move || {
+        if position < list.model().map_or(0, |model| model.n_items()) {
+            list.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+        }
+    });
 }
 
 fn set_column_selection(column: &ColumnView, position: u32) {

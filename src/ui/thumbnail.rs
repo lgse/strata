@@ -1095,7 +1095,7 @@ fn cancel_thumbnail(image_id: usize) {
             settle
                 .pending
                 .retain(|park| park.target.image_id != image_id);
-            !settle.pending.is_empty() || settle.hooked
+            !settle.pending.is_empty() || (settle.hooked && settle.viewport.upgrade().is_some())
         });
     });
     let cancelled = PENDING_THUMBNAILS.with(|pending| {

@@ -413,6 +413,31 @@ fn cancellation_removes_metadata_waiters() {
 }
 
 #[test]
+fn cancelling_drops_hooked_settle_groups_with_a_dead_viewport() {
+    SETTLE_VIEWS.with(|views| {
+        views.borrow_mut().insert(
+            42,
+            ViewSettle {
+                viewport: glib::WeakRef::new(),
+                pending: Vec::new(),
+                timer: None,
+                first_park: None,
+                hooked: true,
+            },
+        );
+    });
+
+    cancel_thumbnail(1);
+
+    SETTLE_VIEWS.with(|views| {
+        assert!(
+            !views.borrow().contains_key(&42),
+            "a hooked settle group whose viewport is gone should drop"
+        );
+    });
+}
+
+#[test]
 fn persist_queue_bounds_and_drains_oldest_first() {
     let mut queue = PersistQueue::new();
     for index in 0..MAX_PERSIST_QUEUE + 5 {

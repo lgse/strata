@@ -44,9 +44,11 @@ pub(super) struct Marquee {
 }
 
 struct MarqueeState {
-    view: gtk::Widget,
-    scroll: gtk::ScrolledWindow,
-    overlay: gtk::Overlay,
+    // Weak: the drag gesture lives on the view, and capturing these widgets
+    // would pin the collection (and its model) after a mode switch.
+    view: glib::WeakRef<gtk::Widget>,
+    scroll: glib::WeakRef<gtk::ScrolledWindow>,
+    overlay: glib::WeakRef<gtk::Overlay>,
     band: gtk::Box,
     targets: MarqueeTargets,
     is_item: ItemPredicate,
@@ -76,9 +78,9 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
 
     let view = setup.view;
     let state = Rc::new(MarqueeState {
-        view: view.clone(),
-        scroll: setup.scroll,
-        overlay: setup.overlay,
+        view: view.downgrade(),
+        scroll: setup.scroll.downgrade(),
+        overlay: setup.overlay.downgrade(),
         band,
         targets: setup.targets,
         is_item: setup.is_item,
@@ -109,7 +111,7 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
         gesture.set_state(gtk::EventSequenceState::Claimed);
         state_for_begin.begin((x, y), gesture.current_event_state());
     });
-    connect_drag_progress(&gesture, &state, &view);
+    connect_drag_progress(&gesture, &state);
     view.add_controller(gesture);
 
     Marquee { state }
@@ -129,22 +131,27 @@ impl Marquee {
         let gesture = gtk::GestureDrag::new();
         gesture.set_button(1);
         let state_for_begin = self.state.clone();
-        let surface_for_begin = surface.clone();
         gesture.connect_drag_begin(move |gesture, x, y| {
             state_for_begin.active.set(false);
-            let accepted = surface_for_begin
+            let Some(surface) = gesture.widget() else {
+                return;
+            };
+            let accepted = surface
                 .pick(x, y, gtk::PickFlags::DEFAULT)
-                .is_some_and(|picked| is_inert_chrome(&surface_for_begin, &picked));
-            if !accepted || !state_for_begin.view.is_mapped() {
+                .is_some_and(|picked| is_inert_chrome(&surface, &picked));
+            let Some(view) = state_for_begin.view() else {
+                return;
+            };
+            if !accepted || !view.is_mapped() {
                 return;
             }
-            let Some(anchor) = translate(&surface_for_begin, &state_for_begin.view, (x, y)) else {
+            let Some(anchor) = translate(&surface, &view, (x, y)) else {
                 return;
             };
             gesture.set_state(gtk::EventSequenceState::Claimed);
             state_for_begin.begin(anchor, gesture.current_event_state());
         });
-        connect_drag_progress(&gesture, &self.state, &surface);
+        connect_drag_progress(&gesture, &self.state);
         surface.add_controller(gesture);
     }
 }
@@ -196,10 +203,13 @@ pub(super) fn install_shared_origin_surface(
             return;
         };
         let state = marquee.state;
-        if !state.view.is_mapped() {
+        let Some(view) = state.view() else {
+            return;
+        };
+        if !view.is_mapped() {
             return;
         }
-        let Some(anchor) = translate(&surface_for_begin, &state.view, (x, y)) else {
+        let Some(anchor) = translate(&surface_for_begin, &view, (x, y)) else {
             return;
         };
         gesture.set_state(gtk::EventSequenceState::Claimed);
@@ -228,30 +238,43 @@ pub(super) fn install_shared_origin_surface(
 }
 
 /// Wires update/end handling for a drag whose coordinates are expressed in
-/// `origin`'s space.
-fn connect_drag_progress(
-    gesture: &gtk::GestureDrag,
-    state: &Rc<MarqueeState>,
-    origin: &gtk::Widget,
-) {
+/// the gesture widget's space.
+fn connect_drag_progress(gesture: &gtk::GestureDrag, state: &Rc<MarqueeState>) {
     let state_for_update = state.clone();
-    let origin_for_update = origin.clone();
     gesture.connect_drag_update(move |gesture, offset_x, offset_y| {
         let Some((start_x, start_y)) = gesture.start_point() else {
             return;
         };
-        state_for_update.drag_to(&origin_for_update, (start_x + offset_x, start_y + offset_y));
+        let Some(origin) = gesture.widget() else {
+            return;
+        };
+        state_for_update.drag_to(&origin, (start_x + offset_x, start_y + offset_y));
     });
     let state_for_end = state.clone();
     gesture.connect_drag_end(move |_, _, _| state_for_end.end());
 }
 
 impl MarqueeState {
+    fn view(&self) -> Option<gtk::Widget> {
+        self.view.upgrade()
+    }
+
+    fn scroll(&self) -> Option<gtk::ScrolledWindow> {
+        self.scroll.upgrade()
+    }
+
+    fn overlay(&self) -> Option<gtk::Overlay> {
+        self.overlay.upgrade()
+    }
+
     fn begin(&self, anchor: (f64, f64), modifiers: gtk::gdk::ModifierType) {
+        let (Some(view), Some(scroll)) = (self.view(), self.scroll()) else {
+            return;
+        };
         self.active.set(true);
         self.anchor.set(anchor);
         self.pointer
-            .set(translate(&self.view, &self.scroll, anchor).unwrap_or_default());
+            .set(translate(&view, &scroll, anchor).unwrap_or_default());
         self.initial.replace(
             self.targets
                 .borrow()
@@ -272,8 +295,10 @@ impl MarqueeState {
     }
 
     fn refresh(&self) {
-        let Some((current_x, current_y)) = translate(&self.scroll, &self.view, self.pointer.get())
-        else {
+        let (Some(view), Some(scroll)) = (self.view(), self.scroll()) else {
+            return;
+        };
+        let Some((current_x, current_y)) = translate(&scroll, &view, self.pointer.get()) else {
             return;
         };
         let (anchor_x, anchor_y) = self.anchor.get();
@@ -281,12 +306,15 @@ impl MarqueeState {
         let right = anchor_x.max(current_x);
         let top = anchor_y.min(current_y);
         let bottom = anchor_y.max(current_y);
-        self.place_band(left, top, right, bottom);
-        self.apply_selection(left, top, right, bottom);
+        self.place_band(&view, left, top, right, bottom);
+        self.apply_selection(&view, left, top, right, bottom);
     }
 
-    fn place_band(&self, left: f64, top: f64, right: f64, bottom: f64) {
-        let Some(view_bounds) = self.view.compute_bounds(&self.overlay) else {
+    fn place_band(&self, view: &gtk::Widget, left: f64, top: f64, right: f64, bottom: f64) {
+        let Some(overlay) = self.overlay() else {
+            return;
+        };
+        let Some(view_bounds) = view.compute_bounds(&overlay) else {
             return;
         };
         let placement = band_placement(
@@ -294,8 +322,8 @@ impl MarqueeState {
             f64::from(view_bounds.y()) + top,
             right - left,
             bottom - top,
-            f64::from(self.overlay.width()),
-            f64::from(self.overlay.height()),
+            f64::from(overlay.width()),
+            f64::from(overlay.height()),
         );
         let Some((x, y, width, height)) = placement else {
             self.band.set_visible(false);
@@ -307,10 +335,9 @@ impl MarqueeState {
         self.band.set_size_request(width, height);
     }
 
-    fn apply_selection(&self, left: f64, top: f64, right: f64, bottom: f64) {
+    fn apply_selection(&self, view: &gtk::Widget, left: f64, top: f64, right: f64, bottom: f64) {
         let initials = self.initial.borrow();
         let (control, shift) = self.modifiers.get();
-        let view = self.view.clone();
         let empty = gtk::Bitset::new_empty();
         for (index, target) in self.targets.borrow().iter().enumerate() {
             let initial = initials.get(index).unwrap_or(&empty);
@@ -323,7 +350,7 @@ impl MarqueeState {
                 if position == gtk::INVALID_LIST_POSITION {
                     return;
                 }
-                let Some(bounds) = widget.compute_bounds(&view) else {
+                let Some(bounds) = widget.compute_bounds(view) else {
                     return;
                 };
                 if !intersects(&bounds, left, top, right, bottom) {
@@ -352,30 +379,30 @@ impl MarqueeState {
         if !self.active.get() {
             return false;
         }
-        let (step_x, step_y) = self.auto_scroll_steps();
+        let Some(scroll) = self.scroll() else {
+            return false;
+        };
+        let (step_x, step_y) = self.auto_scroll_steps_for(&scroll);
         if step_x == 0.0 && step_y == 0.0 {
             return false;
         }
-        if advance(&self.scroll.hadjustment(), step_x) | advance(&self.scroll.vadjustment(), step_y)
-        {
+        if advance(&scroll.hadjustment(), step_x) | advance(&scroll.vadjustment(), step_y) {
             self.refresh();
         }
         true
     }
 
     fn auto_scroll_steps(&self) -> (f64, f64) {
+        self.scroll()
+            .map(|scroll| self.auto_scroll_steps_for(&scroll))
+            .unwrap_or((0.0, 0.0))
+    }
+
+    fn auto_scroll_steps_for(&self, scroll: &gtk::ScrolledWindow) -> (f64, f64) {
         let (x, y) = self.pointer.get();
         (
-            self.scrollable_step(
-                &self.scroll.hadjustment(),
-                x,
-                f64::from(self.scroll.width()),
-            ),
-            self.scrollable_step(
-                &self.scroll.vadjustment(),
-                y,
-                f64::from(self.scroll.height()),
-            ),
+            self.scrollable_step(&scroll.hadjustment(), x, f64::from(scroll.width())),
+            self.scrollable_step(&scroll.vadjustment(), y, f64::from(scroll.height())),
         )
     }
 
@@ -394,7 +421,10 @@ impl MarqueeState {
         if !self.active.get() {
             return;
         }
-        let Some(pointer) = translate(origin, &self.scroll, point) else {
+        let Some(scroll) = self.scroll() else {
+            return;
+        };
+        let Some(pointer) = translate(origin, &scroll, point) else {
             return;
         };
         self.pointer.set(pointer);

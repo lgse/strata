@@ -2,10 +2,12 @@
 
 use super::{
     BrowserMode, ClickActivation, ClickCount, EXPLORER_COLUMN_MIN_WIDTHS, EXPLORER_COLUMN_WIDTHS,
-    compare_type_groups, explorer_column_width, metadata_fill_position,
+    SourceIndexMap, compare_type_groups, explorer_column_width, metadata_fill_position,
     should_activate_pointer_click, type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
+use gtk::{gio, prelude::*};
+use std::process::Command;
 
 /// Model values as the panes store them: kind, hidden flag, then the display name.
 fn value(kind: char, name: &str) -> String {
@@ -136,4 +138,115 @@ fn entries_of_one_type_share_a_group() {
         value_type_group(&value('f', "notes.md")),
         value_type_group(&value('f', "notes.json"))
     );
+}
+
+const GTK_CHILD: &str = "STRATA_SOURCE_INDEX_MAP_GTK_CHILD";
+const SOURCE_INDEX_TEST: &str =
+    "ui::browser_modes::tests::source_index_map_tracks_filter_sort_and_placeholder";
+
+fn run_source_index_map_checks() {
+    let source = gtk::StringList::new(&["fv\talpha", "dh\t.secret", "fv\tneedle"]);
+    let map = SourceIndexMap::watch(&source);
+    assert_eq!(map.of_view_position(&source, 0), Some(0));
+    assert_eq!(map.of_view_position(&source, 2), Some(2));
+
+    source.append("fv\tlate");
+    assert_eq!(map.of_view_position(&source, 3), Some(3));
+
+    source.splice(1, 0, &["fv\tmiddle"]);
+    assert_eq!(
+        map.of_item(&source.item(1).expect("inserted item")),
+        Some(1)
+    );
+    assert_eq!(map.of_item(&source.item(4).expect("shifted item")), Some(4));
+
+    let hide_hidden = gtk::CustomFilter::new(|item| {
+        item.downcast_ref::<gtk::StringObject>()
+            .is_some_and(|value| value.string().as_bytes().get(1) != Some(&b'h'))
+    });
+    let visible = gtk::FilterListModel::new(Some(source.clone()), Some(hide_hidden));
+    assert_eq!(map.of_view_position(&visible, 0), Some(0));
+    assert_eq!(map.of_view_position(&visible, 1), Some(1));
+    assert_eq!(map.of_view_position(&visible, 3), Some(4));
+
+    let needle = gtk::CustomFilter::new(|item| {
+        item.downcast_ref::<gtk::StringObject>()
+            .is_some_and(|value| value.string().contains("needle"))
+    });
+    let matches = gtk::FilterListModel::new(Some(source.clone()), Some(needle));
+    assert_eq!(map.of_view_position(&matches, 0), Some(3));
+
+    let sorter = gtk::CustomSorter::new(|left, right| {
+        let left = left
+            .downcast_ref::<gtk::StringObject>()
+            .map(|value| value.string())
+            .unwrap_or_default();
+        let right = right
+            .downcast_ref::<gtk::StringObject>()
+            .map(|value| value.string())
+            .unwrap_or_default();
+        right.cmp(&left).into()
+    });
+    let sorted = gtk::SortListModel::new(Some(source.clone()), Some(sorter));
+    let first_sorted = sorted.item(0).expect("sorted model should have rows");
+    let mapped = map.of_item(&first_sorted);
+    assert!(mapped.is_some());
+    assert_ne!(
+        mapped,
+        Some(0),
+        "reverse sort should move the first source item off view index 0"
+    );
+    assert_eq!(map.of_view_position(&sorted, 0), mapped);
+
+    let placeholder = gtk::StringList::new(&["creating"]);
+    let stacked = gio::ListStore::new::<gio::ListModel>();
+    stacked.append(&placeholder.clone().upcast::<gio::ListModel>());
+    stacked.append(&source.clone().upcast::<gio::ListModel>());
+    let flattened = gtk::FlattenListModel::new(Some(stacked));
+    assert!(
+        map.of_view_position(&flattened, 0).is_none(),
+        "the inline placeholder is not a source entry"
+    );
+    assert_eq!(map.of_view_position(&flattened, 1), Some(0));
+
+    assert_eq!(
+        super::view_position_for_source(&source, Some(source.upcast_ref()), 4),
+        Some(4)
+    );
+    assert_eq!(
+        super::view_position_for_source(&source, Some(visible.upcast_ref()), 3),
+        Some(2)
+    );
+    assert_eq!(
+        super::view_position_for_source(&source, Some(flattened.upcast_ref()), 0),
+        Some(1)
+    );
+
+    let source = gtk::StringList::new(&["fv\talpha"]);
+    let weak = source.downgrade();
+    let map = SourceIndexMap::watch(&source);
+    drop(source);
+    drop(map);
+    assert!(
+        weak.upgrade().is_none(),
+        "watching must not pin the StringList after the pane drops"
+    );
+}
+
+#[test]
+fn source_index_map_tracks_filter_sort_and_placeholder() {
+    if std::env::var_os(GTK_CHILD).is_some() {
+        if gtk::init().is_err() {
+            return;
+        }
+        run_source_index_map_checks();
+        return;
+    }
+
+    let status = Command::new(std::env::current_exe().expect("test executable should exist"))
+        .args(["--exact", SOURCE_INDEX_TEST])
+        .env(GTK_CHILD, "1")
+        .status()
+        .expect("isolated GTK mapping test should start");
+    assert!(status.success(), "isolated GTK mapping test failed");
 }
