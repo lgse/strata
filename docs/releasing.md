@@ -24,7 +24,7 @@ Run the **Release** workflow from GitHub's Actions tab on the default branch, ch
 
 - the `prepare` job refuses to proceed if a release candidate tag exists for the target core version whose commit is not yet reachable from the release source -- promote or discard that RC first, so a stable release can never silently supersede an untested one;
 - the `release` job commits the new version into `Cargo.toml` and `Cargo.lock`, tags the commit `vX.Y.Z`, and pushes both to the default branch; and
-- it publishes x86-64 and ARM64 archives, checksums, and build-provenance attestations as an ordinary (non-prerelease) GitHub release -- the endpoint a Stable install polls.
+- it publishes x86-64 and ARM64 archives, matching debug-symbol files, checksums, and build-provenance attestations as an ordinary (non-prerelease) GitHub release -- the endpoint a Stable install polls.
 
 ## Cutting and promoting prereleases
 
@@ -39,6 +39,10 @@ Run the same workflow manually with `mode` set to `alpha`, `beta`, `rc`, or `nig
 - publishes a GitHub prerelease, keeping `/releases/latest` pointed at the last stable release.
 
 RC and nightly publication are intentionally manual. To promote a validated RC line to stable, run the workflow again with `mode: stable` and the same `bump` level. The resulting stable tag supersedes the prerelease line; the guard blocks promotion when an RC commit is not reachable from the stable source.
+
+## Debugging a release build
+
+Each release includes a `strata-VERSION-TARGET.debug` file matching its stripped binary. Download the debug file for the installed version and architecture, place it beside the `strata` binary, then run `coredumpctl debug strata`; GDB follows the binary's embedded debug link to load Rust function names and source lines.
 
 ## Version calculation
 

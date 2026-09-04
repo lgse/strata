@@ -520,7 +520,11 @@ impl OperationProvider for ImmediateOperationProvider {
     fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         emit(OperationEvent::Deleted {
             request_id: request.id,
-            locations: Vec::new(),
+            locations: request
+                .entries
+                .into_iter()
+                .map(|entry| entry.location)
+                .collect(),
         });
         LoadHandle::new(|| {})
     }
@@ -548,6 +552,95 @@ impl OperationProvider for ImmediateOperationProvider {
         });
         LoadHandle::new(|| {})
     }
+}
+
+#[test]
+fn a_completed_trash_operation_can_be_undone_once() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let location = Location::local("/fixture/report.txt");
+    let entry = FileEntry {
+        location: location.clone(),
+        native_name: OsString::from("report.txt"),
+        display_name: "report.txt".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    browser.delete(vec![entry], false);
+
+    assert_eq!(
+        pending_trash_undo().as_slice(),
+        std::slice::from_ref(&location)
+    );
+    assert!(browser.undo_last_trash());
+    assert!(!browser.undo_last_trash());
+}
+
+#[test]
+fn another_browser_can_undo_the_latest_trash_operation() {
+    let deleting_browser = Browser::new(Rc::new(FakeFileSource));
+    deleting_browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let undoing_browser = Browser::new(Rc::new(FakeFileSource));
+    undoing_browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let entry = FileEntry {
+        location: Location::local("/fixture/report.txt"),
+        native_name: OsString::from("report.txt"),
+        display_name: "report.txt".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    deleting_browser.delete(vec![entry], false);
+
+    assert!(undoing_browser.undo_last_trash());
+    assert!(!deleting_browser.undo_last_trash());
+}
+
+#[test]
+fn permanent_delete_preserves_the_previous_trash_undo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let trashed = FileEntry {
+        location: Location::local("/fixture/report.txt"),
+        native_name: OsString::from("report.txt"),
+        display_name: "report.txt".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let permanently_deleted = FileEntry {
+        location: Location::local("/fixture/draft.txt"),
+        native_name: OsString::from("draft.txt"),
+        display_name: "draft.txt".into(),
+        ..trashed.clone()
+    };
+
+    browser.delete(vec![trashed], false);
+    browser.delete(vec![permanently_deleted], true);
+
+    assert!(browser.undo_last_trash());
+}
+
+#[test]
+fn failed_and_partial_undo_operations_can_be_retried() {
+    let first = Location::local("/fixture/first.txt");
+    let second = Location::local("/fixture/second.txt");
+    replace_pending_trash_undo(vec![first.clone(), second.clone()]);
+    let (generation, _) = claim_pending_trash_undo().expect("undo claim");
+
+    mark_trash_undo_restored(generation, &first);
+    finish_trash_undo(generation, false);
+
+    assert_eq!(pending_trash_undo(), vec![second.clone()]);
+    let (retry_generation, retry) = claim_pending_trash_undo().expect("retry claim");
+    assert_eq!(retry, vec![second]);
+    finish_trash_undo(retry_generation, true);
 }
 
 #[test]
@@ -1203,6 +1296,27 @@ fn peeking_streams_results_without_committing_navigation_history() {
         .filter(|event| matches!(event, BrowserEvent::Reset))
         .count();
     assert_eq!(resets, 1, "a peek must not create a history entry");
+}
+
+#[test]
+fn an_already_open_child_is_not_peeked() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event));
+    let child = Location::local("/fixture/child");
+    browser.navigate(Location::local("/fixture"));
+    browser.descend(0, child.clone());
+    events.borrow_mut().clear();
+
+    browser.begin_peek(0, child);
+
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::PeekStarted { .. }))
+    );
 }
 
 #[test]

@@ -2,15 +2,20 @@
 
 use std::rc::Rc;
 
-use crate::services::{BuildKind, Channel, ReleaseMetadata, UpdateCheck, UpdateMethod, Version};
+use crate::services::{
+    BuildKind, Channel, InstallSource, ManagedInstall, ReleaseMetadata, UpdateCheck, UpdateMethod,
+    Version,
+};
 
 use super::{
     CHANNEL_ORDER, COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
-    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, channel_index, effective_update_channel,
-    install_guard, installed_version_status, is_stale_check, offer_still_eligible,
+    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, aur_update_command, channel_index,
+    effective_update_channel, install_guard, installed_version_status, is_stale_check,
+    managed_channel_description, managed_install_summary, offer_still_eligible,
     omarchy_update_command, responsive_dialog_size, shows_available_release_notes,
-    theme_background_is_light, theme_name_matches, update_check_message, uses_compact_navigation,
-    video_preview_backend_label, video_preview_control_state,
+    theme_background_is_light, theme_name_matches, update_check_message, update_dialog_status,
+    update_status_markup, uses_compact_navigation, video_preview_backend_label,
+    video_preview_control_state,
 };
 use crate::sandbox::MediaPreviewBackend;
 
@@ -27,6 +32,36 @@ fn a_checks_result_is_stale_once_a_newer_check_has_started() {
     // 1's eventual result must never be applied.
     assert!(is_stale_check(1, 2));
     assert!(is_stale_check(2, 1));
+}
+
+fn packaged() -> InstallSource {
+    let managed: ManagedInstall = toml::from_str(
+        r#"
+        manager = "pacman"
+        package = "strata-bin"
+        channel = "stable"
+        update_command = "yay -Syu strata-bin"
+        alternate_package = "strata-rc-bin"
+        "#,
+    )
+    .expect("the marker to parse");
+    InstallSource::Managed(managed)
+}
+
+fn available_release() -> UpdateCheck {
+    UpdateCheck::Available {
+        release: ReleaseMetadata {
+            version: "0.8.0".to_owned(),
+            url: "https://github.com/lgse/strata/releases/tag/v0.8.0".to_owned(),
+            notes: String::new(),
+            note_blocks: Vec::new(),
+            kind: BuildKind::Stable,
+            tag: "v0.8.0".to_owned(),
+            published_at: None,
+            commit: None,
+        },
+        download_url: "https://example.invalid/strata.tar.gz".to_owned(),
+    }
 }
 
 #[test]
@@ -96,6 +131,81 @@ fn available_notes_are_shown_only_for_a_newer_release() {
 }
 
 #[test]
+fn a_packaged_install_is_told_how_to_update_through_its_package_manager() {
+    let result = available_release();
+    let message = update_check_message(&result, UpdateMethod::Aur);
+    let markup = update_status_markup(message, &result, &packaged());
+
+    assert!(markup.ends_with("\nUpdate Strata with: yay -Syu strata-bin"));
+}
+
+#[test]
+fn a_user_owned_install_gets_no_packaging_guidance() {
+    let result = available_release();
+    let message = update_check_message(&result, UpdateMethod::InPlace);
+
+    assert_eq!(
+        update_status_markup(message.clone(), &result, &InstallSource::SelfManaged),
+        message
+    );
+}
+
+#[test]
+fn packaging_guidance_is_withheld_when_no_update_is_available() {
+    let message = update_check_message(&UpdateCheck::UpToDate, UpdateMethod::Aur);
+
+    assert_eq!(
+        update_status_markup(message.clone(), &UpdateCheck::UpToDate, &packaged()),
+        message
+    );
+}
+
+#[test]
+fn the_managed_row_names_the_package_channel_and_commands() {
+    let source = packaged();
+    let managed = source.managed().expect("a managed install");
+
+    assert_eq!(
+        managed_install_summary(managed),
+        "Installed by pacman as strata-bin.\n\
+         Tracking the stable release channel.\n\
+         Update Strata with: yay -Syu strata-bin\n\
+         Other release channels are published as strata-rc-bin."
+    );
+}
+
+#[test]
+fn the_channel_selector_explains_a_packaged_channel_and_how_to_change_it() {
+    let source = packaged();
+    let managed = source.managed().expect("a managed install");
+
+    assert_eq!(
+        managed_channel_description(managed),
+        "This install tracks the stable release channel. \
+         Other release channels are published as strata-rc-bin."
+    );
+}
+
+#[test]
+fn the_packaged_channel_selection_follows_the_installed_package() {
+    let source = packaged();
+    let managed = source.managed().expect("a managed install");
+
+    assert_eq!(managed.tracked_channel(), Some(Channel::Stable));
+}
+
+#[test]
+fn the_update_dialog_defers_to_the_package_manager() {
+    let source = packaged();
+    let managed = source.managed().expect("a managed install");
+
+    assert_eq!(
+        update_dialog_status(managed),
+        "Installed by pacman as strata-bin. Update Strata with: yay -Syu strata-bin"
+    );
+}
+
+#[test]
 fn video_preview_backend_selector_labels_all_options() {
     for (backend, label) in [
         (MediaPreviewBackend::Automatic, "Automatic"),
@@ -158,10 +268,14 @@ fn package_managed_updates_always_follow_stable() {
 }
 
 #[test]
-fn manual_updates_keep_the_selected_channel() {
+fn manual_and_marked_package_updates_keep_the_selected_channel() {
     for selected in [Channel::Stable, Channel::Preview, Channel::Nightly] {
         assert_eq!(
             effective_update_channel(selected, UpdateMethod::InPlace),
+            selected
+        );
+        assert_eq!(
+            effective_update_channel(selected, UpdateMethod::Aur),
             selected
         );
     }
@@ -173,6 +287,17 @@ fn package_managed_status_identifies_omarchy() {
     assert_eq!(
         installed_version_status(&version, BuildKind::Stable, UpdateMethod::Omarchy),
         "Version 0.8.0 · Managed by Omarchy"
+    );
+}
+
+#[test]
+fn aur_updates_open_in_the_configured_terminal() {
+    let command = aur_update_command("paru", "strata-bin");
+
+    assert_eq!(command.get_program(), "xdg-terminal-exec");
+    assert_eq!(
+        command.get_args().collect::<Vec<_>>(),
+        ["--", "paru", "-Syu", "strata-bin"]
     );
 }
 

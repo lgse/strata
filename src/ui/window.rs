@@ -65,6 +65,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     let browser = BrowserView::new(Rc::new(LocalFileSource), PeekBehavior::default());
     browser.set_view_mode(theme_manager.browser_mode());
     browser.set_density(theme_manager.browser_density());
+    browser.set_group_by_type(theme_manager.group_by_type());
     browser.set_operation_provider(Rc::new(LocalOperationProvider));
     browser.set_auto_refresh_interval(theme_manager.auto_refresh_interval());
     let controller = browser.browser();
@@ -168,6 +169,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         Rc::new(move |location| pin_status(&pinned_places.borrow(), location)),
     );
     sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
+    browser.add_marquee_origin(&sidebar.widget);
     content.set_start_child(Some(&sidebar.widget));
     content.set_end_child(Some(&browser.widget()));
     let animation_generation = Rc::new(Cell::new(0));
@@ -270,34 +272,26 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     let search_dialog = SearchDialog::new(activate_search_result, dismiss_search);
     window_overlay.add_overlay(&search_dialog.widget());
     let shown_search = search_dialog.clone();
-    let search_browser = controller.clone();
     let search_blurred_root = blurred_root.clone();
     search_button.connect_clicked(move |button| {
         if shown_search.is_visible() {
             shown_search.hide();
             return;
         }
-        let root = search_browser
-            .active_location()
-            .and_then(|location| location.native_path().map(std::path::Path::to_path_buf))
-            .unwrap_or_else(home_directory);
+        let root = home_directory();
         button.add_css_class("active");
         search_blurred_root.set_blurred(true);
         shown_search.show(root);
     });
     let search_action = gio::SimpleAction::new("search", None);
     let shortcut_search = search_dialog.clone();
-    let shortcut_browser = controller.clone();
     let shortcut_search_button = search_button.clone();
     let shortcut_search_root = blurred_root.clone();
     search_action.connect_activate(move |_, _| {
         if shortcut_search.is_visible() {
             shortcut_search.hide();
         } else {
-            let root = shortcut_browser
-                .active_location()
-                .and_then(|location| location.native_path().map(std::path::Path::to_path_buf))
-                .unwrap_or_else(home_directory);
+            let root = home_directory();
             shortcut_search_button.add_css_class("active");
             shortcut_search_root.set_blurred(true);
             shortcut_search.show(root);
@@ -360,6 +354,14 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
                 crate::services::UpdateMethod::InPlace => {
                     format!("Install Strata v{}", release.version)
                 }
+                crate::services::UpdateMethod::Aur => format!(
+                    "Strata v{} is available through {}",
+                    release.version,
+                    crate::services::InstallSource::detect()
+                        .managed()
+                        .map(crate::services::ManagedInstall::manager)
+                        .unwrap_or("your package manager")
+                ),
                 crate::services::UpdateMethod::Omarchy => {
                     format!("Strata v{} is available through Omarchy", release.version)
                 }
@@ -623,6 +625,9 @@ fn install_keyboard_navigation(
             }
             return glib::Propagation::Proceed;
         }
+        if !text_has_focus && is_undo_trash_shortcut(key, modifiers) && view.undo_last_trash() {
+            return glib::Propagation::Stop;
+        }
         if alt
             && !control
             && !shift
@@ -736,6 +741,14 @@ fn install_keyboard_navigation(
         if !control && !alt && !view.item_view_has_focus() && !header_left_boundary {
             return glib::Propagation::Proceed;
         }
+        if !control && !alt && matches!(key, gtk::gdk::Key::y | gtk::gdk::Key::Y) {
+            view.copy_path();
+            return glib::Propagation::Stop;
+        }
+        if !control && !alt && matches!(key, gtk::gdk::Key::p | gtk::gdk::Key::P) {
+            view.pin_focused();
+            return glib::Propagation::Stop;
+        }
         if key == gtk::gdk::Key::space && !alt && !control {
             preview.toggle(browser.focused_entry());
             return glib::Propagation::Stop;
@@ -792,6 +805,13 @@ fn install_keyboard_navigation(
         glib::Propagation::Stop
     });
     window.add_controller(keys);
+}
+
+fn is_undo_trash_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
+        && !modifiers
+            .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
+        && matches!(key, gtk::gdk::Key::z | gtk::gdk::Key::Z)
 }
 
 fn is_open_terminal_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
@@ -887,6 +907,32 @@ fn build_appearance_menu(
         current_mode == BrowserMode::Explorer,
         true,
     );
+    let grouped = preferences.group_by_type();
+    let (group_by_type, group_check, _) = appearance_option(
+        crate::assets::icons::LIST_CHECKS,
+        "Group by file type",
+        grouped,
+        current_mode != BrowserMode::Columns,
+    );
+    group_by_type.set_tooltip_text(Some(
+        "Group Explorer and Grid entries under file-type headings",
+    ));
+    {
+        let view = view.clone();
+        let preferences = preferences.clone();
+        let popover_weak = popover_weak.clone();
+        let grouped = Cell::new(grouped);
+        group_by_type.connect_clicked(move |_| {
+            let enabled = !grouped.get();
+            grouped.set(enabled);
+            view.set_group_by_type(enabled);
+            preferences.set_group_by_type(enabled);
+            group_check.set_visible(enabled);
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+            }
+        });
+    }
     for (button, mode) in [
         (&list, BrowserMode::Columns),
         (&grid, BrowserMode::Grid),
@@ -896,6 +942,7 @@ fn build_appearance_menu(
         let list_check = list_check.clone();
         let grid_check = grid_check.clone();
         let explorer_check = explorer_check.clone();
+        let group_by_type = group_by_type.clone();
         let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
         button.connect_clicked(move |_| {
@@ -904,6 +951,7 @@ fn build_appearance_menu(
             list_check.set_visible(mode == BrowserMode::Columns);
             grid_check.set_visible(mode == BrowserMode::Grid);
             explorer_check.set_visible(mode == BrowserMode::Explorer);
+            group_by_type.set_sensitive(mode != BrowserMode::Columns);
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
@@ -962,6 +1010,7 @@ fn build_appearance_menu(
     content.append(&airy);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    content.append(&group_by_type);
     let (hidden, hidden_check, hidden_icon) = appearance_option(
         if hidden_files_shown {
             crate::assets::icons::EYE
@@ -1815,6 +1864,7 @@ fn build_sidebar(view: BrowserView, theme_manager: Rc<super::theme::ThemeManager
         .vexpand(true)
         .build();
     scroller.add_css_class("sidebar-scroll");
+    scroller.add_css_class("fixed-scrollbar");
 
     let update_content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let dot = gtk::Label::new(Some("●"));

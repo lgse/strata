@@ -1,0 +1,62 @@
+# Maintainer: Strata maintainers <https://github.com/lgse/strata/issues>
+# Generated from PKGBUILD.in; do not edit directly.
+
+pkgname=strata-rc-bin
+pkgver=0.9.0
+pkgrel=1
+_releasever=0.9.0
+pkgdesc="A fast, keyboard-first file manager for Linux (preview channel)"
+arch=('x86_64' 'aarch64')
+url="https://github.com/lgse/strata"
+license=('GPL-3.0-or-later')
+depends=(
+  'bubblewrap'
+  'fontconfig'
+  'glibc>=2.39'
+  'gtk4>=4.12'
+  'gtksourceview5'
+  'poppler-glib'
+)
+optdepends=(
+  'ffmpeg: video previews'
+  'ffmpegthumbnailer: video thumbnails'
+  'gst-libav: additional media format playback'
+  'gst-plugins-good: media playback in previews'
+  'gvfs-smb: SMB network locations'
+  'imagemagick: RAW image previews'
+  'libraw: RAW image previews when ImageMagick is unavailable'
+)
+provides=("strata=${pkgver}")
+conflicts=('strata' 'strata-bin')
+# Preserve byte identity with the attested release artifact.
+options=('!strip' '!debug')
+source_x86_64=("${url}/releases/download/v${_releasever}/strata-${_releasever}-x86_64-unknown-linux-gnu.tar.gz")
+source_aarch64=("${url}/releases/download/v${_releasever}/strata-${_releasever}-aarch64-unknown-linux-gnu.tar.gz")
+sha256sums_x86_64=('708ff61000ae78790813c4e842ab6d7b49be6d85a728d22e1ff59cc34f54599d')
+sha256sums_aarch64=('361be021c83bdf8af503ac8c487f3e1e6b2900211dcaef237fd8c9b699277713')
+
+package() {
+  local dist="${srcdir}/strata-${_releasever}-${CARCH}-unknown-linux-gnu"
+
+  install -Dm755 "${dist}/strata" "${pkgdir}/usr/bin/strata"
+  install -Dm644 "${dist}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 "${dist}/THIRD_PARTY_LICENSES.md" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/THIRD_PARTY_LICENSES.md"
+
+  if [[ -f "${dist}/io.github.lgse.Strata.desktop" ]]; then
+    install -Dm644 "${dist}/io.github.lgse.Strata.desktop" \
+      "${pkgdir}/usr/share/applications/io.github.lgse.Strata.desktop"
+    install -Dm644 "${dist}/io.github.lgse.Strata.svg" \
+      "${pkgdir}/usr/share/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg"
+  else
+    warning "Strata ${_releasever} ships no desktop entry or application icon; installing without a launcher."
+  fi
+
+  install -Dm644 /dev/stdin "${pkgdir}/usr/share/strata/install-source.toml" <<'MARKER'
+manager = "pacman"
+package = "strata-rc-bin"
+channel = "rc"
+aur_helpers = ["yay", "paru", "pikaur", "trizen"]
+alternate_package = "strata-bin"
+MARKER
+}

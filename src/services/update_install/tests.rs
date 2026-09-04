@@ -6,10 +6,10 @@ use std::{
 };
 
 use super::{
-    APPLICATION_ICON, DESKTOP_ENTRY, UpdateMethod, desktop_entry_with_exec, find_binaries,
-    first_hash_token, package_repository_version_for, parse_package_version,
-    refresh_desktop_metadata, repository_database_version, stage_binary_path, stage_workdir,
-    update_method_for,
+    APPLICATION_ICON, DESKTOP_ENTRY, UpdateMethod, aur_repository_version_from_response,
+    desktop_entry_with_exec, find_binaries, first_hash_token, package_repository_version_for,
+    parse_aur_package_version, parse_package_version, refresh_desktop_metadata,
+    repository_database_version, stage_binary_path, stage_workdir, update_method_for,
 };
 
 const PACKAGED_ENTRY: &str =
@@ -59,6 +59,38 @@ fn arch_package_versions_drop_epoch_and_package_release() {
     );
     assert!(parse_package_version("0.8.1").is_none());
     assert!(parse_package_version("not-a-version-1").is_none());
+}
+
+#[test]
+fn aur_package_versions_restore_upstream_prerelease_separators() {
+    for (package, release) in [
+        ("0.9.0-1", "0.9.0"),
+        ("0.10.0rc.2-1", "0.10.0-rc.2"),
+        ("2:0.10.0beta.1-3", "0.10.0-beta.1"),
+    ] {
+        assert_eq!(
+            parse_aur_package_version(package).map(|version| version.to_string()),
+            Some(release.to_owned())
+        );
+    }
+}
+
+#[test]
+fn aur_response_selects_the_named_package() {
+    let response = r#"{
+        "resultcount": 2,
+        "results": [
+            {"Name": "another-package", "Version": "9.0.0-1"},
+            {"Name": "strata-rc-bin", "Version": "0.10.0rc.2-1"}
+        ]
+    }"#;
+
+    assert_eq!(
+        aur_repository_version_from_response(response, "strata-rc-bin")
+            .map(|version| version.to_string()),
+        Ok("0.10.0-rc.2".to_owned())
+    );
+    assert!(aur_repository_version_from_response(response, "strata-bin").is_err());
 }
 
 #[test]

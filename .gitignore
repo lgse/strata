@@ -7,3 +7,9 @@
 
 __pycache__/
 *.py[cod]
+
+# makepkg build output, when a PKGBUILD is built in place
+packaging/aur/*/src/
+packaging/aur/*/pkg/
+packaging/aur/*/*.tar.gz
+packaging/aur/*/*.pkg.tar.zst

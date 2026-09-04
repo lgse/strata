@@ -161,7 +161,7 @@ Legend: **P0** blocks the milestone, **P1** is required for its exit criteria, *
 - [ ] **P0** Generalize partial-failure reporting and safe cancellation cleanup across operations
 - [ ] **P1** Cross-device move behavior
 - [ ] **P1** Disk-full, permissions, disappearing source, and read-only tests
-- [ ] **P2** Limited undo where behavior can be guaranteed
+- [x] **P2** Limited undo for the latest move to Trash
 - [ ] **P2** Future Undo/Redo operation history with toolbar buttons and configurable keyboard shortcuts
 - [ ] **P2** Bind Undo to `Ctrl+Z` and Redo to both `Ctrl+Shift+Z` and `Ctrl+Y`
 

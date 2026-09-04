@@ -998,6 +998,24 @@ menubutton.form-control:disabled > button {
   color: @theme_accent;
 }
 
+.click-activation-options {
+  padding: 6px 10px;
+}
+
+.click-activation-row {
+  min-height: 36px;
+}
+
+.click-activation-row + .click-activation-row {
+  border-top: 1px solid alpha(@theme_border, 0.18);
+  padding-top: 4px;
+}
+
+.click-activation-control .segmented-control-option {
+  min-height: 28px;
+  padding: 2px 8px;
+}
+
 .release-notes-card {
   background: alpha(@theme_bg, 0.55);
   border: 1px solid alpha(@theme_border, 0.24);
@@ -1263,6 +1281,37 @@ switch:checked slider {
 
 .sidebar-shell {
   border-right: 1px solid alpha(@theme_border, 0.6);
+}
+
+.fixed-scrollbar scrollbar,
+.fixed-scrollbar scrollbar:hover,
+.fixed-scrollbar scrollbar.hovering,
+.fixed-scrollbar scrollbar.dragging {
+  background: transparent;
+  border: none;
+  padding: 0;
+  transition: none;
+}
+
+.fixed-scrollbar scrollbar.vertical {
+  min-width: 5px;
+}
+
+.fixed-scrollbar scrollbar.horizontal {
+  min-height: 5px;
+}
+
+.fixed-scrollbar scrollbar > range > trough > slider {
+  border-width: 1px;
+  margin: 0;
+}
+
+.fixed-scrollbar scrollbar.vertical > range > trough > slider {
+  min-width: 3px;
+}
+
+.fixed-scrollbar scrollbar.horizontal > range > trough > slider {
+  min-height: 3px;
 }
 
 .sidebar {
@@ -2919,6 +2968,18 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   min-height: 130px;
   min-width: 225px;
   padding: 8px 10px;
+}
+
+.type-group-heading {
+  border-bottom: 1px solid alpha(@theme_border, 0.45);
+  color: @theme_dim_text;
+  font-size: 0.82em;
+  font-weight: 700;
+  padding: 10px 12px 4px;
+}
+
+.grid-type-groups .type-group-heading {
+  margin: 0 6px;
 }
 
 .explorer-pane {
