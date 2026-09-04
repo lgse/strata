@@ -151,6 +151,7 @@ pub enum BrowserEvent {
         /// successfully, e.g. ones that failed only because this location
         /// doesn't support Trash. Always empty for a restore failure.
         retryable_locations: Vec<Location>,
+        has_non_retryable_failures: bool,
     },
     OperationCancelled {
         completed: usize,
@@ -1305,6 +1306,7 @@ impl Browser {
                 OperationEvent::CompletedWithErrors {
                     deleted_locations,
                     retryable_locations,
+                    has_non_retryable_failures,
                     message,
                     ..
                 } => {
@@ -1312,6 +1314,7 @@ impl Browser {
                     browser.emit(BrowserEvent::OperationCompletedWithErrors {
                         message,
                         retryable_locations,
+                        has_non_retryable_failures,
                     });
                 }
                 OperationEvent::Deleted { locations, .. }
@@ -1327,6 +1330,7 @@ impl Browser {
                     browser.emit(BrowserEvent::OperationCompletedWithErrors {
                         message,
                         retryable_locations: Vec::new(),
+                        has_non_retryable_failures: true,
                     });
                 }
                 OperationEvent::Cancelled { result, .. } => {

@@ -1218,10 +1218,12 @@ impl OperationProvider for LocalOperationProvider {
                     locations: deleted_locations,
                 });
             } else {
+                let has_non_retryable_failures = errors.len() > retryable_locations.len();
                 emit(OperationEvent::CompletedWithErrors {
                     request_id: request.id,
                     deleted_locations,
                     retryable_locations,
+                    has_non_retryable_failures,
                     message: deletion_error_summary(&errors),
                 });
             }

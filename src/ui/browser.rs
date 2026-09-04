@@ -3988,6 +3988,7 @@ impl ViewState {
             BrowserEvent::OperationCompletedWithErrors {
                 message,
                 retryable_locations,
+                has_non_retryable_failures,
             } => {
                 let retryable_entries = retryable_delete_entries(
                     self.pending_delete_entries.take(),
@@ -3995,7 +3996,7 @@ impl ViewState {
                 );
                 if retryable_entries.is_empty() {
                     show_error_dialog(&self.overlay, "Completed with errors", &message);
-                } else {
+                } else if has_non_retryable_failures {
                     let weak_state = Rc::downgrade(self);
                     show_delete_error_dialog(
                         &self.overlay,
@@ -4006,6 +4007,8 @@ impl ViewState {
                             }
                         }),
                     );
+                } else {
+                    self.show_delete_confirmation(retryable_entries);
                 }
             }
             BrowserEvent::OperationCancelled {

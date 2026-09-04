@@ -196,6 +196,7 @@ pub enum OperationEvent {
         /// Trash, so a retry with `permanent: true` on just these would
         /// likely succeed.
         retryable_locations: Vec<Location>,
+        has_non_retryable_failures: bool,
         message: String,
     },
     Restored {
