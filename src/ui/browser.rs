@@ -624,7 +624,9 @@ impl BrowserView {
         let previous = self.state.mode_views.borrow().mode();
         self.state.mode_views.borrow_mut().set_mode(mode);
         if mode == BrowserMode::Columns && previous != BrowserMode::Columns {
-            self.state.sync_column_models();
+            self.state.rebuild_columns();
+        } else if mode != BrowserMode::Columns {
+            self.state.truncate(0);
         }
     }
 
@@ -847,9 +849,12 @@ impl BrowserView {
     }
 
     pub fn paste(&self) {
-        let columns = self.state.columns.borrow();
-        let depth = paste_destination_depth(self.state.hovered_column.get(), columns.len());
-        drop(columns);
+        let depth = paste_destination_depth(
+            self.view_mode(),
+            self.state.hovered_column.get(),
+            self.state.browser.active_depth(),
+            self.state.columns.borrow().len(),
+        );
         if let Some(location) = depth.and_then(|depth| self.state.browser.location_at(depth)) {
             self.state.paste_into(location);
         }
@@ -3653,7 +3658,9 @@ impl ViewState {
             }
             BrowserEvent::ColumnAdded { depth, location } => {
                 self.set_location(&location);
-                self.append_column(depth, &location);
+                if self.mode_views.borrow().mode() == BrowserMode::Columns {
+                    self.append_column(depth, &location);
+                }
             }
             BrowserEvent::EntriesInserted { depth, insertions } => {
                 let render_started = Instant::now();
@@ -4060,11 +4067,16 @@ impl ViewState {
         self.refresh_active_path_rows();
     }
 
-    fn sync_column_models(&self) {
-        for (depth, column) in self.columns.borrow().iter().enumerate() {
-            let Some(snapshot) = self.browser.column_snapshot(depth) else {
-                continue;
-            };
+    fn rebuild_columns(self: &Rc<Self>) {
+        self.truncate(0);
+        let snapshots = (0..)
+            .map_while(|depth| self.browser.column_snapshot(depth))
+            .collect::<Vec<_>>();
+
+        for (depth, snapshot) in snapshots.iter().enumerate() {
+            self.append_column(depth, &snapshot.location);
+        }
+        for (column, snapshot) in self.columns.borrow().iter().zip(snapshots) {
             let labels = snapshot
                 .entries
                 .iter()
@@ -4074,13 +4086,32 @@ impl ViewState {
             column.model.splice(0, column.model.n_items(), &labels);
             column.entry_count.set(snapshot.entries.len());
             set_filter_placeholder(column, snapshot.entries.len());
+            update_empty_trash_sensitivity(column, snapshot.entries.len());
+            column.truncated_hint.set_visible(snapshot.truncated);
             let positions = snapshot
                 .selected_positions
                 .into_iter()
                 .filter_map(|position| filtered_position_for_source(column, position))
                 .collect::<Vec<_>>();
             set_column_selections(column, &positions);
+            if snapshot.loading {
+                column.spinner.start();
+                column.presentation.show_loading();
+            } else {
+                column.spinner.stop();
+                column.spinner.set_visible(false);
+                if let Some(message) = snapshot.error.as_deref() {
+                    column
+                        .presentation
+                        .show_error(&format!("Unable to read this directory\n{message}"));
+                } else if snapshot.entries.is_empty() {
+                    column.presentation.show_empty();
+                } else {
+                    column.presentation.show_content();
+                }
+            }
         }
+        self.browser.focus_active();
     }
 
     fn refresh_active_path_rows(&self) {
@@ -6709,7 +6740,15 @@ fn should_preserve_drag_selection(clicked_selected: bool, selected_count: u64) -
     clicked_selected && selected_count > 1
 }
 
-fn paste_destination_depth(hovered: Option<usize>, pane_count: usize) -> Option<usize> {
+fn paste_destination_depth(
+    mode: BrowserMode,
+    hovered: Option<usize>,
+    active: Option<usize>,
+    pane_count: usize,
+) -> Option<usize> {
+    if mode != BrowserMode::Columns {
+        return active;
+    }
     hovered
         .filter(|depth| *depth < pane_count)
         .or_else(|| pane_count.checked_sub(1))

@@ -670,10 +670,29 @@ fn pressing_an_item_in_a_multi_selection_preserves_the_drag_group() {
 
 #[test]
 fn paste_prefers_the_hovered_pane_then_the_deepest_pane() {
-    assert_eq!(paste_destination_depth(Some(1), 3), Some(1));
-    assert_eq!(paste_destination_depth(None, 3), Some(2));
-    assert_eq!(paste_destination_depth(Some(4), 3), Some(2));
-    assert_eq!(paste_destination_depth(None, 0), None);
+    assert_eq!(
+        paste_destination_depth(BrowserMode::Columns, Some(1), Some(2), 3),
+        Some(1)
+    );
+    assert_eq!(
+        paste_destination_depth(BrowserMode::Columns, None, Some(1), 3),
+        Some(2)
+    );
+    assert_eq!(
+        paste_destination_depth(BrowserMode::Columns, Some(4), Some(1), 3),
+        Some(2)
+    );
+    assert_eq!(
+        paste_destination_depth(BrowserMode::Columns, None, None, 0),
+        None
+    );
+}
+
+#[test]
+fn single_pane_paste_uses_the_active_browser_depth() {
+    for mode in [BrowserMode::Grid, BrowserMode::Explorer] {
+        assert_eq!(paste_destination_depth(mode, None, Some(2), 0), Some(2));
+    }
 }
 
 #[test]

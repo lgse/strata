@@ -38,6 +38,7 @@ pub struct ColumnState {
     selection_anchor: Option<Location>,
     selection_target: Option<Location>,
     pub load_state: LoadState,
+    pub truncated: bool,
     preferences: ViewPreferences,
     request_id: RequestId,
     select_first_on_load: bool,
@@ -163,6 +164,7 @@ impl NavigationState {
                 selection_anchor: None,
                 selection_target: None,
                 load_state: LoadState::Loading,
+                truncated: false,
                 preferences,
                 request_id,
                 select_first_on_load: false,
@@ -230,6 +232,7 @@ impl NavigationState {
             selection_anchor: None,
             selection_target: None,
             load_state: LoadState::Loading,
+            truncated: false,
             preferences: self.preferences,
             request_id,
             select_first_on_load: false,
@@ -379,6 +382,7 @@ impl NavigationState {
         column.entries.clear();
         column.selected = None;
         column.load_state = LoadState::Loading;
+        column.truncated = false;
         column.request_id = request_id;
         Some(column.location.clone())
     }
@@ -476,9 +480,10 @@ impl NavigationState {
         Some(self.columns.get(depth)?.location.clone())
     }
 
-    pub fn finish(&mut self, request_id: RequestId) -> Option<usize> {
+    pub fn finish(&mut self, request_id: RequestId, truncated: bool) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
         column.select_first_on_load = false;
+        column.truncated = truncated;
         column.load_state = if column.entries.is_empty() {
             LoadState::Empty
         } else {

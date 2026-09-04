@@ -39,6 +39,8 @@ pub struct BrowserColumnSnapshot {
     pub entries: Vec<FileEntry>,
     pub selected_positions: Vec<usize>,
     pub loading: bool,
+    pub error: Option<String>,
+    pub truncated: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -765,6 +767,11 @@ impl Browser {
             entries: column.entries.clone(),
             selected_positions: state.selected_positions(depth),
             loading: column.load_state == crate::app::navigation::LoadState::Loading,
+            error: match &column.load_state {
+                crate::app::navigation::LoadState::Error(message) => Some(message.clone()),
+                _ => None,
+            },
+            truncated: column.truncated,
         })
     }
 
@@ -1806,7 +1813,7 @@ impl Browser {
                 truncated,
             } => {
                 let mut state = self.state.borrow_mut();
-                if let Some(depth) = state.finish(request_id) {
+                if let Some(depth) = state.finish(request_id, truncated) {
                     drop(state);
                     self.emit(BrowserEvent::LoadFinished { depth, truncated });
                 } else if state.finish_peek(request_id) {

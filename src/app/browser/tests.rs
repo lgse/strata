@@ -855,6 +855,19 @@ fn ambiguous_filesystem_notifications_fall_back_to_reload() {
 }
 
 #[test]
+fn column_snapshots_preserve_load_errors() {
+    let browser = Browser::new(Rc::new(RetryFileSource {
+        attempts: Rc::new(Cell::new(0)),
+    }));
+
+    browser.navigate(Location::local("/fixture"));
+
+    let snapshot = browser.column_snapshot(0).expect("column should exist");
+    assert_eq!(snapshot.error.as_deref(), Some("temporarily unavailable"));
+    assert!(!snapshot.loading);
+}
+
+#[test]
 fn retrying_a_failed_column_preserves_navigation_history() {
     let attempts = Rc::new(Cell::new(0));
     let browser = Browser::new(Rc::new(RetryFileSource {

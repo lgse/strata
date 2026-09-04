@@ -319,8 +319,20 @@ fn empty_is_distinct_from_loading_and_error() {
     state.navigate(location("/empty"), RequestId(1));
     assert_eq!(state.columns[0].load_state, LoadState::Loading);
 
-    assert_eq!(state.finish(RequestId(1)), Some(0));
+    assert_eq!(state.finish(RequestId(1), false), Some(0));
     assert_eq!(state.columns[0].load_state, LoadState::Empty);
+}
+
+#[test]
+fn truncated_load_state_survives_until_reload() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/partial"), RequestId(1));
+
+    assert_eq!(state.finish(RequestId(1), true), Some(0));
+    assert!(state.columns[0].truncated);
+
+    state.reload_column(0, RequestId(2));
+    assert!(!state.columns[0].truncated);
 }
 
 #[test]
