@@ -97,7 +97,7 @@ impl Location {
         match &self.kind {
             LocationKind::Native(path) => Some(Self::local(path.join(name))),
             LocationKind::Uri(uri) => {
-                let child = gio::File::for_uri(uri).child(name.to_str()?);
+                let child = gio::File::for_uri(uri).child(name);
                 Some(Self::uri(child.uri().to_string()))
             }
         }

@@ -783,6 +783,38 @@ fn a_partial_move_undo_keeps_the_items_still_to_move_back() {
 }
 
 #[test]
+fn a_partial_move_undo_does_not_retry_items_excluded_before_transfer() {
+    let skipped = MoveRecord {
+        original: Location::local("/fixture/skipped.txt"),
+        current: Location::local("/fixture/archive/skipped.txt"),
+    };
+    let completed = MoveRecord {
+        original: Location::local("/fixture/completed.txt"),
+        current: Location::local("/fixture/archive/completed.txt"),
+    };
+    let retryable = MoveRecord {
+        original: Location::local("/fixture/retryable.txt"),
+        current: Location::local("/fixture/archive/retryable.txt"),
+    };
+    replace_pending_undo(UndoEntry::Move(vec![
+        skipped,
+        completed.clone(),
+        retryable.clone(),
+    ]));
+    let (generation, _) = claim_pending_undo(None).expect("undo claim");
+    let submitted = [completed.clone(), retryable.clone()].map(|record| UndoMoveItem {
+        record,
+        conflict: TransferConflict::FailIfExists,
+    });
+
+    retain_pending_move_items(generation, &submitted);
+    mark_undo_item_completed(generation, &completed.current);
+    finish_undo(generation, false);
+
+    assert_eq!(pending_undo_entry(), Some(UndoEntry::Move(vec![retryable])));
+}
+
+#[test]
 fn undoing_a_move_leaves_a_pending_cut_untouched() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));

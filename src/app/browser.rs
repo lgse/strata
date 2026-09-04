@@ -307,6 +307,17 @@ fn finish_undo(generation: u64, completed: bool) {
     });
 }
 
+fn retain_pending_move_items(generation: u64, items: &[UndoMoveItem]) {
+    PENDING_UNDO.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        if pending.generation == generation
+            && let Some(UndoEntry::Move(records)) = pending.entry.as_mut()
+        {
+            records.retain(|record| items.iter().any(|item| &item.record == record));
+        }
+    });
+}
+
 /// Pairs each moved source with where the transfer left it. Items that never
 /// left their own directory carry no undo.
 fn move_records(sources: &[Location], destination: &Location) -> Vec<MoveRecord> {
@@ -1355,13 +1366,18 @@ impl Browser {
         if items.is_empty() || self.current_operation.get().is_some() {
             return false;
         }
-        let Some((generation, _)) = claim_pending_undo(Some(generation)) else {
+        let Some((generation, entry)) = claim_pending_undo(Some(generation)) else {
+            return false;
+        };
+        let UndoEntry::Move(_) = entry else {
+            finish_undo(generation, false);
             return false;
         };
         let Some(provider) = self.operation_provider.borrow().clone() else {
             finish_undo(generation, false);
             return false;
         };
+        retain_pending_move_items(generation, &items);
         let total = items.len();
         let mut refresh_locations = HashSet::new();
         for item in &items {
