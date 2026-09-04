@@ -34,7 +34,7 @@ use crate::{
         ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest,
         CreateFileRequest, DeleteRequest, ExtractRequest, LoadHandle, OperationEvent,
         OperationProvider, OperationRequestId, PasteRequest, RenameRequest, RestoreRequest,
-        RestoreSource, TransferConflict, validate_basename,
+        RestoreSource, TransferConflict, UndoMoveRequest, validate_basename,
     },
 };
 
@@ -1878,6 +1878,88 @@ impl OperationProvider for LocalOperationProvider {
                     return;
                 }
                 completed.push(item.source.clone());
+                emit(OperationEvent::TransferProgress {
+                    request_id: request.id,
+                    completed: completed.len(),
+                    total,
+                });
+            }
+            emit(OperationEvent::Pasted {
+                request_id: request.id,
+                locations: completed,
+            });
+        });
+        cancellation_handle(cancellable)
+    }
+
+    fn undo_move(&self, request: UndoMoveRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        let cancellable = gio::Cancellable::new();
+        let operation_cancellable = cancellable.clone();
+        let _task = glib::MainContext::default().spawn_local(async move {
+            let total = request.items.len();
+            let mut affected_locations = HashSet::new();
+            for item in &request.items {
+                for location in [&item.record.current, &item.record.original] {
+                    affected_locations.insert(location.clone());
+                    if let Some(parent) = location.parent() {
+                        affected_locations.insert(parent);
+                    }
+                }
+            }
+            let mut completed = Vec::new();
+            for (index, item) in request.items.iter().enumerate() {
+                let remaining = || {
+                    request.items[index..]
+                        .iter()
+                        .map(|item| item.record.current.clone())
+                        .collect::<Vec<_>>()
+                };
+                if operation_cancellable.is_cancelled() {
+                    emit(cancelled_event(
+                        request.id,
+                        completed,
+                        Vec::new(),
+                        remaining(),
+                        affected_locations,
+                    ));
+                    return;
+                }
+                let source = gio_file(&item.record.current);
+                let target = gio_file(&item.record.original);
+                let result = if item.conflict == TransferConflict::ReplaceExisting {
+                    replace_local(
+                        source,
+                        target,
+                        true,
+                        operation_cancellable.clone(),
+                        Some(&mut affected_locations),
+                    )
+                    .await
+                } else {
+                    move_local(source, target, operation_cancellable.clone()).await
+                };
+                if let Err(error) = result {
+                    if was_cancelled(&error) {
+                        emit(cancelled_event(
+                            request.id,
+                            completed,
+                            vec![item.record.current.clone()],
+                            request.items[index + 1..]
+                                .iter()
+                                .map(|item| item.record.current.clone())
+                                .collect(),
+                            affected_locations,
+                        ));
+                        return;
+                    }
+                    emit(OperationEvent::TransferFailed {
+                        request_id: request.id,
+                        completed_locations: completed,
+                        message: error.to_string(),
+                    });
+                    return;
+                }
+                completed.push(item.record.current.clone());
                 emit(OperationEvent::TransferProgress {
                     request_id: request.id,
                     completed: completed.len(),

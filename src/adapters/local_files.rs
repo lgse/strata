@@ -6,7 +6,7 @@ use std::{
     ffi::OsString,
     fs,
     io::{ErrorKind, Read},
-    os::unix::ffi::OsStringExt,
+    os::unix::{ffi::OsStringExt, fs::MetadataExt},
     path::{Path, PathBuf},
     rc::Rc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -24,8 +24,8 @@ use crate::{
 };
 
 const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,access::can-trash";
-const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,time::modified,access::can-trash";
-const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified";
+const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,time::modified,unix::mode,access::can-trash";
+const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified,unix::mode";
 const MAX_PENDING_MONITOR_CHANGES: usize = 256;
 const MAX_HIDDEN_FILE_BYTES: u64 = 1024 * 1024;
 
@@ -111,6 +111,14 @@ fn info_can_trash(info: &gio::FileInfo) -> Option<bool> {
         .then(|| info.boolean(gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH))
 }
 
+fn info_mode(info: &gio::FileInfo) -> MetadataValue<u32> {
+    if info.has_attribute(gio::FILE_ATTRIBUTE_UNIX_MODE) {
+        MetadataValue::Known(info.attribute_uint32(gio::FILE_ATTRIBUTE_UNIX_MODE))
+    } else {
+        MetadataValue::Unavailable
+    }
+}
+
 fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
     let native_name = info.name().into_os_string();
     let kind = match (info.file_type(), info_is_symlink(&info)) {
@@ -152,6 +160,7 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         kind,
         size,
         modified_unix_seconds,
+        mode: info_mode(&info),
         is_hidden: info_is_hidden(&info),
     }
 }
@@ -194,6 +203,7 @@ fn fill_native_entry_metadata(entry: &mut FileEntry) {
     let Ok(metadata) = fs::metadata(path) else {
         entry.size = MetadataValue::Unknown;
         entry.modified_unix_seconds = MetadataValue::Unknown;
+        entry.mode = MetadataValue::Unknown;
         return;
     };
     entry.size = if metadata.is_dir() {
@@ -207,6 +217,7 @@ fn fill_native_entry_metadata(entry: &mut FileEntry) {
         .and_then(unix_seconds)
         .map(MetadataValue::Known)
         .unwrap_or(MetadataValue::Unavailable);
+    entry.mode = MetadataValue::Known(metadata.mode());
 }
 
 fn native_hidden_names(path: &Path) -> HashSet<OsString> {
@@ -292,6 +303,7 @@ fn scan_native_directory(
             kind,
             size: MetadataValue::Unknown,
             modified_unix_seconds: MetadataValue::Unknown,
+            mode: MetadataValue::Unknown,
             is_hidden,
         });
     }
@@ -708,6 +720,7 @@ impl FileSource for LocalFileSource {
                             location: location.clone(),
                             size: MetadataValue::Unknown,
                             modified_unix_seconds: MetadataValue::Unknown,
+                            mode: MetadataValue::Unknown,
                         },
                         false,
                     ),
@@ -896,6 +909,7 @@ fn fill_parallel_with(
                                         location: location.clone(),
                                         size: MetadataValue::Unknown,
                                         modified_unix_seconds: MetadataValue::Unknown,
+                                        mode: MetadataValue::Unknown,
                                     },
                                     false,
                                 ),
@@ -969,12 +983,16 @@ fn update_from_info(info: &gio::FileInfo, location: &Location) -> (MetadataUpdat
         .modification_date_time()
         .map(|modified| MetadataValue::Known(modified.to_unix()))
         .unwrap_or(MetadataValue::Unavailable);
-    let ok = size != MetadataValue::Unknown || modified_unix_seconds != MetadataValue::Unknown;
+    let mode = info_mode(info);
+    let ok = size != MetadataValue::Unknown
+        || modified_unix_seconds != MetadataValue::Unknown
+        || mode != MetadataValue::Unknown;
     (
         MetadataUpdate {
             location: location.clone(),
             size,
             modified_unix_seconds,
+            mode,
         },
         ok,
     )

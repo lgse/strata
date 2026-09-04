@@ -999,6 +999,10 @@ fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool
         entry.modified_unix_seconds = update.modified_unix_seconds.clone();
         changed = true;
     }
+    if update.mode != MetadataValue::Unknown && entry.mode != update.mode {
+        entry.mode = update.mode.clone();
+        changed = true;
+    }
     changed
 }
 

@@ -52,6 +52,25 @@ pub struct PasteItem {
     pub conflict: TransferConflict,
 }
 
+/// A completed move: where an item started and where it ended up.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MoveRecord {
+    pub original: Location,
+    pub current: Location,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UndoMoveItem {
+    pub record: MoveRecord,
+    pub conflict: TransferConflict,
+}
+
+#[derive(Clone, Debug)]
+pub struct UndoMoveRequest {
+    pub id: OperationRequestId,
+    pub items: Vec<UndoMoveItem>,
+}
+
 #[derive(Clone, Debug)]
 pub struct CreateFileRequest {
     pub id: OperationRequestId,
@@ -248,6 +267,8 @@ pub trait OperationProvider {
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle;
     fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
+    /// Moves completed transfers back to their original locations.
+    fn undo_move(&self, request: UndoMoveRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
