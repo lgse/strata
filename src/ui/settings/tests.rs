@@ -132,7 +132,7 @@ fn available_notes_are_shown_only_for_a_newer_release() {
 #[test]
 fn a_packaged_install_is_told_how_to_update_through_its_package_manager() {
     let result = available_release();
-    let message = update_check_message(&result, UpdateMethod::MarkedPackage);
+    let message = update_check_message(&result, UpdateMethod::Aur);
     let markup = update_status_markup(message, &result, &packaged());
 
     assert!(markup.ends_with("\nUpdate Strata with: yay -S strata-bin"));
@@ -151,7 +151,7 @@ fn a_user_owned_install_gets_no_packaging_guidance() {
 
 #[test]
 fn packaging_guidance_is_withheld_when_no_update_is_available() {
-    let message = update_check_message(&UpdateCheck::UpToDate, UpdateMethod::MarkedPackage);
+    let message = update_check_message(&UpdateCheck::UpToDate, UpdateMethod::Aur);
 
     assert_eq!(
         update_status_markup(message.clone(), &UpdateCheck::UpToDate, &packaged()),
@@ -274,7 +274,7 @@ fn manual_and_marked_package_updates_keep_the_selected_channel() {
             selected
         );
         assert_eq!(
-            effective_update_channel(selected, UpdateMethod::MarkedPackage),
+            effective_update_channel(selected, UpdateMethod::Aur),
             selected
         );
     }

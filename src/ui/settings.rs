@@ -644,8 +644,9 @@ fn updates_page(
     let (auto_check_row, auto_check) = settings_option(
         "Automatically check for updates",
         match update_method {
-            UpdateMethod::InPlace | UpdateMethod::MarkedPackage => {
-                "Check GitHub for a newer release when Strata starts."
+            UpdateMethod::InPlace => "Check GitHub for a newer release when Strata starts.",
+            UpdateMethod::Aur => {
+                "Check the AUR for a newer packaged release when Strata starts."
             }
             UpdateMethod::Omarchy => {
                 "Check the Omarchy package repository for a newer release when Strata starts."
@@ -1045,7 +1046,7 @@ struct PendingInstall {
 /// an offer under the old one.
 fn effective_update_channel(selected: Channel, update_method: UpdateMethod) -> Channel {
     match update_method {
-        UpdateMethod::InPlace | UpdateMethod::MarkedPackage => selected,
+        UpdateMethod::InPlace | UpdateMethod::Aur => selected,
         UpdateMethod::Omarchy | UpdateMethod::Pacman => Channel::Stable,
     }
 }
@@ -1196,10 +1197,8 @@ fn update_check_row(
                                     && release.kind == BuildKind::Stable
                         );
                         let message = if returns_to_stable
-                            && matches!(
-                                update_method,
-                                UpdateMethod::InPlace | UpdateMethod::MarkedPackage
-                            ) {
+                            && matches!(update_method, UpdateMethod::InPlace | UpdateMethod::Aur)
+                        {
                             let UpdateCheck::Available { release, .. } = &result else {
                                 unreachable!();
                             };
@@ -1240,9 +1239,7 @@ fn update_check_row(
                                     managed_update_available.set(true);
                                     button.set_label(match update_method {
                                         UpdateMethod::Omarchy => "Open Omarchy Update",
-                                        UpdateMethod::MarkedPackage | UpdateMethod::Pacman => {
-                                            "Check again"
-                                        }
+                                        UpdateMethod::Aur | UpdateMethod::Pacman => "Check again",
                                         UpdateMethod::InPlace => unreachable!(),
                                     });
                                 } else {
@@ -1605,7 +1602,7 @@ pub(super) fn show_update_dialog(
         match update_method {
             UpdateMethod::InPlace => "Download update",
             UpdateMethod::Omarchy => "Open Omarchy Update",
-            UpdateMethod::MarkedPackage | UpdateMethod::Pacman => "Close",
+            UpdateMethod::Aur | UpdateMethod::Pacman => "Close",
         },
     );
     layout.content.add_css_class("update-dialog");
@@ -1650,7 +1647,7 @@ pub(super) fn show_update_dialog(
         UpdateMethod::InPlace => {
             "Review the release notes before downloading the update.".to_owned()
         }
-        UpdateMethod::MarkedPackage => InstallSource::detect()
+        UpdateMethod::Aur => InstallSource::detect()
             .managed()
             .map(update_dialog_status)
             .unwrap_or_else(|| "This installation is managed by its package manager.".to_owned()),
@@ -1768,10 +1765,7 @@ pub(super) fn show_update_dialog(
             }
             return;
         }
-        if matches!(
-            update_method,
-            UpdateMethod::MarkedPackage | UpdateMethod::Pacman
-        ) {
+        if matches!(update_method, UpdateMethod::Aur | UpdateMethod::Pacman) {
             dismiss_modal_layer(&action_layer, &action_overlay, action_root.as_ref());
             button.set_sensitive(false);
             return;
@@ -1968,7 +1962,7 @@ fn installed_version_status(
     };
     match update_method {
         UpdateMethod::InPlace => version,
-        UpdateMethod::MarkedPackage => format!(
+        UpdateMethod::Aur => format!(
             "{version} · Managed by {}",
             InstallSource::detect()
                 .managed()
@@ -2008,7 +2002,7 @@ fn update_check_message(result: &UpdateCheck, update_method: UpdateMethod) -> St
         }
         UpdateCheck::Available { release, .. } => {
             let instruction = match update_method {
-                UpdateMethod::InPlace | UpdateMethod::MarkedPackage => "",
+                UpdateMethod::InPlace | UpdateMethod::Aur => "",
                 UpdateMethod::Omarchy => " · Run “omarchy update” to install",
                 UpdateMethod::Pacman => " · Install through a full system update",
             };

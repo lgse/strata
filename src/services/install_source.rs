@@ -15,23 +15,23 @@ const MARKER_RELATIVE_PATH: &str = "share/strata/install-source.toml";
 
 const UNNAMED_MANAGER: &str = "your package manager";
 
-/// How the running Strata was installed.
+/// Whether the running Strata came from an official Strata AUR package.
 ///
-/// Distribution packages own `/usr/bin/strata`, so the in-app updater must not
-/// replace it: `pacman -Qkk` would report the package as modified, and the next
-/// package update would silently overwrite whatever the updater installed.
-/// Packages declare themselves by installing a marker file; its absence means an
-/// ordinary user-owned install that the updater is free to replace.
+/// Pacman owns `/usr/bin/strata`, so the in-app updater must not replace it:
+/// `pacman -Qkk` would report the package as modified, and the next package
+/// update would silently overwrite whatever the updater installed. The AUR
+/// packages declare themselves with a marker; its absence means this detector
+/// has no ownership claim.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub enum InstallSource {
     /// User-owned. The in-app updater owns the binary.
     #[default]
     SelfManaged,
-    /// Package-manager owned. The updater must defer to the package manager.
+    /// Owned by one of Strata's official AUR packages.
     Managed(ManagedInstall),
 }
 
-/// The packaging marker's contents.
+/// The official Strata AUR packaging marker's contents.
 ///
 /// Every field is optional and unknown keys are ignored, so a package built for
 /// a newer Strata never fails to parse on an older binary -- it degrades to less
@@ -44,9 +44,8 @@ pub struct ManagedInstall {
     update_command: Option<String>,
     /// Candidate AUR helpers, most preferred first. pacman cannot update an
     /// AUR package -- `pacman -Syu strata-bin` fails with "target not found"
-    /// because no configured repository carries it -- so the command depends
-    /// on which helper the user actually has. The marker lists candidates
-    /// rather than naming one, leaving the choice to whatever is installed.
+    /// because no configured repository carries it -- so the instruction
+    /// depends on which helper the user actually has.
     #[serde(default)]
     aur_helpers: Vec<String>,
     alternate_package: Option<String>,

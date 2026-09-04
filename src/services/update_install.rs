@@ -10,6 +10,7 @@ use std::{
 };
 
 use gtk::glib;
+use serde::Deserialize;
 
 use crate::services::{InstallSource, ensure_self_managed};
 
@@ -18,6 +19,8 @@ use super::release_channel::Version;
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 const DESKTOP_ENTRY: &str = "io.github.lgse.Strata.desktop";
 const APPLICATION_ICON: &str = "io.github.lgse.Strata.svg";
+const AUR_RPC: &str = "https://aur.archlinux.org/rpc/v5/info";
+const AUR_RESPONSE_LIMIT: u64 = 1024 * 1024;
 const PACMAN: &str = "/usr/bin/pacman";
 const PACMAN_CONF: &str = "/usr/bin/pacman-conf";
 const OS_RELEASE: &str = "/etc/os-release";
@@ -27,7 +30,7 @@ const REPOSITORY_DATABASE_LIMIT: u64 = 4 * 1024 * 1024;
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum UpdateMethod {
     InPlace,
-    MarkedPackage,
+    Aur,
     Omarchy,
     Pacman,
 }
@@ -67,7 +70,7 @@ pub struct InstallRequest {
 /// owned by pacman and must be updated through the operating system.
 pub fn update_method() -> UpdateMethod {
     if InstallSource::detect().is_managed() {
-        return UpdateMethod::MarkedPackage;
+        return UpdateMethod::Aur;
     }
     let Ok(executable) = std::env::current_exe() else {
         return UpdateMethod::InPlace;
@@ -114,6 +117,88 @@ fn os_release_has_id(contents: &str, expected: &str) -> bool {
 /// actually install it.
 pub(super) fn package_repository_version() -> Result<Version, String> {
     package_repository_version_for(Path::new(PACMAN), PACKAGE_NAME)
+}
+
+#[derive(Deserialize)]
+struct AurResponse {
+    #[serde(default)]
+    results: Vec<AurPackage>,
+}
+
+#[derive(Deserialize)]
+struct AurPackage {
+    #[serde(rename = "Name")]
+    name: String,
+    #[serde(rename = "Version")]
+    version: String,
+}
+
+/// Returns the version currently published for this official Strata AUR
+/// package. GitHub releases are not advertised until the package users can
+/// actually install has reached the same version.
+pub(super) fn aur_repository_version() -> Result<Version, String> {
+    let package = InstallSource::detect()
+        .managed()
+        .and_then(|managed| managed.package())
+        .ok_or_else(|| "the AUR packaging marker does not name a package".to_owned())?;
+    if !package
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || b"@._+-".contains(&byte))
+    {
+        return Err("the AUR packaging marker contains an invalid package name".to_owned());
+    }
+
+    let url = format!("{AUR_RPC}?arg[]={package}");
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(Duration::from_secs(10)))
+        .build()
+        .into();
+    let mut response = agent
+        .get(&url)
+        .call()
+        .map_err(|error| format!("could not query the AUR: {error}"))?;
+    let mut contents = String::new();
+    response
+        .body_mut()
+        .as_reader()
+        .take(AUR_RESPONSE_LIMIT + 1)
+        .read_to_string(&mut contents)
+        .map_err(|error| format!("could not read the AUR response: {error}"))?;
+    if contents.len() as u64 > AUR_RESPONSE_LIMIT {
+        return Err("the AUR response exceeded the size limit".to_owned());
+    }
+    aur_repository_version_from_response(&contents, package)
+}
+
+fn aur_repository_version_from_response(contents: &str, package: &str) -> Result<Version, String> {
+    let response: AurResponse = serde_json::from_str(contents)
+        .map_err(|error| format!("the AUR returned an invalid response: {error}"))?;
+    response
+        .results
+        .into_iter()
+        .find(|result| result.name == package)
+        .and_then(|result| parse_aur_package_version(&result.version))
+        .ok_or_else(|| format!("{package} is not available in the AUR"))
+}
+
+fn parse_aur_package_version(value: &str) -> Option<Version> {
+    let value = value.lines().find(|line| !line.trim().is_empty())?.trim();
+    let value = value.split_once(':').map_or(value, |(_, version)| version);
+    let (upstream, package_release) = value.rsplit_once('-')?;
+    if package_release.is_empty() {
+        return None;
+    }
+    if let Some(version) = Version::parse(upstream) {
+        return Some(version);
+    }
+    for kind in ["alpha", "beta", "rc", "nightly"] {
+        if let Some(index) = upstream.find(kind) {
+            let mut release = upstream.to_owned();
+            release.insert(index, '-');
+            return Version::parse(&release);
+        }
+    }
+    None
 }
 
 /// Reads the live Omarchy repository database selected by this installation,
@@ -262,7 +347,7 @@ fn perform_install(download_url: &str, progress: &Sender<UpdateInstall>) -> Resu
     ensure_self_managed(InstallSource::detect())?;
     match update_method() {
         UpdateMethod::InPlace => {}
-        UpdateMethod::MarkedPackage => {
+        UpdateMethod::Aur => {
             return Err("This installation is managed by its package manager.".to_owned());
         }
         UpdateMethod::Omarchy => {
