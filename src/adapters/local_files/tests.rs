@@ -455,15 +455,19 @@ fn enumerate_reports_truncated_once_the_entry_budget_is_exceeded() {
 }
 
 #[test]
-fn enumerate_resolves_can_trash_for_a_real_local_directory() {
-    // Not asserting *which* answer: whether a given CI/dev machine's temp
-    // directory happens to support Trash is environment-specific and not
-    // something this test should depend on (issue #284). What must hold
-    // everywhere is that the `access::can-trash` query on a real, accessible
-    // local directory actually resolves to an answer instead of silently
-    // coming back `None`, which would mean the query never ran at all.
+fn enumerate_resolves_can_trash_from_a_child_entry() {
     let root = unique_fixture_root("can-trash");
     fs::create_dir_all(&root).expect("the fixture directory should be created");
+    let child = root.join("child.txt");
+    fs::write(&child, b"content").expect("the fixture file should be written");
+    let expected = gio::File::for_path(&child)
+        .query_info(
+            gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH,
+            gio::FileQueryInfoFlags::NONE,
+            None::<&gio::Cancellable>,
+        )
+        .expect("the child capability query should succeed")
+        .boolean(gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH);
 
     let events = run_enumerate(DirectoryRequest {
         id: RequestId(1),
@@ -475,10 +479,7 @@ fn enumerate_resolves_can_trash_for_a_real_local_directory() {
     });
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
 
-    assert!(
-        finished_can_trash(&events).is_some_and(|can_trash| can_trash.is_some()),
-        "a real, accessible local directory should always resolve access::can-trash"
-    );
+    assert_eq!(finished_can_trash(&events), Some(Some(expected)));
 }
 
 #[test]

@@ -23,9 +23,8 @@ use crate::{
     },
 };
 
-const LIST_ATTRIBUTES: &str =
-    "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink";
-const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,time::modified";
+const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,access::can-trash";
+const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,time::modified,access::can-trash";
 const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified";
 const MAX_PENDING_MONITOR_CHANGES: usize = 256;
 const MAX_HIDDEN_FILE_BYTES: u64 = 1024 * 1024;
@@ -105,6 +104,11 @@ fn info_is_hidden(info: &gio::FileInfo) -> bool {
 
 fn info_is_symlink(info: &gio::FileInfo) -> bool {
     info.has_attribute(gio::FILE_ATTRIBUTE_STANDARD_IS_SYMLINK) && info.is_symlink()
+}
+
+fn info_can_trash(info: &gio::FileInfo) -> Option<bool> {
+    info.has_attribute(gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH)
+        .then(|| info.boolean(gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH))
 }
 
 fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
@@ -252,16 +256,6 @@ fn scan_native_directory(
         Ok(children) => children,
         Err(error) => return NativeEnumeration::Failed(error.to_string()),
     };
-    // A single stat-speed query on the directory itself, not per entry -- this is cheap
-    // enough to always run rather than threading a separate opt-out through the request.
-    let can_trash = gio::File::for_path(path)
-        .query_info(
-            gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH,
-            gio::FileQueryInfoFlags::NONE,
-            Some(cancellable),
-        )
-        .ok()
-        .map(|info| info.boolean(gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH));
     let hidden_names = native_hidden_names(path);
     let mut entries = Vec::new();
     let mut truncated = false;
@@ -301,6 +295,20 @@ fn scan_native_directory(
             is_hidden,
         });
     }
+
+    // `access::can-trash` describes the queried item, not its children. Probe one
+    // actual entry so a directory that cannot itself be removed (such as `$HOME`)
+    // does not incorrectly hide Trash for the entries it contains.
+    let can_trash = entries.first().and_then(|entry| {
+        gio::File::for_path(entry.location.native_path()?)
+            .query_info(
+                gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH,
+                gio::FileQueryInfoFlags::NONE,
+                Some(cancellable),
+            )
+            .ok()
+            .and_then(|info| info_can_trash(&info))
+    });
 
     let mut metadata_complete = true;
     if request.include_metadata && !entries.is_empty() && Instant::now() < deadline {
@@ -491,40 +499,26 @@ impl FileSource for LocalFileSource {
                 .native_path()
                 .map(gio::File::for_path)
                 .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()));
-            // Given its own full time budget rather than sharing the enumeration deadline
-            // below: a single stat-speed query on the directory itself, not per entry, so it
-            // should never be the reason a load looks truncated.
-            let can_trash = glib::future_with_timeout(
-                request.time_budget,
-                directory.query_info_future(
-                    gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH,
-                    gio::FileQueryInfoFlags::NONE,
-                    glib::Priority::DEFAULT,
-                ),
-            )
-            .await
-            .ok()
-            .and_then(Result::ok)
-            .map(|info| info.boolean(gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH));
-
             let deadline = started + request.time_budget;
-            let finish_truncated = |entries: usize, reason: &'static str| {
-                tracing::warn!(
-                    request_id = request_id.0,
-                    entries,
-                    elapsed_ms = started.elapsed().as_millis() as u64,
-                    reason,
-                    "directory load truncated"
-                );
-                emit(DirectoryEvent::Finished {
-                    request_id,
-                    truncated: true,
-                    can_trash,
-                });
-            };
+            let finish_truncated =
+                |entries: usize, reason: &'static str, can_trash: Option<bool>| {
+                    tracing::warn!(
+                        request_id = request_id.0,
+                        entries,
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        reason,
+                        "directory load truncated"
+                    );
+                    emit(DirectoryEvent::Finished {
+                        request_id,
+                        truncated: true,
+                        can_trash,
+                    });
+                };
+            let mut can_trash = None;
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                finish_truncated(0, "time budget");
+                finish_truncated(0, "time budget", can_trash);
                 return;
             }
             let attributes = if request.include_metadata {
@@ -557,7 +551,7 @@ impl FileSource for LocalFileSource {
                     return;
                 }
                 Err(_) => {
-                    finish_truncated(0, "time budget");
+                    finish_truncated(0, "time budget", can_trash);
                     return;
                 }
             };
@@ -567,7 +561,7 @@ impl FileSource for LocalFileSource {
             loop {
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
-                    finish_truncated(total_entries, "time budget");
+                    finish_truncated(total_entries, "time budget", can_trash);
                     break;
                 }
                 match glib::future_with_timeout(
@@ -592,6 +586,9 @@ impl FileSource for LocalFileSource {
                         break;
                     }
                     Ok(Ok(files)) => {
+                        if can_trash.is_none() {
+                            can_trash = files.iter().find_map(info_can_trash);
+                        }
                         let mut entries: Vec<_> = files
                             .into_iter()
                             .filter_map(|info| {
@@ -617,7 +614,7 @@ impl FileSource for LocalFileSource {
                             entries,
                         });
                         if entry_budget_exhausted {
-                            finish_truncated(total_entries, "entry budget");
+                            finish_truncated(total_entries, "entry budget", can_trash);
                             break;
                         }
                     }
@@ -635,7 +632,7 @@ impl FileSource for LocalFileSource {
                         break;
                     }
                     Err(_) => {
-                        finish_truncated(total_entries, "time budget");
+                        finish_truncated(total_entries, "time budget", can_trash);
                         break;
                     }
                 }

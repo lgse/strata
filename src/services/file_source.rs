@@ -185,11 +185,10 @@ pub enum DirectoryEvent {
         /// `true` if the load stopped short of covering the full directory, because it hit the
         /// entry or time budget; already-emitted `Batch` entries are then a lower bound.
         truncated: bool,
-        /// Whether this location supports moving entries to Trash, from a single
-        /// `access::can-trash` query on the directory itself. `None` when the query
-        /// couldn't be answered (e.g. it timed out); treated as "assume trashable" by
-        /// consumers, since that matches offering Trash and letting the operation itself
-        /// fail if it turns out not to be supported.
+        /// Whether this location supports moving entries to Trash, resolved from an
+        /// entry in the directory. `None` when the location is empty or the capability
+        /// couldn't be answered; treated as "assume trashable" by consumers, since that
+        /// matches offering Trash and letting the operation itself fail if unsupported.
         can_trash: Option<bool>,
     },
     /// Consumers must not present these partial values as a completed sort.

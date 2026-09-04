@@ -42,10 +42,10 @@ pub struct ColumnState {
     selection_target: Option<Location>,
     pub load_state: LoadState,
     pub truncated: bool,
-    /// Whether entries here can be moved to Trash, resolved once when the
-    /// directory loads (see `DirectoryEvent::Finished`). `None` before the first
-    /// load finishes, or when the check itself couldn't be answered; treated as
-    /// "assume trashable" by consumers.
+    /// Whether entries here can be moved to Trash, resolved from a listed entry
+    /// when the directory loads (see `DirectoryEvent::Finished`). `None` before
+    /// the first load finishes, for an empty directory, or when the capability
+    /// couldn't be answered; treated as "assume trashable" by consumers.
     pub can_trash: Option<bool>,
     preferences: ViewPreferences,
     request_id: RequestId,
