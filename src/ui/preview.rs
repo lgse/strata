@@ -19,6 +19,8 @@ use crate::{
     },
 };
 
+use super::{blur::BlurBin, controls::modal_layout};
+
 const DEFAULT_WIDTH: i32 = 520;
 const MIN_WIDTH: i32 = 280;
 const MAX_WIDTH: i32 = 3_000;
@@ -30,7 +32,9 @@ const PDF_MAX_ZOOM: f64 = 4.0;
 const MEDIA_PLUGIN_INSTALL_COMMAND: &str = "sudo pacman -S --needed gst-plugins-good gst-libav";
 
 struct PrintProgress {
-    window: gtk::Window,
+    layer: gtk::Box,
+    overlay: gtk::Overlay,
+    blurred_root: Option<BlurBin>,
     status: gtk::Label,
     progress: gtk::ProgressBar,
 }
@@ -445,7 +449,7 @@ impl PreviewState {
         let (content_type, _) =
             gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
         if content_type == "application/pdf" {
-            self.show_print_progress(parent.as_ref());
+            self.show_print_progress();
         }
         self.load_print_page(entry, parent, 0, Rc::new(RefCell::new(Vec::new())));
     }
@@ -456,42 +460,55 @@ impl PreviewState {
         self.dismiss_print_progress();
     }
 
-    fn show_print_progress(self: &Rc<Self>, parent: Option<&gtk::Window>) {
+    fn show_print_progress(self: &Rc<Self>) {
         if self.print_progress.borrow().is_some() {
             return;
         }
-
-        let window = gtk::Window::builder()
-            .title("Preparing PDF")
-            .default_width(380)
-            .modal(true)
-            .resizable(false)
-            .build();
-        if let Some(parent) = parent {
-            window.set_transient_for(Some(parent));
+        let Some(window_overlay) = self
+            .pane
+            .root()
+            .and_downcast::<gtk::Window>()
+            .and_then(|window| window.child())
+            .and_downcast::<gtk::Overlay>()
+        else {
+            return;
+        };
+        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
+        if let Some(root) = blurred_root.as_ref() {
+            root.set_blurred(true);
         }
 
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 14);
-        content.set_margin_top(24);
-        content.set_margin_bottom(24);
-        content.set_margin_start(24);
-        content.set_margin_end(24);
-        let heading = gtk::Label::new(Some("Preparing PDF for printing…"));
-        heading.add_css_class("title-3");
-        heading.set_xalign(0.0);
+        let layout = modal_layout(
+            crate::assets::icons::PRINTER,
+            "Preparing PDF",
+            "Rendering pages for the print dialog",
+            "Cancel",
+        );
+        layout.content.add_css_class("compact");
+        layout.close.set_visible(false);
+        layout.cancel.set_visible(false);
         let status = gtk::Label::new(Some("Rendering pages…"));
+        status.add_css_class("modal-progress-status");
         status.set_xalign(0.0);
         let progress = gtk::ProgressBar::new();
-        let cancel = gtk::Button::with_label("Cancel");
-        cancel.set_halign(gtk::Align::End);
-        content.append(&heading);
-        content.append(&status);
-        content.append(&progress);
-        content.append(&cancel);
-        window.set_child(Some(&content));
+        progress.add_css_class("modal-progress");
+        progress.set_fraction(0.0);
+        layout.body.append(&status);
+        layout.body.append(&progress);
+        let content = layout.content;
+        let cancel = layout.confirm;
 
+        let layer = super::browser::modal_layer(
+            &content,
+            &window_overlay,
+            blurred_root.clone(),
+            Some(Rc::new(|| true)),
+        );
+        window_overlay.add_overlay(&layer);
         self.print_progress.replace(Some(PrintProgress {
-            window: window.clone(),
+            layer: layer.clone(),
+            overlay: window_overlay,
+            blurred_root,
             status,
             progress,
         }));
@@ -502,22 +519,23 @@ impl PreviewState {
             }
         });
         let weak = Rc::downgrade(self);
-        window.connect_close_request(move |_| {
-            if let Some(state) = weak.upgrade() {
-                state.cancel_print();
+        let escape = gtk::EventControllerKey::new();
+        escape.connect_key_pressed(move |_, key, _, _| {
+            if key == gtk::gdk::Key::Escape {
+                if let Some(state) = weak.upgrade() {
+                    state.cancel_print();
+                }
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
             }
-            glib::Propagation::Proceed
         });
-        window.present();
+        layer.add_controller(escape);
+        cancel.grab_focus();
     }
 
-    fn update_print_progress(
-        self: &Rc<Self>,
-        completed: i32,
-        total: i32,
-        parent: Option<&gtk::Window>,
-    ) {
-        self.show_print_progress(parent);
+    fn update_print_progress(self: &Rc<Self>, completed: i32, total: i32) {
+        self.show_print_progress();
         let progress = self.print_progress.borrow();
         let Some(dialog) = progress.as_ref() else {
             return;
@@ -529,7 +547,11 @@ impl PreviewState {
 
     fn dismiss_print_progress(&self) {
         if let Some(dialog) = self.print_progress.take() {
-            dialog.window.set_visible(false);
+            super::browser::dismiss_modal_layer(
+                &dialog.layer,
+                &dialog.overlay,
+                dialog.blurred_root.as_ref(),
+            );
         }
     }
 
@@ -596,7 +618,7 @@ impl PreviewState {
                         let completed =
                             i32::try_from(rendered.borrow().len()).unwrap_or(page_count);
                         if page.saturating_add(1) < page_count {
-                            self.update_print_progress(completed, page_count, parent.as_ref());
+                            self.update_print_progress(completed, page_count);
                             self.load_print_page(entry, parent, page.saturating_add(1), rendered);
                         } else {
                             self.dismiss_print_progress();
