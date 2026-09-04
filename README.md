@@ -70,7 +70,7 @@ paru -S strata-bin        # or: yay -S strata-bin
 Update through your AUR helper — `pacman` cannot update an AUR package because no configured repository carries it:
 
 ```bash
-paru -Sua                 # or: yay -Sua
+paru -Syu strata-bin      # or: yay -Syu strata-bin
 ```
 
 Package-managed installs report new releases in **Settings → Updates**, but never overwrite the binary owned by pacman. Maintainers: see [`docs/packaging.md`](docs/packaging.md).

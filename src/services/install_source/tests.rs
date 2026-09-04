@@ -72,9 +72,23 @@ fn the_update_command_names_an_installed_aur_helper() {
 
     assert_eq!(
         managed.update_instruction_with(|helper| helper == "paru"),
-        "Update Strata with: paru -S strata-bin",
+        "Update Strata with: paru -Syu strata-bin",
         "the first listed helper that is present wins, not the first listed"
     );
+}
+
+#[test]
+fn the_aur_update_target_uses_an_installed_helper_and_package() {
+    let managed = load(PACKAGED_MARKER)
+        .managed()
+        .cloned()
+        .expect("a managed install");
+
+    assert_eq!(
+        managed.aur_update_target_with(|helper| helper == "paru"),
+        Some(("paru", "strata-bin"))
+    );
+    assert_eq!(managed.aur_update_target_with(|_| false), None);
 }
 
 #[test]
@@ -86,7 +100,7 @@ fn the_update_command_falls_back_when_no_helper_is_installed() {
 
     assert_eq!(
         managed.update_instruction_with(|_| false),
-        "Update Strata with an AUR helper, for example: yay -S strata-bin"
+        "Update Strata with an AUR helper, for example: yay -Syu strata-bin"
     );
 }
 
@@ -205,7 +219,7 @@ fn blank_values_are_treated_as_absent() {
     assert_eq!(
         managed.update_instruction_with(|_| true),
         "Update Strata through your package manager.",
-        "a blank helper must not render as ` -S `"
+        "a blank helper must not render an update command"
     );
 }
 
@@ -235,12 +249,14 @@ fn a_packaged_install_refuses_to_replace_its_own_binary() {
         r#"
         manager = "pacman"
         package = "strata-bin"
-        update_command = "yay -S strata-bin"
+        update_command = "yay -Syu strata-bin"
         "#,
     );
 
     assert_eq!(
         ensure_self_managed(&source),
-        Err("Installed by pacman as strata-bin. Update Strata with: yay -S strata-bin".to_owned())
+        Err(
+            "Installed by pacman as strata-bin. Update Strata with: yay -Syu strata-bin".to_owned()
+        )
     );
 }

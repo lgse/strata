@@ -8,7 +8,7 @@ use std::{
     time::Duration,
 };
 
-use gtk::{gdk, glib, prelude::*, subclass::prelude::*};
+use gtk::{gdk, gio, glib, prelude::*, subclass::prelude::*};
 
 use crate::{
     assets::icons,
@@ -1236,8 +1236,9 @@ fn update_check_row(
                                 if update_method.is_package_managed() {
                                     managed_update_available.set(true);
                                     button.set_label(match update_method {
+                                        UpdateMethod::Aur => aur_update_action_label(),
                                         UpdateMethod::Omarchy => "Open Omarchy Update",
-                                        UpdateMethod::Aur | UpdateMethod::Pacman => "Check again",
+                                        UpdateMethod::Pacman => "Check again",
                                         UpdateMethod::InPlace => unreachable!(),
                                     });
                                 } else {
@@ -1278,6 +1279,13 @@ fn update_check_row(
 
     let clicked_check = run_check.clone();
     button.connect_clicked(move |button| {
+        if update_method == UpdateMethod::Aur && managed_update_available.get() {
+            match launch_aur_update() {
+                Ok(message) => status.set_text(message),
+                Err(error) => status.set_text(&format!("Couldn’t open AUR update: {error}")),
+            }
+            return;
+        }
         if update_method == UpdateMethod::Omarchy && managed_update_available.get() {
             match launch_omarchy_update() {
                 Ok(()) => status.set_text("Omarchy Update opened in your terminal."),
@@ -1589,6 +1597,7 @@ pub(super) fn show_update_dialog(
         root.set_blurred(true);
     }
 
+    let aur_action = aur_update_action_label();
     let layout = modal_layout(
         icons::DOWNLOADS,
         &format!("Strata v{} is available", release.version),
@@ -1599,8 +1608,9 @@ pub(super) fn show_update_dialog(
         ),
         match update_method {
             UpdateMethod::InPlace => "Download update",
+            UpdateMethod::Aur => aur_action,
             UpdateMethod::Omarchy => "Open Omarchy Update",
-            UpdateMethod::Aur | UpdateMethod::Pacman => "Close",
+            UpdateMethod::Pacman => "Close",
         },
     );
     layout.content.add_css_class("update-dialog");
@@ -1753,6 +1763,21 @@ pub(super) fn show_update_dialog(
     let application = parent.application();
     let action_close = close.clone();
     action.connect_clicked(move |button| {
+        if update_method == UpdateMethod::Aur {
+            if aur_action == "Close" {
+                dismiss_modal_layer(&action_layer, &action_overlay, action_root.as_ref());
+                button.set_sensitive(false);
+                return;
+            }
+            match launch_aur_update() {
+                Ok(_) => {
+                    dismiss_modal_layer(&action_layer, &action_overlay, action_root.as_ref());
+                    button.set_sensitive(false);
+                }
+                Err(error) => status.set_text(&format!("Couldn’t open AUR update: {error}")),
+            }
+            return;
+        }
         if update_method == UpdateMethod::Omarchy {
             match launch_omarchy_update() {
                 Ok(()) => {
@@ -1763,7 +1788,7 @@ pub(super) fn show_update_dialog(
             }
             return;
         }
-        if matches!(update_method, UpdateMethod::Aur | UpdateMethod::Pacman) {
+        if update_method == UpdateMethod::Pacman {
             dismiss_modal_layer(&action_layer, &action_overlay, action_root.as_ref());
             button.set_sensitive(false);
             return;
@@ -1875,6 +1900,43 @@ pub(super) fn show_update_dialog(
             started_for_guard.set(false);
         }
     });
+}
+
+fn aur_update_action_label() -> &'static str {
+    match InstallSource::detect().managed() {
+        Some(managed) if managed.aur_update_target().is_some() => "Open AUR Update",
+        Some(managed) if managed.package().is_some() => "View on AUR",
+        _ => "Close",
+    }
+}
+
+fn aur_update_command(helper: &str, package: &str) -> Command {
+    let mut command = Command::new("xdg-terminal-exec");
+    command
+        .args(["--", helper, "-Syu", package])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    command
+}
+
+fn launch_aur_update() -> Result<&'static str, String> {
+    let managed = InstallSource::detect()
+        .managed()
+        .ok_or_else(|| "missing package metadata".to_owned())?;
+    if let Some((helper, package)) = managed.aur_update_target() {
+        return aur_update_command(helper, package)
+            .spawn()
+            .map(|_child| "AUR update opened in your terminal.")
+            .map_err(|error| error.to_string());
+    }
+    let package = managed
+        .package()
+        .ok_or_else(|| "missing AUR package name".to_owned())?;
+    let uri = format!("https://aur.archlinux.org/packages/{package}");
+    gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>)
+        .map(|()| "AUR package page opened.")
+        .map_err(|error| error.to_string())
 }
 
 fn omarchy_update_command() -> Command {

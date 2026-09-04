@@ -9,12 +9,13 @@ use crate::services::{
 
 use super::{
     CHANNEL_ORDER, COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
-    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, channel_index, effective_update_channel,
-    install_guard, installed_version_status, is_stale_check, managed_channel_description,
-    managed_install_summary, offer_still_eligible, omarchy_update_command, responsive_dialog_size,
-    shows_available_release_notes, theme_background_is_light, theme_name_matches,
-    update_check_message, update_dialog_status, update_status_markup, uses_compact_navigation,
-    video_preview_backend_label, video_preview_control_state,
+    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, aur_update_command, channel_index,
+    effective_update_channel, install_guard, installed_version_status, is_stale_check,
+    managed_channel_description, managed_install_summary, offer_still_eligible,
+    omarchy_update_command, responsive_dialog_size, shows_available_release_notes,
+    theme_background_is_light, theme_name_matches, update_check_message, update_dialog_status,
+    update_status_markup, uses_compact_navigation, video_preview_backend_label,
+    video_preview_control_state,
 };
 use crate::sandbox::MediaPreviewBackend;
 
@@ -39,7 +40,7 @@ fn packaged() -> InstallSource {
         manager = "pacman"
         package = "strata-bin"
         channel = "stable"
-        update_command = "yay -S strata-bin"
+        update_command = "yay -Syu strata-bin"
         alternate_package = "strata-rc-bin"
         "#,
     )
@@ -135,7 +136,7 @@ fn a_packaged_install_is_told_how_to_update_through_its_package_manager() {
     let message = update_check_message(&result, UpdateMethod::Aur);
     let markup = update_status_markup(message, &result, &packaged());
 
-    assert!(markup.ends_with("\nUpdate Strata with: yay -S strata-bin"));
+    assert!(markup.ends_with("\nUpdate Strata with: yay -Syu strata-bin"));
 }
 
 #[test]
@@ -168,7 +169,7 @@ fn the_managed_row_names_the_package_channel_and_commands() {
         managed_install_summary(managed),
         "Installed by pacman as strata-bin.\n\
          Tracking the stable release channel.\n\
-         Update Strata with: yay -S strata-bin\n\
+         Update Strata with: yay -Syu strata-bin\n\
          Other release channels are published as strata-rc-bin."
     );
 }
@@ -200,7 +201,7 @@ fn the_update_dialog_defers_to_the_package_manager() {
 
     assert_eq!(
         update_dialog_status(managed),
-        "Installed by pacman as strata-bin. Update Strata with: yay -S strata-bin"
+        "Installed by pacman as strata-bin. Update Strata with: yay -Syu strata-bin"
     );
 }
 
@@ -286,6 +287,17 @@ fn package_managed_status_identifies_omarchy() {
     assert_eq!(
         installed_version_status(&version, BuildKind::Stable, UpdateMethod::Omarchy),
         "Version 0.8.0 · Managed by Omarchy"
+    );
+}
+
+#[test]
+fn aur_updates_open_in_the_configured_terminal() {
+    let command = aur_update_command("paru", "strata-bin");
+
+    assert_eq!(command.get_program(), "xdg-terminal-exec");
+    assert_eq!(
+        command.get_args().collect::<Vec<_>>(),
+        ["--", "paru", "-Syu", "strata-bin"]
     );
 }
 

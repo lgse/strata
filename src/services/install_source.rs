@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::{
+    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     sync::OnceLock,
 };
@@ -101,19 +102,27 @@ impl ManagedInstall {
         self.update_instruction_with(on_path)
     }
 
-    fn update_instruction_with(&self, available: impl Fn(&str) -> bool) -> String {
+    pub(crate) fn aur_update_target(&self) -> Option<(&str, &str)> {
+        self.aur_update_target_with(on_path)
+    }
+
+    fn aur_update_target_with(&self, available: impl Fn(&str) -> bool) -> Option<(&str, &str)> {
+        let package = self.package()?;
+        let helper = self.aur_helpers.iter().find(|helper| available(helper))?;
+        Some((helper, package))
+    }
+
+    fn update_instruction_with(&self, available: impl Fn(&str) -> bool + Copy) -> String {
         if let Some(command) = self.update_command.as_deref() {
             return format!("Update Strata with: {command}");
         }
-        if let Some(package) = self.package() {
-            if let Some(helper) = self.aur_helpers.iter().find(|helper| available(helper)) {
-                return format!("Update Strata with: {helper} -S {package}");
-            }
-            if let Some(helper) = self.aur_helpers.first() {
-                return format!(
-                    "Update Strata with an AUR helper, for example: {helper} -S {package}"
-                );
-            }
+        if let Some((helper, package)) = self.aur_update_target_with(available) {
+            return format!("Update Strata with: {helper} -Syu {package}");
+        }
+        if let (Some(helper), Some(package)) = (self.aur_helpers.first(), self.package()) {
+            return format!(
+                "Update Strata with an AUR helper, for example: {helper} -Syu {package}"
+            );
         }
         format!("Update Strata through {}.", self.manager())
     }
@@ -166,7 +175,12 @@ fn on_path(program: &str) -> bool {
     let Some(path) = std::env::var_os("PATH") else {
         return false;
     };
-    std::env::split_paths(&path).any(|directory| directory.join(program).is_file())
+    std::env::split_paths(&path).any(|directory| {
+        directory
+            .join(program)
+            .metadata()
+            .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
+    })
 }
 
 fn marker_path_for_executable(executable: &Path) -> Option<PathBuf> {
