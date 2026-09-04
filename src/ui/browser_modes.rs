@@ -3373,8 +3373,11 @@ fn update_bound_explorer_metadata(pane: &Pane, updates: &[(usize, FileEntry)]) {
             let (Some(item), Some(row)) = (bound.item.upgrade(), bound.widget.upgrade()) else {
                 return false;
             };
-            let Some(position) =
-                source_position_for_view(&pane.model, Some(&section.view_model), item.position())
+            let Some(position) = source_position_for_view(
+                &pane.source_index,
+                Some(&section.view_model),
+                item.position(),
+            )
             else {
                 return true;
             };
