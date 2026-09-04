@@ -35,7 +35,7 @@ zstd = "0.13.3"
 zip = "8.6.0"
 
 [build-dependencies]
-glib-build-tools = "0.21.0"
+glib-build-tools = "0.22.8"
 
 [lints.rust]
 unsafe_code = "deny"
