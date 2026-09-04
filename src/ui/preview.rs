@@ -39,6 +39,7 @@ struct PreviewState {
     modified: gtk::Label,
     content_type: gtk::Label,
     content: gtk::Box,
+    print: gtk::Button,
     media: RefCell<Option<gtk::MediaStream>>,
     media_signals: RefCell<Vec<glib::SignalHandlerId>>,
     media_volume_slider: RefCell<Option<gtk::Scale>>,
@@ -50,8 +51,8 @@ struct PreviewState {
     current: RefCell<Option<FileEntry>>,
     load: RefCell<Option<LoadHandle>>,
     pdf_loads: Rc<RefCell<HashMap<i32, LoadHandle>>>,
-    print_page: RefCell<Option<Vec<u8>>>,
     print_load: RefCell<Option<LoadHandle>>,
+    print_request: Cell<Option<PreviewRequestId>>,
     current_request: Cell<Option<PreviewRequestId>>,
     next_request: Cell<u64>,
     opened: Cell<bool>,
@@ -99,6 +100,7 @@ impl PreviewDrawer {
             16,
         )));
         print.add_css_class("preview-header-action");
+        print.set_visible(false);
         let close = gtk::Button::builder()
             .tooltip_text("Close preview (Space)")
             .valign(gtk::Align::Center)
@@ -154,6 +156,7 @@ impl PreviewDrawer {
             modified,
             content_type,
             content,
+            print: print.clone(),
             media: RefCell::new(None),
             media_signals: RefCell::new(Vec::new()),
             media_volume_slider: RefCell::new(None),
@@ -165,8 +168,8 @@ impl PreviewDrawer {
             current: RefCell::new(None),
             load: RefCell::new(None),
             pdf_loads: Rc::new(RefCell::new(HashMap::new())),
-            print_page: RefCell::new(None),
             print_load: RefCell::new(None),
+            print_request: Cell::new(None),
             current_request: Cell::new(None),
             next_request: Cell::new(1),
             opened: Cell::new(false),
@@ -409,6 +412,7 @@ impl PreviewState {
         self.current_request.set(None);
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
+        self.print_request.set(None);
         self.print_load.take();
         self.clear_content();
         self.revealer.set_transition_duration(0);
@@ -424,32 +428,47 @@ impl PreviewState {
         let Some(entry) = self.current.borrow().clone() else {
             return;
         };
-        let Some(png) = self.print_page.borrow().clone() else {
-            return;
-        };
-        let parent = self.pane.root().and_downcast::<gtk::Window>();
-        print_rasterized(png, &entry.display_name, parent.as_ref());
+        self.print_entry(entry);
     }
 
     fn print_entry(self: &Rc<Self>, entry: FileEntry) {
-        let job_name = entry.display_name.clone();
+        self.print_request.set(None);
+        self.print_load.take();
         let parent = self.pane.root().and_downcast::<gtk::Window>();
+        self.load_print_page(entry, parent, 0, Rc::new(RefCell::new(Vec::new())));
+    }
+
+    fn load_print_page(
+        self: &Rc<Self>,
+        entry: FileEntry,
+        parent: Option<gtk::Window>,
+        pdf_page: i32,
+        rendered: Rc<RefCell<Vec<Vec<u8>>>>,
+    ) {
         let request_id = PreviewRequestId(self.next_request.get());
         self.next_request
             .set(self.next_request.get().saturating_add(1));
+        self.print_request.set(Some(request_id));
         let weak = Rc::downgrade(self);
+        let entry_for_event = entry.clone();
         let emit = Rc::new(move |event| {
             let Some(state) = weak.upgrade() else {
                 return;
             };
-            state.print_entry_event(request_id, job_name.clone(), parent.clone(), event);
+            state.print_entry_event(
+                request_id,
+                entry_for_event.clone(),
+                parent.clone(),
+                rendered.clone(),
+                event,
+            );
         });
         let load = self.provider.load(
             PreviewRequest {
                 id: request_id,
                 entry,
                 text_byte_limit: TEXT_BYTE_LIMIT,
-                pdf_page: 0,
+                pdf_page,
             },
             emit,
         );
@@ -459,22 +478,41 @@ impl PreviewState {
     fn print_entry_event(
         self: &Rc<Self>,
         expected: PreviewRequestId,
-        job_name: String,
+        entry: FileEntry,
         parent: Option<gtk::Window>,
+        rendered: Rc<RefCell<Vec<Vec<u8>>>>,
         event: PreviewEvent,
     ) {
+        if self.print_request.get() != Some(expected) {
+            return;
+        }
         match event {
             PreviewEvent::Ready(preview) if preview.request_id == expected => {
+                self.print_request.set(None);
                 self.print_load.take();
-                if let Some(png) = printable_page(&preview.content) {
-                    print_rasterized(png, &job_name, parent.as_ref());
+                match preview.content {
+                    PreviewContent::Rasterized { png } => {
+                        print_rasterized(vec![png], &entry.display_name, parent.as_ref());
+                    }
+                    PreviewContent::Pdf { png, page, pages } => {
+                        rendered.borrow_mut().push(png);
+                        let page_count = pages.clamp(1, 10_000);
+                        if page.saturating_add(1) < page_count {
+                            self.load_print_page(entry, parent, page.saturating_add(1), rendered);
+                        } else {
+                            let pages = std::mem::take(&mut *rendered.borrow_mut());
+                            print_rasterized(pages, &entry.display_name, parent.as_ref());
+                        }
+                    }
+                    PreviewContent::Text { .. }
+                    | PreviewContent::Image
+                    | PreviewContent::Media
+                    | PreviewContent::SandboxedMedia { .. }
+                    | PreviewContent::Unsupported => {}
                 }
             }
-            PreviewEvent::Failed {
-                request_id,
-                entry: _,
-                message: _,
-            } if request_id == expected => {
+            PreviewEvent::Failed { request_id, .. } if request_id == expected => {
+                self.print_request.set(None);
                 self.print_load.take();
             }
             PreviewEvent::Ready(_) | PreviewEvent::Failed { .. } => {}
@@ -585,7 +623,7 @@ impl PreviewState {
                 }
             }
             PreviewContent::Rasterized { png } => {
-                self.print_page.replace(Some(png.clone()));
+                self.print.set_visible(true);
                 let bytes = glib::Bytes::from_owned(png);
                 match gtk::gdk::Texture::from_bytes(&bytes) {
                     Ok(texture) => {
@@ -715,7 +753,7 @@ impl PreviewState {
                 );
             }
             PreviewContent::Pdf { png, page, pages } => {
-                self.print_page.replace(Some(png.clone()));
+                self.print.set_visible(true);
                 self.render_pdf_viewer(preview.entry, png, page, pages);
             }
             PreviewContent::Unsupported => {
@@ -1220,7 +1258,7 @@ impl PreviewState {
         self.media_toggle_mute.replace(None);
         self.media_volume_slider.replace(None);
         self.media_volume_icon.replace(None);
-        self.print_page.take();
+        self.print.set_visible(false);
         clear_box(&self.content);
     }
 
@@ -1284,16 +1322,19 @@ impl PreviewState {
     }
 }
 
-/// Opens the native print dialog and prints `png` as a single page named `job_name`.
-fn print_rasterized(png: Vec<u8>, job_name: &str, parent: Option<&gtk::Window>) {
+/// Opens the native print dialog and prints the rasterized pages as a job named `job_name`.
+fn print_rasterized(pages: Vec<Vec<u8>>, job_name: &str, parent: Option<&gtk::Window>) {
+    let Ok(page_count) = i32::try_from(pages.len()) else {
+        return;
+    };
     let operation = gtk::PrintOperation::new();
     operation.set_job_name(job_name);
     operation.set_allow_async(true);
-    operation.set_n_pages(1);
+    operation.set_n_pages(page_count);
     operation.connect_draw_page(move |_, context, page| {
-        if page != 0 {
+        let Some(png) = usize::try_from(page).ok().and_then(|page| pages.get(page)) else {
             return;
-        }
+        };
         let Ok(surface) = cairo::ImageSurface::create_from_png(&mut &png[..]) else {
             return;
         };
@@ -1306,20 +1347,6 @@ fn print_rasterized(png: Vec<u8>, job_name: &str, parent: Option<&gtk::Window>) 
             error_code = error.code(),
             "unable to open print dialog"
         );
-    }
-}
-
-/// Returns the page's rasterized PNG for a printable preview, or `None` when the content has no
-/// single renderable page (text, media, unsupported).
-fn printable_page(content: &PreviewContent) -> Option<Vec<u8>> {
-    match content {
-        PreviewContent::Rasterized { png } => Some(png.clone()),
-        PreviewContent::Pdf { png, .. } => Some(png.clone()),
-        PreviewContent::Text { .. }
-        | PreviewContent::Image
-        | PreviewContent::Media
-        | PreviewContent::SandboxedMedia { .. }
-        | PreviewContent::Unsupported => None,
     }
 }
 

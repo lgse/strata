@@ -3,10 +3,8 @@
 use super::{
     MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, format_file_size, format_media_time,
     media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
-    preview_width_for_empty_space, print_fit, printable_page,
+    preview_width_for_empty_space, print_fit,
 };
-
-use crate::services::PreviewContent;
 
 #[test]
 fn print_fit_centers_landscape_image_on_portrait_page() {
@@ -41,42 +39,6 @@ fn print_fit_rejects_zero_sized_inputs() {
     assert_eq!(print_fit(595.0, 0.0, 100.0, 100.0), None);
     assert_eq!(print_fit(595.0, 842.0, 0.0, 100.0), None);
     assert_eq!(print_fit(595.0, 842.0, 100.0, -1.0), None);
-}
-
-#[test]
-fn printable_page_exposes_rasterized_png() {
-    let png = vec![1, 2, 3];
-    assert_eq!(
-        printable_page(&PreviewContent::Rasterized { png: png.clone() }),
-        Some(png.clone())
-    );
-}
-
-#[test]
-fn printable_page_exposes_pdf_page_png() {
-    let png = vec![4, 5, 6];
-    assert_eq!(
-        printable_page(&PreviewContent::Pdf {
-            png: png.clone(),
-            page: 0,
-            pages: 1,
-        }),
-        Some(png.clone())
-    );
-}
-
-#[test]
-fn printable_page_ignores_non_page_content() {
-    assert_eq!(
-        printable_page(&PreviewContent::Text {
-            content: "hi".into(),
-            truncated: false
-        }),
-        None
-    );
-    assert_eq!(printable_page(&PreviewContent::Image), None);
-    assert_eq!(printable_page(&PreviewContent::Media), None);
-    assert_eq!(printable_page(&PreviewContent::Unsupported), None);
 }
 
 #[test]
