@@ -159,7 +159,7 @@ fn an_unreadable_marker_still_counts_as_packaged() {
 }
 
 #[test]
-fn an_unparseable_marker_still_counts_as_packaged() {
+fn an_unparsable_marker_still_counts_as_packaged() {
     let source = load("this is not toml");
 
     assert_eq!(

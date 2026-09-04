@@ -43,17 +43,19 @@ jobs:
       - name: Test the package renderer
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
-      - name: Verify committed packages are generated
-        run: |
-          stable=$(grep -m1 '^_releasever=' packaging/aur/strata-bin/PKGBUILD | cut -d= -f2)
-          preview=$(grep -m1 '^_releasever=' packaging/aur/strata-rc-bin/PKGBUILD | cut -d= -f2)
-          python3 scripts/update_aur.py --stable "$stable" --preview "$preview" --check
-
       - name: Create an unprivileged build user
         run: |
           useradd --create-home builder
           printf 'builder ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builder
           chown -R builder .
+
+      - name: Verify committed packages are generated
+        run: |
+          su builder -c '
+            stable=$(grep -m1 "^_releasever=" packaging/aur/strata-bin/PKGBUILD | cut -d= -f2)
+            preview=$(grep -m1 "^_releasever=" packaging/aur/strata-rc-bin/PKGBUILD | cut -d= -f2)
+            python3 scripts/update_aur.py --stable "$stable" --preview "$preview" --check
+          '
 
       - name: Build the packages
         run: |
