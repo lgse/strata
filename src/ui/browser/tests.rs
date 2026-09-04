@@ -3,6 +3,16 @@
 use super::*;
 
 #[test]
+fn recursive_search_arrows_select_and_clamp_results() {
+    assert_eq!(search_result_navigation_position(None, 3, 1), Some(0));
+    assert_eq!(search_result_navigation_position(None, 3, -1), Some(2));
+    assert_eq!(search_result_navigation_position(Some(0), 3, -1), Some(0));
+    assert_eq!(search_result_navigation_position(Some(1), 3, 1), Some(2));
+    assert_eq!(search_result_navigation_position(Some(2), 3, 1), Some(2));
+    assert_eq!(search_result_navigation_position(None, 0, 1), None);
+}
+
+#[test]
 fn terminal_shortcut_prefers_one_selected_directory() {
     let entry = |name: &str, kind| FileEntry {
         location: Location::local(format!("/fixture/{name}")),

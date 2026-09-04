@@ -4606,6 +4606,7 @@ impl ViewState {
             None,
         );
         let selection = gtk::MultiSelection::new(Some(filtered_model.clone()));
+        let recursive_search_active = Rc::new(Cell::new(false));
         let syncing_selection = Rc::new(Cell::new(false));
         let modified_selection = Rc::new(Cell::new(false));
         let focused_filtered = Rc::new(Cell::new(None::<u32>));
@@ -4614,8 +4615,9 @@ impl ViewState {
         let syncing_selection_changed = syncing_selection.clone();
         let focused_filtered_changed = focused_filtered.clone();
         let filter_for_column = filter.clone();
+        let search_active_for_selection = recursive_search_active.clone();
         selection.connect_selection_changed(move |selection, position, count| {
-            if syncing_selection_changed.get() {
+            if syncing_selection_changed.get() || search_active_for_selection.get() {
                 return;
             }
             let filtered_positions = bitset_positions(&selection.selection());
@@ -4661,6 +4663,7 @@ impl ViewState {
         let search_results_for_changed = search_results.clone();
         let search_handle_for_changed = search_handle.clone();
         let search_gen_for_changed = search_generation.clone();
+        let search_active_for_changed = recursive_search_active.clone();
         let weak_filter_entry = filter_entry.downgrade();
         debounce_filter_entry(&filter_entry, move |text| {
             let query = text.trim().to_string();
@@ -4680,9 +4683,11 @@ impl ViewState {
                     &filter_query,
                     text.to_lowercase(),
                 );
+                search_active_for_changed.set(false);
                 return;
             }
             *filter_query.borrow_mut() = text.to_lowercase();
+            search_active_for_changed.set(true);
             let weak_entry = weak_filter_entry.clone();
             let weak_state = weak_state_for_search.clone();
             let filtered = filtered_model_for_search.clone();
@@ -5024,7 +5029,7 @@ impl ViewState {
         });
         let map_for_bind = map.clone();
         let weak_state_for_bind = Rc::downgrade(self);
-        let search_handle_for_bind = search_handle.clone();
+        let search_active_for_bind = recursive_search_active.clone();
         let search_results_for_bind = search_results.clone();
         factory.connect_bind(move |_, item| {
             let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -5064,7 +5069,7 @@ impl ViewState {
             rename.set_visible(false);
             label.set_visible(true);
             spacer.set_visible(true);
-            let searching = search_handle_for_bind.borrow().is_some();
+            let searching = search_active_for_bind.get();
             let source_position = (!searching)
                 .then(|| map_for_bind.source_position(item.position()))
                 .flatten();
@@ -5150,6 +5155,46 @@ impl ViewState {
         list.set_enable_rubberband(false);
         list.set_single_click_activate(false);
         list.set_vexpand(true);
+
+        let search_navigation = gtk::EventControllerKey::new();
+        search_navigation.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let search_active_for_navigation = recursive_search_active.clone();
+        let selection_for_navigation = selection.clone();
+        let syncing_for_navigation = syncing_selection.clone();
+        let list_for_navigation = list.clone();
+        search_navigation.connect_key_pressed(move |_, key, _, modifiers| {
+            if !search_active_for_navigation.get()
+                || modifiers.intersects(
+                    gtk::gdk::ModifierType::CONTROL_MASK
+                        | gtk::gdk::ModifierType::ALT_MASK
+                        | gtk::gdk::ModifierType::SUPER_MASK
+                        | gtk::gdk::ModifierType::SHIFT_MASK,
+                )
+            {
+                return glib::Propagation::Proceed;
+            }
+            let direction = match key {
+                gtk::gdk::Key::Down => 1,
+                gtk::gdk::Key::Up => -1,
+                _ => return glib::Propagation::Proceed,
+            };
+            let current = bitset_positions(&selection_for_navigation.selection())
+                .last()
+                .copied();
+            let Some(next) = search_result_navigation_position(
+                current,
+                selection_for_navigation.n_items(),
+                direction,
+            ) else {
+                return glib::Propagation::Stop;
+            };
+            syncing_for_navigation.set(true);
+            selection_for_navigation.select_item(next, true);
+            syncing_for_navigation.set(false);
+            list_for_navigation.scroll_to(next, gtk::ListScrollFlags::empty(), None);
+            glib::Propagation::Stop
+        });
+        filter_entry.add_controller(search_navigation);
 
         let clear_selection = gtk::GestureClick::new();
         clear_selection.set_button(1);
@@ -5983,6 +6028,20 @@ impl ViewMap {
             })
             .collect()
     }
+}
+
+pub(crate) fn search_result_navigation_position(
+    current: Option<u32>,
+    count: u32,
+    direction: i32,
+) -> Option<u32> {
+    if count == 0 {
+        return None;
+    }
+    let Some(current) = current else {
+        return Some(if direction < 0 { count - 1 } else { 0 });
+    };
+    Some((i64::from(current) + i64::from(direction)).clamp(0, i64::from(count - 1)) as u32)
 }
 
 pub(crate) enum SelectionPlan<'a> {
