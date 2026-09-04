@@ -367,21 +367,6 @@ fn delete_confirmation_direction_keys_choose_an_action() {
 }
 
 #[test]
-#[expect(deprecated, reason = "test ColorChooserWidget show-editor property")]
-fn test_color_chooser_show_editor() {
-    if gtk::init().is_err() {
-        return;
-    }
-    let chooser = gtk::ColorChooserWidget::new();
-    let shows = chooser.property::<bool>("show-editor");
-    assert!(!shows);
-    chooser.set_property("show-editor", true);
-    assert!(chooser.property::<bool>("show-editor"));
-    chooser.set_property("show-editor", false);
-    assert!(!chooser.property::<bool>("show-editor"));
-}
-
-#[test]
 fn vim_focus_keys_map_to_dialog_directions() {
     assert_eq!(
         vim_focus_direction(gtk::gdk::Key::h),

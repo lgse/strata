@@ -5120,9 +5120,7 @@ impl ViewState {
                 let mode_active = state
                     .as_ref()
                     .is_some_and(|state| state.mode_views.borrow().mode() == BrowserMode::Columns);
-                if entry.is_directory() {
-                    super::thumbnail::show_fallback_icon(&icon, crate::assets::icons::FOLDER, 17);
-                } else if mode_active {
+                if entry.is_directory() || mode_active {
                     super::thumbnail::set_thumbnail_or_icon(
                         &icon,
                         entry,
@@ -9246,6 +9244,8 @@ fn rgba_to_hex(rgba: &gdk::RGBA) -> String {
 fn show_custom_color_modal(
     parent: &impl IsA<gtk::Widget>,
     initial_color: Option<&str>,
+    preview_icon: &'static str,
+    item_label: &'static str,
     on_confirm: impl Fn(FolderColorValue) + 'static,
 ) {
     let Some(window_overlay) = parent
@@ -9267,12 +9267,14 @@ fn show_custom_color_modal(
         popover.popdown();
     }
 
-    let layout = modal_layout(
-        crate::assets::icons::FOLDER,
-        "Custom Folder Color",
-        "Choose a color for this folder",
-        "Apply",
-    );
+    let item_title = if item_label == "folder" {
+        "Folder"
+    } else {
+        "File"
+    };
+    let title = format!("Custom {item_title} Color");
+    let subtitle = format!("Choose a color for this {item_label}");
+    let layout = modal_layout(preview_icon, &title, &subtitle, "Apply");
     layout.close.set_visible(false);
 
     let modal_icon = layout.icon.clone();
@@ -9281,7 +9283,7 @@ fn show_custom_color_modal(
         .unwrap_or_else(|| FolderColorValue::Custom("#34d399".to_owned()));
     let initial_hex = initial_val.hex().to_owned();
 
-    crate::assets::set_custom_colored_icon(&modal_icon, crate::assets::icons::FOLDER, &initial_hex);
+    crate::assets::set_custom_colored_icon(&modal_icon, preview_icon, &initial_hex);
 
     let chooser = gtk::ColorChooserWidget::new();
     chooser.set_use_alpha(false);
@@ -9292,11 +9294,7 @@ fn show_custom_color_modal(
     let icon_for_notify = modal_icon.clone();
     chooser.connect_rgba_notify(move |c| {
         let hex = rgba_to_hex(&c.rgba());
-        crate::assets::set_custom_colored_icon(
-            &icon_for_notify,
-            crate::assets::icons::FOLDER,
-            &hex,
-        );
+        crate::assets::set_custom_colored_icon(&icon_for_notify, preview_icon, &hex);
     });
 
     layout.body.append(&chooser);
@@ -9324,9 +9322,9 @@ fn show_custom_color_modal(
         let in_editor = c.property::<bool>("show-editor");
         back_btn.set_visible(in_editor);
         if in_editor {
-            subtitle_label.set_text("Customize folder color");
+            subtitle_label.set_text(&format!("Customize {item_label} color"));
         } else {
-            subtitle_label.set_text("Choose a color for this folder");
+            subtitle_label.set_text(&format!("Choose a color for this {item_label}"));
         }
     });
 
@@ -9443,34 +9441,33 @@ fn show_customize_modal(
         .actions
         .insert_child_after(&clear, Some(&layout.cancel));
 
-    let color_bar = if is_directory {
-        let section = gtk::Box::new(gtk::Orientation::Vertical, 8);
-        section.add_css_class("customize-section");
-        let label = gtk::Label::new(Some("COLOR"));
-        label.add_css_class("customize-section-label");
-        label.set_xalign(0.0);
-        section.append(&label);
+    let color_section = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    color_section.add_css_class("customize-section");
+    let color_label = gtk::Label::new(Some("COLOR"));
+    color_label.add_css_class("customize-section-label");
+    color_label.set_xalign(0.0);
+    color_section.append(&color_label);
 
-        let color_path = path.clone();
-        let preview = preview_icon.clone();
-        let clear_for_color = clear.clone();
-        let bar = build_folder_color_bar(initial_color, move |selected_color| {
+    let color_path = path.clone();
+    let color_preview = preview_icon.clone();
+    let clear_for_color = clear.clone();
+    let item_label = if is_directory { "folder" } else { "file" };
+    let color_bar = build_folder_color_bar(
+        initial_color,
+        fallback_icon,
+        item_label,
+        move |selected_color| {
             super::theme::ThemeManager::shared().set_folder_color(&color_path, selected_color);
-            super::thumbnail::show_customized_icon(&preview, &color_path, fallback_icon, 56);
+            super::thumbnail::show_customized_icon(&color_preview, &color_path, fallback_icon, 56);
             clear_for_color.set_sensitive(true);
-        });
-        section.append(&bar.container);
-        layout.body.append(&section);
-        Some(bar)
-    } else {
-        None
-    };
+        },
+    );
+    color_section.append(&color_bar.container);
+    layout.body.append(&color_section);
 
     let section = gtk::Box::new(gtk::Orientation::Vertical, 8);
     section.add_css_class("customize-section");
-    if is_directory {
-        section.add_css_class("separated");
-    }
+    section.add_css_class("separated");
     let label = gtk::Label::new(Some("ICON"));
     label.add_css_class("customize-section-label");
     label.set_xalign(0.0);
@@ -9563,16 +9560,14 @@ fn show_customize_modal(
     section.append(&emoji_button);
     layout.body.append(&section);
 
-    let reset_color_ui = color_bar.map(|bar| bar.update_active);
+    let reset_color_ui = color_bar.update_active;
     let clear_path = path.clone();
     let clear_preview = preview_icon;
     let buttons_for_clear = icon_buttons;
     let emoji_for_clear = emoji_button;
     clear.connect_clicked(move |button| {
         super::theme::ThemeManager::shared().clear_item_customization(&clear_path);
-        if let Some(update_color) = reset_color_ui.as_ref() {
-            update_color(None);
-        }
+        reset_color_ui(None);
         for (_, icon_button) in buttons_for_clear.iter() {
             icon_button.remove_css_class("active");
         }
@@ -9619,6 +9614,8 @@ struct FolderColorBar {
 
 fn build_folder_color_bar(
     initial_color: Option<FolderColorValue>,
+    preview_icon: &'static str,
+    item_label: &'static str,
     on_color_selected: impl Fn(Option<FolderColorValue>) + 'static,
 ) -> FolderColorBar {
     let container = gtk::Box::new(gtk::Orientation::Horizontal, 4);
@@ -9791,12 +9788,18 @@ fn build_folder_color_bar(
             let active_state = active_state.clone();
             let update_ui = update_ui.clone();
             let on_select = on_select.clone();
-            show_custom_color_modal(btn, initial_hex.as_deref(), move |value| {
-                let val = Some(value);
-                active_state.replace(val.clone());
-                update_ui(val.clone());
-                on_select(val);
-            });
+            show_custom_color_modal(
+                btn,
+                initial_hex.as_deref(),
+                preview_icon,
+                item_label,
+                move |value| {
+                    let val = Some(value);
+                    active_state.replace(val.clone());
+                    update_ui(val.clone());
+                    on_select(val);
+                },
+            );
         });
     }
 
