@@ -38,6 +38,7 @@ pub struct ColumnState {
     selection_anchor: Option<Location>,
     selection_target: Option<Location>,
     pub load_state: LoadState,
+    pub truncated: bool,
     preferences: ViewPreferences,
     request_id: RequestId,
     select_first_on_load: bool,
@@ -163,6 +164,7 @@ impl NavigationState {
                 selection_anchor: None,
                 selection_target: None,
                 load_state: LoadState::Loading,
+                truncated: false,
                 preferences,
                 request_id,
                 select_first_on_load: false,
@@ -230,6 +232,7 @@ impl NavigationState {
             selection_anchor: None,
             selection_target: None,
             load_state: LoadState::Loading,
+            truncated: false,
             preferences: self.preferences,
             request_id,
             select_first_on_load: false,
@@ -379,6 +382,7 @@ impl NavigationState {
         column.entries.clear();
         column.selected = None;
         column.load_state = LoadState::Loading;
+        column.truncated = false;
         column.request_id = request_id;
         Some(column.location.clone())
     }
@@ -476,9 +480,10 @@ impl NavigationState {
         Some(self.columns.get(depth)?.location.clone())
     }
 
-    pub fn finish(&mut self, request_id: RequestId) -> Option<usize> {
+    pub fn finish(&mut self, request_id: RequestId, truncated: bool) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
         column.select_first_on_load = false;
+        column.truncated = truncated;
         column.load_state = if column.entries.is_empty() {
             LoadState::Empty
         } else {
@@ -919,7 +924,7 @@ fn compare_entries(left: &FileEntry, right: &FileEntry, preferences: ViewPrefere
     }
 
     let ordering = match preferences.sort_key {
-        SortKey::Name => left.display_name.cmp(&right.display_name),
+        SortKey::Name => compare_display_names(&left.display_name, &right.display_name),
         SortKey::Type => left.kind.cmp(&right.kind),
         SortKey::Size => compare_metadata(&left.size, &right.size),
         SortKey::Modified => {
@@ -931,8 +936,14 @@ fn compare_entries(left: &FileEntry, right: &FileEntry, preferences: ViewPrefere
         SortDirection::Descending => ordering.reverse(),
     };
     ordering
-        .then_with(|| left.display_name.cmp(&right.display_name))
+        .then_with(|| compare_display_names(&left.display_name, &right.display_name))
         .then_with(|| left.location.compare(&right.location))
+}
+
+fn compare_display_names(left: &str, right: &str) -> Ordering {
+    glib::casefold(left)
+        .cmp(&glib::casefold(right))
+        .then_with(|| left.cmp(right))
 }
 
 fn compare_metadata<T: Ord>(left: &MetadataValue<T>, right: &MetadataValue<T>) -> Ordering {

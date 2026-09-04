@@ -75,9 +75,15 @@ pub struct DeleteRequest {
 }
 
 #[derive(Clone, Debug)]
+pub enum RestoreSource {
+    TrashEntries(Vec<FileEntry>),
+    OriginalLocations(Vec<Location>),
+}
+
+#[derive(Clone, Debug)]
 pub struct RestoreRequest {
     pub id: OperationRequestId,
-    pub entries: Vec<FileEntry>,
+    pub source: RestoreSource,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -186,6 +192,11 @@ pub enum OperationEvent {
     CompletedWithErrors {
         request_id: OperationRequestId,
         deleted_locations: Vec<Location>,
+        /// Entries that failed only because this location doesn't support
+        /// Trash, so a retry with `permanent: true` on just these would
+        /// likely succeed.
+        retryable_locations: Vec<Location>,
+        has_non_retryable_failures: bool,
         message: String,
     },
     Restored {

@@ -2,7 +2,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     ffi::OsString,
     future::Future,
     path::Path,
@@ -22,13 +22,13 @@ use crate::{
         ArchiveFormat, FileSource, LoadHandle, LocationValidationError, OperationProvider,
         PasteItem, PreviewContent, SearchEvent, TransferConflict, UriCredentials,
         backend_unavailable_message, content_family, has_plain_text_extension, index_tree,
-        sanitize_uri_credentials, validate_basename,
+        is_extensionless_dotfile, sanitize_uri_credentials, validate_basename,
     },
 };
 
 use super::{
     blur::BlurBin,
-    browser_modes::{BrowserDensity, BrowserMode, ModeViews},
+    browser_modes::{BrowserDensity, BrowserMode, ClickActivation, ClickCount, ModeViews},
     controls::{
         ModalTone, form_check_button, form_entry, form_label, form_password_entry, menu_option,
         message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
@@ -40,6 +40,8 @@ use super::{
 const COLUMN_WIDTH: i32 = 300;
 const COLUMN_OFFSET: i32 = 24;
 const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
+const PEEK_WIDTH: i32 = 256;
+const PEEK_GAP: f32 = 8.0;
 
 #[derive(Clone)]
 struct LoadPresentation {
@@ -68,7 +70,7 @@ struct ColumnView {
     selection: gtk::MultiSelection,
     syncing_selection: Rc<Cell<bool>>,
     list: gtk::ListView,
-    marquee: gtk::Box,
+    marquee: super::marquee::Marquee,
     bound_rows: Rc<RefCell<Vec<BoundRow>>>,
     entry_count: Rc<Cell<usize>>,
     spinner: gtk::Spinner,
@@ -95,6 +97,13 @@ struct ActiveNewEntry {
     field: gtk::Entry,
 }
 
+const FILE_PROGRESS_DELAY: Duration = Duration::from_millis(350);
+const IMMEDIATE_PROGRESS_ITEM_COUNT: usize = 16;
+
+fn should_show_progress_immediately(total: usize) -> bool {
+    total == 0 || total >= IMMEDIATE_PROGRESS_ITEM_COUNT
+}
+
 struct DeleteProgressView {
     layer: gtk::Box,
     overlay: gtk::Overlay,
@@ -107,6 +116,11 @@ struct TrashLoadingView {
     layer: gtk::Box,
     overlay: gtk::Overlay,
     blurred_root: Option<BlurBin>,
+}
+
+struct PeekAnchor {
+    widget: gtk::Widget,
+    origin_depth: usize,
 }
 
 struct PeekView {
@@ -284,17 +298,25 @@ pub(super) struct ViewState {
     peek: RefCell<Option<PeekView>>,
     pending_peek: RefCell<Option<glib::SourceId>>,
     pending_close: RefCell<Option<glib::SourceId>>,
-    peek_anchor: RefCell<Option<gtk::Widget>>,
+    peek_anchor: RefCell<Option<PeekAnchor>>,
     peek_behavior: PeekBehavior,
     peek_enabled: Cell<bool>,
     single_click_previews: Cell<bool>,
+    columns_click_activation: Cell<ClickActivation>,
     active_rename: RefCell<Option<ActiveRename>>,
     active_new_entry: RefCell<Option<ActiveNewEntry>>,
     delete_progress: RefCell<Option<DeleteProgressView>>,
+    pending_file_progress: RefCell<Option<glib::SourceId>>,
+    file_operation_progress: Cell<(usize, usize)>,
     pin_handler: RefCell<Option<PinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     pending_select: RefCell<Vec<String>>,
     pending_extract_retry: RefCell<Option<(FileEntry, Location)>>,
+    /// The entries a just-dispatched, non-permanent delete requested,
+    /// snapshotted so a `CompletedWithErrors` response naming entries that
+    /// failed only because the location doesn't support Trash can offer a
+    /// permanent-delete retry for exactly those entries.
+    pending_delete_entries: RefCell<Vec<FileEntry>>,
     pending_navigate: RefCell<Option<Location>>,
     pending_location_credentials: RefCell<Option<MountCredentials>>,
     pending_trash_summary: RefCell<Option<LoadHandle>>,
@@ -342,6 +364,7 @@ impl BrowserView {
             .hexpand(true)
             .vexpand(true)
             .build();
+        scroller.add_css_class("fixed-scrollbar");
         let overlay = gtk::Overlay::new();
 
         let location_entry = gtk::Entry::builder()
@@ -435,13 +458,17 @@ impl BrowserView {
             peek_behavior,
             peek_enabled: Cell::new(true),
             single_click_previews: Cell::new(true),
+            columns_click_activation: Cell::new(ClickActivation::default()),
             active_rename: RefCell::new(None),
             active_new_entry: RefCell::new(None),
             delete_progress: RefCell::new(None),
+            pending_file_progress: RefCell::new(None),
+            file_operation_progress: Cell::new((0, 0)),
             pin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
             pending_extract_retry: RefCell::new(None),
+            pending_delete_entries: RefCell::new(Vec::new()),
             pending_navigate: RefCell::new(None),
             pending_location_credentials: RefCell::new(None),
             pending_trash_summary: RefCell::new(None),
@@ -449,6 +476,19 @@ impl BrowserView {
             trash_loading: RefCell::new(None),
             auto_refresh: RefCell::new(None),
             browser,
+        });
+
+        // Columns are laid out from the start edge, so the blank strip beside the last
+        // one is the natural place to begin a marquee that runs into it.
+        let weak_state = Rc::downgrade(&state);
+        super::marquee::install_shared_origin_surface(&state.scroller, move |surface, _, x, _| {
+            let state = weak_state.upgrade()?;
+            let laid_out = state.columns_widget.compute_bounds(surface)?;
+            if x < f64::from(laid_out.x() + laid_out.width()) {
+                return None;
+            }
+            let columns = state.columns.borrow();
+            columns.last().map(|column| column.marquee.clone())
         });
 
         let weak_state = Rc::downgrade(&state);
@@ -563,6 +603,25 @@ impl BrowserView {
             .fold(0, i32::saturating_add)
     }
 
+    /// Lets a marquee drag begin on blank chrome beside the file panes — the sidebar —
+    /// and run into whichever view the current mode shows. The pane nearest the start
+    /// edge is the target, since that is the one such a drag runs into.
+    pub(super) fn add_marquee_origin(&self, surface: &impl IsA<gtk::Widget>) {
+        let weak_state = Rc::downgrade(&self.state);
+        super::marquee::install_shared_origin_surface(surface, move |_, _, _, _| {
+            let state = weak_state.upgrade()?;
+            let mode = state.mode_views.borrow().mode();
+            if mode == BrowserMode::Columns {
+                return state
+                    .columns
+                    .borrow()
+                    .first()
+                    .map(|column| column.marquee.clone());
+            }
+            state.mode_views.borrow().leading_marquee()
+        });
+    }
+
     pub fn view_mode(&self) -> BrowserMode {
         self.state.mode_views.borrow().mode()
     }
@@ -571,7 +630,9 @@ impl BrowserView {
         let previous = self.state.mode_views.borrow().mode();
         self.state.mode_views.borrow_mut().set_mode(mode);
         if mode == BrowserMode::Columns && previous != BrowserMode::Columns {
-            self.state.sync_column_models();
+            self.state.rebuild_columns();
+        } else if mode != BrowserMode::Columns {
+            self.state.truncate(0);
         }
     }
 
@@ -583,6 +644,15 @@ impl BrowserView {
             BrowserDensity::Compact => "density-compact",
             BrowserDensity::Airy => "density-airy",
         });
+    }
+
+    /// Groups Explorer and Grid entries under file-type headings. The Miller-column
+    /// mode is unaffected.
+    pub fn set_group_by_type(&self, enabled: bool) {
+        self.state
+            .mode_views
+            .borrow_mut()
+            .set_group_by_type(enabled);
     }
 
     pub fn activate_focused(&self) {
@@ -760,11 +830,21 @@ impl BrowserView {
             .set_single_click_previews(enabled);
     }
 
+    pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {
+        if mode == BrowserMode::Columns {
+            self.state.columns_click_activation.set(activation);
+        } else {
+            self.state
+                .mode_views
+                .borrow()
+                .set_click_activation(mode, activation);
+        }
+    }
+
     pub fn create_new_folder(&self) {
         let mode = self.view_mode();
         let depth = if mode == BrowserMode::Columns {
             new_folder_destination_depth(
-                self.state.hovered_column.get(),
                 self.state.focused_column_depth(),
                 self.state.browser.active_depth(),
                 self.state.columns.borrow().len(),
@@ -783,9 +863,12 @@ impl BrowserView {
     }
 
     pub fn paste(&self) {
-        let columns = self.state.columns.borrow();
-        let depth = paste_destination_depth(self.state.hovered_column.get(), columns.len());
-        drop(columns);
+        let depth = paste_destination_depth(
+            self.view_mode(),
+            self.state.hovered_column.get(),
+            self.state.browser.active_depth(),
+            self.state.columns.borrow().len(),
+        );
         if let Some(location) = depth.and_then(|depth| self.state.browser.location_at(depth)) {
             self.state.paste_into(location);
         }
@@ -811,6 +894,39 @@ impl BrowserView {
         true
     }
 
+    pub fn copy_path(&self) -> bool {
+        self.state.sync_mode_selection();
+        let entries = self.state.browser.selected_entries();
+        if entries.is_empty() {
+            let Some(entry) = self.state.browser.focused_entry() else {
+                return false;
+            };
+            copy_locations(&[entry]);
+        } else {
+            copy_locations(&entries);
+        }
+        true
+    }
+
+    pub fn pin_focused(&self) {
+        self.state.sync_mode_selection();
+        let Some(entry) = self.state.browser.focused_entry() else {
+            return;
+        };
+        let status = self
+            .state
+            .pin_status_handler
+            .borrow()
+            .as_ref()
+            .map_or(PinStatus::Unavailable, |handler| handler(&entry.location));
+        if !can_pin_entry(&entry, status) {
+            return;
+        }
+        if let Some(handler) = self.state.pin_handler.borrow().as_ref() {
+            handler(entry.location, entry.display_name);
+        }
+    }
+
     pub fn select_all(&self) {
         if self.view_mode() == BrowserMode::Columns {
             if let Some(depth) = self.state.columns.borrow().len().checked_sub(1) {
@@ -827,7 +943,7 @@ impl BrowserView {
         let location = selected_terminal_location(&selected).or_else(|| {
             let mode = self.view_mode();
             let depth = if mode == BrowserMode::Columns {
-                new_folder_destination_depth(
+                terminal_destination_depth(
                     self.state.hovered_column.get(),
                     self.state.focused_column_depth(),
                     self.state.browser.active_depth(),
@@ -886,9 +1002,12 @@ impl BrowserView {
             .or_else(|| self.state.browser.active_location())
             .as_ref()
             .is_some_and(is_trash_location);
-        self.state
-            .show_delete_confirmation(entries, permanent || in_trash);
+        self.state.request_delete(entries, permanent || in_trash);
         true
+    }
+
+    pub fn undo_last_trash(&self) -> bool {
+        self.state.browser.undo_last_trash()
     }
 
     pub fn show_filter(&self) -> bool {
@@ -1657,13 +1776,40 @@ impl ViewState {
 
     fn show_file_operation_progress(
         self: &Rc<Self>,
-        _total: usize,
+        total: usize,
         icon: &str,
         title_text: &str,
         subtitle_text: &str,
         on_cancel: Rc<dyn Fn()>,
     ) {
         self.dismiss_delete_progress();
+        self.file_operation_progress.set((0, total));
+        if should_show_progress_immediately(total) {
+            self.present_file_operation_progress(icon, title_text, subtitle_text, on_cancel);
+            return;
+        }
+
+        let weak = Rc::downgrade(self);
+        let icon = icon.to_owned();
+        let title_text = title_text.to_owned();
+        let subtitle_text = subtitle_text.to_owned();
+        let source = glib::timeout_add_local_once(FILE_PROGRESS_DELAY, move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.pending_file_progress.borrow_mut().take();
+            state.present_file_operation_progress(&icon, &title_text, &subtitle_text, on_cancel);
+        });
+        self.pending_file_progress.replace(Some(source));
+    }
+
+    fn present_file_operation_progress(
+        self: &Rc<Self>,
+        icon: &str,
+        title_text: &str,
+        subtitle_text: &str,
+        on_cancel: Rc<dyn Fn()>,
+    ) {
         let Some(window_overlay) = self
             .overlay
             .root()
@@ -1718,9 +1864,12 @@ impl ViewState {
             progress.layer.add_controller(escape);
         }
         cancel.grab_focus();
+        let (completed, total) = self.file_operation_progress.get();
+        self.update_delete_progress(completed, total);
     }
 
     fn update_delete_progress(&self, completed: usize, total: usize) {
+        self.file_operation_progress.set((completed, total));
         let progress_view = self.delete_progress.borrow();
         let Some(view) = progress_view.as_ref() else {
             return;
@@ -1751,10 +1900,13 @@ impl ViewState {
     }
 
     fn dismiss_delete_progress(&self) {
-        let Some(view) = self.delete_progress.take() else {
-            return;
-        };
-        dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
+        if let Some(source) = self.pending_file_progress.take() {
+            source.remove();
+        }
+        self.file_operation_progress.set((0, 0));
+        if let Some(view) = self.delete_progress.take() {
+            dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
+        }
     }
 
     /// The total item count isn't known upfront -- entries are deleted as they're enumerated,
@@ -2089,7 +2241,17 @@ impl ViewState {
         });
     }
 
-    fn show_delete_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
+    fn request_delete(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
+        if permanent {
+            self.show_delete_confirmation(entries);
+        } else {
+            self.pending_delete_entries.replace(entries.clone());
+            self.browser.delete(entries, false);
+            self.browser.focus_active();
+        }
+    }
+
+    fn show_delete_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>) {
         let Some(window_overlay) = self
             .overlay
             .root()
@@ -2105,16 +2267,8 @@ impl ViewState {
         }
 
         let count = entries.len();
-        let title = if permanent {
-            format!("Permanently delete {}?", item_count_label(count))
-        } else {
-            format!("Move {} to trash?", item_count_label(count))
-        };
-        let confirm_label = if permanent {
-            format!("Permanently delete {}", item_count_label(count))
-        } else {
-            format!("Move {}", item_count_label(count))
-        };
+        let title = format!("Permanently delete {}?", item_count_label(count));
+        let confirm_label = format!("Permanently delete {}", item_count_label(count));
         let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
             &title,
@@ -2161,11 +2315,9 @@ impl ViewState {
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
         layout.body.append(&file_scroller);
-        let explanation = message_dialog_description(if permanent {
-            "These items will be permanently deleted. This action cannot be undone."
-        } else {
-            "The items will be moved to trash. You can restore them later."
-        });
+        let explanation = message_dialog_description(
+            "These items will be permanently deleted. This action cannot be undone.",
+        );
         layout.body.append(&explanation);
         let content = layout.content;
         let close = layout.close;
@@ -2204,7 +2356,7 @@ impl ViewState {
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
             );
-            browser.delete(entries.clone(), permanent);
+            browser.delete(entries.clone(), true);
             browser.focus_active();
         });
         let keys = gtk::EventControllerKey::new();
@@ -2884,7 +3036,7 @@ impl ViewState {
             if let Some(display) = gtk::gdk::Display::default() {
                 display
                     .clipboard()
-                    .set_text(&copied_location.display_path());
+                    .set_text(&copy_path_text(&copied_location, true));
                 button.set_label("Copied");
             }
         });
@@ -3461,7 +3613,7 @@ impl ViewState {
                 copy.add_css_class("copy-path");
                 copy.set_has_frame(false);
                 copy.set_cursor_from_name(Some("pointer"));
-                let copied_path = location.display_path();
+                let copied_path = copy_path_text(location, true);
                 let feedback_generation = Rc::new(Cell::new(0_u64));
                 copy.connect_clicked(move |button| {
                     if let Some(display) = gtk::gdk::Display::default() {
@@ -3521,7 +3673,9 @@ impl ViewState {
             }
             BrowserEvent::ColumnAdded { depth, location } => {
                 self.set_location(&location);
-                self.append_column(depth, &location);
+                if self.mode_views.borrow().mode() == BrowserMode::Columns {
+                    self.append_column(depth, &location);
+                }
             }
             BrowserEvent::EntriesInserted { depth, insertions } => {
                 let render_started = Instant::now();
@@ -3838,8 +3992,31 @@ impl ViewState {
                 }
                 show_error_dialog(&self.overlay, "Unable to complete operation", &message);
             }
-            BrowserEvent::OperationCompletedWithErrors { message } => {
-                show_error_dialog(&self.overlay, "Completed with errors", &message);
+            BrowserEvent::OperationCompletedWithErrors {
+                message,
+                retryable_locations,
+                has_non_retryable_failures,
+            } => {
+                let retryable_entries = retryable_delete_entries(
+                    self.pending_delete_entries.take(),
+                    &retryable_locations,
+                );
+                if retryable_entries.is_empty() {
+                    show_error_dialog(&self.overlay, "Completed with errors", &message);
+                } else if has_non_retryable_failures {
+                    let weak_state = Rc::downgrade(self);
+                    show_delete_error_dialog(
+                        &self.overlay,
+                        &message,
+                        Rc::new(move || {
+                            if let Some(state) = weak_state.upgrade() {
+                                state.show_delete_confirmation(retryable_entries.clone());
+                            }
+                        }),
+                    );
+                } else {
+                    self.show_delete_confirmation(retryable_entries);
+                }
             }
             BrowserEvent::OperationCancelled {
                 completed,
@@ -3928,11 +4105,16 @@ impl ViewState {
         self.refresh_active_path_rows();
     }
 
-    fn sync_column_models(&self) {
-        for (depth, column) in self.columns.borrow().iter().enumerate() {
-            let Some(snapshot) = self.browser.column_snapshot(depth) else {
-                continue;
-            };
+    fn rebuild_columns(self: &Rc<Self>) {
+        self.truncate(0);
+        let snapshots = (0..)
+            .map_while(|depth| self.browser.column_snapshot(depth))
+            .collect::<Vec<_>>();
+
+        for (depth, snapshot) in snapshots.iter().enumerate() {
+            self.append_column(depth, &snapshot.location);
+        }
+        for (column, snapshot) in self.columns.borrow().iter().zip(snapshots) {
             let labels = snapshot
                 .entries
                 .iter()
@@ -3942,13 +4124,51 @@ impl ViewState {
             column.model.splice(0, column.model.n_items(), &labels);
             column.entry_count.set(snapshot.entries.len());
             set_filter_placeholder(column, snapshot.entries.len());
+            update_empty_trash_sensitivity(column, snapshot.entries.len());
+            column.truncated_hint.set_visible(snapshot.truncated);
             let positions = snapshot
                 .selected_positions
                 .into_iter()
                 .filter_map(|position| filtered_position_for_source(column, position))
                 .collect::<Vec<_>>();
             set_column_selections(column, &positions);
+            if snapshot.loading {
+                column.spinner.start();
+                column.presentation.show_loading();
+            } else {
+                column.spinner.stop();
+                column.spinner.set_visible(false);
+                if let Some(message) = snapshot.error.as_deref() {
+                    column
+                        .presentation
+                        .show_error(&format!("Unable to read this directory\n{message}"));
+                } else if snapshot.entries.is_empty() {
+                    column.presentation.show_empty();
+                } else {
+                    column.presentation.show_content();
+                }
+            }
         }
+        self.focus_rebuilt_active_column();
+    }
+
+    fn focus_rebuilt_active_column(&self) {
+        let Some(depth) = self.browser.active_depth() else {
+            return;
+        };
+        let columns = self.columns.borrow();
+        let Some(column) = columns.get(depth) else {
+            return;
+        };
+        if let Some((focused_depth, position, _)) = self.browser.focused_item()
+            && focused_depth == depth
+            && let Some(position) = filtered_position_for_source(column, position)
+        {
+            column
+                .list
+                .scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+        }
+        column.list.grab_focus();
     }
 
     fn refresh_active_path_rows(&self) {
@@ -4361,16 +4581,28 @@ impl ViewState {
                 if let (Some(state), Some(source_position)) =
                     (weak_state_for_click.upgrade(), source_position)
                 {
-                    // GtkListView owns double-click activation through its `activate`
-                    // signal. This gesture only handles selection and single-click previews;
-                    // activating here as well would open files twice.
-                    if should_preview_pointer_press(press_count, control, shift, preserve_group) {
-                        let entry = state.browser.entry_at(depth, source_position);
-                        if entry.as_ref().is_some_and(|entry| {
-                            entry_responds_to_single_click(entry, state.single_click_previews.get())
-                        }) {
-                            state.browser.preview(depth, source_position);
-                        }
+                    let entry = state.browser.entry_at(depth, source_position);
+                    if entry.as_ref().is_some_and(|entry| {
+                        should_activate_single_click(
+                            press_count,
+                            entry.is_directory(),
+                            state.columns_click_activation.get(),
+                            control,
+                            shift,
+                            preserve_group,
+                        )
+                    }) {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                        state.browser.activate(depth, source_position);
+                    } else if should_preview_pointer_press(
+                        press_count,
+                        control,
+                        shift,
+                        preserve_group,
+                    ) && entry.as_ref().is_some_and(|entry| {
+                        entry_responds_to_preview_click(entry, state.single_click_previews.get())
+                    }) {
+                        state.browser.preview(depth, source_position);
                     }
                 }
             });
@@ -4474,117 +4706,6 @@ impl ViewState {
         list.set_single_click_activate(false);
         list.set_vexpand(true);
 
-        let marquee_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        marquee_box.add_css_class("file-marquee");
-        marquee_box.set_can_target(false);
-        marquee_box.set_halign(gtk::Align::Start);
-        marquee_box.set_valign(gtk::Align::Start);
-        marquee_box.set_visible(false);
-        self.overlay.add_overlay(&marquee_box);
-
-        let marquee_active = Rc::new(Cell::new(false));
-        let marquee_origin = Rc::new(Cell::new((0.0, 0.0)));
-        let marquee_initial = Rc::new(RefCell::new(gtk::Bitset::new_empty()));
-        let marquee_modifiers = Rc::new(Cell::new((false, false)));
-        let marquee = gtk::GestureDrag::new();
-        marquee.set_button(1);
-        marquee.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let active_for_begin = marquee_active.clone();
-        let origin_for_begin = marquee_origin.clone();
-        let initial_for_begin = marquee_initial.clone();
-        let modifiers_for_begin = marquee_modifiers.clone();
-        let selection_for_begin = selection.clone();
-        let marquee_box_for_begin = marquee_box.clone();
-        marquee.connect_drag_begin(move |gesture, x, y| {
-            let starts_on_row = gesture
-                .widget()
-                .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
-                .is_some_and(is_file_row_target);
-            let force_marquee = gesture
-                .current_event_state()
-                .contains(gtk::gdk::ModifierType::ALT_MASK);
-            let can_start = force_marquee || !starts_on_row;
-            active_for_begin.set(can_start);
-            if !can_start {
-                return;
-            }
-            gesture.set_state(gtk::EventSequenceState::Claimed);
-            marquee_box_for_begin.set_visible(true);
-            origin_for_begin.set((x, y));
-            initial_for_begin.replace(selection_for_begin.selection().copy());
-            let modifiers = gesture.current_event_state();
-            modifiers_for_begin.set((
-                modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK),
-                modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
-            ));
-        });
-        let active_for_update = marquee_active.clone();
-        let origin_for_update = marquee_origin.clone();
-        let initial_for_update = marquee_initial.clone();
-        let modifiers_for_update = marquee_modifiers.clone();
-        let selection_for_marquee = selection.clone();
-        let rows_for_marquee = bound_rows.clone();
-        let list_for_marquee = list.clone();
-        let overlay_for_marquee = self.overlay.clone();
-        let marquee_box_for_update = marquee_box.clone();
-        marquee.connect_drag_update(move |_, offset_x, offset_y| {
-            if !active_for_update.get() {
-                return;
-            }
-            let (origin_x, origin_y) = origin_for_update.get();
-            let current_x = origin_x + offset_x;
-            let current_y = origin_y + offset_y;
-            let left = origin_x.min(current_x);
-            let right = origin_x.max(current_x);
-            let top = origin_y.min(current_y);
-            let bottom = origin_y.max(current_y);
-            if let Some(list_bounds) = list_for_marquee.compute_bounds(&overlay_for_marquee) {
-                marquee_box_for_update
-                    .set_margin_start((f64::from(list_bounds.x()) + left).round().max(0.0) as i32);
-                marquee_box_for_update
-                    .set_margin_top((f64::from(list_bounds.y()) + top).round().max(0.0) as i32);
-                marquee_box_for_update.set_size_request(
-                    (right - left).round().max(1.0) as i32,
-                    (bottom - top).round().max(1.0) as i32,
-                );
-            }
-            let initial = initial_for_update.borrow();
-            let (control, shift) = modifiers_for_update.get();
-            let selected = if control || shift {
-                initial.copy()
-            } else {
-                gtk::Bitset::new_empty()
-            };
-            rows_for_marquee.borrow_mut().retain(|bound| {
-                let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade()) else {
-                    return false;
-                };
-                let Some(bounds) = row.compute_bounds(&list_for_marquee) else {
-                    return true;
-                };
-                let intersects = f64::from(bounds.x()) < right
-                    && f64::from(bounds.x() + bounds.width()) > left
-                    && f64::from(bounds.y()) < bottom
-                    && f64::from(bounds.y() + bounds.height()) > top;
-                let position = item.position();
-                if intersects && position != gtk::INVALID_LIST_POSITION {
-                    if control && initial.contains(position) {
-                        selected.remove(position);
-                    } else {
-                        selected.add(position);
-                    }
-                }
-                true
-            });
-            let mask = gtk::Bitset::new_range(0, selection_for_marquee.n_items());
-            selection_for_marquee.set_selection(&selected, &mask);
-        });
-        let active_for_end = marquee_active.clone();
-        let marquee_box_for_end = marquee_box.clone();
-        marquee.connect_drag_end(move |_, _, _| {
-            active_for_end.set(false);
-            marquee_box_for_end.set_visible(false);
-        });
         let clear_selection = gtk::GestureClick::new();
         clear_selection.set_button(1);
         let background_press = Rc::new(Cell::new((0.0, 0.0)));
@@ -4604,7 +4725,6 @@ impl ViewState {
                 mouse_selection_anchor_for_background.set(None);
             }
         });
-        list.add_controller(marquee);
         list.add_controller(clear_selection);
         let selection_keys = gtk::EventControllerKey::new();
         selection_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -4643,6 +4763,29 @@ impl ViewState {
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vexpand(true)
             .build();
+        scroll.add_css_class("fixed-scrollbar");
+        let rows_for_marquee = bound_rows.clone();
+        let marquee = super::marquee::install(super::marquee::MarqueeSetup {
+            view: list.clone().upcast(),
+            scroll: scroll.clone(),
+            overlay: self.overlay.clone(),
+            targets: Rc::new(RefCell::new(vec![super::marquee::MarqueeTarget {
+                selection: selection.clone(),
+                visit_items: Rc::new(move |visit| {
+                    rows_for_marquee.borrow_mut().retain(|bound| {
+                        let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade())
+                        else {
+                            return false;
+                        };
+                        visit(item.position(), row.upcast_ref());
+                        true
+                    });
+                }),
+            }])),
+            is_item: Rc::new(|widget| is_file_row_target(widget.clone())),
+        });
+        marquee.add_origin_surface(&header);
+
         let retry = gtk::Button::with_label("Retry");
         retry.add_css_class("retry-button");
         let weak_browser = Rc::downgrade(&self.browser);
@@ -4686,7 +4829,10 @@ impl ViewState {
         install_folder_context_menu(
             self,
             presentation.stack.upcast_ref(),
-            &selection,
+            {
+                let entries = selection.clone();
+                Rc::new(move || entries.n_items() > 0)
+            },
             Rc::new(|picked| is_file_row_target(picked.clone())),
             depth,
             location.clone(),
@@ -4711,6 +4857,7 @@ impl ViewState {
             &selection,
             pick_position,
             source_position,
+            Rc::new(|| {}),
             depth,
         );
         column.append(&new_entry_row);
@@ -4794,7 +4941,7 @@ impl ViewState {
             selection,
             syncing_selection,
             list,
-            marquee: marquee_box,
+            marquee,
             bound_rows,
             entry_count,
             spinner,
@@ -4863,6 +5010,11 @@ impl ViewState {
         }
         cancel_source(&self.pending_peek);
         cancel_source(&self.pending_close);
+        if self.browser.is_open_child(origin_depth, &location) {
+            self.peek_anchor.take();
+            self.browser.close_peek();
+            return;
+        }
         if self
             .peek
             .borrow()
@@ -4871,7 +5023,10 @@ impl ViewState {
         {
             return;
         }
-        self.peek_anchor.replace(Some(anchor));
+        self.peek_anchor.replace(Some(PeekAnchor {
+            widget: anchor,
+            origin_depth,
+        }));
 
         let weak_state = Rc::downgrade(self);
         let source = glib::timeout_add_local_once(self.peek_behavior.open_delay, move || {
@@ -4904,9 +5059,36 @@ impl ViewState {
             self.browser.close_peek();
             return;
         };
+        let Some(row_bounds) = anchor.widget.compute_bounds(&self.overlay) else {
+            self.browser.close_peek();
+            return;
+        };
+        let source_bounds = match peek_origin_bounds(self.mode_views.borrow().mode()) {
+            PeekOriginBounds::Anchor => row_bounds,
+            PeekOriginBounds::Column => {
+                let Some(bounds) = self
+                    .columns
+                    .borrow()
+                    .get(anchor.origin_depth)
+                    .and_then(|column| column.shell.compute_bounds(&self.overlay))
+                else {
+                    self.browser.close_peek();
+                    return;
+                };
+                bounds
+            }
+        };
+        let Some(placement) = peek_horizontal_placement(
+            source_bounds.x(),
+            source_bounds.width(),
+            self.overlay.width() as f32,
+        ) else {
+            self.browser.close_peek();
+            return;
+        };
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        content.set_size_request(256, -1);
+        content.set_size_request(PEEK_WIDTH, -1);
         content.set_overflow(gtk::Overflow::Hidden);
 
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -4968,35 +5150,25 @@ impl ViewState {
         });
         content.add_controller(click);
 
-        let Some(bounds) = anchor.compute_bounds(&self.overlay) else {
-            self.browser.close_peek();
-            return;
-        };
         content.add_css_class("peek-popover");
-        let gap = 8.0;
-        let right = bounds.x() + bounds.width() + gap;
-        let left = (bounds.x() - 260.0).max(0.0);
-        let positioned_right = right + 256.0 <= self.overlay.width() as f32;
-        let x = if positioned_right { right } else { left };
         let transition_duration = self
             .peek_behavior
             .fade_duration
             .as_millis()
             .min(u128::from(u32::MAX)) as u32;
-        let transition_type = if positioned_right {
-            gtk::RevealerTransitionType::SlideRight
-        } else {
-            gtk::RevealerTransitionType::SlideLeft
-        };
+        let transition_type = peek_transition(placement.side);
+        let (halign, margin_start, margin_end) =
+            peek_horizontal_layout(placement, self.overlay.width() as f32);
         let revealer = gtk::Revealer::builder()
             .child(&content)
             .transition_type(transition_type)
             .transition_duration(transition_duration)
             .reveal_child(false)
-            .halign(gtk::Align::Start)
+            .halign(halign)
             .valign(gtk::Align::Start)
-            .margin_start(x.round() as i32)
-            .margin_top(bounds.y().round().max(0.0) as i32)
+            .margin_start(margin_start)
+            .margin_end(margin_end)
+            .margin_top(row_bounds.y().round().max(0.0) as i32)
             .build();
         self.overlay.add_overlay(&revealer);
         self.peek.replace(Some(PeekView {
@@ -5041,7 +5213,7 @@ impl ViewState {
                 .animation_generation
                 .set(column.animation_generation.get().saturating_add(1));
             self.columns_widget.remove(&column.shell);
-            self.overlay.remove_overlay(&column.marquee);
+            self.overlay.remove_overlay(&column.marquee.band());
         }
         let retained = self
             .columns
@@ -5208,7 +5380,7 @@ fn filtered_position_for_source(column: &ColumnView, source_position: usize) -> 
 pub(super) fn install_folder_context_menu(
     state: &Rc<ViewState>,
     parent: &gtk::Widget,
-    selection: &gtk::MultiSelection,
+    has_entries: Rc<dyn Fn() -> bool>,
     is_item_target: Rc<dyn Fn(&gtk::Widget) -> bool>,
     depth: usize,
     location: Location,
@@ -5332,7 +5504,6 @@ pub(super) fn install_folder_context_menu(
 
     let menu_click = gtk::GestureClick::new();
     menu_click.set_button(3);
-    let selection = selection.clone();
     let popover_for_click = popover.clone();
     menu_click.connect_pressed(move |gesture, _, x, y| {
         let over_item = gesture
@@ -5349,7 +5520,7 @@ pub(super) fn install_folder_context_menu(
                 .formats()
                 .contains_type(gtk::gdk::FileList::static_type())
         }));
-        select_all.set_sensitive(selection.n_items() > 0);
+        select_all.set_sensitive(has_entries());
         open_terminal.set_sensitive(can_open_terminal(&location));
         if popover_for_click.parent().is_none()
             && let Some(parent) = gesture.widget()
@@ -5378,6 +5549,7 @@ pub(super) fn install_item_context_menu(
     selection: &gtk::MultiSelection,
     pick_position: ContextPickPosition,
     source_position: ContextSourcePosition,
+    clear_other_selections: Rc<dyn Fn()>,
     depth: usize,
 ) {
     let in_trash = state
@@ -5678,6 +5850,7 @@ pub(super) fn install_item_context_menu(
         };
         gesture.set_state(gtk::EventSequenceState::Claimed);
         if !selection.is_selected(filtered_position) {
+            clear_other_selections();
             selection.select_item(filtered_position, true);
         }
         target.replace(Some((resolved_position, entry.clone())));
@@ -5721,8 +5894,8 @@ pub(super) fn install_item_context_menu(
     widget.add_controller(click);
 }
 
-fn entry_responds_to_single_click(entry: &FileEntry, previews_enabled: bool) -> bool {
-    entry.is_directory() || (previews_enabled && entry_supports_quick_preview(entry))
+fn entry_responds_to_preview_click(entry: &FileEntry, previews_enabled: bool) -> bool {
+    previews_enabled && !entry.is_directory() && entry_supports_quick_preview(entry)
 }
 
 pub(super) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
@@ -5735,6 +5908,7 @@ pub(super) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
     !matches!(content_family(&content_type), PreviewContent::Unsupported)
         || gio::content_type_is_a(&content_type, "text/plain")
         || has_plain_text_extension(&entry.native_name)
+        || is_extensionless_dotfile(&entry.native_name)
 }
 
 struct TrashSummary {
@@ -6045,7 +6219,7 @@ fn connect_context_trash(
         }
         if let Some(state) = weak.upgrade() {
             let entries = context_entries(&state, &target);
-            state.show_delete_confirmation(entries, permanent);
+            state.request_delete(entries, permanent);
         }
     });
 }
@@ -6503,12 +6677,75 @@ pub(super) fn file_drag_content(entries: &[FileEntry]) -> Option<gtk::gdk::Conte
 fn copy_locations(entries: &[FileEntry]) {
     let text = entries
         .iter()
-        .map(|entry| entry.location.display_path())
+        .map(|entry| copy_path_text(&entry.location, entry.is_directory()))
         .collect::<Vec<_>>()
         .join("\n");
     if let Some(display) = gtk::gdk::Display::default() {
         display.clipboard().set_text(&text);
     }
+}
+
+fn can_pin_entry(entry: &FileEntry, status: PinStatus) -> bool {
+    entry.is_directory() && !is_trash_location(&entry.location) && status == PinStatus::Available
+}
+
+fn copy_path_text(location: &Location, is_directory: bool) -> String {
+    match location.native_path() {
+        Some(path) => {
+            let mut path = shell_escape_path(path);
+            if is_directory && !path.ends_with(std::path::MAIN_SEPARATOR) {
+                path.push(std::path::MAIN_SEPARATOR);
+            }
+            path
+        }
+        None => location.display_path(),
+    }
+}
+
+fn shell_escape_path(path: &Path) -> String {
+    let path = path.to_string_lossy();
+    if path.contains('\n') {
+        return format!("'{}'", path.replace('\'', "'\\''"));
+    }
+
+    let mut escaped = String::new();
+    for c in path.chars() {
+        if needs_shell_escape(c) {
+            escaped.push('\\');
+            escaped.push(c);
+        } else {
+            escaped.push(c);
+        }
+    }
+    escaped
+}
+
+fn needs_shell_escape(c: char) -> bool {
+    c.is_whitespace()
+        || c.is_control()
+        || matches!(
+            c,
+            '"' | '\''
+                | '\\'
+                | '$'
+                | '`'
+                | '!'
+                | '#'
+                | '&'
+                | '*'
+                | ';'
+                | '<'
+                | '>'
+                | '?'
+                | '['
+                | ']'
+                | '{'
+                | '}'
+                | '('
+                | ')'
+                | '|'
+                | '~'
+        )
 }
 
 fn set_files_clipboard(entries: &[FileEntry]) -> bool {
@@ -6538,6 +6775,22 @@ fn set_location_files_clipboard(locations: &[Location]) -> bool {
     })
 }
 
+fn should_activate_single_click(
+    press_count: i32,
+    is_directory: bool,
+    activation: ClickActivation,
+    control: bool,
+    shift: bool,
+    preserve_group: bool,
+) -> bool {
+    let configured = if is_directory {
+        activation.folders
+    } else {
+        activation.files
+    };
+    press_count == 1 && configured == ClickCount::One && !control && !shift && !preserve_group
+}
+
 fn should_preview_pointer_press(
     press_count: i32,
     control: bool,
@@ -6551,13 +6804,34 @@ fn should_preserve_drag_selection(clicked_selected: bool, selected_count: u64) -
     clicked_selected && selected_count > 1
 }
 
-fn paste_destination_depth(hovered: Option<usize>, pane_count: usize) -> Option<usize> {
+fn paste_destination_depth(
+    mode: BrowserMode,
+    hovered: Option<usize>,
+    active: Option<usize>,
+    pane_count: usize,
+) -> Option<usize> {
+    if mode != BrowserMode::Columns {
+        return active;
+    }
     hovered
         .filter(|depth| *depth < pane_count)
         .or_else(|| pane_count.checked_sub(1))
 }
 
+/// Keyboard-triggered folder creation must ignore the pointer so a resting mouse
+/// cannot redirect the new folder into a pane the keyboard never visited.
 fn new_folder_destination_depth(
+    focused: Option<usize>,
+    active: Option<usize>,
+    pane_count: usize,
+) -> Option<usize> {
+    focused
+        .filter(|depth| *depth < pane_count)
+        .or_else(|| active.filter(|depth| *depth < pane_count))
+        .or_else(|| pane_count.checked_sub(1))
+}
+
+fn terminal_destination_depth(
     hovered: Option<usize>,
     focused: Option<usize>,
     active: Option<usize>,
@@ -6565,9 +6839,7 @@ fn new_folder_destination_depth(
 ) -> Option<usize> {
     hovered
         .filter(|depth| *depth < pane_count)
-        .or_else(|| focused.filter(|depth| *depth < pane_count))
-        .or_else(|| active.filter(|depth| *depth < pane_count))
-        .or_else(|| pane_count.checked_sub(1))
+        .or_else(|| new_folder_destination_depth(focused, active, pane_count))
 }
 
 fn same_locations(left: &[Location], right: &[Location]) -> bool {
@@ -6966,6 +7238,68 @@ pub(super) fn model_is_hidden(value: &str) -> bool {
     value.as_bytes().get(1) == Some(&b'h')
 }
 
+fn model_is_broken_link(value: &str) -> bool {
+    value.starts_with("x")
+}
+
+/// Directories lead a grouped view, and files whose type the shared MIME database
+/// cannot name fall back to a plain label.
+pub(super) const FOLDER_TYPE_GROUP: &str = "Folder";
+const UNTYPED_TYPE_GROUP: &str = "File";
+
+/// The user-facing file-type label a model value belongs to when the browser groups
+/// entries by type. Labels come from the shared MIME database, so they read the way
+/// they do elsewhere on the desktop: "JSON document", "Python script", and so on.
+pub(super) fn model_type_group(value: &str) -> String {
+    if model_is_directory(value) {
+        return FOLDER_TYPE_GROUP.to_owned();
+    }
+    if model_is_broken_link(value) {
+        return "Broken link".to_owned();
+    }
+    let name = model_display_name(value);
+    TYPE_GROUPS.with_borrow_mut(|cache| {
+        if let Some(label) = cache.get(type_group_key(name)) {
+            return label.clone();
+        }
+        let label = guess_type_group(name);
+        // A directory listing holds far more entries than distinct types, and the
+        // cache is keyed by suffix, so it stays small; clear it if that ever fails.
+        if cache.len() >= TYPE_GROUP_CACHE_LIMIT {
+            cache.clear();
+        }
+        cache.insert(type_group_key(name).to_owned(), label.clone());
+        label
+    })
+}
+
+/// Names sharing a suffix share a type, so the cache is keyed by suffix where there
+/// is one and by the whole name otherwise.
+fn type_group_key(name: &str) -> &str {
+    match name.rfind('.') {
+        Some(position) if position > 0 => &name[position..],
+        _ => name,
+    }
+}
+
+fn guess_type_group(name: &str) -> String {
+    let (content_type, _) = gio::content_type_guess(Some(Path::new(name)), None::<&[u8]>);
+    if content_type.is_empty() || content_type == "application/octet-stream" {
+        return UNTYPED_TYPE_GROUP.to_owned();
+    }
+    let description = gio::content_type_get_description(&content_type);
+    if description.is_empty() {
+        return UNTYPED_TYPE_GROUP.to_owned();
+    }
+    description.to_string()
+}
+
+const TYPE_GROUP_CACHE_LIMIT: usize = 2048;
+
+thread_local! {
+    static TYPE_GROUPS: RefCell<HashMap<String, String>> = RefCell::new(HashMap::new());
+}
+
 pub(super) fn entry_filter(
     show_hidden: Rc<Cell<bool>>,
     filter_query: Rc<RefCell<String>>,
@@ -7018,6 +7352,71 @@ fn icon_for_name(name: &str) -> &'static str {
         ) => crate::assets::icons::FILE_CODE,
         _ => crate::assets::icons::DOCUMENTS,
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PeekOriginBounds {
+    Anchor,
+    Column,
+}
+
+fn peek_origin_bounds(mode: BrowserMode) -> PeekOriginBounds {
+    match mode {
+        BrowserMode::Columns => PeekOriginBounds::Column,
+        BrowserMode::Grid | BrowserMode::Explorer => PeekOriginBounds::Anchor,
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PeekSide {
+    Left,
+    Right,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct PeekPlacement {
+    x: f32,
+    side: PeekSide,
+}
+
+fn peek_transition(side: PeekSide) -> gtk::RevealerTransitionType {
+    match side {
+        PeekSide::Left => gtk::RevealerTransitionType::SlideLeft,
+        PeekSide::Right => gtk::RevealerTransitionType::SlideRight,
+    }
+}
+
+fn peek_horizontal_layout(placement: PeekPlacement, viewport_width: f32) -> (gtk::Align, i32, i32) {
+    match placement.side {
+        PeekSide::Right => (gtk::Align::Start, placement.x.round() as i32, 0),
+        PeekSide::Left => (
+            gtk::Align::End,
+            0,
+            (viewport_width - placement.x - PEEK_WIDTH as f32)
+                .max(0.0)
+                .round() as i32,
+        ),
+    }
+}
+
+fn peek_horizontal_placement(
+    source_x: f32,
+    source_width: f32,
+    viewport_width: f32,
+) -> Option<PeekPlacement> {
+    let right = source_x + source_width + PEEK_GAP;
+    if right + PEEK_WIDTH as f32 <= viewport_width {
+        return Some(PeekPlacement {
+            x: right,
+            side: PeekSide::Right,
+        });
+    }
+
+    let left = source_x - PEEK_GAP - PEEK_WIDTH as f32;
+    (left >= 0.0).then_some(PeekPlacement {
+        x: left,
+        side: PeekSide::Left,
+    })
 }
 
 fn append_peek_entries(peek: &PeekView, entries: Vec<FileEntry>, limit: usize) {
@@ -7165,6 +7564,20 @@ fn entry_kind_summary(entries: &[FileEntry]) -> String {
         (0, directories) => format!("{directories} folders"),
         _ => item_count_label(entries.len()),
     }
+}
+
+/// Narrows a just-attempted delete's entries down to the ones a completed
+/// operation named as retryable, so a permanent-delete retry (issue #179)
+/// re-targets exactly those and not, say, ones that already succeeded or
+/// failed for an unrelated reason.
+fn retryable_delete_entries(
+    entries: Vec<FileEntry>,
+    retryable_locations: &[Location],
+) -> Vec<FileEntry> {
+    entries
+        .into_iter()
+        .filter(|entry| retryable_locations.contains(&entry.location))
+        .collect()
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -7984,6 +8397,80 @@ fn show_error_dialog_after_close(
     });
     layer.add_controller(escape);
     close.grab_focus();
+}
+
+/// Like [`show_error_dialog`], but for a `Completed with errors` delete
+/// result where every failure was caused by the destination not supporting
+/// Trash (issue #179): rather than a dead-end "Done" button, this offers an
+/// actionable "Delete Permanently" button that invokes `on_retry` -- the
+/// caller's job is to re-run the delete for just the retryable entries,
+/// e.g. via `show_delete_confirmation(retryable_entries)`.
+fn show_delete_error_dialog(parent: &impl IsA<gtk::Widget>, detail: &str, on_retry: Rc<dyn Fn()>) {
+    let Some(window_overlay) = parent
+        .root()
+        .and_downcast::<gtk::Window>()
+        .and_then(|window| window.child())
+        .and_downcast::<gtk::Overlay>()
+    else {
+        return;
+    };
+    let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
+    if let Some(root) = blurred_root.as_ref() {
+        root.set_blurred(true);
+    }
+
+    let layout = message_dialog_layout(
+        crate::assets::icons::X,
+        "Completed with errors",
+        "Some items could not be processed",
+        "Delete Permanently",
+        ModalTone::Danger,
+    );
+    layout.cancel.set_label("Done");
+    let explanation = message_dialog_description(detail);
+    explanation.set_selectable(true);
+    layout.body.append(&explanation);
+    let content = layout.content;
+    let close_icon = layout.close;
+    let cancel = layout.cancel;
+    let confirm = layout.confirm;
+
+    let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+    window_overlay.add_overlay(&layer);
+    let dismissed = Rc::new(Cell::new(false));
+
+    let dismiss_layer = layer.clone();
+    let dismiss_overlay = window_overlay.clone();
+    let dismiss_root = blurred_root.clone();
+    let dismissed_for_dismiss = dismissed.clone();
+    let dismiss = Rc::new(move || {
+        if dismissed_for_dismiss.replace(true) {
+            return;
+        }
+        dismiss_modal_layer(&dismiss_layer, &dismiss_overlay, dismiss_root.as_ref());
+    });
+
+    let clicked_dismiss = dismiss.clone();
+    cancel.connect_clicked(move |_| clicked_dismiss());
+    let icon_dismiss = dismiss.clone();
+    close_icon.connect_clicked(move |_| icon_dismiss());
+    let confirm_dismiss = dismiss.clone();
+    confirm.connect_clicked(move |_| {
+        confirm_dismiss();
+        on_retry();
+    });
+    let escape = gtk::EventControllerKey::new();
+    let escape_dismiss = dismiss.clone();
+    escape.connect_key_pressed(move |_, key, _, _| {
+        if key == gtk::gdk::Key::Escape {
+            escape_dismiss();
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    });
+    layer.add_controller(escape);
+    cancel.grab_focus();
 }
 
 #[cfg(test)]

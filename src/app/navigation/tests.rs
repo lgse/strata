@@ -319,8 +319,20 @@ fn empty_is_distinct_from_loading_and_error() {
     state.navigate(location("/empty"), RequestId(1));
     assert_eq!(state.columns[0].load_state, LoadState::Loading);
 
-    assert_eq!(state.finish(RequestId(1)), Some(0));
+    assert_eq!(state.finish(RequestId(1), false), Some(0));
     assert_eq!(state.columns[0].load_state, LoadState::Empty);
+}
+
+#[test]
+fn truncated_load_state_survives_until_reload() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/partial"), RequestId(1));
+
+    assert_eq!(state.finish(RequestId(1), true), Some(0));
+    assert!(state.columns[0].truncated);
+
+    state.reload_column(0, RequestId(2));
+    assert!(!state.columns[0].truncated);
 }
 
 #[test]
@@ -512,6 +524,39 @@ fn batches_are_merged_into_one_global_sort_order() {
     assert_eq!(state.columns[0].entries[0].display_name, "a");
     assert_eq!(state.columns[0].entries[1].display_name, "z");
     assert_eq!(state.columns[0].selected, Some(1));
+}
+
+#[test]
+fn names_are_sorted_case_insensitively() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/apple", "apple"),
+            named_entry("/fixture/Banana", "Banana"),
+            named_entry("/fixture/cherry", "cherry"),
+            named_entry("/fixture/Date", "Date"),
+        ],
+    );
+
+    assert_eq!(
+        state.columns[0]
+            .entries
+            .iter()
+            .map(|entry| entry.display_name.as_str())
+            .collect::<Vec<_>>(),
+        ["apple", "Banana", "cherry", "Date"]
+    );
+}
+
+#[test]
+fn names_that_differ_only_by_case_have_a_deterministic_order() {
+    assert_eq!(compare_display_names("file", "FILE"), Ordering::Greater);
+    assert_eq!(
+        compare_display_names("Straße", "STRASSE"),
+        Ordering::Greater
+    );
 }
 
 #[test]

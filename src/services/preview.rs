@@ -57,6 +57,18 @@ pub(crate) fn has_plain_text_extension(name: &OsStr) -> bool {
         .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "conf" | "ini"))
 }
 
+pub(crate) fn is_extensionless_dotfile(name: &OsStr) -> bool {
+    let bytes = name.as_encoded_bytes();
+    bytes.len() > 1 && bytes.starts_with(b".") && Path::new(name).extension().is_none()
+}
+
+pub(crate) fn is_non_executable_extensionless_dotfile(
+    name: &OsStr,
+    unix_mode: Option<u32>,
+) -> bool {
+    is_extensionless_dotfile(name) && unix_mode.is_some_and(|mode| mode & 0o111 == 0)
+}
+
 pub(crate) fn content_family(content_type: &str) -> PreviewContent {
     if content_type == "application/pdf" {
         PreviewContent::Pdf {

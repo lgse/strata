@@ -5,7 +5,7 @@ mod tests;
 
 use std::{
     cell::Cell,
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     ffi::{OsStr, OsString},
     future::Future,
     io,
@@ -34,7 +34,7 @@ use crate::{
         ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest,
         CreateFileRequest, DeleteRequest, ExtractRequest, LoadHandle, OperationEvent,
         OperationProvider, OperationRequestId, PasteRequest, RenameRequest, RestoreRequest,
-        TransferConflict, validate_basename,
+        RestoreSource, TransferConflict, validate_basename,
     },
 };
 
@@ -73,6 +73,14 @@ fn transfer_is_noop(source: &gio::File, destination: &gio::File, target: &gio::F
 
 fn was_cancelled(error: &glib::Error) -> bool {
     error.matches(gio::IOErrorEnum::Cancelled)
+}
+
+/// Whether a delete failure is retryable as a permanent delete: it was a
+/// trash attempt (never a permanent one, which has no further fallback),
+/// and the destination doesn't support Trash at all rather than some other,
+/// unrelated failure.
+fn is_trash_unsupported_failure(permanent: bool, error: &glib::Error) -> bool {
+    !permanent && error.matches(gio::IOErrorEnum::NotSupported)
 }
 
 fn copy_recursively(
@@ -650,6 +658,169 @@ fn deletion_error_message(name: &str, permanent: bool, error: &glib::Error) -> S
     }
 }
 
+#[derive(Clone)]
+struct RestoreEntry {
+    source: Location,
+    display_name: String,
+    original_target: Option<Location>,
+    trash_info: Option<PathBuf>,
+}
+
+async fn trashed_entries_for_originals(
+    original_locations: &[Location],
+) -> Result<Vec<RestoreEntry>, glib::Error> {
+    let requested = original_locations
+        .iter()
+        .filter_map(|location| location.native_path().map(Path::to_path_buf))
+        .collect::<HashSet<_>>();
+    // GVfs can miss an item re-trashed under the same basename after a restore, so prefer the
+    // authoritative freedesktop.org metadata for the home trash before consulting trash:///.
+    let fallback_requested = requested.clone();
+    let mut fallback = gio::spawn_blocking(move || home_trash_entries(&fallback_requested))
+        .await
+        .map_err(|_| glib::Error::new(gio::IOErrorEnum::Failed, "Trash lookup task failed"))?;
+    if fallback.len() == requested.len() && requested.len() == original_locations.len() {
+        return Ok(original_locations
+            .iter()
+            .filter_map(|location| location.native_path())
+            .filter_map(|path| fallback.remove(path))
+            .collect());
+    }
+
+    let trash = gio::File::for_uri("trash:///");
+    let enumerator = trash
+        .enumerate_children_future(
+            "standard::name,standard::display-name,trash::orig-path,trash::deletion-date",
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            glib::Priority::DEFAULT,
+        )
+        .await?;
+    let mut newest = HashMap::<PathBuf, (String, Location, String)>::new();
+    loop {
+        let infos = enumerator
+            .next_files_future(64, glib::Priority::DEFAULT)
+            .await?;
+        if infos.is_empty() {
+            break;
+        }
+        for info in infos {
+            let Some(original_path) = info.attribute_byte_string("trash::orig-path") else {
+                continue;
+            };
+            let original_path = PathBuf::from(original_path.as_str());
+            if !requested.contains(&original_path) {
+                continue;
+            }
+            let deletion_date = info
+                .attribute_string("trash::deletion-date")
+                .map(|value| value.to_string())
+                .unwrap_or_default();
+            let Some(location) = location_for_file(&trash.child(info.name())) else {
+                continue;
+            };
+            let candidate = (deletion_date, location, info.display_name().to_string());
+            match newest.get(&original_path) {
+                Some(current) if current.0 >= candidate.0 => {}
+                _ => {
+                    newest.insert(original_path, candidate);
+                }
+            }
+        }
+    }
+
+    if requested
+        .iter()
+        .any(|path| !fallback.contains_key(path) && !newest.contains_key(path))
+        || requested.len() != original_locations.len()
+    {
+        return Err(glib::Error::new(
+            gio::IOErrorEnum::NotFound,
+            "One or more recently trashed items are no longer available",
+        ));
+    }
+    Ok(original_locations
+        .iter()
+        .filter_map(|location| location.native_path())
+        .filter_map(|path| {
+            fallback.remove(path).or_else(|| {
+                newest
+                    .remove(path)
+                    .map(|(_, source, display_name)| RestoreEntry {
+                        source,
+                        display_name,
+                        original_target: None,
+                        trash_info: None,
+                    })
+            })
+        })
+        .collect())
+}
+
+fn home_trash_entries(requested: &HashSet<PathBuf>) -> HashMap<PathBuf, RestoreEntry> {
+    home_trash_entries_at(&glib::user_data_dir().join("Trash"), requested)
+}
+
+fn home_trash_entries_at(
+    trash_root: &Path,
+    requested: &HashSet<PathBuf>,
+) -> HashMap<PathBuf, RestoreEntry> {
+    let info_root = trash_root.join("info");
+    let files_root = trash_root.join("files");
+    let mut newest = HashMap::<PathBuf, (String, RestoreEntry)>::new();
+    let Ok(infos) = std::fs::read_dir(info_root) else {
+        return HashMap::new();
+    };
+    for info in infos.flatten() {
+        let info_path = info.path();
+        let Some(name) = info_path.file_name() else {
+            continue;
+        };
+        let bytes = name.as_bytes();
+        let Some(file_name) = bytes.strip_suffix(b".trashinfo") else {
+            continue;
+        };
+        let Ok(contents) = std::fs::read_to_string(&info_path) else {
+            continue;
+        };
+        let encoded_path = contents.lines().find_map(|line| line.strip_prefix("Path="));
+        let deletion_date = contents
+            .lines()
+            .find_map(|line| line.strip_prefix("DeletionDate="))
+            .unwrap_or_default();
+        let Some(original_path) =
+            encoded_path.and_then(|path| gio::File::for_uri(&format!("file://{path}")).path())
+        else {
+            continue;
+        };
+        if !requested.contains(&original_path) {
+            continue;
+        }
+        let source_path = files_root.join(OsString::from_vec(file_name.to_vec()));
+        if std::fs::symlink_metadata(&source_path).is_err() {
+            continue;
+        }
+        let entry = RestoreEntry {
+            source: Location::local(&source_path),
+            display_name: source_path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "Trashed item".to_owned()),
+            original_target: Some(Location::local(&original_path)),
+            trash_info: Some(info_path),
+        };
+        match newest.get(&original_path) {
+            Some((current_date, _)) if current_date.as_str() >= deletion_date => {}
+            _ => {
+                newest.insert(original_path, (deletion_date.to_owned(), entry));
+            }
+        }
+    }
+    newest
+        .into_iter()
+        .map(|(path, (_, entry))| (path, entry))
+        .collect()
+}
+
 fn cancellation_handle(cancellable: gio::Cancellable) -> LoadHandle {
     LoadHandle::new(move || cancellable.cancel())
 }
@@ -989,6 +1160,7 @@ impl OperationProvider for LocalOperationProvider {
             let mut errors = Vec::new();
             let mut deleted_locations = Vec::new();
             let mut failed_locations = Vec::new();
+            let mut retryable_locations = Vec::new();
             let mut affected_locations = HashSet::new();
             for entry in &request.entries {
                 if let Some(parent) = entry.location.parent() {
@@ -1072,6 +1244,9 @@ impl OperationProvider for LocalOperationProvider {
                         ));
                         return;
                     }
+                    if is_trash_unsupported_failure(request.permanent, &error) {
+                        retryable_locations.push(entry.location.clone());
+                    }
                     errors.push(deletion_error_message(
                         &entry.display_name,
                         request.permanent,
@@ -1096,9 +1271,12 @@ impl OperationProvider for LocalOperationProvider {
                     locations: deleted_locations,
                 });
             } else {
+                let has_non_retryable_failures = errors.len() > retryable_locations.len();
                 emit(OperationEvent::CompletedWithErrors {
                     request_id: request.id,
                     deleted_locations,
+                    retryable_locations,
+                    has_non_retryable_failures,
                     message: deletion_error_summary(&errors),
                 });
             }
@@ -1110,80 +1288,117 @@ impl OperationProvider for LocalOperationProvider {
         let cancellable = gio::Cancellable::new();
         let operation_cancellable = cancellable.clone();
         let _task = glib::MainContext::default().spawn_local(async move {
-            let total = request.entries.len();
+            let entries = match request.source {
+                RestoreSource::TrashEntries(entries) => entries
+                    .into_iter()
+                    .map(|entry| RestoreEntry {
+                        source: entry.location,
+                        display_name: entry.display_name,
+                        original_target: None,
+                        trash_info: None,
+                    })
+                    .collect(),
+                RestoreSource::OriginalLocations(locations) => {
+                    match trashed_entries_for_originals(&locations).await {
+                        Ok(entries) => entries,
+                        Err(error) => {
+                            emit(OperationEvent::Failed {
+                                request_id: request.id,
+                                message: format!("Unable to find items in Trash: {error}"),
+                            });
+                            return;
+                        }
+                    }
+                }
+            };
+            let total = entries.len();
             let mut errors = Vec::new();
             let mut restored_locations = Vec::new();
             let mut failed_locations = Vec::new();
             let mut affected_locations = HashSet::from([Location::uri("trash:///")]);
-            for (index, entry) in request.entries.iter().enumerate() {
+            for (index, entry) in entries.iter().enumerate() {
                 if operation_cancellable.is_cancelled() {
                     emit(cancelled_event(
                         request.id,
                         restored_locations,
                         failed_locations,
-                        request.entries[index..]
+                        entries[index..]
                             .iter()
-                            .map(|entry| entry.location.clone())
+                            .map(|entry| entry.source.clone())
                             .collect(),
                         affected_locations,
                     ));
                     return;
                 }
-                let source = gio_file(&entry.location);
-                let result = match await_cancellable(
-                    &source,
-                    &operation_cancellable,
-                    |source, cancellable, result| {
-                        source.query_info_async(
-                            "trash::orig-path",
-                            gio::FileQueryInfoFlags::NONE,
-                            glib::Priority::DEFAULT,
-                            Some(cancellable),
-                            move |output| result.resolve(output),
-                        );
-                    },
-                )
-                .await
-                {
-                    Ok(info) => match info.attribute_byte_string("trash::orig-path") {
-                        Some(original_path) => {
-                            let target =
-                                gio::File::for_path(std::path::Path::new(original_path.as_str()));
-                            if let Some(parent) =
-                                location_for_file(&target).and_then(|location| location.parent())
-                            {
-                                affected_locations.insert(parent);
+                let source = gio_file(&entry.source);
+                let result = if let Some(original_target) = entry.original_target.clone() {
+                    let target = gio_file(&original_target);
+                    if let Some(parent) = original_target.parent() {
+                        affected_locations.insert(parent);
+                    }
+                    move_local(source, target, operation_cancellable.clone()).await
+                } else {
+                    match await_cancellable(
+                        &source,
+                        &operation_cancellable,
+                        |source, cancellable, result| {
+                            source.query_info_async(
+                                "trash::orig-path",
+                                gio::FileQueryInfoFlags::NONE,
+                                glib::Priority::DEFAULT,
+                                Some(cancellable),
+                                move |output| result.resolve(output),
+                            );
+                        },
+                    )
+                    .await
+                    {
+                        Ok(info) => match info.attribute_byte_string("trash::orig-path") {
+                            Some(original_path) => {
+                                let target = gio::File::for_path(std::path::Path::new(
+                                    original_path.as_str(),
+                                ));
+                                if let Some(parent) = location_for_file(&target)
+                                    .and_then(|location| location.parent())
+                                {
+                                    affected_locations.insert(parent);
+                                }
+                                move_local(source, target, operation_cancellable.clone()).await
                             }
-                            move_local(source, target, operation_cancellable.clone()).await
-                        }
-                        None => Err(glib::Error::new(
-                            gio::IOErrorEnum::NotFound,
-                            "The original location is unavailable",
-                        )),
-                    },
-                    Err(error) => Err(error),
+                            None => Err(glib::Error::new(
+                                gio::IOErrorEnum::NotFound,
+                                "The original location is unavailable",
+                            )),
+                        },
+                        Err(error) => Err(error),
+                    }
                 };
                 let restored_location = if let Err(error) = result {
                     if was_cancelled(&error) {
-                        failed_locations.push(entry.location.clone());
+                        failed_locations.push(entry.source.clone());
                         emit(cancelled_event(
                             request.id,
                             restored_locations,
                             failed_locations,
-                            request.entries[index + 1..]
+                            entries[index + 1..]
                                 .iter()
-                                .map(|entry| entry.location.clone())
+                                .map(|entry| entry.source.clone())
                                 .collect(),
                             affected_locations,
                         ));
                         return;
                     }
                     errors.push(format!("{}: {error}", entry.display_name));
-                    failed_locations.push(entry.location.clone());
+                    failed_locations.push(entry.source.clone());
                     None
                 } else {
-                    restored_locations.push(entry.location.clone());
-                    Some(entry.location.clone())
+                    if let Some(info_path) = &entry.trash_info
+                        && let Err(error) = std::fs::remove_file(info_path)
+                    {
+                        tracing::warn!(%error, "unable to remove restored trash metadata");
+                    }
+                    restored_locations.push(entry.source.clone());
+                    Some(entry.source.clone())
                 };
                 emit(OperationEvent::RestoreProgress {
                     request_id: request.id,

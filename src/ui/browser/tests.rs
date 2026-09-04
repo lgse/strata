@@ -198,6 +198,104 @@ fn delete_confirmation_labels_distinguish_files_and_folders() {
 }
 
 #[test]
+fn folder_peek_uses_visible_mode_bounds() {
+    assert_eq!(
+        peek_origin_bounds(BrowserMode::Columns),
+        PeekOriginBounds::Column
+    );
+    assert_eq!(
+        peek_origin_bounds(BrowserMode::Grid),
+        PeekOriginBounds::Anchor
+    );
+    assert_eq!(
+        peek_origin_bounds(BrowserMode::Explorer),
+        PeekOriginBounds::Anchor
+    );
+}
+
+#[test]
+fn folder_peek_prefers_space_to_the_right_of_its_source_column() {
+    assert_eq!(
+        peek_horizontal_placement(100.0, 300.0, 800.0),
+        Some(PeekPlacement {
+            x: 408.0,
+            side: PeekSide::Right,
+        })
+    );
+}
+
+#[test]
+fn folder_peek_uses_the_left_only_when_it_fits_outside_the_source_column() {
+    assert_eq!(
+        peek_horizontal_placement(300.0, 300.0, 700.0),
+        Some(PeekPlacement {
+            x: 36.0,
+            side: PeekSide::Left,
+        })
+    );
+    assert_eq!(peek_horizontal_placement(200.0, 300.0, 700.0), None);
+}
+
+#[test]
+fn folder_peek_animation_moves_toward_its_placement_side() {
+    assert_eq!(
+        peek_transition(PeekSide::Left),
+        gtk::RevealerTransitionType::SlideLeft
+    );
+    assert_eq!(
+        peek_transition(PeekSide::Right),
+        gtk::RevealerTransitionType::SlideRight
+    );
+}
+
+#[test]
+fn folder_peek_animation_is_anchored_to_the_source_side() {
+    assert_eq!(
+        peek_horizontal_layout(
+            PeekPlacement {
+                x: 408.0,
+                side: PeekSide::Right,
+            },
+            800.0,
+        ),
+        (gtk::Align::Start, 408, 0)
+    );
+    assert_eq!(
+        peek_horizontal_layout(
+            PeekPlacement {
+                x: 36.0,
+                side: PeekSide::Left,
+            },
+            700.0,
+        ),
+        (gtk::Align::End, 0, 408)
+    );
+}
+
+#[test]
+fn folder_peek_accepts_an_exact_viewport_fit() {
+    assert_eq!(
+        peek_horizontal_placement(0.0, 300.0, 564.0),
+        Some(PeekPlacement {
+            x: 308.0,
+            side: PeekSide::Right,
+        })
+    );
+}
+
+#[test]
+fn small_operations_delay_progress_while_large_or_unbounded_operations_show_it_immediately() {
+    assert!(!should_show_progress_immediately(1));
+    assert!(!should_show_progress_immediately(
+        IMMEDIATE_PROGRESS_ITEM_COUNT - 1
+    ));
+    assert!(should_show_progress_immediately(
+        IMMEDIATE_PROGRESS_ITEM_COUNT
+    ));
+    assert!(should_show_progress_immediately(0));
+}
+
+#[test]
 fn delete_confirmation_direction_keys_choose_an_action() {
     assert_eq!(
         delete_confirmation_focus_target(gtk::gdk::Key::Left),
@@ -268,6 +366,10 @@ fn quick_preview_is_offered_only_for_supported_files() {
         "notes.txt",
         crate::model::EntryKind::FileSymbolicLink,
     )));
+    assert!(entry_supports_quick_preview(&entry(
+        ".steampath",
+        crate::model::EntryKind::File,
+    )));
     assert!(!entry_supports_quick_preview(&entry(
         "archive.zip",
         crate::model::EntryKind::File,
@@ -280,10 +382,10 @@ fn quick_preview_is_offered_only_for_supported_files() {
     let supported = entry("photo.png", crate::model::EntryKind::File);
     let unsupported = entry("archive.zip", crate::model::EntryKind::File);
     let directory = entry("photos", crate::model::EntryKind::Directory);
-    assert!(entry_responds_to_single_click(&supported, true));
-    assert!(!entry_responds_to_single_click(&supported, false));
-    assert!(!entry_responds_to_single_click(&unsupported, true));
-    assert!(entry_responds_to_single_click(&directory, false));
+    assert!(entry_responds_to_preview_click(&supported, true));
+    assert!(!entry_responds_to_preview_click(&supported, false));
+    assert!(!entry_responds_to_preview_click(&unsupported, true));
+    assert!(!entry_responds_to_preview_click(&directory, true));
 }
 
 #[test]
@@ -532,6 +634,33 @@ fn pointer_preview_handler_ignores_double_click_activation() {
 }
 
 #[test]
+fn pointer_activation_respects_entry_type_click_count_and_modifiers() {
+    let activation = ClickActivation {
+        files: ClickCount::Two,
+        folders: ClickCount::One,
+    };
+
+    assert!(should_activate_single_click(
+        1, true, activation, false, false, false
+    ));
+    assert!(!should_activate_single_click(
+        1, false, activation, false, false, false
+    ));
+    assert!(!should_activate_single_click(
+        2, true, activation, false, false, false
+    ));
+    assert!(!should_activate_single_click(
+        1, true, activation, true, false, false
+    ));
+    assert!(!should_activate_single_click(
+        1, true, activation, false, true, false
+    ));
+    assert!(!should_activate_single_click(
+        1, true, activation, false, false, true
+    ));
+}
+
+#[test]
 fn pressing_an_item_in_a_multi_selection_preserves_the_drag_group() {
     assert!(should_preserve_drag_selection(true, 2));
     assert!(should_preserve_drag_selection(true, 8));
@@ -541,28 +670,56 @@ fn pressing_an_item_in_a_multi_selection_preserves_the_drag_group() {
 
 #[test]
 fn paste_prefers_the_hovered_pane_then_the_deepest_pane() {
-    assert_eq!(paste_destination_depth(Some(1), 3), Some(1));
-    assert_eq!(paste_destination_depth(None, 3), Some(2));
-    assert_eq!(paste_destination_depth(Some(4), 3), Some(2));
-    assert_eq!(paste_destination_depth(None, 0), None);
+    assert_eq!(
+        paste_destination_depth(BrowserMode::Columns, Some(1), Some(2), 3),
+        Some(1)
+    );
+    assert_eq!(
+        paste_destination_depth(BrowserMode::Columns, None, Some(1), 3),
+        Some(2)
+    );
+    assert_eq!(
+        paste_destination_depth(BrowserMode::Columns, Some(4), Some(1), 3),
+        Some(2)
+    );
+    assert_eq!(
+        paste_destination_depth(BrowserMode::Columns, None, None, 0),
+        None
+    );
 }
 
 #[test]
-fn new_folder_prefers_the_hovered_pane_then_falls_back_safely() {
+fn single_pane_paste_uses_the_active_browser_depth() {
+    for mode in [BrowserMode::Grid, BrowserMode::Explorer] {
+        assert_eq!(paste_destination_depth(mode, None, Some(2), 0), Some(2));
+    }
+}
+
+#[test]
+fn new_folder_prefers_the_focused_pane_then_falls_back_safely() {
+    assert_eq!(new_folder_destination_depth(Some(1), Some(2), 3), Some(1));
+    assert_eq!(new_folder_destination_depth(None, Some(2), 3), Some(2));
+    assert_eq!(new_folder_destination_depth(Some(5), Some(1), 3), Some(1));
+    assert_eq!(new_folder_destination_depth(None, None, 3), Some(2));
+    assert_eq!(new_folder_destination_depth(None, None, 0), None);
+}
+
+#[test]
+fn open_terminal_prefers_the_hovered_pane_then_falls_back_safely() {
     assert_eq!(
-        new_folder_destination_depth(Some(1), Some(0), Some(2), 3),
+        terminal_destination_depth(Some(1), Some(0), Some(2), 3),
         Some(1)
     );
     assert_eq!(
-        new_folder_destination_depth(None, Some(0), Some(2), 3),
+        terminal_destination_depth(None, Some(0), Some(2), 3),
         Some(0)
     );
     assert_eq!(
-        new_folder_destination_depth(Some(4), Some(5), Some(1), 3),
+        terminal_destination_depth(Some(4), Some(5), Some(1), 3),
         Some(1)
     );
-    assert_eq!(new_folder_destination_depth(None, None, None, 3), Some(2));
-    assert_eq!(new_folder_destination_depth(None, None, None, 0), None);
+    assert_eq!(terminal_destination_depth(None, None, None, 3), Some(2));
+    assert_eq!(terminal_destination_depth(None, None, None, 0), None);
 }
 
 #[test]
@@ -1070,4 +1227,146 @@ fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
 
     assert_eq!(model_display_name(&encoded_visible), "photo");
     assert_eq!(model_display_name(&encoded_hidden), ".config");
+}
+
+#[test]
+fn shell_escape_path_escapes_spaces_and_metacharacters_but_not_filename_unicode() {
+    assert_eq!(
+        shell_escape_path(Path::new("/mnt/Mass 1/Movies\u{2044}TV")),
+        "/mnt/Mass\\ 1/Movies\u{2044}TV"
+    );
+    assert_eq!(
+        shell_escape_path(Path::new("/tmp/archive (final) v1.2.tar.gz")),
+        "/tmp/archive\\ \\(final\\)\\ v1.2.tar.gz"
+    );
+    assert_eq!(
+        shell_escape_path(Path::new("/home/user/plain")),
+        "/home/user/plain"
+    );
+}
+
+#[test]
+fn copy_path_text_adds_trailing_slash_to_directories_only() {
+    let directory = Location::local("/mnt/Mass 1/Movies\u{2044}TV");
+    assert_eq!(
+        copy_path_text(&directory, true),
+        "/mnt/Mass\\ 1/Movies\u{2044}TV/"
+    );
+    assert_eq!(
+        copy_path_text(&directory, false),
+        "/mnt/Mass\\ 1/Movies\u{2044}TV"
+    );
+}
+
+#[test]
+fn copy_path_text_keeps_uris_unescaped() {
+    let remote = Location::uri("smb://server/share/folder");
+    assert_eq!(copy_path_text(&remote, true), "smb://server/share/folder");
+}
+
+#[test]
+fn shell_escape_path_preserves_newlines_and_single_quotes() {
+    assert_eq!(
+        shell_escape_path(Path::new("/tmp/line\nbob's notes")),
+        "'/tmp/line\nbob'\\''s notes'"
+    );
+}
+
+#[test]
+fn pinning_requires_an_available_non_trash_directory() {
+    let entry = |location, kind| FileEntry {
+        location,
+        native_name: "item".into(),
+        display_name: "item".into(),
+        kind,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let directory = entry(
+        Location::local("/fixture/folder"),
+        crate::model::EntryKind::Directory,
+    );
+    let file = entry(
+        Location::local("/fixture/file"),
+        crate::model::EntryKind::File,
+    );
+    let trash_directory = entry(
+        Location::uri("trash:///deleted-folder"),
+        crate::model::EntryKind::Directory,
+    );
+
+    assert!(can_pin_entry(&directory, PinStatus::Available));
+    assert!(!can_pin_entry(&directory, PinStatus::Pinned));
+    assert!(!can_pin_entry(&directory, PinStatus::Unavailable));
+    assert!(!can_pin_entry(&file, PinStatus::Available));
+    assert!(!can_pin_entry(&trash_directory, PinStatus::Available));
+}
+
+#[test]
+fn type_groups_name_folders_and_broken_links_directly() {
+    assert_eq!(model_type_group("dv\tprojects"), FOLDER_TYPE_GROUP);
+    assert_eq!(model_type_group("dv\tlinked"), FOLDER_TYPE_GROUP);
+    assert_eq!(model_type_group("xv\tdangling"), "Broken link");
+}
+
+#[test]
+fn files_of_an_unrecognized_type_share_one_group() {
+    assert_eq!(model_type_group("fv\tblob.qqqqq"), "File");
+    assert_eq!(model_type_group("fv\tarchive-index"), "File");
+}
+
+#[test]
+fn type_groups_come_from_the_shared_mime_database() {
+    let expected = gio::content_type_get_description(
+        &gio::content_type_guess(Some(Path::new("notes.json")), None::<&[u8]>).0,
+    );
+
+    assert_eq!(model_type_group("fv\tnotes.json"), expected);
+}
+
+#[test]
+fn repeated_lookups_of_one_suffix_agree() {
+    let first = model_type_group("fv\tone.py");
+    let second = model_type_group("fv\ttwo.py");
+
+    assert_eq!(first, second);
+    assert_ne!(first, "File");
+}
+
+#[test]
+fn retryable_delete_entries_keeps_only_the_named_locations() {
+    let entry = |name: &str| FileEntry {
+        location: Location::local(format!("/fixture/{name}")),
+        native_name: name.into(),
+        display_name: name.into(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let retryable = entry("share-file.txt");
+    let denied = entry("locked-file.txt");
+    let entries = vec![retryable.clone(), denied];
+
+    let kept = retryable_delete_entries(entries, std::slice::from_ref(&retryable.location));
+
+    assert_eq!(kept, vec![retryable]);
+}
+
+#[test]
+fn retryable_delete_entries_is_empty_when_nothing_matches() {
+    let entry = FileEntry {
+        location: Location::local("/fixture/photo"),
+        native_name: "photo".into(),
+        display_name: "photo".into(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    let kept = retryable_delete_entries(vec![entry], &[]);
+
+    assert!(kept.is_empty());
 }
