@@ -2,9 +2,10 @@
 
 use super::{
     BrowserMode, ClickActivation, ClickCount, EXPLORER_COLUMN_MIN_WIDTHS, EXPLORER_COLUMN_WIDTHS,
-    compare_type_groups, explorer_column_width, should_activate_pointer_click, type_groups_of,
-    value_type_group,
+    compare_type_groups, explorer_column_width, metadata_fill_position,
+    should_activate_pointer_click, type_groups_of, value_type_group,
 };
+use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 
 /// Model values as the panes store them: kind, hidden flag, then the display name.
 fn value(kind: char, name: &str) -> String {
@@ -67,6 +68,27 @@ fn single_click_activation_distinguishes_files_and_folders() {
     assert!(should_activate_pointer_click(1, true, activation));
     assert!(!should_activate_pointer_click(1, false, activation));
     assert!(!should_activate_pointer_click(2, true, activation));
+}
+
+#[test]
+fn alternate_modes_request_missing_metadata_for_bound_entries() {
+    let mut entry = FileEntry {
+        location: Location::local("/fixture/photo.jpg"),
+        native_name: "photo.jpg".into(),
+        display_name: "photo.jpg".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    assert_eq!(metadata_fill_position(Some(7), &entry), Some(7));
+    assert_eq!(metadata_fill_position(None, &entry), None);
+
+    entry.size = MetadataValue::Known(100);
+    assert_eq!(metadata_fill_position(Some(7), &entry), Some(7));
+    entry.modified_unix_seconds = MetadataValue::Known(1);
+    assert_eq!(metadata_fill_position(Some(7), &entry), None);
 }
 
 #[test]

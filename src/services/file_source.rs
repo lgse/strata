@@ -5,7 +5,7 @@ mod tests;
 
 use std::{fmt, rc::Rc, time::Duration};
 
-use crate::model::{FileEntry, Location, uri_contains_credentials};
+use crate::model::{FileEntry, Location, MetadataValue, uri_contains_credentials};
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct RequestId(pub u64);
@@ -15,6 +15,9 @@ pub struct DirectoryRequest {
     pub id: RequestId,
     pub location: Location,
     pub batch_size: usize,
+    /// When true, entries arrive with size and modification time. Size/date sorts set it;
+    /// other sorts stream identity only and fill the visible window afterwards.
+    pub include_metadata: bool,
     /// Caps how many entries a single load will retain/render, bounding worst-case time and
     /// memory on an adversarially large or unbounded directory.
     pub max_entries: usize,
@@ -183,10 +186,60 @@ pub enum DirectoryEvent {
         /// entry or time budget; already-emitted `Batch` entries are then a lower bound.
         truncated: bool,
     },
+    /// Consumers must not present these partial values as a completed sort.
+    MetadataIncomplete { request_id: RequestId },
     Failed {
         request_id: RequestId,
         message: String,
     },
+    /// Size/mtime arrivals for already-listed entries, positioned by the receiver
+    /// against stable locations. Zero or more chunks, then exactly one `MetadataFinished`
+    /// (dropping the `LoadHandle` first cancels the fill with no terminal event).
+    MetadataFilled {
+        request_id: RequestId,
+        updates: Vec<MetadataUpdate>,
+    },
+    /// Terminal outcome for a metadata fill: exactly one per fill, including empty fills.
+    /// Sorts wait for this event, never for a chunk, so a partial pass can never be
+    /// mistaken for a complete one.
+    MetadataFinished {
+        request_id: RequestId,
+        outcome: MetadataOutcome,
+    },
+}
+
+/// Terminal outcome for a metadata fill.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MetadataOutcome {
+    Complete,
+    /// The budget expired partway; emitted chunks still apply, the rest keep placeholders.
+    Truncated,
+    /// The provider cannot stat these entries; rows keep their placeholders.
+    Unsupported,
+    /// No trustworthy pass; rows keep placeholders and waiting sorts are abandoned.
+    Failed,
+    /// The fill was dropped before finishing. Providers never emit this; owners synthesize
+    /// it when they discard a fill's handle while a sort still waits on it.
+    Cancelled,
+}
+
+/// Fresh size/mtime for one listed entry. Either field may stay `Unknown`/`Unavailable`
+/// when the stat failed; the row keeps its placeholder for a later retry.
+#[derive(Clone, Debug)]
+pub struct MetadataUpdate {
+    pub location: Location,
+    pub size: MetadataValue<u64>,
+    pub modified_unix_seconds: MetadataValue<i64>,
+}
+
+#[derive(Clone, Debug)]
+pub struct MetadataRequest {
+    /// Fills for a superseded load are dropped, never applied to a reloaded column.
+    pub id: RequestId,
+    pub entries: Vec<Location>,
+    /// When true, stat the whole list (a sort's full pass); otherwise a viewport window.
+    pub full: bool,
+    pub time_budget: Duration,
 }
 
 /// A cancellable directory load. Dropping it cancels any unfinished provider work.
@@ -225,6 +278,24 @@ pub trait FileSource {
     }
 
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle;
+    fn supports_metadata_fill(&self, _location: &Location) -> bool {
+        false
+    }
+
+    /// Overrides must emit zero or more `MetadataFilled` chunks followed by exactly one
+    /// `MetadataFinished` terminal outcome, including for empty fills. Dropping the
+    /// returned `LoadHandle` aborts the fill without any terminal event.
+    fn fill_metadata(
+        &self,
+        request: MetadataRequest,
+        emit: Rc<dyn Fn(DirectoryEvent)>,
+    ) -> LoadHandle {
+        emit(DirectoryEvent::MetadataFinished {
+            request_id: request.id,
+            outcome: MetadataOutcome::Unsupported,
+        });
+        LoadHandle::new(|| {})
+    }
 
     fn watch(
         &self,

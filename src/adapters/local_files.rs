@@ -2,11 +2,14 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashMap,
-    io::ErrorKind,
+    collections::{HashMap, HashSet},
+    ffi::OsString,
+    fs,
+    io::{ErrorKind, Read},
+    os::unix::ffi::OsStringExt,
     path::{Path, PathBuf},
     rc::Rc,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use gtk::{gio, glib, prelude::*};
@@ -15,12 +18,17 @@ use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
-        LocationValidationError, RequestId, backend_unavailable_message, sanitize_uri_credentials,
+        LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
+        backend_unavailable_message, sanitize_uri_credentials,
     },
 };
 
-const ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,time::modified";
+const LIST_ATTRIBUTES: &str =
+    "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink";
+const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,time::modified";
+const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified";
 const MAX_PENDING_MONITOR_CHANGES: usize = 256;
+const MAX_HIDDEN_FILE_BYTES: u64 = 1024 * 1024;
 
 #[derive(Default)]
 pub struct LocalFileSource;
@@ -31,6 +39,16 @@ enum PendingMonitorChange {
     Remove(PathBuf),
     Move { from: PathBuf, to: PathBuf },
     Rescan,
+}
+
+enum NativeEnumeration {
+    Complete {
+        entries: Vec<FileEntry>,
+        truncated: bool,
+        metadata_complete: bool,
+    },
+    Failed(String),
+    Cancelled,
 }
 
 fn map_validation_error(error: std::io::Error) -> LocationValidationError {
@@ -103,27 +121,295 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         (gio::FileType::SymbolicLink, _) => EntryKind::SymbolicLink,
         _ => EntryKind::Other,
     };
+    let size = if matches!(
+        kind,
+        EntryKind::Directory | EntryKind::DirectorySymbolicLink
+    ) {
+        MetadataValue::Unknown
+    } else if info.has_attribute(gio::FILE_ATTRIBUTE_STANDARD_SIZE) {
+        u64::try_from(info.size())
+            .map(MetadataValue::Known)
+            .unwrap_or(MetadataValue::Unavailable)
+    } else {
+        MetadataValue::Unknown
+    };
+    let modified_unix_seconds = if info.has_attribute(gio::FILE_ATTRIBUTE_TIME_MODIFIED) {
+        info.modification_date_time()
+            .map(|modified| MetadataValue::Known(modified.to_unix()))
+            .unwrap_or(MetadataValue::Unavailable)
+    } else {
+        MetadataValue::Unknown
+    };
     FileEntry {
         location,
         native_name,
         display_name: info.display_name().to_string(),
         kind,
-        size: if matches!(
-            kind,
-            EntryKind::Directory | EntryKind::DirectorySymbolicLink
-        ) {
-            MetadataValue::Unknown
-        } else {
-            u64::try_from(info.size())
-                .map(MetadataValue::Known)
-                .unwrap_or(MetadataValue::Unavailable)
-        },
-        modified_unix_seconds: info
-            .modification_date_time()
-            .map(|modified| MetadataValue::Known(modified.to_unix()))
-            .unwrap_or(MetadataValue::Unavailable),
+        size,
+        modified_unix_seconds,
         is_hidden: info_is_hidden(&info),
     }
+}
+
+fn native_kind(file_type: fs::FileType, path: &Path) -> EntryKind {
+    if file_type.is_dir() {
+        return EntryKind::Directory;
+    }
+    if file_type.is_file() {
+        return EntryKind::File;
+    }
+    if !file_type.is_symlink() {
+        return EntryKind::Other;
+    }
+    match fs::metadata(path) {
+        Ok(metadata) if metadata.is_dir() => EntryKind::DirectorySymbolicLink,
+        Ok(metadata) if metadata.is_file() => EntryKind::FileSymbolicLink,
+        Ok(_) => EntryKind::Other,
+        Err(_) => EntryKind::SymbolicLink,
+    }
+}
+
+fn unix_seconds(time: SystemTime) -> Option<i64> {
+    match time.duration_since(UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_secs()).ok(),
+        Err(error) => {
+            let duration = error.duration();
+            let seconds = i64::try_from(duration.as_secs()).ok()?;
+            seconds
+                .checked_neg()?
+                .checked_sub(i64::from(duration.subsec_nanos() != 0))
+        }
+    }
+}
+
+fn fill_native_entry_metadata(entry: &mut FileEntry) {
+    let Some(path) = entry.location.native_path() else {
+        return;
+    };
+    let Ok(metadata) = fs::metadata(path) else {
+        entry.size = MetadataValue::Unknown;
+        entry.modified_unix_seconds = MetadataValue::Unknown;
+        return;
+    };
+    entry.size = if metadata.is_dir() {
+        MetadataValue::Unknown
+    } else {
+        MetadataValue::Known(metadata.len())
+    };
+    entry.modified_unix_seconds = metadata
+        .modified()
+        .ok()
+        .and_then(unix_seconds)
+        .map(MetadataValue::Known)
+        .unwrap_or(MetadataValue::Unavailable);
+}
+
+fn native_hidden_names(path: &Path) -> HashSet<OsString> {
+    let Some(bytes) = read_hidden_bounded(&path.join(".hidden")) else {
+        return HashSet::new();
+    };
+    bytes
+        .split(|byte| *byte == b'\n')
+        .filter(|name| !name.is_empty())
+        .map(|name| OsString::from_vec(name.strip_suffix(b"\r").unwrap_or(name).to_vec()))
+        .collect()
+}
+
+fn read_hidden_bounded(path: &Path) -> Option<Vec<u8>> {
+    // Opening a FIFO without `NONBLOCK` would block waiting for a writer.
+    let fd = rustix::fs::open(
+        path,
+        rustix::fs::OFlags::RDONLY
+            | rustix::fs::OFlags::NOFOLLOW
+            | rustix::fs::OFlags::CLOEXEC
+            | rustix::fs::OFlags::NONBLOCK,
+        rustix::fs::Mode::empty(),
+    )
+    .ok()?;
+    let stat = rustix::fs::fstat(&fd).ok()?;
+    if rustix::fs::FileType::from_raw_mode(stat.st_mode) != rustix::fs::FileType::RegularFile {
+        return None;
+    }
+    let file = std::fs::File::from(fd);
+    let mut bytes = Vec::new();
+    file.take(MAX_HIDDEN_FILE_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    if bytes.len() as u64 > MAX_HIDDEN_FILE_BYTES {
+        return None;
+    }
+    Some(bytes)
+}
+
+fn scan_native_directory(
+    path: &Path,
+    request: &DirectoryRequest,
+    cancellable: &gio::Cancellable,
+    deadline: Instant,
+) -> NativeEnumeration {
+    let children = match fs::read_dir(path) {
+        Ok(children) => children,
+        Err(error) => return NativeEnumeration::Failed(error.to_string()),
+    };
+    let hidden_names = native_hidden_names(path);
+    let mut entries = Vec::new();
+    let mut truncated = false;
+    for child in children {
+        if cancellable.is_cancelled() {
+            return NativeEnumeration::Cancelled;
+        }
+        if Instant::now() >= deadline {
+            truncated = true;
+            break;
+        }
+        let child = match child {
+            Ok(child) => child,
+            Err(error) => return NativeEnumeration::Failed(error.to_string()),
+        };
+        let native_name = child.file_name();
+        let is_hidden = native_name.as_encoded_bytes().first().copied() == Some(b'.')
+            || hidden_names.contains(&native_name);
+        if entries.len() == request.max_entries {
+            truncated = true;
+            break;
+        }
+        let file_type = match child.file_type() {
+            Ok(file_type) => file_type,
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(error) => return NativeEnumeration::Failed(error.to_string()),
+        };
+        let path = child.path();
+        let kind = native_kind(file_type, &path);
+        entries.push(FileEntry {
+            location: Location::local(path),
+            display_name: native_name.to_string_lossy().into_owned(),
+            native_name,
+            kind,
+            size: MetadataValue::Unknown,
+            modified_unix_seconds: MetadataValue::Unknown,
+            is_hidden,
+        });
+    }
+
+    let mut metadata_complete = true;
+    if request.include_metadata && !entries.is_empty() && Instant::now() < deadline {
+        let width = sort_fill_width().min(entries.len());
+        let chunk = entries.len().div_ceil(width);
+        std::thread::scope(|scope| {
+            for piece in entries.chunks_mut(chunk) {
+                let cancellable = cancellable.clone();
+                scope.spawn(move || {
+                    for entry in piece {
+                        if cancellable.is_cancelled() || Instant::now() >= deadline {
+                            break;
+                        }
+                        fill_native_entry_metadata(entry);
+                    }
+                });
+            }
+        });
+        if cancellable.is_cancelled() {
+            return NativeEnumeration::Cancelled;
+        }
+        metadata_complete = Instant::now() < deadline;
+    } else if request.include_metadata && !entries.is_empty() {
+        metadata_complete = false;
+    }
+
+    NativeEnumeration::Complete {
+        entries,
+        truncated,
+        metadata_complete,
+    }
+}
+
+fn enumerate_native(
+    request: DirectoryRequest,
+    emit: Rc<dyn Fn(DirectoryEvent)>,
+    started: Instant,
+    path: PathBuf,
+) -> LoadHandle {
+    let request_id = request.id;
+    let cancellable = gio::Cancellable::new();
+    let cancel = cancellable.clone();
+    let task = glib::MainContext::default().spawn_local(async move {
+        let deadline = started + request.time_budget;
+        let outcome = gio::spawn_blocking(move || {
+            scan_native_directory(&path, &request, &cancellable, deadline)
+        })
+        .await;
+        let Ok(outcome) = outcome else {
+            emit(DirectoryEvent::Failed {
+                request_id,
+                message: "Native directory worker failed".to_owned(),
+            });
+            return;
+        };
+        match outcome {
+            NativeEnumeration::Complete {
+                entries,
+                truncated,
+                metadata_complete,
+            } => {
+                let total_entries = entries.len();
+                if !entries.is_empty() {
+                    tracing::info!(
+                        request_id = request_id.0,
+                        entries = total_entries,
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        "first directory batch ready"
+                    );
+                    emit(DirectoryEvent::Batch {
+                        request_id,
+                        entries,
+                    });
+                }
+                if !metadata_complete {
+                    tracing::warn!(
+                        request_id = request_id.0,
+                        entries = total_entries,
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        reason = "metadata budget",
+                        "initial metadata pass incomplete"
+                    );
+                    emit(DirectoryEvent::MetadataIncomplete { request_id });
+                }
+                if truncated {
+                    tracing::warn!(
+                        request_id = request_id.0,
+                        entries = total_entries,
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        reason = "budget",
+                        "directory load truncated"
+                    );
+                } else {
+                    tracing::info!(
+                        request_id = request_id.0,
+                        entries = total_entries,
+                        elapsed_ms = started.elapsed().as_millis() as u64,
+                        "directory load finished"
+                    );
+                }
+                emit(DirectoryEvent::Finished {
+                    request_id,
+                    truncated,
+                });
+            }
+            NativeEnumeration::Failed(message) => {
+                tracing::warn!(request_id = request_id.0, "directory load failed");
+                emit(DirectoryEvent::Failed {
+                    request_id,
+                    message,
+                });
+            }
+            NativeEnumeration::Cancelled => {}
+        }
+    });
+    LoadHandle::new(move || {
+        tracing::debug!(request_id = request_id.0, "directory load cancelled");
+        cancel.cancel();
+        task.abort();
+    })
 }
 
 impl FileSource for LocalFileSource {
@@ -182,6 +468,10 @@ impl FileSource for LocalFileSource {
         let started = Instant::now();
         log_directory_load_started(request_id, &location);
 
+        if let Some(path) = location.native_path() {
+            return enumerate_native(request, emit, started, path.to_path_buf());
+        }
+
         let task = glib::MainContext::default().spawn_local(async move {
             let deadline = started + request.time_budget;
             let finish_truncated = |entries: usize, reason: &'static str| {
@@ -206,10 +496,15 @@ impl FileSource for LocalFileSource {
                 finish_truncated(0, "time budget");
                 return;
             }
+            let attributes = if request.include_metadata {
+                FULL_ATTRIBUTES
+            } else {
+                LIST_ATTRIBUTES
+            };
             let enumerator = match glib::future_with_timeout(
                 remaining,
                 directory.enumerate_children_future(
-                    ATTRIBUTES,
+                    attributes,
                     gio::FileQueryInfoFlags::NONE,
                     glib::Priority::DEFAULT,
                 ),
@@ -321,6 +616,93 @@ impl FileSource for LocalFileSource {
         })
     }
 
+    fn supports_metadata_fill(&self, _location: &Location) -> bool {
+        true
+    }
+
+    fn fill_metadata(
+        &self,
+        request: MetadataRequest,
+        emit: Rc<dyn Fn(DirectoryEvent)>,
+    ) -> LoadHandle {
+        // Cap viewport fills so a buggy caller cannot stat a full directory.
+        const MAX_FILL_ENTRIES: usize = 1024;
+        let request_id = request.id;
+        let mut locations = request.entries;
+        if !request.full {
+            locations.truncate(MAX_FILL_ENTRIES);
+        }
+        let all_native = locations
+            .iter()
+            .all(|location| location.native_path().is_some());
+        if request.full && all_native && !locations.is_empty() {
+            return fill_parallel(request_id, locations, request.time_budget, emit);
+        }
+        let task = glib::MainContext::default().spawn_local(async move {
+            let deadline = Instant::now() + request.time_budget;
+            let mut updates = Vec::with_capacity(locations.len());
+            let mut truncated = false;
+            let mut attempted = 0usize;
+            let mut failed = 0usize;
+            for location in &locations {
+                if Instant::now() >= deadline {
+                    truncated = true;
+                    break;
+                }
+                let Some(file) = location
+                    .native_path()
+                    .map(gio::File::for_path)
+                    .or_else(|| location.uri_value().map(gio::File::for_uri))
+                else {
+                    continue;
+                };
+                attempted += 1;
+                // Bound each stat by the remaining budget so one hung mount cannot stall the fill.
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    truncated = true;
+                    break;
+                }
+                let (update, ok) = match glib::future_with_timeout(
+                    remaining,
+                    file.query_info_future(
+                        METADATA_ATTRIBUTES,
+                        gio::FileQueryInfoFlags::NONE,
+                        glib::Priority::DEFAULT,
+                    ),
+                )
+                .await
+                {
+                    Ok(Ok(info)) => update_from_info(&info, location),
+                    Ok(Err(_)) => (
+                        MetadataUpdate {
+                            location: location.clone(),
+                            size: MetadataValue::Unknown,
+                            modified_unix_seconds: MetadataValue::Unknown,
+                        },
+                        false,
+                    ),
+                    Err(_) => {
+                        truncated = true;
+                        break;
+                    }
+                };
+                failed += usize::from(!ok);
+                updates.push(update);
+            }
+            emit_fill_outcome(
+                &emit,
+                request_id,
+                updates,
+                truncated,
+                attempted,
+                failed,
+                locations.len(),
+            );
+        });
+        LoadHandle::new(move || task.abort())
+    }
+
     fn watch(
         &self,
         location: Location,
@@ -422,6 +804,183 @@ impl FileSource for LocalFileSource {
     }
 }
 
+fn sort_fill_width() -> usize {
+    std::thread::available_parallelism()
+        .map(|parallelism| parallelism.get().min(8))
+        .unwrap_or(4)
+        .max(1)
+}
+fn fill_parallel(
+    request_id: RequestId,
+    locations: Vec<Location>,
+    time_budget: Duration,
+    emit: Rc<dyn Fn(DirectoryEvent)>,
+) -> LoadHandle {
+    fill_parallel_with(sort_fill_width(), request_id, locations, time_budget, emit)
+}
+
+fn fill_parallel_with(
+    width: usize,
+    request_id: RequestId,
+    locations: Vec<Location>,
+    time_budget: Duration,
+    emit: Rc<dyn Fn(DirectoryEvent)>,
+) -> LoadHandle {
+    let cancellable = gio::Cancellable::new();
+    let cancel = cancellable.clone();
+    let cancelled = cancellable.clone();
+    let task = glib::MainContext::default().spawn_local(async move {
+        let deadline = Instant::now() + time_budget;
+        let outcome = gio::spawn_blocking(move || {
+            let width = width.max(1);
+            let chunk = locations.len().div_ceil(width);
+            let mut updates = Vec::with_capacity(locations.len());
+            let mut attempted = 0usize;
+            let mut failed = 0usize;
+            let mut truncated = false;
+            std::thread::scope(|scope| {
+                let mut handles = Vec::new();
+                for piece in locations.chunks(chunk.max(1)) {
+                    let cancellable = cancellable.clone();
+                    handles.push(scope.spawn(move || {
+                        let mut updates = Vec::with_capacity(piece.len());
+                        let mut attempted = 0usize;
+                        let mut failed = 0usize;
+                        let mut truncated = false;
+                        for location in piece {
+                            if cancellable.is_cancelled() || Instant::now() >= deadline {
+                                truncated = true;
+                                break;
+                            }
+                            let Some(path) = location.native_path() else {
+                                continue;
+                            };
+                            attempted += 1;
+                            let (update, ok) = match gio::File::for_path(path).query_info(
+                                METADATA_ATTRIBUTES,
+                                gio::FileQueryInfoFlags::NONE,
+                                Some(&cancellable),
+                            ) {
+                                Ok(info) => update_from_info(&info, location),
+                                Err(_) => (
+                                    MetadataUpdate {
+                                        location: location.clone(),
+                                        size: MetadataValue::Unknown,
+                                        modified_unix_seconds: MetadataValue::Unknown,
+                                    },
+                                    false,
+                                ),
+                            };
+                            failed += usize::from(!ok);
+                            updates.push(update);
+                        }
+                        (updates, attempted, failed, truncated)
+                    }));
+                }
+                for handle in handles {
+                    let Ok((piece, attempted_piece, failed_piece, truncated_piece)) = handle.join()
+                    else {
+                        truncated = true;
+                        continue;
+                    };
+                    updates.extend(piece);
+                    attempted += attempted_piece;
+                    failed += failed_piece;
+                    truncated = truncated || truncated_piece;
+                }
+            });
+            (updates, attempted, failed, truncated, locations.len())
+        })
+        .await;
+        let Ok((updates, attempted, failed, truncated, total)) = outcome else {
+            return;
+        };
+        if cancelled.is_cancelled() {
+            emit(DirectoryEvent::MetadataFinished {
+                request_id,
+                outcome: MetadataOutcome::Cancelled,
+            });
+            return;
+        }
+        if !updates.is_empty() {
+            emit(DirectoryEvent::MetadataFilled {
+                request_id,
+                updates,
+            });
+        }
+        let outcome = if truncated {
+            MetadataOutcome::Truncated
+        } else if attempted == 0 && total > 0 {
+            MetadataOutcome::Unsupported
+        } else if attempted > 0 && failed == attempted {
+            MetadataOutcome::Failed
+        } else {
+            MetadataOutcome::Complete
+        };
+        emit(DirectoryEvent::MetadataFinished {
+            request_id,
+            outcome,
+        });
+    });
+    LoadHandle::new(move || {
+        cancel.cancel();
+        task.abort();
+    })
+}
+
+fn update_from_info(info: &gio::FileInfo, location: &Location) -> (MetadataUpdate, bool) {
+    let size = if info.file_type() == gio::FileType::Directory {
+        MetadataValue::Unknown
+    } else {
+        u64::try_from(info.size())
+            .map(MetadataValue::Known)
+            .unwrap_or(MetadataValue::Unavailable)
+    };
+    let modified_unix_seconds = info
+        .modification_date_time()
+        .map(|modified| MetadataValue::Known(modified.to_unix()))
+        .unwrap_or(MetadataValue::Unavailable);
+    let ok = size != MetadataValue::Unknown || modified_unix_seconds != MetadataValue::Unknown;
+    (
+        MetadataUpdate {
+            location: location.clone(),
+            size,
+            modified_unix_seconds,
+        },
+        ok,
+    )
+}
+
+fn emit_fill_outcome(
+    emit: &Rc<dyn Fn(DirectoryEvent)>,
+    request_id: RequestId,
+    updates: Vec<MetadataUpdate>,
+    truncated: bool,
+    attempted: usize,
+    failed: usize,
+    total: usize,
+) {
+    if !updates.is_empty() {
+        emit(DirectoryEvent::MetadataFilled {
+            request_id,
+            updates,
+        });
+    }
+    let outcome = if truncated {
+        MetadataOutcome::Truncated
+    } else if attempted == 0 && total > 0 {
+        MetadataOutcome::Unsupported
+    } else if attempted > 0 && failed == attempted {
+        MetadataOutcome::Failed
+    } else {
+        MetadataOutcome::Complete
+    };
+    emit(DirectoryEvent::MetadataFinished {
+        request_id,
+        outcome,
+    });
+}
+
 fn log_directory_load_started(request_id: RequestId, location: &Location) {
     tracing::info!(
         request_id = request_id.0,
@@ -517,7 +1076,7 @@ fn query_monitored_entry(
         let file = gio::File::for_path(&path);
         let result = file
             .query_info_future(
-                ATTRIBUTES,
+                FULL_ATTRIBUTES,
                 gio::FileQueryInfoFlags::NONE,
                 glib::Priority::DEFAULT,
             )

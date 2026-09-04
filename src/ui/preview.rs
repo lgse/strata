@@ -32,6 +32,8 @@ struct PreviewState {
     provider: Rc<dyn PreviewProvider>,
     revealer: gtk::Revealer,
     pane: gtk::Box,
+    header_handle: gtk::Box,
+    icon: gtk::Image,
     title: gtk::Label,
     size: gtk::Label,
     modified: gtk::Label,
@@ -107,8 +109,13 @@ impl PreviewDrawer {
         )));
         close.add_css_class("preview-close");
         close.add_css_class("preview-header-action");
-        header.append(&icon);
-        header.append(&title);
+        let header_handle = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        header_handle.add_css_class("preview-header-handle");
+        header_handle.set_hexpand(true);
+        header_handle.set_cursor_from_name(Some("grab"));
+        header_handle.append(&icon);
+        header_handle.append(&title);
+        header.append(&header_handle);
         header.append(&open);
         header.append(&print);
         header.append(&close);
@@ -140,6 +147,8 @@ impl PreviewDrawer {
             provider,
             revealer,
             pane,
+            header_handle: header_handle.clone(),
+            icon,
             title,
             size,
             modified,
@@ -165,6 +174,7 @@ impl PreviewDrawer {
             animating: Cell::new(false),
             animation_generation: Rc::new(Cell::new(0)),
         });
+        install_preview_drag(&header_handle, &state);
         let weak = Rc::downgrade(&state);
         open.connect_clicked(move |_| {
             let Some(state) = weak.upgrade() else {
@@ -473,6 +483,7 @@ impl PreviewState {
 
     fn load(self: &Rc<Self>, entry: FileEntry, pdf_page: i32) {
         self.current.replace(Some(entry.clone()));
+        crate::assets::set_primary_icon(&self.icon, super::browser::entry_icon(&entry));
         self.title.set_text(&entry.display_name);
         self.title
             .set_tooltip_text(Some(&entry.location.display_path()));
@@ -584,6 +595,8 @@ impl PreviewState {
                         picture.set_content_fit(gtk::ContentFit::Contain);
                         picture.set_hexpand(true);
                         picture.set_vexpand(true);
+                        picture.set_cursor_from_name(Some("grab"));
+                        install_preview_drag(&picture, self);
                         self.content.append(&picture);
                     }
                     Err(error) => self.show_message("Preview unavailable", &error.to_string()),
@@ -610,6 +623,8 @@ impl PreviewState {
                 picture.set_content_fit(gtk::ContentFit::Contain);
                 picture.set_hexpand(true);
                 picture.set_vexpand(true);
+                picture.set_cursor_from_name(Some("grab"));
+                install_preview_drag(&picture, self);
 
                 let overlay = gtk::Overlay::new();
                 overlay.set_child(Some(&picture));
@@ -1634,6 +1649,39 @@ fn fmt_time(microseconds: i64) -> String {
     let minutes = total_seconds / 60;
     let seconds = total_seconds % 60;
     format!("{minutes}:{seconds:02}")
+}
+
+fn preview_drag_entries(entry: Option<&FileEntry>) -> Option<Vec<FileEntry>> {
+    entry.cloned().map(|entry| vec![entry])
+}
+
+fn install_preview_drag(widget: &impl IsA<gtk::Widget>, state: &Rc<PreviewState>) {
+    let drag = gtk::DragSource::builder()
+        .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
+        .build();
+    drag.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let weak = Rc::downgrade(state);
+    drag.connect_prepare(move |source, x, y| {
+        let state = weak.upgrade()?;
+        let entries = preview_drag_entries(state.current.borrow().as_ref())?;
+        let paintable = gtk::WidgetPaintable::new(Some(&state.header_handle));
+        source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);
+        super::browser::file_drag_content(&entries)
+    });
+    let weak = Rc::downgrade(state);
+    drag.connect_drag_begin(move |_, _| {
+        if let Some(state) = weak.upgrade() {
+            state.content.add_css_class("dragging");
+        }
+    });
+    let weak = Rc::downgrade(state);
+    drag.connect_drag_end(move |_, _, _| {
+        if let Some(state) = weak.upgrade() {
+            state.content.remove_css_class("dragging");
+            super::browser::slide_out(&state.content);
+        }
+    });
+    widget.add_controller(drag);
 }
 
 #[cfg(test)]

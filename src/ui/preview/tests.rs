@@ -2,8 +2,8 @@
 
 use super::{
     MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, format_file_size, format_media_time,
-    media_error_feedback, pdf_zoom_after_scroll, preview_width_for_empty_space, print_fit,
-    printable_page,
+    media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
+    preview_width_for_empty_space, print_fit, printable_page,
 };
 
 use crate::services::PreviewContent;
@@ -128,4 +128,24 @@ fn media_time_formats_minutes_and_seconds() {
 #[test]
 fn media_time_clamps_negative_timestamps_to_zero() {
     assert_eq!(format_media_time(-500_000, 10_000_000), "0:00/0:10");
+}
+
+#[test]
+fn preview_drag_entries_returns_none_when_no_entry_loaded() {
+    assert_eq!(preview_drag_entries(None), None);
+}
+
+#[test]
+fn preview_drag_entries_wraps_loaded_file_entry() {
+    let entry = crate::model::FileEntry {
+        location: crate::model::Location::local("/tmp/test.png"),
+        native_name: std::ffi::OsString::from("test.png"),
+        display_name: "test.png".to_owned(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Known(100),
+        modified_unix_seconds: crate::model::MetadataValue::Known(1),
+        is_hidden: false,
+    };
+    let dragged = preview_drag_entries(Some(&entry));
+    assert_eq!(dragged, Some(vec![entry]));
 }

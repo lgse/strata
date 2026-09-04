@@ -9,13 +9,13 @@ use crate::services::{
 
 use super::{
     CHANNEL_ORDER, COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
-    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, aur_update_command, channel_index,
-    effective_update_channel, install_guard, installed_version_status, is_stale_check,
-    managed_channel_description, managed_install_summary, offer_still_eligible,
-    omarchy_update_command, responsive_dialog_size, shows_available_release_notes,
-    theme_background_is_light, theme_name_matches, update_check_message, update_dialog_status,
-    update_status_markup, uses_compact_navigation, video_preview_backend_label,
-    video_preview_control_state,
+    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, UPDATE_DUE_INTERVAL, aur_update_command,
+    channel_index, effective_update_channel, install_guard, installed_version_status,
+    is_stale_check, managed_channel_description, managed_install_summary, offer_still_eligible,
+    omarchy_update_command, resolve_update_method_async, responsive_dialog_size,
+    shows_available_release_notes, theme_background_is_light, theme_name_matches, update_check_due,
+    update_check_message, update_dialog_status, update_status_markup, uses_compact_navigation,
+    video_preview_backend_label, video_preview_control_state,
 };
 use crate::sandbox::MediaPreviewBackend;
 
@@ -377,4 +377,45 @@ fn the_selector_highlights_the_button_for_the_persisted_channel() {
     for (index, channel) in CHANNEL_ORDER.into_iter().enumerate() {
         assert_eq!(channel_index(channel), index);
     }
+}
+
+#[test]
+fn due_check_respects_its_ttl() {
+    use std::time::{Duration, Instant};
+
+    let now = Instant::now();
+    assert!(update_check_due(None, now));
+    assert!(!update_check_due(Some(now), now));
+    assert!(update_check_due(Some(now - UPDATE_DUE_INTERVAL), now));
+    assert!(!update_check_due(
+        Some(now - UPDATE_DUE_INTERVAL + Duration::from_secs(1)),
+        now
+    ));
+}
+
+#[test]
+fn update_method_resolves_and_caches() {
+    use std::time::{Duration, Instant};
+
+    let _serial = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let first: Rc<std::cell::RefCell<Option<UpdateMethod>>> =
+        Rc::new(std::cell::RefCell::new(None));
+    let second: Rc<std::cell::RefCell<Option<UpdateMethod>>> =
+        Rc::new(std::cell::RefCell::new(None));
+    let capture = first.clone();
+    resolve_update_method_async(move |method| {
+        *capture.borrow_mut() = Some(method);
+    });
+    let deadline = Instant::now() + Duration::from_secs(15);
+    while first.borrow().is_none() && Instant::now() < deadline {
+        gtk::glib::MainContext::default().iteration(true);
+    }
+    let resolved = first.borrow().expect("the update method should resolve");
+    let capture = second.clone();
+    resolve_update_method_async(move |method| {
+        *capture.borrow_mut() = Some(method);
+    });
+    assert_eq!(second.borrow().expect("the cache should answer"), resolved);
 }
