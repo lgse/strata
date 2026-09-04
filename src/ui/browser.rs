@@ -6345,6 +6345,9 @@ pub(super) fn install_item_context_menu(
         let entries = state.browser.selected_entries();
         preview.set_visible(entry_supports_quick_preview(&entry));
         open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
+        let trash_visible = move_to_trash_is_visible(in_trash, state.browser.can_trash_at(depth));
+        move_to_trash.set_visible(trash_visible);
+        trash_multiple.set_visible(trash_visible);
         permanent_delete.set_visible(!in_trash);
         permanent_delete_multiple.set_visible(!in_trash);
         pin.set_visible(entry.is_directory() && !is_trash_location(&entry.location));
@@ -8771,6 +8774,20 @@ fn is_trash_location(location: &Location) -> bool {
     location
         .uri_value()
         .is_some_and(|uri| uri.starts_with("trash:"))
+}
+
+/// Whether the "Move to Trash" context-menu option should be shown (issue #284).
+///
+/// Always visible while already browsing Trash, where it's really "Permanently
+/// delete" under a shared label -- `can_trash` describes an ordinary location's
+/// Trash support and has no bearing there. Otherwise, visible unless the
+/// location's `access::can-trash` check came back a definite `Some(false)`;
+/// `None` (not yet resolved, or the check itself couldn't be answered) defaults
+/// to visible, since offering Trash and letting the operation fail is the
+/// existing, safer fallback (issue #179) rather than ever hiding the only
+/// delete option this menu has.
+fn move_to_trash_is_visible(in_trash: bool, can_trash: Option<bool>) -> bool {
+    in_trash || can_trash.unwrap_or(true)
 }
 
 fn compact_display_path(location: &Location) -> String {

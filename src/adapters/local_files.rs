@@ -46,6 +46,7 @@ enum NativeEnumeration {
         entries: Vec<FileEntry>,
         truncated: bool,
         metadata_complete: bool,
+        can_trash: Option<bool>,
     },
     Failed(String),
     Cancelled,
@@ -251,6 +252,16 @@ fn scan_native_directory(
         Ok(children) => children,
         Err(error) => return NativeEnumeration::Failed(error.to_string()),
     };
+    // A single stat-speed query on the directory itself, not per entry -- this is cheap
+    // enough to always run rather than threading a separate opt-out through the request.
+    let can_trash = gio::File::for_path(path)
+        .query_info(
+            gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH,
+            gio::FileQueryInfoFlags::NONE,
+            Some(cancellable),
+        )
+        .ok()
+        .map(|info| info.boolean(gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH));
     let hidden_names = native_hidden_names(path);
     let mut entries = Vec::new();
     let mut truncated = false;
@@ -320,6 +331,7 @@ fn scan_native_directory(
         entries,
         truncated,
         metadata_complete,
+        can_trash,
     }
 }
 
@@ -350,6 +362,7 @@ fn enumerate_native(
                 entries,
                 truncated,
                 metadata_complete,
+                can_trash,
             } => {
                 let total_entries = entries.len();
                 if !entries.is_empty() {
@@ -393,6 +406,7 @@ fn enumerate_native(
                 emit(DirectoryEvent::Finished {
                     request_id,
                     truncated,
+                    can_trash,
                 });
             }
             NativeEnumeration::Failed(message) => {
@@ -473,6 +487,26 @@ impl FileSource for LocalFileSource {
         }
 
         let task = glib::MainContext::default().spawn_local(async move {
+            let directory = location
+                .native_path()
+                .map(gio::File::for_path)
+                .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()));
+            // Given its own full time budget rather than sharing the enumeration deadline
+            // below: a single stat-speed query on the directory itself, not per entry, so it
+            // should never be the reason a load looks truncated.
+            let can_trash = glib::future_with_timeout(
+                request.time_budget,
+                directory.query_info_future(
+                    gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH,
+                    gio::FileQueryInfoFlags::NONE,
+                    glib::Priority::DEFAULT,
+                ),
+            )
+            .await
+            .ok()
+            .and_then(Result::ok)
+            .map(|info| info.boolean(gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH));
+
             let deadline = started + request.time_budget;
             let finish_truncated = |entries: usize, reason: &'static str| {
                 tracing::warn!(
@@ -485,12 +519,9 @@ impl FileSource for LocalFileSource {
                 emit(DirectoryEvent::Finished {
                     request_id,
                     truncated: true,
+                    can_trash,
                 });
             };
-            let directory = location
-                .native_path()
-                .map(gio::File::for_path)
-                .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()));
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
                 finish_truncated(0, "time budget");
@@ -556,6 +587,7 @@ impl FileSource for LocalFileSource {
                         emit(DirectoryEvent::Finished {
                             request_id,
                             truncated: false,
+                            can_trash,
                         });
                         break;
                     }

@@ -42,6 +42,11 @@ pub struct ColumnState {
     selection_target: Option<Location>,
     pub load_state: LoadState,
     pub truncated: bool,
+    /// Whether entries here can be moved to Trash, resolved once when the
+    /// directory loads (see `DirectoryEvent::Finished`). `None` before the first
+    /// load finishes, or when the check itself couldn't be answered; treated as
+    /// "assume trashable" by consumers.
+    pub can_trash: Option<bool>,
     preferences: ViewPreferences,
     request_id: RequestId,
     select_first_on_load: bool,
@@ -168,6 +173,7 @@ impl NavigationState {
                 selection_target: None,
                 load_state: LoadState::Loading,
                 truncated: false,
+                can_trash: None,
                 preferences,
                 request_id,
                 select_first_on_load: false,
@@ -236,6 +242,7 @@ impl NavigationState {
             selection_target: None,
             load_state: LoadState::Loading,
             truncated: false,
+            can_trash: None,
             preferences: self.preferences,
             request_id,
             select_first_on_load: false,
@@ -477,6 +484,7 @@ impl NavigationState {
         column.selected = None;
         column.load_state = LoadState::Loading;
         column.truncated = false;
+        column.can_trash = None;
         column.request_id = request_id;
         Some(column.location.clone())
     }
@@ -575,10 +583,20 @@ impl NavigationState {
         Some(self.columns.get(depth)?.location.clone())
     }
 
-    pub fn finish(&mut self, request_id: RequestId, truncated: bool) -> Option<usize> {
+    pub fn can_trash_at(&self, depth: usize) -> Option<bool> {
+        self.columns.get(depth)?.can_trash
+    }
+
+    pub fn finish(
+        &mut self,
+        request_id: RequestId,
+        truncated: bool,
+        can_trash: Option<bool>,
+    ) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
         column.select_first_on_load = false;
         column.truncated = truncated;
+        column.can_trash = can_trash;
         column.load_state = if column.entries.is_empty() {
             LoadState::Empty
         } else {

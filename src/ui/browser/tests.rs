@@ -1451,3 +1451,28 @@ fn retryable_delete_entries_is_empty_when_nothing_matches() {
 
     assert!(kept.is_empty());
 }
+
+#[test]
+fn move_to_trash_hides_only_for_a_confirmed_unsupported_location() {
+    assert!(!move_to_trash_is_visible(false, Some(false)));
+}
+
+#[test]
+fn move_to_trash_shows_for_a_confirmed_supported_location() {
+    assert!(move_to_trash_is_visible(false, Some(true)));
+}
+
+#[test]
+fn move_to_trash_defaults_to_visible_before_the_check_resolves() {
+    // `None` covers both "the load hasn't finished yet" and "the check itself
+    // couldn't be answered" -- neither should ever hide the only delete option.
+    assert!(move_to_trash_is_visible(false, None));
+}
+
+#[test]
+fn move_to_trash_stays_visible_inside_trash_regardless_of_can_trash() {
+    // Inside Trash this button is really "Permanently delete" under a shared
+    // label; an ordinary location's Trash support is irrelevant there.
+    assert!(move_to_trash_is_visible(true, Some(false)));
+    assert!(move_to_trash_is_visible(true, None));
+}

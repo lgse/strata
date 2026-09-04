@@ -416,6 +416,13 @@ fn finished_truncated(events: &[DirectoryEvent]) -> Option<bool> {
     })
 }
 
+fn finished_can_trash(events: &[DirectoryEvent]) -> Option<Option<bool>> {
+    events.iter().find_map(|event| match event {
+        DirectoryEvent::Finished { can_trash, .. } => Some(*can_trash),
+        _ => None,
+    })
+}
+
 #[test]
 fn enumerate_reports_truncated_once_the_entry_budget_is_exceeded() {
     let root = unique_fixture_root("entry-budget");
@@ -444,6 +451,33 @@ fn enumerate_reports_truncated_once_the_entry_budget_is_exceeded() {
         batched_entry_count(&events),
         3,
         "loading should retain exactly the configured maximum"
+    );
+}
+
+#[test]
+fn enumerate_resolves_can_trash_for_a_real_local_directory() {
+    // Not asserting *which* answer: whether a given CI/dev machine's temp
+    // directory happens to support Trash is environment-specific and not
+    // something this test should depend on (issue #284). What must hold
+    // everywhere is that the `access::can-trash` query on a real, accessible
+    // local directory actually resolves to an answer instead of silently
+    // coming back `None`, which would mean the query never ran at all.
+    let root = unique_fixture_root("can-trash");
+    fs::create_dir_all(&root).expect("the fixture directory should be created");
+
+    let events = run_enumerate(DirectoryRequest {
+        id: RequestId(1),
+        location: Location::local(&root),
+        batch_size: 64,
+        include_metadata: false,
+        max_entries: 10,
+        time_budget: Duration::from_secs(10),
+    });
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+
+    assert!(
+        finished_can_trash(&events).is_some_and(|can_trash| can_trash.is_some()),
+        "a real, accessible local directory should always resolve access::can-trash"
     );
 }
 
