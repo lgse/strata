@@ -25,6 +25,34 @@ fn terminal_shortcut_prefers_one_selected_directory() {
     assert_eq!(selected_terminal_location(&[]), None);
 }
 
+#[test]
+fn duplicate_transfer_uses_the_selected_entries_parent() {
+    let entry = |path: &str| FileEntry {
+        location: Location::local(path),
+        native_name: Path::new(path).file_name().unwrap_or_default().to_owned(),
+        display_name: path.to_owned(),
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let first = entry("/fixture/selected/first.txt");
+    let second = entry("/fixture/selected/second.txt");
+
+    assert_eq!(
+        duplicate_transfer(&[first.clone(), second.clone()]),
+        Some((
+            Location::local("/fixture/selected"),
+            vec![first.location, second.location]
+        ))
+    );
+    assert_eq!(
+        duplicate_transfer(&[entry("/fixture/one.txt"), entry("/other/two.txt")]),
+        None
+    );
+    assert_eq!(duplicate_transfer(&[]), None);
+}
+
 #[cfg(unix)]
 #[test]
 fn terminal_directory_argument_preserves_native_path_bytes() {
@@ -507,6 +535,10 @@ fn transfer_collisions_detect_existing_destination_items() -> Result<(), Box<dyn
     assert!(!transfer_has_collision(
         &Location::local(&source),
         &Location::local(&destination)
+    ));
+    assert!(!transfer_has_collision(
+        &Location::local(&source),
+        &Location::local(&source_dir)
     ));
     std::fs::write(destination.join("photo.jpg"), b"old")?;
     assert!(transfer_has_collision(

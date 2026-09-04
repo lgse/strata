@@ -27,7 +27,7 @@ use super::{
     browser::{BrowserView, dismiss_modal_layer, modal_layer},
     browser_modes::{BrowserMode, ClickActivation, ClickCount},
     controls::{form_entry, menu_option, modal_layout, segmented_control},
-    theme::{Theme, ThemeManager, ThemeTokens},
+    theme::{TextSize, Theme, ThemeManager, ThemeTokens},
 };
 
 type ThemeCards = Rc<RefCell<Vec<(String, gtk::Button, gtk::Image)>>>;
@@ -2235,6 +2235,41 @@ fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<(gtk::FlowBox, u32
         system.append(&copy);
         system.append(&follow);
         content.append(&system);
+    }
+
+    append_heading(&content, "TYPOGRAPHY");
+    let text_sizes = [TextSize::Small, TextSize::Medium, TextSize::Large];
+    let active_text_size = text_sizes
+        .iter()
+        .position(|&size| size == manager.text_size())
+        .unwrap_or(1);
+    let (text_size_control, text_size_buttons) =
+        segmented_control(&["Small", "Medium", "Large"], active_text_size);
+    let text_size_row = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    text_size_row.add_css_class("settings-option");
+    let text_size_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    text_size_copy.set_hexpand(true);
+    let text_size_title = gtk::Label::new(Some("Text size"));
+    text_size_title.set_xalign(0.0);
+    text_size_title.add_css_class("settings-option-title");
+    let text_size_description = gtk::Label::new(Some(
+        "Scale interface text across menus, labels, and lists.",
+    ));
+    text_size_description.set_xalign(0.0);
+    text_size_description.set_wrap(true);
+    text_size_description.add_css_class("settings-option-description");
+    text_size_copy.append(&text_size_title);
+    text_size_copy.append(&text_size_description);
+    text_size_row.append(&text_size_copy);
+    text_size_row.append(&text_size_control);
+    content.append(&text_size_row);
+    for (button, size) in text_size_buttons.into_iter().zip(text_sizes) {
+        let manager = manager.clone();
+        button.connect_toggled(move |toggled| {
+            if toggled.is_active() {
+                manager.set_text_size(size);
+            }
+        });
     }
 
     append_heading(&content, "THEMES");

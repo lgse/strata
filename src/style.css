@@ -100,6 +100,7 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .appearance-menu {
+  font-size: 0.88em;
   min-width: 220px;
   padding: 9px 8px;
 }
@@ -1887,6 +1888,7 @@ menubutton.column-header-action > button:active {
 }
 
 .column-menu {
+  font-size: 0.88em;
   min-width: 170px;
   padding: 8px;
 }
@@ -2221,6 +2223,7 @@ menubutton.column-header-action > button:active {
 }
 
 .folder-context-menu {
+  font-size: 0.88em;
   min-width: 230px;
   padding: 7px;
 }
