@@ -421,6 +421,40 @@ fn quick_preview_is_offered_only_for_supported_files() {
 }
 
 #[test]
+fn printing_is_offered_for_text_code_images_and_pdfs() {
+    let entry = |name: &str, kind| FileEntry {
+        location: Location::local(format!("/fixture/{name}")),
+        native_name: name.into(),
+        display_name: name.into(),
+        kind,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+
+    for name in [
+        "notes.txt",
+        "main.rs",
+        "settings.toml",
+        "photo.png",
+        "guide.pdf",
+    ] {
+        assert!(entry_supports_printing(&entry(
+            name,
+            crate::model::EntryKind::File
+        )));
+    }
+    assert!(!entry_supports_printing(&entry(
+        "archive.zip",
+        crate::model::EntryKind::File,
+    )));
+    assert!(!entry_supports_printing(&entry(
+        "notes.txt",
+        crate::model::EntryKind::Directory,
+    )));
+}
+
+#[test]
 fn incoming_file_lists_preserve_local_and_remote_locations() {
     let files = gtk::gdk::FileList::from_array(&[
         gio::File::for_path("/fixture/photo.raw"),
