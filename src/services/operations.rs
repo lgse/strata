@@ -189,8 +189,9 @@ pub enum OperationEvent {
     },
     TransferProgress {
         request_id: OperationRequestId,
-        completed: usize,
-        total: usize,
+        completed_items: usize,
+        transferred_bytes: u64,
+        total_bytes: Option<u64>,
     },
     DeleteProgress {
         request_id: OperationRequestId,

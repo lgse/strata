@@ -45,6 +45,38 @@ fn remote_locations_keep_uri_parents_and_breadcrumbs() {
 }
 
 #[test]
+fn is_within_matches_native_descendants() {
+    let child = Location::local("/home/user/project/src");
+    let parent = Location::local("/home/user/project");
+    let unrelated = Location::local("/home/other");
+
+    assert!(child.is_within(&parent));
+    assert!(!parent.is_within(&child));
+    assert!(!child.is_within(&unrelated));
+}
+
+#[test]
+fn is_within_matches_remote_descendants() {
+    let child = Location::uri("sftp://user@host/mnt/share/folder");
+    let parent = Location::uri("sftp://user@host/mnt/share");
+    let unrelated = Location::uri("sftp://user@host/other");
+
+    assert!(child.is_within(&parent));
+    assert!(parent.is_within(&parent));
+    assert!(!parent.is_within(&child));
+    assert!(!child.is_within(&unrelated));
+}
+
+#[test]
+fn is_within_never_crosses_native_and_remote_locations() {
+    let native = Location::local("/mnt/share/folder");
+    let remote = Location::uri("sftp://user@host/mnt/share");
+
+    assert!(!native.is_within(&remote));
+    assert!(!remote.is_within(&native));
+}
+
+#[test]
 fn backend_names_distinguish_native_remote_and_malformed_locations() {
     assert_eq!(
         Location::local("/home/alice/private").backend_name(),

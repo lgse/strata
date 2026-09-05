@@ -30,6 +30,31 @@ fn named_entry(path: &str, name: &str) -> FileEntry {
 }
 
 #[test]
+fn focusing_a_column_preserves_selection_and_descendants() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/alpha", "alpha"),
+            named_entry("/fixture/bravo", "bravo"),
+        ],
+    );
+    state.set_selection(0, &[0, 1], Some(1));
+    state.descend(0, location("/fixture/alpha"), RequestId(2));
+    let path = state.current_path();
+    assert!(state.focus_column(0));
+    assert_eq!(state.selected_positions(0), [0, 1]);
+    assert_eq!(state.active_focus(), Some((0, Some(1))));
+    assert_eq!(state.current_path(), path);
+    assert!(state.focus_column(1));
+    assert_eq!(state.active_focus(), Some((1, None)));
+    assert!(state.selected_entries().is_empty());
+    assert!(!state.focus_column(2));
+    assert_eq!(state.active_depth(), Some(1));
+}
+
+#[test]
 fn multi_selection_tracks_entries_and_replaces_cleanly() {
     let mut state = NavigationState::default();
     state.navigate(location("/fixture"), RequestId(1));
@@ -288,6 +313,21 @@ fn external_removals_close_affected_descendant_columns() {
 }
 
 #[test]
+fn remote_external_removals_close_the_exact_open_column() {
+    let root = Location::uri("sftp://user@host/mnt/share");
+    let removed = Location::uri("sftp://user@host/mnt/share/removed");
+    let mut state = NavigationState::default();
+    state.navigate(root.clone(), RequestId(1));
+    assert!(state.descend(0, removed.clone(), RequestId(2)));
+
+    let path = state
+        .path_after_external_change(0, &DirectoryChange::Remove(removed))
+        .expect("the removed remote column should be closed");
+
+    assert_eq!(path.locations(), &[root]);
+}
+
+#[test]
 fn selecting_a_sibling_replaces_deeper_columns() {
     let mut state = NavigationState::default();
     state.navigate(location("/home"), RequestId(1));
@@ -320,7 +360,7 @@ fn empty_is_distinct_from_loading_and_error() {
     state.navigate(location("/empty"), RequestId(1));
     assert_eq!(state.columns[0].load_state, LoadState::Loading);
 
-    assert_eq!(state.finish(RequestId(1), false, None), Some(0));
+    assert_eq!(state.finish(RequestId(1), false, None, None), Some(0));
     assert_eq!(state.columns[0].load_state, LoadState::Empty);
 }
 
@@ -329,11 +369,26 @@ fn truncated_load_state_survives_until_reload() {
     let mut state = NavigationState::default();
     state.navigate(location("/partial"), RequestId(1));
 
-    assert_eq!(state.finish(RequestId(1), true, None), Some(0));
+    assert_eq!(state.finish(RequestId(1), true, None, None), Some(0));
     assert!(state.columns[0].truncated);
 
     state.reload_column(0, RequestId(2));
     assert!(!state.columns[0].truncated);
+}
+
+#[test]
+fn reload_clears_the_resolved_delete_capability() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+
+    assert_eq!(
+        state.finish(RequestId(1), false, None, Some(false)),
+        Some(0)
+    );
+    assert_eq!(state.can_delete_at(0), Some(false));
+
+    state.reload_column(0, RequestId(2));
+    assert_eq!(state.can_delete_at(0), None);
 }
 
 #[test]

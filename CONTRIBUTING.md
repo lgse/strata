@@ -51,6 +51,11 @@ fix(navigation): preserve selection after reload
 
 Use `!` after the type or scope and add a `BREAKING CHANGE:` footer when a change is incompatible. Keep unrelated changes in separate commits.
 
+Commits must be authored by the contributor submitting them. Do not submit
+commits authored or co-authored by an AI coding agent. If an agent created
+commits, remove them and recreate the changes and commits as your own work under
+your own identity before opening or updating the pull request.
+
 ## Required checks
 
 Before opening a pull request:

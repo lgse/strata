@@ -190,6 +190,9 @@ pub enum DirectoryEvent {
         /// couldn't be answered; treated as "assume trashable" by consumers, since that
         /// matches offering Trash and letting the operation itself fail if unsupported.
         can_trash: Option<bool>,
+        /// Whether entries here can be permanently deleted, resolved the same way as
+        /// `can_trash`. `None` carries the same "assume deletable" meaning.
+        can_delete: Option<bool>,
     },
     /// Consumers must not present these partial values as a completed sort.
     MetadataIncomplete { request_id: RequestId },
