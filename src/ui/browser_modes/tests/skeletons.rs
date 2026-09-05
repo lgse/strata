@@ -1,8 +1,8 @@
 use gtk::prelude::*;
 
 use super::super::{
-    BrowserDensity, ExplorerColumnLayout, configure_grid_view_density, explorer_loading_skeleton,
-    grid_card_extent, grid_loading_skeleton,
+    BrowserDensity, ListColumnLayout, configure_icons_view_density, icons_card_extent,
+    icons_loading_skeleton, list_loading_skeleton,
 };
 use crate::ui::loading_skeleton;
 
@@ -16,14 +16,14 @@ fn children(widget: &impl IsA<gtk::Widget>) -> Vec<gtk::Widget> {
     children
 }
 
-fn grid(skeleton: &gtk::Box) -> gtk::GridView {
+fn icons(skeleton: &gtk::Box) -> gtk::GridView {
     skeleton
         .first_child()
         .and_downcast::<gtk::ScrolledWindow>()
         .expect("skeleton scroll")
         .child()
         .and_downcast::<gtk::GridView>()
-        .expect("skeleton grid")
+        .expect("skeleton icons")
 }
 
 #[test]
@@ -64,10 +64,10 @@ fn mode_specific_structure() {
         assert_eq!(children(&row).len(), 4);
     }
 
-    let columns = ExplorerColumnLayout::new();
-    let explorer = explorer_loading_skeleton(&columns);
-    assert!(!explorer.can_target());
-    let scroll = explorer
+    let columns = ListColumnLayout::new();
+    let list = list_loading_skeleton(&columns);
+    assert!(!list.can_target());
+    let scroll = list
         .first_child()
         .and_downcast::<gtk::ScrolledWindow>()
         .expect("List scroll");
@@ -79,18 +79,18 @@ fn mode_specific_structure() {
         .expect("List table");
     let rows = children(&table);
     assert_eq!(rows.len(), loading_skeleton::ROW_COUNT as usize + 1);
-    assert!(rows[0].has_css_class("explorer-headings"));
+    assert!(rows[0].has_css_class("list-headings"));
     for row in &rows {
         assert_eq!(children(row).len(), 5);
     }
-    for (index, width) in super::super::EXPLORER_COLUMN_WIDTHS.into_iter().enumerate() {
+    for (index, width) in super::super::LIST_COLUMN_WIDTHS.into_iter().enumerate() {
         for row in &rows {
             assert_eq!(children(row)[index].width_request(), width);
         }
     }
 
-    super::super::set_explorer_column_width(&columns, 0, 200);
-    super::super::set_explorer_column_width(&columns, 1, 80);
+    super::super::set_list_column_width(&columns, 0, 200);
+    super::super::set_list_column_width(&columns, 1, 80);
     for row in &rows {
         let cells = children(row);
         assert_eq!(cells[0].width_request(), 200);
@@ -99,16 +99,16 @@ fn mode_specific_structure() {
     }
 
     for size in [32, 64, 128, 256] {
-        let skeleton = grid_loading_skeleton(size, BrowserDensity::Compact);
-        let grid = grid(&skeleton);
-        let model = grid.model().expect("placeholder model");
+        let skeleton = icons_loading_skeleton(size, BrowserDensity::Compact);
+        let icons = icons(&skeleton);
+        let model = icons.model().expect("placeholder model");
         assert!(model.is::<gtk::NoSelection>());
         assert_eq!(model.n_items(), 60);
-        assert_eq!(grid.min_columns(), 1);
-        assert_eq!(grid.max_columns(), 20);
-        configure_grid_view_density(&grid, BrowserDensity::Airy);
-        assert_eq!(grid.max_columns(), 16);
-        assert!(grid_card_extent(size).1 > size);
+        assert_eq!(icons.min_columns(), 1);
+        assert_eq!(icons.max_columns(), 20);
+        configure_icons_view_density(&icons, BrowserDensity::Airy);
+        assert_eq!(icons.max_columns(), 16);
+        assert!(icons_card_extent(size).1 > size);
     }
 }
 
@@ -132,8 +132,8 @@ fn gallery(before: bool, density: BrowserDensity, thumbnail_size: i32) -> gtk::B
     gallery.set_margin_start(16);
     gallery.set_margin_end(16);
     for (mode, root_class) in [
-        ("Grid", "mode-grid-columns"),
-        ("List", "mode-explorer"),
+        ("Icons", "mode-icons"),
+        ("List", "mode-list"),
         ("Column (Miller)", "miller-columns"),
     ] {
         let label = gtk::Label::new(Some(mode));
@@ -153,17 +153,17 @@ fn gallery(before: bool, density: BrowserDensity, thumbnail_size: i32) -> gtk::B
                 old_skeleton()
             } else {
                 match mode {
-                    "Grid" => grid_loading_skeleton(thumbnail_size, density),
-                    "List" => explorer_loading_skeleton(&ExplorerColumnLayout::new()),
+                    "Icons" => icons_loading_skeleton(thumbnail_size, density),
+                    "List" => list_loading_skeleton(&ListColumnLayout::new()),
                     _ => loading_skeleton::miller(),
                 }
             };
             let (shell, ..) = super::super::pane_base(
                 ["Home", "Documents", "Projects"][index],
-                if mode == "Grid" {
-                    "grid-pane"
+                if mode == "Icons" {
+                    "icons-pane"
                 } else {
-                    "explorer-pane"
+                    "list-pane"
                 },
                 &loading,
                 None,

@@ -40,7 +40,8 @@ pub mod icons {
     pub const HARD_DRIVE: &str = "strata-hard-drive";
     pub const INFO: &str = "strata-info";
     pub const FUNNEL: &str = "strata-funnel";
-    pub const GRID: &str = "strata-grid";
+    pub const COLUMNS: &str = "strata-columns";
+    pub const ICONS: &str = "strata-icons";
     pub const HOME: &str = "strata-house";
     pub const LIST: &str = "strata-list";
     pub const LIST_ACTIVE: &str = "strata-list-active";

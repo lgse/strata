@@ -991,7 +991,7 @@ fn install_keyboard_navigation(
                     if !control
                         && !shift
                         && let Some(direction) = sidebar_focus_direction(key)
-                        && view.move_grid_group(direction)
+                        && view.move_icons_group(direction)
                     {
                         glib::Propagation::Stop
                     } else {
@@ -1104,7 +1104,7 @@ fn single_pane_arrow_action(
     let plain = !modifiers.intersects(ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK);
     match key {
         Key::Left if plain && at_left_edge && sidebar_visible => Some(SinglePaneArrow::Sidebar),
-        Key::Left | Key::Right if mode == BrowserMode::Explorer => Some(SinglePaneArrow::Stay),
+        Key::Left | Key::Right if mode == BrowserMode::List => Some(SinglePaneArrow::Stay),
         Key::Left | Key::Right | Key::Up | Key::Down => Some(SinglePaneArrow::Native),
         _ => None,
     }
@@ -1284,22 +1284,22 @@ pub(super) fn build_appearance_menu(
     let popover_weak = popover.downgrade();
     append_menu_heading(&content, "VIEW");
     let current_mode = view.view_mode();
-    let (list, list_check, _) = appearance_option(
-        crate::assets::icons::LIST,
-        "List",
+    let (columns, columns_check, _) = appearance_option(
+        crate::assets::icons::COLUMNS,
+        "Columns",
         current_mode == BrowserMode::Columns,
         true,
     );
-    let (grid, grid_check, _) = appearance_option(
-        crate::assets::icons::GRID,
-        "Grid",
-        current_mode == BrowserMode::Grid,
+    let (icons, icons_check, _) = appearance_option(
+        crate::assets::icons::ICONS,
+        "Icons",
+        current_mode == BrowserMode::Icons,
         true,
     );
-    let (explorer, explorer_check, _) = appearance_option(
-        crate::assets::icons::ROWS,
-        "Explorer",
-        current_mode == BrowserMode::Explorer,
+    let (list, list_check, _) = appearance_option(
+        crate::assets::icons::LIST,
+        "List",
+        current_mode == BrowserMode::List,
         true,
     );
     let grouped = preferences.group_by_type();
@@ -1310,7 +1310,7 @@ pub(super) fn build_appearance_menu(
         current_mode != BrowserMode::Columns,
     );
     group_by_type.set_tooltip_text(Some(
-        "Group Explorer and Grid entries under file-type headings",
+        "Group List and Icons entries under file-type headings",
     ));
     {
         let view = view.clone();
@@ -1329,32 +1329,32 @@ pub(super) fn build_appearance_menu(
         });
     }
     for (button, mode) in [
-        (&list, BrowserMode::Columns),
-        (&grid, BrowserMode::Grid),
-        (&explorer, BrowserMode::Explorer),
+        (&columns, BrowserMode::Columns),
+        (&icons, BrowserMode::Icons),
+        (&list, BrowserMode::List),
     ] {
         let view = view.clone();
+        let columns_check = columns_check.clone();
+        let icons_check = icons_check.clone();
         let list_check = list_check.clone();
-        let grid_check = grid_check.clone();
-        let explorer_check = explorer_check.clone();
         let group_by_type = group_by_type.clone();
         let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
         button.connect_clicked(move |_| {
             view.set_view_mode(mode);
             preferences.set_browser_mode(mode);
-            list_check.set_visible(mode == BrowserMode::Columns);
-            grid_check.set_visible(mode == BrowserMode::Grid);
-            explorer_check.set_visible(mode == BrowserMode::Explorer);
+            columns_check.set_visible(mode == BrowserMode::Columns);
+            icons_check.set_visible(mode == BrowserMode::Icons);
+            list_check.set_visible(mode == BrowserMode::List);
             group_by_type.set_sensitive(mode != BrowserMode::Columns);
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
         });
     }
+    content.append(&columns);
+    content.append(&icons);
     content.append(&list);
-    content.append(&grid);
-    content.append(&explorer);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     append_menu_heading(&content, "DENSITY");

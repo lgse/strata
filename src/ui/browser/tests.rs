@@ -306,11 +306,11 @@ fn folder_peek_uses_visible_mode_bounds() {
         PeekOriginBounds::Column
     );
     assert_eq!(
-        peek_origin_bounds(BrowserMode::Grid),
+        peek_origin_bounds(BrowserMode::Icons),
         PeekOriginBounds::Anchor
     );
     assert_eq!(
-        peek_origin_bounds(BrowserMode::Explorer),
+        peek_origin_bounds(BrowserMode::List),
         PeekOriginBounds::Anchor
     );
 }

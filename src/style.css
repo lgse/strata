@@ -2609,12 +2609,12 @@ menubutton.column-header-action > button:active {
   padding: 2px 0 4px;
 }
 
-.customize-icon-grid {
+.customize-icon-icons {
   background: transparent;
   min-width: 336px;
 }
 
-.customize-icon-grid > flowboxchild {
+.customize-icon-icons > flowboxchild {
   background: transparent;
   padding: 0;
 }
@@ -2872,8 +2872,8 @@ colorchooser colorswatch overlay {
 }
 
 .file-row,
-.grid-card,
-.explorer-row {
+.icons-card,
+.list-row {
   outline: 1px solid transparent;
   outline-offset: -1px;
   transition: background 220ms ease-out, color 180ms ease-out, outline-color 220ms ease-out, transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 200ms ease-out;
@@ -3045,9 +3045,9 @@ colorchooser colorswatch overlay {
 }
 
 .keyboard-navigation .file-list row:hover:not(:selected),
-.keyboard-navigation .explorer-list row:hover:not(:selected),
-.keyboard-navigation .file-grid > child:hover:not(:selected),
-.keyboard-navigation .file-grid > child:hover:not(:selected) .grid-card {
+.keyboard-navigation .file-list-mode row:hover:not(:selected),
+.keyboard-navigation .file-icons > child:hover:not(:selected),
+.keyboard-navigation .file-icons > child:hover:not(:selected) .icons-card {
   background: transparent;
   color: @theme_text;
 }
@@ -3057,8 +3057,8 @@ colorchooser colorswatch overlay {
 }
 
 .file-marquee,
-.file-grid rubberband,
-.explorer-list rubberband {
+.file-icons rubberband,
+.file-list-mode rubberband {
   background: alpha(@theme_highlight, 0.58);
   border: 1px solid @theme_accent;
   border-radius: 4px;
@@ -3130,7 +3130,7 @@ colorchooser colorswatch overlay {
   margin-top: 12px;
 }
 
-.theme-grid {
+.theme-icons {
   background: transparent;
 }
 
@@ -3177,7 +3177,7 @@ entry.theme-search {
 }
 
 .theme-catalog-scroll viewport,
-.theme-catalog-scroll .theme-grid {
+.theme-catalog-scroll .theme-icons {
   background: @theme_bg;
 }
 
@@ -3207,7 +3207,7 @@ entry.theme-search {
   background: @theme_accent;
 }
 
-.theme-grid > flowboxchild,
+.theme-icons > flowboxchild,
 .theme-color-fields > flowboxchild {
   background: transparent;
   padding: 0;
@@ -3234,14 +3234,14 @@ entry.theme-search {
   border-color: @theme_border;
 }
 
-.theme-grid > flowboxchild:focus-visible,
+.theme-icons > flowboxchild:focus-visible,
 .theme-card:focus-visible,
 .add-theme-card:focus-visible {
   box-shadow: none;
   outline: none;
 }
 
-.theme-grid > flowboxchild:focus-visible .theme-preview,
+.theme-icons > flowboxchild:focus-visible .theme-preview,
 .theme-card:focus-visible .theme-preview {
   border-color: @theme_accent;
   outline: 2px solid @theme_accent;
@@ -3383,22 +3383,22 @@ entry.theme-search {
 
 
 /* Alternate browser presentations */
-.mode-grid-columns,
-.mode-grid-columns viewport,
-.mode-grid-columns gridview,
-.mode-explorer,
-.mode-explorer viewport,
-.mode-explorer listview {
+.mode-icons,
+.mode-icons viewport,
+.mode-icons gridview,
+.mode-list,
+.mode-list viewport,
+.mode-list listview {
   background: @theme_bg;
   color: @theme_text;
 }
 
-.grid-pane {
+.icons-pane {
   background: @theme_bg;
   min-width: 220px;
 }
 
-.grid-thumbnail-popover contents {
+.icons-thumbnail-popover contents {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 9px;
@@ -3407,42 +3407,42 @@ entry.theme-search {
   padding: 14px;
 }
 
-.grid-thumbnail-title {
+.icons-thumbnail-title {
   color: @theme_text;
   font-weight: 700;
 }
 
-.grid-thumbnail-value,
-.grid-thumbnail-extremes {
+.icons-thumbnail-value,
+.icons-thumbnail-extremes {
   color: @theme_dim_text;
 }
 
-.grid-thumbnail-value {
+.icons-thumbnail-value {
   font-family: "JetBrains Mono";
   font-size: 0.9em;
 }
 
-.grid-thumbnail-extremes {
+.icons-thumbnail-extremes {
   font-size: 0.8em;
 }
 
-.grid-thumbnail-scale {
+.icons-thumbnail-scale {
   padding: 0 16px;
 }
 
-.grid-thumbnail-scale trough {
+.icons-thumbnail-scale trough {
   background: alpha(@theme_muted, 0.72);
   border: 1px solid alpha(@theme_border, 0.68);
   border-radius: 999px;
   min-height: 5px;
 }
 
-.grid-thumbnail-scale highlight {
+.icons-thumbnail-scale highlight {
   background: @theme_accent;
   border-radius: 999px;
 }
 
-.grid-thumbnail-scale slider {
+.icons-thumbnail-scale slider {
   background: @theme_surface;
   border: 2px solid @theme_accent;
   border-radius: 999px;
@@ -3451,13 +3451,13 @@ entry.theme-search {
   min-width: 14px;
 }
 
-.grid-thumbnail-scale:hover slider,
-.grid-thumbnail-scale:active slider {
+.icons-thumbnail-scale:hover slider,
+.icons-thumbnail-scale:active slider {
   background: @theme_highlight;
   border-color: @theme_accent;
 }
 
-menubutton.grid-thumbnail-menu > button {
+menubutton.icons-thumbnail-menu > button {
   background: transparent;
   border: none;
   border-radius: 5px;
@@ -3468,24 +3468,24 @@ menubutton.grid-thumbnail-menu > button {
   transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
-menubutton.grid-thumbnail-menu > button:hover {
+menubutton.icons-thumbnail-menu > button:hover {
   background: alpha(@theme_accent, 0.15);
 }
 
-menubutton.grid-thumbnail-menu > button:active {
+menubutton.icons-thumbnail-menu > button:active {
   background: alpha(@theme_accent, 0.22);
   transform: scale(0.97);
 }
 
-.grid-thumbnail-scale:focus-visible slider,
-menubutton.grid-thumbnail-menu > button:focus-visible {
+.icons-thumbnail-scale:focus-visible slider,
+menubutton.icons-thumbnail-menu > button:focus-visible {
   outline: 2px solid @theme_accent;
   outline-offset: 2px;
 }
 
-.grid-thumbnail-scale:disabled trough,
-.grid-thumbnail-scale:disabled highlight,
-.grid-thumbnail-scale:disabled slider {
+.icons-thumbnail-scale:disabled trough,
+.icons-thumbnail-scale:disabled highlight,
+.icons-thumbnail-scale:disabled slider {
   opacity: 0.45;
 }
 
@@ -3498,95 +3498,95 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   padding: 4px 12px 4px 6px;
 }
 
-.file-grid {
+.file-icons {
   padding: 3px;
 }
 
-.file-grid > child {
+.file-icons > child {
   border-radius: 5px;
   margin: 1px;
   outline: none;
 }
 
-.file-grid > child:hover {
+.file-icons > child:hover {
   background: transparent;
 }
 
-.file-grid > child:hover .grid-card {
+.file-icons > child:hover .icons-card {
   background: alpha(@theme_accent, 0.15);
 }
 
-.file-grid > child:selected {
+.file-icons > child:selected {
   background: transparent;
   color: @theme_text;
   outline: none;
 }
 
-.file-grid > child:selected .grid-card {
+.file-icons > child:selected .icons-card {
   background: alpha(@theme_accent, 0.22);
   outline: 1px solid alpha(@theme_accent, 0.9);
   outline-offset: -1px;
 }
 
-.file-grid > child:focus-visible .grid-card {
+.file-icons > child:focus-visible .icons-card {
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
 }
 
-.file-grid.creating-entry > child:focus-visible .grid-card {
+.file-icons.creating-entry > child:focus-visible .icons-card {
   outline: none;
 }
 
-.grid-card {
+.icons-card {
   border-radius: 5px;
   min-height: 0;
   min-width: 0;
   padding: 2px 4px;
 }
 
-.grid-card-icon {
+.icons-card-icon {
   color: @theme_accent;
 }
 
-.grid-card-label {
+.icons-card-label {
   color: @theme_text;
 }
 
-.grid-fast-scroll .grid-card,
-.explorer-fast-scroll .explorer-row,
-.explorer-fast-scroll .explorer-list row {
+.icons-fast-scroll .icons-card,
+.list-fast-scroll .list-row,
+.list-fast-scroll .file-list-mode row {
   transition: none;
 }
 
-.grid-card.drop-destination,
-.grid-card:drop(active) {
+.icons-card.drop-destination,
+.icons-card:drop(active) {
   background: alpha(@theme_highlight, 0.82);
   color: @theme_accent;
   outline-color: @theme_accent;
 }
 
-.grid-card.dragging {
+.icons-card.dragging {
   opacity: 0.52;
 }
 
-.grid-card.cut,
-.explorer-row.cut {
+.icons-card.cut,
+.list-row.cut {
   opacity: 0.46;
 }
 
-.file-grid > child:selected .grid-card-label {
+.file-icons > child:selected .icons-card-label {
   color: @theme_text;
 }
 
-.mode-grid-columns.density-airy .file-grid {
+.mode-icons.density-airy .file-icons {
   padding: 8px;
 }
 
-.mode-grid-columns.density-airy .file-grid > child {
+.mode-icons.density-airy .file-icons > child {
   margin: 3px;
 }
 
-.mode-grid-columns.density-airy .grid-card {
+.mode-icons.density-airy .icons-card {
   min-height: 130px;
   min-width: 225px;
   padding: 8px 10px;
@@ -3600,16 +3600,16 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   padding: 10px 12px 4px;
 }
 
-.grid-type-groups .type-group-heading {
+.icons-type-groups .type-group-heading {
   margin: 0 6px;
 }
 
-.explorer-pane {
+.list-pane {
   background: @theme_bg;
   color: @theme_text;
 }
 
-.explorer-headings {
+.list-headings {
   background: @theme_surface;
   border-bottom: 1px solid alpha(@theme_border, 0.6);
   color: @theme_dim_text;
@@ -3619,11 +3619,11 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   padding: 0;
 }
 
-.explorer-heading-cell {
+.list-heading-cell {
   border-right: 1px solid alpha(@theme_border, 0.26);
 }
 
-.explorer-heading-button {
+.list-heading-button {
   background: transparent;
   border: none;
   border-radius: 0;
@@ -3634,37 +3634,37 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   transition: background 160ms ease-out, color 160ms ease-out;
 }
 
-.explorer-heading-button:hover {
+.list-heading-button:hover {
   background: alpha(@theme_accent, 0.15);
   color: @theme_text;
 }
 
-.explorer-heading-button:active {
+.list-heading-button:active {
   background: alpha(@theme_accent, 0.22);
   color: @theme_accent;
   transform: scale(0.97);
 }
 
-.explorer-heading-button:focus-visible {
+.list-heading-button:focus-visible {
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
 }
 
-.explorer-column-resize-handle {
+.list-column-resize-handle {
   background: transparent;
   min-width: 7px;
 }
 
-.explorer-column-resize-handle:hover,
-.explorer-column-resize-handle:active {
+.list-column-resize-handle:hover,
+.list-column-resize-handle:active {
   background: alpha(@theme_accent, 0.5);
 }
 
-.explorer-navigation {
+.list-navigation {
   margin-right: 4px;
 }
 
-.explorer-navigation-button {
+.list-navigation-button {
   background: transparent;
   border: none;
   border-radius: 5px;
@@ -3676,41 +3676,41 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 
-.explorer-navigation-button image {
+.list-navigation-button image {
   opacity: 0.55;
 }
 
-.explorer-navigation-button:disabled {
+.list-navigation-button:disabled {
   opacity: 0.35;
 }
 
-.explorer-navigation-button:disabled image {
+.list-navigation-button:disabled image {
   opacity: 1;
 }
 
-.explorer-navigation-button:hover:not(:disabled) {
+.list-navigation-button:hover:not(:disabled) {
   background: alpha(@theme_accent, 0.15);
   color: @theme_text;
 }
 
-.explorer-navigation-button:hover:not(:disabled) image,
-.explorer-navigation-button:active image,
-.explorer-navigation-button:focus-visible image {
+.list-navigation-button:hover:not(:disabled) image,
+.list-navigation-button:active image,
+.list-navigation-button:focus-visible image {
   opacity: 1;
 }
 
-.explorer-navigation-button:active {
+.list-navigation-button:active {
   background: alpha(@theme_accent, 0.22);
   color: @theme_accent;
   transform: scale(0.97);
 }
 
-.explorer-navigation-button:focus-visible {
+.list-navigation-button:focus-visible {
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
 }
 
-.explorer-list row {
+.file-list-mode row {
   background: transparent;
   color: @theme_text;
   outline: none;
@@ -3718,42 +3718,42 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   padding: 0;
 }
 
-.explorer-list row:hover {
+.file-list-mode row:hover {
   background: alpha(@theme_accent, 0.15);
 }
 
-.explorer-list row:selected {
+.file-list-mode row:selected {
   background: alpha(@theme_accent, 0.22);
   color: @theme_text;
 }
 
-.explorer-row.drop-destination,
-.explorer-row:drop(active) {
+.list-row.drop-destination,
+.list-row:drop(active) {
   background: alpha(@theme_highlight, 0.82);
   color: @theme_accent;
   outline-color: @theme_accent;
 }
 
-.explorer-row.dragging {
+.list-row.dragging {
   opacity: 0.52;
 }
 
-.keyboard-navigation .explorer-list row:focus-within {
+.keyboard-navigation .file-list-mode row:focus-within {
   outline: 2px solid @theme_text;
   outline-offset: -2px;
 }
 
-.explorer-row {
+.list-row {
   min-height: 28px;
   padding: 0;
 }
 
-.explorer-name-cell,
-.explorer-metadata-cell {
+.list-name-cell,
+.list-metadata-cell {
   padding-left: 12px;
 }
 
-.mode-explorer.density-airy .explorer-row {
+.mode-list.density-airy .list-row {
   min-height: 42px;
   padding-bottom: 4px;
   padding-top: 4px;

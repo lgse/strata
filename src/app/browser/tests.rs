@@ -66,6 +66,8 @@ struct RestoredSortingSource;
 
 struct FilePreviewSource;
 
+struct OpenChildBesideFileSource;
+
 struct RejectingFileSource;
 
 struct NotMountedFileSource;
@@ -241,6 +243,52 @@ impl FileSource for FilePreviewSource {
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
             }],
+        });
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+            truncated: false,
+            can_trash: None,
+            can_delete: None,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
+impl FileSource for OpenChildBesideFileSource {
+    fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
+        Ok(())
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        let entries = if request.location == Location::local("/fixture") {
+            vec![
+                FileEntry {
+                    location: Location::local("/fixture/child"),
+                    native_name: OsString::from("child"),
+                    display_name: "child".into(),
+                    kind: EntryKind::Directory,
+                    size: MetadataValue::Unknown,
+                    modified_unix_seconds: MetadataValue::Unknown,
+                    is_hidden: false,
+                    mode: MetadataValue::Unknown,
+                },
+                FileEntry {
+                    location: Location::local("/fixture/example.conf"),
+                    native_name: OsString::from("example.conf"),
+                    display_name: "example.conf".into(),
+                    kind: EntryKind::File,
+                    size: MetadataValue::Known(12),
+                    modified_unix_seconds: MetadataValue::Known(1),
+                    is_hidden: false,
+                    mode: MetadataValue::Unknown,
+                },
+            ]
+        } else {
+            Vec::new()
+        };
+        emit(DirectoryEvent::Batch {
+            request_id: request.id,
+            entries,
         });
         emit(DirectoryEvent::Finished {
             request_id: request.id,
@@ -1725,7 +1773,7 @@ fn requesting_first_selection_during_navigate_selects_the_first_entry() {
 }
 
 #[test]
-fn explorer_activation_replaces_the_directory_instead_of_adding_a_column() {
+fn list_activation_replaces_the_directory_instead_of_adding_a_column() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
     let observed = events.clone();
@@ -1816,6 +1864,26 @@ fn directory_navigation_does_not_open_or_preview_files() {
         BrowserEvent::OpenRequested { location }
             if location == &Location::local("/fixture/example.conf")
     )));
+}
+
+#[test]
+fn directory_navigation_moves_right_from_a_file_into_an_open_column() {
+    let browser = Browser::new(Rc::new(OpenChildBesideFileSource));
+    browser.navigate(Location::local("/fixture"));
+    browser.select(0, 0);
+    browser.enter_focused_directory();
+    assert_eq!(browser.active_depth(), Some(1));
+
+    browser.focus_parent();
+    browser.select(0, 1);
+    browser.enter_focused_directory();
+    assert_eq!(browser.active_depth(), Some(1));
+
+    browser.focus_parent();
+    browser.close_column(1);
+    browser.enter_focused_directory();
+    assert_eq!(browser.active_depth(), Some(0));
+    assert!(browser.location_at(1).is_none());
 }
 
 #[test]

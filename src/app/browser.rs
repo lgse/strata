@@ -1856,7 +1856,7 @@ impl Browser {
             == Some(location)
     }
 
-    /// Activates an item using conventional single-pane explorer navigation.
+    /// Activates an item using conventional single-pane list navigation.
     pub fn activate_in_place(self: &Rc<Self>, depth: usize, position: usize) {
         self.select(depth, position);
         let Some(entry) = self.entry_at(depth, position) else {
@@ -1942,11 +1942,9 @@ impl Browser {
     }
 
     pub fn enter_focused_directory(self: &Rc<Self>) {
-        if self
-            .focused_entry()
-            .is_none_or(|entry| entry.is_directory())
-        {
-            self.activate_focused();
+        match self.focused_entry() {
+            Some(entry) if !entry.is_directory() => self.focus_child(),
+            _ => self.activate_focused(),
         }
     }
 

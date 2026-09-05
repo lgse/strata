@@ -38,6 +38,7 @@ use crate::{
 use super::{
     blur::BlurBin,
     browser::{BrowserView, dismiss_modal_layer, modal_layer},
+    browser_modes::BrowserMode,
     controls::{
         ModalTone, form_check_button, form_entry, form_label, menu_option, message_dialog_layout,
     },
@@ -1544,13 +1545,12 @@ fn install_shortcuts(
                 sidebar_state.focus_active_place();
             }
             (gtk::gdk::Key::h | gtk::gdk::Key::Left, false) => state.view.navigate_left(),
-            (
-                gtk::gdk::Key::l
-                | gtk::gdk::Key::Right
-                | gtk::gdk::Key::Return
-                | gtk::gdk::Key::KP_Enter,
-                false,
-            ) => state.view.activate_focused(),
+            (gtk::gdk::Key::Right, false) if state.view.view_mode() == BrowserMode::Columns => {
+                browser.enter_focused_directory();
+            }
+            (gtk::gdk::Key::l | gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter, false) => {
+                state.view.activate_focused()
+            }
             _ => return glib::Propagation::Proceed,
         }
         glib::Propagation::Stop

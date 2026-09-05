@@ -17,7 +17,7 @@ The last navigation input determines the destination of Ctrl+V:
 1. Moving, clicking, or scrolling the pointer restores pointer control. Paste targets the directory column under it, not an individual hovered file or folder.
 2. Keyboard navigation (arrows, h/j/k/l, Tab, page movement, entering/leaving folders) or Select All restores keyboard control. Paste targets the focused column, falling back to the active column when browser widgets do not hold focus.
 3. Ctrl+V itself does **not** change ownership. A parked pointer cannot override subsequent keyboard navigation. Layout/scroll changes underneath an unmoving pointer do not count as pointer motion.
-4. Outside the columns, pointer mode falls back to the focused/active directory. Stale depths are discarded. Grid and Explorer continue to use their single active directory.
+4. Outside the columns, pointer mode falls back to the focused/active directory. Stale depths are discarded. Icons and List continue to use their single active directory.
 
 The terminal shortcut uses the same directory fallback, but still prefers an explicitly selected directory. New Folder remains keyboard-focus scoped. Context-menu paste and drag-and-drop retain their explicit destinations.
 
@@ -27,7 +27,7 @@ Keyboard navigation suppresses stale row-hover effects and pending folder peeks 
 
 Clicking blank column content focuses that directory, including empty directories, without clearing its selection or closing descendants. Row clicks, controls, scrollbars, context menus, and marquee selection keep their own interactions. Returning to a column preserves a multi-selection; Ctrl+A selects the focused column, not the deepest open column.
 
-Copy/cut use the selection in the focused column, never a hovered row. In Columns, Delete/Shift+Delete with no selected items does nothing: an open parent-path marker is not an implicit deletion target. The separate Explorer/Grid parent-deletion fallback is tracked in #300.
+Copy/cut use the selection in the focused column, never a hovered row. In Columns, Delete/Shift+Delete with no selected items does nothing: an open parent-path marker is not an implicit deletion target. The separate List/Icons parent-deletion fallback is tracked in #300.
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 
@@ -41,26 +41,26 @@ After copying or cutting files, a highlighted **Ctrl+V · Paste available** hint
 
 The hints describe file-view controls; text fields, dialogs, and media previews retain their own keyboard behavior. Mode changes update both the footer and the reference immediately. Closing keyboard-opened help restores the previous focus.
 
-[Columns footer](screenshots/291/footer-columns.png) · [Grid header focus](screenshots/291/footer-grid-header.png) · [Explorer header, light theme](screenshots/291/footer-explorer-header.png) · [Narrow window](screenshots/291/footer-narrow.png) · [Shortcut reference](screenshots/291/shortcut-reference.png)
+[Columns footer](screenshots/291/footer-columns.png) · [Icons header focus](screenshots/291/footer-grid-header.png) · [List header, light theme](screenshots/291/footer-explorer-header.png) · [Narrow window](screenshots/291/footer-narrow.png) · [Shortcut reference](screenshots/291/shortcut-reference.png)
 
 ## Arrows, the header, and the sidebar
 
-In Grid and Explorer, plain arrows move interface focus rather than changing directories:
+In Icons and List, plain arrows move interface focus rather than changing directories:
 
-| Key | Grid | Explorer |
+| Key | Icons | List |
 | --- | --- | --- |
 | Left | Move one tile left; at the left edge, focus the visible sidebar | Focus the visible sidebar |
 | Right | Move one tile right | Stay in the file list |
 | Up / Down | Move by visual rows | Move through file rows |
 | Enter | Open the current item | Open the current item |
 
-Up from the first Grid row or first Explorer item focuses the navigation header, including in empty directories. Left/Right traverse its enabled controls without triggering navigation; Enter/Space activates a control. Down returns to the item you left without changing selection. Left from the header's first control can reach the visible sidebar.
+Up from the first Icons row or first List item focuses the navigation header, including in empty directories. Left/Right traverse its enabled controls without triggering navigation; Enter/Space activates a control. Down returns to the item you left without changing selection. Left from the header's first control can reach the visible sidebar.
 
 From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it). Up/Down move between places. Up from Home, the first sidebar row, continues into the **top navigation bar** instead of stopping. Left/Right traverse its enabled controls without activating them; Down returns to the sidebar row you left. If the sidebar is hidden from the top bar, Down returns to the files instead. Empty file views also support these round trips. If the sidebar is hidden, Left in the file view does not change directories.
 
 [Before: sidebar Home](screenshots/291/sidebar-top-bar-before.png) · [After Up: top navigation bar](screenshots/291/sidebar-top-bar.png)
 
-**Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. List/Columns retain Miller-column navigation: **Right enters folders only**. On a focused file, Right does not open or preview it. **Enter** opens files; the existing Vim `l` activation shortcut is unchanged. Backspace and the existing Vim directory shortcuts remain available.
+**Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files; the existing Vim `l` activation shortcut is unchanged. Backspace and the existing Vim directory shortcuts remain available.
 
 [Right-arrow demo: files stay selected; folders open in a child column](screenshots/291/right-folder-only.mp4).
 

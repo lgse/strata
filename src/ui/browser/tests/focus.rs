@@ -307,7 +307,7 @@ fn pane_ownership_routes_commands_and_preserves_selection() {
         assert!(!is_column_background(surface.upcast_ref(), &control));
     }
 
-    for mode in [BrowserMode::Grid, BrowserMode::Explorer] {
+    for mode in [BrowserMode::Icons, BrowserMode::List] {
         view.set_view_mode(mode);
         assert_eq!(view.state.destination_depth(), browser.active_depth());
     }

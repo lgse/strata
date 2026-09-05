@@ -3,14 +3,16 @@
 use std::{cell::RefCell, collections::HashSet};
 
 use super::{
-    Preferences, TextSize, Theme, azure_tokens, blend, builtins, configured_hardware_acceleration,
-    configured_video_preview_backend, is_omarchy_theme_event, merge_builtin_and_custom_themes,
-    notify_live, slugify, sort_preferences, title_case_slug, tokens_from_quattro, validate_tokens,
+    Preferences, TextSize, Theme, azure_tokens, blend, browser_mode_from_stored, builtins,
+    configured_hardware_acceleration, configured_video_preview_backend, is_omarchy_theme_event,
+    merge_builtin_and_custom_themes, notify_live, slugify, sort_preferences, stored_browser_mode,
+    title_case_slug, tokens_from_quattro, validate_tokens,
 };
 use crate::{
     model::{SortDirection, SortKey, ViewPreferences},
     sandbox::MediaPreviewBackend,
     services::Channel,
+    ui::browser_modes::BrowserMode,
 };
 
 #[test]
@@ -175,19 +177,33 @@ theme = "azure-glow"
         MediaPreviewBackend::Automatic
     );
     assert!(!preferences.search_open_files_directly);
-    assert!(!preferences.type_to_search);
+    assert!(preferences.type_to_search);
+    assert!(Preferences::default().type_to_search);
     assert!(preferences.show_keybinding_hints);
     assert!(Preferences::default().show_keybinding_hints);
     assert!(!preferences.reduce_motion);
     assert_eq!(preferences.browser_mode, "columns");
     assert_eq!(preferences.browser_density, "compact");
+    assert_eq!(preferences.columns_file_clicks, 2);
+    assert_eq!(preferences.columns_folder_clicks, 1);
+    assert_eq!(preferences.icons_file_clicks, 2);
+    assert_eq!(preferences.icons_folder_clicks, 2);
     assert_eq!(preferences.list_file_clicks, 2);
-    assert_eq!(preferences.list_folder_clicks, 1);
-    assert_eq!(preferences.grid_file_clicks, 2);
-    assert_eq!(preferences.grid_folder_clicks, 2);
-    assert_eq!(preferences.explorer_file_clicks, 2);
-    assert_eq!(preferences.explorer_folder_clicks, 2);
+    assert_eq!(preferences.list_folder_clicks, 2);
     assert_eq!(sort_preferences(&preferences), ViewPreferences::default());
+}
+
+#[test]
+fn browser_mode_storage_uses_current_names_and_accepts_legacy_names() {
+    for (mode, stored, legacy) in [
+        (BrowserMode::Columns, "columns", "columns"),
+        (BrowserMode::Icons, "icons", "grid"),
+        (BrowserMode::List, "list", "explorer"),
+    ] {
+        assert_eq!(stored_browser_mode(mode), stored);
+        assert_eq!(browser_mode_from_stored(stored), mode);
+        assert_eq!(browser_mode_from_stored(legacy), mode);
+    }
 }
 
 #[test]
@@ -252,15 +268,15 @@ fn general_preferences_round_trip() {
         folder_peeking: false,
         single_click_previews: false,
         search_open_files_directly: true,
-        type_to_search: true,
+        type_to_search: false,
         show_keybinding_hints: false,
         reduce_motion: true,
+        columns_file_clicks: 1,
+        columns_folder_clicks: 2,
+        icons_file_clicks: 1,
+        icons_folder_clicks: 2,
         list_file_clicks: 1,
         list_folder_clicks: 2,
-        grid_file_clicks: 1,
-        grid_folder_clicks: 2,
-        explorer_file_clicks: 1,
-        explorer_folder_clicks: 2,
         ..Preferences::default()
     };
 
@@ -271,15 +287,15 @@ fn general_preferences_round_trip() {
     assert!(!restored.folder_peeking);
     assert!(!restored.single_click_previews);
     assert!(restored.search_open_files_directly);
-    assert!(restored.type_to_search);
+    assert!(!restored.type_to_search);
     assert!(!restored.show_keybinding_hints);
     assert!(restored.reduce_motion);
+    assert_eq!(restored.columns_file_clicks, 1);
+    assert_eq!(restored.columns_folder_clicks, 2);
+    assert_eq!(restored.icons_file_clicks, 1);
+    assert_eq!(restored.icons_folder_clicks, 2);
     assert_eq!(restored.list_file_clicks, 1);
     assert_eq!(restored.list_folder_clicks, 2);
-    assert_eq!(restored.grid_file_clicks, 1);
-    assert_eq!(restored.grid_folder_clicks, 2);
-    assert_eq!(restored.explorer_file_clicks, 1);
-    assert_eq!(restored.explorer_folder_clicks, 2);
 }
 
 #[test]

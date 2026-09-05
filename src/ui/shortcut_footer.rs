@@ -256,8 +256,8 @@ impl ShortcutFooter {
             &self.reference,
             match mode {
                 BrowserMode::Columns => "Columns navigation",
-                BrowserMode::Grid => "Grid navigation",
-                BrowserMode::Explorer => "Explorer navigation",
+                BrowserMode::Icons => "Icons navigation",
+                BrowserMode::List => "List navigation",
             },
             &navigation_shortcuts(mode),
         );
@@ -402,13 +402,13 @@ fn refresh_paste_availability(
 fn summary_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
     let mut shortcuts = vec![match mode {
         BrowserMode::Columns => ("↑↓ ←→", "Navigate"),
-        BrowserMode::Grid => ("↑↓←→", "Move"),
-        BrowserMode::Explorer => ("↑↓", "Move"),
+        BrowserMode::Icons => ("↑↓←→", "Move"),
+        BrowserMode::List => ("↑↓", "Move"),
     }];
     shortcuts.push(match mode {
         BrowserMode::Columns => ("← at first pane", "Sidebar"),
-        BrowserMode::Grid => ("← at edge", "Sidebar"),
-        BrowserMode::Explorer => ("←", "Sidebar"),
+        BrowserMode::Icons => ("← at edge", "Sidebar"),
+        BrowserMode::List => ("←", "Sidebar"),
     });
     shortcuts.extend_from_slice(&[
         ("↑ at top", "Header"),
@@ -436,14 +436,14 @@ fn navigation_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
                 "Vim movement; l opens the item (type-to-search off)",
             ),
         ],
-        BrowserMode::Grid => vec![
+        BrowserMode::Icons => vec![
             ("↑ ↓ ← →", "Move spatially between tiles"),
             ("← at left edge", "Focus the visible sidebar"),
             ("Backspace", "Go to the parent folder"),
             ("h / l", "Parent folder / open item (type-to-search off)"),
             ("j / k", "Next / previous item (type-to-search off)"),
         ],
-        BrowserMode::Explorer => vec![
+        BrowserMode::List => vec![
             ("↑ / ↓", "Move between file rows"),
             ("←", "Focus the visible sidebar"),
             ("Backspace", "Go to the parent folder"),

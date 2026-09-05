@@ -59,7 +59,7 @@ platform choosers, such as GTK's color dialog, are also kept native.
 ### Browser presentation modes
 
 Browser presentations consume the same `BrowserEvent` stream and send intents back to the same
-application controller. Miller list columns, the single-pane grid, and the single-pane explorer must not
+application controller. Columns, the single-pane Icons grid, and the single-pane List must not
 own independent filesystem or navigation state. Mode-specific widget construction and interaction
 policy live behind the UI presentation boundary (`ui/browser_modes.rs`); shared operations stay in
 the application layer. A future mode should therefore add a renderer rather than add mode checks to
