@@ -171,6 +171,8 @@ fn entries_of_one_type_share_a_group() {
 const GTK_CHILD: &str = "STRATA_SOURCE_INDEX_MAP_GTK_CHILD";
 const SOURCE_INDEX_TEST: &str =
     "ui::browser_modes::tests::source_index_map_tracks_filter_sort_and_placeholder";
+const EXPLORER_ROW_GTK_CHILD: &str = "STRATA_EXPLORER_ROW_GTK_CHILD";
+const EXPLORER_ROW_TEST: &str = "ui::browser_modes::tests::explorer_bind_can_read_the_rename_field";
 
 fn run_source_index_map_checks() {
     let source = gtk::StringList::new(&["fv\talpha", "dh\t.secret", "fv\tneedle"]);
@@ -262,6 +264,28 @@ fn run_source_index_map_checks() {
 }
 
 mod skeletons;
+
+#[test]
+fn explorer_bind_can_read_the_rename_field() {
+    if std::env::var_os(EXPLORER_ROW_GTK_CHILD).is_some() {
+        if gtk::init().is_err() {
+            return;
+        }
+        let row = super::assemble_explorer_row();
+        let (_, name, field, _, _, _, _) =
+            super::explorer_row_parts(&row).expect("bind and settle walk this row");
+        assert!(name.has_css_class("alternate-rename-label"));
+        assert!(field.has_css_class("inline-rename"));
+        return;
+    }
+
+    let status = Command::new(std::env::current_exe().expect("test executable should exist"))
+        .args(["--exact", EXPLORER_ROW_TEST])
+        .env(EXPLORER_ROW_GTK_CHILD, "1")
+        .status()
+        .expect("isolated GTK explorer row test should start");
+    assert!(status.success(), "isolated GTK explorer row test failed");
+}
 
 #[test]
 fn source_index_map_tracks_filter_sort_and_placeholder() {
