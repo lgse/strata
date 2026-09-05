@@ -12,6 +12,7 @@ mod input_ownership;
 mod loading_skeleton;
 mod marquee;
 mod motion;
+mod path_completion;
 mod portal_preferences;
 mod preview;
 mod scrolling;

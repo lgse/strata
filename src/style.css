@@ -2276,6 +2276,51 @@ menubutton.column-header-action > button:active {
   font-size: 0.85em;
 }
 
+.path-completion-popover contents {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_border, 0.45);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px alpha(@theme_shadow, 0.32);
+  padding: 4px;
+}
+
+.path-completion-scroll,
+.path-completion-scroll viewport {
+  background: transparent;
+}
+
+.path-completion-list {
+  background: transparent;
+  color: @theme_text;
+}
+
+.path-completion-row {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  color: @theme_text;
+  font-size: 0.9em;
+  min-height: 32px;
+  padding: 5px 10px;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+
+.path-completion-row:hover,
+.path-completion-row:selected {
+  background: alpha(@theme_highlight, 0.85);
+  color: @theme_accent;
+}
+
+.path-completion-row:active {
+  background: alpha(@theme_accent, 0.22);
+  color: @theme_accent;
+}
+
+.path-completion-parent {
+  color: @theme_dim_text;
+  font-size: 0.82em;
+}
+
 .properties-content {
   min-width: 382px;
 }
