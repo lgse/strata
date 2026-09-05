@@ -46,6 +46,33 @@ fn renders_requested_pdf_pages_within_the_pixel_budget() {
 }
 
 #[test]
+fn shared_thumbnail_lookup_is_limited_to_supported_placeholders() {
+    assert!(uses_shared_thumbnail(ParseOperation::PreviewImage, 0));
+    assert!(uses_shared_thumbnail(ParseOperation::PreviewPdf, 0));
+    assert!(!uses_shared_thumbnail(ParseOperation::PreviewPdf, 1));
+    assert!(!uses_shared_thumbnail(ParseOperation::PreviewMedia, 0));
+}
+
+#[test]
+fn full_render_settles_only_after_a_progressive_placeholder() {
+    assert_eq!(full_render_settle_delay(false), Duration::ZERO);
+    assert_eq!(
+        full_render_settle_delay(true),
+        PROGRESSIVE_RENDER_SETTLE_DELAY
+    );
+}
+
+#[test]
+fn cancelled_progressive_load_does_not_start_the_full_render() {
+    let cancellation = Cancellation::default();
+    cancellation.cancel();
+
+    let should_start = glib::MainContext::new().block_on(wait_for_full_render(true, &cancellation));
+
+    assert!(!should_start);
+}
+
+#[test]
 fn preview_cache_stores_and_retrieves_entries() {
     let mut cache = PreviewCache {
         entries: HashMap::new(),

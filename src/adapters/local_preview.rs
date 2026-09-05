@@ -5,6 +5,7 @@ use std::{
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
     rc::Rc,
+    time::Duration,
 };
 
 use gtk::{gio, glib, prelude::*};
@@ -21,6 +22,7 @@ use crate::{
 
 const MAX_PREVIEW_CACHE_ENTRIES: usize = 64;
 const MAX_PREVIEW_CACHE_BYTES: usize = 128 * 1024 * 1024;
+const PROGRESSIVE_RENDER_SETTLE_DELAY: Duration = Duration::from_millis(50);
 
 struct PreviewCache {
     entries: HashMap<PreviewCacheKey, PreviewContent>,
@@ -207,35 +209,52 @@ impl PreviewProvider for LocalPreviewProvider {
                     return;
                 }
 
-                if let Some(mtime) = modified
-                    && let Some(thumb_png) = crate::ui::thumbnail_cache::lookup(&path, mtime)
-                {
-                    let placeholder = match operation {
-                        ParseOperation::PreviewPdf if request.pdf_page == 0 => {
-                            Some(PreviewContent::Pdf {
-                                png: thumb_png.clone(),
-                                page: 0,
-                                pages: 1,
-                            })
-                        }
-                        ParseOperation::PreviewImage => {
-                            Some(PreviewContent::Rasterized { png: thumb_png })
-                        }
-                        _ => None,
-                    };
-                    if let Some(placeholder) = placeholder {
-                        emit(PreviewEvent::Ready(Preview {
-                            request_id,
-                            entry: entry.clone(),
-                            content_type: content_type.clone(),
-                            content: placeholder,
-                        }));
+                let shared_thumbnail = if uses_shared_thumbnail(operation, request.pdf_page) {
+                    if let Some(mtime) = modified {
+                        let thumbnail_path = path.clone();
+                        gio::spawn_blocking(move || {
+                            crate::ui::thumbnail_cache::lookup(&thumbnail_path, mtime)
+                        })
+                        .await
+                        .ok()
+                        .flatten()
+                    } else {
+                        None
                     }
+                } else {
+                    None
+                };
+                let placeholder = shared_thumbnail.and_then(|thumb_png| match operation {
+                    ParseOperation::PreviewPdf if request.pdf_page == 0 => {
+                        Some(PreviewContent::Pdf {
+                            png: thumb_png,
+                            page: 0,
+                            pages: 1,
+                        })
+                    }
+                    ParseOperation::PreviewImage => {
+                        Some(PreviewContent::Rasterized { png: thumb_png })
+                    }
+                    _ => None,
+                });
+                let placeholder_emitted = placeholder.is_some();
+                if let Some(placeholder) = placeholder {
+                    emit(PreviewEvent::Ready(Preview {
+                        request_id,
+                        entry: entry.clone(),
+                        content_type: content_type.clone(),
+                        content: placeholder,
+                    }));
+                }
+
+                if !wait_for_full_render(placeholder_emitted, &cancellation_for_task).await {
+                    return;
                 }
 
                 let value = request.pdf_page;
                 let cancellation = cancellation_for_task.clone();
                 let spawn_path = path.clone();
+                let mut thumbnail_to_store = None;
                 content = match gio::spawn_blocking(move || {
                     crate::sandbox::parse(
                         &spawn_path,
@@ -250,8 +269,9 @@ impl PreviewProvider for LocalPreviewProvider {
                     Ok(Ok(output)) if operation == ParseOperation::PreviewPdf => {
                         if let Some(mtime) = modified
                             && request.pdf_page == 0
+                            && !placeholder_emitted
                         {
-                            crate::ui::thumbnail_cache::store(&path, mtime, &output.data);
+                            thumbnail_to_store = Some((path.clone(), mtime, output.data.clone()));
                         }
                         PreviewContent::Pdf {
                             png: output.data,
@@ -263,8 +283,10 @@ impl PreviewProvider for LocalPreviewProvider {
                         PreviewContent::SandboxedMedia { data: output.data }
                     }
                     Ok(Ok(output)) => {
-                        if let Some(mtime) = modified {
-                            crate::ui::thumbnail_cache::store(&path, mtime, &output.data);
+                        if let Some(mtime) = modified
+                            && !placeholder_emitted
+                        {
+                            thumbnail_to_store = Some((path.clone(), mtime, output.data.clone()));
                         }
                         PreviewContent::Rasterized { png: output.data }
                     }
@@ -281,6 +303,19 @@ impl PreviewProvider for LocalPreviewProvider {
                 PREVIEW_CACHE.with(|cache| {
                     cache.borrow_mut().insert(cache_key, content.clone());
                 });
+                emit(PreviewEvent::Ready(Preview {
+                    request_id,
+                    entry,
+                    content_type,
+                    content,
+                }));
+                if let Some((path, mtime, png)) = thumbnail_to_store {
+                    let _ = gio::spawn_blocking(move || {
+                        crate::ui::thumbnail_cache::store(&path, mtime, &png);
+                    })
+                    .await;
+                }
+                return;
             } else if matches!(content, PreviewContent::Text { .. }) {
                 let file = file_for_location(&entry.location);
                 let native_path = entry.location.native_path().map(ToOwned::to_owned);
@@ -311,6 +346,27 @@ impl PreviewProvider for LocalPreviewProvider {
             task.abort();
         })
     }
+}
+
+fn uses_shared_thumbnail(operation: ParseOperation, pdf_page: i32) -> bool {
+    operation == ParseOperation::PreviewImage
+        || (operation == ParseOperation::PreviewPdf && pdf_page == 0)
+}
+
+fn full_render_settle_delay(has_placeholder: bool) -> Duration {
+    if has_placeholder {
+        PROGRESSIVE_RENDER_SETTLE_DELAY
+    } else {
+        Duration::ZERO
+    }
+}
+
+async fn wait_for_full_render(has_placeholder: bool, cancellation: &Cancellation) -> bool {
+    let settle_delay = full_render_settle_delay(has_placeholder);
+    if !settle_delay.is_zero() {
+        glib::timeout_future(settle_delay).await;
+    }
+    !cancellation.is_cancelled()
 }
 
 fn file_for_location(location: &Location) -> gio::File {
