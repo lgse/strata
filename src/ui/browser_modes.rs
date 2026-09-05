@@ -4354,7 +4354,11 @@ fn section_item_position(section: &PaneSection, picked: &gtk::Widget) -> Option<
         let position = section.bound_items.borrow().iter().find_map(|bound| {
             let bound_widget = bound.widget.upgrade()?;
             let item = bound.item.upgrade()?;
-            (bound_widget == widget).then_some(item.position())
+            if bound_widget == widget || widget.first_child().as_ref() == Some(&bound_widget) {
+                Some(item.position())
+            } else {
+                None
+            }
         });
         if position.is_some() {
             return position;

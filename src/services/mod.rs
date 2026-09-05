@@ -18,7 +18,8 @@ pub use file_source::{
 pub(crate) use install_source::ensure_self_managed;
 pub use install_source::{InstallSource, ManagedInstall};
 pub use operations::{
-    ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
+    ArchiveFormat, CancelledOperation, CompressRequest, ConversionFormat, ConversionQuality,
+    ConversionScale, ConvertOptions, ConvertRequest, CreateDirectoryRequest, CreateFileRequest,
     DeleteRequest, ExtractRequest, MoveRecord, OperationEvent, OperationProvider,
     OperationRequestId, PasteItem, PasteRequest, RenameRequest, RestoreRequest, RestoreSource,
     TransferConflict, UndoMoveItem, UndoMoveRequest, validate_basename,

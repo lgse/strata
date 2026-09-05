@@ -21,10 +21,11 @@ use crate::{
         EntryKind, FileEntry, FolderColor, FolderColorValue, Location, SortDirection, SortKey,
     },
     services::{
-        ArchiveFormat, FileSource, LoadHandle, LocationValidationError, MoveRecord,
-        OperationProvider, PasteItem, PreviewContent, SearchEvent, TransferConflict, UndoMoveItem,
-        UriCredentials, backend_unavailable_message, content_family, has_plain_text_extension,
-        index_tree, is_extensionless_dotfile, sanitize_uri_credentials, validate_basename,
+        ArchiveFormat, ConversionFormat, ConversionQuality, ConvertOptions, FileSource, LoadHandle,
+        LocationValidationError, MoveRecord, OperationProvider, PasteItem, PreviewContent,
+        SearchEvent, TransferConflict, UndoMoveItem, UriCredentials, backend_unavailable_message,
+        content_family, has_plain_text_extension, index_tree, is_extensionless_dotfile,
+        sanitize_uri_credentials, validate_basename,
     },
 };
 
@@ -3180,6 +3181,424 @@ impl ViewState {
                     archive_name,
                     format,
                     password,
+                );
+            }
+        });
+        name_entry.grab_focus();
+    }
+
+    fn build_convert_modal(
+        self: &Rc<Self>,
+        title: &str,
+        subtitle: &str,
+        confirm_label: &str,
+        block_dismiss: Option<Rc<dyn Fn() -> bool>>,
+    ) -> (gtk::Box, gtk::Button, Rc<dyn Fn()>) {
+        let Some(window_overlay) = self
+            .overlay
+            .root()
+            .and_downcast::<gtk::Window>()
+            .and_then(|window| window.child())
+            .and_downcast::<gtk::Overlay>()
+        else {
+            return (gtk::Box::default(), gtk::Button::default(), Rc::new(|| {}));
+        };
+        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
+        if let Some(root) = blurred_root.as_ref() {
+            root.set_blurred(true);
+        }
+
+        let layout = modal_layout(
+            crate::assets::icons::REFRESH,
+            title,
+            subtitle,
+            confirm_label,
+        );
+        let layer = modal_layer(
+            &layout.content,
+            &window_overlay,
+            blurred_root.clone(),
+            block_dismiss,
+        );
+        window_overlay.add_overlay(&layer);
+
+        let dismiss: Rc<dyn Fn()> = Rc::new({
+            let layer = layer.clone();
+            let overlay = window_overlay.clone();
+            let root = blurred_root.clone();
+            move || dismiss_modal_layer(&layer, &overlay, root.as_ref())
+        });
+        let dismiss_for_cancel = dismiss.clone();
+        layout.cancel.connect_clicked(move |_| dismiss_for_cancel());
+        let dismiss_for_close = dismiss.clone();
+        layout.close.connect_clicked(move |_| dismiss_for_close());
+        let escape = gtk::EventControllerKey::new();
+        let dismiss_for_escape = dismiss.clone();
+        escape.connect_key_pressed(move |_, key, _, _| {
+            if key == gtk::gdk::Key::Escape {
+                dismiss_for_escape();
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        layer.add_controller(escape);
+        (layout.body, layout.confirm, dismiss)
+    }
+
+    fn start_convert(
+        self: &Rc<Self>,
+        entries: Vec<FileEntry>,
+        destination: Location,
+        target_name: String,
+        mut options: ConvertOptions,
+    ) {
+        let final_name = format!("{target_name}.{}", options.format.extension());
+        options.conflict = TransferConflict::FailIfExists;
+        if !archive_has_collision(&destination, &final_name) {
+            self.browser
+                .convert(entries, destination, final_name, options);
+            return;
+        }
+        let Some(window_overlay) = self
+            .overlay
+            .root()
+            .and_downcast::<gtk::Window>()
+            .and_then(|window| window.child())
+            .and_downcast::<gtk::Overlay>()
+        else {
+            return;
+        };
+        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
+        if let Some(root) = blurred_root.as_ref() {
+            root.set_blurred(true);
+        }
+        let layout = message_dialog_layout(
+            crate::assets::icons::REFRESH,
+            "File already exists",
+            &final_name,
+            "Replace",
+            ModalTone::Danger,
+        );
+        layout.body.append(&message_dialog_description(&format!(
+            "A file named “{final_name}” already exists in {}. Replacing it will overwrite its contents.",
+            compact_display_path(&destination)
+        )));
+        let content = layout.content;
+        let close = layout.close;
+        let cancel = layout.cancel;
+        let confirm = layout.confirm;
+        let weak = Rc::downgrade(self);
+        let confirm_entries = entries.clone();
+        let confirm_destination = destination.clone();
+        let dismiss_window = window_overlay.clone();
+        let dismiss_root = blurred_root.clone();
+        let dismiss_content = content.clone();
+        let dismiss = Rc::new(move || {
+            dismiss_window.remove_overlay(&dismiss_content);
+            if let Some(root) = dismiss_root.as_ref() {
+                root.set_blurred(false);
+            }
+        });
+        let close_dismiss = dismiss.clone();
+        close.connect_clicked(move |_| close_dismiss());
+        let cancel_dismiss = dismiss.clone();
+        cancel.connect_clicked(move |_| cancel_dismiss());
+        let confirm_dismiss = dismiss.clone();
+        let mut replace_options = options;
+        replace_options.conflict = TransferConflict::ReplaceExisting;
+        confirm.connect_clicked(move |_| {
+            confirm_dismiss();
+            if let Some(state) = weak.upgrade() {
+                state.browser.convert(
+                    confirm_entries.clone(),
+                    confirm_destination.clone(),
+                    final_name.clone(),
+                    replace_options,
+                );
+            }
+        });
+        window_overlay.add_overlay(&content);
+    }
+
+    pub(super) fn show_convert_dialog(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        if entries.is_empty() {
+            return;
+        }
+        let destination = self
+            .browser
+            .active_location()
+            .unwrap_or_else(|| Location::local(glib::home_dir()));
+
+        let is_all_images = entries.iter().all(entry_is_image);
+        let is_all_videos = entries.iter().all(entry_is_video);
+        let is_all_audios = entries.iter().all(entry_is_audio);
+        let is_all_pdfs = entries.iter().all(entry_is_pdf);
+
+        let formats: Vec<ConversionFormat> = if is_all_images {
+            vec![
+                ConversionFormat::Webp,
+                ConversionFormat::Avif,
+                ConversionFormat::Png,
+                ConversionFormat::Jpeg,
+                ConversionFormat::Pdf,
+                ConversionFormat::Gif,
+                ConversionFormat::Ico,
+                ConversionFormat::Tiff,
+                ConversionFormat::Bmp,
+            ]
+        } else if is_all_videos {
+            vec![
+                ConversionFormat::Mp4,
+                ConversionFormat::Webm,
+                ConversionFormat::Gif,
+                ConversionFormat::Mkv,
+                ConversionFormat::Mov,
+                ConversionFormat::Mp3,
+                ConversionFormat::Opus,
+                ConversionFormat::Aac,
+                ConversionFormat::Wav,
+            ]
+        } else if is_all_audios {
+            vec![
+                ConversionFormat::Mp3,
+                ConversionFormat::Opus,
+                ConversionFormat::Aac,
+                ConversionFormat::Flac,
+                ConversionFormat::Wav,
+                ConversionFormat::Ogg,
+            ]
+        } else if is_all_pdfs {
+            vec![
+                ConversionFormat::Png,
+                ConversionFormat::Jpeg,
+                ConversionFormat::Webp,
+            ]
+        } else {
+            vec![
+                ConversionFormat::Webp,
+                ConversionFormat::Png,
+                ConversionFormat::Jpeg,
+                ConversionFormat::Pdf,
+                ConversionFormat::Mp4,
+                ConversionFormat::Mp3,
+            ]
+        };
+        let labels: Vec<&'static str> = formats.iter().map(|f| f.label()).collect();
+
+        let default_name = if entries.len() == 1 {
+            let name = &entries[0].display_name;
+            Path::new(name)
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or(name)
+                .to_owned()
+        } else {
+            "Combined".to_owned()
+        };
+
+        let title = if entries.len() == 1 {
+            "Convert file".to_owned()
+        } else {
+            format!("Convert {} items", entries.len())
+        };
+        let subtitle = entry_kind_summary(&entries);
+
+        let name_entry = form_entry();
+        name_entry.set_text(&default_name);
+        name_entry.connect_changed(|field| {
+            update_basename_validation(field);
+        });
+
+        let convert_default_name = default_name.clone();
+        let dirty_name = name_entry.clone();
+        let (body, confirm, dismiss) = self.build_convert_modal(
+            &title,
+            &subtitle,
+            "Convert",
+            Some(Rc::new(move || dirty_name.text() != convert_default_name)),
+        );
+
+        let destination_hint = compact_display_path(&destination);
+        let item_word = if entries.len() == 1 { "file" } else { "files" };
+        let conversion_preview = gtk::Label::new(None);
+        conversion_preview.add_css_class("conversion-preview");
+        conversion_preview.set_xalign(0.0);
+        conversion_preview.set_wrap(true);
+        conversion_preview.set_text(&format!(
+            "{} {} will be saved as .{} in {}",
+            entries.len(),
+            item_word,
+            formats[0].extension(),
+            destination_hint
+        ));
+        confirm.set_label(&format!("Convert to {}", formats[0].label()));
+        body.append(&conversion_preview);
+
+        let name_label = form_label("Output name");
+        body.append(&name_label);
+        body.append(&name_entry);
+
+        let is_multi = entries.len() > 1;
+        if is_multi && formats[0] != ConversionFormat::Pdf {
+            name_label.set_visible(false);
+            name_entry.set_visible(false);
+        }
+
+        let format_label = form_label("Target format");
+        let (format_control, format_options) = segmented_control(&labels, 0);
+        let selected_format = Rc::new(Cell::new(formats[0]));
+        body.append(&format_label);
+        body.append(&format_control);
+
+        let quality_label = form_label("Quality");
+        let (quality_control, quality_options) =
+            segmented_control(&["High", "Balanced", "Compact"], 1);
+        let selected_quality = Rc::new(Cell::new(ConversionQuality::Balanced));
+        body.append(&quality_label);
+        body.append(&quality_control);
+
+        let scale_labels = [
+            crate::services::ConversionScale::Original.label(),
+            crate::services::ConversionScale::Percent75.label(),
+            crate::services::ConversionScale::Percent50.label(),
+            crate::services::ConversionScale::Percent25.label(),
+        ];
+        let scale_label = form_label("Scale / Resolution");
+        let (scale_control, scale_options) = segmented_control(&scale_labels, 0);
+        let selected_scale = Rc::new(Cell::new(crate::services::ConversionScale::Original));
+        let initial_supports_scale = formats[0].is_image() || formats[0].is_video();
+        scale_label.set_visible(initial_supports_scale);
+        scale_control.set_visible(initial_supports_scale);
+        body.append(&scale_label);
+        body.append(&scale_control);
+
+        let strip_check = form_check_button("Strip metadata (EXIF, location, camera data)");
+        strip_check.set_active(true);
+        strip_check
+            .set_visible(formats[0].is_image() || formats[0].is_video() || formats[0].is_audio());
+        body.append(&strip_check);
+
+        let mute_check = form_check_button("Mute audio (remove sound track)");
+        mute_check.set_active(false);
+        mute_check.set_visible(formats[0].is_video());
+        body.append(&mute_check);
+
+        for (option, quality) in quality_options.into_iter().zip([
+            ConversionQuality::High,
+            ConversionQuality::Balanced,
+            ConversionQuality::Compact,
+        ]) {
+            let selected_quality = selected_quality.clone();
+            option.connect_toggled(move |option| {
+                if option.is_active() {
+                    selected_quality.set(quality);
+                }
+            });
+        }
+
+        for (option, scale) in scale_options.into_iter().zip([
+            crate::services::ConversionScale::Original,
+            crate::services::ConversionScale::Percent75,
+            crate::services::ConversionScale::Percent50,
+            crate::services::ConversionScale::Percent25,
+        ]) {
+            let selected_scale = selected_scale.clone();
+            option.connect_toggled(move |option| {
+                if option.is_active() {
+                    selected_scale.set(scale);
+                }
+            });
+        }
+
+        let name_label_for_toggle = name_label.clone();
+        let name_entry_for_toggle = name_entry.clone();
+        let strip_for_toggle = strip_check.clone();
+        let mute_for_toggle = mute_check.clone();
+        let scale_label_for_toggle = scale_label.clone();
+        let scale_control_for_toggle = scale_control.clone();
+        let preview_for_toggle = conversion_preview.clone();
+        let confirm_for_toggle = confirm.clone();
+        let item_count = entries.len();
+        let destination_for_toggle = destination_hint.clone();
+        for (option, &format) in format_options.into_iter().zip(formats.iter()) {
+            let selected_format = selected_format.clone();
+            let name_label = name_label_for_toggle.clone();
+            let name_entry = name_entry_for_toggle.clone();
+            let strip_check = strip_for_toggle.clone();
+            let mute_check = mute_for_toggle.clone();
+            let scale_label = scale_label_for_toggle.clone();
+            let scale_control = scale_control_for_toggle.clone();
+            let preview = preview_for_toggle.clone();
+            let confirm = confirm_for_toggle.clone();
+            let destination_hint = destination_for_toggle.clone();
+            option.connect_toggled(move |option| {
+                if !option.is_active() {
+                    return;
+                }
+                selected_format.set(format);
+                preview.set_text(&format!(
+                    "{} {} will be saved as .{} in {}",
+                    item_count,
+                    item_word,
+                    format.extension(),
+                    destination_hint
+                ));
+                confirm.set_label(&format!("Convert to {}", format.label()));
+                strip_check
+                    .set_visible(format.is_image() || format.is_video() || format.is_audio());
+                mute_check.set_visible(format.is_video());
+                let supports_scale = format.is_image() || format.is_video();
+                scale_label.set_visible(supports_scale);
+                scale_control.set_visible(supports_scale);
+                if is_multi {
+                    let is_pdf = format == ConversionFormat::Pdf;
+                    name_label.set_visible(is_pdf);
+                    name_entry.set_visible(is_pdf);
+                    if is_pdf {
+                        name_label.set_text("Combined document name");
+                    }
+                }
+            });
+        }
+
+        let state = Rc::downgrade(self);
+        let confirm_entries = entries.clone();
+        let confirm_destination = destination.clone();
+        let name_for_confirm = name_entry.clone();
+        let format_for_confirm = selected_format.clone();
+        let quality_for_confirm = selected_quality.clone();
+        let scale_for_confirm = selected_scale.clone();
+        let strip_for_confirm = strip_check.clone();
+        let mute_for_confirm = mute_check.clone();
+        let dismiss_for_confirm = dismiss.clone();
+        confirm.connect_clicked(move |_| {
+            let format = format_for_confirm.get();
+            let name = name_for_confirm.text().to_string();
+            let target_name = normalized_convert_name(&name, format);
+            if (!is_multi || format == ConversionFormat::Pdf)
+                && let Err(message) =
+                    validate_basename(&format!("{target_name}.{}", format.extension()))
+            {
+                name_for_confirm.add_css_class("error");
+                name_for_confirm.set_tooltip_text(Some(message));
+                name_for_confirm.grab_focus();
+                return;
+            }
+            dismiss_for_confirm();
+            if let Some(state) = state.upgrade() {
+                state.start_convert(
+                    confirm_entries.clone(),
+                    confirm_destination.clone(),
+                    target_name,
+                    ConvertOptions {
+                        format,
+                        quality: quality_for_confirm.get(),
+                        scale: scale_for_confirm.get(),
+                        strip_metadata: strip_for_confirm.is_active(),
+                        mute_audio: mute_for_confirm.is_active(),
+                        conflict: TransferConflict::FailIfExists,
+                    },
                 );
             }
         });
@@ -7150,6 +7569,7 @@ pub(super) fn install_item_context_menu(
     let properties = item_context_option(crate::assets::icons::INFO, "Properties", "Alt+Enter");
     let customize = item_context_option(crate::assets::icons::PALETTE, "Customize…", "");
     let compress = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
+    let convert = item_context_option(crate::assets::icons::REFRESH, "Convert…", "");
     let extract = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract here", "");
     let extract_to = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract to…", "");
     single.append(&open);
@@ -7170,6 +7590,7 @@ pub(super) fn install_item_context_menu(
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     single.append(&rename);
     single.append(&compress);
+    single.append(&convert);
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     single.append(&customize);
     single.append(&properties);
@@ -7201,6 +7622,7 @@ pub(super) fn install_item_context_menu(
     permanent_delete_multiple.add_css_class("danger");
     let compress_multiple =
         item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
+    let convert_multiple = item_context_option(crate::assets::icons::REFRESH, "Convert…", "");
     multiple.append(&restore_multiple);
     multiple.append(&cut_multiple);
     multiple.append(&copy_multiple);
@@ -7210,6 +7632,7 @@ pub(super) fn install_item_context_menu(
     multiple.append(&copy_to_multiple);
     multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&compress_multiple);
+    multiple.append(&convert_multiple);
     multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&trash_multiple);
     multiple.append(&permanent_delete_multiple);
@@ -7351,6 +7774,8 @@ pub(super) fn install_item_context_menu(
     connect_context_trash(&permanent_delete_multiple, &popover, state, &target, true);
     connect_context_compress(&compress, &popover, state, &target);
     connect_context_compress(&compress_multiple, &popover, state, &target);
+    connect_context_convert(&convert, &popover, state, &target);
+    connect_context_convert(&convert_multiple, &popover, state, &target);
     connect_context_extract(&extract, &popover, state, &target, false);
     connect_context_extract(&extract_to, &popover, state, &target, true);
     let weak = Rc::downgrade(state);
@@ -7433,7 +7858,13 @@ pub(super) fn install_item_context_menu(
             selection.select_item(filtered_position, true);
         }
         target.replace(Some((resolved_position, entry.clone())));
-        let entries = state.browser.selected_entries();
+        state.sync_mode_selection();
+        let selected = state.browser.selected_entries();
+        let entries = if selected.iter().any(|s| s.location == entry.location) {
+            selected
+        } else {
+            vec![entry.clone()]
+        };
         preview.set_visible(entry_supports_quick_preview(&entry));
         print.set_visible(entry_supports_printing(&entry));
         open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
@@ -7454,6 +7885,13 @@ pub(super) fn install_item_context_menu(
         );
         extract.set_visible(ArchiveFormat::from_extension(&entry.display_name).is_some());
         extract_to.set_visible(ArchiveFormat::from_extension(&entry.display_name).is_some());
+        let convert_supported = if entries.len() > 1 {
+            !entries.is_empty() && entries.iter().all(entry_supports_conversion)
+        } else {
+            entry_supports_conversion(&entry)
+        };
+        convert.set_visible(!in_trash && convert_supported);
+        convert_multiple.set_visible(!in_trash && convert_supported);
         customize
             .set_visible(!in_trash && entries.len() == 1 && entry.location.native_path().is_some());
         if entries.len() > 1 {
@@ -7505,6 +7943,85 @@ fn entry_supports_printing(entry: &FileEntry) -> bool {
     ) || gio::content_type_is_a(&content_type, "text/plain")
         || has_plain_text_extension(&entry.native_name)
         || is_extensionless_dotfile(&entry.native_name)
+}
+
+pub(super) fn entry_is_image(entry: &FileEntry) -> bool {
+    let name_lower = entry.native_name.to_ascii_lowercase();
+    let ext = Path::new(&name_lower)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default();
+    matches!(
+        ext,
+        "png"
+            | "jpg"
+            | "jpeg"
+            | "webp"
+            | "avif"
+            | "gif"
+            | "bmp"
+            | "tiff"
+            | "tif"
+            | "svg"
+            | "ico"
+            | "heic"
+    ) || {
+        let (content_type, _) =
+            gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
+        gio::content_type_is_a(&content_type, "image/*")
+    }
+}
+
+pub(super) fn entry_is_video(entry: &FileEntry) -> bool {
+    let name_lower = entry.native_name.to_ascii_lowercase();
+    let ext = Path::new(&name_lower)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default();
+    matches!(
+        ext,
+        "mp4" | "webm" | "mkv" | "avi" | "mov" | "flv" | "wmv" | "m4v" | "ts"
+    ) || {
+        let (content_type, _) =
+            gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
+        gio::content_type_is_a(&content_type, "video/*")
+    }
+}
+
+pub(super) fn entry_is_audio(entry: &FileEntry) -> bool {
+    let name_lower = entry.native_name.to_ascii_lowercase();
+    let ext = Path::new(&name_lower)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default();
+    matches!(
+        ext,
+        "mp3" | "ogg" | "opus" | "wav" | "flac" | "aac" | "m4a" | "wma"
+    ) || {
+        let (content_type, _) =
+            gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
+        gio::content_type_is_a(&content_type, "audio/*")
+    }
+}
+
+pub(super) fn entry_is_pdf(entry: &FileEntry) -> bool {
+    let name_lower = entry.native_name.to_ascii_lowercase();
+    let ext = Path::new(&name_lower)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default();
+    ext == "pdf" || {
+        let (content_type, _) =
+            gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
+        content_type == "application/pdf"
+    }
+}
+
+pub(super) fn entry_supports_conversion(entry: &FileEntry) -> bool {
+    if !matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink) {
+        return false;
+    }
+    entry_is_image(entry) || entry_is_video(entry) || entry_is_audio(entry) || entry_is_pdf(entry)
 }
 
 struct TrashSummary {
@@ -7918,6 +8435,26 @@ fn connect_context_compress(
     });
 }
 
+fn connect_context_convert(
+    button: &gtk::Button,
+    popover: &gtk::Popover,
+    state: &Rc<ViewState>,
+    target: &Rc<RefCell<Option<(usize, FileEntry)>>>,
+) {
+    let weak = Rc::downgrade(state);
+    let target = target.clone();
+    let popover = popover.downgrade();
+    button.connect_clicked(move |_| {
+        if let Some(popover) = popover.upgrade() {
+            popover.popdown();
+        }
+        if let Some(state) = weak.upgrade() {
+            let entries = context_entries(&state, &target);
+            state.show_convert_dialog(entries);
+        }
+    });
+}
+
 fn connect_context_extract(
     button: &gtk::Button,
     popover: &gtk::Popover,
@@ -8201,6 +8738,12 @@ fn transfer_has_collision(source: &Location, destination: &Location) -> bool {
 }
 
 fn normalized_archive_name(name: &str, format: ArchiveFormat) -> String {
+    name.strip_suffix(&format!(".{}", format.extension()))
+        .unwrap_or(name)
+        .to_owned()
+}
+
+fn normalized_convert_name(name: &str, format: ConversionFormat) -> String {
     name.strip_suffix(&format!(".{}", format.extension()))
         .unwrap_or(name)
         .to_owned()
@@ -8850,6 +9393,11 @@ pub(super) fn empty_trash_button(browser: &Rc<Browser>) -> gtk::Button {
 }
 
 fn file_row_target(mut target: gtk::Widget) -> Option<gtk::Box> {
+    if let Some(child) = target.first_child()
+        && child.has_css_class("file-row")
+    {
+        return child.downcast::<gtk::Box>().ok();
+    }
     loop {
         if target.has_css_class("file-row") {
             return target.downcast::<gtk::Box>().ok();

@@ -4,6 +4,7 @@ mod focus;
 mod sidebar;
 
 use super::*;
+use crate::model::{EntryKind, MetadataValue};
 
 #[test]
 fn recursive_search_arrows_select_and_clamp_results() {
@@ -701,6 +702,60 @@ fn archive_names_strip_only_the_selected_dotted_extension() {
         ))
         .is_err()
     );
+}
+
+#[test]
+fn convert_names_strip_only_the_selected_dotted_extension() {
+    assert_eq!(
+        normalized_convert_name("photo.webp", ConversionFormat::Webp),
+        "photo"
+    );
+    assert_eq!(
+        normalized_convert_name("photowebp", ConversionFormat::Webp),
+        "photowebp"
+    );
+    assert_eq!(
+        normalized_convert_name("video.mp4", ConversionFormat::Mp4),
+        "video"
+    );
+}
+
+#[test]
+fn conversion_support_detects_images_videos_and_audios() {
+    let make_file = |name: &str| FileEntry {
+        location: Location::local(format!("/tmp/{name}")),
+        native_name: name.into(),
+        display_name: name.into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Known(100),
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+    };
+    let make_dir = |name: &str| FileEntry {
+        location: Location::local(format!("/tmp/{name}")),
+        native_name: name.into(),
+        display_name: name.into(),
+        kind: EntryKind::Directory,
+        size: MetadataValue::Known(100),
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+    };
+
+    assert!(entry_supports_conversion(&make_file("photo.png")));
+    assert!(entry_supports_conversion(&make_file("photo.jpg")));
+    assert!(entry_supports_conversion(&make_file("photo.webp")));
+    assert!(entry_supports_conversion(&make_file("video.mp4")));
+    assert!(entry_supports_conversion(&make_file("video.webm")));
+    assert!(entry_supports_conversion(&make_file("audio.mp3")));
+    assert!(entry_supports_conversion(&make_file("audio.opus")));
+    assert!(entry_supports_conversion(&make_file("audio.m4a")));
+    assert!(entry_supports_conversion(&make_file("document.pdf")));
+
+    assert!(!entry_supports_conversion(&make_file("document.txt")));
+    assert!(!entry_supports_conversion(&make_file("archive.zip")));
+    assert!(!entry_supports_conversion(&make_dir("photos")));
 }
 
 #[test]

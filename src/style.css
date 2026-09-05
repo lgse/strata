@@ -573,6 +573,16 @@ headerbar menubutton.header-action > button:focus-visible {
   padding: 20px;
 }
 
+.conversion-preview {
+  background: alpha(@theme_highlight, 0.38);
+  border: 1px solid alpha(@theme_border, 0.42);
+  border-radius: 6px;
+  color: @theme_dim_text;
+  font-size: 0.82em;
+  margin-bottom: 4px;
+  padding: 9px 11px;
+}
+
 .action-dialog-actions {
   border-top: 1px solid alpha(@theme_border, 0.22);
   padding: 10px 20px 12px;

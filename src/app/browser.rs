@@ -12,12 +12,13 @@ use crate::{
     app::navigation::{EntryInsertion, EntrySplice, NavigationPath, NavigationState, sort_entries},
     model::{FileEntry, Location, SortDirection, SortKey, ViewPreferences},
     services::{
-        ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
-        DirectoryChange, DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
-        LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord, OperationEvent,
-        OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRequest, RequestId,
-        RestoreRequest, RestoreSource, TransferConflict, UndoMoveItem, UndoMoveRequest,
-        validate_basename, validate_uri_credentials,
+        ArchiveFormat, CompressRequest, ConvertOptions, ConvertRequest, CreateDirectoryRequest,
+        CreateFileRequest, DeleteRequest, DirectoryChange, DirectoryEvent, DirectoryRequest,
+        ExtractRequest, FileSource, LoadHandle, LocationValidationError, MetadataOutcome,
+        MetadataRequest, MoveRecord, OperationEvent, OperationProvider, OperationRequestId,
+        PasteItem, PasteRequest, RenameRequest, RequestId, RestoreRequest, RestoreSource,
+        TransferConflict, UndoMoveItem, UndoMoveRequest, validate_basename,
+        validate_uri_credentials,
     },
 };
 
@@ -1487,6 +1488,36 @@ impl Browser {
         self.operation_load.replace(Some(load));
     }
 
+    pub fn convert(
+        self: &Rc<Self>,
+        entries: Vec<FileEntry>,
+        destination: Location,
+        target_name: String,
+        options: ConvertOptions,
+    ) {
+        if entries.is_empty() {
+            return;
+        }
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            self.emit(BrowserEvent::OperationFailed {
+                message: "File operations are unavailable".to_owned(),
+            });
+            return;
+        };
+        let request_id = self.begin_operation();
+        let load = provider.convert(
+            ConvertRequest {
+                id: request_id,
+                entries,
+                destination,
+                target_name,
+                options,
+            },
+            self.operation_callback(request_id, false, HashSet::new()),
+        );
+        self.operation_load.replace(Some(load));
+    }
+
     pub fn cancel_file_operation(&self) {
         if self.transfer_operation.get().is_none()
             && !self.deletion_operation.get()
@@ -1547,6 +1578,9 @@ impl Browser {
                 | OperationEvent::Failed { request_id, .. }
                 | OperationEvent::Compressed { request_id, .. }
                 | OperationEvent::Extracted { request_id, .. }
+                | OperationEvent::Converted { request_id, .. }
+                | OperationEvent::ConvertStarted { request_id, .. }
+                | OperationEvent::ConvertProgress { request_id, .. }
                 | OperationEvent::ArchiveStarted { request_id, .. }
                 | OperationEvent::Cancelled { request_id, .. }
                 | OperationEvent::ArchiveProgress { request_id, .. } => *request_id,
@@ -1613,11 +1647,16 @@ impl Browser {
                 });
                 return;
             }
-            if let OperationEvent::ArchiveStarted { total, .. } = &event {
+            if let OperationEvent::ArchiveStarted { total, .. }
+            | OperationEvent::ConvertStarted { total, .. } = &event
+            {
                 browser.emit(BrowserEvent::ArchiveStarted { total: *total });
                 return;
             }
             if let OperationEvent::ArchiveProgress {
+                completed, total, ..
+            }
+            | OperationEvent::ConvertProgress {
                 completed, total, ..
             } = &event
             {
@@ -1784,6 +1823,11 @@ impl Browser {
                         select_name: first_name.unwrap_or_default(),
                     });
                 }
+                OperationEvent::Converted { target_name, .. } => {
+                    browser.emit(BrowserEvent::ArchiveCompleted {
+                        select_name: target_name.clone(),
+                    });
+                }
                 OperationEvent::Pasted { .. } => {
                     browser.emit(BrowserEvent::TransferCompleted);
                     for location in &refresh_locations {
@@ -1803,7 +1847,9 @@ impl Browser {
                 | OperationEvent::DeleteProgress { .. }
                 | OperationEvent::RestoreProgress { .. }
                 | OperationEvent::ArchiveStarted { .. }
-                | OperationEvent::ArchiveProgress { .. } => {}
+                | OperationEvent::ArchiveProgress { .. }
+                | OperationEvent::ConvertStarted { .. }
+                | OperationEvent::ConvertProgress { .. } => {}
             }
         })
     }

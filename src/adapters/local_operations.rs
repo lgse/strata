@@ -31,10 +31,11 @@ use crate::{
     adapters::location_for_file,
     model::Location,
     services::{
-        ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest,
-        CreateFileRequest, DeleteRequest, ExtractRequest, LoadHandle, OperationEvent,
-        OperationProvider, OperationRequestId, PasteRequest, RenameRequest, RestoreRequest,
-        RestoreSource, TransferConflict, UndoMoveRequest, validate_basename,
+        ArchiveFormat, CancelledOperation, CompressRequest, ConversionFormat, ConversionQuality,
+        ConvertOptions, ConvertRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
+        ExtractRequest, LoadHandle, OperationEvent, OperationProvider, OperationRequestId,
+        PasteRequest, RenameRequest, RestoreRequest, RestoreSource, TransferConflict,
+        UndoMoveRequest, validate_basename,
     },
 };
 
@@ -2932,6 +2933,90 @@ impl OperationProvider for LocalOperationProvider {
             task.abort();
         })
     }
+
+    fn convert(&self, request: ConvertRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let task_cancelled = cancelled.clone();
+        let task = glib::MainContext::default().spawn_local(async move {
+            let Some(dest_dir) = request.destination.native_path().map(Path::to_path_buf) else {
+                emit(OperationEvent::Failed {
+                    request_id: request.id,
+                    message: "Conversion destination must be a local path".to_owned(),
+                });
+                return;
+            };
+            if let Err(message) = validate_basename(&request.target_name) {
+                emit(OperationEvent::Failed {
+                    request_id: request.id,
+                    message: message.to_owned(),
+                });
+                return;
+            }
+            let target_name = format!(
+                "{}.{}",
+                request.target_name,
+                request.options.format.extension()
+            );
+            let entries: Vec<std::path::PathBuf> = request
+                .entries
+                .iter()
+                .filter_map(|e| e.location.native_path().map(Path::to_path_buf))
+                .collect();
+            if entries.is_empty() {
+                emit(OperationEvent::Failed {
+                    request_id: request.id,
+                    message: "Nothing to convert".to_owned(),
+                });
+                return;
+            }
+            let total = entries.len();
+            emit(OperationEvent::ConvertStarted {
+                request_id: request.id,
+                total,
+            });
+            let progress = Arc::new(AtomicUsize::new(0));
+            let timer_id = convert_progress_timer(
+                request.id,
+                &progress,
+                &Arc::new(AtomicUsize::new(total)),
+                &task_cancelled,
+                &emit,
+            );
+            let options = request.options;
+            let target_file_path = dest_dir.join(&target_name);
+            let work_progress = progress.clone();
+            let result = gio::spawn_blocking(move || {
+                convert_entries(
+                    &entries,
+                    &dest_dir,
+                    &target_file_path,
+                    options,
+                    &work_progress,
+                    &task_cancelled,
+                )
+            })
+            .await;
+            timer_id.remove();
+            match result {
+                Ok(Ok(())) => emit(OperationEvent::Converted {
+                    request_id: request.id,
+                    target_name,
+                }),
+                Ok(Err(error)) => emit(OperationEvent::Failed {
+                    request_id: request.id,
+                    message: error,
+                }),
+                Err(_) => emit(OperationEvent::Failed {
+                    request_id: request.id,
+                    message: "Conversion task panicked".to_owned(),
+                }),
+            }
+        });
+        LoadHandle::new(move || {
+            cancelled.store(true, Ordering::Relaxed);
+            task.abort();
+        })
+    }
 }
 
 fn compress_zip(
@@ -3258,6 +3343,31 @@ fn archive_progress_timer(
     })
 }
 
+/// Spawns a 100ms timer that polls progress counters and emits ConvertProgress events.
+fn convert_progress_timer(
+    request_id: OperationRequestId,
+    progress: &Arc<AtomicUsize>,
+    total: &Arc<AtomicUsize>,
+    cancelled: &Arc<AtomicBool>,
+    emit: &Rc<dyn Fn(OperationEvent)>,
+) -> glib::SourceId {
+    let timer_progress = progress.clone();
+    let timer_total = total.clone();
+    let timer_cancelled = cancelled.clone();
+    let timer_emit = emit.clone();
+    glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
+        if timer_cancelled.load(Ordering::Relaxed) {
+            return glib::ControlFlow::Break;
+        }
+        timer_emit(OperationEvent::ConvertProgress {
+            request_id,
+            completed: timer_progress.load(Ordering::Relaxed),
+            total: timer_total.load(Ordering::Relaxed),
+        });
+        glib::ControlFlow::Continue
+    })
+}
+
 /// File extensions that are already compressed — storing them raw saves CPU with zero size gain.
 const INCOMPRESSIBLE_EXTS: &[&str] = &[
     "zip", "7z", "gz", "bz2", "xz", "zst", "tar", "rar", "lz", "lz4", "br", "mp4", "mkv", "avi",
@@ -3492,4 +3602,329 @@ fn extract_7z_from_reader(
     )
     .map_err(|e| e.to_string())?;
     Ok(first_name.into_inner())
+}
+
+fn convert_entries(
+    entries: &[PathBuf],
+    dest_dir: &Path,
+    target_file_path: &Path,
+    options: ConvertOptions,
+    progress: &Arc<AtomicUsize>,
+    cancelled: &Arc<AtomicBool>,
+) -> Result<(), String> {
+    if entries.is_empty() {
+        return Err("Nothing to convert".to_owned());
+    }
+
+    if options.format == ConversionFormat::Pdf && entries.len() > 1 {
+        if options.conflict == TransferConflict::FailIfExists && target_file_path.exists() {
+            return Err(format!(
+                "File already exists: {}",
+                target_file_path.display()
+            ));
+        }
+        convert_images_to_pdf(entries, target_file_path, progress, cancelled)?;
+        return Ok(());
+    }
+
+    for entry in entries {
+        if cancelled.load(Ordering::Relaxed) {
+            return Err("Conversion cancelled".to_owned());
+        }
+        let output_path = if entries.len() == 1 {
+            target_file_path.to_path_buf()
+        } else {
+            let stem = entry.file_stem().unwrap_or(entry.as_os_str());
+            dest_dir.join(format!(
+                "{}.{}",
+                stem.to_string_lossy(),
+                options.format.extension()
+            ))
+        };
+
+        if options.conflict == TransferConflict::FailIfExists && output_path.exists() {
+            return Err(format!("File already exists: {}", output_path.display()));
+        }
+
+        convert_single_entry(entry, &output_path, options)?;
+        progress.fetch_add(1, Ordering::Relaxed);
+    }
+    Ok(())
+}
+
+fn convert_single_entry(
+    input: &Path,
+    output: &Path,
+    options: ConvertOptions,
+) -> Result<(), String> {
+    if options.format == ConversionFormat::Pdf {
+        convert_images_to_pdf(
+            &[input],
+            output,
+            &Arc::new(AtomicUsize::new(0)),
+            &Arc::new(AtomicBool::new(false)),
+        )?;
+        return Ok(());
+    }
+
+    let input_ext = input
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| e.to_ascii_lowercase())
+        .unwrap_or_default();
+
+    if input_ext == "pdf" && options.format.is_image() {
+        for executable in ["magick", "convert"] {
+            let mut command = std::process::Command::new(executable);
+            command.arg("-density").arg("150");
+            command.arg(input);
+            if options.strip_metadata {
+                command.arg("-strip");
+            }
+            match options.scale {
+                crate::services::ConversionScale::Percent75 => {
+                    command.args(["-resize", "75%"]);
+                }
+                crate::services::ConversionScale::Percent50 => {
+                    command.args(["-resize", "50%"]);
+                }
+                crate::services::ConversionScale::Percent25 => {
+                    command.args(["-resize", "25%"]);
+                }
+                crate::services::ConversionScale::Original => {}
+            }
+            command.arg(output);
+            if let Ok(status) = command.status()
+                && status.success()
+            {
+                return Ok(());
+            }
+        }
+    }
+
+    let mut command = std::process::Command::new("ffmpeg");
+    command.arg("-nostdin").arg("-y").arg("-v").arg("error");
+    command.arg("-i").arg(input);
+
+    if options.strip_metadata
+        && (options.format.is_image() || options.format.is_video() || options.format.is_audio())
+    {
+        command.args(["-map_metadata", "-1"]);
+    }
+
+    let scale_filter = match options.scale {
+        crate::services::ConversionScale::Percent75 => {
+            Some("scale=trunc(iw*0.75/2)*2:trunc(ih*0.75/2)*2")
+        }
+        crate::services::ConversionScale::Percent50 => {
+            Some("scale=trunc(iw*0.5/2)*2:trunc(ih*0.5/2)*2")
+        }
+        crate::services::ConversionScale::Percent25 => {
+            Some("scale=trunc(iw*0.25/2)*2:trunc(ih*0.25/2)*2")
+        }
+        crate::services::ConversionScale::Original => None,
+    };
+
+    if options.mute_audio && options.format.is_video() {
+        command.arg("-an");
+    }
+
+    match options.format {
+        ConversionFormat::Webp => {
+            let q = match options.quality {
+                ConversionQuality::High => "95",
+                ConversionQuality::Balanced => "80",
+                ConversionQuality::Compact => "60",
+            };
+            if let Some(scale) = scale_filter {
+                command.args(["-vf", scale]);
+            }
+            command.args(["-q:v", q]);
+        }
+        ConversionFormat::Avif => {
+            let crf = match options.quality {
+                ConversionQuality::High => "20",
+                ConversionQuality::Balanced => "30",
+                ConversionQuality::Compact => "42",
+            };
+            if let Some(scale) = scale_filter {
+                command.args(["-vf", scale]);
+            }
+            command.args(["-c:v", "libsvtav1", "-crf", crf]);
+        }
+        ConversionFormat::Png => {
+            if let Some(scale) = scale_filter {
+                command.args(["-vf", scale]);
+            }
+        }
+        ConversionFormat::Jpeg => {
+            let q = match options.quality {
+                ConversionQuality::High => "2",
+                ConversionQuality::Balanced => "4",
+                ConversionQuality::Compact => "8",
+            };
+            if let Some(scale) = scale_filter {
+                command.args(["-vf", scale]);
+            }
+            command.args(["-q:v", q]);
+        }
+        ConversionFormat::Ico => {
+            command.args(["-vf", "scale=256:256"]);
+        }
+        ConversionFormat::Tiff => {
+            if let Some(scale) = scale_filter {
+                command.args(["-vf", scale]);
+            }
+            command.args(["-c:v", "tiff"]);
+        }
+        ConversionFormat::Bmp => {
+            if let Some(scale) = scale_filter {
+                command.args(["-vf", scale]);
+            }
+            command.args(["-c:v", "bmp"]);
+        }
+        ConversionFormat::Mp4 => {
+            let crf = match options.quality {
+                ConversionQuality::High => "18",
+                ConversionQuality::Balanced => "23",
+                ConversionQuality::Compact => "28",
+            };
+            if let Some(scale) = scale_filter {
+                command.args(["-vf", scale]);
+            }
+            command.args([
+                "-c:v", "libx264", "-preset", "fast", "-crf", crf, "-pix_fmt", "yuv420p",
+            ]);
+            if !options.mute_audio {
+                command.args(["-c:a", "aac", "-b:a", "128k"]);
+            }
+            command.args(["-movflags", "+faststart"]);
+        }
+        ConversionFormat::Webm => {
+            let crf = match options.quality {
+                ConversionQuality::High => "24",
+                ConversionQuality::Balanced => "31",
+                ConversionQuality::Compact => "38",
+            };
+            if let Some(scale) = scale_filter {
+                command.args(["-vf", scale]);
+            }
+            command.args(["-c:v", "libvpx-vp9", "-crf", crf, "-b:v", "0"]);
+            if !options.mute_audio {
+                command.args(["-c:a", "libopus", "-b:a", "96k"]);
+            }
+        }
+        ConversionFormat::Mkv => {
+            let crf = match options.quality {
+                ConversionQuality::High => "18",
+                ConversionQuality::Balanced => "23",
+                ConversionQuality::Compact => "28",
+            };
+            if let Some(scale) = scale_filter {
+                command.args(["-vf", scale]);
+            }
+            command.args(["-c:v", "libx264", "-preset", "fast", "-crf", crf]);
+            if !options.mute_audio {
+                command.args(["-c:a", "aac", "-b:a", "128k"]);
+            }
+        }
+        ConversionFormat::Mov => {
+            let crf = match options.quality {
+                ConversionQuality::High => "18",
+                ConversionQuality::Balanced => "23",
+                ConversionQuality::Compact => "28",
+            };
+            if let Some(scale) = scale_filter {
+                command.args(["-vf", scale]);
+            }
+            command.args(["-c:v", "libx264", "-preset", "fast", "-crf", crf]);
+            if !options.mute_audio {
+                command.args(["-c:a", "aac", "-b:a", "128k"]);
+            }
+        }
+        ConversionFormat::Gif => {
+            let scale_str = match options.scale {
+                crate::services::ConversionScale::Percent75 => "fps=15,scale=360:-1:flags=lanczos",
+                crate::services::ConversionScale::Percent50 => "fps=15,scale=240:-1:flags=lanczos",
+                crate::services::ConversionScale::Percent25 => "fps=12,scale=160:-1:flags=lanczos",
+                crate::services::ConversionScale::Original => "fps=15,scale=480:-1:flags=lanczos",
+            };
+            let filter = format!("{scale_str},split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse");
+            command.args(["-vf", &filter]);
+        }
+        ConversionFormat::Mp3 => {
+            let q = match options.quality {
+                ConversionQuality::High => "0",
+                ConversionQuality::Balanced => "2",
+                ConversionQuality::Compact => "5",
+            };
+            command.args(["-vn", "-c:a", "libmp3lame", "-q:a", q]);
+        }
+        ConversionFormat::Opus => {
+            let b = match options.quality {
+                ConversionQuality::High => "160k",
+                ConversionQuality::Balanced => "128k",
+                ConversionQuality::Compact => "64k",
+            };
+            command.args(["-vn", "-c:a", "libopus", "-b:a", b]);
+        }
+        ConversionFormat::Aac => {
+            let b = match options.quality {
+                ConversionQuality::High => "256k",
+                ConversionQuality::Balanced => "192k",
+                ConversionQuality::Compact => "128k",
+            };
+            command.args(["-vn", "-c:a", "aac", "-b:a", b]);
+        }
+        ConversionFormat::Flac => {
+            command.args(["-vn", "-c:a", "flac"]);
+        }
+        ConversionFormat::Wav => {
+            command.args(["-vn", "-c:a", "pcm_s16le"]);
+        }
+        ConversionFormat::Ogg => {
+            let q = match options.quality {
+                ConversionQuality::High => "6",
+                ConversionQuality::Balanced => "4",
+                ConversionQuality::Compact => "2",
+            };
+            command.args(["-vn", "-c:a", "libvorbis", "-q:a", q]);
+        }
+        ConversionFormat::Pdf => {}
+    }
+
+    command.arg(output);
+
+    let status = command
+        .status()
+        .map_err(|e| format!("Converter failed: {e}"))?;
+    if !status.success() {
+        return Err("Conversion failed".to_owned());
+    }
+    Ok(())
+}
+
+fn convert_images_to_pdf<P: AsRef<Path>>(
+    entries: &[P],
+    output: &Path,
+    progress: &Arc<AtomicUsize>,
+    cancelled: &Arc<AtomicBool>,
+) -> Result<(), String> {
+    for executable in ["magick", "convert"] {
+        if cancelled.load(Ordering::Relaxed) {
+            return Err("Conversion cancelled".to_owned());
+        }
+        let mut command = std::process::Command::new(executable);
+        for entry in entries {
+            command.arg(entry.as_ref());
+        }
+        command.arg(output);
+        if let Ok(status) = command.status()
+            && status.success()
+        {
+            progress.store(entries.len(), Ordering::Relaxed);
+            return Ok(());
+        }
+    }
+    Err("PDF generation requires ImageMagick".to_owned())
 }

@@ -162,6 +162,149 @@ pub struct ExtractRequest {
     pub password: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConversionFormat {
+    // Images
+    Webp,
+    Avif,
+    Png,
+    Jpeg,
+    Pdf,
+    Gif,
+    Ico,
+    Tiff,
+    Bmp,
+    // Videos
+    Mp4,
+    Webm,
+    Mkv,
+    Mov,
+    // Audio
+    Mp3,
+    Opus,
+    Aac,
+    Flac,
+    Wav,
+    Ogg,
+}
+
+impl ConversionFormat {
+    pub fn extension(self) -> &'static str {
+        match self {
+            Self::Webp => "webp",
+            Self::Avif => "avif",
+            Self::Png => "png",
+            Self::Jpeg => "jpg",
+            Self::Pdf => "pdf",
+            Self::Gif => "gif",
+            Self::Ico => "ico",
+            Self::Tiff => "tiff",
+            Self::Bmp => "bmp",
+            Self::Mp4 => "mp4",
+            Self::Webm => "webm",
+            Self::Mkv => "mkv",
+            Self::Mov => "mov",
+            Self::Mp3 => "mp3",
+            Self::Opus => "opus",
+            Self::Aac => "m4a",
+            Self::Flac => "flac",
+            Self::Wav => "wav",
+            Self::Ogg => "ogg",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Webp => "WebP",
+            Self::Avif => "AVIF",
+            Self::Png => "PNG",
+            Self::Jpeg => "JPEG",
+            Self::Pdf => "PDF",
+            Self::Gif => "GIF",
+            Self::Ico => "ICO",
+            Self::Tiff => "TIFF",
+            Self::Bmp => "BMP",
+            Self::Mp4 => "MP4",
+            Self::Webm => "WebM",
+            Self::Mkv => "MKV",
+            Self::Mov => "MOV",
+            Self::Mp3 => "MP3",
+            Self::Opus => "Opus",
+            Self::Aac => "AAC",
+            Self::Flac => "FLAC",
+            Self::Wav => "WAV",
+            Self::Ogg => "OGG",
+        }
+    }
+
+    pub fn is_image(self) -> bool {
+        matches!(
+            self,
+            Self::Webp | Self::Avif | Self::Png | Self::Jpeg | Self::Ico | Self::Tiff | Self::Bmp
+        )
+    }
+
+    pub fn is_video(self) -> bool {
+        matches!(
+            self,
+            Self::Mp4 | Self::Webm | Self::Mkv | Self::Mov | Self::Gif
+        )
+    }
+
+    pub fn is_audio(self) -> bool {
+        matches!(
+            self,
+            Self::Mp3 | Self::Opus | Self::Aac | Self::Flac | Self::Wav | Self::Ogg
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ConversionQuality {
+    High,
+    Balanced,
+    Compact,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum ConversionScale {
+    #[default]
+    Original,
+    Percent75,
+    Percent50,
+    Percent25,
+}
+
+impl ConversionScale {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Original => "100%",
+            Self::Percent75 => "75%",
+            Self::Percent50 => "50%",
+            Self::Percent25 => "25%",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ConvertOptions {
+    pub format: ConversionFormat,
+    pub quality: ConversionQuality,
+    pub scale: ConversionScale,
+    pub strip_metadata: bool,
+    pub mute_audio: bool,
+    pub conflict: TransferConflict,
+}
+
+#[derive(Clone, Debug)]
+pub struct ConvertRequest {
+    pub id: OperationRequestId,
+    pub entries: Vec<FileEntry>,
+    pub destination: Location,
+    pub target_name: String,
+    pub options: ConvertOptions,
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct CancelledOperation {
     pub completed: Vec<Location>,
@@ -253,6 +396,19 @@ pub enum OperationEvent {
         completed: usize,
         total: usize,
     },
+    Converted {
+        request_id: OperationRequestId,
+        target_name: String,
+    },
+    ConvertStarted {
+        request_id: OperationRequestId,
+        total: usize,
+    },
+    ConvertProgress {
+        request_id: OperationRequestId,
+        completed: usize,
+        total: usize,
+    },
 }
 
 pub trait OperationProvider {
@@ -274,4 +430,5 @@ pub trait OperationProvider {
     fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn extract(&self, request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
+    fn convert(&self, request: ConvertRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
 }

@@ -32,9 +32,10 @@ use super::{
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{
-        ArchiveFormat, CompressRequest, DeleteRequest, LoadHandle, MoveRecord, OperationEvent,
-        OperationProvider, OperationRequestId, PasteItem, PasteRequest, RestoreRequest,
-        RestoreSource, TransferConflict, UndoMoveItem, UndoMoveRequest,
+        ArchiveFormat, CompressRequest, ConversionFormat, ConversionQuality, ConvertOptions,
+        ConvertRequest, DeleteRequest, LoadHandle, MoveRecord, OperationEvent, OperationProvider,
+        OperationRequestId, PasteItem, PasteRequest, RestoreRequest, RestoreSource,
+        TransferConflict, UndoMoveItem, UndoMoveRequest,
     },
 };
 
@@ -2491,5 +2492,96 @@ fn a_confirmed_undo_conflict_replaces_the_newer_item() -> Result<(), Box<dyn Err
     ));
     assert!(!moved.exists());
     assert_eq!(fs::read(&original)?, b"moved");
+    Ok(())
+}
+
+fn drive_until_convert_settles(events: &Rc<RefCell<Vec<OperationEvent>>>) {
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Converted { .. }
+                | OperationEvent::Failed { .. }
+                | OperationEvent::Cancelled { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+}
+
+#[test]
+fn conversion_rejects_empty_entries() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.convert(
+        ConvertRequest {
+            id: OperationRequestId(50),
+            entries: Vec::new(),
+            destination: Location::local(root.path()),
+            target_name: "test".to_owned(),
+            options: ConvertOptions {
+                format: ConversionFormat::Webp,
+                quality: ConversionQuality::Balanced,
+                scale: crate::services::ConversionScale::Original,
+                strip_metadata: true,
+                mute_audio: false,
+                conflict: TransferConflict::FailIfExists,
+            },
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    drive_until_convert_settles(&events);
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Failed { .. })
+    ));
+    Ok(())
+}
+
+#[test]
+fn conversion_rejects_existing_file_when_fail_if_exists() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path();
+    let existing_output = destination.join("output.webp");
+    fs::write(&existing_output, b"existing")?;
+
+    let source = destination.join("input.png");
+    fs::write(&source, b"fake png data")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.convert(
+        ConvertRequest {
+            id: OperationRequestId(51),
+            entries: vec![file_entry(&source)],
+            destination: Location::local(destination),
+            target_name: "output".to_owned(),
+            options: ConvertOptions {
+                format: ConversionFormat::Webp,
+                quality: ConversionQuality::Balanced,
+                scale: crate::services::ConversionScale::Original,
+                strip_metadata: true,
+                mute_audio: false,
+                conflict: TransferConflict::FailIfExists,
+            },
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    drive_until_convert_settles(&events);
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Failed { message, .. }) if message.contains("already exists")
+    ));
+    assert_eq!(fs::read(&existing_output)?, b"existing");
     Ok(())
 }

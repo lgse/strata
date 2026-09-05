@@ -6,8 +6,8 @@ use super::*;
 use crate::{
     model::{EntryKind, MetadataValue},
     services::{
-        CancelledOperation, CompressRequest, ExtractRequest, LoadHandle, MetadataOutcome,
-        MetadataRequest, MetadataUpdate, UndoMoveRequest,
+        CancelledOperation, CompressRequest, ConvertRequest, ExtractRequest, LoadHandle,
+        MetadataOutcome, MetadataRequest, MetadataUpdate, UndoMoveRequest,
     },
 };
 
@@ -598,6 +598,14 @@ impl OperationProvider for ImmediateOperationProvider {
         emit(OperationEvent::Extracted {
             request_id: request.id,
             first_name: None,
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn convert(&self, request: ConvertRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        emit(OperationEvent::Converted {
+            request_id: request.id,
+            target_name: request.target_name,
         });
         LoadHandle::new(|| {})
     }
@@ -3738,4 +3746,45 @@ fn new_columns_inherit_show_hidden_preference() {
         browser.column_preferences(1).map(|p| p.show_hidden),
         Some(true)
     );
+}
+
+#[test]
+fn browser_convert_delegates_to_provider_and_emits_completion() {
+    use crate::services::{ConversionFormat, ConversionQuality, ConvertOptions, TransferConflict};
+
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    let entry = FileEntry {
+        location: Location::local("/fixture/image.png"),
+        native_name: "image.png".into(),
+        display_name: "image.png".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Known(100),
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+    };
+
+    browser.convert(
+        vec![entry],
+        Location::local("/fixture"),
+        "image.webp".to_owned(),
+        ConvertOptions {
+            format: ConversionFormat::Webp,
+            quality: ConversionQuality::Balanced,
+            scale: crate::services::ConversionScale::Original,
+            strip_metadata: true,
+            mute_audio: false,
+            conflict: TransferConflict::FailIfExists,
+        },
+    );
+
+    assert!(events.borrow().iter().any(|e| matches!(
+        e,
+        BrowserEvent::ArchiveCompleted { select_name } if select_name == "image.webp"
+    )));
 }
