@@ -31,6 +31,103 @@ fn press_column_background(view: &BrowserView, depth: usize) {
 }
 
 #[test]
+fn horizontal_scrollbar_stays_below_destination_hints() {
+    const CHILD: &str = "STRATA_DESTINATION_SCROLLBAR_GTK_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let sandbox = tempfile::tempdir().expect("isolated preferences");
+        let status = std::process::Command::new(std::env::current_exe().expect("test executable"))
+            .args([
+                "--exact",
+                "ui::browser::tests::focus::horizontal_scrollbar_stays_below_destination_hints",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
+            .env("XDG_CACHE_HOME", sandbox.path().join("cache"))
+            .env("XDG_DATA_HOME", sandbox.path().join("data"))
+            .status()
+            .expect("GTK test starts");
+        assert!(status.success());
+        return;
+    }
+    if gtk::init().is_err() {
+        return;
+    }
+    crate::assets::prepare().expect("bundled assets");
+    crate::assets::register_icon_theme();
+    let fixture = tempfile::tempdir().expect("directory fixture");
+    std::fs::create_dir_all(fixture.path().join("Child/Grandchild")).expect("nested folders");
+    let view = BrowserView::new(
+        Rc::new(crate::adapters::LocalFileSource),
+        PeekBehavior::default(),
+    );
+    let browser = view.browser();
+    let window = gtk::Window::builder()
+        .child(&view.widget())
+        .default_width(640)
+        .default_height(500)
+        .resizable(false)
+        .build();
+    window.present();
+    browser.navigate(Location::local(fixture.path()));
+    let scroller = &view.state.scroller;
+    let scrollbar = scroller.hscrollbar();
+    let adjustment = scroller.hadjustment();
+    wait_until(|| {
+        browser.column_snapshot(0).is_some_and(|s| !s.loading) && adjustment.page_size() > 0.0
+    });
+    assert!(!scroller.is_overlay_scrolling());
+    assert!(
+        !scrollbar.is_mapped(),
+        "no scrollbar is needed for a single fitting pane"
+    );
+    for depth in 0..2 {
+        browser.select(depth, 0);
+        browser.enter_focused_directory();
+        wait_until(|| {
+            browser
+                .column_snapshot(depth + 1)
+                .is_some_and(|s| !s.loading)
+        });
+    }
+    view.keyboard_navigation();
+    browser.focus_active();
+    wait_until(|| {
+        scrollbar.is_mapped()
+            && scrollbar.height() > 0
+            && view.state.columns.borrow()[2].destination_hint.height() > 0
+    });
+    assert_eq!(
+        view.state.columns.borrow()[2].destination_hint.text(),
+        "Keyboard · Paste here"
+    );
+    scrollbar.add_css_class("hovering");
+    scrollbar.add_css_class("dragging");
+    let extent = adjustment.upper() - adjustment.page_size();
+    assert!(extent > 0.0);
+    for value in [adjustment.lower(), extent / 2.0, extent] {
+        adjustment.set_value(value);
+        let bar = scrollbar
+            .compute_bounds(scroller)
+            .expect("scrollbar bounds");
+        for column in view.state.columns.borrow().iter() {
+            let hint = column
+                .destination_hint
+                .compute_bounds(scroller)
+                .expect("hint bounds");
+            assert!(
+                hint.y() + hint.height() <= bar.y() + 0.5,
+                "the scrollbar must not overlap a destination label"
+            );
+        }
+    }
+    browser.close_column(1);
+    wait_until(|| !scrollbar.is_mapped());
+    window.destroy();
+    browser.clear_observer();
+}
+
+#[test]
 fn pane_ownership_routes_commands_and_preserves_selection() {
     const CHILD: &str = "STRATA_FOCUS_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {

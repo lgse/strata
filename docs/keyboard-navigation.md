@@ -6,7 +6,9 @@ Columns have three independent signals:
 - **Keyboard cursor:** a text-contrast outline identifies the current item in the keyboard-focused list. Only that list shows a cursor; range selections can contain several filled rows.
 - **Open path:** the chevron identifies the folder whose child column is open, without an extra border. This is navigation context, not another keyboard cursor.
 
-The destination column has an accent rule across its header and a **Keyboard · Paste here** or **Pointer · Paste here** footer. The indication remains useful in an empty directory, where there is no row to highlight.
+The destination column has an accent rule across its header and a **Keyboard · Paste here** or **Pointer · Paste here** footer. The indication remains useful in an empty directory, where there is no row to highlight. When panes overflow, the horizontal scrollbar gets its own track below these labels rather than covering them. No track is reserved when the panes fit.
+
+[Before: scrollbar overlap](screenshots/291/destination-scrollbar-before.png) · [After: separate scrollbar track](screenshots/291/destination-scrollbar-after.png)
 
 ## Input precedence
 
