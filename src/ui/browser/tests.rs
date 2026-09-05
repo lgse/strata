@@ -2,6 +2,7 @@
 
 mod focus;
 mod navigate;
+mod recursive_search;
 mod sidebar;
 
 use super::*;
