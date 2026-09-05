@@ -306,6 +306,7 @@ pub(super) struct ViewState {
     delete_progress: RefCell<Option<DeleteProgressView>>,
     pending_file_progress: RefCell<Option<glib::SourceId>>,
     file_operation_progress: Cell<(usize, usize)>,
+    transfer_progress: Cell<Option<(usize, u64, Option<u64>)>>,
     pin_handler: RefCell<Option<PinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     print_handler: RefCell<Option<PrintHandler>>,
@@ -468,6 +469,7 @@ impl BrowserView {
             delete_progress: RefCell::new(None),
             pending_file_progress: RefCell::new(None),
             file_operation_progress: Cell::new((0, 0)),
+            transfer_progress: Cell::new(None),
             pin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
             print_handler: RefCell::new(None),
@@ -2018,8 +2020,36 @@ impl ViewState {
             progress.layer.add_controller(escape);
         }
         cancel.grab_focus();
-        let (completed, total) = self.file_operation_progress.get();
-        self.update_delete_progress(completed, total);
+        if let Some((completed_items, transferred_bytes, total_bytes)) =
+            self.transfer_progress.get()
+        {
+            self.update_transfer_progress(completed_items, transferred_bytes, total_bytes);
+        } else {
+            let (completed, total) = self.file_operation_progress.get();
+            self.update_delete_progress(completed, total);
+        }
+    }
+
+    fn update_transfer_progress(
+        &self,
+        completed_items: usize,
+        transferred_bytes: u64,
+        total_bytes: Option<u64>,
+    ) {
+        self.transfer_progress
+            .set(Some((completed_items, transferred_bytes, total_bytes)));
+        let progress_view = self.delete_progress.borrow();
+        let Some(view) = progress_view.as_ref() else {
+            return;
+        };
+        let (status, fraction) =
+            transfer_progress_status(completed_items, transferred_bytes, total_bytes);
+        view.status.set_text(&status);
+        if let Some(fraction) = fraction {
+            view.progress.set_fraction(fraction);
+        } else {
+            view.progress.pulse();
+        }
     }
 
     fn update_delete_progress(&self, completed: usize, total: usize) {
@@ -2058,6 +2088,7 @@ impl ViewState {
             source.remove();
         }
         self.file_operation_progress.set((0, 0));
+        self.transfer_progress.set(None);
         if let Some(view) = self.delete_progress.take() {
             dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
         }
@@ -4243,9 +4274,14 @@ impl ViewState {
                     "Cancelling will not undo completed changes",
                     Rc::new(move || browser.cancel_file_operation()),
                 );
+                self.update_transfer_progress(0, 0, None);
             }
-            BrowserEvent::TransferProgress { completed, total } => {
-                self.update_delete_progress(*completed, *total);
+            BrowserEvent::TransferProgress {
+                completed_items,
+                transferred_bytes,
+                total_bytes,
+            } => {
+                self.update_transfer_progress(*completed_items, *transferred_bytes, *total_bytes);
             }
             BrowserEvent::TransferFinished { moved_locations } => {
                 if !moved_locations.is_empty() {
@@ -5933,6 +5969,42 @@ pub(super) fn format_file_size(bytes: u64) -> String {
     }
     let formatted = format!("{value:.1}");
     format!("{} {}", formatted.trim_end_matches(".0"), UNITS[unit])
+}
+
+fn transfer_progress_status(
+    completed_items: usize,
+    transferred_bytes: u64,
+    total_bytes: Option<u64>,
+) -> (String, Option<f64>) {
+    match total_bytes {
+        Some(0) => ("100%".to_owned(), Some(1.0)),
+        Some(total) => {
+            let fraction = (transferred_bytes as f64 / total as f64).clamp(0.0, 1.0);
+            let percentage = (fraction * 100.0) as usize;
+            let percentage = if transferred_bytes > 0 {
+                percentage.max(1)
+            } else {
+                percentage
+            };
+            (format!("{percentage}%"), Some(fraction))
+        }
+        None if transferred_bytes == 0 && completed_items == 0 => ("Preparing…".to_owned(), None),
+        None if transferred_bytes == 0 => (
+            format!(
+                "{completed_items} {} copied",
+                if completed_items == 1 {
+                    "item"
+                } else {
+                    "items"
+                }
+            ),
+            None,
+        ),
+        None => (
+            format!("{} copied", format_file_size(transferred_bytes)),
+            None,
+        ),
+    }
 }
 
 pub(super) fn metadata_needs_fill(entry: &FileEntry) -> bool {

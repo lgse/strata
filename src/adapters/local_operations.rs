@@ -62,6 +62,175 @@ fn gio_file(location: &Location) -> gio::File {
         .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()))
 }
 
+struct TransferProgressTracker {
+    request_id: OperationRequestId,
+    completed_items: Cell<usize>,
+    transferred_bytes: Cell<u64>,
+    total_bytes: Option<u64>,
+    emit: Rc<dyn Fn(OperationEvent)>,
+}
+
+impl TransferProgressTracker {
+    fn new(
+        request_id: OperationRequestId,
+        total_bytes: Option<u64>,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> Rc<Self> {
+        Rc::new(Self {
+            request_id,
+            completed_items: Cell::new(0),
+            transferred_bytes: Cell::new(0),
+            total_bytes,
+            emit,
+        })
+    }
+
+    fn emit(&self) {
+        (self.emit)(OperationEvent::TransferProgress {
+            request_id: self.request_id,
+            completed_items: self.completed_items.get(),
+            transferred_bytes: self.transferred_bytes.get(),
+            total_bytes: self.total_bytes,
+        });
+    }
+
+    fn add_bytes(&self, bytes: u64) {
+        self.transferred_bytes
+            .set(self.transferred_bytes.get().saturating_add(bytes));
+        self.emit();
+    }
+
+    fn begin_file(self: &Rc<Self>) -> FileTransferProgress {
+        FileTransferProgress {
+            tracker: self.clone(),
+            reported_bytes: Rc::new(Cell::new(0)),
+            reported_total: Rc::new(Cell::new(0)),
+        }
+    }
+
+    fn finish_item(&self, started_at: u64, expected_bytes: Option<u64>) {
+        if let Some(expected_bytes) = expected_bytes {
+            let expected_end = started_at.saturating_add(expected_bytes);
+            if self.transferred_bytes.get() < expected_end {
+                self.transferred_bytes.set(expected_end);
+            }
+        }
+        self.completed_items
+            .set(self.completed_items.get().saturating_add(1));
+        self.emit();
+    }
+}
+
+struct FileTransferProgress {
+    tracker: Rc<TransferProgressTracker>,
+    reported_bytes: Rc<Cell<u64>>,
+    reported_total: Rc<Cell<u64>>,
+}
+
+impl FileTransferProgress {
+    fn callback(&self) -> Box<dyn FnMut(i64, i64)> {
+        let tracker = self.tracker.clone();
+        let reported_bytes = self.reported_bytes.clone();
+        let reported_total = self.reported_total.clone();
+        Box::new(move |current, total| {
+            let current = current.max(0) as u64;
+            let previous = reported_bytes.get();
+            if current > previous {
+                reported_bytes.set(current);
+            }
+            if total >= 0 {
+                reported_total.set(reported_total.get().max(total as u64));
+            }
+            tracker.add_bytes(current.saturating_sub(previous));
+        })
+    }
+
+    fn finish(&self) {
+        let final_bytes = self.reported_total.get().max(self.reported_bytes.get());
+        let missing = final_bytes.saturating_sub(self.reported_bytes.get());
+        if missing > 0 {
+            self.tracker.add_bytes(missing);
+            self.reported_bytes.set(final_bytes);
+        }
+    }
+}
+
+fn transfer_size(
+    file: gio::File,
+    cancellable: gio::Cancellable,
+) -> Pin<Box<dyn Future<Output = Result<Option<u64>, glib::Error>>>> {
+    Box::pin(async move {
+        let info = await_cancellable(&file, &cancellable, |file, cancellable, result| {
+            file.query_info_async(
+                "standard::type,standard::size",
+                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                glib::Priority::DEFAULT,
+                Some(cancellable),
+                move |output| result.resolve(output),
+            );
+        })
+        .await?;
+        if info.file_type() != gio::FileType::Directory {
+            return Ok(info
+                .has_attribute(gio::FILE_ATTRIBUTE_STANDARD_SIZE)
+                .then(|| info.size().max(0) as u64));
+        }
+
+        let enumerator = await_cancellable(&file, &cancellable, |file, cancellable, result| {
+            file.enumerate_children_async(
+                "standard::name",
+                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                glib::Priority::DEFAULT,
+                Some(cancellable),
+                move |output| result.resolve(output),
+            );
+        })
+        .await?;
+        let mut total = Some(0_u64);
+        loop {
+            let children = await_cancellable(
+                &enumerator,
+                &cancellable,
+                |enumerator, cancellable, result| {
+                    enumerator.next_files_async(
+                        64,
+                        glib::Priority::DEFAULT,
+                        Some(cancellable),
+                        move |output| result.resolve(output),
+                    );
+                },
+            )
+            .await?;
+            if children.is_empty() {
+                return Ok(total);
+            }
+            for child in children {
+                let child_size =
+                    transfer_size(file.child(child.name()), cancellable.clone()).await?;
+                total = total.and_then(|total| child_size.and_then(|size| total.checked_add(size)));
+            }
+        }
+    })
+}
+
+async fn transfer_sizes(
+    files: &[gio::File],
+    cancellable: &gio::Cancellable,
+) -> Result<(Vec<Option<u64>>, Option<u64>), glib::Error> {
+    let mut sizes = Vec::with_capacity(files.len());
+    let mut total = Some(0_u64);
+    for file in files {
+        let size = match transfer_size(file.clone(), cancellable.clone()).await {
+            Ok(size) => size,
+            Err(error) if was_cancelled(&error) => return Err(error),
+            Err(_) => None,
+        };
+        total = total.and_then(|total| size.and_then(|size| total.checked_add(size)));
+        sizes.push(size);
+    }
+    Ok((sizes, total))
+}
+
 fn validated_child(parent: &gio::File, name: &str) -> Result<gio::File, &'static str> {
     validate_basename(name)?;
     Ok(parent.child(name))
@@ -295,6 +464,7 @@ fn copy_recursively_local(
     overwrite_existing: bool,
     cancellable: gio::Cancellable,
     created_root: Option<Rc<CreatedCopyRoot>>,
+    progress: Option<Rc<TransferProgressTracker>>,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     Box::pin(async move {
         if cancellable.is_cancelled() {
@@ -329,6 +499,8 @@ fn copy_recursively_local(
                     } else {
                         gio::FileCopyFlags::NONE
                     };
+                let file_progress = progress.as_ref().map(TransferProgressTracker::begin_file);
+                let progress_callback = file_progress.as_ref().map(FileTransferProgress::callback);
                 let result = await_cancellable(
                     &source_ref,
                     &cancellable,
@@ -338,12 +510,17 @@ fn copy_recursively_local(
                             flags,
                             glib::Priority::DEFAULT,
                             Some(cancellable),
-                            None,
+                            progress_callback,
                             move |output| result.resolve(output),
                         );
                     },
                 )
                 .await;
+                if result.is_ok()
+                    && let Some(file_progress) = file_progress
+                {
+                    file_progress.finish();
+                }
                 // Keeps `file` open (and its fd number stable) for the
                 // duration of the copy above; only drop it once resolved.
                 drop(file);
@@ -374,6 +551,7 @@ fn copy_recursively_local(
                         overwrite_existing,
                         cancellable.clone(),
                         None,
+                        progress.clone(),
                     )
                     .await?;
                 }
@@ -392,6 +570,7 @@ fn copy_recursively_local_path(
     overwrite_existing: bool,
     cancellable: gio::Cancellable,
     created_root: Option<Rc<CreatedCopyRoot>>,
+    progress: Option<Rc<TransferProgressTracker>>,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     Box::pin(async move {
         let Some(parent_path) = source_path.parent().map(Path::to_path_buf) else {
@@ -419,17 +598,19 @@ fn copy_recursively_local_path(
             overwrite_existing,
             cancellable,
             created_root,
+            progress,
         )
         .await
     })
 }
 
-fn copy_recursively(
+fn copy_recursively_with_progress(
     source: gio::File,
     target: gio::File,
     overwrite_existing: bool,
     cancellable: gio::Cancellable,
     created_root: Option<Rc<CreatedCopyRoot>>,
+    progress: Option<Rc<TransferProgressTracker>>,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     if source.is_native()
         && target.is_native()
@@ -444,6 +625,7 @@ fn copy_recursively(
             overwrite_existing,
             cancellable,
             created_root,
+            progress,
         );
     }
     Box::pin(async move {
@@ -498,12 +680,13 @@ fn copy_recursively(
                     break;
                 }
                 for child in children {
-                    copy_recursively(
+                    copy_recursively_with_progress(
                         source.child(child.name()),
                         target.child(child.name()),
                         overwrite_existing,
                         cancellable.clone(),
                         None,
+                        progress.clone(),
                     )
                     .await?;
                 }
@@ -517,25 +700,53 @@ fn copy_recursively(
                 } else {
                     gio::FileCopyFlags::NONE
                 };
-            await_cancellable(&source, &cancellable, move |source, cancellable, result| {
-                source.copy_async(
-                    &target,
-                    flags,
-                    glib::Priority::DEFAULT,
-                    Some(cancellable),
-                    None,
-                    move |output| result.resolve(output),
-                );
-            })
-            .await
+            let file_progress = progress.as_ref().map(TransferProgressTracker::begin_file);
+            let progress_callback = file_progress.as_ref().map(FileTransferProgress::callback);
+            let result =
+                await_cancellable(&source, &cancellable, move |source, cancellable, result| {
+                    source.copy_async(
+                        &target,
+                        flags,
+                        glib::Priority::DEFAULT,
+                        Some(cancellable),
+                        progress_callback,
+                        move |output| result.resolve(output),
+                    );
+                })
+                .await;
+            if result.is_ok()
+                && let Some(file_progress) = file_progress
+            {
+                file_progress.finish();
+            }
+            result
         }
     })
 }
 
-async fn copy_new_recursively(
+#[cfg(test)]
+fn copy_recursively(
+    source: gio::File,
+    target: gio::File,
+    overwrite_existing: bool,
+    cancellable: gio::Cancellable,
+    created_root: Option<Rc<CreatedCopyRoot>>,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    copy_recursively_with_progress(
+        source,
+        target,
+        overwrite_existing,
+        cancellable,
+        created_root,
+        None,
+    )
+}
+
+async fn copy_new_recursively_with_progress(
     source: gio::File,
     target: gio::File,
     cancellable: gio::Cancellable,
+    progress: Option<Rc<TransferProgressTracker>>,
 ) -> Result<(), glib::Error> {
     if source.is_native()
         && target.is_native()
@@ -558,12 +769,13 @@ async fn copy_new_recursively(
                 .parent()
                 .ok_or_else(|| io_error("The destination has no parent directory"))?;
             let staged = StagedSibling::create(parent, true).map_err(io_error)?;
-            if let Err(error) = copy_recursively(
+            if let Err(error) = copy_recursively_with_progress(
                 source,
                 gio::File::for_path(staged.path()),
                 true,
                 cancellable.clone(),
                 None,
+                progress.clone(),
             )
             .await
             {
@@ -603,12 +815,13 @@ async fn copy_new_recursively(
     }
 
     let created_root = Rc::new(CreatedCopyRoot::new());
-    let result = copy_recursively(
+    let result = copy_recursively_with_progress(
         source,
         target.clone(),
         false,
         cancellable.clone(),
         Some(created_root.clone()),
+        progress,
     )
     .await;
     if result.as_ref().is_err_and(was_cancelled) && created_root.was_created.get() {
@@ -624,6 +837,15 @@ async fn copy_new_recursively(
     result
 }
 
+#[cfg(test)]
+async fn copy_new_recursively(
+    source: gio::File,
+    target: gio::File,
+    cancellable: gio::Cancellable,
+) -> Result<(), glib::Error> {
+    copy_new_recursively_with_progress(source, target, cancellable, None).await
+}
+
 type MoveAttempt = Rc<
     dyn Fn(
         gio::File,
@@ -632,17 +854,24 @@ type MoveAttempt = Rc<
     ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>>,
 >;
 
-async fn move_local_with(
+async fn move_local_with_progress(
     source: gio::File,
     target: gio::File,
     cancellable: gio::Cancellable,
+    progress: Option<Rc<TransferProgressTracker>>,
     attempt_move: MoveAttempt,
 ) -> Result<(), glib::Error> {
     let source_identity = local_file_identity(&source).await?;
     let result = attempt_move(source.clone(), target.clone(), cancellable.clone()).await;
     match result {
         Err(error) if error.matches(gio::IOErrorEnum::WouldRecurse) => {
-            copy_new_recursively(source.clone(), target, cancellable.clone()).await?;
+            copy_new_recursively_with_progress(
+                source.clone(),
+                target,
+                cancellable.clone(),
+                progress,
+            )
+            .await?;
             permanently_delete_maybe_local_if_unchanged(source, true, source_identity, cancellable)
                 .await
         }
@@ -650,30 +879,52 @@ async fn move_local_with(
     }
 }
 
+#[cfg(test)]
+async fn move_local_with(
+    source: gio::File,
+    target: gio::File,
+    cancellable: gio::Cancellable,
+    attempt_move: MoveAttempt,
+) -> Result<(), glib::Error> {
+    move_local_with_progress(source, target, cancellable, None, attempt_move).await
+}
+
 async fn move_local(
     source: gio::File,
     target: gio::File,
     cancellable: gio::Cancellable,
+    progress: Option<Rc<TransferProgressTracker>>,
 ) -> Result<(), glib::Error> {
-    move_local_with(
+    let fallback_progress = progress.clone();
+    move_local_with_progress(
         source,
         target,
         cancellable,
-        Rc::new(|source, target, cancellable| {
+        fallback_progress,
+        Rc::new(move |source, target, cancellable| {
+            let move_progress = progress.as_ref().map(TransferProgressTracker::begin_file);
+            let progress_callback = move_progress.as_ref().map(FileTransferProgress::callback);
             Box::pin(async move {
                 let flags =
                     gio::FileCopyFlags::ALL_METADATA | gio::FileCopyFlags::NOFOLLOW_SYMLINKS;
-                await_cancellable(&source, &cancellable, move |source, cancellable, result| {
-                    source.move_async(
-                        &target,
-                        flags,
-                        glib::Priority::DEFAULT,
-                        Some(cancellable),
-                        None,
-                        move |output| result.resolve(output),
-                    );
-                })
-                .await
+                let result =
+                    await_cancellable(&source, &cancellable, move |source, cancellable, result| {
+                        source.move_async(
+                            &target,
+                            flags,
+                            glib::Priority::DEFAULT,
+                            Some(cancellable),
+                            progress_callback,
+                            move |output| result.resolve(output),
+                        );
+                    })
+                    .await;
+                if result.is_ok()
+                    && let Some(move_progress) = move_progress
+                {
+                    move_progress.finish();
+                }
+                result
             })
         }),
     )
@@ -856,12 +1107,13 @@ async fn replace_local_with(
     Ok(())
 }
 
-async fn replace_local(
+async fn replace_local_with_progress(
     source: gio::File,
     target: gio::File,
     move_source: bool,
     cancellable: gio::Cancellable,
     affected_locations: Option<&mut HashSet<Location>>,
+    progress: Option<Rc<TransferProgressTracker>>,
 ) -> Result<(), glib::Error> {
     replace_local_with(
         source,
@@ -869,28 +1121,69 @@ async fn replace_local(
         move_source,
         cancellable,
         affected_locations,
-        Rc::new(|source, staged, directory, cancellable| {
+        Rc::new(move |source, staged, directory, cancellable| {
+            let progress = progress.clone();
             Box::pin(async move {
                 if directory {
-                    copy_recursively(source, staged, true, cancellable, None).await
+                    copy_recursively_with_progress(
+                        source,
+                        staged,
+                        true,
+                        cancellable,
+                        None,
+                        progress,
+                    )
+                    .await
                 } else {
                     let flags = gio::FileCopyFlags::ALL_METADATA
                         | gio::FileCopyFlags::NOFOLLOW_SYMLINKS
                         | gio::FileCopyFlags::OVERWRITE;
-                    await_cancellable(&source, &cancellable, move |source, cancellable, result| {
-                        source.copy_async(
-                            &staged,
-                            flags,
-                            glib::Priority::DEFAULT,
-                            Some(cancellable),
-                            None,
-                            move |output| result.resolve(output),
-                        );
-                    })
-                    .await
+                    let file_progress = progress.as_ref().map(TransferProgressTracker::begin_file);
+                    let progress_callback =
+                        file_progress.as_ref().map(FileTransferProgress::callback);
+                    let result = await_cancellable(
+                        &source,
+                        &cancellable,
+                        move |source, cancellable, result| {
+                            source.copy_async(
+                                &staged,
+                                flags,
+                                glib::Priority::DEFAULT,
+                                Some(cancellable),
+                                progress_callback,
+                                move |output| result.resolve(output),
+                            );
+                        },
+                    )
+                    .await;
+                    if result.is_ok()
+                        && let Some(file_progress) = file_progress
+                    {
+                        file_progress.finish();
+                    }
+                    result
                 }
             })
         }),
+    )
+    .await
+}
+
+#[cfg(test)]
+async fn replace_local(
+    source: gio::File,
+    target: gio::File,
+    move_source: bool,
+    cancellable: gio::Cancellable,
+    affected_locations: Option<&mut HashSet<Location>>,
+) -> Result<(), glib::Error> {
+    replace_local_with_progress(
+        source,
+        target,
+        move_source,
+        cancellable,
+        affected_locations,
+        None,
     )
     .await
 }
@@ -1730,7 +2023,39 @@ impl OperationProvider for LocalOperationProvider {
             for parent in request.items.iter().filter_map(|item| item.source.parent()) {
                 affected_locations.insert(parent);
             }
-            let total = request.items.len();
+            let sources = request
+                .items
+                .iter()
+                .map(|item| gio_file(&item.source))
+                .collect::<Vec<_>>();
+            let (item_sizes, total_bytes) =
+                match transfer_sizes(&sources, &operation_cancellable).await {
+                    Ok(sizes) => sizes,
+                    Err(error) if was_cancelled(&error) => {
+                        emit(cancelled_event(
+                            request.id,
+                            Vec::new(),
+                            Vec::new(),
+                            request
+                                .items
+                                .iter()
+                                .map(|item| item.source.clone())
+                                .collect(),
+                            affected_locations,
+                        ));
+                        return;
+                    }
+                    Err(error) => {
+                        emit(OperationEvent::TransferFailed {
+                            request_id: request.id,
+                            completed_locations: Vec::new(),
+                            message: error.to_string(),
+                        });
+                        return;
+                    }
+                };
+            let progress = TransferProgressTracker::new(request.id, total_bytes, emit.clone());
+            progress.emit();
             let mut completed = Vec::new();
             for (index, item) in request.items.iter().enumerate() {
                 if operation_cancellable.is_cancelled() {
@@ -1746,7 +2071,8 @@ impl OperationProvider for LocalOperationProvider {
                     ));
                     return;
                 }
-                let source = gio_file(&item.source);
+                let source = sources[index].clone();
+                let item_started_at = progress.transferred_bytes.get();
                 let Some(name) = source.basename() else {
                     emit(OperationEvent::Failed {
                         request_id: request.id,
@@ -1758,11 +2084,7 @@ impl OperationProvider for LocalOperationProvider {
                 let is_duplicate = !request.move_sources && source.equal(&default_target);
                 if !is_duplicate && transfer_is_noop(&source, &destination, &default_target) {
                     completed.push(item.source.clone());
-                    emit(OperationEvent::TransferProgress {
-                        request_id: request.id,
-                        completed: completed.len(),
-                        total,
-                    });
+                    progress.finish_item(item_started_at, item_sizes[index]);
                     continue;
                 }
                 let target = if is_duplicate {
@@ -1841,20 +2163,39 @@ impl OperationProvider for LocalOperationProvider {
                     affected_locations.insert(target);
                 }
                 let result = if is_duplicate {
-                    copy_new_recursively(source, target, operation_cancellable.clone()).await
+                    copy_new_recursively_with_progress(
+                        source,
+                        target,
+                        operation_cancellable.clone(),
+                        Some(progress.clone()),
+                    )
+                    .await
                 } else if item.conflict == TransferConflict::ReplaceExisting {
-                    replace_local(
+                    replace_local_with_progress(
                         source,
                         target,
                         request.move_sources,
                         operation_cancellable.clone(),
                         Some(&mut affected_locations),
+                        Some(progress.clone()),
                     )
                     .await
                 } else if request.move_sources {
-                    move_local(source, target, operation_cancellable.clone()).await
+                    move_local(
+                        source,
+                        target,
+                        operation_cancellable.clone(),
+                        Some(progress.clone()),
+                    )
+                    .await
                 } else {
-                    copy_new_recursively(source, target, operation_cancellable.clone()).await
+                    copy_new_recursively_with_progress(
+                        source,
+                        target,
+                        operation_cancellable.clone(),
+                        Some(progress.clone()),
+                    )
+                    .await
                 };
                 if let Err(error) = result {
                     if was_cancelled(&error) {
@@ -1878,11 +2219,7 @@ impl OperationProvider for LocalOperationProvider {
                     return;
                 }
                 completed.push(item.source.clone());
-                emit(OperationEvent::TransferProgress {
-                    request_id: request.id,
-                    completed: completed.len(),
-                    total,
-                });
+                progress.finish_item(item_started_at, item_sizes[index]);
             }
             emit(OperationEvent::Pasted {
                 request_id: request.id,
@@ -1896,7 +2233,6 @@ impl OperationProvider for LocalOperationProvider {
         let cancellable = gio::Cancellable::new();
         let operation_cancellable = cancellable.clone();
         let _task = glib::MainContext::default().spawn_local(async move {
-            let total = request.items.len();
             let mut affected_locations = HashSet::new();
             for item in &request.items {
                 for location in [&item.record.current, &item.record.original] {
@@ -1906,6 +2242,39 @@ impl OperationProvider for LocalOperationProvider {
                     }
                 }
             }
+            let sources = request
+                .items
+                .iter()
+                .map(|item| gio_file(&item.record.current))
+                .collect::<Vec<_>>();
+            let (item_sizes, total_bytes) =
+                match transfer_sizes(&sources, &operation_cancellable).await {
+                    Ok(sizes) => sizes,
+                    Err(error) if was_cancelled(&error) => {
+                        emit(cancelled_event(
+                            request.id,
+                            Vec::new(),
+                            Vec::new(),
+                            request
+                                .items
+                                .iter()
+                                .map(|item| item.record.current.clone())
+                                .collect(),
+                            affected_locations,
+                        ));
+                        return;
+                    }
+                    Err(error) => {
+                        emit(OperationEvent::TransferFailed {
+                            request_id: request.id,
+                            completed_locations: Vec::new(),
+                            message: error.to_string(),
+                        });
+                        return;
+                    }
+                };
+            let progress = TransferProgressTracker::new(request.id, total_bytes, emit.clone());
+            progress.emit();
             let mut completed = Vec::new();
             for (index, item) in request.items.iter().enumerate() {
                 let remaining = || {
@@ -1924,19 +2293,27 @@ impl OperationProvider for LocalOperationProvider {
                     ));
                     return;
                 }
-                let source = gio_file(&item.record.current);
+                let source = sources[index].clone();
+                let item_started_at = progress.transferred_bytes.get();
                 let target = gio_file(&item.record.original);
                 let result = if item.conflict == TransferConflict::ReplaceExisting {
-                    replace_local(
+                    replace_local_with_progress(
                         source,
                         target,
                         true,
                         operation_cancellable.clone(),
                         Some(&mut affected_locations),
+                        Some(progress.clone()),
                     )
                     .await
                 } else {
-                    move_local(source, target, operation_cancellable.clone()).await
+                    move_local(
+                        source,
+                        target,
+                        operation_cancellable.clone(),
+                        Some(progress.clone()),
+                    )
+                    .await
                 };
                 if let Err(error) = result {
                     if was_cancelled(&error) {
@@ -1960,11 +2337,7 @@ impl OperationProvider for LocalOperationProvider {
                     return;
                 }
                 completed.push(item.record.current.clone());
-                emit(OperationEvent::TransferProgress {
-                    request_id: request.id,
-                    completed: completed.len(),
-                    total,
-                });
+                progress.finish_item(item_started_at, item_sizes[index]);
             }
             emit(OperationEvent::Pasted {
                 request_id: request.id,
@@ -2157,7 +2530,7 @@ impl OperationProvider for LocalOperationProvider {
                     if let Some(parent) = original_target.parent() {
                         affected_locations.insert(parent);
                     }
-                    move_local(source, target, operation_cancellable.clone()).await
+                    move_local(source, target, operation_cancellable.clone(), None).await
                 } else {
                     match await_cancellable(
                         &source,
@@ -2184,7 +2557,8 @@ impl OperationProvider for LocalOperationProvider {
                                 {
                                     affected_locations.insert(parent);
                                 }
-                                move_local(source, target, operation_cancellable.clone()).await
+                                move_local(source, target, operation_cancellable.clone(), None)
+                                    .await
                             }
                             None => Err(glib::Error::new(
                                 gio::IOErrorEnum::NotFound,

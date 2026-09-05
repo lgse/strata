@@ -109,6 +109,34 @@ fn file_sizes_use_compact_decimal_units() {
 }
 
 #[test]
+fn transfer_progress_reports_a_byte_fraction_when_the_total_is_known() {
+    assert_eq!(
+        transfer_progress_status(0, 750, Some(1_000)),
+        ("75%".to_owned(), Some(0.75))
+    );
+    assert_eq!(
+        transfer_progress_status(1, 1_500, Some(1_000)),
+        ("100%".to_owned(), Some(1.0))
+    );
+    assert_eq!(
+        transfer_progress_status(0, 1, Some(1_000)),
+        ("1%".to_owned(), Some(0.001))
+    );
+}
+
+#[test]
+fn transfer_progress_is_indeterminate_when_the_total_is_unknown() {
+    assert_eq!(
+        transfer_progress_status(0, 0, None),
+        ("Preparing…".to_owned(), None)
+    );
+    assert_eq!(
+        transfer_progress_status(0, 1_200, None),
+        ("1.2 kB copied".to_owned(), None)
+    );
+}
+
+#[test]
 fn an_empty_name_is_not_flagged_as_an_error() {
     assert!(basename_field_error("bad/name").is_some());
     assert!(

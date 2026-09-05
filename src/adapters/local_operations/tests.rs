@@ -22,8 +22,8 @@ use gtk::{gio, glib, prelude::*};
 use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 
 use super::{
-    LocalOperationProvider, await_cancellable, copy_new_recursively, copy_recursively,
-    deletion_error_message, deletion_error_summary, duplicate_candidate_name,
+    LocalOperationProvider, TransferProgressTracker, await_cancellable, copy_new_recursively,
+    copy_recursively, deletion_error_message, deletion_error_summary, duplicate_candidate_name,
     extract_7z_from_reader, extract_tar, extract_zip_from_archive, home_trash_entries_at, io_error,
     is_trash_unsupported_failure, move_local_with, operation_error_summary, parse_copy_suffix,
     replace_local, replace_local_with, transfer_is_noop, validated_archive_path, validated_child,
@@ -1603,6 +1603,47 @@ fn cancelling_recursive_delete_leaves_the_unfinished_root_in_place() -> Result<(
 }
 
 #[test]
+fn transfer_progress_aggregates_completed_and_in_flight_file_bytes() {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let tracker = TransferProgressTracker::new(
+        OperationRequestId(24),
+        Some(150),
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    let first = tracker.begin_file();
+    let mut first_callback = first.callback();
+    first_callback(25, 100);
+    first_callback(100, 100);
+    first.finish();
+    tracker.finish_item(0, Some(100));
+
+    let second = tracker.begin_file();
+    let mut second_callback = second.callback();
+    second_callback(10, 50);
+
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        OperationEvent::TransferProgress {
+            completed_items: 0,
+            transferred_bytes: 25,
+            total_bytes: Some(150),
+            ..
+        }
+    )));
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::TransferProgress {
+            completed_items: 1,
+            transferred_bytes: 110,
+            total_bytes: Some(150),
+            ..
+        })
+    ));
+}
+
+#[test]
 fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Result<(), Box<dyn Error>>
 {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -1642,7 +1683,13 @@ fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Resul
             move_sources: true,
         },
         Rc::new(move |event| {
-            let cancel = matches!(event, OperationEvent::TransferProgress { completed: 1, .. });
+            let cancel = matches!(
+                event,
+                OperationEvent::TransferProgress {
+                    completed_items: 1,
+                    ..
+                }
+            );
             emitted.borrow_mut().push(event);
             if cancel {
                 operation_for_emit.borrow_mut().take();
@@ -1666,6 +1713,15 @@ fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Resul
             _ => None,
         })
         .expect("terminal cancellation result");
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        OperationEvent::TransferProgress {
+            completed_items: 1,
+            transferred_bytes: 5,
+            total_bytes: Some(11),
+            ..
+        }
+    )));
     assert_eq!(result.completed, [Location::local(&first)]);
     assert!(result.failed.is_empty());
     assert_eq!(result.not_attempted, [Location::local(&second)]);
