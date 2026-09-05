@@ -1626,8 +1626,6 @@ fn permanently_delete_defaults_to_visible_before_the_check_resolves() {
 
 #[test]
 fn permanently_delete_hides_inside_trash_regardless_of_can_delete() {
-    // Inside Trash, "Move to Trash" already serves as permanent delete under a
-    // shared label, so this separate option would be redundant.
     assert!(!permanently_delete_is_visible(true, Some(true)));
     assert!(!permanently_delete_is_visible(true, None));
 }

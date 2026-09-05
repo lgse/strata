@@ -9556,12 +9556,8 @@ fn move_to_trash_is_visible(in_trash: bool, can_trash: Option<bool>) -> bool {
     in_trash || can_trash.unwrap_or(true)
 }
 
-/// Whether the separate "Permanently delete" context-menu option should be
-/// shown. Hidden while browsing Trash, where "Move to Trash" already serves as
-/// permanent delete under a shared label. Otherwise, visible unless the
-/// location's `access::can-delete` check came back a definite `Some(false)`;
-/// `None` defaults to visible, matching `move_to_trash_is_visible`'s
-/// safer-fallback rationale.
+/// Hidden in Trash, where the shared delete action is already permanent, or
+/// when GIO confirms deletion is unsupported.
 fn permanently_delete_is_visible(in_trash: bool, can_delete: Option<bool>) -> bool {
     !in_trash && can_delete.unwrap_or(true)
 }
