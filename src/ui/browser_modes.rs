@@ -374,6 +374,92 @@ impl ModeViews {
         Some(pane.marquee.clone())
     }
 
+    /// Use rendered rows: filtering, grouping, and resizing change the grid geometry.
+    pub fn at_left_edge(&self) -> bool {
+        if self.mode != BrowserMode::Grid {
+            return true;
+        }
+        let Some(focused) = self.stack.root().and_then(|root| root.focus()) else {
+            return true;
+        };
+        self.grid_panes
+            .iter()
+            .flat_map(Pane::item_sections)
+            .find_map(|section| {
+                let (_, bounds) = focused_section_item(&section, &focused)?;
+                let mut has_left_neighbor = false;
+                (section.visit)(&mut |_, widget| {
+                    if let Some(other) = widget.compute_bounds(&section.view) {
+                        has_left_neighbor |=
+                            other.x() < bounds.x() - 1.0 && (other.y() - bounds.y()).abs() < 1.0;
+                    }
+                });
+                Some(!has_left_neighbor)
+            })
+            .unwrap_or(true)
+    }
+
+    /// GTK handles spatial movement within a grid; separate type groups need a handoff.
+    pub fn move_grid_group(&self, direction: gtk::DirectionType) -> bool {
+        if self.mode != BrowserMode::Grid {
+            return false;
+        }
+        let Some(pane) = self.grid_panes.first() else {
+            return false;
+        };
+        let sections = pane.item_sections();
+        if sections.len() < 2 {
+            return false;
+        }
+        let Some(focused) = self.stack.root().and_then(|root| root.focus()) else {
+            return false;
+        };
+        let Some((index, position)) = sections.iter().enumerate().find_map(|(index, section)| {
+            focused_section_item(section, &focused).map(|(position, _)| (index, position))
+        }) else {
+            return false;
+        };
+        let Some(grid) = sections[index].view.downcast_ref::<gtk::GridView>() else {
+            return false;
+        };
+        let columns = grid.max_columns().max(1);
+        let row = position / columns;
+        let last_row = sections[index].view_model.n_items().saturating_sub(1) / columns;
+        let next = match direction {
+            gtk::DirectionType::Up if row == 0 => index.checked_sub(1),
+            gtk::DirectionType::Down if row == last_row => Some(index + 1),
+            _ => None,
+        };
+        let Some(target) = next.and_then(|index| sections.get(index)) else {
+            return false;
+        };
+        let Some(last) = target.view_model.n_items().checked_sub(1) else {
+            return false;
+        };
+        let Some(target_grid) = target.view.downcast_ref::<gtk::GridView>() else {
+            return false;
+        };
+        let target_columns = target_grid.max_columns().max(1);
+        let column = (position % columns).min(target_columns - 1);
+        let target_position = if direction == gtk::DirectionType::Up {
+            (last / target_columns * target_columns + column).min(last)
+        } else {
+            column.min(last)
+        };
+        let Some(source) = pane
+            .source_index
+            .of_view_position(&target.view_model, target_position)
+        else {
+            return false;
+        };
+        set_selections(pane, &[source]);
+        self.browser
+            .set_selection(pane.depth, &[source], Some(source));
+        target_grid.scroll_to(target_position, gtk::ListScrollFlags::FOCUS, None);
+        target_grid.grab_focus();
+        true
+    }
+
     pub fn selected_positions(&self) -> Option<(usize, Vec<usize>)> {
         let pane = match self.mode {
             BrowserMode::Columns => return None,
@@ -562,9 +648,11 @@ impl ModeViews {
             .iter()
             .chain(self.explorer_pane.iter())
             .any(|pane| {
-                pane.all_sections()
-                    .iter()
-                    .any(|section| widget_has_focus(&section.view, focused.as_ref()))
+                focused.as_ref() == Some(pane.stack.upcast_ref())
+                    || pane
+                        .all_sections()
+                        .iter()
+                        .any(|section| widget_has_focus(&section.view, focused.as_ref()))
             })
     }
 
@@ -917,10 +1005,19 @@ impl ModeViews {
         let Some(view) = view else {
             return;
         };
-        view.grab_focus();
-        let view = view.clone();
+        if !view.grab_focus() {
+            for pane in self.panes_at(depth) {
+                pane.stack.grab_focus();
+            }
+            return;
+        }
+        let view = view.downgrade();
         glib::idle_add_local_once(move || {
-            view.grab_focus();
+            if let Some(view) = view.upgrade()
+                && widget_has_focus(&view, view.root().and_then(|root| root.focus()).as_ref())
+            {
+                view.grab_focus();
+            }
         });
     }
 
@@ -2933,7 +3030,11 @@ fn pane_base(
     let status = gtk::Label::new(Some("This directory is empty"));
     status.add_css_class("status-message");
     status.set_wrap(true);
-    let stack = gtk::Stack::builder().hexpand(true).vexpand(true).build();
+    let stack = gtk::Stack::builder()
+        .hexpand(true)
+        .vexpand(true)
+        .focusable(true)
+        .build();
     stack.add_named(&content, Some("content"));
     stack.add_named(loading, Some("loading"));
     stack.add_named(&status, Some("status"));
@@ -3847,6 +3948,25 @@ fn install_exclusive_section_click(section: &PaneSection, context: &Rc<GridConte
         }
     });
     section.view.add_controller(click);
+}
+
+fn focused_section_item(
+    section: &PaneSection,
+    focused: &gtk::Widget,
+) -> Option<(u32, gtk::graphene::Rect)> {
+    section.bound_items.borrow().iter().find_map(|bound| {
+        let widget = bound.widget.upgrade()?;
+        let owns_focus = widget == *focused
+            || focused.is_ancestor(&widget)
+            || widget.parent().as_ref() == Some(focused);
+        if !owns_focus {
+            return None;
+        }
+        Some((
+            bound.item.upgrade()?.position(),
+            widget.compute_bounds(&section.view)?,
+        ))
+    })
 }
 
 /// The view position of the item `picked` belongs to, when it is one of the section's

@@ -29,6 +29,21 @@ Copy/cut use the selection in the focused column, never a hovered row. In Column
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 
+## Arrows and the sidebar
+
+In Grid and Explorer, plain arrows move interface focus rather than changing directories:
+
+| Key | Grid | Explorer |
+| --- | --- | --- |
+| Left | Move one tile left; at the left edge, focus the visible sidebar | Focus the visible sidebar |
+| Right | Move one tile right | Stay in the file list |
+| Up / Down | Move by visual rows | Move through file rows |
+| Enter | Open the current item | Open the current item |
+
+From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it). Up/Down move between places. Empty file views also support this round trip. If the sidebar is hidden, Left does not change directories.
+
+**Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. Columns retain Miller-column arrow navigation. Backspace and the existing Vim directory shortcuts remain available.
+
 ## Review fixture
 
 Create `Fonts/` (empty), `Scripts/example.txt`, and `LICENSE` under a temporary directory.

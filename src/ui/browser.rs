@@ -704,6 +704,14 @@ impl BrowserView {
         }
     }
 
+    pub fn move_grid_group(&self, direction: gtk::DirectionType) -> bool {
+        self.state.mode_views.borrow().move_grid_group(direction)
+    }
+
+    pub fn at_left_edge(&self) -> bool {
+        self.state.mode_views.borrow().at_left_edge()
+    }
+
     pub fn first_column_has_focus(&self) -> bool {
         self.view_mode() == BrowserMode::Columns && self.state.focused_column_depth() == Some(0)
     }

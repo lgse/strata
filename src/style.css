@@ -3591,8 +3591,9 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   opacity: 0.52;
 }
 
-.explorer-list row:focus-visible {
-  outline: none;
+.keyboard-navigation .explorer-list row:focus-within {
+  outline: 2px solid @theme_text;
+  outline-offset: -2px;
 }
 
 .explorer-row {
