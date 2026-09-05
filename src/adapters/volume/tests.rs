@@ -193,6 +193,26 @@ fn uri_lookup_is_pending_then_reports_once_resolved() {
 }
 
 #[test]
+fn native_path_and_file_uri_of_the_same_directory_share_an_identity() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let file = root.path().join("file");
+    fs::write(&file, b"x").expect("file");
+    let native = Location::local(root.path());
+    let uri = Location::uri(gio::File::for_path(&file).uri().to_string());
+    let query = DropVolumeQuery::new(&native, &[uri]);
+    assert!(!query.is_native());
+    let (lookup, was_pending) = resolve_on_private_context(&query, Duration::from_secs(5));
+    assert!(was_pending);
+    let lookup = lookup.expect("mixed lookup should resolve");
+    assert_eq!(
+        lookup.relation,
+        VolumeRelation::Same,
+        "native and file:// ids must use one encoding: {}",
+        lookup.describe()
+    );
+}
+
+#[test]
 fn dropping_the_pending_handle_inside_on_ready_is_safe() {
     let root = tempfile::tempdir().expect("tempdir");
     let file = root.path().join("file");

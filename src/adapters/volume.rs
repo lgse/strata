@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::{cell::RefCell, collections::HashSet, os::unix::fs::MetadataExt, rc::Rc, time::Duration};
+use std::{cell::RefCell, collections::HashSet, rc::Rc, time::Duration};
 
 use gtk::{gio, glib, prelude::*};
 
@@ -206,12 +206,17 @@ impl PendingState {
     }
 }
 
+/// Native directories go through GIO too so their ids share one encoding with
+/// `file://` URIs and any backend that reports the underlying local filesystem.
 pub(crate) fn native_volume_identity(location: &Location) -> Option<VolumeIdentity> {
-    let metadata = std::fs::metadata(location.native_path()?).ok()?;
-    Some(VolumeIdentity {
-        filesystem_id: format!("dev:{}", metadata.dev()),
-        is_remote: false,
-    })
+    let info = gio::File::for_path(location.native_path()?)
+        .query_info(
+            gio::FILE_ATTRIBUTE_ID_FILESYSTEM,
+            gio::FileQueryInfoFlags::NONE,
+            None::<&gio::Cancellable>,
+        )
+        .ok()?;
+    identity_from_gio(&info, false)
 }
 
 pub(crate) fn location_is_remote(location: &Location) -> bool {
