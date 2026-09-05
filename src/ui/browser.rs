@@ -12,19 +12,22 @@ use std::{
     time::{Duration, Instant},
 };
 
+use gtk::gdk::prelude::*;
 use gtk::{gdk, gio, glib, prelude::*};
 
 use crate::{
-    adapters::location_for_file,
+    adapters::{DropVolumeQuery, DropVolumes, location_for_file, lookup_drop_volumes},
     app::{Browser, BrowserEvent},
     model::{
         EntryKind, FileEntry, FolderColor, FolderColorValue, Location, SortDirection, SortKey,
     },
     services::{
-        ArchiveFormat, FileSource, LoadHandle, LocationValidationError, MoveRecord,
-        OperationProvider, PasteItem, PreviewContent, SearchEvent, TransferConflict, UndoMoveItem,
-        UriCredentials, backend_unavailable_message, content_family, has_plain_text_extension,
-        index_tree, is_extensionless_dotfile, sanitize_uri_credentials, validate_basename,
+        ArchiveFormat, DropActionInput, DropOverride, FileSource, LoadHandle,
+        LocationValidationError, MoveRecord, OperationProvider, PasteItem, PreviewContent,
+        SearchEvent, TransferConflict, TransferKind, UndoMoveItem, UriCredentials, VolumeRelation,
+        backend_unavailable_message, content_family, drop_is_noop, has_plain_text_extension,
+        index_tree, is_extensionless_dotfile, preferred_transfer_kind, sanitize_uri_credentials,
+        validate_basename,
     },
 };
 
@@ -5009,23 +5012,38 @@ impl ViewState {
             });
             row.add_controller(drag);
 
-            let drop = gtk::DropTarget::new(
-                gtk::gdk::FileList::static_type(),
-                gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
-            );
+            let dest_for_row = {
+                let weak_state = weak_state.clone();
+                let item = item.downgrade();
+                let map = map_for_hover.clone();
+                move || {
+                    let state = weak_state.upgrade()?;
+                    let item = item.upgrade()?;
+                    map.source_position(item.position())
+                        .and_then(|position| state.browser.entry_at(depth, position))
+                        .filter(FileEntry::is_directory)
+                        .map(|entry| entry.location)
+                }
+            };
+            let PreparedFileDrop {
+                target: drop,
+                state: drop_state,
+            } = prepare_file_drop_target(dest_for_row);
             let highlighted_row = row.downgrade();
+            let state_for_enter = drop_state.clone();
             drop.connect_enter(move |target, _, _| {
                 if let Some(row) = highlighted_row.upgrade() {
                     row.add_css_class("drop-destination");
                 }
-                file_drop_action(target)
+                file_drop_action(target, &state_for_enter)
             });
             let highlighted_row = row.downgrade();
+            let state_for_motion = drop_state.clone();
             drop.connect_motion(move |target, _, _| {
                 if let Some(row) = highlighted_row.upgrade() {
                     row.add_css_class("drop-destination");
                 }
-                file_drop_action(target)
+                file_drop_action(target, &state_for_motion)
             });
             let highlighted_row = row.downgrade();
             drop.connect_leave(move |_| {
@@ -5054,8 +5072,6 @@ impl ViewState {
                 })
             });
             let weak_state_for_drop = weak_state.clone();
-            let dropped_item = item.downgrade();
-            let map_for_drop = map_for_hover.clone();
             let dropped_row = row.downgrade();
             drop.connect_drop(move |target, value, _, _| {
                 let Some(dropped_row) = dropped_row.upgrade() else {
@@ -5065,21 +5081,14 @@ impl ViewState {
                 let Some(state) = weak_state_for_drop.upgrade() else {
                     return false;
                 };
-                let Some(dropped_item) = dropped_item.upgrade() else {
-                    return false;
-                };
-                let Some(destination) = map_for_drop
-                    .source_position(dropped_item.position())
-                    .and_then(|position| state.browser.entry_at(depth, position))
-                    .filter(FileEntry::is_directory)
-                    .map(|entry| entry.location)
-                else {
+                let Some(destination) = drop_state.destination() else {
                     return false;
                 };
                 let Some(sources) = locations_from_file_list_value(value) else {
                     return false;
                 };
-                let move_sources = file_drop_action(target) == gtk::gdk::DragAction::MOVE;
+                let move_sources =
+                    file_drop_commits_move(target, &destination, &sources, &drop_state);
                 slide_in_down(&dropped_row);
                 glib::timeout_add_local_once(Duration::from_millis(300), move || {
                     state.start_transfer(destination, sources, move_sources);
@@ -7816,18 +7825,23 @@ fn install_directory_drop_target(
     destination: Location,
 ) {
     widget.add_css_class("file-drop-zone");
-    let drop = gtk::DropTarget::new(
-        gtk::gdk::FileList::static_type(),
-        gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
-    );
-    drop.connect_enter(|target, _, _| file_drop_action(target));
-    drop.connect_motion(|target, _, _| file_drop_action(target));
+    let PreparedFileDrop {
+        target: drop,
+        state: drop_state,
+    } = prepare_file_drop_target({
+        let destination = destination.clone();
+        move || Some(destination.clone())
+    });
+    let state_for_enter = drop_state.clone();
+    drop.connect_enter(move |target, _, _| file_drop_action(target, &state_for_enter));
+    let state_for_motion = drop_state.clone();
+    drop.connect_motion(move |target, _, _| file_drop_action(target, &state_for_motion));
     let weak = Rc::downgrade(state);
     drop.connect_drop(move |target, value, _, _| {
         let Some(state) = weak.upgrade() else {
             return false;
         };
-        transfer_dropped_files(&state, target, value, destination.clone())
+        transfer_dropped_files(&state, target, value, destination.clone(), &drop_state)
     });
     widget.add_controller(drop);
 }
@@ -7872,6 +7886,7 @@ fn transfer_dropped_files(
     target: &gtk::DropTarget,
     value: &glib::Value,
     destination: Location,
+    drop_state: &Rc<FileDropState>,
 ) -> bool {
     let Some(sources) = locations_from_file_list_value(value) else {
         return false;
@@ -7879,27 +7894,329 @@ fn transfer_dropped_files(
     if sources.is_empty() {
         return false;
     }
-    let move_sources = file_drop_action(target) == gtk::gdk::DragAction::MOVE;
+    let move_sources = file_drop_commits_move(target, &destination, &sources, drop_state);
     state.start_transfer(destination, sources, move_sources);
     true
 }
 
-pub(super) fn file_drop_action(target: &gtk::DropTarget) -> gtk::gdk::DragAction {
-    let Some(drop) = target.current_drop() else {
-        return gtk::gdk::DragAction::empty();
-    };
-    preferred_file_drop_action(drop.actions(), drop.drag().is_some())
+pub(super) struct PreparedFileDrop {
+    pub target: gtk::DropTarget,
+    pub state: Rc<FileDropState>,
 }
 
-fn preferred_file_drop_action(actions: gtk::gdk::DragAction, local: bool) -> gtk::gdk::DragAction {
-    if actions.contains(gtk::gdk::DragAction::MOVE)
-        && (local || !actions.contains(gtk::gdk::DragAction::COPY))
-    {
-        gtk::gdk::DragAction::MOVE
-    } else if actions.contains(gtk::gdk::DragAction::COPY) {
-        gtk::gdk::DragAction::COPY
+/// Per-target drop state. The no-op check and volume relation are computed once
+/// per (destination, sources) pair and reused by every motion event and by the
+/// final drop, so the transfer performed always matches the cursor that was
+/// shown. URI lookups resolve asynchronously and re-status the drop when they
+/// land; until then the drop is classified as a cross-volume copy.
+pub(super) struct FileDropState {
+    destination: Rc<dyn Fn() -> Option<Location>>,
+    last_override: Cell<DropOverride>,
+    sources: RefCell<Option<Rc<[Location]>>>,
+    classification: RefCell<Option<DropClassification>>,
+}
+
+struct DropClassification {
+    destination: Location,
+    sources: Rc<[Location]>,
+    is_noop: bool,
+    volumes: DropVolumes,
+}
+
+impl DropClassification {
+    fn covers(&self, destination: &Location, sources: &Rc<[Location]>) -> bool {
+        self.destination == *destination
+            && (Rc::ptr_eq(&self.sources, sources) || self.sources == *sources)
+    }
+}
+
+impl FileDropState {
+    fn new(destination: Rc<dyn Fn() -> Option<Location>>) -> Self {
+        Self {
+            destination,
+            last_override: Cell::new(DropOverride::None),
+            sources: RefCell::new(None),
+            classification: RefCell::new(None),
+        }
+    }
+
+    pub(super) fn destination(&self) -> Option<Location> {
+        (self.destination)()
+    }
+
+    fn reset(&self) {
+        self.last_override.set(DropOverride::None);
+        self.sources.take();
+        self.classification.take();
+    }
+
+    fn reload_sources(&self, target: &gtk::DropTarget) {
+        let sources = drop_source_locations(target);
+        if sources.is_empty() {
+            self.reset();
+        } else {
+            *self.sources.borrow_mut() = Some(sources.into());
+        }
+    }
+
+    fn sources(&self, target: &gtk::DropTarget) -> Rc<[Location]> {
+        if let Some(sources) = self.sources.borrow().clone() {
+            return sources;
+        }
+        let sources: Rc<[Location]> = drop_source_locations(target).into();
+        if !sources.is_empty() {
+            *self.sources.borrow_mut() = Some(sources.clone());
+        }
+        sources
+    }
+
+    fn sources_matching(&self, target: &gtk::DropTarget, sources: &[Location]) -> Rc<[Location]> {
+        let cached = self.sources(target);
+        if *cached == *sources {
+            cached
+        } else {
+            sources.into()
+        }
+    }
+
+    fn describe_volumes(&self) -> String {
+        self.classification
+            .borrow()
+            .as_ref()
+            .map_or_else(|| "unclassified".into(), |cached| cached.volumes.describe())
+    }
+
+    fn classify(
+        self: &Rc<Self>,
+        target: &gtk::DropTarget,
+        destination: &Location,
+        sources: Rc<[Location]>,
+    ) -> (VolumeRelation, bool) {
+        if sources.is_empty() {
+            return (VolumeRelation::Unknown, false);
+        }
+        if let Some(cached) = self
+            .classification
+            .borrow()
+            .as_ref()
+            .filter(|cached| cached.covers(destination, &sources))
+        {
+            return (cached.volumes.relation(), cached.is_noop);
+        }
+        let is_noop = drop_is_noop(destination, &sources);
+        let query = DropVolumeQuery::new(destination, &sources);
+        let volumes = lookup_drop_volumes(&query, {
+            let state = Rc::downgrade(self);
+            let target = target.downgrade();
+            let destination = destination.clone();
+            let sources = sources.clone();
+            move |lookup| {
+                let Some(state) = state.upgrade() else {
+                    return;
+                };
+                {
+                    let mut classification = state.classification.borrow_mut();
+                    let Some(cached) = classification
+                        .as_mut()
+                        .filter(|cached| cached.covers(&destination, &sources))
+                    else {
+                        return;
+                    };
+                    cached.volumes = DropVolumes::Ready(lookup);
+                }
+                if let Some(target) = target.upgrade() {
+                    restatus_file_drop(&target, &state);
+                }
+            }
+        });
+        let relation = volumes.relation();
+        *self.classification.borrow_mut() = Some(DropClassification {
+            destination: destination.clone(),
+            sources,
+            is_noop,
+            volumes,
+        });
+        (relation, is_noop)
+    }
+}
+
+pub(super) fn prepare_file_drop_target(
+    destination: impl Fn() -> Option<Location> + 'static,
+) -> PreparedFileDrop {
+    let drop = gtk::DropTarget::new(
+        gtk::gdk::FileList::static_type(),
+        gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
+    );
+    drop.set_preload(true);
+    let state = Rc::new(FileDropState::new(Rc::new(destination)));
+    let state_for_leave = state.clone();
+    drop.connect_leave(move |_| state_for_leave.reset());
+    let state_for_value = state.clone();
+    drop.connect_value_notify(move |target| {
+        state_for_value.reload_sources(target);
+        restatus_file_drop(target, &state_for_value);
+    });
+    PreparedFileDrop {
+        target: drop,
+        state,
+    }
+}
+
+fn restatus_file_drop(target: &gtk::DropTarget, state: &Rc<FileDropState>) {
+    let Some(drop) = target.current_drop() else {
+        return;
+    };
+    let action = file_drop_action(target, state);
+    drop.status(target.actions(), action);
+}
+
+pub(super) fn file_drop_action(
+    target: &gtk::DropTarget,
+    state: &Rc<FileDropState>,
+) -> gtk::gdk::DragAction {
+    let destination = state.destination();
+    let sources = state.sources(target);
+    classify_file_drop(target, state, destination.as_ref(), sources, false)
+}
+
+pub(super) fn file_drop_commits_move(
+    target: &gtk::DropTarget,
+    destination: &Location,
+    sources: &[Location],
+    state: &Rc<FileDropState>,
+) -> bool {
+    let sources = state.sources_matching(target, sources);
+    classify_file_drop(target, state, Some(destination), sources, true)
+        == gtk::gdk::DragAction::MOVE
+}
+
+fn drop_source_locations(target: &gtk::DropTarget) -> Vec<Location> {
+    target
+        .value()
+        .as_ref()
+        .and_then(locations_from_file_list_value)
+        .unwrap_or_default()
+}
+
+fn classify_file_drop(
+    target: &gtk::DropTarget,
+    state: &Rc<FileDropState>,
+    destination: Option<&Location>,
+    sources: Rc<[Location]>,
+    commit: bool,
+) -> gtk::gdk::DragAction {
+    let drop = target.current_drop();
+    if drop.is_none() && !commit {
+        return gtk::gdk::DragAction::empty();
+    }
+    let override_with = if commit {
+        commit_override(target, &state.last_override)
     } else {
-        gtk::gdk::DragAction::empty()
+        hover_override(target, &state.last_override)
+    };
+    let Some(destination) = destination else {
+        return gtk::gdk::DragAction::empty();
+    };
+    let (relation, is_noop) = state.classify(target, destination, sources.clone());
+    let source_actions = drop
+        .as_ref()
+        .map_or_else(|| target.actions(), |drop| drop.actions());
+    let offered = offered_file_actions(target.actions(), source_actions);
+    if commit {
+        tracing::debug!(
+            dest = %destination.diagnostic_path(),
+            sources = sources.len(),
+            source = sources.first().map(Location::diagnostic_path),
+            volume = ?relation,
+            volumes = %state.describe_volumes(),
+            ?override_with,
+            event_mods = ?target.current_event_state(),
+            keyboard_mods = ?drop_modifier_state(target),
+            drop_actions = ?drop.as_ref().map(|drop| drop.actions()),
+            ?offered,
+            "drop action classified"
+        );
+    }
+    preferred_file_drop_action(offered, override_with, relation, is_noop)
+}
+
+/// File transfers are performed by Strata, not by the drag protocol. A local
+/// drag often starts over the source pane (same-volume move) and the compositor
+/// then advertises only MOVE. That must not prevent a later cross-volume copy.
+fn offered_file_actions(
+    dest_actions: gtk::gdk::DragAction,
+    source_actions: gtk::gdk::DragAction,
+) -> gtk::gdk::DragAction {
+    let mut offered = gtk::gdk::DragAction::empty();
+    if dest_actions.contains(gtk::gdk::DragAction::COPY) {
+        offered |= gtk::gdk::DragAction::COPY;
+    }
+    if dest_actions.contains(gtk::gdk::DragAction::MOVE)
+        && source_actions.contains(gtk::gdk::DragAction::MOVE)
+    {
+        offered |= gtk::gdk::DragAction::MOVE;
+    }
+    if offered.is_empty() {
+        dest_actions & source_actions
+    } else {
+        offered
+    }
+}
+
+fn hover_override(target: &gtk::DropTarget, last: &Cell<DropOverride>) -> DropOverride {
+    let current = drop_override(target);
+    last.set(current);
+    current
+}
+
+fn commit_override(target: &gtk::DropTarget, last: &Cell<DropOverride>) -> DropOverride {
+    let current = drop_override(target);
+    if current != DropOverride::None {
+        last.set(current);
+        current
+    } else {
+        last.get()
+    }
+}
+
+fn drop_override(target: &gtk::DropTarget) -> DropOverride {
+    let mods = drop_modifier_state(target);
+    if mods.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
+        DropOverride::ForceCopy
+    } else if mods.contains(gtk::gdk::ModifierType::SHIFT_MASK) {
+        DropOverride::ForceMove
+    } else {
+        DropOverride::None
+    }
+}
+
+fn drop_modifier_state(target: &gtk::DropTarget) -> gtk::gdk::ModifierType {
+    target
+        .widget()
+        .and_then(|widget| widget.display().default_seat())
+        .and_then(|seat| seat.keyboard())
+        .map(|keyboard| keyboard.modifier_state())
+        .unwrap_or_else(|| target.current_event_state())
+}
+
+fn preferred_file_drop_action(
+    actions: gtk::gdk::DragAction,
+    override_with: DropOverride,
+    volume: VolumeRelation,
+    is_noop: bool,
+) -> gtk::gdk::DragAction {
+    if is_noop {
+        return gtk::gdk::DragAction::empty();
+    }
+    match preferred_transfer_kind(DropActionInput {
+        can_copy: actions.contains(gtk::gdk::DragAction::COPY),
+        can_move: actions.contains(gtk::gdk::DragAction::MOVE),
+        volume,
+        override_with,
+    }) {
+        TransferKind::Copy => gtk::gdk::DragAction::COPY,
+        TransferKind::Move => gtk::gdk::DragAction::MOVE,
+        TransferKind::Forbidden => gtk::gdk::DragAction::empty(),
     }
 }
 
