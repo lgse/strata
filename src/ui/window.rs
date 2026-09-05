@@ -1073,13 +1073,12 @@ fn install_keyboard_navigation(
                 sidebar_state.focus_active_place();
             }
             (gtk::gdk::Key::h | gtk::gdk::Key::Left, false) => view.navigate_left(),
-            (
-                gtk::gdk::Key::l
-                | gtk::gdk::Key::Right
-                | gtk::gdk::Key::Return
-                | gtk::gdk::Key::KP_Enter,
-                false,
-            ) => view.activate_focused(),
+            (gtk::gdk::Key::Right, false) if view.view_mode() == BrowserMode::Columns => {
+                browser.enter_focused_directory();
+            }
+            (gtk::gdk::Key::l | gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter, false) => {
+                view.activate_focused();
+            }
             (gtk::gdk::Key::Escape, false) => browser.escape(),
             _ => return glib::Propagation::Proceed,
         }

@@ -32,6 +32,10 @@ fn navigation_reference_matches_each_mode() {
         summary_shortcuts(BrowserMode::Grid),
         summary_shortcuts(BrowserMode::Explorer)
     );
+    assert!(
+        navigation_shortcuts(BrowserMode::Columns)
+            .contains(&("← / →", "Parent pane / enter folder"))
+    );
     assert!(TOOLS.contains(&("F1", "Show or hide this reference")));
 }
 

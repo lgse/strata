@@ -425,7 +425,7 @@ fn navigation_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
     let mut shortcuts = match mode {
         BrowserMode::Columns => vec![
             ("↑ / ↓", "Move between items"),
-            ("← / →", "Parent pane / open or enter the current item"),
+            ("← / →", "Parent pane / enter folder"),
             ("← at first pane", "Focus the visible sidebar"),
             (
                 "Backspace",
@@ -433,7 +433,7 @@ fn navigation_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
             ),
             (
                 "h / j / k / l",
-                "Vim-style column navigation (type-to-search off)",
+                "Vim movement; l opens the item (type-to-search off)",
             ),
         ],
         BrowserMode::Grid => vec![

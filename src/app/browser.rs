@@ -1911,6 +1911,15 @@ impl Browser {
         }
     }
 
+    pub fn enter_focused_directory(self: &Rc<Self>) {
+        if self
+            .focused_entry()
+            .is_none_or(|entry| entry.is_directory())
+        {
+            self.activate_focused();
+        }
+    }
+
     pub fn activate_focused(self: &Rc<Self>) {
         let focused = self.state.borrow().focused_entry();
         let Some((depth, _, entry)) = focused else {

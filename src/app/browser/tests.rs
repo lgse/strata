@@ -1771,6 +1771,51 @@ fn preview_and_open_are_distinct_file_actions() {
 }
 
 #[test]
+fn directory_navigation_does_not_open_or_preview_files() {
+    let browser = Browser::new(Rc::new(FilePreviewSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    browser.navigate(Location::local("/fixture"));
+    browser.enter_focused_directory();
+    let focused = browser.focused_item();
+    assert!(focused.is_some());
+    events.borrow_mut().clear();
+
+    for _ in 0..3 {
+        browser.enter_focused_directory();
+    }
+    assert!(events.borrow().is_empty());
+    assert_eq!(browser.focused_item(), focused);
+    assert!(browser.location_at(1).is_none());
+
+    browser.activate_focused();
+    assert!(events.borrow().iter().any(|event| matches!(event,
+        BrowserEvent::OpenRequested { location }
+            if location == &Location::local("/fixture/example.conf")
+    )));
+}
+
+#[test]
+fn directory_navigation_enters_and_reuses_folder_columns() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.navigate(Location::local("/fixture"));
+    browser.move_selection(1);
+    browser.enter_focused_directory();
+    assert!(browser.location_at(2).is_none());
+    assert_eq!(browser.active_depth(), Some(1));
+    assert_eq!(
+        browser.active_location(),
+        Some(Location::local("/fixture/child"))
+    );
+
+    browser.focus_parent();
+    browser.enter_focused_directory();
+    assert!(browser.location_at(2).is_none());
+    assert_eq!(browser.active_depth(), Some(1));
+}
+
+#[test]
 fn keyboard_selection_and_activation_descend_without_the_ui() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
