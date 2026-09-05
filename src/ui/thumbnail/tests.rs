@@ -182,7 +182,7 @@ fn failed_jobs_release_their_active_requests() {
             image: glib::WeakRef::new(),
         }],
         None,
-        64,
+        Path::new("image.png"),
     );
 
     ACTIVE_REQUESTS.with(|requests| assert!(requests.borrow().is_empty()));
