@@ -1148,6 +1148,7 @@ struct GridControls {
     filter_button: gtk::ToggleButton,
     thumbnail_scale: gtk::Scale,
     thumbnail_value: gtk::Label,
+    thumbnail_popover: gtk::Popover,
     empty_trash_button: Option<gtk::Button>,
 }
 
@@ -1265,6 +1266,7 @@ fn grid_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> Gr
         filter_button,
         thumbnail_scale,
         thumbnail_value,
+        thumbnail_popover,
         empty_trash_button: is_trash.then_some(empty_trash),
     }
 }
@@ -1282,6 +1284,80 @@ fn disable_scale_long_press_zoom(scale: &gtk::Scale) {
     for long_press in long_presses {
         scale.remove_controller(&long_press);
     }
+}
+
+fn close_thumbnail_popover_on_outside_scroll(popover: &gtk::Popover, scroll: &gtk::ScrolledWindow) {
+    let wheel = gtk::EventControllerScroll::new(
+        gtk::EventControllerScrollFlags::VERTICAL | gtk::EventControllerScrollFlags::HORIZONTAL,
+    );
+    wheel.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let popover_for_scroll = popover.clone();
+    let scroll = scroll.clone();
+    wheel.connect_scroll(move |controller, dx, dy| {
+        if !popover_for_scroll.is_visible() || pointer_over_popover(&popover_for_scroll) {
+            return glib::Propagation::Proceed;
+        }
+        popover_for_scroll.popdown();
+        apply_scrolled_window_wheel(&scroll, controller, dx, dy);
+        glib::Propagation::Stop
+    });
+    popover.add_controller(wheel);
+}
+
+fn pointer_over_popover(popover: &gtk::Popover) -> bool {
+    let Some(surface) = popover.surface() else {
+        return false;
+    };
+    let Some(pointer) = popover
+        .display()
+        .default_seat()
+        .and_then(|seat| seat.pointer())
+    else {
+        return false;
+    };
+    let Some((x, y, _)) = surface.device_position(&pointer) else {
+        return false;
+    };
+    (0.0..f64::from(surface.width())).contains(&x)
+        && (0.0..f64::from(surface.height())).contains(&y)
+}
+
+fn apply_scrolled_window_wheel(
+    scroll: &gtk::ScrolledWindow,
+    controller: &gtk::EventControllerScroll,
+    mut dx: f64,
+    mut dy: f64,
+) {
+    if controller
+        .current_event_state()
+        .contains(gtk::gdk::ModifierType::SHIFT_MASK)
+    {
+        std::mem::swap(&mut dx, &mut dy);
+    }
+    let unit = controller.unit();
+    if dx != 0.0 {
+        apply_adjustment_scroll(&scroll.hadjustment(), dx, unit);
+    }
+    if dy != 0.0 {
+        apply_adjustment_scroll(&scroll.vadjustment(), dy, unit);
+    }
+}
+
+fn apply_adjustment_scroll(adjustment: &gtk::Adjustment, delta: f64, unit: gtk::gdk::ScrollUnit) {
+    let max = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
+    adjustment.set_value(
+        (adjustment.value() + scroll_delta_for_unit(delta, adjustment.page_size(), unit))
+            .clamp(adjustment.lower(), max),
+    );
+}
+
+fn scroll_delta_for_unit(delta: f64, page_size: f64, unit: gtk::gdk::ScrollUnit) -> f64 {
+    delta
+        * match unit {
+            gtk::gdk::ScrollUnit::Wheel => page_size.powf(2.0 / 3.0),
+            gtk::gdk::ScrollUnit::Surface => 2.5,
+            _ => 1.0,
+        }
 }
 
 /// Shared wiring every grid view in a pane needs, so a pane that groups entries by
@@ -1445,6 +1521,7 @@ fn build_grid_pane(
         .vexpand(true)
         .build();
     scroll.add_css_class("fixed-scrollbar");
+    close_thumbnail_popover_on_outside_scroll(&controls.thumbnail_popover, &scroll);
     install_grid_scroll_settle(&scroll, &context);
     if let Some(groups) = groups.clone() {
         let context = Rc::downgrade(&context);

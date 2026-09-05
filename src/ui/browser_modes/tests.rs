@@ -5,7 +5,7 @@ use super::{
     GRID_CARD_LABEL_CHARS, GRID_CARD_LABEL_LINE_PX, GRID_CARD_LABEL_LINES, MAX_GRID_THUMBNAIL_SIZE,
     MIN_GRID_THUMBNAIL_SIZE, SourceIndexMap, compare_type_groups, explorer_column_width,
     grid_bind_requests_metadata, grid_card_extent, grid_card_icon_slot, metadata_fill_position,
-    should_activate_pointer_click, type_groups_of, value_type_group,
+    scroll_delta_for_unit, should_activate_pointer_click, type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use gtk::{gio, prelude::*};
@@ -115,6 +115,16 @@ fn grid_cards_keep_a_uniform_icon_slot_and_two_line_label() {
     assert!(tall > height);
     assert!(!grid_bind_requests_metadata(true));
     assert!(grid_bind_requests_metadata(false));
+}
+
+#[test]
+fn grid_scroll_maps_a_wheel_notch_from_page_size() {
+    let step = scroll_delta_for_unit(1.0, 1000.0, gtk::gdk::ScrollUnit::Wheel);
+    assert!((step - 1000.0_f64.powf(2.0 / 3.0)).abs() < 1e-9);
+    assert_eq!(
+        scroll_delta_for_unit(4.0, 100.0, gtk::gdk::ScrollUnit::Surface),
+        10.0
+    );
 }
 
 #[test]
