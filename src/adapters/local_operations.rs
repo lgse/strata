@@ -886,7 +886,7 @@ async fn copy_new_recursively_with_progress(
                             move |stage, cancellable, result| {
                                 stage.move_async(
                                     &target,
-                                    gio::FileCopyFlags::NONE,
+                                    gio::FileCopyFlags::NO_FALLBACK_FOR_MOVE,
                                     glib::Priority::DEFAULT,
                                     Some(cancellable),
                                     None,
