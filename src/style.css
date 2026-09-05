@@ -2750,6 +2750,9 @@ colorchooser colorswatch overlay {
 
 .file-appear {
   opacity: 0;
+}
+
+.file-row.file-appear {
   transform: translate(0, 6px);
 }
 

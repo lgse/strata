@@ -1784,6 +1784,7 @@ fn build_grid_view(
         });
         let thumbnail_size = grid_card_icon_slot(thumbnail_size_for_bind.get());
         ensure_grid_card_slot(&card, thumbnail_size);
+        super::thumbnail::ensure_image_slot(&icon, thumbnail_size);
         if let Some(entry) = entry {
             label.set_visible(true);
             field.set_visible(false);
@@ -2014,8 +2015,13 @@ fn install_scroll_settle(
         let scroll = scroll.clone();
         let on_settle = on_settle.clone();
         adjustment.connect_value_changed(move |_| {
-            scrolling.set(true);
-            scroll.add_css_class(css_class);
+            let started = !scrolling.replace(true);
+            if started {
+                let scroll = scroll.clone();
+                glib::idle_add_local_once(move || {
+                    scroll.add_css_class(css_class);
+                });
+            }
             if let Some(source) = pending.borrow_mut().take() {
                 source.remove();
             }
