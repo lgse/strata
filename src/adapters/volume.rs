@@ -3,9 +3,9 @@
 #[cfg(test)]
 mod tests;
 
-use std::{os::unix::fs::MetadataExt, time::Duration};
+use std::{cell::RefCell, collections::HashSet, os::unix::fs::MetadataExt, rc::Rc, time::Duration};
 
-use gtk::{gio, prelude::*};
+use gtk::{gio, glib, prelude::*};
 
 use crate::{
     model::Location,
@@ -14,76 +14,204 @@ use crate::{
 
 const REMOTE_QUERY_TIMEOUT: Duration = Duration::from_secs(2);
 
+/// Directories whose filesystem decides a drop's volume relation: the
+/// destination and each distinct source parent. A file lives on its parent's
+/// filesystem unless it is itself a mount point, so this stays exact while the
+/// number of queries no longer scales with the number of dragged files.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct DropVolumeQuery {
+    pub dest: Location,
+    pub source_parents: Vec<Location>,
+}
+
+impl DropVolumeQuery {
+    pub(crate) fn new(dest: &Location, sources: &[Location]) -> Self {
+        let mut seen = HashSet::new();
+        let source_parents = sources
+            .iter()
+            .map(|source| source.parent().unwrap_or_else(|| source.clone()))
+            .filter(|parent| seen.insert(parent.clone()))
+            .collect();
+        Self {
+            dest: dest.clone(),
+            source_parents,
+        }
+    }
+
+    pub(crate) fn is_native(&self) -> bool {
+        self.locations()
+            .all(|location| location.native_path().is_some())
+    }
+
+    fn locations(&self) -> impl Iterator<Item = &Location> {
+        std::iter::once(&self.dest).chain(self.source_parents.iter())
+    }
+}
+
+#[derive(Clone, Debug)]
 pub(crate) struct DropVolumeLookup {
     pub dest: Option<VolumeIdentity>,
     pub sources: Vec<Option<VolumeIdentity>>,
     pub relation: VolumeRelation,
 }
 
-pub(crate) fn lookup_drop_volumes(
-    destination: Option<&Location>,
-    sources: &[Location],
-    commit: bool,
-) -> DropVolumeLookup {
-    let cancellable =
-        (commit && drop_involves_uri(destination, sources)).then(remote_volume_cancellable);
-    let dest = destination
-        .and_then(|destination| volume_identity(destination, true, commit, cancellable.as_ref()));
-    let sources = sources
-        .iter()
-        .map(|source| volume_identity(source, false, commit, cancellable.as_ref()))
-        .collect::<Vec<_>>();
-    let relation = volume_relation(dest.as_ref(), &sources);
-    DropVolumeLookup {
-        dest,
-        sources,
-        relation,
+impl DropVolumeLookup {
+    fn from_identities(identities: Vec<Option<VolumeIdentity>>) -> Self {
+        let mut identities = identities.into_iter();
+        let dest = identities.next().flatten();
+        let sources = identities.collect::<Vec<_>>();
+        let relation = volume_relation(dest.as_ref(), &sources);
+        Self {
+            dest,
+            sources,
+            relation,
+        }
+    }
+
+    /// Filesystem ids for diagnostics; `?` marks a directory that could not be queried.
+    pub(crate) fn describe(&self) -> String {
+        let id = |identity: &Option<VolumeIdentity>| {
+            identity
+                .as_ref()
+                .map_or("?", |identity| identity.filesystem_id.as_str())
+                .to_owned()
+        };
+        let sources = self.sources.iter().map(id).collect::<Vec<_>>();
+        format!("dest={} sources=[{}]", id(&self.dest), sources.join(", "))
     }
 }
 
-pub(crate) fn query_volume_identity(
-    location: &Location,
-    follow_symlinks: bool,
-    cancellable: Option<&gio::Cancellable>,
-) -> Option<VolumeIdentity> {
-    if let Some(path) = location.native_path() {
-        let metadata = if follow_symlinks {
-            std::fs::metadata(path)
-        } else {
-            std::fs::symlink_metadata(path)
-        };
-        let metadata = metadata.ok()?;
-        return Some(VolumeIdentity {
-            filesystem_id: format!("dev:{}", metadata.dev()),
-            is_remote: false,
-        });
-    }
-    let owned;
-    let cancellable = match cancellable {
-        Some(cancellable) => cancellable,
-        None => {
-            owned = remote_volume_cancellable();
-            &owned
+pub(crate) enum DropVolumes {
+    Ready(DropVolumeLookup),
+    Pending(PendingVolumeLookup),
+}
+
+impl DropVolumes {
+    pub(crate) fn relation(&self) -> VolumeRelation {
+        match self {
+            Self::Ready(lookup) => lookup.relation,
+            Self::Pending(_) => VolumeRelation::Unknown,
         }
-    };
-    if cancellable.is_cancelled() {
-        return None;
     }
-    let file = gio_file(location);
-    let info = file
-        .query_info(
-            gio::FILE_ATTRIBUTE_ID_FILESYSTEM,
-            query_flags(follow_symlinks),
-            Some(cancellable),
+
+    pub(crate) fn describe(&self) -> String {
+        match self {
+            Self::Ready(lookup) => lookup.describe(),
+            Self::Pending(pending) if pending.cancellable.is_cancelled() => "timed out".into(),
+            Self::Pending(_) => "pending".into(),
+        }
+    }
+}
+
+/// Native directories resolve synchronously with one `stat` each. Anything
+/// involving a URI is queried asynchronously under a shared timeout and reports
+/// through `on_ready` exactly once, from the main context, never re-entrantly
+/// from this call. Dropping the returned `Pending` handle cancels the lookup
+/// and suppresses `on_ready`.
+pub(crate) fn lookup_drop_volumes(
+    query: &DropVolumeQuery,
+    on_ready: impl FnOnce(DropVolumeLookup) + 'static,
+) -> DropVolumes {
+    if query.is_native() {
+        let identities = query.locations().map(native_volume_identity).collect();
+        return DropVolumes::Ready(DropVolumeLookup::from_identities(identities));
+    }
+    DropVolumes::Pending(PendingVolumeLookup::start(query, Box::new(on_ready)))
+}
+
+pub(crate) struct PendingVolumeLookup {
+    cancellable: gio::Cancellable,
+    state: Rc<RefCell<PendingState>>,
+}
+
+struct PendingState {
+    identities: Vec<Option<VolumeIdentity>>,
+    remaining: usize,
+    on_ready: Option<Box<dyn FnOnce(DropVolumeLookup)>>,
+}
+
+impl PendingVolumeLookup {
+    fn start(query: &DropVolumeQuery, on_ready: Box<dyn FnOnce(DropVolumeLookup)>) -> Self {
+        let locations = query.locations().collect::<Vec<_>>();
+        let cancellable = gio::Cancellable::new();
+        let state = Rc::new(RefCell::new(PendingState {
+            identities: vec![None; locations.len()],
+            remaining: locations.len(),
+            on_ready: Some(on_ready),
+        }));
+        for (index, location) in locations.into_iter().enumerate() {
+            if location.native_path().is_some() {
+                let mut state = state.borrow_mut();
+                state.identities[index] = native_volume_identity(location);
+                state.remaining -= 1;
+                continue;
+            }
+            let is_remote = location_is_remote(location);
+            let state = state.clone();
+            gio_file(location).query_info_async(
+                gio::FILE_ATTRIBUTE_ID_FILESYSTEM,
+                gio::FileQueryInfoFlags::NONE,
+                glib::Priority::DEFAULT,
+                Some(&cancellable),
+                move |result| {
+                    let identity = result
+                        .ok()
+                        .and_then(|info| identity_from_gio(&info, is_remote));
+                    PendingState::resolve(&state, index, identity);
+                },
+            );
+        }
+        let cancel = cancellable.clone();
+        glib::timeout_source_new(
+            REMOTE_QUERY_TIMEOUT,
+            None,
+            glib::Priority::DEFAULT,
+            move || {
+                cancel.cancel();
+                glib::ControlFlow::Break
+            },
         )
-        .ok()?;
-    if cancellable.is_cancelled() {
-        return None;
+        .attach(Some(&glib::MainContext::ref_thread_default()));
+        Self { cancellable, state }
     }
-    let remote = file
-        .query_filesystem_info(gio::FILE_ATTRIBUTE_FILESYSTEM_REMOTE, Some(cancellable))
-        .ok();
-    identity_from_gio(location, &info, remote.as_ref())
+
+    pub(crate) fn cancel(&self) {
+        self.state.borrow_mut().on_ready = None;
+        self.cancellable.cancel();
+    }
+}
+
+impl Drop for PendingVolumeLookup {
+    fn drop(&mut self) {
+        self.cancel();
+    }
+}
+
+impl PendingState {
+    fn resolve(state: &Rc<RefCell<Self>>, index: usize, identity: Option<VolumeIdentity>) {
+        let (on_ready, lookup) = {
+            let mut state = state.borrow_mut();
+            state.identities[index] = identity;
+            state.remaining -= 1;
+            if state.remaining > 0 {
+                return;
+            }
+            let Some(on_ready) = state.on_ready.take() else {
+                return;
+            };
+            let identities = std::mem::take(&mut state.identities);
+            (on_ready, DropVolumeLookup::from_identities(identities))
+        };
+        on_ready(lookup);
+    }
+}
+
+pub(crate) fn native_volume_identity(location: &Location) -> Option<VolumeIdentity> {
+    let metadata = std::fs::metadata(location.native_path()?).ok()?;
+    Some(VolumeIdentity {
+        filesystem_id: format!("dev:{}", metadata.dev()),
+        is_remote: false,
+    })
 }
 
 pub(crate) fn location_is_remote(location: &Location) -> bool {
@@ -96,66 +224,15 @@ pub(crate) fn location_is_remote(location: &Location) -> bool {
     }
 }
 
-fn volume_identity(
-    location: &Location,
-    follow_symlinks: bool,
-    commit: bool,
-    cancellable: Option<&gio::Cancellable>,
-) -> Option<VolumeIdentity> {
-    if location.native_path().is_none() && !commit {
-        return None;
-    }
-    query_volume_identity(location, follow_symlinks, cancellable)
-}
-
-fn drop_involves_uri(destination: Option<&Location>, sources: &[Location]) -> bool {
-    destination.is_some_and(|destination| destination.native_path().is_none())
-        || sources.iter().any(|source| source.native_path().is_none())
-}
-
-fn remote_volume_cancellable() -> gio::Cancellable {
-    cancellable_with_timeout(REMOTE_QUERY_TIMEOUT)
-}
-
-fn cancellable_with_timeout(timeout: Duration) -> gio::Cancellable {
-    let cancellable = gio::Cancellable::new();
-    let cancel = cancellable.clone();
-    // query_info is synchronous on the UI thread, so a GLib timeout cannot fire
-    // until it returns. Cancel from a helper thread instead.
-    let _ = std::thread::Builder::new()
-        .name("strata-volume-timeout".into())
-        .spawn(move || {
-            std::thread::sleep(timeout);
-            cancel.cancel();
-        });
-    cancellable
-}
-
-fn identity_from_gio(
-    location: &Location,
-    info: &gio::FileInfo,
-    remote_info: Option<&gio::FileInfo>,
-) -> Option<VolumeIdentity> {
+fn identity_from_gio(info: &gio::FileInfo, is_remote: bool) -> Option<VolumeIdentity> {
     let filesystem_id = info.attribute_string(gio::FILE_ATTRIBUTE_ID_FILESYSTEM)?;
     if filesystem_id.is_empty() {
         return None;
     }
-    let gio_remote = remote_info.is_some_and(|info| {
-        info.has_attribute(gio::FILE_ATTRIBUTE_FILESYSTEM_REMOTE)
-            && info.boolean(gio::FILE_ATTRIBUTE_FILESYSTEM_REMOTE)
-    });
     Some(VolumeIdentity {
         filesystem_id: filesystem_id.to_string(),
-        is_remote: location_is_remote(location) || gio_remote,
+        is_remote,
     })
-}
-
-fn query_flags(follow_symlinks: bool) -> gio::FileQueryInfoFlags {
-    if follow_symlinks {
-        gio::FileQueryInfoFlags::NONE
-    } else {
-        gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS
-    }
 }
 
 fn gio_file(location: &Location) -> gio::File {

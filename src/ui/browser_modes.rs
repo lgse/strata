@@ -2841,29 +2841,18 @@ fn install_mode_directory_drop_target(
     widget.add_css_class("file-drop-zone");
     let super::browser::PreparedFileDrop {
         target: drop,
-        last_override,
-        destination: destination_of,
+        state: drop_state,
     } = super::browser::prepare_file_drop_target({
         let destination = destination.clone();
         move || Some(destination.clone())
     });
-    let destination_for_enter = destination_of.clone();
-    let override_for_enter = last_override.clone();
+    let state_for_enter = drop_state.clone();
     drop.connect_enter(move |target, _, _| {
-        super::browser::file_drop_action(
-            target,
-            destination_for_enter().as_ref(),
-            &override_for_enter,
-        )
+        super::browser::file_drop_action(target, &state_for_enter)
     });
-    let destination_for_motion = destination_of;
-    let override_for_motion = last_override.clone();
+    let state_for_motion = drop_state.clone();
     drop.connect_motion(move |target, _, _| {
-        super::browser::file_drop_action(
-            target,
-            destination_for_motion().as_ref(),
-            &override_for_motion,
-        )
+        super::browser::file_drop_action(target, &state_for_motion)
     });
     drop.connect_drop(move |target, value, _, _| {
         let Some(sources) = super::browser::locations_from_file_list_value(value) else {
@@ -2872,16 +2861,9 @@ fn install_mode_directory_drop_target(
         let Some(handler) = transfer_handler.borrow().clone() else {
             return false;
         };
-        handler(
-            destination.clone(),
-            sources.clone(),
-            super::browser::file_drop_commits_move(
-                target,
-                Some(&destination),
-                &sources,
-                &last_override,
-            ),
-        );
+        let move_sources =
+            super::browser::file_drop_commits_move(target, &destination, &sources, &drop_state);
+        handler(destination.clone(), sources, move_sources);
         true
     });
     widget.add_controller(drop);
@@ -2962,34 +2944,23 @@ fn install_explorer_drag_drop(
     };
     let super::browser::PreparedFileDrop {
         target: drop,
-        last_override,
-        destination: destination_of,
+        state: drop_state,
     } = super::browser::prepare_file_drop_target(dest_for_row);
     let highlighted_row = row.downgrade();
-    let destination_for_enter = destination_of.clone();
-    let override_for_enter = last_override.clone();
+    let state_for_enter = drop_state.clone();
     drop.connect_enter(move |target, _, _| {
         if let Some(row) = highlighted_row.upgrade() {
             row.add_css_class("drop-destination");
         }
-        super::browser::file_drop_action(
-            target,
-            destination_for_enter().as_ref(),
-            &override_for_enter,
-        )
+        super::browser::file_drop_action(target, &state_for_enter)
     });
     let highlighted_row = row.downgrade();
-    let destination_for_motion = destination_of.clone();
-    let override_for_motion = last_override.clone();
+    let state_for_motion = drop_state.clone();
     drop.connect_motion(move |target, _, _| {
         if let Some(row) = highlighted_row.upgrade() {
             row.add_css_class("drop-destination");
         }
-        super::browser::file_drop_action(
-            target,
-            destination_for_motion().as_ref(),
-            &override_for_motion,
-        )
+        super::browser::file_drop_action(target, &state_for_motion)
     });
     let highlighted_row = row.downgrade();
     drop.connect_leave(move |_| {
@@ -3021,13 +2992,11 @@ fn install_explorer_drag_drop(
                 .contains_type(gtk::gdk::FileList::static_type())
     });
     let dropped_row = row.downgrade();
-    let destination_for_drop = destination_of;
-    let override_for_drop = last_override;
     drop.connect_drop(move |target, value, _, _| {
         if let Some(row) = dropped_row.upgrade() {
             row.remove_css_class("drop-destination");
         }
-        let Some(destination) = destination_for_drop() else {
+        let Some(destination) = drop_state.destination() else {
             return false;
         };
         let Some(sources) = super::browser::locations_from_file_list_value(value) else {
@@ -3036,16 +3005,9 @@ fn install_explorer_drag_drop(
         let Some(handler) = transfer_handler.borrow().clone() else {
             return false;
         };
-        handler(
-            destination.clone(),
-            sources.clone(),
-            super::browser::file_drop_commits_move(
-                target,
-                Some(&destination),
-                &sources,
-                &override_for_drop,
-            ),
-        );
+        let move_sources =
+            super::browser::file_drop_commits_move(target, &destination, &sources, &drop_state);
+        handler(destination, sources, move_sources);
         true
     });
     row.add_controller(drop);
