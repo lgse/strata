@@ -289,8 +289,8 @@ pub(super) struct ViewState {
     global_activity_spinner: gtk::Spinner,
     global_activity: RefCell<GlobalActivityState>,
     breadcrumbs: gtk::Box,
-    location_entry: gtk::Entry,
     path_completion: Rc<super::path_completion::PathCompletion>,
+    location_entry: gtk::Entry,
     columns_widget: gtk::Box,
     scroller: gtk::ScrolledWindow,
     mode_views: RefCell<ModeViews>,
@@ -482,8 +482,8 @@ impl BrowserView {
             global_activity_spinner,
             global_activity: RefCell::new(GlobalActivityState::default()),
             breadcrumbs,
-            location_entry,
             path_completion,
+            location_entry,
             columns_widget,
             scroller,
             mode_views: RefCell::new(mode_views),
@@ -3769,6 +3769,8 @@ impl ViewState {
         self.location_stack.set_visible_child_name("entry");
         self.location_entry.grab_focus();
         self.location_entry.select_region(0, -1);
+        self.path_completion
+            .refresh(&self.location_entry, &self.browser);
     }
 
     fn cancel_location_edit(&self) {

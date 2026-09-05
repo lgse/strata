@@ -52,7 +52,9 @@ impl PathCompletion {
             .vscrollbar_policy(gtk::PolicyType::Automatic)
             .min_content_height(36)
             .max_content_height(240)
+            .min_content_width(320)
             .propagate_natural_height(true)
+            .propagate_natural_width(true)
             .can_focus(false)
             .focusable(false)
             .build();
@@ -68,9 +70,12 @@ impl PathCompletion {
             .child(&scroll)
             .build();
         popover.add_css_class("path-completion-popover");
-        popover.connect_closed(|p| {
-            if p.parent().is_some() {
-                p.unparent();
+        popover.set_parent(entry);
+
+        let popover_for_destroy = popover.clone();
+        entry.connect_destroy(move |_| {
+            if popover_for_destroy.parent().is_some() {
+                popover_for_destroy.unparent();
             }
         });
 
@@ -190,20 +195,11 @@ impl PathCompletion {
             }
         });
 
-        let weak_completion = Rc::downgrade(&completion);
-        let focus = gtk::EventControllerFocus::new();
-        focus.connect_leave(move |_| {
-            if let Some(completion) = weak_completion.upgrade() {
-                completion.dismiss();
-            }
-        });
-        entry.add_controller(focus);
-
         completion
     }
 
     pub(crate) fn refresh(&self, entry: &gtk::Entry, browser: &Browser) {
-        if !entry.has_focus() || !entry.is_mapped() || entry.root().is_none() {
+        if entry.root().is_none() {
             self.candidates.borrow_mut().clear();
             self.selected_index.set(None);
             self.dismiss();
@@ -232,9 +228,6 @@ impl PathCompletion {
         self.candidates.replace(candidates.clone());
         self.selected_index.set(None);
         self.render_candidates(&candidates);
-        if self.popover.parent().is_none() {
-            self.popover.set_parent(entry);
-        }
         if !self.popover.is_visible() {
             self.popover.popup();
         }
@@ -242,9 +235,6 @@ impl PathCompletion {
 
     pub(crate) fn dismiss(&self) {
         self.popover.popdown();
-        if self.popover.parent().is_some() {
-            self.popover.unparent();
-        }
     }
 
     fn render_candidates(&self, candidates: &[CompletionCandidate]) {
