@@ -1680,6 +1680,7 @@ fn notify_filter_query_skips_unchanged_folded_text() {
 }
 
 #[test]
+#[ignore = "requires a mapped GTK window; run this test alone"]
 fn seeded_filter_keeps_first_character_when_typing_continues() {
     const CHILD: &str = "STRATA_SEEDED_FILTER_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
@@ -1689,6 +1690,7 @@ fn seeded_filter_keeps_first_character_when_typing_continues() {
         .args([
             "--exact",
             "ui::browser::tests::seeded_filter_keeps_first_character_when_typing_continues",
+            "--ignored",
         ])
         .env(CHILD, "1")
         .status()

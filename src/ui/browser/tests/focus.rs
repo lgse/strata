@@ -31,6 +31,7 @@ fn press_column_background(view: &BrowserView, depth: usize) {
 }
 
 #[test]
+#[ignore = "requires a mapped GTK window; run this test alone"]
 fn horizontal_scrollbar_stays_below_destination_hints() {
     const CHILD: &str = "STRATA_DESTINATION_SCROLLBAR_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
@@ -40,6 +41,7 @@ fn horizontal_scrollbar_stays_below_destination_hints() {
                 "--exact",
                 "ui::browser::tests::focus::horizontal_scrollbar_stays_below_destination_hints",
                 "--nocapture",
+                "--ignored",
             ])
             .env(CHILD, "1")
             .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
@@ -128,6 +130,7 @@ fn horizontal_scrollbar_stays_below_destination_hints() {
 }
 
 #[test]
+#[ignore = "requires a mapped GTK window; run this test alone"]
 fn pane_ownership_routes_commands_and_preserves_selection() {
     const CHILD: &str = "STRATA_FOCUS_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
@@ -137,6 +140,7 @@ fn pane_ownership_routes_commands_and_preserves_selection() {
                 "--exact",
                 "ui::browser::tests::focus::pane_ownership_routes_commands_and_preserves_selection",
                 "--nocapture",
+                "--ignored",
             ])
             .env(CHILD, "1")
             .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
