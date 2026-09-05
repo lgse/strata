@@ -5,7 +5,7 @@ use super::{
     MAX_GRID_THUMBNAIL_SIZE, MIN_GRID_THUMBNAIL_SIZE, SourceIndexMap, compare_type_groups,
     explorer_column_width, first_model_type_group, grid_card_extent, grid_card_icon_slot,
     metadata_fill_position, scroll_delta_for_unit, should_activate_pointer_click,
-    type_group_sorter, type_groups_of, value_type_group,
+    type_group_for_lowest_populated, type_group_sorter, type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use gtk::{gio, prelude::*};
@@ -192,6 +192,23 @@ fn type_group_sort_clusters_mixed_entries_and_keeps_placeholder_first() {
     assert_eq!(value_type_group(&values[4]), json);
     assert_eq!(value_type_group(&values[5]), markdown);
     assert!(compare_type_groups(&json, &markdown).is_lt());
+}
+
+#[test]
+fn the_sticky_heading_uses_the_topmost_populated_card() {
+    let json = value('f', "notes.json");
+    let folder = value('d', "projects");
+    assert_eq!(
+        type_group_for_lowest_populated(
+            [(0, String::new()), (12, json.clone()), (3, folder.clone())].into_iter()
+        )
+        .as_deref(),
+        Some("Folder")
+    );
+    assert_eq!(
+        type_group_for_lowest_populated([(0, String::new()), (1, String::new())].into_iter()),
+        None
+    );
 }
 
 const TYPE_GROUP_SORT_GTK_CHILD: &str = "STRATA_TYPE_GROUP_SORT_GTK_CHILD";

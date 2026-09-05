@@ -1377,6 +1377,7 @@ struct GridContext {
     sections: Weak<RefCell<Vec<PaneSection>>>,
     scrolling: Rc<Cell<bool>>,
     density: Cell<BrowserDensity>,
+    type_heading: RefCell<Option<gtk::Label>>,
 }
 
 fn build_grid_pane(
@@ -1431,6 +1432,7 @@ fn build_grid_pane(
         sections: Rc::downgrade(&sections),
         scrolling: Rc::new(Cell::new(false)),
         density: Cell::new(options.density),
+        type_heading: RefCell::new(None),
     });
     let flattened_models = gio::ListStore::new::<gio::ListModel>();
     flattened_models.append(&new_entry_placeholder.clone().upcast::<gio::ListModel>());
@@ -1438,9 +1440,7 @@ fn build_grid_pane(
     let flattened = gtk::FlattenListModel::new(Some(flattened_models));
     let view_model = if options.group_by_type {
         let sorted = gtk::SortListModel::new(Some(flattened), None::<gtk::CustomSorter>);
-        let sorter = type_group_sorter();
-        sorted.set_sorter(Some(&sorter));
-        sorted.set_section_sorter(Some(&sorter));
+        sorted.set_sorter(Some(&type_group_sorter()));
         sorted.upcast::<gio::ListModel>()
     } else {
         flattened.upcast()
@@ -1493,7 +1493,7 @@ fn build_grid_pane(
     close_thumbnail_popover_on_outside_scroll(&controls.thumbnail_popover, &scroll);
     install_grid_scroll_settle(&scroll, &context);
     if let Some(heading) = type_heading.as_ref() {
-        install_grid_type_heading(heading, &pane_section, &scroll);
+        install_grid_type_heading(&context, heading, &pane_section);
     }
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
     let (collection, marquee) =
@@ -1778,59 +1778,70 @@ fn grid_type_heading() -> gtk::Label {
 
 /// Pins a type-group label above the single scrollable GridView. GridView has no
 /// header factory, so the label tracks the first bound card instead of sitting
-/// inside the view.
+/// inside the view. Updates run on idle after the model changes, and again when
+/// scroll settles, so a fling does not walk bound cards on every wheel tick.
 fn install_grid_type_heading(
+    context: &Rc<GridContext>,
     heading: &gtk::Label,
     section: &PaneSection,
-    scroll: &gtk::ScrolledWindow,
 ) {
-    let refresh = {
-        let heading = heading.clone();
-        let section = section.clone();
-        move || {
-            let group = first_visible_type_group(&section);
-            heading.set_visible(!group.is_empty());
-            if heading.label() != group {
-                heading.set_label(&group);
-            }
+    context.type_heading.replace(Some(heading.clone()));
+    let pending = Rc::new(Cell::new(false));
+    let context = Rc::downgrade(context);
+    let queue = Rc::new(move || {
+        if pending.replace(true) {
+            return;
         }
-    };
-    let refresh_on_scroll = refresh.clone();
-    scroll.vadjustment().connect_value_changed(move |_| {
-        refresh_on_scroll();
+        let pending = pending.clone();
+        let context = context.clone();
+        glib::idle_add_local_once(move || {
+            pending.set(false);
+            let Some(context) = context.upgrade() else {
+                return;
+            };
+            if context.scrolling.get() {
+                return;
+            }
+            refresh_grid_type_heading(&context);
+        });
     });
-    let refresh_on_items = refresh.clone();
+    let queue_for_items = queue.clone();
     section.view_model.connect_items_changed(move |_, _, _, _| {
-        refresh_on_items();
+        queue_for_items();
     });
-    refresh();
+    queue();
+}
+
+fn refresh_grid_type_heading(context: &GridContext) {
+    let Some(heading) = context.type_heading.borrow().clone() else {
+        return;
+    };
+    let Some(sections) = context.sections.upgrade() else {
+        return;
+    };
+    let Some(section) = sections.borrow().first().cloned() else {
+        return;
+    };
+    let group = first_visible_type_group(&section);
+    heading.set_visible(!group.is_empty());
+    if heading.label() != group {
+        heading.set_label(&group);
+    }
 }
 
 fn first_visible_type_group(section: &PaneSection) -> String {
-    let mut best: Option<(u32, String)> = None;
-    for bound in section.bound_items.borrow().iter() {
-        let Some(item) = bound.item.upgrade() else {
-            continue;
-        };
-        let Some(value) = item.item() else {
-            continue;
-        };
-        let group = value_type_group(&model_value(&value));
-        if group.is_empty() {
-            continue;
-        }
-        let position = item.position();
-        if best
-            .as_ref()
-            .is_none_or(|(best_position, _)| position < *best_position)
-        {
-            best = Some((position, group));
-        }
-    }
-    if let Some((_, group)) = best {
-        return group;
-    }
-    first_model_type_group(&section.view_model)
+    type_group_for_lowest_populated(section.bound_items.borrow().iter().filter_map(|bound| {
+        let item = bound.item.upgrade()?;
+        Some((item.position(), model_value(&item.item()?)))
+    }))
+    .unwrap_or_else(|| first_model_type_group(&section.view_model))
+}
+
+fn type_group_for_lowest_populated(items: impl Iterator<Item = (u32, String)>) -> Option<String> {
+    items
+        .filter(|(_, value)| !value.is_empty())
+        .min_by_key(|(position, _)| *position)
+        .map(|(_, value)| value_type_group(&value))
 }
 
 fn first_model_type_group(model: &gio::ListModel) -> String {
@@ -1889,6 +1900,7 @@ fn install_grid_scroll_settle(scroll: &gtk::ScrolledWindow, context: &Rc<GridCon
 }
 
 fn refresh_grid_expensive_content(context: &GridContext) {
+    refresh_grid_type_heading(context);
     let Some(sections) = context.sections.upgrade() else {
         return;
     };
