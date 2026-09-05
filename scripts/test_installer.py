@@ -32,6 +32,14 @@ class InstallerTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_banner_remains_readable_without_terminal_color(self) -> None:
+        result = bash("show_banner", env={"NO_COLOR": "1"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("S T R A T A", result.stdout)
+        self.assertIn("Navigate every layer.", result.stdout)
+        self.assertIn("Interactive installer", result.stdout)
+        self.assertNotIn("\033", result.stdout)
+
     def test_version_comparison_accepts_minimum_and_newer(self) -> None:
         for version in ("2.39", "2.39.1", "2.40"):
             with self.subTest(version=version):
@@ -78,6 +86,12 @@ class InstallerTests(unittest.TestCase):
                 contents = bindings.read_text()
                 self.assertEqual(contents.count("strata-installer: file-manager start"), 1)
                 self.assertIn(f"{home}/.local/bin/strata", contents)
+                if major == "4":
+                    self.assertIn(
+                        f'"uwsm-app -- {home}/.local/bin/strata '
+                        '\\"$(omarchy-cmd-terminal-cwd)\\""',
+                        contents,
+                    )
 
 
 if __name__ == "__main__":

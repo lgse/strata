@@ -23,6 +23,40 @@ die() {
   exit 1
 }
 
+show_banner() {
+  local reset="" bold=""
+  local -a colors=("" "" "" "" "" "" "" "" "" "")
+
+  if [[ -t 1 && ${TERM:-dumb} != dumb && -z ${NO_COLOR:-} ]]; then
+    reset=$'\033[0m'
+    bold=$'\033[1m'
+    colors=(
+      $'\033[38;2;156;203;255m'
+      $'\033[38;2;145;193;255m'
+      $'\033[38;2;132;181;255m'
+      $'\033[38;2;122;169;255m'
+      $'\033[38;2;145;157;255m'
+      $'\033[38;2;157;140;255m'
+      $'\033[38;2;142;128;255m'
+      $'\033[38;2;124;116;255m'
+      $'\033[38;2;103;104;255m'
+      $'\033[38;2;102;116;255m'
+    )
+  fi
+
+  printf '\n'
+  printf '%b%s%b\n' "${colors[0]}" '         ▄▄██▄' "$reset"
+  printf '%b%s%b         %bS T R A T A%b\n' "${colors[1]}" '      ▄████▀▀   ▄▄▄' "$reset" "$bold" "$reset"
+  printf '%b%s%b       %s\n' "${colors[2]}" '   ▄████▀      ▀▀███▄' "$reset" 'Navigate every layer.'
+  printf '%b%s%b\n' "${colors[3]}" '   ███    ████▄▄   ▀▀' "$reset"
+  printf '%b%s%b\n' "${colors[4]}" '   ███▄▄    ▀▀███▄▄' "$reset"
+  printf '%b%s%b\n' "${colors[5]}" '    ▀▀███▄▄    ▀▀████' "$reset"
+  printf '%b%s%b\n' "${colors[6]}" '   ▄   ▀▀████▄    ███' "$reset"
+  printf '%b%s%b\n' "${colors[7]}" '   ███▄▄   ▀▀   ▄████' "$reset"
+  printf '%b%s%b         %s\n' "${colors[8]}" '    ▀▀█▀▀   ▄▄███▀▀' "$reset" 'Interactive installer'
+  printf '%b%s%b\n\n' "${colors[9]}" '          ████▀▀' "$reset"
+}
+
 prompt() {
   local question=$1 default=${2:-yes} answer suffix
   if [[ $default == yes ]]; then
@@ -161,7 +195,7 @@ hl.unbind("SUPER + SHIFT + F")
 hl.unbind("SUPER + ALT + SHIFT + F")
 o.bind("SUPER + SHIFT + F", "File manager", { launch = "$BIN_PATH" })
 o.bind("SUPER + ALT + SHIFT + F", "File manager (cwd)",
-  "uwsm-app -- $BIN_PATH \\\"\$(omarchy-cmd-terminal-cwd)\\\"")
+  "uwsm-app -- $BIN_PATH \"\$(omarchy-cmd-terminal-cwd)\"")
 -- strata-installer: file-manager end
 EOF
   else
@@ -186,7 +220,7 @@ EOF
         rm -f "$bindings"
       fi
       hyprctl reload >/dev/null 2>&1 || true
-      die "Hyprland rejected the keybind change; restored the previous config:\n$errors"
+      die "Hyprland rejected the keybind change; restored the previous config:"$'\n'"$errors"
     fi
   else
     warn "Hyprland is not running, so the keybind file could not be reloaded now."
@@ -207,6 +241,7 @@ main() {
     || die "This interactive installer needs a terminal."
   PROMPT_DEVICE=/dev/tty
   [[ :$PATH: == *":$HOME/.local/bin:"* ]] && local_bin_on_path=yes
+  show_banner
 
   target=$(detect_target)
   command -v getconf >/dev/null 2>&1 || die "Could not detect the system C library."
