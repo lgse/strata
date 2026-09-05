@@ -3769,8 +3769,6 @@ impl ViewState {
         self.location_stack.set_visible_child_name("entry");
         self.location_entry.grab_focus();
         self.location_entry.select_region(0, -1);
-        self.path_completion
-            .refresh(&self.location_entry, &self.browser);
     }
 
     fn cancel_location_edit(&self) {

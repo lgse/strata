@@ -22,6 +22,7 @@ pub(crate) struct CompletionCandidate {
 
 pub(crate) struct PathCompletion {
     popover: gtk::Popover,
+    scroll: gtk::ScrolledWindow,
     list: gtk::ListBox,
     candidates: Rc<RefCell<Vec<CompletionCandidate>>>,
     selected_index: Rc<Cell<Option<usize>>>,
@@ -152,6 +153,7 @@ impl PathCompletion {
 
         let completion = Rc::new(Self {
             popover: popover.clone(),
+            scroll: scroll.clone(),
             list: list.clone(),
             candidates: candidates.clone(),
             selected_index: selected_index.clone(),
@@ -295,6 +297,12 @@ impl PathCompletion {
         self.candidates.replace(candidates.clone());
         self.selected_index.set(None);
         self.render_candidates(&candidates);
+        let width = entry.width();
+        if width > 0 {
+            self.scroll.set_min_content_width(width);
+            self.popover
+                .set_pointing_to(Some(&gdk::Rectangle::new(0, entry.height(), width, 1)));
+        }
         if !self.popover.is_visible() {
             self.popover.popup();
         }
