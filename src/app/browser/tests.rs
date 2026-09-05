@@ -1710,6 +1710,21 @@ fn activating_an_open_list_item_closes_its_child_column() {
 }
 
 #[test]
+fn requesting_first_selection_during_navigate_selects_the_first_entry() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let loader = browser.clone();
+    browser.observe(move |event| {
+        if matches!(event, BrowserEvent::ColumnAdded { depth: 0, .. }) {
+            loader.select_first_on_load(0);
+        }
+    });
+
+    browser.navigate(Location::local("/fixture"));
+
+    assert_eq!(browser.selected_positions(0), [0]);
+}
+
+#[test]
 fn explorer_activation_replaces_the_directory_instead_of_adding_a_column() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));

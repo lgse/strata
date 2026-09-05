@@ -648,6 +648,10 @@ impl Browser {
         self.state.borrow_mut().focus_column(depth);
     }
 
+    pub fn select_first_on_load(&self, depth: usize) {
+        self.state.borrow_mut().select_first_on_load(depth);
+    }
+
     pub fn focus_active(&self) {
         let focus = self.state.borrow().active_focus();
         if let Some((depth, position)) = focus {
