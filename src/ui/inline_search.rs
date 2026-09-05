@@ -113,6 +113,7 @@ pub(super) fn wrap(
         glib::Propagation::Proceed
     });
     entry.add_controller(keys);
+    let weak_browser = Rc::downgrade(browser);
     super::browser::debounce_filter_entry(entry, move |text| {
         let query = text.trim();
         if query.is_empty() {
@@ -133,7 +134,10 @@ pub(super) fn wrap(
             return;
         }
         let generation = state.generation.get();
-        let (handle, receiver) = index_tree(root.clone());
+        let show_hidden = weak_browser
+            .upgrade()
+            .is_some_and(|browser| browser.preferences().show_hidden);
+        let (handle, receiver) = index_tree(root.clone(), show_hidden);
         handle.query(query);
         state.handle.replace(Some(handle));
         let weak = Rc::downgrade(&state);

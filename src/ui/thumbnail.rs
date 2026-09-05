@@ -1088,6 +1088,10 @@ fn apply_thumbnail(image: &gtk::Image, bytes: &glib::Bytes, path: &Path) {
     if let Ok(texture) = gdk::Texture::from_bytes(bytes) {
         crate::assets::remove_primary_icon(image);
         image.set_paintable(Some(&texture));
+        let slot = image.pixel_size();
+        if slot > 0 {
+            ensure_image_slot(image, slot);
+        }
         image.set_opacity(1.0);
         register_displayed_thumbnail(image, path);
     }

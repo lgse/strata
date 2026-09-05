@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod focus;
+mod navigate;
+mod sidebar;
+
 use super::*;
 
 #[test]
@@ -106,6 +110,54 @@ fn file_sizes_use_compact_decimal_units() {
     assert_eq!(format_file_size(1_200), "1.2 kB");
     assert_eq!(format_file_size(1_000_000), "1 MB");
     assert_eq!(format_file_size(2_500_000_000), "2.5 GB");
+}
+
+#[test]
+fn transfer_progress_reports_a_byte_fraction_when_the_total_is_known() {
+    assert_eq!(
+        transfer_progress_status(0, 2, 750, Some(1_000)),
+        ("75%".to_owned(), Some(0.75))
+    );
+    assert_eq!(
+        transfer_progress_status(1, 2, 1_500, Some(1_000)),
+        ("100%".to_owned(), Some(1.0))
+    );
+    assert_eq!(
+        transfer_progress_status(0, 2, 1, Some(1_000)),
+        ("1%".to_owned(), Some(0.001))
+    );
+}
+
+#[test]
+fn zero_byte_transfer_progress_tracks_completed_items() {
+    assert_eq!(
+        transfer_progress_status(0, 2, 0, Some(0)),
+        ("0%".to_owned(), Some(0.0))
+    );
+    assert_eq!(
+        transfer_progress_status(1, 2, 0, Some(0)),
+        ("50%".to_owned(), Some(0.5))
+    );
+    assert_eq!(
+        transfer_progress_status(2, 2, 0, Some(0)),
+        ("100%".to_owned(), Some(1.0))
+    );
+    assert_eq!(
+        transfer_progress_status(0, 0, 0, Some(0)),
+        ("Preparing…".to_owned(), None)
+    );
+}
+
+#[test]
+fn transfer_progress_is_indeterminate_when_the_total_is_unknown() {
+    assert_eq!(
+        transfer_progress_status(0, 2, 0, None),
+        ("Preparing…".to_owned(), None)
+    );
+    assert_eq!(
+        transfer_progress_status(0, 2, 1_200, None),
+        ("1.2 kB copied".to_owned(), None)
+    );
 }
 
 #[test]
@@ -792,57 +844,12 @@ fn pressing_an_item_in_a_multi_selection_preserves_the_drag_group() {
 }
 
 #[test]
-fn paste_prefers_the_hovered_pane_then_the_deepest_pane() {
-    assert_eq!(
-        paste_destination_depth(BrowserMode::Columns, Some(1), Some(2), 3),
-        Some(1)
-    );
-    assert_eq!(
-        paste_destination_depth(BrowserMode::Columns, None, Some(1), 3),
-        Some(2)
-    );
-    assert_eq!(
-        paste_destination_depth(BrowserMode::Columns, Some(4), Some(1), 3),
-        Some(2)
-    );
-    assert_eq!(
-        paste_destination_depth(BrowserMode::Columns, None, None, 0),
-        None
-    );
-}
-
-#[test]
-fn single_pane_paste_uses_the_active_browser_depth() {
-    for mode in [BrowserMode::Grid, BrowserMode::Explorer] {
-        assert_eq!(paste_destination_depth(mode, None, Some(2), 0), Some(2));
-    }
-}
-
-#[test]
 fn new_folder_prefers_the_focused_pane_then_falls_back_safely() {
     assert_eq!(new_folder_destination_depth(Some(1), Some(2), 3), Some(1));
     assert_eq!(new_folder_destination_depth(None, Some(2), 3), Some(2));
     assert_eq!(new_folder_destination_depth(Some(5), Some(1), 3), Some(1));
     assert_eq!(new_folder_destination_depth(None, None, 3), Some(2));
     assert_eq!(new_folder_destination_depth(None, None, 0), None);
-}
-
-#[test]
-fn open_terminal_prefers_the_hovered_pane_then_falls_back_safely() {
-    assert_eq!(
-        terminal_destination_depth(Some(1), Some(0), Some(2), 3),
-        Some(1)
-    );
-    assert_eq!(
-        terminal_destination_depth(None, Some(0), Some(2), 3),
-        Some(0)
-    );
-    assert_eq!(
-        terminal_destination_depth(Some(4), Some(5), Some(1), 3),
-        Some(1)
-    );
-    assert_eq!(terminal_destination_depth(None, None, None, 3), Some(2));
-    assert_eq!(terminal_destination_depth(None, None, None, 0), None);
 }
 
 #[test]
@@ -1561,6 +1568,27 @@ fn move_to_trash_stays_visible_inside_trash_regardless_of_can_trash() {
     assert!(move_to_trash_is_visible(true, None));
 }
 
+#[test]
+fn permanently_delete_hides_only_for_a_confirmed_unsupported_location() {
+    assert!(!permanently_delete_is_visible(false, Some(false)));
+}
+
+#[test]
+fn permanently_delete_shows_for_a_confirmed_supported_location() {
+    assert!(permanently_delete_is_visible(false, Some(true)));
+}
+
+#[test]
+fn permanently_delete_defaults_to_visible_before_the_check_resolves() {
+    assert!(permanently_delete_is_visible(false, None));
+}
+
+#[test]
+fn permanently_delete_hides_inside_trash_regardless_of_can_delete() {
+    assert!(!permanently_delete_is_visible(true, Some(true)));
+    assert!(!permanently_delete_is_visible(true, None));
+}
+
 fn mapped_source(values: &[&str]) -> EntryListModel {
     let owned: Vec<String> = values.iter().map(|value| (*value).to_owned()).collect();
     let model = EntryListModel::new(std::rc::Rc::new(move |position| {
@@ -1652,6 +1680,7 @@ fn notify_filter_query_skips_unchanged_folded_text() {
 }
 
 #[test]
+#[ignore = "requires a mapped GTK window; run this test alone"]
 fn seeded_filter_keeps_first_character_when_typing_continues() {
     const CHILD: &str = "STRATA_SEEDED_FILTER_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
@@ -1661,6 +1690,7 @@ fn seeded_filter_keeps_first_character_when_typing_continues() {
         .args([
             "--exact",
             "ui::browser::tests::seeded_filter_keeps_first_character_when_typing_continues",
+            "--ignored",
         ])
         .env(CHILD, "1")
         .status()

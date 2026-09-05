@@ -5,6 +5,36 @@ window {
   font-size: 13px;
 }
 
+.chooser-details {
+  background: @theme_surface;
+  border-top: 1px solid alpha(@theme_border, 0.6);
+  color: @theme_text;
+  padding: 12px 16px;
+}
+
+.chooser-actions {
+  background: @theme_surface;
+  border-top: 1px solid alpha(@theme_border, 0.35);
+  color: @theme_text;
+  padding: 10px 16px;
+}
+
+.chooser-dropdown {
+  min-width: 140px;
+}
+
+.chooser-dropdown.form-control > button {
+  min-height: 24px;
+  padding: 2px 8px;
+}
+
+.chooser-options > flowboxchild {
+  background: transparent;
+  color: @theme_text;
+  padding: 0;
+  margin: 0;
+}
+
 button:focus-visible,
 entry:focus-visible,
 switch:focus-visible,
@@ -13,6 +43,14 @@ flowboxchild:focus-visible,
 paned > separator:focus-visible {
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
+}
+
+.chooser-options > flowboxchild:focus,
+.chooser-options > flowboxchild:focus-visible,
+.chooser-options > flowboxchild:focus-within {
+  outline: none;
+  box-shadow: none;
+  border: none;
 }
 
 headerbar {
@@ -666,6 +704,11 @@ headerbar menubutton.header-action > button:focus-visible {
   border-radius: 5px;
   font-size: 0.82em;
   padding: 7px 9px;
+}
+
+.portal-setup-dialog .form-message:not(.error) {
+  padding: 0;
+  color: @theme_text;
 }
 
 .form-message.error,
@@ -1821,6 +1864,106 @@ entry.preview-command-entry selection {
   color: @theme_accent;
 }
 
+.shortcut-footer {
+  background: @theme_surface;
+  color: @theme_text;
+  border-top: 1px solid @theme_border;
+  padding: 3px 10px;
+  min-height: 24px;
+  font-size: 0.85em;
+}
+
+.shortcut-footer-paste {
+  color: @theme_accent;
+  background-color: alpha(@theme_accent, 0.10);
+  border: 1px solid alpha(@theme_accent, 0.35);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-weight: bold;
+}
+
+.shortcut-footer-summary {
+  color: @theme_text;
+}
+
+.shortcut-footer-button > button,
+.shortcut-reference-close {
+  background: transparent;
+  color: @theme_text;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  box-shadow: none;
+  min-height: 20px;
+  min-width: 0;
+  padding: 0 6px;
+}
+
+.shortcut-footer-button > button:hover,
+.shortcut-reference-close:hover {
+  background: @theme_highlight;
+  color: @theme_text;
+  border-color: @theme_border;
+}
+
+.shortcut-footer-button > button:active,
+.shortcut-footer-button > button:checked,
+.shortcut-reference-close:active {
+  background: @theme_highlight;
+  color: @theme_text;
+  border-color: @theme_accent;
+}
+
+.shortcut-footer-button > button:focus-visible,
+.shortcut-reference-close:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.shortcut-footer-button > button:disabled,
+.shortcut-reference-close:disabled {
+  color: @theme_dim_text;
+  background: @theme_surface;
+}
+
+.shortcut-popover > contents {
+  background: @theme_surface;
+  color: @theme_text;
+  border: 1px solid @theme_border;
+  border-radius: 8px;
+  padding: 14px;
+  box-shadow: 0 4px 16px alpha(@theme_bg, 0.4);
+}
+
+.shortcut-reference-title {
+  color: @theme_text;
+  font-weight: 600;
+}
+
+.shortcut-reference-heading {
+  color: @theme_accent;
+  font-weight: 600;
+}
+
+.shortcut-reference-key {
+  color: @theme_text;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.shortcut-reference-description,
+.shortcut-reference-note {
+  color: @theme_text;
+}
+
+.shortcut-reference-note {
+  font-size: 0.9em;
+}
+
+.shortcut-popover scrolledwindow:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
 .columns {
   background: @theme_bg;
   color: @theme_text;
@@ -1832,8 +1975,28 @@ entry.preview-command-entry selection {
 }
 
 .directory-column:focus-within .column-header {
-  background: transparent;
-  color: @theme_accent;
+  color: @theme_text;
+}
+
+.destination-column .column-header {
+  background: @theme_surface;
+  color: @theme_text;
+  box-shadow: inset 0 3px @theme_accent;
+}
+
+.column-destination-hint {
+  min-height: 24px;
+  padding: 0 12px;
+  font-size: 0.85em;
+  color: @theme_dim_text;
+  background: @theme_bg;
+  border-top: 1px solid transparent;
+}
+
+.destination-column .column-destination-hint {
+  color: @theme_text;
+  background: @theme_surface;
+  border-top-color: @theme_accent;
 }
 
 .directory-column scrolledwindow,
@@ -2750,6 +2913,9 @@ colorchooser colorswatch overlay {
 
 .file-appear {
   opacity: 0;
+}
+
+.file-row.file-appear {
   transform: translate(0, 6px);
 }
 
@@ -2768,7 +2934,7 @@ colorchooser colorswatch overlay {
   box-shadow: inset 0 0 0 1px alpha(@theme_accent, 0.72);
 }
 
-.file-list row:hover {
+.file-list row:hover:not(:selected) {
   background: alpha(@theme_accent, 0.15);
   color: @theme_text;
 }
@@ -2865,8 +3031,29 @@ colorchooser colorswatch overlay {
 }
 
 .file-list row:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: none;
+}
+
+.keyboard-navigation .file-list:focus-within .file-row.keyboard-cursor {
+  outline: 2px solid @theme_text;
   outline-offset: -2px;
+}
+
+.directory-column:not(:focus-within) .file-list row:selected {
+  background: alpha(@theme_highlight, 0.55);
+  color: @theme_text;
+}
+
+.keyboard-navigation .file-list row:hover:not(:selected),
+.keyboard-navigation .explorer-list row:hover:not(:selected),
+.keyboard-navigation .file-grid > child:hover:not(:selected),
+.keyboard-navigation .file-grid > child:hover:not(:selected) .grid-card {
+  background: transparent;
+  color: @theme_text;
+}
+
+.keyboard-navigation .file-list row:hover:not(:selected) .file-size {
+  opacity: 0;
 }
 
 .file-marquee,
@@ -2878,11 +3065,11 @@ colorchooser colorswatch overlay {
 }
 
 .file-list .file-row.active-path {
-  background: @theme_highlight;
-  color: @theme_accent;
-  outline: 1px solid alpha(@theme_accent, 0.92);
-  outline-offset: -1px;
-  box-shadow: 0 0 10px alpha(@theme_accent, 0.24);
+  color: @theme_text;
+}
+
+.file-list .file-row.active-path .file-chevron {
+  color: @theme_dim_text;
 }
 
 .loading-skeleton {
@@ -3365,7 +3552,9 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   color: @theme_text;
 }
 
-.grid-fast-scroll .grid-card {
+.grid-fast-scroll .grid-card,
+.explorer-fast-scroll .explorer-row,
+.explorer-fast-scroll .explorer-list row {
   transition: none;
 }
 
@@ -3549,8 +3738,9 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   opacity: 0.52;
 }
 
-.explorer-list row:focus-visible {
-  outline: none;
+.keyboard-navigation .explorer-list row:focus-within {
+  outline: 2px solid @theme_text;
+  outline-offset: -2px;
 }
 
 .explorer-row {

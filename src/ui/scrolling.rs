@@ -264,6 +264,18 @@ pub(super) fn reveal_selection(
     advance(&scroll.vadjustment(), f64::from(direction) * page.distance);
 }
 
+/// Brings the newly selected item into sight after jumping to the first or last
+/// entry, scrolling all the way to that edge of the pane.
+pub(super) fn reveal_jump(view: &gtk::Widget, scroll: &gtk::ScrolledWindow, direction: i32) {
+    if scroll.child().is_some_and(|child| &child == view)
+        && let Some(position) = selected_position(view)
+    {
+        scroll_to_item(view, position);
+        return;
+    }
+    advance(&scroll.vadjustment(), f64::from(direction) * f64::MAX);
+}
+
 fn selected_position(view: &gtk::Widget) -> Option<u32> {
     let model = match (
         view.downcast_ref::<gtk::ListView>(),
