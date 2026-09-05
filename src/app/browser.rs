@@ -484,6 +484,9 @@ pub struct Browser {
     deletion_permanent: Cell<bool>,
     restoration_operation: Cell<bool>,
     transfer_destination: RefCell<Option<Location>>,
+    /// Parents already updated by an owned transfer. The next monitor Rescan
+    /// for these locations is ignored so GIO bursts do not reload the column.
+    reconciled_watch_locations: RefCell<HashSet<Location>>,
     undo_claim: RefCell<Option<(u64, UndoEntry)>>,
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
@@ -529,6 +532,7 @@ impl Browser {
             deletion_permanent: Cell::new(false),
             restoration_operation: Cell::new(false),
             transfer_destination: RefCell::new(None),
+            reconciled_watch_locations: RefCell::new(HashSet::new()),
             undo_claim: RefCell::new(None),
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
@@ -663,6 +667,7 @@ impl Browser {
         self.close_peek();
         self.loads.borrow_mut().clear();
         self.monitors.borrow_mut().clear();
+        self.reconciled_watch_locations.borrow_mut().clear();
         self.cancel_deferred_work();
         let request_id = self.new_request_id();
         self.state
@@ -1764,11 +1769,19 @@ impl Browser {
                         select_name: first_name.unwrap_or_default(),
                     });
                 }
-                OperationEvent::Pasted { .. } => {
+                OperationEvent::Pasted { locations, .. } => {
                     browser.emit(BrowserEvent::TransferCompleted);
-                    for location in &refresh_locations {
-                        if location.native_path().is_none() {
-                            browser.refresh_columns_at(location);
+                    if let Some(destination) = destination.as_ref() {
+                        browser.apply_completed_transfer(
+                            &locations,
+                            destination,
+                            moving == Some(true),
+                        );
+                    } else {
+                        for location in &refresh_locations {
+                            if location.native_path().is_none() {
+                                browser.refresh_columns_at(location);
+                            }
                         }
                     }
                 }
@@ -1926,6 +1939,7 @@ impl Browser {
         self.close_peek();
         self.loads.borrow_mut().clear();
         self.monitors.borrow_mut().clear();
+        self.reconciled_watch_locations.borrow_mut().clear();
         self.cancel_deferred_work();
         let loads: Vec<_> = path
             .locations()
@@ -2999,19 +3013,7 @@ impl Browser {
             let Some(parent) = deletion_parent_location(location) else {
                 continue;
             };
-            let depths = {
-                let state = self.state.borrow();
-                let mut depths = Vec::new();
-                let mut depth = 0;
-                while let Some(open_location) = state.location_at(depth) {
-                    if open_location == parent {
-                        depths.push(depth);
-                    }
-                    depth += 1;
-                }
-                depths
-            };
-            for depth in depths {
+            for depth in self.depths_showing(&parent) {
                 self.handle_directory_change(
                     depth,
                     &parent,
@@ -3019,6 +3021,107 @@ impl Browser {
                 );
             }
         }
+    }
+
+    fn apply_completed_transfer(
+        self: &Rc<Self>,
+        sources: &[Location],
+        destination: &Location,
+        move_sources: bool,
+    ) {
+        if sources.len() > MAX_INCREMENTAL_OPERATION_UPDATES {
+            self.refresh_columns_at(destination);
+            if move_sources {
+                let parents: HashSet<_> = sources.iter().filter_map(Location::parent).collect();
+                for parent in parents {
+                    self.refresh_columns_at(&parent);
+                }
+            }
+            return;
+        }
+
+        self.mark_transfer_reconciled(destination);
+        if move_sources {
+            for parent in sources.iter().filter_map(Location::parent) {
+                self.mark_transfer_reconciled(&parent);
+            }
+        }
+
+        let dest_showing = !self.depths_showing(destination).is_empty();
+        let mut dest_needs_refresh = false;
+        for source in sources {
+            let Some(target) = source.transfer_target(destination) else {
+                continue;
+            };
+            if &target == source {
+                continue;
+            }
+            let entry = self.entry_by_location(source);
+            if move_sources {
+                self.remove_deleted_locations(std::slice::from_ref(source));
+            }
+            if let Some(entry) = entry {
+                self.upsert_entry_in_open_columns(FileEntry {
+                    location: target,
+                    ..entry
+                });
+            } else if dest_showing {
+                dest_needs_refresh = true;
+            }
+        }
+        if dest_needs_refresh {
+            self.refresh_columns_at(destination);
+        }
+    }
+
+    fn upsert_entry_in_open_columns(self: &Rc<Self>, entry: FileEntry) {
+        let Some(parent) = entry.location.parent() else {
+            return;
+        };
+        for depth in self.depths_showing(&parent) {
+            self.handle_directory_change(depth, &parent, DirectoryChange::Upsert(entry.clone()));
+        }
+    }
+
+    fn entry_by_location(&self, location: &Location) -> Option<FileEntry> {
+        self.state.borrow().columns.iter().find_map(|column| {
+            column
+                .entries
+                .iter()
+                .find(|entry| entry.location == *location)
+                .cloned()
+        })
+    }
+
+    fn depths_showing(&self, location: &Location) -> Vec<usize> {
+        let state = self.state.borrow();
+        let mut depths = Vec::new();
+        let mut depth = 0;
+        while let Some(open_location) = state.location_at(depth) {
+            if &open_location == location {
+                depths.push(depth);
+            }
+            depth += 1;
+        }
+        depths
+    }
+
+    fn mark_transfer_reconciled(&self, location: &Location) {
+        self.reconciled_watch_locations
+            .borrow_mut()
+            .insert(location.clone());
+    }
+
+    fn drop_descendant_columns(self: &Rc<Self>, len: usize) {
+        self.close_peek();
+        let Some((depth, position)) = self.state.borrow_mut().truncate_to(len) else {
+            return;
+        };
+        self.loads.borrow_mut().truncate(len);
+        self.monitors.borrow_mut().truncate(len);
+        self.truncate_deferred_from(len);
+        self.emit(BrowserEvent::ColumnsTruncated { len });
+        self.emit(BrowserEvent::FocusChanged { depth, position });
     }
 
     pub fn retry_column(self: &Rc<Self>, depth: usize) {
@@ -3116,6 +3219,9 @@ impl Browser {
         change: DirectoryChange,
     ) {
         if matches!(&change, DirectoryChange::Rescan) {
+            if self.reconciled_watch_locations.borrow_mut().remove(watched) {
+                return;
+            }
             self.refresh_column(depth);
             return;
         }
@@ -3148,8 +3254,13 @@ impl Browser {
             .borrow()
             .path_after_external_change(depth, &change);
         if let Some(path) = path_update {
-            self.restore_path(path);
-            return;
+            let new_len = path.locations().len();
+            if new_len > 0 && new_len < self.state.borrow().columns.len() {
+                self.drop_descendant_columns(new_len);
+            } else {
+                self.restore_path(path);
+                return;
+            }
         }
         let application = self
             .state

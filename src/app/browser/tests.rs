@@ -306,6 +306,51 @@ impl FileSource for FakeFileSource {
     }
 }
 
+struct TwoFolderSource;
+
+impl FileSource for TwoFolderSource {
+    fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
+        Ok(())
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        let entries = match request
+            .location
+            .native_path()
+            .and_then(|path| path.to_str())
+        {
+            Some("/fixture") => vec![
+                folder_listing_entry("/fixture/alpha", "alpha"),
+                folder_listing_entry("/fixture/bravo", "bravo"),
+            ],
+            _ => Vec::new(),
+        };
+        emit(DirectoryEvent::Batch {
+            request_id: request.id,
+            entries,
+        });
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+            truncated: false,
+            can_trash: None,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
+fn folder_listing_entry(path: &str, name: &str) -> FileEntry {
+    FileEntry {
+        location: Location::local(path),
+        native_name: OsString::from(name),
+        display_name: name.into(),
+        kind: EntryKind::Directory,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+    }
+}
+
 struct TrashFileSource;
 
 impl FileSource for TrashFileSource {
@@ -1247,6 +1292,149 @@ fn completed_deletions_remove_entries_without_reloading_the_column() {
         BrowserEvent::EntriesSpliced { splices, .. }
             if splices.iter().any(|splice| splice.removed == 1)
     )));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::ColumnReloaded { .. }))
+    );
+}
+
+#[test]
+fn moving_into_an_open_column_splices_instead_of_reloading() {
+    let browser = Browser::new(Rc::new(TwoFolderSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::local("/fixture"));
+    browser.descend(0, Location::local("/fixture/bravo"));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    browser.transfer(
+        Location::local("/fixture/bravo"),
+        vec![PasteItem {
+            source: Location::local("/fixture/alpha"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        true,
+    );
+
+    assert_eq!(column_names(&browser, 0), vec!["bravo".to_owned()]);
+    assert_eq!(column_names(&browser, 1), vec!["alpha".to_owned()]);
+    assert_eq!(
+        browser.entry_at(1, 0).map(|entry| entry.location),
+        Some(Location::local("/fixture/bravo/alpha"))
+    );
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::EntriesSpliced { depth: 0, splices, .. }
+            if splices.iter().any(|splice| splice.removed == 1)
+    )));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::EntriesSpliced { depth: 1, splices, .. }
+            if splices.iter().any(|splice| splice.entries.len() == 1)
+    )));
+    assert!(!events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            BrowserEvent::ColumnReloaded { .. } | BrowserEvent::Reset
+        )
+    }));
+}
+
+#[test]
+fn moving_an_open_folder_out_closes_child_columns_without_reloading() {
+    let browser = Browser::new(Rc::new(TwoFolderSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::local("/fixture"));
+    browser.descend(0, Location::local("/fixture/alpha"));
+    assert_eq!(
+        browser.location_at(1),
+        Some(Location::local("/fixture/alpha"))
+    );
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    browser.transfer(
+        Location::local("/fixture/bravo"),
+        vec![PasteItem {
+            source: Location::local("/fixture/alpha"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        true,
+    );
+
+    assert_eq!(column_names(&browser, 0), vec!["bravo".to_owned()]);
+    assert_eq!(browser.location_at(1), None);
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::ColumnsTruncated { len: 1 }))
+    );
+    assert!(!events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            BrowserEvent::ColumnReloaded { .. } | BrowserEvent::Reset
+        )
+    }));
+}
+
+#[test]
+fn copying_into_an_open_column_inserts_without_removing_the_source() {
+    let browser = Browser::new(Rc::new(TwoFolderSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::local("/fixture"));
+    browser.descend(0, Location::local("/fixture/bravo"));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    browser.transfer(
+        Location::local("/fixture/bravo"),
+        vec![PasteItem {
+            source: Location::local("/fixture/alpha"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        false,
+    );
+
+    assert_eq!(
+        column_names(&browser, 0),
+        vec!["alpha".to_owned(), "bravo".to_owned()]
+    );
+    assert_eq!(column_names(&browser, 1), vec!["alpha".to_owned()]);
+    assert!(!events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            BrowserEvent::ColumnReloaded { .. } | BrowserEvent::Reset
+        )
+    }));
+}
+
+#[test]
+fn owned_transfer_ignores_the_follow_up_monitor_rescan() {
+    let browser = Browser::new(Rc::new(TwoFolderSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::local("/fixture"));
+    browser.descend(0, Location::local("/fixture/bravo"));
+    browser.transfer(
+        Location::local("/fixture/bravo"),
+        vec![PasteItem {
+            source: Location::local("/fixture/alpha"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        true,
+    );
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    browser.handle_directory_change(0, &Location::local("/fixture"), DirectoryChange::Rescan);
+
+    assert_eq!(column_names(&browser, 0), vec!["bravo".to_owned()]);
     assert!(
         !events
             .borrow()
