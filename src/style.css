@@ -1294,25 +1294,41 @@ switch:checked slider {
   transition: none;
 }
 
+/* The trough is widened to a practical grab target while slider margins keep the
+   visible bar as narrow as before. */
 .fixed-scrollbar scrollbar.vertical {
-  min-width: 5px;
+  min-width: 14px;
 }
 
 .fixed-scrollbar scrollbar.horizontal {
-  min-height: 5px;
+  min-height: 14px;
+}
+
+scrollbar slider:active {
+  background: @theme_accent;
 }
 
 .fixed-scrollbar scrollbar > range > trough > slider {
   border-width: 1px;
-  margin: 0;
 }
 
 .fixed-scrollbar scrollbar.vertical > range > trough > slider {
-  min-width: 3px;
+  margin: 0 4px;
+  min-width: 6px;
 }
 
 .fixed-scrollbar scrollbar.horizontal > range > trough > slider {
-  min-height: 3px;
+  margin: 4px 0;
+  min-height: 6px;
+}
+
+.autoscroll-anchor {
+  background: alpha(@theme_surface, 0.92);
+  border: 1px solid alpha(@theme_border, 0.9);
+  border-radius: 50%;
+  box-shadow: 0 1px 4px alpha(@theme_border, 0.35);
+  min-height: 22px;
+  min-width: 22px;
 }
 
 .sidebar {
@@ -2300,6 +2316,258 @@ menubutton.column-header-action > button:active {
   min-height: 1px;
 }
 
+.folder-color-bar {
+  padding: 4px 6px 6px;
+}
+
+.folder-color-dot {
+  background: transparent;
+  border: 1px solid alpha(@theme_border, 0.48);
+  border-radius: 9999px;
+  box-shadow: 0 1px 2px alpha(@theme_bg, 0.4);
+  margin: 0 2px;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0;
+  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1), border-color 140ms ease-out;
+}
+
+.folder-color-dot:hover {
+  border-color: @theme_text;
+  transform: scale(1.08);
+}
+
+.folder-color-dot:active {
+  transform: scale(0.96);
+}
+
+.folder-color-dot:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: 2px;
+}
+
+.folder-color-dot.active {
+  outline: 2px solid @theme_accent;
+  outline-offset: 2px;
+}
+
+.folder-color-theme {
+  background: alpha(@theme_accent, 0.12);
+  border: 1px solid alpha(@theme_accent, 0.4);
+}
+
+.folder-color-theme:hover {
+  background: alpha(@theme_accent, 0.22);
+}
+
+.folder-color-theme.active {
+  background: alpha(@theme_accent, 0.3);
+  border: 1.5px solid @theme_accent;
+}
+
+.folder-color-red {
+  background: #e5484d;
+}
+
+.folder-color-orange {
+  background: #f76b15;
+}
+
+.folder-color-yellow {
+  background: #e5a50a;
+}
+
+.folder-color-green {
+  background: #30a46c;
+}
+
+.folder-color-blue {
+  background: #0090ff;
+}
+
+.folder-color-purple {
+  background: #8e4ec6;
+}
+
+.folder-color-gray {
+  background: #8b8d98;
+}
+
+.folder-color-custom {
+  background: alpha(@theme_accent, 0.1);
+  border: 1px dashed alpha(@theme_accent, 0.4);
+}
+
+.folder-color-custom:hover {
+  background: alpha(@theme_accent, 0.2);
+  border-style: solid;
+}
+
+.folder-color-custom.active {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.customize-dialog {
+  min-width: 360px;
+}
+
+.customize-dialog .action-dialog-body {
+  padding: 16px 20px;
+}
+
+.customize-preview {
+  padding: 2px 0 8px;
+}
+
+.customize-preview-icon {
+  min-height: 56px;
+  min-width: 56px;
+}
+
+.customize-preview-name {
+  color: @theme_text;
+  font-weight: 700;
+}
+
+.customize-section.separated {
+  border-top: 1px solid alpha(@theme_border, 0.22);
+  padding-top: 16px;
+}
+
+.customize-section-label {
+  color: @theme_dim_text;
+  font-size: 0.78em;
+  font-weight: 700;
+}
+
+.customize-dialog .folder-color-bar {
+  padding: 2px 0 4px;
+}
+
+.customize-icon-grid {
+  background: transparent;
+  min-width: 336px;
+}
+
+.customize-icon-grid > flowboxchild {
+  background: transparent;
+  padding: 0;
+}
+
+.customize-icon-button,
+.customize-emoji-button {
+  background: alpha(@theme_highlight, 0.34);
+  border: 1px solid alpha(@theme_border, 0.4);
+  border-radius: 7px;
+  box-shadow: none;
+  color: @theme_text;
+  transition: transform 140ms cubic-bezier(0.23, 1, 0.32, 1), background 140ms ease-out, border-color 140ms ease-out;
+}
+
+.customize-icon-button:hover,
+.customize-emoji-button:hover {
+  background: alpha(@theme_accent, 0.14);
+  border-color: alpha(@theme_accent, 0.62);
+}
+
+.customize-icon-button:active,
+.customize-emoji-button:active {
+  transform: scale(0.97);
+}
+
+.customize-icon-button:focus-visible,
+.customize-emoji-button:focus-visible {
+  border-color: @theme_accent;
+  outline: 2px solid @theme_accent;
+  outline-offset: 1px;
+}
+
+.customize-icon-button {
+  min-height: 38px;
+  min-width: 38px;
+  padding: 7px;
+}
+
+.customize-icon-button.active {
+  background: alpha(@theme_accent, 0.2);
+  border-color: @theme_accent;
+  box-shadow: inset 0 0 0 1px alpha(@theme_accent, 0.5);
+}
+
+.customize-emoji-button {
+  min-height: 32px;
+  margin-top: 2px;
+}
+
+.customize-emoji-chooser contents {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_border, 0.68);
+  border-radius: 9px;
+  box-shadow: 0 0 16px alpha(@theme_accent, 0.2);
+  color: @theme_text;
+}
+
+.customize-emoji-chooser entry,
+.customize-emoji-chooser entry:focus,
+.customize-emoji-chooser entry:focus-visible {
+  background: @theme_bg;
+  border: 1px solid alpha(@theme_border, 0.68);
+  caret-color: @theme_accent;
+  color: @theme_text;
+  outline-color: @theme_accent;
+}
+
+.customize-emoji-chooser entry:focus,
+.customize-emoji-chooser entry:focus-visible {
+  border-color: @theme_accent;
+  box-shadow: 0 0 0 1px alpha(@theme_accent, 0.38);
+}
+
+.customize-emoji-chooser entry placeholder {
+  color: @theme_dim_text;
+}
+
+.customize-emoji-chooser button {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: @theme_text;
+}
+
+.customize-emoji-chooser button:hover,
+.customize-emoji-chooser button:checked {
+  background: alpha(@theme_accent, 0.16);
+  color: @theme_text;
+}
+
+.customize-emoji-chooser label {
+  color: @theme_text;
+}
+
+colorchooser {
+  background: transparent;
+}
+
+colorchooser colorswatch {
+  border-radius: 9999px;
+  min-width: 22px;
+  min-height: 22px;
+  margin: 3px;
+  box-shadow: 0 1px 2px alpha(@theme_bg, 0.3);
+}
+
+colorchooser colorswatch,
+colorchooser colorswatch.top,
+colorchooser colorswatch.bottom,
+colorchooser colorswatch.left,
+colorchooser colorswatch.right,
+colorchooser colorswatch:only-child,
+colorchooser colorswatch overlay {
+  border-radius: 9999px;
+}
+
 .item-context-option {
   background: transparent;
   border: none;
@@ -2555,6 +2823,17 @@ menubutton.column-header-action > button:active {
   opacity: 1;
 }
 
+.file-search-path {
+  color: @theme_dim_text;
+  font-size: 0.85em;
+}
+
+.file-list row:selected .file-search-path,
+.file-list row:hover .file-search-path,
+.file-list .file-row.active-path .file-search-path {
+  color: @theme_text;
+}
+
 .file-size {
   background: @theme_surface;
   color: @theme_dim_text;
@@ -2609,13 +2888,25 @@ menubutton.column-header-action > button:active {
 }
 
 .loading-skeleton {
-  padding: 8px;
+  color: @theme_dim_text;
 }
 
-.skeleton-row {
-  background: alpha(@theme_border, 0.28);
+.loading-skeleton .skeleton-block {
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+  background: alpha(@theme_dim_text, 0.22);
   border-radius: 4px;
-  min-height: 10px;
+}
+
+.skeleton-miller {
+  padding-top: 4px;
+}
+
+.skeleton-miller .file-row {
+  margin: 1px 8px;
+  min-height: 18px;
 }
 
 .directory-feedback {
@@ -2723,9 +3014,12 @@ entry.theme-search {
   min-height: 32px;
 }
 
-.theme-catalog-scroll scrollbar slider:hover,
-.theme-catalog-scroll scrollbar slider:active {
+.theme-catalog-scroll scrollbar slider:hover {
   background: @theme_dim_text;
+}
+
+.theme-catalog-scroll scrollbar slider:active {
+  background: @theme_accent;
 }
 
 .theme-grid > flowboxchild,
@@ -2881,9 +3175,12 @@ entry.theme-search {
   min-height: 32px;
 }
 
-.settings-content-scroll scrollbar slider:hover,
-.settings-content-scroll scrollbar slider:active {
+.settings-content-scroll scrollbar slider:hover {
   background: @theme_dim_text;
+}
+
+.settings-content-scroll scrollbar slider:active {
+  background: @theme_accent;
 }
 
 .keybinding-row {
@@ -2945,6 +3242,10 @@ entry.theme-search {
 
 .grid-thumbnail-extremes {
   font-size: 0.8em;
+}
+
+.grid-thumbnail-scale {
+  padding: 0 16px;
 }
 
 .grid-thumbnail-scale trough {
@@ -3067,6 +3368,10 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
 
 .grid-card-label {
   color: @theme_text;
+}
+
+.grid-fast-scroll .grid-card {
+  transition: none;
 }
 
 .grid-card.drop-destination,
@@ -3229,6 +3534,7 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   color: @theme_text;
   outline: none;
   transition: background 160ms ease-out, color 160ms ease-out;
+  padding: 0;
 }
 
 .explorer-list row:hover,

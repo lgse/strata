@@ -15,10 +15,10 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use super::{
-    ActiveModeNewEntry, ClickActivation, ModeClickOptions, Pane, PaneSection, TransferHandlerSlot,
-    bound_item_visitor, collection_with_marquee, connect_tree_selection, explorer_navigation,
-    filter_controls, install_mode_directory_drop_target, pane_base, refresh_marquee_targets,
-    register_bound_mode_item, should_activate_pointer_click, source_position_for_item,
+    ActiveModeNewEntry, ClickActivation, ModeClickOptions, Pane, PaneSection, SourceIndexMap,
+    TransferHandlerSlot, bound_item_visitor, collection_with_marquee, connect_tree_selection,
+    explorer_navigation, filter_controls, install_mode_directory_drop_target, pane_base,
+    refresh_marquee_targets, register_bound_mode_item, should_activate_pointer_click,
     submit_mode_new_entry,
 };
 use crate::{
@@ -47,7 +47,7 @@ struct TreeBranch {
 pub(super) struct TreeContext {
     browser: Rc<Browser>,
     depth: usize,
-    source: gtk::StringList,
+    source_index: SourceIndexMap,
     filter: gtk::CustomFilter,
     branches: RefCell<HashMap<Location, Rc<TreeBranch>>>,
     model: RefCell<Option<gtk::TreeListModel>>,
@@ -58,7 +58,7 @@ impl TreeContext {
     /// column; deeper rows carry their entry with them.
     pub(super) fn entry_for(&self, item: &glib::Object) -> Option<FileEntry> {
         super::super::tree_entry::row_entry(item, |value| {
-            let position = source_position_for_item(&self.source, value.upcast_ref())?;
+            let position = self.source_index.of_item(value.upcast_ref())?;
             self.browser.entry_at(self.depth, position)
         })
     }
@@ -335,12 +335,15 @@ pub(super) fn build_pane(
     actions.append(&super::super::browser::pane_refresh_button(&browser, depth));
     let (filter_entry, filter_revealer, filter_button) = filter_controls("Filter tree (Ctrl+F)");
     actions.append(&filter_button);
+    let loading = super::super::loading_skeleton::miller();
     let (shell, header, content, model, stack, status, spinner, truncated_hint) = pane_base(
         title,
         "tree-pane",
+        &loading,
         Some(navigation.upcast()),
         Some(actions.upcast()),
     );
+    let source_index = SourceIndexMap::watch(&model);
     if let Some(destination) = browser.location_at(depth) {
         install_mode_directory_drop_target(&stack, destination, transfer_handler.clone());
     }
@@ -367,7 +370,7 @@ pub(super) fn build_pane(
     let context = Rc::new(TreeContext {
         browser: browser.clone(),
         depth,
-        source: model.clone(),
+        source_index: source_index.clone(),
         filter: filter.clone(),
         branches: RefCell::new(HashMap::new()),
         model: RefCell::new(None),
@@ -397,7 +400,7 @@ pub(super) fn build_pane(
     let activation_for_setup = click_options.activation;
     let transfers_for_setup = transfer_handler.clone();
     let active_for_setup = active_new_entry.clone();
-    let source_for_setup = model.clone();
+    let source_index_for_setup = source_index.clone();
     let view_model_for_setup = view_model_object.clone();
     let folder_location = browser.location_at(depth);
     factory.connect_setup(move |_, item| {
@@ -504,7 +507,7 @@ pub(super) fn build_pane(
             browser_for_setup.clone(),
             transfers_for_setup.clone(),
             depth,
-            Some((source_for_setup.clone(), view_model_for_setup.clone())),
+            Some((source_index_for_setup.clone(), view_model_for_setup.clone())),
         );
         item.set_child(Some(&row));
         register_bound_mode_item(&bound_items_for_setup, item, &row);
@@ -559,7 +562,7 @@ pub(super) fn build_pane(
             if let Some(browser) = browser_for_bind.upgrade()
                 && super::super::browser::metadata_needs_fill(&entry)
                 && let Some(object) = object.as_ref()
-                && let Some(position) = source_position_for_item(&context.source, object)
+                && let Some(position) = context.source_index.of_item(object)
             {
                 browser.request_metadata_fill(depth, position, entry.location.clone());
             }
@@ -607,13 +610,13 @@ pub(super) fn build_pane(
         visit: bound_item_visitor(bound_items),
     };
     sections.borrow_mut().push(section.clone());
-    connect_tree_selection(&section, &browser, depth, model.clone());
+    connect_tree_selection(&section, &browser, depth, source_index.clone());
     if let Some(state) = options.state.as_ref().and_then(Weak::upgrade) {
         super::install_section_context_menu(
             &state,
             &section,
             Rc::downgrade(&sections),
-            &model,
+            &source_index,
             depth,
         );
     }
@@ -632,6 +635,7 @@ pub(super) fn build_pane(
         depth,
         shell,
         model,
+        source_index,
         filter_model: Some(filtered_model),
         section,
         sections,
@@ -664,7 +668,7 @@ fn activation_at(context: &Rc<TreeContext>, position: u32) -> Option<TreeActivat
         .as_ref()
         .and_then(|model| model.item(position))?;
     let entry = context.entry_for(&object)?;
-    let source = source_position_for_item(&context.source, &object);
+    let source = context.source_index.of_item(&object);
     Some(activation_for(context.depth, source, entry))
 }
 
@@ -691,7 +695,7 @@ fn install_click(
         let Some(entry) = context.entry_for(&object) else {
             return;
         };
-        let source = source_position_for_item(&context.source, &object);
+        let source = context.source_index.of_item(&object);
         if should_activate_pointer_click(press_count, entry.is_directory(), activation.get()) {
             gesture.set_state(gtk::EventSequenceState::Claimed);
             activation_for(context.depth, source, entry).perform(&context.browser);

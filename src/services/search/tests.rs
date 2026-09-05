@@ -37,6 +37,52 @@ fn exact_names_rank_above_substrings_and_fuzzy_matches() {
 }
 
 #[test]
+fn nearby_duplicate_names_rank_first_without_overriding_match_quality() {
+    let root = Path::new("/fixture/Videos");
+    let score = |path, query| fuzzy_score(&item(path), query, root).expect("fixture should match");
+    assert!(
+        score("/fixture/Videos/recording.mp4", "recording")
+            > score("/fixture/Videos/archive/recording.mp4", "recording")
+    );
+    assert!(
+        score("/fixture/Videos/archive/recording.mp4", "recording.mp4")
+            > score("/fixture/Videos/old-recording.mp4", "recording.mp4")
+    );
+}
+
+#[test]
+fn recursive_results_stay_in_the_root_and_rank_nearby_duplicates_first() {
+    let fixture = unique_fixture_root("nearby-results");
+    let root = fixture.join("Videos");
+    fs::create_dir_all(root.join("archive/deep")).expect("create nested fixture");
+    for path in [
+        fixture.join("recording.mp4"),
+        root.join("recording.mp4"),
+        root.join("archive/recording.mp4"),
+        root.join("archive/deep/recording.mp4"),
+    ] {
+        fs::write(path, b"fixture").expect("create matching file");
+    }
+    let (search, events) = index_tree(root.clone());
+    search.query("recording.mp4");
+    let SearchEvent::Results { items, .. } =
+        wait_for_results(&events).expect("search should return results");
+    assert_eq!(
+        items
+            .iter()
+            .map(|item| item.path.clone())
+            .collect::<Vec<_>>(),
+        vec![
+            root.join("recording.mp4"),
+            root.join("archive/recording.mp4"),
+            root.join("archive/deep/recording.mp4"),
+        ]
+    );
+    drop(search);
+    fs::remove_dir_all(fixture).expect("remove fixture");
+}
+
+#[test]
 fn searches_relative_path_fragments_and_rejects_non_matches() {
     let candidate = item("/home/me/themes/azure/colors.toml");
     assert!(fuzzy_score(&candidate, "themes/azure", Path::new("/home/me")).is_some());

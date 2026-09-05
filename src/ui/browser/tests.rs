@@ -3,6 +3,25 @@
 use super::*;
 
 #[test]
+fn recursive_search_arrows_select_and_clamp_results() {
+    assert_eq!(search_result_navigation_position(None, 3, 1), Some(0));
+    assert_eq!(search_result_navigation_position(None, 3, -1), Some(2));
+    assert_eq!(search_result_navigation_position(Some(0), 3, -1), Some(0));
+    assert_eq!(search_result_navigation_position(Some(1), 3, 1), Some(2));
+    assert_eq!(search_result_navigation_position(Some(2), 3, 1), Some(2));
+    assert_eq!(search_result_navigation_position(None, 0, 1), None);
+}
+
+#[test]
+fn recursive_search_activation_accepts_enter_and_right_arrow() {
+    assert!(recursive_search_activation_key(gtk::gdk::Key::Return));
+    assert!(recursive_search_activation_key(gtk::gdk::Key::KP_Enter));
+    assert!(recursive_search_activation_key(gtk::gdk::Key::Right));
+    assert!(!recursive_search_activation_key(gtk::gdk::Key::Left));
+    assert!(!recursive_search_activation_key(gtk::gdk::Key::Down));
+}
+
+#[test]
 fn terminal_shortcut_prefers_one_selected_directory() {
     let entry = |name: &str, kind| FileEntry {
         location: Location::local(format!("/fixture/{name}")),
@@ -549,6 +568,26 @@ fn multi_selection_summary_lists_at_most_three_names() {
         ITEM_CONTEXT_SUMMARY_MAX_CHARS as usize
     );
     assert!(summary.ends_with('…'));
+}
+
+#[test]
+fn context_menu_uses_the_roomier_side_of_the_click() {
+    assert_eq!(
+        context_menu_placement(800, 120.0),
+        (gtk::PositionType::Bottom, 656)
+    );
+    assert_eq!(
+        context_menu_placement(800, 680.0),
+        (gtk::PositionType::Top, 656)
+    );
+}
+
+#[test]
+fn context_menu_keeps_a_positive_scrollable_height_in_a_small_view() {
+    assert_eq!(
+        context_menu_placement(20, 10.0),
+        (gtk::PositionType::Bottom, 1)
+    );
 }
 
 #[test]
@@ -1495,4 +1534,198 @@ fn retryable_delete_entries_is_empty_when_nothing_matches() {
     let kept = retryable_delete_entries(vec![entry], &[]);
 
     assert!(kept.is_empty());
+}
+
+#[test]
+fn move_to_trash_hides_only_for_a_confirmed_unsupported_location() {
+    assert!(!move_to_trash_is_visible(false, Some(false)));
+}
+
+#[test]
+fn move_to_trash_shows_for_a_confirmed_supported_location() {
+    assert!(move_to_trash_is_visible(false, Some(true)));
+}
+
+#[test]
+fn move_to_trash_defaults_to_visible_before_the_check_resolves() {
+    // `None` covers both "the load hasn't finished yet" and "the check itself
+    // couldn't be answered" -- neither should ever hide the only delete option.
+    assert!(move_to_trash_is_visible(false, None));
+}
+
+#[test]
+fn move_to_trash_stays_visible_inside_trash_regardless_of_can_trash() {
+    // Inside Trash this button is really "Permanently delete" under a shared
+    // label; an ordinary location's Trash support is irrelevant there.
+    assert!(move_to_trash_is_visible(true, Some(false)));
+    assert!(move_to_trash_is_visible(true, None));
+}
+
+fn mapped_source(values: &[&str]) -> EntryListModel {
+    let owned: Vec<String> = values.iter().map(|value| (*value).to_owned()).collect();
+    let model = EntryListModel::new(std::rc::Rc::new(move |position| {
+        owned.get(position as usize).cloned()
+    }));
+    model.replace(values.len() as u32);
+    model
+}
+
+#[test]
+fn unfiltered_visible_listings_keep_source_order() {
+    let source = mapped_source(&["fv\ta", "fv\tb", "fv\tc"]);
+    let map = rebuild_position_map(&source, "", true, 1);
+    assert_eq!(map.forward, vec![0, 1, 2]);
+    assert_eq!(map.reverse, vec![0, 1, 2]);
+}
+
+#[test]
+fn hidden_entries_are_omitted_from_the_position_map() {
+    let source = mapped_source(&["fv\talpha", "dh\t.secret", "fv\tzulu"]);
+    let map = rebuild_position_map(&source, "", false, 1);
+    assert_eq!(map.forward, vec![0, 2]);
+    assert_eq!(map.reverse[0], 0);
+    assert_eq!(map.reverse[1], NO_FILTERED_POSITION);
+    assert_eq!(map.reverse[2], 1);
+}
+
+#[test]
+fn filter_queries_keep_matches_near_the_end() {
+    let source = mapped_source(&["fv\talpha", "fv\tbeta", "fv\tzulu"]);
+    let map = rebuild_position_map(&source, "zu", true, 4);
+    assert_eq!(map.forward, vec![2]);
+    assert_eq!(map.query, "zu");
+    assert_eq!(map.generation, 4);
+}
+
+#[test]
+fn filter_change_for_classifies_tightening_and_loosening() {
+    assert_eq!(filter_change_for("", "a"), gtk::FilterChange::MoreStrict);
+    assert_eq!(filter_change_for("a", "ab"), gtk::FilterChange::MoreStrict);
+    assert_eq!(filter_change_for("ab", "a"), gtk::FilterChange::LessStrict);
+    assert_eq!(filter_change_for("a", ""), gtk::FilterChange::LessStrict);
+    assert_eq!(filter_change_for("a", "b"), gtk::FilterChange::Different);
+    assert_eq!(filter_change_for("ab", "ac"), gtk::FilterChange::Different);
+}
+
+const FILTER_QUERY_GTK_CHILD: &str = "STRATA_FILTER_QUERY_GTK_CHILD";
+const FILTER_QUERY_TEST: &str =
+    "ui::browser::tests::notify_filter_query_skips_unchanged_folded_text";
+
+fn assert_notify_filter_query_skips_unchanged_folded_text() {
+    use gtk::prelude::*;
+    use std::{cell::Cell, rc::Rc};
+
+    let filter = gtk::CustomFilter::new(|_| true);
+    let emissions = Rc::new(Cell::new(0u32));
+    let emissions_for_signal = emissions.clone();
+    filter.connect_changed(move |_, _| {
+        emissions_for_signal.set(emissions_for_signal.get() + 1);
+    });
+    let query = std::cell::RefCell::new(String::new());
+
+    notify_filter_query(&filter, &query, "Abc".into());
+    assert_eq!(query.borrow().as_str(), "abc");
+    assert_eq!(emissions.get(), 1);
+
+    notify_filter_query(&filter, &query, "ABC".into());
+    assert_eq!(query.borrow().as_str(), "abc");
+    assert_eq!(emissions.get(), 1);
+}
+
+#[test]
+fn notify_filter_query_skips_unchanged_folded_text() {
+    if std::env::var_os(FILTER_QUERY_GTK_CHILD).is_some() {
+        if gtk::init().is_err() {
+            return;
+        }
+        assert_notify_filter_query_skips_unchanged_folded_text();
+        return;
+    }
+
+    let status =
+        std::process::Command::new(std::env::current_exe().expect("test executable should exist"))
+            .args(["--exact", FILTER_QUERY_TEST])
+            .env(FILTER_QUERY_GTK_CHILD, "1")
+            .status()
+            .expect("isolated GTK filter-query test should start");
+    assert!(status.success(), "isolated GTK filter-query test failed");
+}
+
+#[test]
+fn seeded_filter_keeps_first_character_when_typing_continues() {
+    const CHILD: &str = "STRATA_SEEDED_FILTER_GTK_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let status = std::process::Command::new(
+            std::env::current_exe().expect("test executable should exist"),
+        )
+        .args([
+            "--exact",
+            "ui::browser::tests::seeded_filter_keeps_first_character_when_typing_continues",
+        ])
+        .env(CHILD, "1")
+        .status()
+        .expect("isolated seeded filter test should start");
+        assert!(status.success());
+        return;
+    }
+    if gtk::init().is_err() {
+        return;
+    }
+    let entry = gtk::Entry::new();
+    let window = gtk::Window::builder().child(&entry).build();
+    window.present();
+    let text = entry
+        .delegate()
+        .expect("entry should have an editable delegate")
+        .downcast::<gtk::Text>()
+        .expect("entry delegate should be GtkText");
+    let suffix = &"LICENSE"[1..];
+    for seed in ["L", "é", "文"] {
+        entry.grab_focus();
+        super::focus_filter_entry(&entry, Some(seed));
+        assert_eq!(entry.selection_bounds(), None);
+        assert_eq!(entry.position(), seed.chars().count() as i32);
+        text.emit_by_name::<()>("insert-at-cursor", &[&suffix]);
+        assert_eq!(entry.text(), format!("{seed}{suffix}"));
+    }
+    super::focus_filter_entry(&entry, None);
+    assert_eq!(entry.text(), format!("文{suffix}"));
+    window.destroy();
+}
+
+const SCROLL_PIN_GTK_CHILD: &str = "STRATA_SCROLL_PIN_GTK_CHILD";
+const SCROLL_PIN_TEST: &str =
+    "ui::browser::tests::waiting_to_scroll_does_not_pin_an_unallocated_view";
+
+fn assert_waiting_to_scroll_does_not_pin_an_unallocated_view() {
+    let model = gtk::StringList::new(&["fv\talpha"]);
+    let selection = gtk::NoSelection::new(Some(model));
+    let list = gtk::ListView::new(Some(selection), Some(gtk::SignalListItemFactory::new()));
+    let weak = list.downgrade();
+    scroll_collection_when_allocated(list.upcast_ref(), 0);
+    drop(list);
+    while glib::MainContext::default().iteration(false) {}
+    assert!(
+        weak.upgrade().is_none(),
+        "deferred scroll must not pin the collection view"
+    );
+}
+
+#[test]
+fn waiting_to_scroll_does_not_pin_an_unallocated_view() {
+    if std::env::var_os(SCROLL_PIN_GTK_CHILD).is_some() {
+        if gtk::init().is_err() {
+            return;
+        }
+        assert_waiting_to_scroll_does_not_pin_an_unallocated_view();
+        return;
+    }
+
+    let status =
+        std::process::Command::new(std::env::current_exe().expect("test executable should exist"))
+            .args(["--exact", SCROLL_PIN_TEST])
+            .env(SCROLL_PIN_GTK_CHILD, "1")
+            .status()
+            .expect("isolated GTK scroll pin test should start");
+    assert!(status.success(), "isolated GTK scroll pin test failed");
 }

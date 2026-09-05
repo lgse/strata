@@ -110,6 +110,7 @@ impl FileSource for WatchingFileSource {
         emit(DirectoryEvent::Finished {
             request_id: request.id,
             truncated: false,
+            can_trash: None,
         });
         LoadHandle::new(|| {})
     }
@@ -185,6 +186,7 @@ impl FileSource for RetryFileSource {
             emit(DirectoryEvent::Finished {
                 request_id: request.id,
                 truncated: false,
+                can_trash: None,
             });
         }
         LoadHandle::new(|| {})
@@ -241,6 +243,7 @@ impl FileSource for FilePreviewSource {
         emit(DirectoryEvent::Finished {
             request_id: request.id,
             truncated: false,
+            can_trash: None,
         });
         LoadHandle::new(|| {})
     }
@@ -269,6 +272,7 @@ impl FileSource for RestoredSortingSource {
         emit(DirectoryEvent::Finished {
             request_id: request.id,
             truncated: false,
+            can_trash: None,
         });
         LoadHandle::new(|| {})
     }
@@ -296,6 +300,7 @@ impl FileSource for FakeFileSource {
         emit(DirectoryEvent::Finished {
             request_id: request.id,
             truncated: false,
+            can_trash: None,
         });
         LoadHandle::new(|| {})
     }
@@ -325,6 +330,7 @@ impl FileSource for TrashFileSource {
         emit(DirectoryEvent::Finished {
             request_id: request.id,
             truncated: false,
+            can_trash: None,
         });
         LoadHandle::new(|| {})
     }
@@ -344,6 +350,7 @@ impl FileSource for CountingFileSource {
         emit(DirectoryEvent::Finished {
             request_id: request.id,
             truncated: false,
+            can_trash: None,
         });
         LoadHandle::new(|| {})
     }
@@ -1942,6 +1949,7 @@ impl FileSource for SortFillSource {
         emit(DirectoryEvent::Finished {
             request_id: request.id,
             truncated: false,
+            can_trash: None,
         });
         LoadHandle::new(|| {})
     }
@@ -2079,6 +2087,7 @@ fn load_finish_applies_rows_queued_behind_the_count_threshold() {
     emit(DirectoryEvent::Finished {
         request_id,
         truncated: false,
+        can_trash: None,
     });
 
     let names: Vec<_> = browser.state.borrow().columns[0]
@@ -2126,6 +2135,7 @@ fn remote_load_finishes_only_after_every_queued_row_is_applied() {
     emit(DirectoryEvent::Finished {
         request_id,
         truncated: false,
+        can_trash: None,
     });
 
     assert!(
@@ -2357,6 +2367,7 @@ impl FileSource for ScriptedSource {
         emit(DirectoryEvent::Finished {
             request_id: request.id,
             truncated: false,
+            can_trash: None,
         });
         LoadHandle::new(|| {})
     }
@@ -2769,6 +2780,7 @@ fn refresh_drops_staging_and_its_sort() {
     emit(DirectoryEvent::Finished {
         request_id,
         truncated: false,
+        can_trash: None,
     });
     assert_eq!(replaced_count(&events), 1);
     assert_eq!(
@@ -2805,6 +2817,7 @@ fn close_column_clears_the_truncated_depth() {
     emit(DirectoryEvent::Finished {
         request_id,
         truncated: false,
+        can_trash: None,
     });
 
     browser.descend(0, Location::local("/fixture/sub"));
@@ -2816,6 +2829,7 @@ fn close_column_clears_the_truncated_depth() {
     sub_emit(DirectoryEvent::Finished {
         request_id: sub_id,
         truncated: false,
+        can_trash: None,
     });
     let published = replaced_count(&events);
     assert_eq!(published, 2);
@@ -3136,6 +3150,7 @@ fn native_initial_load_publishes_sorted_once() {
     emit(DirectoryEvent::Finished {
         request_id,
         truncated: false,
+        can_trash: None,
     });
     assert_eq!(replaced_count(&events), 1);
     assert_eq!(
@@ -3160,6 +3175,7 @@ fn empty_native_initial_load_finishes_without_a_batch() {
     emit(DirectoryEvent::Finished {
         request_id,
         truncated: false,
+        can_trash: None,
     });
 
     assert_eq!(replaced_count(&events), 1);
@@ -3199,6 +3215,7 @@ fn incomplete_native_metadata_uses_name_order_until_a_full_retry_finishes() {
     emit(DirectoryEvent::Finished {
         request_id,
         truncated: false,
+        can_trash: None,
     });
 
     assert_eq!(
@@ -3246,6 +3263,7 @@ fn staged_load_reconciles_monitor_deltas_without_resurrection() {
     emit(DirectoryEvent::Finished {
         request_id,
         truncated: false,
+        can_trash: None,
     });
     assert_eq!(
         column_names(&browser, 0),
@@ -3384,6 +3402,7 @@ fn staged_sorts_order_every_key_in_both_directions() {
         emit(DirectoryEvent::Finished {
             request_id,
             truncated: false,
+            can_trash: None,
         });
         assert_eq!(
             column_names(&browser, 0),
@@ -3424,6 +3443,7 @@ fn large_load_streams_prefix_then_tails_with_terminal_last() {
     emit(DirectoryEvent::Finished {
         request_id,
         truncated: false,
+        can_trash: None,
     });
     pump_until(|| {
         events
@@ -3500,6 +3520,7 @@ fn remote_rows_flush_within_the_latency_bound() {
     emit(DirectoryEvent::Finished {
         request_id,
         truncated: false,
+        can_trash: None,
     });
     assert!(
         events
@@ -3531,16 +3552,21 @@ fn resort_after_mid_load_preference_change_republishes() {
         },
     );
     let sorted = vec![batch_entry("b.txt"), batch_entry("a.txt")];
+    let staged_preferences = ViewPreferences {
+        sort_key: crate::model::SortKey::Size,
+        ..ViewPreferences::default()
+    };
     browser.finish_staged_sort(
         0,
         request_id,
         sorted,
-        ViewPreferences {
-            sort_key: crate::model::SortKey::Size,
-            ..ViewPreferences::default()
+        SortPlan {
+            ordering_preferences: staged_preferences,
+            staged_preferences,
+            retry_metadata: false,
+            truncated: false,
+            can_trash: None,
         },
-        false,
-        false,
     );
     assert_eq!(
         column_names(&browser, 0),
@@ -3590,6 +3616,7 @@ impl FileSource for MixedPeekFileSource {
         emit(DirectoryEvent::Finished {
             request_id: request.id,
             truncated: false,
+            can_trash: None,
         });
         LoadHandle::new(|| {})
     }

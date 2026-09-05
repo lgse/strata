@@ -98,6 +98,8 @@ Verify any change to this with `vercmp` directly. The download URL always uses t
 
 The launcher and application icon are installed from the release archive, not from this repository, so the package always matches the binary it ships. Releases published before desktop metadata was added to the archive produce a package with a working `strata` command and no launcher; `package()` prints a warning rather than failing, so the package stays installable. Drop the conditional once the oldest release either package pins carries the metadata.
 
+The archive also ships `io.github.lgse.Strata.FileManager1.service`, which users can install under `$XDG_DATA_HOME/dbus-1/services` to make Strata the D-Bus-activatable owner of `org.freedesktop.FileManager1`. Packages must not install it into a system service directory: multiple files providing that name in one directory are selected arbitrarily, and merely installing Strata must not change the user's preferred file manager. They may install the inactive template under `/usr/share/strata` so users can opt in without downloading the archive. Keep activation an explicit per-user choice as documented in the README.
+
 ## Other distributions
 
 Debian/Ubuntu, Fedora, Flatpak, and AppImage each have their own dependency, sandboxing, update, and review requirements and are tracked as separate issues. The AUR marker must not be reused for them until those provider-specific semantics are designed.

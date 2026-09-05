@@ -320,7 +320,7 @@ fn empty_is_distinct_from_loading_and_error() {
     state.navigate(location("/empty"), RequestId(1));
     assert_eq!(state.columns[0].load_state, LoadState::Loading);
 
-    assert_eq!(state.finish(RequestId(1), false), Some(0));
+    assert_eq!(state.finish(RequestId(1), false, None), Some(0));
     assert_eq!(state.columns[0].load_state, LoadState::Empty);
 }
 
@@ -329,7 +329,7 @@ fn truncated_load_state_survives_until_reload() {
     let mut state = NavigationState::default();
     state.navigate(location("/partial"), RequestId(1));
 
-    assert_eq!(state.finish(RequestId(1), true), Some(0));
+    assert_eq!(state.finish(RequestId(1), true, None), Some(0));
     assert!(state.columns[0].truncated);
 
     state.reload_column(0, RequestId(2));
@@ -476,6 +476,53 @@ fn keyboard_selection_is_bounded_and_tracks_the_active_column() {
     assert_eq!(state.move_selection(1), Some((0, 1)));
     assert_eq!(state.move_selection(-1), Some((0, 0)));
     assert_eq!(state.move_selection(-1), Some((0, 0)));
+}
+
+#[test]
+fn paging_moves_by_a_page_and_stops_at_the_ends() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    let entries = (0..12)
+        .map(|index| entry(&format!("/home/item-{index:02}")))
+        .collect();
+    state.apply_batch(RequestId(1), entries);
+
+    assert_eq!(state.page_selection(1, 5), Some((0, 0)));
+    assert_eq!(state.page_selection(1, 5), Some((0, 5)));
+    assert_eq!(state.page_selection(1, 5), Some((0, 10)));
+    assert_eq!(state.page_selection(1, 5), Some((0, 11)));
+    assert_eq!(state.page_selection(-1, 5), Some((0, 6)));
+    assert_eq!(state.page_selection(-1, 5), Some((0, 1)));
+    assert_eq!(state.page_selection(-1, 5), Some((0, 0)));
+    assert_eq!(state.selected_entries().len(), 1);
+}
+
+#[test]
+fn paging_skips_hidden_entries_when_hidden_files_are_not_shown() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/home/alpha", "alpha"),
+            hidden_entry("/home/bravo", "bravo"),
+            named_entry("/home/charlie", "charlie"),
+            named_entry("/home/delta", "delta"),
+        ],
+    );
+
+    assert!(state.select(0, 0));
+    assert_eq!(state.page_selection(1, 1), Some((0, 2)));
+    assert_eq!(state.page_selection(-1, 1), Some((0, 0)));
+}
+
+#[test]
+fn paging_an_empty_column_keeps_the_selection_unchanged() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(RequestId(1), Vec::new());
+
+    assert_eq!(state.page_selection(1, 4), None);
 }
 
 #[test]

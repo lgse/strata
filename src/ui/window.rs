@@ -11,7 +11,10 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
-    adapters::{LocalFileSource, LocalOperationProvider, LocalPreviewProvider, location_for_file},
+    adapters::{
+        LocalFileSource, LocalOperationProvider, LocalPreviewProvider, RevealRequest,
+        location_for_file,
+    },
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{BuildKind, ReleaseMetadata, sanitize_uri_credentials},
@@ -39,6 +42,18 @@ enum MouseHistoryAction {
     Forward,
 }
 
+#[derive(Clone)]
+struct TypeToSearch {
+    view: BrowserView,
+    preferences: Rc<ThemeManager>,
+}
+
+impl TypeToSearch {
+    fn show(&self, query: char) -> bool {
+        self.preferences.type_to_search() && self.view.show_filter_with_query(&query.to_string())
+    }
+}
+
 fn mouse_history_action(button: u32) -> Option<MouseHistoryAction> {
     match button {
         8 => Some(MouseHistoryAction::Back),
@@ -48,10 +63,35 @@ fn mouse_history_action(button: u32) -> Option<MouseHistoryAction> {
 }
 
 pub fn present(application: &gtk::Application) {
-    present_location(application, None);
+    present_target(application, None, Vec::new(), false);
 }
 
 pub fn present_location(application: &gtk::Application, location: Option<PathBuf>) {
+    present_target(
+        application,
+        location.map(Location::local),
+        Vec::new(),
+        false,
+    );
+}
+
+/// Opens the window an `org.freedesktop.FileManager1` caller asked for: the
+/// directory holding the named items, with those items selected.
+pub fn present_reveal(application: &gtk::Application, request: RevealRequest) {
+    present_target(
+        application,
+        Some(request.directory),
+        request.selection,
+        request.properties,
+    );
+}
+
+fn present_target(
+    application: &gtk::Application,
+    location: Option<Location>,
+    selection: Vec<String>,
+    properties: bool,
+) {
     let present_started = std::time::Instant::now();
     crate::assets::register_icon_theme();
     let theme_manager = super::theme::ThemeManager::shared();
@@ -239,6 +279,7 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
         gesture.set_state(gtk::EventSequenceState::Claimed);
     });
     root.add_controller(mouse_history);
+    super::scrolling::install_autoscroll_stop(&root);
 
     let window_overlay = gtk::Overlay::new();
     let blurred_root = BlurBin::new(&root);
@@ -477,7 +518,18 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     });
     window.add_controller(location_cancel);
     install_modal_focus_trap(&window);
-    install_keyboard_navigation(&window, &browser, &sidebar, &sidebar_toggle, &preview);
+    let type_to_search = TypeToSearch {
+        view: browser.clone(),
+        preferences: theme_manager.clone(),
+    };
+    install_keyboard_navigation(
+        &window,
+        &browser,
+        &sidebar,
+        &sidebar_toggle,
+        &preview,
+        &type_to_search,
+    );
     let browser_controller = browser.browser();
     schedule_after_first_paint(&window, &sidebar);
     window.connect_destroy(move |_| {
@@ -486,11 +538,14 @@ pub fn present_location(application: &gtk::Application, location: Option<PathBuf
     });
     window.present();
     crate::metrics::mark_window_presented();
-    let pending_location = location.unwrap_or_else(home_directory);
+    let pending_location = location.unwrap_or_else(|| Location::local(home_directory()));
+    if !selection.is_empty() {
+        browser.select_after_load(selection, properties);
+    }
     let idle_browser = browser.clone();
     glib::idle_add_local_once(move || {
         let started = std::time::Instant::now();
-        idle_browser.navigate(pending_location);
+        idle_browser.navigate_location(pending_location);
         tracing::debug!(
             elapsed_ms = started.elapsed().as_millis() as u64,
             "present navigation started"
@@ -598,6 +653,7 @@ fn install_keyboard_navigation(
     sidebar: &SidebarView,
     sidebar_toggle: &gtk::ToggleButton,
     preview: &PreviewDrawer,
+    type_to_search: &TypeToSearch,
 ) {
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -606,6 +662,7 @@ fn install_keyboard_navigation(
     let sidebar_widget = sidebar.widget.clone();
     let sidebar_toggle = sidebar_toggle.clone();
     let preview = preview.clone();
+    let type_to_search = type_to_search.clone();
     let dialog_parent = window.clone();
     let focus_before_sidebar = Rc::new(RefCell::new(None::<gtk::Widget>));
     let weak_browser = Rc::downgrade(&view.browser());
@@ -621,6 +678,9 @@ fn install_keyboard_navigation(
                 return glib::Propagation::Stop;
             }
             return glib::Propagation::Proceed;
+        }
+        if key == gtk::gdk::Key::Escape && super::scrolling::stop_autoscroll() {
+            return glib::Propagation::Stop;
         }
         let alt = modifiers.contains(gtk::gdk::ModifierType::ALT_MASK);
         let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
@@ -719,6 +779,12 @@ fn install_keyboard_navigation(
             return glib::Propagation::Proceed;
         }
         if !text_has_focus && is_undo_shortcut(key, modifiers) && view.undo_last_operation() {
+            return glib::Propagation::Stop;
+        }
+        if view.item_view_has_focus()
+            && let Some(query) = type_to_search_query(key, modifiers)
+            && type_to_search.show(query)
+        {
             return glib::Propagation::Stop;
         }
         if alt
@@ -842,6 +908,13 @@ fn install_keyboard_navigation(
         if !control && !alt && !view.item_view_has_focus() && !header_left_boundary {
             return glib::Propagation::Proceed;
         }
+        if !control
+            && !alt
+            && let Some(direction) = page_direction(key)
+            && view.page_selection(direction)
+        {
+            return glib::Propagation::Stop;
+        }
         if !control && !alt && matches!(key, gtk::gdk::Key::y | gtk::gdk::Key::Y) {
             view.copy_path();
             return glib::Propagation::Stop;
@@ -919,11 +992,30 @@ fn install_keyboard_navigation(
     window.add_controller(keys);
 }
 
+fn page_direction(key: gtk::gdk::Key) -> Option<i32> {
+    match key {
+        gtk::gdk::Key::Page_Up | gtk::gdk::Key::KP_Page_Up => Some(-1),
+        gtk::gdk::Key::Page_Down | gtk::gdk::Key::KP_Page_Down => Some(1),
+        _ => None,
+    }
+}
+
 fn is_undo_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
     modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
         && !modifiers
             .intersects(gtk::gdk::ModifierType::SHIFT_MASK | gtk::gdk::ModifierType::ALT_MASK)
         && matches!(key, gtk::gdk::Key::z | gtk::gdk::Key::Z)
+}
+
+fn type_to_search_query(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> Option<char> {
+    if modifiers.intersects(
+        gtk::gdk::ModifierType::CONTROL_MASK
+            | gtk::gdk::ModifierType::ALT_MASK
+            | gtk::gdk::ModifierType::SUPER_MASK,
+    ) {
+        return None;
+    }
+    key.to_unicode().filter(|character| !character.is_control())
 }
 
 fn is_open_terminal_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {

@@ -8,10 +8,10 @@ use super::{
     MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, begin_media_release,
     is_open_terminal_shortcut, is_sidebar_focus_shortcut, is_smb_location,
     is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut, media_release_label,
-    mount_release_action, mouse_history_action, parse_pinned_drag_source, parse_pinned_places,
-    pin_status, remove_pinned_place, reorder_pinned_places, reorder_places, resolve_place_order,
-    serialize_pinned_places, should_show_standard_place, sidebar_update_label, standard_place,
-    vim_focus_direction, volume_release_action,
+    mount_release_action, mouse_history_action, page_direction, parse_pinned_drag_source,
+    parse_pinned_places, pin_status, remove_pinned_place, reorder_pinned_places, reorder_places,
+    resolve_place_order, serialize_pinned_places, should_show_standard_place, sidebar_update_label,
+    standard_place, type_to_search_query, vim_focus_direction, volume_release_action,
 };
 
 fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
@@ -93,6 +93,15 @@ fn undo_shortcut_requires_control_without_shift_or_alt() {
 }
 
 #[test]
+fn page_keys_map_to_a_scroll_direction() {
+    assert_eq!(page_direction(gtk::gdk::Key::Page_Up), Some(-1));
+    assert_eq!(page_direction(gtk::gdk::Key::KP_Page_Up), Some(-1));
+    assert_eq!(page_direction(gtk::gdk::Key::Page_Down), Some(1));
+    assert_eq!(page_direction(gtk::gdk::Key::KP_Page_Down), Some(1));
+    assert_eq!(page_direction(gtk::gdk::Key::Home), None);
+}
+
+#[test]
 fn toggle_hidden_shortcut_accepts_h_or_period_with_only_control() {
     let control = gtk::gdk::ModifierType::CONTROL_MASK;
     let shift = gtk::gdk::ModifierType::SHIFT_MASK;
@@ -124,6 +133,34 @@ fn sidebar_focus_shortcut_requires_control_and_shift() {
     assert!(is_sidebar_focus_shortcut(gtk::gdk::Key::b, control | shift));
     assert!(is_sidebar_focus_shortcut(gtk::gdk::Key::B, control | shift));
     assert!(!is_sidebar_focus_shortcut(gtk::gdk::Key::b, control));
+}
+
+#[test]
+fn type_to_search_accepts_printable_keys_without_command_modifiers() {
+    assert_eq!(
+        type_to_search_query(gtk::gdk::Key::a, gtk::gdk::ModifierType::empty()),
+        Some('a')
+    );
+    assert_eq!(
+        type_to_search_query(gtk::gdk::Key::A, gtk::gdk::ModifierType::SHIFT_MASK),
+        Some('A')
+    );
+    assert_eq!(
+        type_to_search_query(gtk::gdk::Key::space, gtk::gdk::ModifierType::empty()),
+        Some(' ')
+    );
+}
+
+#[test]
+fn type_to_search_ignores_shortcuts_and_non_printable_keys() {
+    assert_eq!(
+        type_to_search_query(gtk::gdk::Key::k, gtk::gdk::ModifierType::CONTROL_MASK),
+        None
+    );
+    assert_eq!(
+        type_to_search_query(gtk::gdk::Key::F5, gtk::gdk::ModifierType::empty()),
+        None
+    );
 }
 
 #[test]

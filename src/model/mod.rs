@@ -296,5 +296,114 @@ impl FileEntry {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FolderColor {
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Blue,
+    Purple,
+    Gray,
+}
+
+impl FolderColor {
+    pub const ALL: [FolderColor; 7] = [
+        FolderColor::Red,
+        FolderColor::Orange,
+        FolderColor::Yellow,
+        FolderColor::Green,
+        FolderColor::Blue,
+        FolderColor::Purple,
+        FolderColor::Gray,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Red => "Red",
+            Self::Orange => "Orange",
+            Self::Yellow => "Yellow",
+            Self::Green => "Green",
+            Self::Blue => "Blue",
+            Self::Purple => "Purple",
+            Self::Gray => "Gray",
+        }
+    }
+
+    pub fn hex(self) -> &'static str {
+        match self {
+            Self::Red => "#e5484d",
+            Self::Orange => "#f76b15",
+            Self::Yellow => "#e5a50a",
+            Self::Green => "#30a46c",
+            Self::Blue => "#0090ff",
+            Self::Purple => "#8e4ec6",
+            Self::Gray => "#8b8d98",
+        }
+    }
+
+    pub fn css_class(self) -> &'static str {
+        match self {
+            Self::Red => "folder-color-red",
+            Self::Orange => "folder-color-orange",
+            Self::Yellow => "folder-color-yellow",
+            Self::Green => "folder-color-green",
+            Self::Blue => "folder-color-blue",
+            Self::Purple => "folder-color-purple",
+            Self::Gray => "folder-color-gray",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "red" => Some(Self::Red),
+            "orange" => Some(Self::Orange),
+            "yellow" => Some(Self::Yellow),
+            "green" => Some(Self::Green),
+            "blue" => Some(Self::Blue),
+            "purple" => Some(Self::Purple),
+            "gray" | "grey" => Some(Self::Gray),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum FolderColorValue {
+    Preset(FolderColor),
+    Custom(String),
+}
+
+impl FolderColorValue {
+    pub fn hex(&self) -> &str {
+        match self {
+            Self::Preset(color) => color.hex(),
+            Self::Custom(hex) => hex.as_str(),
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        let trimmed = s.trim();
+        if let Some(preset) = FolderColor::from_name(trimmed) {
+            Some(Self::Preset(preset))
+        } else if trimmed.starts_with('#')
+            && (trimmed.len() == 7 || trimmed.len() == 4 || trimmed.len() == 9)
+            && trimmed[1..].chars().all(|c| c.is_ascii_hexdigit())
+        {
+            Some(Self::Custom(trimmed.to_ascii_lowercase()))
+        } else {
+            None
+        }
+    }
+
+    pub fn to_preference_string(&self) -> String {
+        match self {
+            Self::Preset(preset) => preset.name().to_ascii_lowercase(),
+            Self::Custom(hex) => hex.to_ascii_lowercase(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;

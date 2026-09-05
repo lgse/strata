@@ -222,11 +222,11 @@ fn apply_pending_queries(
     publish(sender, progress, indexing);
 }
 
-fn score_index(index: &[SearchItem], query: &str, _root: &Path) -> Vec<(i64, SearchItem)> {
+fn score_index(index: &[SearchItem], query: &str, root: &Path) -> Vec<(i64, SearchItem)> {
     let mut matches = Vec::with_capacity(RESULT_LIMIT);
     let normalized_query = query.trim().to_lowercase();
     for item in index {
-        if let Some(score) = fuzzy_score_normalized(item, &normalized_query) {
+        if let Some(score) = fuzzy_score_normalized(item, &normalized_query, root) {
             insert_match(&mut matches, score, item.clone());
         }
     }
@@ -258,11 +258,11 @@ fn publish(sender: &Sender<SearchEvent>, progress: &WalkProgress, indexing: bool
 
 /// Scores ordered character matches, strongly preferring names, contiguous runs and word/path
 /// boundaries. Exact substrings rank ahead of looser fuzzy matches.
-pub fn fuzzy_score(item: &SearchItem, query: &str, _root: &Path) -> Option<i64> {
-    fuzzy_score_normalized(item, &query.trim().to_lowercase())
+pub fn fuzzy_score(item: &SearchItem, query: &str, root: &Path) -> Option<i64> {
+    fuzzy_score_normalized(item, &query.trim().to_lowercase(), root)
 }
 
-fn fuzzy_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
+fn fuzzy_score_normalized(item: &SearchItem, query: &str, root: &Path) -> Option<i64> {
     if query.is_empty() {
         return None;
     }
@@ -279,6 +279,11 @@ fn fuzzy_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
     if item.is_directory {
         score += 20;
     }
+    // Prefer nearby matches without allowing proximity to outweigh match quality.
+    let depth = item.path.strip_prefix(root).ok().map_or(0, |relative| {
+        relative.components().count().saturating_sub(1)
+    });
+    score -= depth.min(MAX_INDEX_DEPTH) as i64 * 32;
     Some(score)
 }
 

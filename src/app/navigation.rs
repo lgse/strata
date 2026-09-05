@@ -42,6 +42,11 @@ pub struct ColumnState {
     selection_target: Option<Location>,
     pub load_state: LoadState,
     pub truncated: bool,
+    /// Whether entries here can be moved to Trash, resolved from a listed entry
+    /// when the directory loads (see `DirectoryEvent::Finished`). `None` before
+    /// the first load finishes, for an empty directory, or when the capability
+    /// couldn't be answered; treated as "assume trashable" by consumers.
+    pub can_trash: Option<bool>,
     preferences: ViewPreferences,
     request_id: RequestId,
     select_first_on_load: bool,
@@ -168,6 +173,7 @@ impl NavigationState {
                 selection_target: None,
                 load_state: LoadState::Loading,
                 truncated: false,
+                can_trash: None,
                 preferences,
                 request_id,
                 select_first_on_load: false,
@@ -236,6 +242,7 @@ impl NavigationState {
             selection_target: None,
             load_state: LoadState::Loading,
             truncated: false,
+            can_trash: None,
             preferences: self.preferences,
             request_id,
             select_first_on_load: false,
@@ -477,6 +484,7 @@ impl NavigationState {
         column.selected = None;
         column.load_state = LoadState::Loading;
         column.truncated = false;
+        column.can_trash = None;
         column.request_id = request_id;
         Some(column.location.clone())
     }
@@ -575,10 +583,20 @@ impl NavigationState {
         Some(self.columns.get(depth)?.location.clone())
     }
 
-    pub fn finish(&mut self, request_id: RequestId, truncated: bool) -> Option<usize> {
+    pub fn can_trash_at(&self, depth: usize) -> Option<bool> {
+        self.columns.get(depth)?.can_trash
+    }
+
+    pub fn finish(
+        &mut self,
+        request_id: RequestId,
+        truncated: bool,
+        can_trash: Option<bool>,
+    ) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
         column.select_first_on_load = false;
         column.truncated = truncated;
+        column.can_trash = can_trash;
         column.load_state = if column.entries.is_empty() {
             LoadState::Empty
         } else {
@@ -862,12 +880,42 @@ impl NavigationState {
                 }
             }
         };
-        column.selected = Some(position);
-        column.selected_locations.clear();
-        column
-            .selected_locations
-            .insert(column.entries[position].location.clone());
-        column.selection_anchor = Some(column.entries[position].location.clone());
+        focus_only(column, position);
+        self.active_column = Some(depth);
+        Some((depth, position))
+    }
+
+    /// Moves the focus `page` visible entries at a time, clamped to the first and
+    /// last visible entry, for page-sized keyboard navigation.
+    pub fn page_selection(&mut self, direction: i32, page: usize) -> Option<(usize, usize)> {
+        if direction == 0 {
+            return None;
+        }
+        let depth = self
+            .active_column
+            .or_else(|| self.columns.len().checked_sub(1))?;
+        let column = self.columns.get_mut(depth)?;
+        let show_hidden = column.preferences.show_hidden;
+        let visible: Vec<usize> = column
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| show_hidden || !entry.is_hidden)
+            .map(|(position, _)| position)
+            .collect();
+        let last = visible.len().checked_sub(1)?;
+        let steps = page.max(1);
+        let current = column
+            .selected
+            .and_then(|selected| visible.iter().position(|position| *position >= selected));
+        let target = match (current, direction < 0) {
+            (None, true) => last,
+            (None, false) => 0,
+            (Some(current), true) => current.saturating_sub(steps),
+            (Some(current), false) => current.saturating_add(steps).min(last),
+        };
+        let position = visible[target];
+        focus_only(column, position);
         self.active_column = Some(depth);
         Some((depth, position))
     }
@@ -967,6 +1015,17 @@ impl NavigationState {
             .enumerate()
             .find(|(_, column)| column.request_id == request_id)
     }
+}
+
+/// Collapses a column's selection onto a single entry and anchors further
+/// range selections there.
+fn focus_only(column: &mut ColumnState, position: usize) {
+    column.selected = Some(position);
+    column.selected_locations.clear();
+    column
+        .selected_locations
+        .insert(column.entries[position].location.clone());
+    column.selection_anchor = Some(column.entries[position].location.clone());
 }
 
 fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool {
