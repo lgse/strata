@@ -210,7 +210,7 @@ strata                 # home directory
 strata ~/Documents     # a specific directory
 ```
 
-Useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo the latest move or move to Trash, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation.
+Useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo the latest move or move to Trash, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation. Tabs are supported: <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> opens a new tab at the current location, <kbd>Ctrl</kbd>+<kbd>W</kbd> closes one, and <kbd>Ctrl</kbd>+<kbd>PageDown</kbd>/<kbd>PageUp</kbd> or <kbd>Ctrl</kbd>+<kbd>1</kbd>–<kbd>9</kbd> switch between them. Tab commands are also grouped under <kbd>Ctrl</kbd>+<kbd>S</kbd>: follow it with <kbd>T</kbd>, <kbd>N</kbd>, <kbd>P</kbd>, <kbd>X</kbd>, or <kbd>1</kbd>–<kbd>9</kbd>. Drag tabs, use <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>PageUp</kbd>/<kbd>PageDown</kbd>, or use <kbd>Ctrl</kbd>+<kbd>S</kbd> followed by <kbd>Shift</kbd>+an arrow key to reorder them.
 
 ### Desktop entry
 

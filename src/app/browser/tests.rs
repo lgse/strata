@@ -1771,6 +1771,23 @@ fn preview_and_open_are_distinct_file_actions() {
 }
 
 #[test]
+fn opening_a_location_in_a_new_tab_is_routed_without_navigating() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let location = Location::local("/fixture/child");
+
+    browser.open_in_new_tab(location.clone());
+
+    assert!(matches!(
+        events.borrow().as_slice(),
+        [BrowserEvent::OpenInNewTab { location: emitted }] if emitted == &location
+    ));
+    assert!(browser.active_location().is_none());
+}
+
+#[test]
 fn keyboard_selection_and_activation_descend_without_the_ui() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));

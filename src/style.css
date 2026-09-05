@@ -3580,3 +3580,143 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
     transition-duration: 1ms;
   }
 }
+
+.tab-dock {
+  background: transparent;
+}
+
+.tab-strip {
+  background: @theme_surface;
+  border-bottom: 1px solid alpha(@theme_border, 0.6);
+  min-height: 38px;
+  padding: 4px 6px;
+}
+
+.tab-list {
+  padding: 0;
+}
+
+.tab-strip .tab {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: @theme_dim_text;
+  font-size: 0.85em;
+  font-weight: 600;
+  margin: 0;
+  min-height: 28px;
+  padding: 1px 3px 1px 4px;
+  transition: background 120ms ease-out, border-color 120ms ease-out, color 120ms ease-out, opacity 120ms ease-out;
+}
+
+.tab-strip .tab:hover {
+  background: alpha(@theme_accent, 0.1);
+  color: @theme_text;
+}
+
+.tab-strip .tab.active {
+  background: alpha(@theme_accent, 0.16);
+  border-color: alpha(@theme_accent, 0.34);
+  color: @theme_text;
+}
+
+.tab-strip .tab.file-drop-pending {
+  background: alpha(@theme_highlight, 0.82);
+  border-color: @theme_accent;
+  color: @theme_accent;
+}
+
+.tab-strip .tab:drop(active) {
+  background: alpha(@theme_highlight, 0.82);
+  border-color: @theme_accent;
+  color: @theme_accent;
+}
+
+.tab-strip .tab.dragging {
+  opacity: 0.48;
+}
+
+.tab-strip .tab-select {
+  background: transparent;
+  background-image: none;
+  border: none;
+  border-radius: 4px;
+  box-shadow: none;
+  color: inherit;
+  margin: 0;
+  min-height: 24px;
+  padding: 2px 5px 2px 7px;
+}
+
+.tab-strip .tab-select:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.tab-title {
+  color: inherit;
+}
+
+.tab-strip .close-tab {
+  background: transparent;
+  background-image: none;
+  border: none;
+  border-radius: 999px;
+  box-shadow: none;
+  color: @theme_dim_text;
+  margin: 0;
+  min-height: 22px;
+  min-width: 22px;
+  opacity: 0;
+  padding: 4px;
+  transition: background 120ms ease-out, color 120ms ease-out, opacity 120ms ease-out, transform 120ms ease-out;
+}
+
+.tab-strip .tab.active .close-tab {
+  opacity: 0.72;
+}
+
+.tab-strip .tab:hover .close-tab,
+.tab-strip .close-tab:hover,
+.tab-strip .close-tab:focus-visible {
+  opacity: 1;
+}
+
+.tab-strip .close-tab:hover {
+  background: alpha(@theme_accent, 0.2);
+  color: @theme_text;
+}
+
+.tab-strip .close-tab:active {
+  transform: scale(0.94);
+}
+
+.tab-strip button.new-tab {
+  background: transparent;
+  background-image: none;
+  border: none;
+  border-radius: 5px;
+  box-shadow: none;
+  color: @theme_dim_text;
+  margin: 0 0 0 4px;
+  min-height: 28px;
+  min-width: 28px;
+  padding: 4px;
+  transition: background 120ms ease-out, color 120ms ease-out, transform 120ms ease-out;
+}
+
+.tab-strip button.new-tab:hover {
+  background: alpha(@theme_accent, 0.12);
+  color: @theme_text;
+}
+
+.tab-strip button.new-tab:active {
+  background: alpha(@theme_accent, 0.2);
+  transform: scale(0.96);
+}
+
+headerbar button.new-tab:disabled,
+.tab-strip button.new-tab:disabled {
+  color: @theme_dim_text;
+  opacity: 0.46;
+}
