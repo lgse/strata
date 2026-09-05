@@ -263,6 +263,9 @@ fn present_target(
     );
     root.append(&preview_split);
     let shortcuts = super::shortcut_footer::ShortcutFooter::new(browser.view_mode());
+    shortcuts.bind_preferences(&theme_manager);
+    let clipboard = window.clipboard();
+    let clipboard_handler = RefCell::new(Some(shortcuts.connect_clipboard(&clipboard)));
     root.append(shortcuts.widget());
     let updated_shortcuts = shortcuts.clone();
     browser.connect_view_mode_changed(move |mode| updated_shortcuts.set_mode(mode));
@@ -538,6 +541,9 @@ fn present_target(
     let browser_controller = browser.browser();
     schedule_after_first_paint(&window, &sidebar);
     window.connect_destroy(move |_| {
+        if let Some(handler) = clipboard_handler.borrow_mut().take() {
+            clipboard.disconnect(handler);
+        }
         browser_controller.clear_observer();
         sidebar.disconnect();
     });

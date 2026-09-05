@@ -434,7 +434,7 @@ pub fn build_layer(
     let (general, responsive_setting_rows, responsive_activation_rows) =
         general_page(browser, themes.clone());
     stack.add_named(&general, Some("general"));
-    stack.add_named(&keybindings_page(), Some("keybindings"));
+    stack.add_named(&keybindings_page(themes.clone()), Some("keybindings"));
     stack.add_named(&about_page(), Some("about"));
     // Heavy pages build on first selection, never during startup: the
     // Updates page spawns package-manager detection plus release-note
@@ -2264,13 +2264,32 @@ fn update_check_message(result: &UpdateCheck, update_method: UpdateMethod) -> St
     }
 }
 
-fn keybindings_page() -> gtk::Widget {
+fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
     let content = page_content();
+    append_heading(&content, "KEYBINDING HINTS");
+    let (row, toggle) = settings_option(
+        "Show keybinding hints",
+        "Show navigation hints and paste availability at the bottom of every view. F1 opens the full reference even when hints are hidden.",
+        manager.show_keybinding_hints(),
+    );
+    manager.on_keybinding_hints_changed(&toggle, |widget, enabled| {
+        if let Some(toggle) = widget.downcast_ref::<gtk::Switch>() {
+            toggle.set_active(enabled);
+        }
+    });
+    toggle.connect_active_notify(move |toggle| {
+        manager.set_show_keybinding_hints(toggle.is_active());
+    });
+    content.append(&row);
     append_heading(&content, "NAVIGATION");
     for (label, keys) in [
-        ("Move through items", "J / K  or  ↑ / ↓"),
-        ("Open folder", "L / → / Enter"),
-        ("Go to parent", "H / ←"),
+        ("Move through items", "↑ / ↓ (← / → in Grid)"),
+        ("Open item", "Enter"),
+        ("Go to parent", "Alt + ↑"),
+        ("Back / forward", "Alt + ← / →"),
+        ("Move between column panes", "← / → (Columns)"),
+        ("Focus navigation header", "↑ at top"),
+        ("Return from header to files", "↓"),
         ("Edit location", "Ctrl + L"),
         ("Filter items", "Ctrl + F"),
         ("Toggle sidebar", "Ctrl + B"),
@@ -2297,6 +2316,7 @@ fn keybindings_page() -> gtk::Widget {
         ("Open terminal", "Ctrl + T"),
         ("Refresh", "F5 / Ctrl + R"),
         ("Open settings", "Ctrl + ,"),
+        ("Shortcut reference", "F1"),
     ] {
         append_keybinding(&content, label, keys);
     }

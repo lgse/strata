@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use gtk::{gdk, glib, prelude::*};
 
@@ -43,6 +46,9 @@ const TOOLS: &[Shortcut] = &[
 pub(super) struct ShortcutFooter {
     root: gtk::Box,
     summary: gtk::Label,
+    paste: gtk::Label,
+    show_hints: Rc<Cell<bool>>,
+    pending_popup: Rc<Cell<bool>>,
     more: gtk::MenuButton,
     popover: gtk::Popover,
     reference: gtk::Box,
@@ -61,6 +67,13 @@ impl ShortcutFooter {
             .build();
         summary.add_css_class("shortcut-footer-summary");
         root.append(&summary);
+        let paste = gtk::Label::new(Some("Ctrl+V  Paste available"));
+        paste.add_css_class("shortcut-footer-paste");
+        paste.set_tooltip_text(Some("Files are on the clipboard. Press Ctrl+V to paste."));
+        paste.set_visible(false);
+        root.append(&paste);
+        let show_hints = Rc::new(Cell::new(true));
+        let pending_popup = Rc::new(Cell::new(false));
 
         let more = gtk::MenuButton::new();
         more.set_child(Some(&gtk::Label::new(Some("F1  Shortcuts"))));
@@ -126,14 +139,28 @@ impl ShortcutFooter {
             Rc::new(RefCell::new(None));
         let restored_focus = focus_before.clone();
         let weak_more = more.downgrade();
+        let weak_root = root.downgrade();
+        let closed_hints = show_hints.clone();
+        let closed_pending = pending_popup.clone();
+        let weak_popover = popover.downgrade();
         popover.connect_closed(move |_| {
-            let Some(previous) = restored_focus.borrow_mut().take() else {
-                return;
-            };
+            let restored_focus = restored_focus.clone();
+            let closed_pending = closed_pending.clone();
             let weak_more = weak_more.clone();
+            let weak_root = weak_root.clone();
+            let closed_hints = closed_hints.clone();
+            let weak_popover = weak_popover.clone();
             // MenuButton restores its own focus after ::closed; wait without overriding a newer focus move.
             glib::idle_add_local_once(move || {
-                let (Some(more), Some(previous)) = (weak_more.upgrade(), previous.upgrade()) else {
+                if closed_pending.get()
+                    || weak_popover
+                        .upgrade()
+                        .is_some_and(|popover| popover.is_visible())
+                {
+                    return;
+                }
+                let previous = restored_focus.borrow_mut().take();
+                let Some(more) = weak_more.upgrade() else {
                     return;
                 };
                 let still_on_button =
@@ -143,14 +170,23 @@ impl ShortcutFooter {
                             focused == *more.upcast_ref::<gtk::Widget>()
                                 || focused.is_ancestor(&more)
                         });
-                if still_on_button && previous.is_mapped() {
+                if still_on_button
+                    && let Some(previous) = previous.and_then(|previous| previous.upgrade())
+                    && previous.is_mapped()
+                {
                     previous.grab_focus();
+                }
+                if let Some(root) = weak_root.upgrade() {
+                    root.set_visible(closed_hints.get());
                 }
             });
         });
         let footer = Self {
             root,
             summary,
+            paste,
+            show_hints,
+            pending_popup,
             more,
             popover,
             reference,
@@ -162,6 +198,33 @@ impl ShortcutFooter {
 
     pub fn widget(&self) -> &gtk::Box {
         &self.root
+    }
+
+    pub fn bind_preferences(&self, manager: &super::theme::ThemeManager) {
+        let show_hints = self.show_hints.clone();
+        let pending = self.pending_popup.clone();
+        let weak_popover = self.popover.downgrade();
+        manager.on_keybinding_hints_changed(&self.root, move |root, enabled| {
+            show_hints.set(enabled);
+            if !enabled {
+                pending.set(false);
+            }
+            root.set_visible(
+                enabled
+                    || weak_popover
+                        .upgrade()
+                        .is_some_and(|popover| popover.is_visible()),
+            );
+        });
+    }
+
+    pub fn connect_clipboard(&self, clipboard: &gdk::Clipboard) -> glib::SignalHandlerId {
+        let label = self.paste.downgrade();
+        let generation = Rc::new(Cell::new(0));
+        refresh_paste_availability(clipboard, &label, &generation);
+        clipboard.connect_changed(move |clipboard| {
+            refresh_paste_availability(clipboard, &label, &generation);
+        })
     }
 
     pub fn set_mode(&self, mode: BrowserMode) {
@@ -216,16 +279,53 @@ impl ShortcutFooter {
             && !command_modifiers
             && !modifiers.contains(gdk::ModifierType::SHIFT_MASK)
         {
-            if self.popover.is_visible() {
-                self.more.popdown();
+            if self.popover.is_visible() || self.pending_popup.replace(false) {
+                if self.popover.is_visible() {
+                    self.more.popdown();
+                } else {
+                    self.focus_before.take();
+                    self.root.set_visible(self.show_hints.get());
+                }
             } else {
-                self.focus_before.replace(
-                    self.root
-                        .root()
-                        .and_then(|root| root.focus())
-                        .map(|widget| widget.downgrade()),
-                );
-                self.more.popup();
+                if self.focus_before.borrow().is_none() {
+                    self.focus_before.replace(
+                        self.root
+                            .root()
+                            .and_then(|root| root.focus())
+                            .map(|widget| widget.downgrade()),
+                    );
+                }
+                if self.root.is_visible() && self.more.width() > 0 {
+                    self.more.popup();
+                } else {
+                    self.pending_popup.set(true);
+                    self.root.set_visible(true);
+                    let pending = self.pending_popup.clone();
+                    let weak_more = self.more.downgrade();
+                    // A hidden footer needs an allocation before its popover can be positioned.
+                    self.root.add_tick_callback(move |_, _| {
+                        let Some(more) = weak_more.upgrade() else {
+                            return glib::ControlFlow::Break;
+                        };
+                        if !pending.get() {
+                            return glib::ControlFlow::Break;
+                        }
+                        if !more.is_mapped() || more.width() == 0 {
+                            return glib::ControlFlow::Continue;
+                        }
+                        pending.set(false);
+                        more.popup();
+                        glib::ControlFlow::Break
+                    });
+                }
+            }
+            return Some(glib::Propagation::Stop);
+        }
+        if self.pending_popup.get() {
+            if key == gdk::Key::Escape {
+                self.pending_popup.set(false);
+                self.focus_before.take();
+                self.root.set_visible(self.show_hints.get());
             }
             return Some(glib::Propagation::Stop);
         }
@@ -264,6 +364,41 @@ impl ShortcutFooter {
     }
 }
 
+fn refresh_paste_availability(
+    clipboard: &gdk::Clipboard,
+    label: &glib::WeakRef<gtk::Label>,
+    generation: &Rc<Cell<u64>>,
+) {
+    let revision = generation.get().wrapping_add(1);
+    generation.set(revision);
+    let Some(paste) = label.upgrade() else {
+        return;
+    };
+    paste.set_visible(false);
+    let formats = clipboard.formats();
+    if !formats.contains_type(gdk::FileList::static_type())
+        && !formats.contain_mime_type("text/uri-list")
+    {
+        return;
+    }
+    let clipboard = clipboard.clone();
+    let label = label.clone();
+    let generation = generation.clone();
+    glib::MainContext::default().spawn_local(async move {
+        let available = clipboard
+            .read_value_future(gdk::FileList::static_type(), glib::Priority::DEFAULT)
+            .await
+            .ok()
+            .and_then(|value| value.get::<gdk::FileList>().ok())
+            .is_some_and(|files| !files.files().is_empty());
+        if revision == generation.get()
+            && let Some(label) = label.upgrade()
+        {
+            label.set_visible(available);
+        }
+    });
+}
+
 fn summary_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
     let mut shortcuts = vec![match mode {
         BrowserMode::Columns => ("↑↓ ←→", "Navigate"),
@@ -280,7 +415,7 @@ fn summary_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
         ("Enter", "Open"),
         ("Space", "Preview"),
         ("Ctrl+F", "Filter"),
-        ("Ctrl+C / V", "Copy / paste"),
+        ("Ctrl+C / X", "Copy / cut"),
         ("Del", "Trash"),
     ]);
     shortcuts

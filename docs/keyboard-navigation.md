@@ -31,7 +31,11 @@ Background selection updates from directory loading must not move keyboard focus
 
 ## Shortcut footer
 
-Every mode has a compact, single-line footer with its navigation hints and common file shortcuts. The summary truncates rather than wrapping in narrow windows; **F1 · Shortcuts** always remains available to open the complete, mode-specific reference. F1 or Escape closes it. The reference blocks file-operation shortcuts while it is open.
+Every mode has a compact, single-line footer with its navigation hints and common file shortcuts. **Settings → Keybindings → Show keybinding hints** controls its visibility (on by default). The preference is saved and updates all open windows immediately. F1 still opens the reference with hints disabled; closing it hides the footer again. The summary truncates rather than wrapping in narrow windows; **F1 · Shortcuts** always remains available to open the complete, mode-specific reference. F1 or Escape closes it. The reference blocks file-operation shortcuts while it is open.
+
+After copying or cutting files, a highlighted **Ctrl+V · Paste available** hint appears beside the reference button. It reflects the file clipboard, including compatible copies from other applications, rather than assuming every clipboard contains files. It stays available after copying/pasting, and disappears when a completed cut consumes the clipboard or it is cleared/replaced with text. With hints disabled, the paste shortcut still works, but the footer stays hidden.
+
+[Keybindings setting](screenshots/291/hints-settings.png) · [Paste available](screenshots/291/paste-available.png) · [Hints disabled](screenshots/291/hints-hidden.png)
 
 The hints describe file-view controls; text fields, dialogs, and media previews retain their own keyboard behavior. Mode changes update both the footer and the reference immediately. Closing keyboard-opened help restores the previous focus.
 

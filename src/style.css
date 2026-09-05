@@ -1830,6 +1830,15 @@ entry.preview-command-entry selection {
   font-size: 0.85em;
 }
 
+.shortcut-footer-paste {
+  color: @theme_accent;
+  background-color: alpha(@theme_accent, 0.10);
+  border: 1px solid alpha(@theme_accent, 0.35);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-weight: bold;
+}
+
 .shortcut-footer-summary {
   color: @theme_text;
 }
