@@ -60,6 +60,24 @@ struct BoundRow {
     row: glib::WeakRef<gtk::Box>,
 }
 
+struct PendingPointerActivation {
+    position: usize,
+    location: Location,
+    press: (f64, f64),
+    moved: bool,
+}
+
+impl PendingPointerActivation {
+    fn update(&mut self, x: f64, y: f64, drag_threshold: i32) {
+        let threshold = f64::from(drag_threshold);
+        self.moved |= (x - self.press.0).abs() > threshold || (y - self.press.1).abs() > threshold;
+    }
+
+    fn can_activate(&self, location: &Location) -> bool {
+        !self.moved && self.location == *location
+    }
+}
+
 #[derive(Clone)]
 struct ColumnView {
     shell: gtk::Box,
@@ -5032,12 +5050,13 @@ impl ViewState {
             let modified_for_click = modified_selection_for_rows.clone();
             let map_for_click = map_for_hover.clone();
             // Open on release so a press-and-move can start a drag first.
-            let pending_activation = Rc::new(Cell::new(None::<usize>));
+            let pending_activation = Rc::new(RefCell::new(None::<PendingPointerActivation>));
             let pending_activation_for_press = pending_activation.clone();
+            let pending_activation_for_motion = pending_activation.clone();
             let pending_activation_for_release = pending_activation.clone();
             let pending_activation_for_cancel = pending_activation;
-            selection_click.connect_pressed(move |gesture, press_count, _, _| {
-                pending_activation_for_press.set(None);
+            selection_click.connect_pressed(move |gesture, press_count, x, y| {
+                pending_activation_for_press.take();
                 let Some(clicked_item) = clicked_item.upgrade() else {
                     return;
                 };
@@ -5083,7 +5102,7 @@ impl ViewState {
                     (weak_state_for_click.upgrade(), source_position)
                 {
                     let entry = state.browser.entry_at(depth, source_position);
-                    if entry.as_ref().is_some_and(|entry| {
+                    if let Some(entry) = entry.as_ref().filter(|entry| {
                         should_activate_single_click(
                             press_count,
                             entry.is_directory(),
@@ -5093,7 +5112,12 @@ impl ViewState {
                             preserve_group,
                         )
                     }) {
-                        pending_activation_for_press.set(Some(source_position));
+                        pending_activation_for_press.replace(Some(PendingPointerActivation {
+                            position: source_position,
+                            location: entry.location.clone(),
+                            press: (x, y),
+                            moved: false,
+                        }));
                     } else if should_preview_pointer_press(
                         press_count,
                         control,
@@ -5106,19 +5130,35 @@ impl ViewState {
                     }
                 }
             });
+            selection_click.connect_update(move |gesture, sequence| {
+                if let (Some(pending), Some((x, y)), Some(widget)) = (
+                    pending_activation_for_motion.borrow_mut().as_mut(),
+                    gesture.point(sequence),
+                    gesture.widget(),
+                ) {
+                    pending.update(x, y, widget.settings().gtk_dnd_drag_threshold());
+                }
+            });
             let weak_state_for_release = weak_state.clone();
             selection_click.connect_released(move |gesture, _, _, _| {
-                let Some(source_position) = pending_activation_for_release.take() else {
+                let Some(pending) = pending_activation_for_release.take() else {
                     return;
                 };
                 let Some(state) = weak_state_for_release.upgrade() else {
                     return;
                 };
+                if !state
+                    .browser
+                    .entry_at(depth, pending.position)
+                    .is_some_and(|entry| pending.can_activate(&entry.location))
+                {
+                    return;
+                }
                 gesture.set_state(gtk::EventSequenceState::Claimed);
-                state.browser.activate(depth, source_position);
+                state.browser.activate(depth, pending.position);
             });
             selection_click.connect_cancel(move |_, _| {
-                pending_activation_for_cancel.set(None);
+                pending_activation_for_cancel.take();
             });
             row.add_controller(selection_click);
             item.set_child(Some(&row));
