@@ -562,6 +562,16 @@ impl BrowserView {
         self.state.browser.navigate(location);
     }
 
+    pub fn start_transfer(
+        &self,
+        destination: Location,
+        sources: Vec<Location>,
+        move_sources: bool,
+    ) {
+        self.state
+            .start_transfer(destination, sources, move_sources);
+    }
+
     /// Selects `names` in the active column once it finishes loading,
     /// optionally opening the properties dialog for the focused one.
     pub fn select_after_load(&self, names: Vec<String>, properties: bool) {
@@ -7774,7 +7784,7 @@ fn transfer_dropped_files(
     true
 }
 
-pub(super) fn file_drop_action(target: &gtk::DropTarget) -> gtk::gdk::DragAction {
+pub(crate) fn file_drop_action(target: &gtk::DropTarget) -> gtk::gdk::DragAction {
     let Some(drop) = target.current_drop() else {
         return gtk::gdk::DragAction::empty();
     };
@@ -7793,7 +7803,7 @@ fn preferred_file_drop_action(actions: gtk::gdk::DragAction, local: bool) -> gtk
     }
 }
 
-pub(super) fn locations_from_file_list_value(value: &glib::Value) -> Option<Vec<Location>> {
+pub(crate) fn locations_from_file_list_value(value: &glib::Value) -> Option<Vec<Location>> {
     let files = value.get::<gtk::gdk::FileList>().ok()?;
     let locations = files
         .files()

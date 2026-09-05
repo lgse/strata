@@ -2,7 +2,10 @@
 
 use std::{cell::Cell, path::Path};
 
-use crate::services::{BuildKind, ReleaseMetadata};
+use crate::{
+    model::Location,
+    services::{BuildKind, ReleaseMetadata},
+};
 
 use super::{
     MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, begin_media_release,
@@ -10,8 +13,9 @@ use super::{
     is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut, media_release_label,
     mount_release_action, mouse_history_action, page_direction, parse_pinned_drag_source,
     parse_pinned_places, pin_status, remove_pinned_place, reorder_pinned_places, reorder_places,
-    resolve_place_order, serialize_pinned_places, should_show_standard_place, sidebar_update_label,
-    standard_place, type_to_search_query, vim_focus_direction, volume_release_action,
+    resolve_place_order, serialize_pinned_places, should_show_standard_place,
+    sidebar_accepts_file_drop, sidebar_update_label, standard_place, type_to_search_query,
+    vim_focus_direction, volume_release_action,
 };
 
 fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
@@ -592,4 +596,19 @@ fn media_release_guard_rejects_repeated_actions_until_completion() {
 
     in_flight.set(false);
     assert!(begin_media_release(&in_flight));
+}
+
+#[test]
+fn sidebar_file_drops_accept_local_places_but_not_virtual_locations() {
+    assert!(sidebar_accepts_file_drop(&Location::local(
+        "/run/media/user/stick"
+    )));
+    assert!(sidebar_accepts_file_drop(&Location::local(
+        "/home/user/Documents"
+    )));
+    assert!(!sidebar_accepts_file_drop(&Location::uri("trash:///")));
+    assert!(!sidebar_accepts_file_drop(&Location::uri("network:///")));
+    assert!(!sidebar_accepts_file_drop(&Location::uri(
+        "smb://host.example/share"
+    )));
 }
