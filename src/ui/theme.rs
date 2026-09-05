@@ -109,7 +109,7 @@ struct Preferences {
     video_preview_backend: String,
     #[serde(default)]
     search_open_files_directly: bool,
-    #[serde(default)]
+    #[serde(default = "default_enabled")]
     type_to_search: bool,
     #[serde(default = "default_enabled")]
     show_keybinding_hints: bool,
@@ -171,7 +171,7 @@ impl Default for Preferences {
             hardware_accelerated_video_previews: None,
             video_preview_backend: default_video_preview_backend(),
             search_open_files_directly: false,
-            type_to_search: false,
+            type_to_search: true,
             show_keybinding_hints: true,
             reduce_motion: false,
             browser_mode: default_browser_mode(),
