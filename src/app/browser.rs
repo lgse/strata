@@ -1942,11 +1942,9 @@ impl Browser {
     }
 
     pub fn enter_focused_directory(self: &Rc<Self>) {
-        if self
-            .focused_entry()
-            .is_none_or(|entry| entry.is_directory())
-        {
-            self.activate_focused();
+        match self.focused_entry() {
+            Some(entry) if !entry.is_directory() => self.focus_child(),
+            _ => self.activate_focused(),
         }
     }
 
