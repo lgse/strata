@@ -107,6 +107,7 @@ pub mod icons {
 }
 
 const FONT_VERSION: &str = "2.304";
+const ICON_TEXTURE_PX: i32 = 96;
 const ICON_TEXTURE_CACHE_LIMIT: usize = 256;
 const JETBRAINS_MONO: &[u8] = include_bytes!("../data/fonts/JetBrainsMono[wght].ttf");
 
@@ -278,7 +279,7 @@ fn primary_icon_texture(name: &str, color: &str) -> Option<gdk::Texture> {
             1,
         );
     }
-    texture_from_svg(name, color, source)
+    texture_from_svg(name, color, svg_at_texture_size(source))
 }
 
 fn folder_decoration_texture(decoration: &str, color: &str) -> Option<gdk::Texture> {
@@ -288,14 +289,11 @@ fn folder_decoration_texture(decoration: &str, color: &str) -> Option<gdk::Textu
     )
     .ok()?;
     let folder = std::str::from_utf8(folder_data.as_ref()).ok()?;
-    let mut source = recolor_icon_source(folder, color)
-        .replacen("width=\"24\"", "width=\"96\"", 1)
-        .replacen("height=\"24\"", "height=\"96\"", 1)
-        .replacen(
-            "fill=\"none\"",
-            &format!("fill=\"{color}\" fill-opacity=\"0.92\""),
-            1,
-        );
+    let mut source = svg_at_texture_size(recolor_icon_source(folder, color)).replacen(
+        "fill=\"none\"",
+        &format!("fill=\"{color}\" fill-opacity=\"0.92\""),
+        1,
+    );
     if let Some(emoji) = icons::custom_emoji(decoration) {
         return folder_emoji_texture(&source, emoji, color);
     }
@@ -409,6 +407,12 @@ fn svg_body(source: &str) -> Option<&str> {
     let start = source.find('>')? + 1;
     let end = source.rfind("</svg>")?;
     source.get(start..end)
+}
+
+fn svg_at_texture_size(source: String) -> String {
+    source
+        .replacen("width=\"24\"", &format!("width=\"{ICON_TEXTURE_PX}\""), 1)
+        .replacen("height=\"24\"", &format!("height=\"{ICON_TEXTURE_PX}\""), 1)
 }
 
 fn texture_from_svg(cache_name: &str, color: &str, source: String) -> Option<gdk::Texture> {
