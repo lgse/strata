@@ -262,6 +262,10 @@ fn present_target(
         Rc::new(move || measured_content.position() + measured_browser.preview_occupied_width()),
     );
     root.append(&preview_split);
+    let shortcuts = super::shortcut_footer::ShortcutFooter::new(browser.view_mode());
+    root.append(shortcuts.widget());
+    let updated_shortcuts = shortcuts.clone();
+    browser.connect_view_mode_changed(move |mode| updated_shortcuts.set_mode(mode));
 
     let mouse_history = gtk::GestureClick::new();
     mouse_history.set_button(0);
@@ -529,6 +533,7 @@ fn present_target(
         &sidebar_toggle,
         &preview,
         &type_to_search,
+        &shortcuts,
     );
     let browser_controller = browser.browser();
     schedule_after_first_paint(&window, &sidebar);
@@ -654,7 +659,9 @@ fn install_keyboard_navigation(
     sidebar_toggle: &gtk::ToggleButton,
     preview: &PreviewDrawer,
     type_to_search: &TypeToSearch,
+    shortcuts: &super::shortcut_footer::ShortcutFooter,
 ) {
+    let shortcuts = shortcuts.clone();
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let view = view.clone();
@@ -678,6 +685,12 @@ fn install_keyboard_navigation(
                 return glib::Propagation::Stop;
             }
             return glib::Propagation::Proceed;
+        }
+        if !view.rename_is_active()
+            && !view.new_entry_is_active()
+            && let Some(result) = shortcuts.handle_key(key, modifiers)
+        {
+            return result;
         }
         if key == gtk::gdk::Key::Escape && super::scrolling::stop_autoscroll() {
             return glib::Propagation::Stop;
@@ -853,24 +866,34 @@ fn install_keyboard_navigation(
             view.refresh();
             return glib::Propagation::Stop;
         }
-        let column_popover = focused
+        let popover = focused
             .as_ref()
             .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
-            .and_downcast::<gtk::Popover>()
-            .filter(|popover| popover.has_css_class("column-popover"));
-        if let Some(popover) = column_popover
+            .and_downcast::<gtk::Popover>();
+        if let Some(popover) = popover
             && !control
             && !alt
-            && let Some(direction) = vim_focus_direction(key)
         {
-            popover.child_focus(direction);
-            return glib::Propagation::Stop;
+            if popover.has_css_class("column-popover")
+                && let Some(direction) = vim_focus_direction(key)
+            {
+                popover.child_focus(direction);
+                return glib::Propagation::Stop;
+            }
+            return glib::Propagation::Proceed;
         }
         let mut header_left_boundary = false;
         if view.header_actions_have_focus() && !control && !alt {
             match key {
                 gtk::gdk::Key::h | gtk::gdk::Key::Left => {
                     if view.move_header_focus(gtk::DirectionType::Left) {
+                        return glib::Propagation::Stop;
+                    }
+                    if view.view_mode() != BrowserMode::Columns {
+                        if sidebar_toggle.is_active() {
+                            focus_before_sidebar.replace(focused.clone());
+                            sidebar_state.focus_active_place();
+                        }
                         return glib::Propagation::Stop;
                     }
                     header_left_boundary = true;
@@ -928,6 +951,13 @@ fn install_keyboard_navigation(
         {
             return match action {
                 SinglePaneArrow::Native => {
+                    if !control
+                        && !shift
+                        && key == gtk::gdk::Key::Up
+                        && view.focus_header_from_top_item()
+                    {
+                        return glib::Propagation::Stop;
+                    }
                     if !control
                         && !shift
                         && let Some(direction) = sidebar_focus_direction(key)

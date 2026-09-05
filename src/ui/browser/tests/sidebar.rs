@@ -100,6 +100,15 @@ fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
         settle();
         assert!(view.item_view_has_focus());
         assert_eq!(view.at_left_edge(), edge, "position {position}");
+        let selection = browser.selected_positions(0);
+        assert_eq!(view.focus_header_from_top_item(), position < 3);
+        if position < 3 {
+            assert!(view.header_actions_have_focus());
+            assert!(view.move_header_focus(gtk::DirectionType::Right));
+            assert!(view.focus_items_from_header());
+            assert!(view.item_view_has_focus());
+            assert_eq!(browser.selected_positions(0), selection);
+        }
     }
     grid.set_min_columns(1);
     grid.set_max_columns(1);
@@ -119,7 +128,7 @@ fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
     sidebar.grab_focus();
     settle();
     assert!(
-        sidebar.has_focus(),
+        gtk::prelude::RootExt::focus(&window).as_ref() == Some(sidebar.upcast_ref()),
         "deferred item focus must not steal sidebar focus"
     );
 
@@ -154,6 +163,29 @@ fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
         "Child"
     );
 
+    view.set_group_by_type(false);
+    view.set_view_mode(BrowserMode::Explorer);
+    settle();
+    browser.select(0, 0);
+    browser.focus_active();
+    settle();
+    assert!(view.focus_header_from_top_item());
+    assert!(view.header_actions_have_focus());
+    assert!(view.move_header_focus(gtk::DirectionType::Right));
+    assert!(view.focus_items_from_header());
+    assert!(view.item_view_has_focus());
+    let list = gtk::prelude::RootExt::focus(&window)
+        .and_then(|focus| focus.ancestor(gtk::ListView::static_type()))
+        .and_downcast::<gtk::ListView>()
+        .expect("focused Explorer list");
+    list.scroll_to(
+        2,
+        gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
+        None,
+    );
+    settle();
+    assert!(!view.focus_header_from_top_item());
+
     let empty = tempfile::tempdir().expect("empty fixture");
     for mode in [BrowserMode::Grid, BrowserMode::Explorer] {
         view.set_view_mode(mode);
@@ -166,6 +198,10 @@ fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
             "empty {mode:?} needs a keyboard target"
         );
         assert!(view.at_left_edge());
+        assert!(view.focus_header_from_top_item());
+        assert!(view.header_actions_have_focus());
+        assert!(view.focus_items_from_header());
+        assert!(view.item_view_has_focus());
     }
     window.destroy();
     browser.clear_observer();

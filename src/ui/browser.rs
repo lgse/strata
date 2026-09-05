@@ -647,6 +647,21 @@ impl BrowserView {
         self.state.mode_views.borrow().mode()
     }
 
+    pub fn connect_view_mode_changed(&self, handler: impl Fn(BrowserMode) + 'static) {
+        self.state
+            .mode_views
+            .borrow()
+            .widget()
+            .connect_visible_child_name_notify(move |stack| {
+                let mode = match stack.visible_child_name().as_deref() {
+                    Some("grid") => BrowserMode::Grid,
+                    Some("explorer") => BrowserMode::Explorer,
+                    _ => BrowserMode::Columns,
+                };
+                handler(mode);
+            });
+    }
+
     pub fn set_view_mode(&self, mode: BrowserMode) {
         let previous = self.state.mode_views.borrow().mode();
         if mode == previous {
@@ -718,7 +733,7 @@ impl BrowserView {
 
     pub fn focus_header_from_top_item(&self) -> bool {
         if self.view_mode() != BrowserMode::Columns {
-            return false;
+            return self.state.mode_views.borrow().focus_header_from_top_item();
         }
         let Some((depth, position, _)) = self.state.browser.focused_item() else {
             return false;
@@ -747,6 +762,9 @@ impl BrowserView {
     }
 
     pub fn header_actions_have_focus(&self) -> bool {
+        if self.view_mode() != BrowserMode::Columns {
+            return self.state.mode_views.borrow().header_has_focus();
+        }
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         self.state.columns.borrow().iter().any(|column| {
             focused.as_ref().is_some_and(|focused| {
@@ -757,6 +775,9 @@ impl BrowserView {
     }
 
     pub fn move_header_focus(&self, direction: gtk::DirectionType) -> bool {
+        if self.view_mode() != BrowserMode::Columns {
+            return self.state.mode_views.borrow().move_header_focus(direction);
+        }
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let columns = self.state.columns.borrow();
         let Some(index) = columns.iter().position(|column| {
@@ -786,6 +807,9 @@ impl BrowserView {
     }
 
     pub fn focus_items_from_header(&self) -> bool {
+        if self.view_mode() != BrowserMode::Columns {
+            return self.state.mode_views.borrow().focus_items_from_header();
+        }
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         self.state
             .columns

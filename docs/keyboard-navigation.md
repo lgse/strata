@@ -29,7 +29,15 @@ Copy/cut use the selection in the focused column, never a hovered row. In Column
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 
-## Arrows and the sidebar
+## Shortcut footer
+
+Every mode has a compact, single-line footer with its navigation hints and common file shortcuts. The summary truncates rather than wrapping in narrow windows; **F1 · Shortcuts** always remains available to open the complete, mode-specific reference. F1 or Escape closes it. The reference blocks file-operation shortcuts while it is open.
+
+The hints describe file-view controls; text fields, dialogs, and media previews retain their own keyboard behavior. Mode changes update both the footer and the reference immediately. Closing keyboard-opened help restores the previous focus.
+
+[Columns footer](screenshots/291/footer-columns.png) · [Grid header focus](screenshots/291/footer-grid-header.png) · [Explorer header, light theme](screenshots/291/footer-explorer-header.png) · [Narrow window](screenshots/291/footer-narrow.png) · [Shortcut reference](screenshots/291/shortcut-reference.png)
+
+## Arrows, the header, and the sidebar
 
 In Grid and Explorer, plain arrows move interface focus rather than changing directories:
 
@@ -39,6 +47,8 @@ In Grid and Explorer, plain arrows move interface focus rather than changing dir
 | Right | Move one tile right | Stay in the file list |
 | Up / Down | Move by visual rows | Move through file rows |
 | Enter | Open the current item | Open the current item |
+
+Up from the first Grid row or first Explorer item focuses the navigation header, including in empty directories. Left/Right traverse its enabled controls without triggering navigation; Enter/Space activates a control. Down returns to the item you left without changing selection. Left from the header's first control can reach the visible sidebar.
 
 From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it). Up/Down move between places. Empty file views also support this round trip. If the sidebar is hidden, Left does not change directories.
 

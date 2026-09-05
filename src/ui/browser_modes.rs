@@ -210,6 +210,7 @@ struct PaneSection {
 struct Pane {
     depth: usize,
     shell: gtk::Box,
+    header: gtk::Box,
     model: gtk::StringList,
     source_index: SourceIndexMap,
     filter_model: Option<gtk::FilterListModel>,
@@ -280,6 +281,7 @@ pub struct ModeViews {
     density: BrowserDensity,
     group_by_type: bool,
     grid_thumbnail_size: Rc<Cell<i32>>,
+    focus_before_header: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
 }
 
 impl ModeViews {
@@ -345,6 +347,7 @@ impl ModeViews {
             density: BrowserDensity::Compact,
             group_by_type: false,
             grid_thumbnail_size: Rc::new(Cell::new(DEFAULT_GRID_THUMBNAIL_SIZE)),
+            focus_before_header: RefCell::new(None),
         }
     }
 
@@ -372,6 +375,91 @@ impl ModeViews {
             BrowserMode::Explorer => self.explorer_pane.as_ref(),
         }?;
         Some(pane.marquee.clone())
+    }
+
+    fn single_pane(&self) -> Option<&Pane> {
+        match self.mode {
+            BrowserMode::Columns => None,
+            BrowserMode::Grid => self.grid_panes.first(),
+            BrowserMode::Explorer => self.explorer_pane.as_ref(),
+        }
+    }
+
+    pub fn header_has_focus(&self) -> bool {
+        let focused = self.stack.root().and_then(|root| root.focus());
+        self.single_pane()
+            .is_some_and(|pane| widget_has_focus(&pane.header, focused.as_ref()))
+    }
+
+    pub fn focus_header_from_top_item(&self) -> bool {
+        let Some(pane) = self.single_pane() else {
+            return false;
+        };
+        let Some(focused) = self.stack.root().and_then(|root| root.focus()) else {
+            return false;
+        };
+        let at_top = focused == *pane.stack.upcast_ref::<gtk::Widget>()
+            || (pane
+                .item_sections()
+                .iter()
+                .all(|section| section.view_model.n_items() == 0)
+                && widget_has_focus(&pane.stack, Some(&focused)))
+            || pane
+                .item_sections()
+                .into_iter()
+                .find(|section| section.view_model.n_items() > 0)
+                .is_some_and(|section| {
+                    let Some((position, bounds)) = focused_section_item(&section, &focused) else {
+                        return false;
+                    };
+                    if position == 0 {
+                        return true;
+                    }
+                    if self.mode != BrowserMode::Grid {
+                        return false;
+                    }
+                    let mut first_row = false;
+                    (section.visit)(&mut |position, widget| {
+                        if position == 0
+                            && let Some(first) = widget.compute_bounds(&section.view)
+                        {
+                            first_row = (first.y() - bounds.y()).abs() < 1.0;
+                        }
+                    });
+                    first_row
+                });
+        if !at_top {
+            return false;
+        }
+        if pane.header.child_focus(gtk::DirectionType::TabForward) {
+            self.focus_before_header.replace(Some(focused.downgrade()));
+            return true;
+        }
+        false
+    }
+
+    pub fn move_header_focus(&self, direction: gtk::DirectionType) -> bool {
+        let direction = match direction {
+            gtk::DirectionType::Left => gtk::DirectionType::TabBackward,
+            gtk::DirectionType::Right => gtk::DirectionType::TabForward,
+            _ => return false,
+        };
+        self.single_pane()
+            .is_some_and(|pane| pane.header.child_focus(direction))
+    }
+
+    pub fn focus_items_from_header(&self) -> bool {
+        if self
+            .focus_before_header
+            .borrow_mut()
+            .take()
+            .and_then(|weak| weak.upgrade())
+            .is_some_and(|view| view.is_mapped() && view.grab_focus())
+        {
+            return true;
+        }
+        self.single_pane()
+            .is_some_and(|pane| pane.focus_view().grab_focus() || pane.stack.grab_focus())
     }
 
     /// Use rendered rows: filtering, grouping, and resizing change the grid geometry.
@@ -1679,6 +1767,7 @@ fn build_grid_pane(
     let pane = Pane {
         depth,
         shell,
+        header,
         model,
         source_index,
         filter_model: Some(filtered_model),
@@ -2869,6 +2958,7 @@ fn build_explorer_pane(
     let pane = Pane {
         depth,
         shell,
+        header,
         model,
         source_index,
         filter_model: Some(filtered_model),

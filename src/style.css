@@ -1821,6 +1821,97 @@ entry.preview-command-entry selection {
   color: @theme_accent;
 }
 
+.shortcut-footer {
+  background: @theme_surface;
+  color: @theme_text;
+  border-top: 1px solid @theme_border;
+  padding: 3px 10px;
+  min-height: 24px;
+  font-size: 0.85em;
+}
+
+.shortcut-footer-summary {
+  color: @theme_text;
+}
+
+.shortcut-footer-button > button,
+.shortcut-reference-close {
+  background: transparent;
+  color: @theme_text;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  box-shadow: none;
+  min-height: 20px;
+  min-width: 0;
+  padding: 0 6px;
+}
+
+.shortcut-footer-button > button:hover,
+.shortcut-reference-close:hover {
+  background: @theme_highlight;
+  color: @theme_text;
+  border-color: @theme_border;
+}
+
+.shortcut-footer-button > button:active,
+.shortcut-footer-button > button:checked,
+.shortcut-reference-close:active {
+  background: @theme_highlight;
+  color: @theme_text;
+  border-color: @theme_accent;
+}
+
+.shortcut-footer-button > button:focus-visible,
+.shortcut-reference-close:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.shortcut-footer-button > button:disabled,
+.shortcut-reference-close:disabled {
+  color: @theme_dim_text;
+  background: @theme_surface;
+}
+
+.shortcut-popover > contents {
+  background: @theme_surface;
+  color: @theme_text;
+  border: 1px solid @theme_border;
+  border-radius: 8px;
+  padding: 14px;
+  box-shadow: 0 4px 16px alpha(@theme_bg, 0.4);
+}
+
+.shortcut-reference-title {
+  color: @theme_text;
+  font-weight: 600;
+}
+
+.shortcut-reference-heading {
+  color: @theme_accent;
+  font-weight: 600;
+}
+
+.shortcut-reference-key {
+  color: @theme_text;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.shortcut-reference-description,
+.shortcut-reference-note {
+  color: @theme_text;
+}
+
+.shortcut-reference-note {
+  font-size: 0.9em;
+}
+
+.shortcut-popover scrolledwindow:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
 .columns {
   background: @theme_bg;
   color: @theme_text;
