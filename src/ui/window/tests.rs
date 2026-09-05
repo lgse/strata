@@ -8,15 +8,15 @@ use crate::{
 };
 
 use super::{
-    MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS,
+    DEFAULT_ACCELS, MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS,
     accepts_sidebar_reorder_payload, begin_media_release, is_open_terminal_shortcut,
-    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location,
-    is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction, media_release_label,
-    mount_release_action, mouse_history_action, page_direction, parse_pinned_drag_source,
-    parse_pinned_places, pin_status, remove_pinned_place, reorder_pinned_places, reorder_places,
-    resolve_place_order, serialize_pinned_places, should_show_standard_place,
-    sidebar_accepts_file_drop, sidebar_update_label, standard_place, type_to_search_query,
-    vim_focus_direction, volume_release_action,
+    is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut, is_smb_location,
+    is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction,
+    media_release_label, mount_release_action, mouse_history_action, page_direction,
+    parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
+    reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
+    should_show_standard_place, sidebar_accepts_file_drop, sidebar_update_label, standard_place,
+    type_to_search_query, vim_focus_direction, volume_release_action,
 };
 
 fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
@@ -742,4 +742,68 @@ fn sidebar_file_drops_accept_local_places_but_not_virtual_locations() {
     assert!(!sidebar_accepts_file_drop(&Location::uri(
         "smb://host.example/share"
     )));
+}
+
+#[test]
+fn rename_shortcut_accepts_f2_and_control_r() {
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+    assert!(is_rename_shortcut(
+        gtk::gdk::Key::F2,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(is_rename_shortcut(gtk::gdk::Key::r, control));
+    assert!(is_rename_shortcut(gtk::gdk::Key::R, control));
+}
+
+#[test]
+fn rename_shortcut_ignores_extra_modifiers_and_other_keys() {
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+    assert!(!is_rename_shortcut(
+        gtk::gdk::Key::r,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(!is_rename_shortcut(
+        gtk::gdk::Key::r,
+        control | gtk::gdk::ModifierType::SHIFT_MASK
+    ));
+    assert!(!is_rename_shortcut(
+        gtk::gdk::Key::r,
+        control | gtk::gdk::ModifierType::ALT_MASK
+    ));
+    assert!(!is_rename_shortcut(gtk::gdk::Key::F2, control));
+    assert!(!is_rename_shortcut(gtk::gdk::Key::F5, control));
+}
+
+#[test]
+fn refresh_shortcut_keeps_f5_and_releases_control_r() {
+    assert!(is_refresh_shortcut(gtk::gdk::Key::F5));
+    assert!(!is_refresh_shortcut(gtk::gdk::Key::r));
+    assert!(!is_rename_shortcut(
+        gtk::gdk::Key::F5,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(is_rename_shortcut(
+        gtk::gdk::Key::r,
+        gtk::gdk::ModifierType::CONTROL_MASK
+    ));
+}
+
+#[test]
+fn default_accels_never_bind_one_chord_twice() {
+    let mut seen = std::collections::HashMap::new();
+    for (action, accels) in DEFAULT_ACCELS {
+        for accel in *accels {
+            let lowered = accel.to_lowercase();
+            assert!(
+                seen.insert(lowered, *action).is_none(),
+                "{accel} is bound to more than one action"
+            );
+        }
+    }
+    let refresh = DEFAULT_ACCELS
+        .iter()
+        .find(|(action, _)| *action == "win.refresh")
+        .expect("refresh accels")
+        .1;
+    assert_eq!(refresh, &["F5"]);
 }

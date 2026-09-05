@@ -1219,11 +1219,7 @@ fn install_shortcuts(
             state.cancel();
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::F2
-            && !control
-            && !alt
-            && !shift
-            && !modifiers.contains(gtk::gdk::ModifierType::SUPER_MASK)
+        if super::window::is_rename_shortcut(key, modifiers)
             && browser.selected_entries().len() == 1
             && !focused.as_ref().is_some_and(|widget| {
                 super::focus_navigation::editable(widget)
@@ -1316,9 +1312,7 @@ fn install_shortcuts(
             state.view.select_all();
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::F5
-            || (control && !alt && matches!(key, gtk::gdk::Key::r | gtk::gdk::Key::R))
-        {
+        if key == gtk::gdk::Key::F5 {
             if let Some(depth) = browser.active_depth() {
                 browser.retry_column(depth);
             }

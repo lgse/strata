@@ -343,7 +343,6 @@ fn present_target(
         }
     });
     window.add_action(&search_action);
-    application.set_accels_for_action("win.search", &["<Control>k"]);
 
     let terminal_view = browser.clone();
     let terminal_action = gio::SimpleAction::new("open-terminal", None);
@@ -351,7 +350,6 @@ fn present_target(
         terminal_view.open_terminal();
     });
     window.add_action(&terminal_action);
-    application.set_accels_for_action("win.open-terminal", &["<Primary>t"]);
 
     let refresh_view = browser.clone();
     let refresh_action = gio::SimpleAction::new("refresh", None);
@@ -359,7 +357,9 @@ fn present_target(
         refresh_view.refresh();
     });
     window.add_action(&refresh_action);
-    application.set_accels_for_action("win.refresh", &["F5", "<Primary>r"]);
+    for (action, accels) in DEFAULT_ACCELS {
+        application.set_accels_for_action(action, accels);
+    }
 
     let update_button = sidebar.update_notice.clone();
     let update_area = sidebar.update_area.clone();
@@ -711,7 +711,12 @@ fn install_keyboard_navigation(
             }
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::F2 && view.begin_rename() {
+        if is_rename_shortcut(key, modifiers)
+            && !focused
+                .as_ref()
+                .is_some_and(super::focus_navigation::editable)
+            && view.begin_rename()
+        {
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::Escape && view.cancel_new_entry() {
@@ -865,7 +870,7 @@ fn install_keyboard_navigation(
             view.open_terminal();
             return glib::Propagation::Stop;
         }
-        if is_refresh_shortcut(key, modifiers) {
+        if is_refresh_shortcut(key) {
             view.refresh();
             return glib::Propagation::Stop;
         }
@@ -1202,11 +1207,31 @@ fn is_toggle_hidden_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierTy
         )
 }
 
-fn is_refresh_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+/// Rename owns `<Primary>r`, so refresh keeps only F5; no chord may appear twice.
+const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
+    ("win.search", &["<Control>k"]),
+    ("win.open-terminal", &["<Primary>t"]),
+    ("win.refresh", &["F5"]),
+];
+
+fn is_refresh_shortcut(key: gtk::gdk::Key) -> bool {
     key == gtk::gdk::Key::F5
-        || (modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-            && !modifiers.contains(gtk::gdk::ModifierType::ALT_MASK)
-            && matches!(key, gtk::gdk::Key::r | gtk::gdk::Key::R))
+}
+
+const RENAME_EXCLUDED_MODIFIERS: gtk::gdk::ModifierType = gtk::gdk::ModifierType::ALT_MASK
+    .union(gtk::gdk::ModifierType::SHIFT_MASK)
+    .union(gtk::gdk::ModifierType::SUPER_MASK);
+
+pub(super) fn is_rename_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    if modifiers.intersects(RENAME_EXCLUDED_MODIFIERS) {
+        return false;
+    }
+    let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+    match key {
+        gtk::gdk::Key::F2 => !control,
+        gtk::gdk::Key::r | gtk::gdk::Key::R => control,
+        _ => false,
+    }
 }
 
 pub(super) fn is_sidebar_focus_shortcut(

@@ -7266,7 +7266,7 @@ pub(super) fn install_item_context_menu(
     let copy_path = item_context_option(crate::assets::icons::COPY, "Copy path", "Y");
     let move_to = item_context_option(crate::assets::icons::FOLDER, "Move to…", "");
     let copy_to = item_context_option(crate::assets::icons::COPY, "Copy to…", "");
-    let rename = item_context_option(crate::assets::icons::PENCIL, "Rename", "F2");
+    let rename = item_context_option(crate::assets::icons::PENCIL, "Rename", "F2 / Ctrl+R");
     let cut = item_context_option(crate::assets::icons::SCISSORS, "Cut", "Ctrl+X");
     let delete_label = if in_trash {
         "Permanently delete"
