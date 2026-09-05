@@ -227,11 +227,24 @@ xdg-mime query default inode/directory
 
 The final command should print `io.github.lgse.Strata.desktop`. The desktop entry's filename matches the `io.github.lgse.Strata` application ID that Strata's windows report, so desktop shells match a running window to this entry and draw its `Icon` value. Log out and back in if a shell caches launcher icons.
 
-When building from source, `make install-local` installs the binary, icon, desktop entry, and file-manager service in the same locations, and `make uninstall-local` removes them.
+When building from source, `make install-local` installs the binary, icon, and desktop entry in the same locations, and `make uninstall-local` removes them.
 
 ### "Open file location" from other applications
 
-Browsers and GTK/GNOME applications reveal a file by calling the `org.freedesktop.FileManager1` D-Bus interface instead of consulting the `inode/directory` association, so they need Strata registered as an activatable service as well:
+Browsers and GTK/GNOME applications reveal a file by calling the `org.freedesktop.FileManager1` D-Bus interface instead of consulting the `inode/directory` association. Enable Strata as the per-user activatable provider explicitly after installing it:
+
+```bash
+make install-file-manager
+```
+
+For an AUR package, copy its inactive service template into your per-user service directory:
+
+```bash
+install -Dm644 /usr/share/strata/io.github.lgse.Strata.FileManager1.service \
+  ~/.local/share/dbus-1/services/io.github.lgse.Strata.FileManager1.service
+```
+
+For a release archive installation, install the included service manually instead:
 
 ```bash
 cd ~/Downloads/"${archive%.tar.gz}"
@@ -241,7 +254,9 @@ sed "s|^Exec=/usr/bin/strata |Exec=$HOME/.local/bin/strata |" \
   > ~/.local/share/dbus-1/services/io.github.lgse.Strata.FileManager1.service
 ```
 
-The per-user file takes precedence over the one shipped by another file manager. Strata then answers `ShowFolders`, `ShowItems`, and `ShowItemProperties`, opening the directory that holds the named items with those items selected:
+A per-user provider takes precedence over system providers shipped by other file managers. Before enabling Strata manually, remove any other per-user service whose `Name` is `org.freedesktop.FileManager1`; two providers for the same name in one service directory are chosen arbitrarily. If another file manager already owns the bus name, exit it before testing. Use `make uninstall-file-manager` for a source installation, or remove the per-user service file, to disable Strata again.
+
+Strata then answers `ShowFolders`, `ShowItems`, and `ShowItemProperties`, opening the directory that holds the named items with those items selected:
 
 ```bash
 busctl --user call org.freedesktop.FileManager1 /org/freedesktop/FileManager1 \

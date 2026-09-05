@@ -98,7 +98,7 @@ Verify any change to this with `vercmp` directly. The download URL always uses t
 
 The launcher and application icon are installed from the release archive, not from this repository, so the package always matches the binary it ships. Releases published before desktop metadata was added to the archive produce a package with a working `strata` command and no launcher; `package()` prints a warning rather than failing, so the package stays installable. Drop the conditional once the oldest release either package pins carries the metadata.
 
-The archive also ships `io.github.lgse.Strata.FileManager1.service`, which makes Strata the D-Bus-activatable owner of `org.freedesktop.FileManager1` so "Open file location" in other applications reveals the file in Strata. It is named after Strata rather than after the bus name, so installing it never conflicts with the file another file manager's package owns; the bus name it declares is what D-Bus matches on. It is installed under the same release-archive conditional as the launcher.
+The archive also ships `io.github.lgse.Strata.FileManager1.service`, which users can install under `$XDG_DATA_HOME/dbus-1/services` to make Strata the D-Bus-activatable owner of `org.freedesktop.FileManager1`. Packages must not install it into a system service directory: multiple files providing that name in one directory are selected arbitrarily, and merely installing Strata must not change the user's preferred file manager. They may install the inactive template under `/usr/share/strata` so users can opt in without downloading the archive. Keep activation an explicit per-user choice as documented in the README.
 
 ## Other distributions
 
