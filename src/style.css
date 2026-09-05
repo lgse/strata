@@ -2920,7 +2920,6 @@ colorchooser colorswatch overlay {
 
 .file-list .file-row.active-path {
   color: @theme_text;
-  box-shadow: inset 3px 0 @theme_dim_text;
 }
 
 .file-list .file-row.active-path .file-chevron {
