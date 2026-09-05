@@ -41,6 +41,7 @@ fn navigation_reference_matches_each_mode() {
 }
 
 #[test]
+#[ignore = "requires a mapped GTK window; run this test alone"]
 fn footer_tracks_modes_and_shields_files_while_open() {
     const CHILD: &str = "STRATA_SHORTCUT_FOOTER_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
@@ -50,6 +51,7 @@ fn footer_tracks_modes_and_shields_files_while_open() {
                 "--exact",
                 "ui::shortcut_footer::tests::footer_tracks_modes_and_shields_files_while_open",
                 "--nocapture",
+                "--ignored",
             ])
             .env(CHILD, "1")
             .env("XDG_CONFIG_HOME", sandbox.path().join("config"))

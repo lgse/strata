@@ -28,6 +28,7 @@ fn find_grid(widget: &gtk::Widget) -> Option<gtk::GridView> {
 }
 
 #[test]
+#[ignore = "requires a mapped GTK window; run this test alone"]
 fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
     const CHILD: &str = "STRATA_SIDEBAR_BOUNDARY_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
@@ -37,6 +38,7 @@ fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
                 "--exact",
                 "ui::browser::tests::sidebar::sidebar_boundary_tracks_grid_layout_and_empty_views",
                 "--nocapture",
+                "--ignored",
             ])
             .env(CHILD, "1")
             .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
