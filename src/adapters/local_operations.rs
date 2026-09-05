@@ -577,9 +577,7 @@ fn copy_recursively_local(
                     .path()
                     .ok_or_else(|| io_error("Copy destination must be a local path"))?;
                 run_local_fs_step(move || {
-                    rustix::fs::symlink(&link_target, &target_path).map_err(|error| {
-                        format!("Could not recreate {}: {error}", target_path.display())
-                    })
+                    copy_local_symlink(&link_target, &target_path, overwrite_existing)
                 })
                 .await
             }
@@ -1032,15 +1030,8 @@ async fn move_local_with(
     move_local_with_progress(source, target, cancellable, None, attempt_move).await
 }
 
-/// Moves `source_path` to `target_path` with a single `renameat2`, opening
-/// each side's parent directory fresh right before the call so a symlink or
-/// path-component swap between when these paths were chosen and this attempt
-/// cannot redirect it outside the directories the user actually selected.
-/// `NOREPLACE` fails closed if a race put something new at the destination
-/// name rather than silently overwriting it. Reports the same `WouldRecurse`
-/// error GIO's own move would for one the kernel can't do atomically -- into
-/// the source's own subtree, or across filesystems -- so the caller's
-/// existing copy-then-delete fallback handles it.
+/// Opens both parents without following symlinks, then atomically renames
+/// without replacing a destination created by a concurrent process.
 fn move_local_path(
     source_path: PathBuf,
     target_path: PathBuf,
@@ -1600,13 +1591,42 @@ fn permanently_delete_local(
     })
 }
 
-/// Opens `parent_path`'s directory by walking from the filesystem root and
-/// resolving every intermediate component with `RESOLVE_BENEATH` and
-/// `RESOLVE_NO_SYMLINKS`/`RESOLVE_NO_MAGICLINKS`, so a symlink swapped into
-/// any ancestor segment -- not just the final one -- fails closed instead of
-/// redirecting the caller outside the directory tree the path names. Shared
-/// by every local operation that needs a race-safe directory handle: delete,
-/// copy, move, and identity checks.
+/// Uses a staged link so overwriting remains atomic without following the target.
+fn copy_local_symlink(
+    link_target: &OsStr,
+    target_path: &Path,
+    overwrite_existing: bool,
+) -> Result<(), String> {
+    let parent_path = target_path
+        .parent()
+        .ok_or_else(|| "The symlink destination has no parent directory".to_owned())?;
+    let target_name = target_path
+        .file_name()
+        .ok_or_else(|| "Invalid symlink destination".to_owned())?;
+    let parent = open_local_parent_directory(parent_path)?;
+
+    if !overwrite_existing {
+        return rustix::fs::symlinkat(link_target, &parent, target_name)
+            .map_err(|error| format!("Could not recreate {}: {error}", target_path.display()));
+    }
+
+    let staged_name = format!(".strata-symlink-{}", glib::uuid_string_random());
+    rustix::fs::symlinkat(link_target, &parent, &staged_name)
+        .map_err(|error| format!("Could not stage {}: {error}", target_path.display()))?;
+    let result = rustix::fs::renameat_with(
+        &parent,
+        &staged_name,
+        &parent,
+        target_name,
+        rustix::fs::RenameFlags::empty(),
+    );
+    if result.is_err() {
+        let _ = rustix::fs::unlinkat(&parent, &staged_name, rustix::fs::AtFlags::empty());
+    }
+    result.map_err(|error| format!("Could not recreate {}: {error}", target_path.display()))
+}
+
+/// Resolves every component from the filesystem root without following symlinks.
 fn open_local_parent_directory(parent_path: &Path) -> Result<OwnedFd, String> {
     if !parent_path.is_absolute() {
         return Err("A local operation target must use an absolute path".to_owned());

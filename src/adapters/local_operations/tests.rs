@@ -493,12 +493,6 @@ fn a_plain_move_relocates_the_entry_via_the_hardened_rename_path() -> Result<(),
     Ok(())
 }
 
-/// The kernel refuses a rename that would make a directory its own
-/// subdirectory (`EINVAL`), which is mapped to the same `WouldRecurse`
-/// signal GIO's own move would give. Falling back to a copy is exercised
-/// here, but a copy into the source's own subtree is just as impossible, so
-/// the fallback must fail cleanly too -- never delete the original after a
-/// copy that didn't actually finish.
 #[test]
 fn moving_a_directory_into_its_own_child_fails_instead_of_deleting_it() -> Result<(), Box<dyn Error>>
 {
@@ -523,12 +517,6 @@ fn moving_a_directory_into_its_own_child_fails_instead_of_deleting_it() -> Resul
     Ok(())
 }
 
-/// Guards `move_local_with`'s upfront `local_file_identity` check on the
-/// source, which already walks its whole ancestor path with
-/// `RESOLVE_NO_SYMLINKS` -- that check runs before `move_local_path` ever
-/// does, so a static symlink swap can't isolate the new rename path's own
-/// contribution on the source side (see the destination-side test below for
-/// coverage of protection this change actually adds).
 #[test]
 fn move_rejects_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -555,10 +543,6 @@ fn move_rejects_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn Err
     Ok(())
 }
 
-/// Unlike the source, nothing checked the destination's identity before this
-/// change -- the old GIO-based move only ever protected the source. This is
-/// new protection: against the pre-fix implementation, this same scenario
-/// moves the file straight through the symlinked destination parent.
 #[test]
 fn move_rejects_a_symlink_in_the_destinations_parent_path() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -677,6 +661,31 @@ fn staged_file_replacement_commits_then_removes_a_moved_source() -> Result<(), B
 }
 
 #[test]
+fn replacing_a_symlink_preserves_link_semantics() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source-link");
+    let target = root.path().join("target-link");
+    std::os::unix::fs::symlink("new-target", &source)?;
+    std::os::unix::fs::symlink("old-target", &target)?;
+
+    let result = glib::MainContext::default().block_on(replace_local(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(fs::read_link(&target)?, Path::new("new-target"));
+    assert_eq!(fs::read_link(&source)?, Path::new("new-target"));
+    Ok(())
+}
+
+#[test]
 fn replacement_move_does_not_delete_a_substituted_source() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -717,13 +726,6 @@ fn replacement_move_does_not_delete_a_substituted_source() -> Result<(), Box<dyn
     Ok(())
 }
 
-/// Guards `replace_local_with`'s upfront `local_file_identity` check on the
-/// source, which already walks the whole ancestor path with
-/// `RESOLVE_NO_SYMLINKS` -- this is regression coverage for that ordering,
-/// not new coverage from routing the file branch through `copy_recursively`
-/// below (that check runs first regardless, so a static symlink swap can't
-/// distinguish the two; the routing change closes the narrower window
-/// between that check and the actual read).
 #[test]
 fn replace_rejects_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -753,10 +755,6 @@ fn replace_rejects_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn 
     Ok(())
 }
 
-/// The symlink sits one level above the immediate parent directory, so a
-/// check that only guards the final path component (like a plain
-/// `O_NOFOLLOW` open of that parent) would miss it; only resolving the
-/// whole path with `RESOLVE_NO_SYMLINKS` catches a swap this far up.
 #[test]
 fn copy_rejects_a_symlink_higher_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
