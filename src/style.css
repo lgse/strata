@@ -2281,7 +2281,7 @@ menubutton.column-header-action > button:active {
   border: 1px solid alpha(@theme_border, 0.45);
   border-radius: 8px;
   box-shadow: 0 8px 24px alpha(@theme_shadow, 0.32);
-  padding: 6px;
+  padding: 4px;
 }
 
 .path-completion-scroll,
@@ -2319,14 +2319,6 @@ menubutton.column-header-action > button:active {
 .path-completion-parent {
   color: @theme_dim_text;
   font-size: 0.82em;
-}
-
-.path-completion-footer {
-  border-top: 1px solid alpha(@theme_border, 0.25);
-  color: @theme_dim_text;
-  font-size: 0.76em;
-  margin-top: 4px;
-  padding: 6px 8px 2px 8px;
 }
 
 .properties-content {

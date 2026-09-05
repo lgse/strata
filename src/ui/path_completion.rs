@@ -22,10 +22,12 @@ pub(crate) struct CompletionCandidate {
 
 pub(crate) struct PathCompletion {
     popover: gtk::Popover,
+    content_box: gtk::Box,
     scroll: gtk::ScrolledWindow,
     list: gtk::ListBox,
     candidates: Rc<RefCell<Vec<CompletionCandidate>>>,
     selected_index: Rc<Cell<Option<usize>>>,
+    is_active: Box<dyn Fn() -> bool>,
 }
 
 impl Drop for PathCompletion {
@@ -93,9 +95,10 @@ impl PathCompletion {
     pub(crate) fn attach(
         entry: &gtk::Entry,
         browser: Rc<Browser>,
+        is_active: impl Fn() -> bool + 'static,
         on_activate: impl Fn() + 'static,
     ) -> Rc<Self> {
-        let content_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+        let content_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
 
         let list = gtk::ListBox::builder()
             .selection_mode(gtk::SelectionMode::Single)
@@ -109,24 +112,14 @@ impl PathCompletion {
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
             .min_content_height(36)
-            .max_content_height(260)
-            .min_content_width(460)
+            .max_content_height(280)
             .propagate_natural_height(true)
-            .propagate_natural_width(true)
+            .propagate_natural_width(false)
             .can_focus(false)
             .focusable(false)
             .build();
         scroll.add_css_class("path-completion-scroll");
         content_box.append(&scroll);
-
-        let footer = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        footer.add_css_class("path-completion-footer");
-        let hints = gtk::Label::new(None);
-        hints.set_markup("<span alpha='65%'><b>Tab</b> complete</span>  •  <span alpha='65%'><b>↑↓</b> select</span>  •  <span alpha='65%'><b>↵</b> navigate</span>  •  <span alpha='65%'><b>Esc</b> close</span>");
-        hints.set_xalign(0.0);
-        hints.set_hexpand(true);
-        footer.append(&hints);
-        content_box.append(&footer);
 
         let popover = gtk::Popover::builder()
             .has_arrow(false)
@@ -153,10 +146,12 @@ impl PathCompletion {
 
         let completion = Rc::new(Self {
             popover: popover.clone(),
+            content_box: content_box.clone(),
             scroll: scroll.clone(),
             list: list.clone(),
             candidates: candidates.clone(),
             selected_index: selected_index.clone(),
+            is_active: Box::new(is_active),
         });
 
         let weak_completion = Rc::downgrade(&completion);
@@ -227,6 +222,22 @@ impl PathCompletion {
                         glib::Propagation::Proceed
                     }
                 }
+                gdk::Key::Page_Down => {
+                    if completion.popover.is_visible() {
+                        completion.move_selection(5);
+                        glib::Propagation::Stop
+                    } else {
+                        glib::Propagation::Proceed
+                    }
+                }
+                gdk::Key::Page_Up => {
+                    if completion.popover.is_visible() {
+                        completion.move_selection(-5);
+                        glib::Propagation::Stop
+                    } else {
+                        glib::Propagation::Proceed
+                    }
+                }
                 gdk::Key::Escape => {
                     if completion.popover.is_visible() {
                         completion.dismiss();
@@ -268,7 +279,7 @@ impl PathCompletion {
     }
 
     pub(crate) fn refresh(&self, entry: &gtk::Entry, browser: &Browser) {
-        if entry.root().is_none() {
+        if !(self.is_active)() || entry.root().is_none() {
             self.candidates.borrow_mut().clear();
             self.selected_index.set(None);
             self.dismiss();
@@ -297,12 +308,21 @@ impl PathCompletion {
         self.candidates.replace(candidates.clone());
         self.selected_index.set(None);
         self.render_candidates(&candidates);
-        let width = entry.width();
-        if width > 0 {
-            self.scroll.set_min_content_width(width);
-            self.popover
-                .set_pointing_to(Some(&gdk::Rectangle::new(0, entry.height(), width, 1)));
-        }
+        let width = if entry.width() > 0 {
+            entry.width()
+        } else {
+            360
+        };
+        self.content_box.set_size_request(width, -1);
+        self.scroll.set_min_content_width(width);
+        self.scroll.set_max_content_width(width);
+        self.popover.set_pointing_to(Some(&gdk::Rectangle::new(
+            0,
+            0,
+            width,
+            entry.height().max(32),
+        )));
+        self.popover.set_offset(0, 6);
         if !self.popover.is_visible() {
             self.popover.popup();
         }
@@ -340,6 +360,7 @@ impl PathCompletion {
                 parent_label.add_css_class("path-completion-parent");
                 parent_label.set_xalign(1.0);
                 parent_label.set_ellipsize(gtk::pango::EllipsizeMode::Start);
+                parent_label.set_max_width_chars(16);
                 row.append(&parent_label);
             }
 
@@ -352,11 +373,16 @@ impl PathCompletion {
         if count == 0 {
             return;
         }
-        let current = self.selected_index.get();
-        let next = match current {
-            Some(index) => (index as i32 + delta).rem_euclid(count as i32) as usize,
+        let next = match self.selected_index.get() {
+            Some(current) => {
+                if delta > 0 {
+                    (current + delta as usize) % count
+                } else {
+                    (current + count - (-delta as usize % count)) % count
+                }
+            }
             None => {
-                if delta >= 0 {
+                if delta > 0 {
                     0
                 } else {
                     count.saturating_sub(1)
@@ -366,6 +392,20 @@ impl PathCompletion {
         self.selected_index.set(Some(next));
         if let Some(row) = self.list.row_at_index(next as i32) {
             self.list.select_row(Some(&row));
+            let vadjustment = self.scroll.vadjustment();
+            if let Some(bounds) = row.compute_bounds(&self.list) {
+                let row_top = bounds.top_left().y() as f64;
+                let row_bottom = bounds.bottom_left().y() as f64;
+                let current_val = vadjustment.value();
+                let page_size = vadjustment.page_size();
+                if row_top < current_val {
+                    vadjustment.set_value(row_top);
+                } else if row_bottom > current_val + page_size {
+                    vadjustment.set_value(row_bottom - page_size);
+                }
+            } else if next == 0 {
+                vadjustment.set_value(vadjustment.lower());
+            }
         }
     }
 
@@ -452,7 +492,7 @@ pub(crate) fn suggest_completions(
             (home.to_path_buf(), relative, "~/".to_owned())
         };
         let hint = compact_hint(&base_dir, home);
-        return list_directory_candidates(
+        let mut candidates = list_directory_candidates(
             &base_dir,
             leaf_prefix,
             &prepend,
@@ -460,6 +500,22 @@ pub(crate) fn suggest_completions(
             leaf_prefix.chars().count(),
             show_hidden_pref,
         );
+        let rel_trimmed = relative.trim_start_matches('/');
+        let full_path = home.join(rel_trimmed);
+        if candidates.len() <= 1 && full_path.is_dir() && !rel_trimmed.is_empty() {
+            let child_hint = compact_hint(&full_path, home);
+            let child_prepend = format!("~/{}/", rel_trimmed.trim_end_matches('/'));
+            let mut children = list_directory_candidates(
+                &full_path,
+                "",
+                &child_prepend,
+                &child_hint,
+                0,
+                show_hidden_pref,
+            );
+            candidates.append(&mut children);
+        }
+        return candidates;
     }
 
     if input.starts_with('~') {
@@ -487,7 +543,7 @@ pub(crate) fn suggest_completions(
             (PathBuf::from("/"), stripped, "/".to_owned())
         };
         let hint = compact_hint(&base_dir, home);
-        return list_directory_candidates(
+        let mut candidates = list_directory_candidates(
             &base_dir,
             leaf_prefix,
             &prepend,
@@ -495,6 +551,21 @@ pub(crate) fn suggest_completions(
             leaf_prefix.chars().count(),
             show_hidden_pref,
         );
+        let input_path = PathBuf::from(input);
+        if candidates.len() <= 1 && input_path.is_dir() && input != "/" {
+            let child_hint = compact_hint(&input_path, home);
+            let child_prepend = format!("{}/", input.trim_end_matches('/'));
+            let mut children = list_directory_candidates(
+                &input_path,
+                "",
+                &child_prepend,
+                &child_hint,
+                0,
+                show_hidden_pref,
+            );
+            candidates.append(&mut children);
+        }
+        return candidates;
     }
 
     if let Some(current) = current_dir {

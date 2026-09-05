@@ -393,9 +393,9 @@ impl BrowserView {
         let overlay = gtk::Overlay::new();
 
         let location_entry = gtk::Entry::builder()
-            .hexpand(true)
-            .width_chars(48)
-            .placeholder_text("Enter an absolute path")
+            .hexpand(false)
+            .width_chars(36)
+            .placeholder_text("Enter a path…")
             .tooltip_text("Location (Ctrl+L)")
             .build();
         location_entry.add_css_class("location-entry");
@@ -420,6 +420,7 @@ impl BrowserView {
         entry_row.append(&confirm_location);
         entry_row.append(&cancel_location);
         let entry_control = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        entry_control.set_halign(gtk::Align::Start);
         entry_control.append(&entry_row);
 
         let breadcrumbs = gtk::Box::new(gtk::Orientation::Horizontal, 2);
@@ -466,9 +467,16 @@ impl BrowserView {
         overlay.set_child(Some(&mode_views.widget()));
         let pending_submit = Rc::new(RefCell::new(None::<Rc<dyn Fn()>>));
         let pending_submit_cb = pending_submit.clone();
+        let location_stack_for_completion = location_stack.clone();
         let path_completion = super::path_completion::PathCompletion::attach(
             &location_entry,
             browser.clone(),
+            move || {
+                location_stack_for_completion
+                    .visible_child_name()
+                    .as_deref()
+                    == Some("entry")
+            },
             move || {
                 if let Some(submit) = pending_submit_cb.borrow().as_ref() {
                     submit();
@@ -3769,6 +3777,8 @@ impl ViewState {
         self.location_stack.set_visible_child_name("entry");
         self.location_entry.grab_focus();
         self.location_entry.select_region(0, -1);
+        self.path_completion
+            .refresh(&self.location_entry, &self.browser);
     }
 
     fn cancel_location_edit(&self) {
