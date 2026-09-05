@@ -1212,6 +1212,7 @@ fn grid_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> Gr
         f64::from(MAX_GRID_THUMBNAIL_SIZE),
         16.0,
     );
+    thumbnail_scale.set_increments(16.0, 1.0);
     thumbnail_scale.add_css_class("grid-thumbnail-scale");
     thumbnail_scale.set_draw_value(false);
     thumbnail_scale.set_value(f64::from(thumbnail_size));
