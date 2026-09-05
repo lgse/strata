@@ -3314,6 +3314,7 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
 
 .grid-card-label {
   color: @theme_text;
+  min-height: 2.6em;
 }
 
 .grid-card.drop-destination,

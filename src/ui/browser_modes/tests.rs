@@ -2,8 +2,10 @@
 
 use super::{
     BrowserMode, ClickActivation, ClickCount, EXPLORER_COLUMN_MIN_WIDTHS, EXPLORER_COLUMN_WIDTHS,
-    SourceIndexMap, compare_type_groups, explorer_column_width, metadata_fill_position,
-    should_activate_pointer_click, type_groups_of, value_type_group,
+    GRID_CARD_LABEL_CHARS, GRID_CARD_LABEL_LINES, MAX_GRID_THUMBNAIL_SIZE, MIN_GRID_THUMBNAIL_SIZE,
+    SourceIndexMap, compare_type_groups, explorer_column_width, grid_bind_requests_metadata,
+    grid_card_icon_slot, metadata_fill_position, should_activate_pointer_click, type_groups_of,
+    value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use gtk::{gio, prelude::*};
@@ -95,6 +97,18 @@ fn alternate_modes_request_missing_metadata_for_bound_entries() {
     assert_eq!(metadata_fill_position(Some(7), &entry, true), Some(7));
     entry.mode = MetadataValue::Known(0o100644);
     assert_eq!(metadata_fill_position(Some(7), &entry, true), None);
+}
+
+#[test]
+fn grid_cards_keep_a_uniform_icon_slot_and_two_line_label() {
+    assert_eq!(grid_card_icon_slot(64), 64);
+    assert_eq!(grid_card_icon_slot(128), 128);
+    assert_eq!(grid_card_icon_slot(26), MIN_GRID_THUMBNAIL_SIZE);
+    assert_eq!(grid_card_icon_slot(512), MAX_GRID_THUMBNAIL_SIZE);
+    assert_eq!(GRID_CARD_LABEL_LINES, 2);
+    assert_eq!(GRID_CARD_LABEL_CHARS, 16);
+    assert!(!grid_bind_requests_metadata(true));
+    assert!(grid_bind_requests_metadata(false));
 }
 
 #[test]

@@ -28,6 +28,8 @@ const GRID_CARD_SPACING: i32 = 4;
 const FALLBACK_GRID_COLUMN_WIDTH: i32 = 160;
 const MIN_GRID_THUMBNAIL_SIZE: i32 = 64;
 const MAX_GRID_THUMBNAIL_SIZE: i32 = 256;
+const GRID_CARD_LABEL_CHARS: i32 = 16;
+const GRID_CARD_LABEL_LINES: i32 = 2;
 
 #[derive(Clone)]
 struct ExplorerColumnLayout {
@@ -1544,12 +1546,13 @@ fn build_grid_view(
     let transfers_for_setup = context.transfer.clone();
     let peek_for_setup = context.state.clone();
     let active_for_setup = context.active_new_entry.clone();
+    let thumbnail_size_for_setup = context.thumbnail_size.clone();
     let folder_location = context.browser.location_at(depth);
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
         };
-        let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let card = gtk::Box::new(gtk::Orientation::Vertical, 3);
         card.add_css_class("grid-card");
         card.add_css_class("file-appear");
         let weak_card = card.downgrade();
@@ -1560,26 +1563,19 @@ fn build_grid_view(
         });
         card.set_halign(gtk::Align::Center);
         card.set_valign(gtk::Align::Center);
-        let centered = gtk::CenterBox::new();
-        centered.set_orientation(gtk::Orientation::Vertical);
-        centered.set_vexpand(true);
-        let item_content = gtk::Box::new(gtk::Orientation::Vertical, 3);
-        item_content.set_halign(gtk::Align::Center);
-        item_content.set_valign(gtk::Align::Center);
         let icon = gtk::Image::new();
-        icon.set_pixel_size(26);
+        super::thumbnail::ensure_image_slot(
+            &icon,
+            grid_card_icon_slot(thumbnail_size_for_setup.get()),
+        );
         icon.add_css_class("grid-card-icon");
         let label = gtk::Label::new(None);
         label.add_css_class("grid-card-label");
         label.add_css_class("alternate-rename-label");
-        label.set_justify(gtk::Justification::Center);
-        label.set_width_chars(12);
-        label.set_max_width_chars(16);
-        label.set_wrap(true);
-        label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+        configure_grid_card_label(&label);
         let field = gtk::Entry::new();
         field.add_css_class("inline-rename");
-        field.set_width_chars(12);
+        field.set_width_chars(GRID_CARD_LABEL_CHARS);
         field.set_visible(false);
         field.connect_changed(|field| {
             super::browser::update_basename_validation(field);
@@ -1609,11 +1605,9 @@ fn build_grid_view(
             );
         });
         field.add_controller(focus);
-        item_content.append(&icon);
-        item_content.append(&label);
-        item_content.append(&field);
-        centered.set_center_widget(Some(&item_content));
-        card.append(&centered);
+        card.append(&icon);
+        card.append(&label);
+        card.append(&field);
         install_preview_click(
             &card,
             item,
@@ -1662,19 +1656,7 @@ fn build_grid_view(
         let Some(card) = item.child().and_downcast::<gtk::Box>() else {
             return;
         };
-        let Some(centered) = card.first_child().and_downcast::<gtk::CenterBox>() else {
-            return;
-        };
-        let Some(item_content) = centered.center_widget().and_downcast::<gtk::Box>() else {
-            return;
-        };
-        let Some(icon) = item_content.first_child().and_downcast::<gtk::Image>() else {
-            return;
-        };
-        let Some(label) = icon.next_sibling().and_downcast::<gtk::Label>() else {
-            return;
-        };
-        let Some(field) = label.next_sibling().and_downcast::<gtk::Entry>() else {
+        let Some((icon, label, field)) = grid_card_parts(&card) else {
             return;
         };
         let source_position = item
@@ -1684,37 +1666,39 @@ fn build_grid_view(
         let entry = browser.as_ref().and_then(|browser| {
             source_position.and_then(|position| browser.entry_at(depth, position))
         });
+        let thumbnail_size = grid_card_icon_slot(thumbnail_size_for_bind.get());
         if let Some(entry) = entry {
             label.set_visible(true);
             field.set_visible(false);
-            set_mode_cut_style(&card, cuts_for_bind.borrow().contains(&entry.location));
             label.set_label(&entry.display_name);
-            label.set_tooltip_text(Some(&entry.display_name));
             let fallback = super::browser::entry_icon(&entry);
-            if scrolling_for_bind.get() {
-                super::thumbnail::show_fallback_icon(&icon, fallback, 26);
-            } else {
+            if grid_bind_requests_metadata(scrolling_for_bind.get()) {
+                set_mode_cut_style(&card, cuts_for_bind.borrow().contains(&entry.location));
+                label.set_tooltip_text(Some(&entry.display_name));
                 super::thumbnail::set_thumbnail_or_icon(
                     &icon,
                     &entry,
                     fallback,
-                    26,
-                    thumbnail_size_for_bind.get(),
+                    thumbnail_size,
+                    thumbnail_size,
                 );
                 if let Some(position) = metadata_fill_position(source_position, &entry, false)
                     && let Some(browser) = browser.as_ref()
                 {
                     browser.request_metadata_fill(depth, position, entry.location.clone());
                 }
+                icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
+            } else {
+                super::thumbnail::show_fallback_icon(&icon, fallback, thumbnail_size);
             }
-            icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
         } else {
-            card.remove_css_class("cut-item");
+            set_mode_cut_style(&card, false);
             let icon_name = if entry_kind_for_bind.get() {
                 crate::assets::icons::FOLDER
             } else {
                 crate::assets::icons::DOCUMENTS
             };
+            super::thumbnail::ensure_image_slot(&icon, thumbnail_size);
             crate::assets::set_primary_icon(&icon, icon_name);
             icon.set_opacity(1.0);
             label.set_visible(false);
@@ -1924,6 +1908,7 @@ fn refresh_grid_expensive_content(context: &GridContext) {
     let Some(sections) = context.sections.upgrade() else {
         return;
     };
+    let cuts = context.cuts.borrow();
     for section in sections.borrow().iter() {
         refresh_grid_section(
             &Rc::downgrade(&context.browser),
@@ -1932,6 +1917,7 @@ fn refresh_grid_expensive_content(context: &GridContext) {
             section,
             context.thumbnail_size.get(),
             true,
+            Some(&cuts),
         );
     }
 }
@@ -1943,7 +1929,7 @@ fn refresh_grid_thumbnail_size(
     section: &PaneSection,
     size: i32,
 ) {
-    refresh_grid_section(browser, depth, source_index, section, size, false);
+    refresh_grid_section(browser, depth, source_index, section, size, false, None);
 }
 
 fn refresh_grid_section(
@@ -1953,25 +1939,21 @@ fn refresh_grid_section(
     section: &PaneSection,
     size: i32,
     request_metadata: bool,
+    cuts: Option<&HashSet<Location>>,
 ) {
     let Some(browser) = browser.upgrade() else {
         return;
     };
+    let size = grid_card_icon_slot(size);
     section.bound_items.borrow().iter().for_each(|bound| {
-        let Some(item) = bound.item.upgrade() else {
-            return;
-        };
         let Some(card) = bound.widget.upgrade().and_downcast::<gtk::Box>() else {
             return;
         };
-        let Some(icon) = card
-            .first_child()
-            .and_downcast::<gtk::CenterBox>()
-            .and_then(|centered| centered.center_widget())
-            .and_downcast::<gtk::Box>()
-            .and_then(|content| content.first_child())
-            .and_downcast::<gtk::Image>()
-        else {
+        let Some((icon, label, _)) = grid_card_parts(&card) else {
+            return;
+        };
+        super::thumbnail::ensure_image_slot(&icon, size);
+        let Some(item) = bound.item.upgrade() else {
             return;
         };
         let Some(position) = item.item().and_then(|value| source_index.of_item(&value)) else {
@@ -1984,16 +1966,45 @@ fn refresh_grid_section(
             &icon,
             &entry,
             super::browser::entry_icon(&entry),
-            26,
+            size,
             size,
         );
-        if request_metadata
-            && let Some(position) = metadata_fill_position(Some(position), &entry, false)
-        {
-            browser.request_metadata_fill(depth, position, entry.location.clone());
+        if request_metadata {
+            label.set_tooltip_text(Some(&entry.display_name));
+            if let Some(cuts) = cuts {
+                set_mode_cut_style(&card, cuts.contains(&entry.location));
+            }
+            if let Some(position) = metadata_fill_position(Some(position), &entry, false) {
+                browser.request_metadata_fill(depth, position, entry.location.clone());
+            }
         }
         icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
     });
+}
+
+fn grid_card_icon_slot(thumbnail_size: i32) -> i32 {
+    thumbnail_size.clamp(MIN_GRID_THUMBNAIL_SIZE, MAX_GRID_THUMBNAIL_SIZE)
+}
+
+fn grid_bind_requests_metadata(scrolling: bool) -> bool {
+    !scrolling
+}
+
+fn configure_grid_card_label(label: &gtk::Label) {
+    label.set_justify(gtk::Justification::Center);
+    label.set_width_chars(GRID_CARD_LABEL_CHARS);
+    label.set_max_width_chars(GRID_CARD_LABEL_CHARS);
+    label.set_lines(GRID_CARD_LABEL_LINES);
+    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    label.set_wrap(true);
+    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+}
+
+fn grid_card_parts(card: &gtk::Box) -> Option<(gtk::Image, gtk::Label, gtk::Entry)> {
+    let icon = card.first_child()?.downcast::<gtk::Image>().ok()?;
+    let label = icon.next_sibling()?.downcast::<gtk::Label>().ok()?;
+    let field = label.next_sibling()?.downcast::<gtk::Entry>().ok()?;
+    Some((icon, label, field))
 }
 
 fn configure_grid_density(pane: &Pane, density: BrowserDensity) {

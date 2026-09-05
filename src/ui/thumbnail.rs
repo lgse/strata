@@ -1058,8 +1058,7 @@ fn known_metadata<T: Copy>(value: &MetadataValue<T>) -> Option<T> {
 fn apply_thumbnail(image: &gtk::Image, bytes: &glib::Bytes, thumbnail_size: i32) {
     if let Ok(texture) = gdk::Texture::from_bytes(bytes) {
         crate::assets::remove_primary_icon(image);
-        image.set_pixel_size(thumbnail_size);
-        image.set_size_request(thumbnail_size, thumbnail_size);
+        ensure_image_slot(image, thumbnail_size);
         image.set_paintable(Some(&texture));
         image.set_opacity(1.0);
     }
@@ -1098,6 +1097,15 @@ pub(super) fn cancel_thumbnails_in(widget: &gtk::Widget) {
     }
 }
 
+pub(super) fn ensure_image_slot(image: &gtk::Image, size: i32) {
+    if image.pixel_size() != size {
+        image.set_pixel_size(size);
+    }
+    if image.width_request() != size || image.height_request() != size {
+        image.set_size_request(size, size);
+    }
+}
+
 fn set_fallback_icon(
     image: &gtk::Image,
     path: Option<&Path>,
@@ -1107,8 +1115,7 @@ fn set_fallback_icon(
     let request = NEXT_REQUEST.fetch_add(1, Ordering::Relaxed);
     let image_id = image.as_ptr() as usize;
     cancel_thumbnail(image_id);
-    image.set_pixel_size(size);
-    image.set_size_request(size, size);
+    ensure_image_slot(image, size);
     if let Some(p) = path {
         let customized = apply_path_customization(image, p, icon);
         register_tracked_icon(image, p, icon, customized);
