@@ -114,9 +114,15 @@ impl Location {
     }
 
     pub fn is_within(&self, other: &Self) -> bool {
-        self.native_path()
-            .zip(other.native_path())
-            .is_some_and(|(path, parent)| path.starts_with(parent))
+        if let Some((path, parent)) = self.native_path().zip(other.native_path()) {
+            return path.starts_with(parent);
+        }
+        let (Some(uri), Some(parent_uri)) = (self.uri_value(), other.uri_value()) else {
+            return false;
+        };
+        let file = gio::File::for_uri(uri);
+        let parent = gio::File::for_uri(parent_uri);
+        file.equal(&parent) || file.has_prefix(&parent)
     }
 
     pub fn compare(&self, other: &Self) -> Ordering {

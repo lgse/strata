@@ -140,8 +140,9 @@ pub enum BrowserEvent {
         moving: bool,
     },
     TransferProgress {
-        completed: usize,
-        total: usize,
+        completed_items: usize,
+        transferred_bytes: u64,
+        total_bytes: Option<u64>,
     },
     TransferFinished {
         moved_locations: Vec<Location>,
@@ -418,6 +419,7 @@ struct SortPlan {
     retry_metadata: bool,
     truncated: bool,
     can_trash: Option<bool>,
+    can_delete: Option<bool>,
 }
 
 enum PublishTerminal {
@@ -433,6 +435,7 @@ enum RemoteTerminal {
         request_id: RequestId,
         truncated: bool,
         can_trash: Option<bool>,
+        can_delete: Option<bool>,
     },
     Failed {
         request_id: RequestId,
@@ -634,6 +637,15 @@ impl Browser {
 
     pub fn can_trash_at(&self, depth: usize) -> Option<bool> {
         self.state.borrow().can_trash_at(depth)
+    }
+
+    pub fn can_delete_at(&self, depth: usize) -> Option<bool> {
+        self.state.borrow().can_delete_at(depth)
+    }
+
+    /// Synchronizes widget focus without changing selection or reopening a directory.
+    pub fn set_active_column(&self, depth: usize) {
+        self.state.borrow_mut().focus_column(depth);
     }
 
     pub fn focus_active(&self) {
@@ -1081,6 +1093,10 @@ impl Browser {
 
     pub fn focused_entry(&self) -> Option<FileEntry> {
         self.focused_item().map(|(_, _, entry)| entry)
+    }
+
+    pub fn selected_positions(&self, depth: usize) -> Vec<usize> {
+        self.state.borrow().selected_positions(depth)
     }
 
     pub fn selected_entries(&self) -> Vec<FileEntry> {
@@ -1557,12 +1573,16 @@ impl Browser {
                 return;
             }
             if let OperationEvent::TransferProgress {
-                completed, total, ..
+                completed_items,
+                transferred_bytes,
+                total_bytes,
+                ..
             } = &event
             {
                 browser.emit(BrowserEvent::TransferProgress {
-                    completed: *completed,
-                    total: *total,
+                    completed_items: *completed_items,
+                    transferred_bytes: *transferred_bytes,
+                    total_bytes: *total_bytes,
                 });
                 return;
             }
@@ -1888,6 +1908,21 @@ impl Browser {
         }
     }
 
+    pub fn extend_visual_selection(&self, depth: usize, focused: usize, order: &[usize]) {
+        let positions = self
+            .state
+            .borrow_mut()
+            .extend_visual_selection(depth, focused, order);
+        if let Some(positions) = positions {
+            self.emit(BrowserEvent::SelectionSetChanged {
+                depth,
+                positions,
+                focused,
+                take_focus: true,
+            });
+        }
+    }
+
     pub fn focus_parent(&self) {
         let focus = self.state.borrow_mut().focus_parent();
         if let Some((depth, position)) = focus {
@@ -1899,6 +1934,15 @@ impl Browser {
         let focus = self.state.borrow_mut().focus_child();
         if let Some((depth, position)) = focus {
             self.emit(BrowserEvent::FocusChanged { depth, position });
+        }
+    }
+
+    pub fn enter_focused_directory(self: &Rc<Self>) {
+        if self
+            .focused_entry()
+            .is_none_or(|entry| entry.is_directory())
+        {
+            self.activate_focused();
         }
     }
 
@@ -2114,11 +2158,12 @@ impl Browser {
                 request_id,
                 truncated,
                 can_trash,
+                can_delete,
             } => {
                 let finished = self
                     .state
                     .borrow_mut()
-                    .finish(request_id, truncated, can_trash);
+                    .finish(request_id, truncated, can_trash, can_delete);
                 if let Some(depth) = finished {
                     self.emit(BrowserEvent::LoadFinished { depth, truncated });
                     self.ensure_sorted_after_load(depth);
@@ -2159,6 +2204,7 @@ impl Browser {
         request_id: RequestId,
         truncated: bool,
         can_trash: Option<bool>,
+        can_delete: Option<bool>,
     ) {
         let staging = self.staging.borrow_mut().remove(&depth);
         let Some(staging) = staging.filter(|staged| staged.request_id == request_id) else {
@@ -2196,6 +2242,7 @@ impl Browser {
                 retry_metadata,
                 truncated,
                 can_trash,
+                can_delete,
             },
         );
     }
@@ -2238,6 +2285,7 @@ impl Browser {
         let staged_preferences = plan.staged_preferences;
         let truncated = plan.truncated;
         let can_trash = plan.can_trash;
+        let can_delete = plan.can_delete;
         let retry_metadata = plan.retry_metadata;
         let sorting = self.sorting.borrow_mut().remove(&depth);
         let Some(sorting) = sorting.filter(|sorting| sorting.request_id == request_id) else {
@@ -2278,11 +2326,13 @@ impl Browser {
             {
                 self.state
                     .borrow_mut()
-                    .finish(request_id, truncated, can_trash);
+                    .finish(request_id, truncated, can_trash, can_delete);
                 self.emit(BrowserEvent::LoadFinished { depth, truncated });
                 self.ensure_sorted_after_load(depth);
             } else {
-                self.resort_installed_column(depth, request_id, current, truncated, can_trash);
+                self.resort_installed_column(
+                    depth, request_id, current, truncated, can_trash, can_delete,
+                );
             }
             return;
         }
@@ -2302,7 +2352,7 @@ impl Browser {
             .unwrap_or(0);
         self.state
             .borrow_mut()
-            .finish(request_id, truncated, can_trash);
+            .finish(request_id, truncated, can_trash, can_delete);
         self.publish_staged(
             depth,
             request_id,
@@ -2323,6 +2373,7 @@ impl Browser {
         preferences: ViewPreferences,
         truncated: bool,
         can_trash: Option<bool>,
+        can_delete: Option<bool>,
     ) {
         let Some(entries) = self
             .state
@@ -2350,6 +2401,7 @@ impl Browser {
                 retry_metadata: false,
                 truncated,
                 can_trash,
+                can_delete,
             },
         );
     }
@@ -3226,6 +3278,7 @@ impl Browser {
                 request_id,
                 truncated,
                 can_trash,
+                can_delete,
             } => {
                 // Bound to a variable first: an if-let scrutinee borrow would stay live
                 // across the flush and panic inside it.
@@ -3234,7 +3287,9 @@ impl Browser {
                 match (target, open) {
                     (Some((depth, true)), Some(_)) => {
                         self.stage_batch(request_id, depth, Vec::new());
-                        self.finish_staged_load(depth, request_id, truncated, can_trash);
+                        self.finish_staged_load(
+                            depth, request_id, truncated, can_trash, can_delete,
+                        );
                     }
                     (Some((depth, _)), Some(_)) => {
                         self.remote_terminals.borrow_mut().insert(
@@ -3243,6 +3298,7 @@ impl Browser {
                                 request_id,
                                 truncated,
                                 can_trash,
+                                can_delete,
                             },
                         );
                         self.flush_coalesced_capped(Some(depth));

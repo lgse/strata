@@ -80,7 +80,7 @@ pub struct PreviewDrawer {
 }
 
 impl PreviewDrawer {
-    pub fn new(provider: Rc<dyn PreviewProvider>) -> Self {
+    pub fn new(provider: Rc<dyn PreviewProvider>, allow_external_open: bool) -> Self {
         let pane = gtk::Box::new(gtk::Orientation::Vertical, 0);
         pane.add_css_class("preview-pane");
         pane.set_size_request(MIN_WIDTH, -1);
@@ -104,6 +104,7 @@ impl PreviewDrawer {
             16,
         )));
         open.add_css_class("preview-header-action");
+        open.set_visible(allow_external_open);
         let print = gtk::Button::builder()
             .tooltip_text("Print")
             .valign(gtk::Align::Center)
