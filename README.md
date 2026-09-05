@@ -55,6 +55,7 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
 - **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares from the location field.
 - **Adaptive appearance:** compact or airy density, six bundled themes, custom themes, and live Omarchy Quattro theme following.
 - **Updates in the app:** opt-in automatic checks, release notes, verified downloads, and in-place installation for release binaries.
+- **System file chooser:** opt in through **Settings → General → System file chooser**, the installer, or `strata --install-portal`; see [portal setup](docs/portal-file-chooser.md).
 
 ## Installation
 
@@ -64,8 +65,8 @@ Arch Linux and Omarchy are the primary supported environments. Current binaries 
 
 The interactive installer detects the Linux architecture, glibc version, Arch
 Linux, and Omarchy 3 or 4. It installs the latest verified stable release and
-offers optional desktop-menu, default-folder-handler, "Open file location", SMB,
-broader image/RAW, and Omarchy keybind integration:
+offers optional desktop-menu, default-folder-handler, "Open file location", system
+file chooser, SMB, broader image/RAW, and Omarchy keybind integration:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lgse/strata/main/install.sh | bash
@@ -92,8 +93,11 @@ curl -fsSL https://raw.githubusercontent.com/lgse/strata/main/install.sh \
 
 Each `--with-*` flag implies `--non-interactive`, and folder association implies
 the desktop entry and `--with-file-manager`. Use `--with-file-manager` by itself
-to enable only "Open file location" integration. Non-interactive package
-installation requires passwordless sudo or cached credentials. Run `./install.sh --help` for the full option list.
+to enable only "Open file location" integration. File chooser replacement is
+separate: use `--with-file-chooser` to opt in, or `--without-file-chooser` to keep
+your current chooser and dismiss the one-time in-app offer. Neither folder
+association nor an unattended install enables the chooser automatically.
+Non-interactive package installation requires passwordless sudo or cached credentials. Run `./install.sh --help` for the full option list.
 
 ### AI-assisted installation
 
@@ -383,6 +387,8 @@ Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-con
 sudo pacman -S --needed base-devel rust bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
   gst-libav gst-plugins-good gtk4 gtksourceview5 poppler-glib
 make start-dev        # rebuild and restart as files change
+make run-dev          # build and launch the main app once
+make run-chooser-dev  # build and open an isolated Save chooser with choices
 ./scripts/check.sh    # format, compile, Clippy, tests, and optional policy checks
 ```
 

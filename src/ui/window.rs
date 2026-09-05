@@ -30,8 +30,8 @@ use super::{
     theme::ThemeManager,
 };
 
-const SIDEBAR_WIDTH: i32 = 208;
-const MIN_SIDEBAR_WIDTH: i32 = 176;
+pub(super) const SIDEBAR_WIDTH: i32 = 208;
+pub(super) const MIN_SIDEBAR_WIDTH: i32 = 176;
 const SIDEBAR_TRANSITION: Duration = Duration::from_millis(300);
 const PINNED_DRAG_PREFIX: &str = "pinned:";
 const STANDARD_PLACE_IDS: &[&str] = &["desktop", "documents", "downloads", "pictures", "videos"];
@@ -117,9 +117,12 @@ fn present_target(
     let controller = browser.browser();
 
     let preview_preferences = theme_manager.clone();
-    let preview = PreviewDrawer::new(Rc::new(LocalPreviewProvider::new(Rc::new(move || {
-        preview_preferences.media_preview_backend()
-    }))));
+    let preview = PreviewDrawer::new(
+        Rc::new(LocalPreviewProvider::new(Rc::new(move || {
+            preview_preferences.media_preview_backend()
+        }))),
+        true,
+    );
     let preview_for_selection = preview.clone();
     let weak_controller = Rc::downgrade(&controller);
     controller.observe(move |event| match event {
@@ -203,7 +206,7 @@ fn present_target(
     content.set_resize_start_child(false);
     content.set_position(SIDEBAR_WIDTH);
     content.set_vexpand(true);
-    let sidebar = build_sidebar(browser.clone(), theme_manager.clone());
+    let sidebar = build_sidebar(browser.clone(), theme_manager.clone(), false);
     let weak_sidebar = Rc::downgrade(&sidebar.state);
     let pinned_places = sidebar.state.pinned_places.clone();
     browser.set_pin_handlers(
@@ -572,6 +575,7 @@ fn present_target(
             "present navigation started"
         );
     });
+    super::portal_preferences::schedule_offer(&window);
     schedule_due_update_check(&theme_manager, &update_notice);
 }
 
@@ -1121,7 +1125,10 @@ fn single_pane_arrow_action(
     }
 }
 
-fn is_browser_navigation_key(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+pub(super) fn is_browser_navigation_key(
+    key: gtk::gdk::Key,
+    modifiers: gtk::gdk::ModifierType,
+) -> bool {
     if modifiers
         .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SUPER_MASK)
     {
@@ -1201,7 +1208,10 @@ fn is_refresh_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) ->
             && matches!(key, gtk::gdk::Key::r | gtk::gdk::Key::R))
 }
 
-fn is_sidebar_focus_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+pub(super) fn is_sidebar_focus_shortcut(
+    key: gtk::gdk::Key,
+    modifiers: gtk::gdk::ModifierType,
+) -> bool {
     modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
         && !modifiers.contains(gtk::gdk::ModifierType::ALT_MASK)
         && matches!(key, gtk::gdk::Key::b | gtk::gdk::Key::B)
@@ -1217,7 +1227,7 @@ fn sidebar_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
     }
 }
 
-fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
+pub(super) fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
     match key {
         gtk::gdk::Key::h => Some(gtk::DirectionType::Left),
         gtk::gdk::Key::j => Some(gtk::DirectionType::Down),
@@ -1227,24 +1237,25 @@ fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
     }
 }
 
-fn visible_modal_layer(window: &gtk::ApplicationWindow) -> Option<gtk::Widget> {
+pub(super) fn visible_modal_layer(window: &impl IsA<gtk::Window>) -> Option<gtk::Widget> {
     let overlay = window.child().and_downcast::<gtk::Overlay>()?;
     let mut child = overlay.first_child();
+    let mut topmost = None;
     while let Some(widget) = child {
-        if widget.is_visible() && widget.has_css_class("app-modal-layer") {
-            return Some(widget);
-        }
         child = widget.next_sibling();
+        if widget.is_visible() && widget.has_css_class("app-modal-layer") {
+            topmost = Some(widget);
+        }
     }
-    None
+    topmost
 }
 
-fn install_modal_focus_trap(window: &gtk::ApplicationWindow) {
+pub(super) fn install_modal_focus_trap(window: &impl IsA<gtk::Window>) {
     window.connect_focus_widget_notify(|window| {
         let Some(layer) = visible_modal_layer(window) else {
             return;
         };
-        let focus_is_inside = gtk::prelude::RootExt::focus(window)
+        let focus_is_inside = gtk::prelude::RootExt::focus(window.as_ref())
             .is_some_and(|focus| focus == layer || focus.is_ancestor(&layer));
         if !focus_is_inside {
             layer.grab_focus();
@@ -1252,7 +1263,7 @@ fn install_modal_focus_trap(window: &gtk::ApplicationWindow) {
     });
 }
 
-fn build_appearance_menu(
+pub(super) fn build_appearance_menu(
     view: &BrowserView,
     controller: &Rc<Browser>,
     preferences: Rc<super::theme::ThemeManager>,
@@ -1502,7 +1513,7 @@ fn append_menu_heading(container: &gtk::Box, text: &str) {
     container.append(&heading);
 }
 
-struct SidebarState {
+pub(super) struct SidebarState {
     widget: gtk::Box,
     view: BrowserView,
     browser: Rc<Browser>,
@@ -1511,11 +1522,12 @@ struct SidebarState {
     place_order: RefCell<Vec<&'static str>>,
     pinned_places: Rc<RefCell<Vec<(Location, String)>>>,
     place_rows: RefCell<Vec<(Location, gtk::Button)>>,
+    local_only: bool,
 }
 
-struct SidebarView {
-    widget: gtk::Widget,
-    state: Rc<SidebarState>,
+pub(super) struct SidebarView {
+    pub(super) widget: gtk::Widget,
+    pub(super) state: Rc<SidebarState>,
     update_notice: gtk::Button,
     update_area: gtk::Box,
     update_label: gtk::Label,
@@ -1523,7 +1535,7 @@ struct SidebarView {
 }
 
 impl SidebarView {
-    fn disconnect(&self) {
+    pub(super) fn disconnect(&self) {
         for handler in self.handlers.take() {
             self.state.volume_monitor.disconnect(handler);
         }
@@ -1548,12 +1560,14 @@ impl SidebarState {
             "Home",
             Location::local(home_directory()),
         );
-        self.append_trash_place();
-        self.append_place(
-            crate::assets::icons::NETWORK,
-            "Network",
-            Location::uri("network:///"),
-        );
+        if !self.local_only {
+            self.append_trash_place();
+            self.append_place(
+                crate::assets::icons::NETWORK,
+                "Network",
+                Location::uri("network:///"),
+            );
+        }
         self.append_separator();
 
         for place in self.place_order.borrow().clone() {
@@ -1561,7 +1575,11 @@ impl SidebarState {
                 && let Some(path) = glib::user_special_dir(directory)
                     .filter(|path| should_show_standard_place(place, path, &home_directory()))
             {
-                self.append_reorderable_place(place, icon, name, Location::local(path));
+                if self.local_only {
+                    self.append_place(icon, name, Location::local(path));
+                } else {
+                    self.append_reorderable_place(place, icon, name, Location::local(path));
+                }
             }
         }
 
@@ -1571,13 +1589,18 @@ impl SidebarState {
             .iter()
             .enumerate()
             .filter(|(_, (location, _))| !is_standard_place_location(location))
+            .filter(|(_, (location, _))| !self.local_only || location.native_path().is_some())
             .map(|(index, (location, name))| (index, location.clone(), name.clone()))
             .collect::<Vec<_>>();
         if !pinned.is_empty() {
             self.append_separator();
             self.append_heading("PINNED");
             for (index, location, name) in pinned {
-                self.append_pinned_place(index, &name, location);
+                if self.local_only {
+                    self.append_place(crate::assets::icons::FOLDER, &name, location);
+                } else {
+                    self.append_pinned_place(index, &name, location);
+                }
             }
         }
     }
@@ -1592,6 +1615,9 @@ impl SidebarState {
             .filter_map(|mount| {
                 let name = mount.name().to_string();
                 let location = location_for_file(&mount.root())?;
+                if self.local_only && location.native_path().is_none() {
+                    return None;
+                }
                 Some((name, location, mount))
             })
             .collect();
@@ -1679,7 +1705,7 @@ impl SidebarState {
         }
     }
 
-    fn focus_active_place(&self) -> bool {
+    pub(super) fn focus_active_place(&self) -> bool {
         let rows = self.place_rows.borrow();
         rows.iter()
             .find(|(_, row)| row.has_css_class("active"))
@@ -2592,7 +2618,11 @@ fn sidebar_update_label(release: &ReleaseMetadata) -> String {
     }
 }
 
-fn build_sidebar(view: BrowserView, theme_manager: Rc<super::theme::ThemeManager>) -> SidebarView {
+pub(super) fn build_sidebar(
+    view: BrowserView,
+    theme_manager: Rc<super::theme::ThemeManager>,
+    local_only: bool,
+) -> SidebarView {
     let widget = gtk::Box::new(gtk::Orientation::Vertical, 2);
     widget.add_css_class("sidebar");
     let scroller = gtk::ScrolledWindow::builder()
@@ -2644,6 +2674,7 @@ fn build_sidebar(view: BrowserView, theme_manager: Rc<super::theme::ThemeManager
         place_order: RefCell::new(place_order),
         pinned_places: Rc::new(RefCell::new(load_pinned_places())),
         place_rows: RefCell::new(Vec::new()),
+        local_only,
     });
 
     let weak = Rc::downgrade(&state);
@@ -2773,7 +2804,7 @@ fn serialize_pinned_places(places: &[(Location, String)]) -> String {
     contents
 }
 
-fn home_directory() -> PathBuf {
+pub(crate) fn home_directory() -> PathBuf {
     env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"))
@@ -2782,7 +2813,7 @@ fn home_directory() -> PathBuf {
 #[cfg(test)]
 mod tests;
 
-fn load_styles() {
+pub(super) fn load_styles() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(include_str!("../style.css"));
 

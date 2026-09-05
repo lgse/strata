@@ -779,6 +779,43 @@ impl NavigationState {
         Some((depth, focused, selected_positions))
     }
 
+    pub fn extend_visual_selection(
+        &mut self,
+        depth: usize,
+        focused: usize,
+        order: &[usize],
+    ) -> Option<Vec<usize>> {
+        let column = self.columns.get_mut(depth)?;
+        let end = order.iter().position(|position| *position == focused)?;
+        let start = column
+            .selection_anchor
+            .as_ref()
+            .and_then(|anchor| {
+                order.iter().position(|position| {
+                    column
+                        .entries
+                        .get(*position)
+                        .is_some_and(|entry| &entry.location == anchor)
+                })
+            })
+            .unwrap_or(end);
+        let positions = order[start.min(end)..=start.max(end)].to_vec();
+        if positions
+            .iter()
+            .any(|position| *position >= column.entries.len())
+        {
+            return None;
+        }
+        column.selection_anchor = Some(column.entries[order[start]].location.clone());
+        column.selected_locations = positions
+            .iter()
+            .map(|position| column.entries[*position].location.clone())
+            .collect();
+        column.selected = Some(focused);
+        self.active_column = Some(depth);
+        Some(positions)
+    }
+
     pub fn selected_positions(&self, depth: usize) -> Vec<usize> {
         let Some(column) = self.columns.get(depth) else {
             return Vec::new();

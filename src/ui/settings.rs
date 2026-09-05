@@ -599,6 +599,7 @@ pub fn build_layer(
         }
     });
     layer.add_controller(click);
+    super::focus_navigation::install(&layer);
     layer
 }
 
@@ -790,9 +791,13 @@ fn general_page(
     }
     preferences.append(&activation_options);
 
+    append_heading(&preferences, "DESKTOP INTEGRATION");
+    let portal_row = super::portal_preferences::settings_row();
+    preferences.append(&portal_row);
+
     (
         scrollable_page(&preferences, None),
-        vec![video_row],
+        vec![video_row, portal_row],
         responsive_activation_rows,
     )
 }

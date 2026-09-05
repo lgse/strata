@@ -122,6 +122,62 @@ fn keyboard_range_selection_extends_and_contracts_from_its_anchor() {
 }
 
 #[test]
+fn visual_ranges_cross_type_groups_and_contract_without_selecting_filtered_entries() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/a.txt", "a.txt"),
+            named_entry("/fixture/b.txt", "b.txt"),
+            named_entry("/fixture/c.txt", "c.txt"),
+            named_entry("/fixture/d.json", "d.json"),
+            named_entry("/fixture/e.json", "e.json"),
+        ],
+    );
+    state.select(0, 4);
+    let visual_order = [3, 4, 0, 2];
+    assert_eq!(
+        state.extend_visual_selection(0, 2, &visual_order),
+        Some(vec![4, 0, 2])
+    );
+    assert_eq!(
+        state.extend_visual_selection(0, 0, &visual_order),
+        Some(vec![4, 0])
+    );
+    assert_eq!(
+        state.extend_visual_selection(0, 4, &visual_order),
+        Some(vec![4])
+    );
+    assert_eq!(
+        state.extend_visual_selection(0, 3, &visual_order),
+        Some(vec![3, 4])
+    );
+    assert_eq!(state.extend_visual_selection(0, 1, &visual_order), None);
+    assert_eq!(state.extend_visual_selection(0, 99, &[4, 99]), None);
+    assert_eq!(state.selected_entries().len(), 2);
+}
+
+#[test]
+fn a_filtered_out_range_anchor_restarts_at_the_visible_target() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/a", "a"),
+            named_entry("/fixture/b", "b"),
+        ],
+    );
+    state.select(0, 0);
+    assert_eq!(state.extend_visual_selection(0, 1, &[1]), Some(vec![1]));
+    assert_eq!(
+        state.extend_visual_selection(0, 0, &[0, 1]),
+        Some(vec![0, 1])
+    );
+}
+
+#[test]
 fn active_path_is_independent_from_the_parent_highlight() {
     let mut state = NavigationState::default();
     state.navigate(location("/fixture"), RequestId(1));
