@@ -6,6 +6,8 @@ mod assets;
 mod build_info;
 mod metrics;
 mod model;
+mod portal;
+mod portal_setup;
 mod sandbox;
 mod sandbox_helper;
 mod services;
@@ -45,6 +47,28 @@ fn main() -> gtk::glib::ExitCode {
         let _volumes = gio::VolumeMonitor::get();
         return gtk::glib::ExitCode::SUCCESS;
     }
+    if arguments.get(1).is_some_and(|value| value == "--portal") {
+        restart_with_local_vfs_if_gvfs_is_unresponsive();
+        return portal::run();
+    }
+    if arguments
+        .get(1)
+        .is_some_and(|value| value == "--install-portal")
+    {
+        return finish_portal_setup(portal_setup::install());
+    }
+    if arguments
+        .get(1)
+        .is_some_and(|value| value == "--dismiss-portal-prompt")
+    {
+        return finish_portal_setup(portal_setup::dismiss_prompt());
+    }
+    if arguments
+        .get(1)
+        .is_some_and(|value| value == "--uninstall-portal")
+    {
+        return finish_portal_setup(portal_setup::uninstall());
+    }
 
     metrics::initialize();
     if let Err(error) = tracing_subscriber::fmt::try_init() {
@@ -82,6 +106,19 @@ fn main() -> gtk::glib::ExitCode {
         ui::present_location(application, location);
     });
     application.run()
+}
+
+fn finish_portal_setup(result: Result<String, String>) -> gtk::glib::ExitCode {
+    match result {
+        Ok(message) => {
+            println!("{message}");
+            gtk::glib::ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            gtk::glib::ExitCode::FAILURE
+        }
+    }
 }
 
 /// Answers "Open file location" from browsers and other desktop apps, which

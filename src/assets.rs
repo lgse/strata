@@ -20,6 +20,7 @@ pub mod icons {
     pub const ARROW_UP: &str = "strata-arrow-up";
     pub const ARROW_UP_NARROW_WIDE: &str = "strata-arrow-up-narrow-wide";
     pub const CHECK: &str = "strata-check";
+    pub const CIRCLE_CHECK: &str = "strata-circle-check";
     pub const CHECK_ON_PRIMARY: &str = "strata-check-on-primary";
     pub const CHEVRON_RIGHT: &str = "strata-chevron-right";
     pub const CLIPBOARD_PASTE: &str = "strata-clipboard-paste";

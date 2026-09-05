@@ -28,6 +28,111 @@ fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
 }
 
 #[test]
+fn plain_single_pane_arrows_move_focus_not_directories() {
+    use super::{BrowserMode, SinglePaneArrow, single_pane_arrow_action};
+    use gtk::gdk::{Key, ModifierType};
+    let plain = ModifierType::empty();
+    assert_eq!(
+        single_pane_arrow_action(BrowserMode::Grid, Key::Left, plain, false, true),
+        Some(SinglePaneArrow::Native)
+    );
+    for mode in [BrowserMode::Grid, BrowserMode::Explorer] {
+        assert_eq!(
+            single_pane_arrow_action(mode, Key::Left, plain, true, true),
+            Some(SinglePaneArrow::Sidebar)
+        );
+        for key in [Key::Up, Key::Down] {
+            assert_eq!(
+                single_pane_arrow_action(mode, key, plain, true, true),
+                Some(SinglePaneArrow::Native)
+            );
+        }
+        for key in [Key::Left, Key::Right, Key::Up] {
+            assert_eq!(
+                single_pane_arrow_action(mode, key, ModifierType::ALT_MASK, true, true),
+                None
+            );
+        }
+        assert_eq!(
+            single_pane_arrow_action(mode, Key::Return, plain, true, true),
+            None
+        );
+    }
+    assert_eq!(
+        single_pane_arrow_action(BrowserMode::Explorer, Key::Right, plain, true, true),
+        Some(SinglePaneArrow::Stay)
+    );
+    assert_eq!(
+        single_pane_arrow_action(BrowserMode::Explorer, Key::Left, plain, true, false),
+        Some(SinglePaneArrow::Stay)
+    );
+    assert_eq!(
+        single_pane_arrow_action(BrowserMode::Grid, Key::Left, plain, true, false),
+        Some(SinglePaneArrow::Native)
+    );
+    assert_eq!(
+        single_pane_arrow_action(BrowserMode::Columns, Key::Left, plain, true, true),
+        None
+    );
+    for modifier in [ModifierType::SHIFT_MASK, ModifierType::CONTROL_MASK] {
+        assert_eq!(
+            single_pane_arrow_action(BrowserMode::Grid, Key::Left, modifier, true, true),
+            Some(SinglePaneArrow::Native)
+        );
+    }
+}
+
+#[test]
+fn sidebar_arrows_and_vim_keys_share_focus_directions() {
+    use gtk::gdk::Key;
+    for (arrow, vim) in [
+        (Key::Left, Key::h),
+        (Key::Right, Key::l),
+        (Key::Up, Key::k),
+        (Key::Down, Key::j),
+    ] {
+        assert_eq!(
+            super::sidebar_focus_direction(arrow),
+            vim_focus_direction(vim)
+        );
+    }
+    assert_eq!(super::sidebar_focus_direction(Key::Return), None);
+}
+
+#[test]
+fn navigation_keys_claim_keyboard_ownership_but_commands_do_not() {
+    use gtk::gdk::{Key, ModifierType};
+    for key in [
+        Key::Up,
+        Key::Down,
+        Key::h,
+        Key::j,
+        Key::k,
+        Key::l,
+        Key::Tab,
+        Key::ISO_Left_Tab,
+        Key::Page_Down,
+        Key::Return,
+    ] {
+        assert!(super::is_browser_navigation_key(key, ModifierType::empty()));
+    }
+    assert!(super::is_browser_navigation_key(
+        Key::Down,
+        ModifierType::SHIFT_MASK
+    ));
+    assert!(super::is_browser_navigation_key(
+        Key::Left,
+        ModifierType::ALT_MASK
+    ));
+    for key in [Key::v, Key::c, Key::x, Key::z, Key::Control_L, Key::Delete] {
+        assert!(!super::is_browser_navigation_key(
+            key,
+            ModifierType::CONTROL_MASK
+        ));
+    }
+}
+
+#[test]
 fn sidebar_update_label_stays_plain_for_a_stable_release() {
     assert_eq!(
         sidebar_update_label(&release("0.6.0", BuildKind::Stable)),
