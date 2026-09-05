@@ -18,6 +18,7 @@ mod shortcut_footer;
 mod theme;
 mod thumbnail;
 mod thumbnail_cache;
+mod top_bar_navigation;
 mod window;
 
 pub use window::{present, present_location, present_reveal};

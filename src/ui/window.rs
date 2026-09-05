@@ -529,11 +529,16 @@ fn present_target(
         view: browser.clone(),
         preferences: theme_manager.clone(),
     };
+    let top_bar = super::top_bar_navigation::TopBarNavigation::new(
+        &header_content,
+        &sidebar.widget,
+        &sidebar_toggle,
+    );
     install_keyboard_navigation(
         &window,
         &browser,
         &sidebar,
-        &sidebar_toggle,
+        &top_bar,
         &preview,
         &type_to_search,
         &shortcuts,
@@ -662,7 +667,7 @@ fn install_keyboard_navigation(
     window: &gtk::ApplicationWindow,
     view: &BrowserView,
     sidebar: &SidebarView,
-    sidebar_toggle: &gtk::ToggleButton,
+    top_bar: &super::top_bar_navigation::TopBarNavigation,
     preview: &PreviewDrawer,
     type_to_search: &TypeToSearch,
     shortcuts: &super::shortcut_footer::ShortcutFooter,
@@ -673,7 +678,8 @@ fn install_keyboard_navigation(
     let view = view.clone();
     let sidebar_state = sidebar.state.clone();
     let sidebar_widget = sidebar.widget.clone();
-    let sidebar_toggle = sidebar_toggle.clone();
+    let sidebar_toggle = top_bar.sidebar_toggle().clone();
+    let top_bar = top_bar.clone();
     let preview = preview.clone();
     let type_to_search = type_to_search.clone();
     let dialog_parent = window.clone();
@@ -747,6 +753,8 @@ fn install_keyboard_navigation(
             w.is::<gtk::Text>() || w.is::<gtk::TextView>() || w.is::<gtk::Entry>()
         });
         if preview.has_video()
+            && !sidebar_has_focus
+            && !top_bar.has_focus()
             && !text_has_focus
             && !alt
             && !control
@@ -888,6 +896,26 @@ fn install_keyboard_navigation(
             }
             return glib::Propagation::Proceed;
         }
+        if top_bar.has_focus() && !text_has_focus && !control && !alt && !shift {
+            match key {
+                gtk::gdk::Key::Left | gtk::gdk::Key::Right => {
+                    top_bar.move_focus(if key == gtk::gdk::Key::Left {
+                        gtk::DirectionType::Left
+                    } else {
+                        gtk::DirectionType::Right
+                    });
+                    return glib::Propagation::Stop;
+                }
+                gtk::gdk::Key::Down => {
+                    if !top_bar.return_to_sidebar() {
+                        browser.focus_active();
+                    }
+                    return glib::Propagation::Stop;
+                }
+                gtk::gdk::Key::Up => return glib::Propagation::Stop,
+                _ => {}
+            }
+        }
         let mut header_left_boundary = false;
         if view.header_actions_have_focus() && !control && !alt {
             match key {
@@ -928,6 +956,8 @@ fn install_keyboard_navigation(
                 if !restored {
                     browser.focus_active();
                 }
+            } else if direction == gtk::DirectionType::Up && !shift {
+                top_bar.move_up_from_sidebar();
             } else {
                 sidebar_widget.child_focus(direction);
             }

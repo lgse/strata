@@ -54,7 +54,9 @@ In Grid and Explorer, plain arrows move interface focus rather than changing dir
 
 Up from the first Grid row or first Explorer item focuses the navigation header, including in empty directories. Left/Right traverse its enabled controls without triggering navigation; Enter/Space activates a control. Down returns to the item you left without changing selection. Left from the header's first control can reach the visible sidebar.
 
-From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it). Up/Down move between places. Empty file views also support this round trip. If the sidebar is hidden, Left does not change directories.
+From the sidebar, Right returns to the item you left (or the current file view if navigation replaced it). Up/Down move between places. Up from Home, the first sidebar row, continues into the **top navigation bar** instead of stopping. Left/Right traverse its enabled controls without activating them; Down returns to the sidebar row you left. If the sidebar is hidden from the top bar, Down returns to the files instead. Empty file views also support these round trips. If the sidebar is hidden, Left in the file view does not change directories.
+
+[Before: sidebar Home](screenshots/291/sidebar-top-bar-before.png) · [After Up: top navigation bar](screenshots/291/sidebar-top-bar.png)
 
 **Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. Columns retain Miller-column arrow navigation. Backspace and the existing Vim directory shortcuts remain available.
 

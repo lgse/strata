@@ -456,6 +456,12 @@ fn navigation_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
         ("← / → in header", "Move between header controls"),
         ("↓ in header", "Return to the files"),
         ("→ in sidebar", "Return to the browser"),
+        ("↑ at sidebar top", "Focus the top navigation bar"),
+        ("← / → in top bar", "Move between top-bar controls"),
+        (
+            "↓ in top bar",
+            "Return to the sidebar, or files when hidden",
+        ),
         ("Alt+← / Alt+→", "Back / forward in history"),
         ("Alt+↑", "Go to the parent folder"),
         ("Alt+Home", "Go to Home"),
