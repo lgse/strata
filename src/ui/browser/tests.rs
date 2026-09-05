@@ -764,6 +764,55 @@ fn pointer_activation_respects_entry_type_click_count_and_modifiers() {
 }
 
 #[test]
+fn column_single_click_folders_activate_on_release_so_drags_can_start() {
+    let activation = ClickActivation {
+        files: ClickCount::Two,
+        folders: ClickCount::One,
+    };
+
+    assert!(!should_activate_column_pointer(
+        ColumnPointerEvent::Press,
+        1,
+        true,
+        activation,
+        false,
+        false,
+        false,
+    ));
+    assert!(should_activate_column_pointer(
+        ColumnPointerEvent::Release {
+            drag_started: false
+        },
+        1,
+        true,
+        activation,
+        false,
+        false,
+        false,
+    ));
+    assert!(!should_activate_column_pointer(
+        ColumnPointerEvent::Release { drag_started: true },
+        1,
+        true,
+        activation,
+        false,
+        false,
+        false,
+    ));
+    assert!(!should_activate_column_pointer(
+        ColumnPointerEvent::Release {
+            drag_started: false
+        },
+        1,
+        false,
+        activation,
+        false,
+        false,
+        false,
+    ));
+}
+
+#[test]
 fn pressing_an_item_in_a_multi_selection_preserves_the_drag_group() {
     assert!(should_preserve_drag_selection(true, 2));
     assert!(should_preserve_drag_selection(true, 8));

@@ -4890,6 +4890,7 @@ impl ViewState {
             });
             row.add_controller(motion);
 
+            let folder_drag_started = Rc::new(Cell::new(false));
             let drag = gtk::DragSource::builder()
                 .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
                 .build();
@@ -4918,7 +4919,9 @@ impl ViewState {
                 file_drag_content(&entries)
             });
             let dragged_row = row.downgrade();
+            let folder_drag_for_begin = folder_drag_started.clone();
             drag.connect_drag_begin(move |_, _| {
+                folder_drag_for_begin.set(true);
                 if let Some(row) = dragged_row.upgrade() {
                     row.add_css_class("dragging");
                 }
@@ -5020,7 +5023,14 @@ impl ViewState {
             let selection_anchor_for_click = mouse_selection_anchor.clone();
             let modified_for_click = modified_selection_for_rows.clone();
             let map_for_click = map_for_hover.clone();
+            let clicked_item_for_release = clicked_item.clone();
+            let selection_for_release = selection_for_click.clone();
+            let map_for_release = map_for_click.clone();
+            let weak_state_for_release = weak_state_for_click.clone();
+            let folder_drag_for_press = folder_drag_started.clone();
+            let folder_drag_for_release = folder_drag_started;
             selection_click.connect_pressed(move |gesture, press_count, _, _| {
+                folder_drag_for_press.set(false);
                 let Some(clicked_item) = clicked_item.upgrade() else {
                     return;
                 };
@@ -5066,16 +5076,15 @@ impl ViewState {
                     (weak_state_for_click.upgrade(), source_position)
                 {
                     let entry = state.browser.entry_at(depth, source_position);
-                    if entry.as_ref().is_some_and(|entry| {
-                        should_activate_single_click(
-                            press_count,
-                            entry.is_directory(),
-                            state.columns_click_activation.get(),
-                            control,
-                            shift,
-                            preserve_group,
-                        )
-                    }) {
+                    if should_activate_column_pointer(
+                        ColumnPointerEvent::Press,
+                        press_count,
+                        entry.as_ref().is_some_and(FileEntry::is_directory),
+                        state.columns_click_activation.get(),
+                        control,
+                        shift,
+                        preserve_group,
+                    ) {
                         gesture.set_state(gtk::EventSequenceState::Claimed);
                         state.browser.activate(depth, source_position);
                     } else if should_preview_pointer_press(
@@ -5088,6 +5097,48 @@ impl ViewState {
                     }) {
                         state.browser.preview(depth, source_position);
                     }
+                }
+            });
+            selection_click.connect_released(move |gesture, press_count, _, _| {
+                let Some(clicked_item) = clicked_item_for_release.upgrade() else {
+                    return;
+                };
+                let position = clicked_item.position();
+                if position == gtk::INVALID_LIST_POSITION {
+                    return;
+                }
+                let modifiers = gesture.current_event_state();
+                let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+                let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+                let preserve_group = !control
+                    && !shift
+                    && should_preserve_drag_selection(
+                        selection_for_release.is_selected(position),
+                        selection_for_release.selection().size(),
+                    );
+                let Some(source_position) = map_for_release.source_position(position) else {
+                    return;
+                };
+                let Some(state) = weak_state_for_release.upgrade() else {
+                    return;
+                };
+                let is_directory = state
+                    .browser
+                    .entry_at(depth, source_position)
+                    .is_some_and(|entry| entry.is_directory());
+                if should_activate_column_pointer(
+                    ColumnPointerEvent::Release {
+                        drag_started: folder_drag_for_release.get(),
+                    },
+                    press_count,
+                    is_directory,
+                    state.columns_click_activation.get(),
+                    control,
+                    shift,
+                    preserve_group,
+                ) {
+                    gesture.set_state(gtk::EventSequenceState::Claimed);
+                    state.browser.activate(depth, source_position);
                 }
             });
             row.add_controller(selection_click);
@@ -7884,6 +7935,12 @@ fn set_location_files_clipboard(locations: &[Location]) -> bool {
     })
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ColumnPointerEvent {
+    Press,
+    Release { drag_started: bool },
+}
+
 fn should_activate_single_click(
     press_count: i32,
     is_directory: bool,
@@ -7898,6 +7955,32 @@ fn should_activate_single_click(
         activation.files
     };
     press_count == 1 && configured == ClickCount::One && !control && !shift && !preserve_group
+}
+
+/// Columns single-click open waits for release. Claiming the press sequence
+/// stops GtkDragSource from starting a folder drag.
+fn should_activate_column_pointer(
+    event: ColumnPointerEvent,
+    press_count: i32,
+    is_directory: bool,
+    activation: ClickActivation,
+    control: bool,
+    shift: bool,
+    preserve_group: bool,
+) -> bool {
+    matches!(
+        event,
+        ColumnPointerEvent::Release {
+            drag_started: false
+        }
+    ) && should_activate_single_click(
+        press_count,
+        is_directory,
+        activation,
+        control,
+        shift,
+        preserve_group,
+    )
 }
 
 fn should_preview_pointer_press(
