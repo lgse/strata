@@ -3877,7 +3877,7 @@ fn install_preview_click(
         } else if press_count == 1
             && enabled.get()
             && !entry.is_directory()
-            && super::browser::entry_supports_quick_preview(&entry)
+            && super::preview::entry_supports_quick_preview(&entry)
         {
             browser.preview(depth, position);
         }

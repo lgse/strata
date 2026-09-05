@@ -165,13 +165,22 @@ fn chooser_async_validation_rejects_remote_locations() {
 }
 
 #[test]
-fn chooser_previews_supported_files_but_not_directories() {
+fn chooser_previews_the_same_supported_types_as_the_main_browser() {
+    for name in [
+        "photo.png",
+        "clip.mp4",
+        "song.ogg",
+        "document.pdf",
+        "notes.txt",
+    ] {
+        assert!(
+            preview_target(Some(entry(name, EntryKind::File))).is_some(),
+            "{name} should be previewable"
+        );
+    }
+    assert!(preview_target(Some(entry("archive.zip", EntryKind::File))).is_none());
     assert!(
-        chooser_preview_target(Some(entry("notes.txt", EntryKind::File))).is_some(),
-        "supported files should be previewable"
-    );
-    assert!(
-        chooser_preview_target(Some(entry("folder", EntryKind::Directory))).is_none(),
+        preview_target(Some(entry("folder.mp4", EntryKind::Directory))).is_none(),
         "folders should remain navigation targets"
     );
 }

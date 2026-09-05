@@ -126,30 +126,7 @@ fn present_target(
         }))),
         true,
     );
-    let preview_for_selection = preview.clone();
-    let weak_controller = Rc::downgrade(&controller);
-    controller.observe(move |event| match event {
-        BrowserEvent::PreviewRequested { entry } => preview_for_selection.show(entry.clone()),
-        BrowserEvent::FocusChanged {
-            depth,
-            position: Some(position),
-        } if preview_for_selection.is_open() => {
-            if let Some(entry) = weak_controller
-                .upgrade()
-                .and_then(|browser| browser.entry_at(*depth, *position))
-            {
-                if entry.is_directory() {
-                    preview_for_selection.close();
-                } else {
-                    preview_for_selection.show(entry);
-                }
-            }
-        }
-        BrowserEvent::FocusChanged { position: None, .. } if preview_for_selection.is_open() => {
-            preview_for_selection.close();
-        }
-        _ => {}
-    });
+    preview.observe_browser(&controller);
 
     let header = gtk::HeaderBar::new();
     header.set_show_title_buttons(false);
