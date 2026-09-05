@@ -26,8 +26,9 @@ use super::{
     copy_new_recursively, copy_new_remote_file_with, copy_recursively, deletion_error_message,
     deletion_error_summary, duplicate_candidate_name, extract_7z_from_reader, extract_tar,
     extract_zip_from_archive, home_trash_entries_at, io_error, is_trash_unsupported_failure,
-    move_local_with, operation_error_summary, parse_copy_suffix, replace_local, replace_local_with,
-    transfer_is_noop, validated_archive_path, validated_child, write_staged_archive,
+    move_local, move_local_with, operation_error_summary, parse_copy_suffix, replace_local,
+    replace_local_with, transfer_is_noop, validated_archive_path, validated_child,
+    write_staged_archive,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
@@ -470,6 +471,105 @@ fn a_successful_move_attempt_is_used_without_falling_back_to_copy() -> Result<()
 }
 
 #[test]
+fn a_plain_move_relocates_the_entry_via_the_hardened_rename_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.txt");
+    let target = root.path().join("target.txt");
+    fs::write(&source, b"payload")?;
+
+    let result = glib::MainContext::default().block_on(move_local(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok());
+    assert!(!source.exists());
+    assert_eq!(fs::read(target)?, b"payload");
+    Ok(())
+}
+
+#[test]
+fn moving_a_directory_into_its_own_child_fails_instead_of_deleting_it() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    fs::create_dir_all(source.join("nested"))?;
+    fs::write(source.join("top.txt"), b"top")?;
+    let target = source.join("nested").join("moved-source");
+
+    let result = glib::MainContext::default().block_on(move_local(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_err());
+    assert_eq!(fs::read(source.join("top.txt"))?, b"top");
+    Ok(())
+}
+
+#[test]
+fn move_rejects_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual_parent = root.path().join("actual");
+    let linked_parent = root.path().join("linked");
+    fs::create_dir(&actual_parent)?;
+    fs::write(actual_parent.join("source.txt"), b"keep")?;
+    std::os::unix::fs::symlink(&actual_parent, &linked_parent)?;
+    let target = root.path().join("target.txt");
+
+    let result = glib::MainContext::default().block_on(move_local(
+        gio::File::for_path(linked_parent.join("source.txt")),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_err());
+    assert_eq!(fs::read(actual_parent.join("source.txt"))?, b"keep");
+    assert!(!target.exists());
+    Ok(())
+}
+
+#[test]
+fn move_rejects_a_symlink_in_the_destinations_parent_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.txt");
+    let actual_destination = root.path().join("actual");
+    let linked_destination = root.path().join("linked");
+    fs::create_dir(&actual_destination)?;
+    fs::write(&source, b"keep")?;
+    std::os::unix::fs::symlink(&actual_destination, &linked_destination)?;
+
+    let result = glib::MainContext::default().block_on(move_local(
+        gio::File::for_path(&source),
+        gio::File::for_path(linked_destination.join("target.txt")),
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_err());
+    assert_eq!(fs::read(&source)?, b"keep");
+    assert!(!actual_destination.join("target.txt").exists());
+    Ok(())
+}
+
+#[test]
 fn cancelling_staging_preserves_the_destination_and_cleans_the_partial_copy()
 -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -561,6 +661,31 @@ fn staged_file_replacement_commits_then_removes_a_moved_source() -> Result<(), B
 }
 
 #[test]
+fn replacing_a_symlink_preserves_link_semantics() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source-link");
+    let target = root.path().join("target-link");
+    std::os::unix::fs::symlink("new-target", &source)?;
+    std::os::unix::fs::symlink("old-target", &target)?;
+
+    let result = glib::MainContext::default().block_on(replace_local(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(fs::read_link(&target)?, Path::new("new-target"));
+    assert_eq!(fs::read_link(&source)?, Path::new("new-target"));
+    Ok(())
+}
+
+#[test]
 fn replacement_move_does_not_delete_a_substituted_source() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -598,6 +723,62 @@ fn replacement_move_does_not_delete_a_substituted_source() -> Result<(), Box<dyn
     assert_eq!(fs::read(target)?, b"replacement");
     assert_eq!(fs::read(source)?, b"new arrival");
     assert_eq!(fs::read(original_source)?, b"replacement");
+    Ok(())
+}
+
+#[test]
+fn replace_rejects_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual_parent = root.path().join("actual");
+    let linked_parent = root.path().join("linked");
+    fs::create_dir(&actual_parent)?;
+    fs::write(actual_parent.join("source.txt"), b"new")?;
+    std::os::unix::fs::symlink(&actual_parent, &linked_parent)?;
+    let target = root.path().join("target.txt");
+    fs::write(&target, b"old")?;
+
+    let mut affected_locations = HashSet::new();
+    let result = glib::MainContext::default().block_on(replace_local(
+        gio::File::for_path(linked_parent.join("source.txt")),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        Some(&mut affected_locations),
+    ));
+
+    assert!(result.is_err());
+    assert_eq!(fs::read(&target)?, b"old");
+    assert_eq!(fs::read(actual_parent.join("source.txt"))?, b"new");
+    Ok(())
+}
+
+#[test]
+fn copy_rejects_a_symlink_higher_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual_root = root.path().join("actual");
+    let linked_root = root.path().join("linked");
+    fs::create_dir_all(actual_root.join("subdir"))?;
+    fs::write(actual_root.join("subdir/source.txt"), b"keep")?;
+    std::os::unix::fs::symlink(&actual_root, &linked_root)?;
+    let target = root.path().join("target.txt");
+
+    let result = glib::MainContext::default().block_on(copy_recursively(
+        gio::File::for_path(linked_root.join("subdir/source.txt")),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_err());
+    assert!(!target.exists());
+    assert_eq!(fs::read(actual_root.join("subdir/source.txt"))?, b"keep");
     Ok(())
 }
 
