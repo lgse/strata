@@ -111,6 +111,8 @@ struct Preferences {
     search_open_files_directly: bool,
     #[serde(default)]
     type_to_search: bool,
+    #[serde(default = "default_enabled")]
+    show_keybinding_hints: bool,
     #[serde(default)]
     reduce_motion: bool,
     #[serde(default = "default_browser_mode")]
@@ -170,6 +172,7 @@ impl Default for Preferences {
             video_preview_backend: default_video_preview_backend(),
             search_open_files_directly: false,
             type_to_search: false,
+            show_keybinding_hints: true,
             reduce_motion: false,
             browser_mode: default_browser_mode(),
             browser_density: default_browser_density(),
@@ -292,6 +295,13 @@ fn default_full_volume() -> f64 {
     1.0
 }
 
+type KeybindingHintsCallback = dyn Fn(&gtk::Widget, bool);
+
+struct KeybindingHintsListener {
+    anchor: glib::WeakRef<gtk::Widget>,
+    refresh: Box<KeybindingHintsCallback>,
+}
+
 pub struct ThemeManager {
     provider: gtk::CssProvider,
     themes: RefCell<Vec<Theme>>,
@@ -300,6 +310,7 @@ pub struct ThemeManager {
     omarchy_monitor: RefCell<Option<gio::FileMonitor>>,
     pending_omarchy_refresh: RefCell<Option<glib::SourceId>>,
     previewing: Cell<bool>,
+    keybinding_hints_listeners: RefCell<Vec<KeybindingHintsListener>>,
 }
 
 impl ThemeManager {
@@ -336,6 +347,7 @@ impl ThemeManager {
             omarchy_monitor: RefCell::new(None),
             pending_omarchy_refresh: RefCell::new(None),
             previewing: Cell::new(false),
+            keybinding_hints_listeners: RefCell::new(Vec::new()),
         });
         manager.install_provider();
         manager.apply_selected();
@@ -505,6 +517,45 @@ impl ThemeManager {
     pub fn set_type_to_search(&self, enabled: bool) {
         self.preferences.borrow_mut().type_to_search = enabled;
         self.save_preferences();
+    }
+
+    pub fn show_keybinding_hints(&self) -> bool {
+        self.preferences.borrow().show_keybinding_hints
+    }
+
+    pub fn set_show_keybinding_hints(&self, enabled: bool) {
+        if self.show_keybinding_hints() == enabled {
+            return;
+        }
+        self.preferences.borrow_mut().show_keybinding_hints = enabled;
+        self.save_preferences();
+        let taken = std::mem::take(&mut *self.keybinding_hints_listeners.borrow_mut());
+        let mut live = notify_live(
+            taken,
+            |listener| listener.anchor.upgrade().is_some(),
+            |listener| {
+                if let Some(anchor) = listener.anchor.upgrade() {
+                    (listener.refresh)(&anchor, enabled);
+                }
+            },
+        );
+        let mut listeners = self.keybinding_hints_listeners.borrow_mut();
+        live.extend(listeners.drain(..));
+        *listeners = live;
+    }
+
+    pub fn on_keybinding_hints_changed(
+        &self,
+        anchor: &impl IsA<gtk::Widget>,
+        refresh: impl Fn(&gtk::Widget, bool) + 'static,
+    ) {
+        refresh(anchor.as_ref(), self.show_keybinding_hints());
+        self.keybinding_hints_listeners
+            .borrow_mut()
+            .push(KeybindingHintsListener {
+                anchor: anchor.as_ref().downgrade(),
+                refresh: Box::new(refresh),
+            });
     }
 
     pub fn reduce_motion(&self) -> bool {

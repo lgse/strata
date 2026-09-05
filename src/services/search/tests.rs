@@ -63,7 +63,7 @@ fn recursive_results_stay_in_the_root_and_rank_nearby_duplicates_first() {
     ] {
         fs::write(path, b"fixture").expect("create matching file");
     }
-    let (search, events) = index_tree(root.clone());
+    let (search, events) = index_tree(root.clone(), false);
     search.query("recording.mp4");
     let SearchEvent::Results { items, .. } =
         wait_for_results(&events).expect("search should return results");
@@ -100,7 +100,7 @@ fn background_index_returns_results_for_queries_received_while_walking() {
     fs::write(root.join("nested/needle.txt"), b"result")
         .expect("the search fixture file should be written");
 
-    let (search, events) = index_tree(root.clone());
+    let (search, events) = index_tree(root.clone(), false);
     search.query("needle");
     let found = (0..20).any(|_| {
         events.recv_timeout(Duration::from_millis(100)).is_ok_and(
@@ -116,11 +116,44 @@ fn background_index_returns_results_for_queries_received_while_walking() {
 }
 
 #[test]
+fn hidden_files_are_indexed_only_when_show_hidden_is_enabled() {
+    let root = unique_fixture_root("hidden-files");
+    fs::create_dir_all(&root).expect("the search fixture should be created");
+    fs::write(root.join(".dotfile-needle"), b"content")
+        .expect("the hidden fixture file should be written");
+
+    let (search, events) = index_tree(root.clone(), false);
+    search.query("needle");
+    let event = wait_for_results(&events);
+    drop(search);
+    let Some(SearchEvent::Results { items, .. }) = event else {
+        panic!("the worker should publish a result for a non-empty query");
+    };
+    assert!(
+        items.is_empty(),
+        "a hidden file should not match while hidden files are not shown"
+    );
+
+    let (search, events) = index_tree(root.clone(), true);
+    search.query("needle");
+    let event = wait_for_results(&events);
+    drop(search);
+    fs::remove_dir_all(&root).expect("the search fixture should be removed");
+    let Some(SearchEvent::Results { items, .. }) = event else {
+        panic!("the worker should publish a result for a non-empty query");
+    };
+    assert!(
+        items.iter().any(|item| item.name == ".dotfile-needle"),
+        "a visible hidden file should match once hidden files are shown"
+    );
+}
+
+#[test]
 fn index_reports_completion_before_a_query_is_entered() {
     let root = unique_fixture_root("empty-query-completion");
     fs::create_dir_all(&root).expect("the search fixture should be created");
 
-    let (search, events) = index_tree(root.clone());
+    let (search, events) = index_tree(root.clone(), false);
     let event = events
         .recv_timeout(Duration::from_secs(2))
         .expect("index completion should be published without a query");
@@ -167,7 +200,8 @@ fn index_reports_truncated_once_the_entry_budget_is_exceeded() {
             .expect("the search fixture file should be written");
     }
 
-    let (search, events) = index_tree_with_budget(root.clone(), 2, 64, Duration::from_secs(10));
+    let (search, events) =
+        index_tree_with_budget(root.clone(), false, 2, 64, Duration::from_secs(10));
     search.query("file");
     let event = wait_for_results(&events);
 
@@ -197,7 +231,7 @@ fn index_reports_truncated_once_the_time_budget_is_exceeded() {
         .expect("the search fixture file should be written");
 
     let (search, events) =
-        index_tree_with_budget(root.clone(), usize::MAX, 64, Duration::from_nanos(1));
+        index_tree_with_budget(root.clone(), false, usize::MAX, 64, Duration::from_nanos(1));
     search.query("needle");
     let event = wait_for_results(&events);
 
@@ -223,7 +257,7 @@ fn index_does_not_descend_past_the_depth_budget() {
         .expect("the deep fixture file should be written");
 
     let (search, events) =
-        index_tree_with_budget(root.clone(), usize::MAX, 1, Duration::from_secs(10));
+        index_tree_with_budget(root.clone(), false, usize::MAX, 1, Duration::from_secs(10));
     search.query("needle");
     let event = wait_for_results(&events);
 
@@ -264,7 +298,7 @@ fn index_reports_truncated_when_the_walker_discards_an_inaccessible_directory() 
     let running_as_root = fs::read_dir(root.join("blocked")).is_ok();
 
     let (search, events) =
-        index_tree_with_budget(root.clone(), usize::MAX, 64, Duration::from_secs(10));
+        index_tree_with_budget(root.clone(), false, usize::MAX, 64, Duration::from_secs(10));
     search.query("needle");
     let event = wait_for_results(&events);
 

@@ -249,7 +249,7 @@ impl SearchDialog {
         self.state.layer.clone().upcast()
     }
 
-    pub fn show(&self, root: PathBuf) {
+    pub fn show(&self, root: PathBuf, show_hidden: bool) {
         self.state.generation.set(self.state.generation.get() + 1);
         let generation = self.state.generation.get();
         self.state.search.borrow_mut().take();
@@ -265,7 +265,7 @@ impl SearchDialog {
         super::browser::animate_in(&self.state.layer);
         self.state.field.grab_focus();
 
-        let (handle, receiver) = index_tree(root);
+        let (handle, receiver) = index_tree(root, show_hidden);
         self.state.search.replace(Some(handle));
         let weak = Rc::downgrade(&self.state);
         let _poll = glib::timeout_add_local(Duration::from_millis(16), move || {

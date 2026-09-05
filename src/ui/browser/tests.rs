@@ -1,5 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod focus;
+mod navigate;
+mod sidebar;
+
 use super::*;
 
 #[test]
@@ -832,38 +836,45 @@ fn pointer_activation_respects_entry_type_click_count_and_modifiers() {
 }
 
 #[test]
+fn deferred_pointer_activation_requires_an_unchanged_item_without_drag_motion() {
+    let location = Location::local("/fixture/folder");
+    let mut pending = PendingPointerActivation {
+        position: 3,
+        location: location.clone(),
+        press: (10.0, 20.0),
+        moved: false,
+    };
+
+    pending.update(18.0, 12.0, 8);
+    assert!(pending.can_activate(&location));
+    assert!(!pending.can_activate(&Location::local("/fixture/replacement")));
+
+    pending.update(19.0, 20.0, 8);
+    assert!(!pending.can_activate(&location));
+}
+
+#[test]
+fn deferred_pointer_activation_remembers_prior_drag_motion() {
+    let location = Location::local("/fixture/folder");
+    let mut pending = PendingPointerActivation {
+        position: 3,
+        location: location.clone(),
+        press: (10.0, 20.0),
+        moved: false,
+    };
+
+    pending.update(10.0, 29.0, 8);
+    pending.update(10.0, 20.0, 8);
+
+    assert!(!pending.can_activate(&location));
+}
+
+#[test]
 fn pressing_an_item_in_a_multi_selection_preserves_the_drag_group() {
     assert!(should_preserve_drag_selection(true, 2));
     assert!(should_preserve_drag_selection(true, 8));
     assert!(!should_preserve_drag_selection(true, 1));
     assert!(!should_preserve_drag_selection(false, 4));
-}
-
-#[test]
-fn paste_prefers_the_hovered_pane_then_the_deepest_pane() {
-    assert_eq!(
-        paste_destination_depth(BrowserMode::Columns, Some(1), Some(2), 3),
-        Some(1)
-    );
-    assert_eq!(
-        paste_destination_depth(BrowserMode::Columns, None, Some(1), 3),
-        Some(2)
-    );
-    assert_eq!(
-        paste_destination_depth(BrowserMode::Columns, Some(4), Some(1), 3),
-        Some(2)
-    );
-    assert_eq!(
-        paste_destination_depth(BrowserMode::Columns, None, None, 0),
-        None
-    );
-}
-
-#[test]
-fn single_pane_paste_uses_the_active_browser_depth() {
-    for mode in [BrowserMode::Grid, BrowserMode::Explorer] {
-        assert_eq!(paste_destination_depth(mode, None, Some(2), 0), Some(2));
-    }
 }
 
 #[test]
@@ -873,24 +884,6 @@ fn new_folder_prefers_the_focused_pane_then_falls_back_safely() {
     assert_eq!(new_folder_destination_depth(Some(5), Some(1), 3), Some(1));
     assert_eq!(new_folder_destination_depth(None, None, 3), Some(2));
     assert_eq!(new_folder_destination_depth(None, None, 0), None);
-}
-
-#[test]
-fn open_terminal_prefers_the_hovered_pane_then_falls_back_safely() {
-    assert_eq!(
-        terminal_destination_depth(Some(1), Some(0), Some(2), 3),
-        Some(1)
-    );
-    assert_eq!(
-        terminal_destination_depth(None, Some(0), Some(2), 3),
-        Some(0)
-    );
-    assert_eq!(
-        terminal_destination_depth(Some(4), Some(5), Some(1), 3),
-        Some(1)
-    );
-    assert_eq!(terminal_destination_depth(None, None, None, 3), Some(2));
-    assert_eq!(terminal_destination_depth(None, None, None, 0), None);
 }
 
 #[test]
@@ -1721,6 +1714,7 @@ fn notify_filter_query_skips_unchanged_folded_text() {
 }
 
 #[test]
+#[ignore = "requires a mapped GTK window; run this test alone"]
 fn seeded_filter_keeps_first_character_when_typing_continues() {
     const CHILD: &str = "STRATA_SEEDED_FILTER_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
@@ -1730,6 +1724,7 @@ fn seeded_filter_keeps_first_character_when_typing_continues() {
         .args([
             "--exact",
             "ui::browser::tests::seeded_filter_keeps_first_character_when_typing_continues",
+            "--ignored",
         ])
         .env(CHILD, "1")
         .status()

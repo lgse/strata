@@ -643,6 +643,15 @@ impl Browser {
         self.state.borrow().can_delete_at(depth)
     }
 
+    /// Synchronizes widget focus without changing selection or reopening a directory.
+    pub fn set_active_column(&self, depth: usize) {
+        self.state.borrow_mut().focus_column(depth);
+    }
+
+    pub fn select_first_on_load(&self, depth: usize) {
+        self.state.borrow_mut().select_first_on_load(depth);
+    }
+
     pub fn focus_active(&self) {
         let focus = self.state.borrow().active_focus();
         if let Some((depth, position)) = focus {
@@ -1088,6 +1097,10 @@ impl Browser {
 
     pub fn focused_entry(&self) -> Option<FileEntry> {
         self.focused_item().map(|(_, _, entry)| entry)
+    }
+
+    pub fn selected_positions(&self, depth: usize) -> Vec<usize> {
+        self.state.borrow().selected_positions(depth)
     }
 
     pub fn selected_entries(&self) -> Vec<FileEntry> {
@@ -1899,6 +1912,21 @@ impl Browser {
         }
     }
 
+    pub fn extend_visual_selection(&self, depth: usize, focused: usize, order: &[usize]) {
+        let positions = self
+            .state
+            .borrow_mut()
+            .extend_visual_selection(depth, focused, order);
+        if let Some(positions) = positions {
+            self.emit(BrowserEvent::SelectionSetChanged {
+                depth,
+                positions,
+                focused,
+                take_focus: true,
+            });
+        }
+    }
+
     pub fn focus_parent(&self) {
         let focus = self.state.borrow_mut().focus_parent();
         if let Some((depth, position)) = focus {
@@ -1910,6 +1938,15 @@ impl Browser {
         let focus = self.state.borrow_mut().focus_child();
         if let Some((depth, position)) = focus {
             self.emit(BrowserEvent::FocusChanged { depth, position });
+        }
+    }
+
+    pub fn enter_focused_directory(self: &Rc<Self>) {
+        if self
+            .focused_entry()
+            .is_none_or(|entry| entry.is_directory())
+        {
+            self.activate_focused();
         }
     }
 
