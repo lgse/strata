@@ -1754,7 +1754,7 @@ fn build_grid_view(
             if label.text().as_deref() != Some(entry.display_name.as_str()) {
                 label.set_text(Some(&entry.display_name));
             }
-            if grid_bind_requests_metadata(scrolling_for_bind.get()) {
+            if !scrolling_for_bind.get() {
                 set_mode_cut_style(&card, cuts_for_bind.borrow().contains(&entry.location));
                 label.set_tooltip_text(Some(&entry.display_name));
                 super::thumbnail::set_thumbnail_or_icon(
@@ -2087,10 +2087,6 @@ fn ensure_grid_card_slot(card: &gtk::Box, thumbnail_size: i32) {
     if card.width_request() != width || card.height_request() != height {
         card.set_size_request(width, height);
     }
-}
-
-fn grid_bind_requests_metadata(scrolling: bool) -> bool {
-    !scrolling
 }
 
 fn configure_grid_card_label(label: &gtk::Inscription) {

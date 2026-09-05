@@ -2,9 +2,8 @@
 
 use super::{
     BrowserMode, ClickActivation, ClickCount, EXPLORER_COLUMN_MIN_WIDTHS, EXPLORER_COLUMN_WIDTHS,
-    GRID_CARD_LABEL_CHARS, GRID_CARD_LABEL_LINE_PX, GRID_CARD_LABEL_LINES, MAX_GRID_THUMBNAIL_SIZE,
-    MIN_GRID_THUMBNAIL_SIZE, SourceIndexMap, compare_type_groups, explorer_column_width,
-    grid_bind_requests_metadata, grid_card_extent, grid_card_icon_slot, metadata_fill_position,
+    MAX_GRID_THUMBNAIL_SIZE, MIN_GRID_THUMBNAIL_SIZE, SourceIndexMap, compare_type_groups,
+    explorer_column_width, grid_card_extent, grid_card_icon_slot, metadata_fill_position,
     scroll_delta_for_unit, should_activate_pointer_click, type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
@@ -101,29 +100,28 @@ fn alternate_modes_request_missing_metadata_for_bound_entries() {
 
 #[test]
 fn grid_cards_keep_a_uniform_icon_slot_and_two_line_label() {
-    assert_eq!(grid_card_icon_slot(64), 64);
-    assert_eq!(grid_card_icon_slot(128), 128);
     assert_eq!(grid_card_icon_slot(26), MIN_GRID_THUMBNAIL_SIZE);
+    assert_eq!(grid_card_icon_slot(128), 128);
     assert_eq!(grid_card_icon_slot(512), MAX_GRID_THUMBNAIL_SIZE);
-    assert_eq!(GRID_CARD_LABEL_LINES, 2);
-    assert_eq!(GRID_CARD_LABEL_CHARS, 16);
-    let (width, height) = grid_card_extent(64);
-    assert!(width >= grid_card_icon_slot(64));
-    assert!(height >= grid_card_icon_slot(64) + GRID_CARD_LABEL_LINES * GRID_CARD_LABEL_LINE_PX);
-    let (wide, tall) = grid_card_extent(256);
-    assert!(wide >= 256);
-    assert!(tall > height);
-    assert!(!grid_bind_requests_metadata(true));
-    assert!(grid_bind_requests_metadata(false));
+    assert_eq!(grid_card_extent(26), grid_card_extent(64));
+    assert_eq!(grid_card_extent(64), (156, 107));
+    assert_eq!(grid_card_extent(128), (156, 171));
+    assert_eq!(grid_card_extent(256), (256, 299));
+    assert_eq!(grid_card_extent(512), grid_card_extent(256));
 }
 
 #[test]
 fn grid_scroll_maps_a_wheel_notch_from_page_size() {
-    let step = scroll_delta_for_unit(1.0, 1000.0, gtk::gdk::ScrollUnit::Wheel);
-    assert!((step - 1000.0_f64.powf(2.0 / 3.0)).abs() < 1e-9);
+    let wheel = scroll_delta_for_unit(1.0, 1000.0, gtk::gdk::ScrollUnit::Wheel);
+    assert!((wheel - 100.0).abs() < 1e-9);
+    assert!(scroll_delta_for_unit(1.0, 8000.0, gtk::gdk::ScrollUnit::Wheel) > wheel);
     assert_eq!(
         scroll_delta_for_unit(4.0, 100.0, gtk::gdk::ScrollUnit::Surface),
         10.0
+    );
+    assert_eq!(
+        scroll_delta_for_unit(1.0, 50.0, gtk::gdk::ScrollUnit::Surface),
+        scroll_delta_for_unit(1.0, 999.0, gtk::gdk::ScrollUnit::Surface)
     );
 }
 

@@ -412,7 +412,7 @@ fn set_thumbnail_for_path(request: ThumbnailRequest<'_>) {
         }
         None => {}
     }
-    let (image_id, request_id) = if should_paint_fallback(request.image.paintable().is_some()) {
+    let (image_id, request_id) = if request.image.paintable().is_none() {
         set_fallback_icon(
             request.image,
             Some(request.path),
@@ -1129,10 +1129,6 @@ pub(super) fn ensure_image_slot(image: &gtk::Image, size: i32) {
     if image.width_request() != size || image.height_request() != size {
         image.set_size_request(size, size);
     }
-}
-
-fn should_paint_fallback(has_content: bool) -> bool {
-    !has_content
 }
 
 fn prepare_thumbnail_target(image: &gtk::Image, size: i32) -> (usize, u64) {
