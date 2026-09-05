@@ -306,6 +306,39 @@ impl FileSource for FakeFileSource {
     }
 }
 
+/// Unlike `FakeFileSource`, returns a "leaf" entry whose location is derived from the
+/// requested directory, so tests can tell which column's entries they actually got back.
+struct DepthAwareFileSource;
+
+impl FileSource for DepthAwareFileSource {
+    fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
+        Ok(())
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        let location = Location::local(format!("{}/leaf", request.location.display_path()));
+        emit(DirectoryEvent::Batch {
+            request_id: request.id,
+            entries: vec![FileEntry {
+                location,
+                native_name: OsString::from("leaf"),
+                display_name: "leaf".into(),
+                kind: EntryKind::File,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
+                mode: MetadataValue::Unknown,
+            }],
+        });
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+            truncated: false,
+            can_trash: None,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
 struct TrashFileSource;
 
 impl FileSource for TrashFileSource {
@@ -1225,10 +1258,31 @@ fn deletion_targets_the_entered_folder_when_the_child_has_no_selection() {
     browser.select(0, 0);
     browser.descend(0, Location::local("/fixture/child"));
 
-    let entries = browser.deletion_entries();
+    let entries = browser.deletion_entries(None);
 
     assert_eq!(entries.len(), 1);
     assert_eq!(entries[0].location, Location::local("/fixture/child"));
+}
+
+#[test]
+fn deletion_entries_prefer_an_explicitly_focused_pane_over_the_model_active_depth() {
+    let browser = Browser::new(Rc::new(DepthAwareFileSource));
+    browser.navigate(Location::local("/fixture"));
+    browser.select(0, 0);
+    browser.descend(0, Location::local("/fixture/child"));
+    browser.select(1, 0);
+
+    // The model's own bookkeeping has moved on to the child column...
+    assert_eq!(
+        browser.deletion_entries(None)[0].location,
+        Location::local("/fixture/child/leaf")
+    );
+    // ...but a caller that knows keyboard focus is still on the parent column must
+    // have its selection there honored instead.
+    assert_eq!(
+        browser.deletion_entries(Some(0))[0].location,
+        Location::local("/fixture/leaf")
+    );
 }
 
 #[test]

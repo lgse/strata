@@ -1039,13 +1039,13 @@ impl BrowserView {
 
     pub fn confirm_delete(&self, permanent: bool) -> bool {
         self.state.sync_mode_selection();
-        let entries = self.state.browser.deletion_entries();
+        let focused_depth = self.state.focused_column_depth();
+        let depth = delete_target_depth(focused_depth, self.state.browser.active_depth());
+        let entries = self.state.browser.deletion_entries(depth);
         if entries.is_empty() {
             return false;
         }
-        let in_trash = self
-            .state
-            .focused_column_depth()
+        let in_trash = focused_depth
             .and_then(|depth| self.state.browser.location_at(depth))
             .or_else(|| self.state.browser.active_location())
             .as_ref()
@@ -8029,6 +8029,13 @@ fn new_folder_destination_depth(
         .filter(|depth| *depth < pane_count)
         .or_else(|| active.filter(|depth| *depth < pane_count))
         .or_else(|| pane_count.checked_sub(1))
+}
+
+/// Delete must act on the pane the keyboard is actually in, not wherever the model's
+/// bookkeeping last landed; falling back to `active` only when nothing is focused
+/// (e.g. a single-pane mode) keeps the destructive command aimed at what the user sees.
+fn delete_target_depth(focused: Option<usize>, active: Option<usize>) -> Option<usize> {
+    focused.or(active)
 }
 
 fn terminal_destination_depth(

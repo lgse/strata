@@ -1087,14 +1087,24 @@ impl Browser {
         self.state.borrow().selected_entries()
     }
 
-    pub fn deletion_entries(&self) -> Vec<FileEntry> {
+    /// `depth` should be the pane that actually holds keyboard focus, when the caller
+    /// knows it; the model's own `active_depth` can lag behind it (e.g. a stale
+    /// selection left over in another column), which would otherwise point a
+    /// destructive action away from where the user is actually looking.
+    pub fn deletion_entries(&self, depth: Option<usize>) -> Vec<FileEntry> {
         let state = self.state.borrow();
-        let selected = state.selected_entries();
-        if !selected.is_empty() {
-            return selected;
+        let depth = depth.or_else(|| state.active_depth());
+        if let Some(depth) = depth {
+            let positions = state.selected_positions(depth);
+            if !positions.is_empty() {
+                return positions
+                    .into_iter()
+                    .filter_map(|position| state.entry_at(depth, position))
+                    .collect();
+            }
         }
 
-        let Some(parent_depth) = state.active_depth().and_then(|depth| depth.checked_sub(1)) else {
+        let Some(parent_depth) = depth.and_then(|depth| depth.checked_sub(1)) else {
             return Vec::new();
         };
         let Some(position) = state.active_child_position(parent_depth) else {

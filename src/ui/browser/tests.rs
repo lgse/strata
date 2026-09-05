@@ -828,6 +828,13 @@ fn new_folder_prefers_the_focused_pane_then_falls_back_safely() {
 }
 
 #[test]
+fn delete_prefers_the_focused_pane_then_falls_back_to_the_active_depth() {
+    assert_eq!(delete_target_depth(Some(0), Some(1)), Some(0));
+    assert_eq!(delete_target_depth(None, Some(1)), Some(1));
+    assert_eq!(delete_target_depth(None, None), None);
+}
+
+#[test]
 fn open_terminal_prefers_the_hovered_pane_then_falls_back_safely() {
     assert_eq!(
         terminal_destination_depth(Some(1), Some(0), Some(2), 3),
