@@ -111,6 +111,7 @@ impl FileSource for WatchingFileSource {
             request_id: request.id,
             truncated: false,
             can_trash: None,
+            can_delete: None,
         });
         LoadHandle::new(|| {})
     }
@@ -187,6 +188,7 @@ impl FileSource for RetryFileSource {
                 request_id: request.id,
                 truncated: false,
                 can_trash: None,
+                can_delete: None,
             });
         }
         LoadHandle::new(|| {})
@@ -244,6 +246,7 @@ impl FileSource for FilePreviewSource {
             request_id: request.id,
             truncated: false,
             can_trash: None,
+            can_delete: None,
         });
         LoadHandle::new(|| {})
     }
@@ -273,6 +276,7 @@ impl FileSource for RestoredSortingSource {
             request_id: request.id,
             truncated: false,
             can_trash: None,
+            can_delete: None,
         });
         LoadHandle::new(|| {})
     }
@@ -301,6 +305,7 @@ impl FileSource for FakeFileSource {
             request_id: request.id,
             truncated: false,
             can_trash: None,
+            can_delete: None,
         });
         LoadHandle::new(|| {})
     }
@@ -331,6 +336,7 @@ impl FileSource for TrashFileSource {
             request_id: request.id,
             truncated: false,
             can_trash: None,
+            can_delete: None,
         });
         LoadHandle::new(|| {})
     }
@@ -351,6 +357,7 @@ impl FileSource for CountingFileSource {
             request_id: request.id,
             truncated: false,
             can_trash: None,
+            can_delete: None,
         });
         LoadHandle::new(|| {})
     }
@@ -1995,6 +2002,7 @@ impl FileSource for SortFillSource {
             request_id: request.id,
             truncated: false,
             can_trash: None,
+            can_delete: None,
         });
         LoadHandle::new(|| {})
     }
@@ -2133,6 +2141,7 @@ fn load_finish_applies_rows_queued_behind_the_count_threshold() {
         request_id,
         truncated: false,
         can_trash: None,
+        can_delete: None,
     });
 
     let names: Vec<_> = browser.state.borrow().columns[0]
@@ -2181,6 +2190,7 @@ fn remote_load_finishes_only_after_every_queued_row_is_applied() {
         request_id,
         truncated: false,
         can_trash: None,
+        can_delete: None,
     });
 
     assert!(
@@ -2413,6 +2423,7 @@ impl FileSource for ScriptedSource {
             request_id: request.id,
             truncated: false,
             can_trash: None,
+            can_delete: None,
         });
         LoadHandle::new(|| {})
     }
@@ -2826,6 +2837,7 @@ fn refresh_drops_staging_and_its_sort() {
         request_id,
         truncated: false,
         can_trash: None,
+        can_delete: None,
     });
     assert_eq!(replaced_count(&events), 1);
     assert_eq!(
@@ -2863,6 +2875,7 @@ fn close_column_clears_the_truncated_depth() {
         request_id,
         truncated: false,
         can_trash: None,
+        can_delete: None,
     });
 
     browser.descend(0, Location::local("/fixture/sub"));
@@ -2875,6 +2888,7 @@ fn close_column_clears_the_truncated_depth() {
         request_id: sub_id,
         truncated: false,
         can_trash: None,
+        can_delete: None,
     });
     let published = replaced_count(&events);
     assert_eq!(published, 2);
@@ -3196,6 +3210,7 @@ fn native_initial_load_publishes_sorted_once() {
         request_id,
         truncated: false,
         can_trash: None,
+        can_delete: None,
     });
     assert_eq!(replaced_count(&events), 1);
     assert_eq!(
@@ -3221,6 +3236,7 @@ fn empty_native_initial_load_finishes_without_a_batch() {
         request_id,
         truncated: false,
         can_trash: None,
+        can_delete: None,
     });
 
     assert_eq!(replaced_count(&events), 1);
@@ -3261,6 +3277,7 @@ fn incomplete_native_metadata_uses_name_order_until_a_full_retry_finishes() {
         request_id,
         truncated: false,
         can_trash: None,
+        can_delete: None,
     });
 
     assert_eq!(
@@ -3309,6 +3326,7 @@ fn staged_load_reconciles_monitor_deltas_without_resurrection() {
         request_id,
         truncated: false,
         can_trash: None,
+        can_delete: None,
     });
     assert_eq!(
         column_names(&browser, 0),
@@ -3448,6 +3466,7 @@ fn staged_sorts_order_every_key_in_both_directions() {
             request_id,
             truncated: false,
             can_trash: None,
+            can_delete: None,
         });
         assert_eq!(
             column_names(&browser, 0),
@@ -3489,6 +3508,7 @@ fn large_load_streams_prefix_then_tails_with_terminal_last() {
         request_id,
         truncated: false,
         can_trash: None,
+        can_delete: None,
     });
     pump_until(|| {
         events
@@ -3566,6 +3586,7 @@ fn remote_rows_flush_within_the_latency_bound() {
         request_id,
         truncated: false,
         can_trash: None,
+        can_delete: None,
     });
     assert!(
         events
@@ -3611,6 +3632,7 @@ fn resort_after_mid_load_preference_change_republishes() {
             retry_metadata: false,
             truncated: false,
             can_trash: None,
+            can_delete: None,
         },
     );
     assert_eq!(
@@ -3662,6 +3684,7 @@ impl FileSource for MixedPeekFileSource {
             request_id: request.id,
             truncated: false,
             can_trash: None,
+            can_delete: None,
         });
         LoadHandle::new(|| {})
     }

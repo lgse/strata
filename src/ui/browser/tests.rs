@@ -112,6 +112,54 @@ fn file_sizes_use_compact_decimal_units() {
 }
 
 #[test]
+fn transfer_progress_reports_a_byte_fraction_when_the_total_is_known() {
+    assert_eq!(
+        transfer_progress_status(0, 2, 750, Some(1_000)),
+        ("75%".to_owned(), Some(0.75))
+    );
+    assert_eq!(
+        transfer_progress_status(1, 2, 1_500, Some(1_000)),
+        ("100%".to_owned(), Some(1.0))
+    );
+    assert_eq!(
+        transfer_progress_status(0, 2, 1, Some(1_000)),
+        ("1%".to_owned(), Some(0.001))
+    );
+}
+
+#[test]
+fn zero_byte_transfer_progress_tracks_completed_items() {
+    assert_eq!(
+        transfer_progress_status(0, 2, 0, Some(0)),
+        ("0%".to_owned(), Some(0.0))
+    );
+    assert_eq!(
+        transfer_progress_status(1, 2, 0, Some(0)),
+        ("50%".to_owned(), Some(0.5))
+    );
+    assert_eq!(
+        transfer_progress_status(2, 2, 0, Some(0)),
+        ("100%".to_owned(), Some(1.0))
+    );
+    assert_eq!(
+        transfer_progress_status(0, 0, 0, Some(0)),
+        ("Preparing…".to_owned(), None)
+    );
+}
+
+#[test]
+fn transfer_progress_is_indeterminate_when_the_total_is_unknown() {
+    assert_eq!(
+        transfer_progress_status(0, 2, 0, None),
+        ("Preparing…".to_owned(), None)
+    );
+    assert_eq!(
+        transfer_progress_status(0, 2, 1_200, None),
+        ("1.2 kB copied".to_owned(), None)
+    );
+}
+
+#[test]
 fn an_empty_name_is_not_flagged_as_an_error() {
     assert!(basename_field_error("bad/name").is_some());
     assert!(
@@ -1517,6 +1565,27 @@ fn move_to_trash_stays_visible_inside_trash_regardless_of_can_trash() {
     // label; an ordinary location's Trash support is irrelevant there.
     assert!(move_to_trash_is_visible(true, Some(false)));
     assert!(move_to_trash_is_visible(true, None));
+}
+
+#[test]
+fn permanently_delete_hides_only_for_a_confirmed_unsupported_location() {
+    assert!(!permanently_delete_is_visible(false, Some(false)));
+}
+
+#[test]
+fn permanently_delete_shows_for_a_confirmed_supported_location() {
+    assert!(permanently_delete_is_visible(false, Some(true)));
+}
+
+#[test]
+fn permanently_delete_defaults_to_visible_before_the_check_resolves() {
+    assert!(permanently_delete_is_visible(false, None));
+}
+
+#[test]
+fn permanently_delete_hides_inside_trash_regardless_of_can_delete() {
+    assert!(!permanently_delete_is_visible(true, Some(true)));
+    assert!(!permanently_delete_is_visible(true, None));
 }
 
 fn mapped_source(values: &[&str]) -> EntryListModel {

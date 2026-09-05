@@ -47,6 +47,9 @@ pub struct ColumnState {
     /// the first load finishes, for an empty directory, or when the capability
     /// couldn't be answered; treated as "assume trashable" by consumers.
     pub can_trash: Option<bool>,
+    /// Whether entries here can be permanently deleted, resolved the same way
+    /// as `can_trash`. `None` carries the same "assume deletable" meaning.
+    pub can_delete: Option<bool>,
     preferences: ViewPreferences,
     request_id: RequestId,
     select_first_on_load: bool,
@@ -174,6 +177,7 @@ impl NavigationState {
                 load_state: LoadState::Loading,
                 truncated: false,
                 can_trash: None,
+                can_delete: None,
                 preferences,
                 request_id,
                 select_first_on_load: false,
@@ -243,6 +247,7 @@ impl NavigationState {
             load_state: LoadState::Loading,
             truncated: false,
             can_trash: None,
+            can_delete: None,
             preferences: self.preferences,
             request_id,
             select_first_on_load: false,
@@ -485,6 +490,7 @@ impl NavigationState {
         column.load_state = LoadState::Loading;
         column.truncated = false;
         column.can_trash = None;
+        column.can_delete = None;
         column.request_id = request_id;
         Some(column.location.clone())
     }
@@ -587,16 +593,22 @@ impl NavigationState {
         self.columns.get(depth)?.can_trash
     }
 
+    pub fn can_delete_at(&self, depth: usize) -> Option<bool> {
+        self.columns.get(depth)?.can_delete
+    }
+
     pub fn finish(
         &mut self,
         request_id: RequestId,
         truncated: bool,
         can_trash: Option<bool>,
+        can_delete: Option<bool>,
     ) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
         column.select_first_on_load = false;
         column.truncated = truncated;
         column.can_trash = can_trash;
+        column.can_delete = can_delete;
         column.load_state = if column.entries.is_empty() {
             LoadState::Empty
         } else {

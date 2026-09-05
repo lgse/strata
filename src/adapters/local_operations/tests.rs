@@ -22,12 +22,12 @@ use gtk::{gio, glib, prelude::*};
 use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 
 use super::{
-    LocalOperationProvider, await_cancellable, copy_new_recursively, copy_recursively,
-    deletion_error_message, deletion_error_summary, duplicate_candidate_name,
-    extract_7z_from_reader, extract_tar, extract_zip_from_archive, home_trash_entries_at, io_error,
-    is_trash_unsupported_failure, move_local_with, operation_error_summary, parse_copy_suffix,
-    replace_local, replace_local_with, transfer_is_noop, validated_archive_path, validated_child,
-    write_staged_archive,
+    LocalOperationProvider, TransferProgressTracker, await_cancellable, copy_failure_after_cleanup,
+    copy_new_recursively, copy_new_remote_file_with, copy_recursively, deletion_error_message,
+    deletion_error_summary, duplicate_candidate_name, extract_7z_from_reader, extract_tar,
+    extract_zip_from_archive, home_trash_entries_at, io_error, is_trash_unsupported_failure,
+    move_local_with, operation_error_summary, parse_copy_suffix, replace_local, replace_local_with,
+    transfer_is_noop, validated_archive_path, validated_child, write_staged_archive,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
@@ -1328,6 +1328,103 @@ fn every_archive_format_rejects_parent_traversal() -> Result<(), Box<dyn Error>>
 }
 
 #[test]
+fn cancelling_staged_remote_file_copy_removes_only_the_incomplete_stage()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.bin");
+    let target = root.path().join("target.bin");
+    fs::write(&source, b"source contents")?;
+
+    let result = glib::MainContext::default().block_on(copy_new_remote_file_with(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        Rc::new(|_, stage, _| {
+            Box::pin(async move {
+                fs::write(stage.path().expect("native stage"), b"partial")
+                    .map_err(super::io_error)?;
+                Err(glib::Error::new(
+                    gio::IOErrorEnum::Cancelled,
+                    "injected cancellation",
+                ))
+            })
+        }),
+        Rc::new(|_, _, _| Box::pin(async { panic!("cancelled copy must not commit") })),
+    ));
+
+    assert!(result.is_err_and(|error| error.matches(gio::IOErrorEnum::Cancelled)));
+    assert!(!target.exists());
+    assert_eq!(fs::read(&source)?, b"source contents");
+    assert_eq!(fs::read_dir(root.path())?.count(), 1);
+    Ok(())
+}
+
+#[test]
+fn staged_remote_file_copy_preserves_a_racing_destination() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.bin");
+    let target = root.path().join("target.bin");
+    fs::write(&source, b"source contents")?;
+
+    let result = glib::MainContext::default().block_on(copy_new_remote_file_with(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        Rc::new(|source, stage, _| {
+            Box::pin(async move {
+                fs::copy(
+                    source.path().expect("native source"),
+                    stage.path().expect("native stage"),
+                )
+                .map(|_| ())
+                .map_err(super::io_error)
+            })
+        }),
+        Rc::new(|_, target, _| {
+            Box::pin(async move {
+                fs::write(target.path().expect("native target"), b"racing contents")
+                    .map_err(super::io_error)?;
+                Err(glib::Error::new(
+                    gio::IOErrorEnum::Exists,
+                    "injected destination race",
+                ))
+            })
+        }),
+    ));
+
+    assert!(result.is_err_and(|error| error.matches(gio::IOErrorEnum::Exists)));
+    assert_eq!(fs::read(&target)?, b"racing contents");
+    assert_eq!(fs::read(&source)?, b"source contents");
+    assert_eq!(fs::read_dir(root.path())?.count(), 2);
+    Ok(())
+}
+
+#[test]
+fn failed_incomplete_copy_cleanup_is_reported_as_a_failure() {
+    let error = copy_failure_after_cleanup(
+        glib::Error::new(gio::IOErrorEnum::Cancelled, "injected cancellation"),
+        Err(glib::Error::new(
+            gio::IOErrorEnum::PermissionDenied,
+            "injected cleanup failure",
+        )),
+    );
+
+    assert!(!error.matches(gio::IOErrorEnum::Cancelled));
+    assert!(
+        error
+            .to_string()
+            .contains("incomplete copy could not be removed")
+    );
+    assert!(error.to_string().contains("injected cleanup failure"));
+}
+
+#[test]
 fn cancelling_recursive_copy_removes_only_its_staging_output() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -1603,6 +1700,102 @@ fn cancelling_recursive_delete_leaves_the_unfinished_root_in_place() -> Result<(
 }
 
 #[test]
+fn transfer_progress_aggregates_completed_and_in_flight_file_bytes() {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let tracker = TransferProgressTracker::new(
+        OperationRequestId(24),
+        Some(150),
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    let first = tracker.begin_file();
+    let mut first_callback = first.callback();
+    first_callback(25, 100);
+    first_callback(100, 100);
+    first.finish();
+    tracker.finish_item(0, Some(100));
+
+    let second = tracker.begin_file();
+    let mut second_callback = second.callback();
+    second_callback(10, 50);
+
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        OperationEvent::TransferProgress {
+            completed_items: 0,
+            transferred_bytes: 25,
+            total_bytes: Some(150),
+            ..
+        }
+    )));
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::TransferProgress {
+            completed_items: 1,
+            transferred_bytes: 110,
+            total_bytes: Some(150),
+            ..
+        })
+    ));
+}
+
+#[test]
+fn copying_a_file_emits_bytes_before_item_completion() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.bin");
+    let destination = root.path().join("destination");
+    let contents = vec![0x5a; 1024 * 1024];
+    fs::write(&source, &contents)?;
+    fs::create_dir(&destination)?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(25),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. }
+                | OperationEvent::Cancelled { .. }
+                | OperationEvent::TransferFailed { .. }
+                | OperationEvent::Failed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        OperationEvent::TransferProgress {
+            completed_items: 0,
+            transferred_bytes,
+            total_bytes: Some(total_bytes),
+            ..
+        } if *transferred_bytes > 0 && *total_bytes == contents.len() as u64
+    )));
+    assert_eq!(fs::read(destination.join("source.bin"))?, contents);
+    Ok(())
+}
+
+#[test]
 fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Result<(), Box<dyn Error>>
 {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -1642,7 +1835,13 @@ fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Resul
             move_sources: true,
         },
         Rc::new(move |event| {
-            let cancel = matches!(event, OperationEvent::TransferProgress { completed: 1, .. });
+            let cancel = matches!(
+                event,
+                OperationEvent::TransferProgress {
+                    completed_items: 1,
+                    ..
+                }
+            );
             emitted.borrow_mut().push(event);
             if cancel {
                 operation_for_emit.borrow_mut().take();
@@ -1666,6 +1865,15 @@ fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Resul
             _ => None,
         })
         .expect("terminal cancellation result");
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        OperationEvent::TransferProgress {
+            completed_items: 1,
+            transferred_bytes: 5,
+            total_bytes: Some(11),
+            ..
+        }
+    )));
     assert_eq!(result.completed, [Location::local(&first)]);
     assert!(result.failed.is_empty());
     assert_eq!(result.not_attempted, [Location::local(&second)]);
