@@ -943,6 +943,12 @@ fn install_keyboard_navigation(
             browser.extend_selection(1);
             return glib::Propagation::Stop;
         }
+        if control && !shift && key == gtk::gdk::Key::Up && view.jump_selection(-1) {
+            return glib::Propagation::Stop;
+        }
+        if control && !shift && key == gtk::gdk::Key::Down && view.jump_selection(1) {
+            return glib::Propagation::Stop;
+        }
         if !shift
             && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::Up)
             && view.focus_header_from_top_item()

@@ -2269,6 +2269,7 @@ fn keybindings_page() -> gtk::Widget {
     append_heading(&content, "NAVIGATION");
     for (label, keys) in [
         ("Move through items", "J / K  or  ↑ / ↓"),
+        ("Jump to top / bottom", "Ctrl + ↑ / Ctrl + ↓"),
         ("Open folder", "L / → / Enter"),
         ("Go to parent", "H / ←"),
         ("Edit location", "Ctrl + L"),

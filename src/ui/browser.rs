@@ -1125,6 +1125,21 @@ impl BrowserView {
         true
     }
 
+    /// Moves the focus to the first or last visible entry of the active pane, for
+    /// `Ctrl+Up` and `Ctrl+Down`.
+    pub fn jump_selection(&self, direction: i32) -> bool {
+        let focused = self.state.overlay.root().and_then(|root| root.focus());
+        let Some((view, scroll)) = focused
+            .as_ref()
+            .and_then(super::scrolling::focused_collection)
+        else {
+            return false;
+        };
+        self.state.browser.page_selection(direction, usize::MAX);
+        super::scrolling::reveal_jump(&view, &scroll, direction);
+        true
+    }
+
     pub fn dismiss_empty_focused_filter(&self) -> bool {
         let focused = self.state.overlay.root().and_then(|root| root.focus());
         let empty = self.state.mode_views.borrow().empty_filter_has_focus()
