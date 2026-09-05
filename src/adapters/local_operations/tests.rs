@@ -22,12 +22,12 @@ use gtk::{gio, glib, prelude::*};
 use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 
 use super::{
-    LocalOperationProvider, TransferProgressTracker, await_cancellable, copy_new_recursively,
-    copy_recursively, deletion_error_message, deletion_error_summary, duplicate_candidate_name,
-    extract_7z_from_reader, extract_tar, extract_zip_from_archive, home_trash_entries_at, io_error,
-    is_trash_unsupported_failure, move_local_with, operation_error_summary, parse_copy_suffix,
-    replace_local, replace_local_with, transfer_is_noop, validated_archive_path, validated_child,
-    write_staged_archive,
+    LocalOperationProvider, TransferProgressTracker, await_cancellable, copy_failure_after_cleanup,
+    copy_new_recursively, copy_new_remote_file_with, copy_recursively, deletion_error_message,
+    deletion_error_summary, duplicate_candidate_name, extract_7z_from_reader, extract_tar,
+    extract_zip_from_archive, home_trash_entries_at, io_error, is_trash_unsupported_failure,
+    move_local_with, operation_error_summary, parse_copy_suffix, replace_local, replace_local_with,
+    transfer_is_noop, validated_archive_path, validated_child, write_staged_archive,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
@@ -1325,6 +1325,103 @@ fn every_archive_format_rejects_parent_traversal() -> Result<(), Box<dyn Error>>
         assert!(!root.path().join(marker).exists(), "created {marker}");
     }
     Ok(())
+}
+
+#[test]
+fn cancelling_staged_remote_file_copy_removes_only_the_incomplete_stage()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.bin");
+    let target = root.path().join("target.bin");
+    fs::write(&source, b"source contents")?;
+
+    let result = glib::MainContext::default().block_on(copy_new_remote_file_with(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        Rc::new(|_, stage, _| {
+            Box::pin(async move {
+                fs::write(stage.path().expect("native stage"), b"partial")
+                    .map_err(super::io_error)?;
+                Err(glib::Error::new(
+                    gio::IOErrorEnum::Cancelled,
+                    "injected cancellation",
+                ))
+            })
+        }),
+        Rc::new(|_, _, _| Box::pin(async { panic!("cancelled copy must not commit") })),
+    ));
+
+    assert!(result.is_err_and(|error| error.matches(gio::IOErrorEnum::Cancelled)));
+    assert!(!target.exists());
+    assert_eq!(fs::read(&source)?, b"source contents");
+    assert_eq!(fs::read_dir(root.path())?.count(), 1);
+    Ok(())
+}
+
+#[test]
+fn staged_remote_file_copy_preserves_a_racing_destination() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.bin");
+    let target = root.path().join("target.bin");
+    fs::write(&source, b"source contents")?;
+
+    let result = glib::MainContext::default().block_on(copy_new_remote_file_with(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        Rc::new(|source, stage, _| {
+            Box::pin(async move {
+                fs::copy(
+                    source.path().expect("native source"),
+                    stage.path().expect("native stage"),
+                )
+                .map(|_| ())
+                .map_err(super::io_error)
+            })
+        }),
+        Rc::new(|_, target, _| {
+            Box::pin(async move {
+                fs::write(target.path().expect("native target"), b"racing contents")
+                    .map_err(super::io_error)?;
+                Err(glib::Error::new(
+                    gio::IOErrorEnum::Exists,
+                    "injected destination race",
+                ))
+            })
+        }),
+    ));
+
+    assert!(result.is_err_and(|error| error.matches(gio::IOErrorEnum::Exists)));
+    assert_eq!(fs::read(&target)?, b"racing contents");
+    assert_eq!(fs::read(&source)?, b"source contents");
+    assert_eq!(fs::read_dir(root.path())?.count(), 2);
+    Ok(())
+}
+
+#[test]
+fn failed_incomplete_copy_cleanup_is_reported_as_a_failure() {
+    let error = copy_failure_after_cleanup(
+        glib::Error::new(gio::IOErrorEnum::Cancelled, "injected cancellation"),
+        Err(glib::Error::new(
+            gio::IOErrorEnum::PermissionDenied,
+            "injected cleanup failure",
+        )),
+    );
+
+    assert!(!error.matches(gio::IOErrorEnum::Cancelled));
+    assert!(
+        error
+            .to_string()
+            .contains("incomplete copy could not be removed")
+    );
+    assert!(error.to_string().contains("injected cleanup failure"));
 }
 
 #[test]

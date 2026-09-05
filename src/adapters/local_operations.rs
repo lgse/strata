@@ -450,6 +450,103 @@ async fn record_created_copy_root(
     Ok(())
 }
 
+type RemoteFileStageCopy = Rc<
+    dyn Fn(
+        gio::File,
+        gio::File,
+        gio::Cancellable,
+    ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>>,
+>;
+
+type RemoteFileStageCommit = Rc<
+    dyn Fn(
+        gio::File,
+        gio::File,
+        gio::Cancellable,
+    ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>>,
+>;
+
+async fn discard_incomplete_copy(stage: gio::File) -> Result<(), glib::Error> {
+    match permanently_delete(stage, false, gio::Cancellable::new()).await {
+        Err(error) if error.matches(gio::IOErrorEnum::NotFound) => Ok(()),
+        result => result,
+    }
+}
+
+/// Reserves an unpredictable sibling so a partial remote file is never exposed at the final path.
+async fn create_remote_file_stage(
+    target: &gio::File,
+    cancellable: &gio::Cancellable,
+) -> Result<gio::File, glib::Error> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| io_error("The destination has no parent directory"))?;
+    let stage = parent.child(format!(".strata-copy-{}", glib::uuid_string_random()));
+    let stream = match await_cancellable(&stage, cancellable, |stage, cancellable, result| {
+        stage.create_async(
+            gio::FileCreateFlags::PRIVATE,
+            glib::Priority::DEFAULT,
+            Some(cancellable),
+            move |output| result.resolve(output),
+        );
+    })
+    .await
+    {
+        Ok(stream) => stream,
+        Err(error) if was_cancelled(&error) => {
+            let cleanup = discard_incomplete_copy(stage).await;
+            return Err(copy_failure_after_cleanup(error, cleanup));
+        }
+        Err(error) => return Err(error),
+    };
+    if let Err(error) = await_cancellable(&stream, cancellable, |stream, cancellable, result| {
+        stream.close_async(glib::Priority::DEFAULT, Some(cancellable), move |output| {
+            result.resolve(output)
+        });
+    })
+    .await
+    {
+        let cleanup = discard_incomplete_copy(stage).await;
+        return Err(copy_failure_after_cleanup(error, cleanup));
+    }
+    Ok(stage)
+}
+
+fn copy_failure_after_cleanup(
+    copy_error: glib::Error,
+    cleanup_result: Result<(), glib::Error>,
+) -> glib::Error {
+    match cleanup_result {
+        Ok(()) => copy_error,
+        Err(cleanup_error) => io_error(format!(
+            "{copy_error}; the incomplete copy could not be removed: {cleanup_error}"
+        )),
+    }
+}
+
+async fn copy_new_remote_file_with(
+    source: gio::File,
+    target: gio::File,
+    cancellable: gio::Cancellable,
+    copy_to_stage: RemoteFileStageCopy,
+    commit_stage: RemoteFileStageCommit,
+) -> Result<(), glib::Error> {
+    let stage = create_remote_file_stage(&target, &cancellable).await?;
+    if let Err(error) = copy_to_stage(source, stage.clone(), cancellable.clone()).await {
+        let cleanup = discard_incomplete_copy(stage).await;
+        return Err(copy_failure_after_cleanup(error, cleanup));
+    }
+    if let Err(error) = cancellable.set_error_if_cancelled() {
+        let cleanup = discard_incomplete_copy(stage).await;
+        return Err(copy_failure_after_cleanup(error, cleanup));
+    }
+    if let Err(error) = commit_stage(stage.clone(), target, cancellable).await {
+        let cleanup = discard_incomplete_copy(stage).await;
+        return Err(copy_failure_after_cleanup(error, cleanup));
+    }
+    Ok(())
+}
+
 /// Recursively copies the entry named `name` inside `parent` to `target`,
 /// walking descriptor-relative to each already-open source directory
 /// instead of re-resolving paths, so a component swapped out from under an
@@ -748,6 +845,63 @@ async fn copy_new_recursively_with_progress(
     cancellable: gio::Cancellable,
     progress: Option<Rc<TransferProgressTracker>>,
 ) -> Result<(), glib::Error> {
+    if !target.is_native() {
+        let source_type =
+            await_cancellable(&source, &cancellable, |source, cancellable, result| {
+                source.query_info_async(
+                    "standard::type",
+                    gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                    glib::Priority::DEFAULT,
+                    Some(cancellable),
+                    move |output| result.resolve(output),
+                );
+            })
+            .await?
+            .file_type();
+        if source_type != gio::FileType::Directory {
+            let copy_progress = progress.clone();
+            return copy_new_remote_file_with(
+                source,
+                target,
+                cancellable,
+                Rc::new(move |source, stage, cancellable| {
+                    let progress = copy_progress.clone();
+                    Box::pin(async move {
+                        copy_recursively_with_progress(
+                            source,
+                            stage,
+                            true,
+                            cancellable,
+                            None,
+                            progress,
+                        )
+                        .await
+                    })
+                }),
+                Rc::new(|stage, target, cancellable| {
+                    Box::pin(async move {
+                        await_cancellable(
+                            &stage,
+                            &cancellable,
+                            move |stage, cancellable, result| {
+                                stage.move_async(
+                                    &target,
+                                    gio::FileCopyFlags::NONE,
+                                    glib::Priority::DEFAULT,
+                                    Some(cancellable),
+                                    None,
+                                    move |output| result.resolve(output),
+                                );
+                            },
+                        )
+                        .await
+                    })
+                }),
+            )
+            .await;
+        }
+    }
+
     if source.is_native()
         && target.is_native()
         && let Some(target_path) = target.path()
@@ -825,14 +979,14 @@ async fn copy_new_recursively_with_progress(
     )
     .await;
     if result.as_ref().is_err_and(was_cancelled) && created_root.was_created.get() {
-        let cleanup = gio::Cancellable::new();
-        let _cleanup_result = permanently_delete_maybe_local_if_unchanged(
+        let cleanup_result = permanently_delete_maybe_local_if_unchanged(
             target,
             true,
             created_root.identity.get(),
-            cleanup,
+            gio::Cancellable::new(),
         )
         .await;
+        return result.map_err(|error| copy_failure_after_cleanup(error, cleanup_result));
     }
     result
 }
