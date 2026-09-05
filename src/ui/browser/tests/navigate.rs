@@ -83,6 +83,7 @@ fn assert_navigate_lands_on_first_item(view: &BrowserView, browser: &crate::app:
 }
 
 #[test]
+#[ignore = "requires a mapped GTK window; run this test alone"]
 fn grid_navigate_focuses_first_item_so_arrows_move_without_left_right() {
     const CHILD: &str = "STRATA_GRID_NAVIGATE_FOCUS_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
@@ -92,6 +93,7 @@ fn grid_navigate_focuses_first_item_so_arrows_move_without_left_right() {
                 "--exact",
                 "ui::browser::tests::navigate::grid_navigate_focuses_first_item_so_arrows_move_without_left_right",
                 "--nocapture",
+                "--ignored",
             ])
             .env(CHILD, "1")
             .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
@@ -115,6 +117,7 @@ fn grid_navigate_focuses_first_item_so_arrows_move_without_left_right() {
 }
 
 #[test]
+#[ignore = "requires a mapped GTK window; run this test alone"]
 fn explorer_navigate_focuses_first_item_so_arrows_move() {
     const CHILD: &str = "STRATA_EXPLORER_NAVIGATE_FOCUS_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
@@ -124,6 +127,7 @@ fn explorer_navigate_focuses_first_item_so_arrows_move() {
                 "--exact",
                 "ui::browser::tests::navigate::explorer_navigate_focuses_first_item_so_arrows_move",
                 "--nocapture",
+                "--ignored",
             ])
             .env(CHILD, "1")
             .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
