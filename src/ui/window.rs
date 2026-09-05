@@ -1834,10 +1834,12 @@ impl SidebarState {
 
         let drop = gtk::DropTarget::new(String::static_type(), gtk::gdk::DragAction::MOVE);
         drop.connect_accept(|_, offered| {
-            offered.formats().contains_type(String::static_type())
-                && !offered
+            accepts_sidebar_reorder_payload(
+                offered.formats().contains_type(String::static_type()),
+                offered
                     .formats()
-                    .contains_type(gtk::gdk::FileList::static_type())
+                    .contains_type(gtk::gdk::FileList::static_type()),
+            )
         });
         let weak_state = Rc::downgrade(self);
         let target_row = row.clone();
@@ -2190,6 +2192,10 @@ impl SidebarState {
         }
         row
     }
+}
+
+fn accepts_sidebar_reorder_payload(has_string: bool, has_file_list: bool) -> bool {
+    has_string && !has_file_list
 }
 
 fn sidebar_accepts_file_drop(location: &Location) -> bool {

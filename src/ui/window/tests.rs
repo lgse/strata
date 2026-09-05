@@ -8,14 +8,15 @@ use crate::{
 };
 
 use super::{
-    MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, begin_media_release,
-    is_open_terminal_shortcut, is_sidebar_focus_shortcut, is_smb_location,
-    is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction,
-    media_release_label, mount_release_action, mouse_history_action, page_direction,
-    parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
-    reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
-    should_show_standard_place, sidebar_accepts_file_drop, sidebar_update_label, standard_place,
-    type_to_search_query, vim_focus_direction, volume_release_action,
+    MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS,
+    accepts_sidebar_reorder_payload, begin_media_release, is_open_terminal_shortcut,
+    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location,
+    is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction, media_release_label,
+    mount_release_action, mouse_history_action, page_direction, parse_pinned_drag_source,
+    parse_pinned_places, pin_status, remove_pinned_place, reorder_pinned_places, reorder_places,
+    resolve_place_order, serialize_pinned_places, should_show_standard_place,
+    sidebar_accepts_file_drop, sidebar_update_label, standard_place, type_to_search_query,
+    vim_focus_direction, volume_release_action,
 };
 
 fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
@@ -719,6 +720,13 @@ fn media_release_guard_rejects_repeated_actions_until_completion() {
 
     in_flight.set(false);
     assert!(begin_media_release(&in_flight));
+}
+
+#[test]
+fn file_payloads_are_not_claimed_as_sidebar_reorders() {
+    assert!(accepts_sidebar_reorder_payload(true, false));
+    assert!(!accepts_sidebar_reorder_payload(true, true));
+    assert!(!accepts_sidebar_reorder_payload(false, true));
 }
 
 #[test]
