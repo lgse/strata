@@ -22,7 +22,7 @@ use crate::{
 const EXPLORER_COLUMN_WIDTHS: [i32; 5] = [160, 110, 90, 120, 150];
 const EXPLORER_COLUMN_MIN_WIDTHS: [i32; 5] = [160, 80, 70, 80, 110];
 const DEFAULT_GRID_THUMBNAIL_SIZE: i32 = 64;
-const GRID_SCROLL_SETTLE_DELAY: std::time::Duration = std::time::Duration::from_millis(80);
+const SCROLL_SETTLE_DELAY: std::time::Duration = std::time::Duration::from_millis(80);
 /// Margin and padding a grid card adds around its own width.
 const GRID_CARD_SPACING: i32 = 4;
 const FALLBACK_GRID_COLUMN_WIDTH: i32 = 160;
@@ -1991,33 +1991,45 @@ fn refresh_marquee_targets(pane: &Pane) {
 }
 
 fn install_grid_scroll_settle(scroll: &gtk::ScrolledWindow, context: &Rc<GridContext>) {
+    let scrolling = context.scrolling.clone();
+    let context = Rc::downgrade(context);
+    install_scroll_settle(scroll, scrolling, "grid-fast-scroll", move || {
+        if let Some(context) = context.upgrade() {
+            refresh_grid_expensive_content(&context);
+        }
+    });
+}
+
+fn install_scroll_settle(
+    scroll: &gtk::ScrolledWindow,
+    scrolling: Rc<Cell<bool>>,
+    css_class: &'static str,
+    on_settle: impl Fn() + 'static,
+) {
     let pending = Rc::new(RefCell::new(None::<glib::SourceId>));
+    let on_settle = Rc::new(on_settle);
     for adjustment in [scroll.vadjustment(), scroll.hadjustment()] {
         let pending = pending.clone();
-        let context = Rc::downgrade(context);
+        let scrolling = scrolling.clone();
         let scroll = scroll.clone();
+        let on_settle = on_settle.clone();
         adjustment.connect_value_changed(move |_| {
-            let Some(context) = context.upgrade() else {
-                return;
-            };
-            context.scrolling.set(true);
-            scroll.add_css_class("grid-fast-scroll");
+            scrolling.set(true);
+            scroll.add_css_class(css_class);
             if let Some(source) = pending.borrow_mut().take() {
                 source.remove();
             }
             let pending_for_timeout = pending.clone();
-            let context = Rc::downgrade(&context);
+            let scrolling = scrolling.clone();
             let scroll = scroll.clone();
+            let on_settle = on_settle.clone();
             pending.replace(Some(glib::timeout_add_local_once(
-                GRID_SCROLL_SETTLE_DELAY,
+                SCROLL_SETTLE_DELAY,
                 move || {
                     pending_for_timeout.borrow_mut().take();
-                    let Some(context) = context.upgrade() else {
-                        return;
-                    };
-                    context.scrolling.set(false);
-                    scroll.remove_css_class("grid-fast-scroll");
-                    refresh_grid_expensive_content(&context);
+                    scrolling.set(false);
+                    scroll.remove_css_class(css_class);
+                    on_settle();
                 },
             )));
         });
@@ -2503,19 +2515,23 @@ fn build_explorer_pane(
     let source_index_for_setup = source_index.clone();
     let view_model_for_setup = view_model_object.clone();
     let folder_location = browser.location_at(depth);
+    let scrolling = Rc::new(Cell::new(false));
+    let scrolling_for_setup = scrolling.clone();
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
         };
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         row.add_css_class("explorer-row");
-        row.add_css_class("file-appear");
-        let weak_row = row.downgrade();
-        glib::idle_add_local_once(move || {
-            if let Some(row) = weak_row.upgrade() {
-                row.remove_css_class("file-appear");
-            }
-        });
+        if !scrolling_for_setup.get() {
+            row.add_css_class("file-appear");
+            let weak_row = row.downgrade();
+            glib::idle_add_local_once(move || {
+                if let Some(row) = weak_row.upgrade() {
+                    row.remove_css_class("file-appear");
+                }
+            });
+        }
         let name_cell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
         name_cell.add_css_class("explorer-name-cell");
         let icon = gtk::Image::new();
@@ -2613,6 +2629,7 @@ fn build_explorer_pane(
     let source_index_for_bind = source_index.clone();
     let cuts_for_bind = cut_locations.clone();
     let entry_kind_for_bind = new_entry_is_directory.clone();
+    let scrolling_for_bind = scrolling.clone();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -2620,28 +2637,7 @@ fn build_explorer_pane(
         let Some(row) = item.child().and_downcast::<gtk::Box>() else {
             return;
         };
-        let Some(name_cell) = row.first_child().and_downcast::<gtk::Box>() else {
-            return;
-        };
-        let Some(icon) = name_cell.first_child().and_downcast::<gtk::Image>() else {
-            return;
-        };
-        let Some(name) = icon.next_sibling().and_downcast::<gtk::Label>() else {
-            return;
-        };
-        let Some(field) = name.next_sibling().and_downcast::<gtk::Entry>() else {
-            return;
-        };
-        let Some(mode) = name_cell.next_sibling().and_downcast::<gtk::Label>() else {
-            return;
-        };
-        let Some(size) = mode.next_sibling().and_downcast::<gtk::Label>() else {
-            return;
-        };
-        let Some(kind) = size.next_sibling().and_downcast::<gtk::Label>() else {
-            return;
-        };
-        let Some(modified) = kind.next_sibling().and_downcast::<gtk::Label>() else {
+        let Some((icon, name, field, mode, size, kind, modified)) = explorer_row_parts(&row) else {
             return;
         };
         let source_position = item
@@ -2654,24 +2650,28 @@ fn build_explorer_pane(
         if let Some(entry) = entry {
             name.set_visible(true);
             field.set_visible(false);
-            set_mode_cut_style(&row, cuts_for_bind.borrow().contains(&entry.location));
-            super::thumbnail::set_thumbnail_or_icon(
-                &icon,
-                &entry,
-                super::browser::entry_icon(&entry),
-                18,
-                18,
-            );
-            if let Some(position) = metadata_fill_position(source_position, &entry, true)
-                && let Some(browser) = browser.as_ref()
-            {
-                browser.request_metadata_fill(depth, position, entry.location.clone());
+            set_label_if_changed(&name, &entry.display_name);
+            set_label_if_changed(&mode, &entry_mode(&entry));
+            set_label_if_changed(&size, &entry_size(&entry));
+            set_label_if_changed(&kind, entry_type(&entry));
+            if scrolling_for_bind.get() {
+                set_label_if_changed(&modified, &crate::util::modified_date(&entry));
+            } else {
+                set_mode_cut_style(&row, cuts_for_bind.borrow().contains(&entry.location));
+                super::thumbnail::set_thumbnail_or_icon(
+                    &icon,
+                    &entry,
+                    super::browser::entry_icon(&entry),
+                    18,
+                    18,
+                );
+                if let Some(position) = metadata_fill_position(source_position, &entry, true)
+                    && let Some(browser) = browser.as_ref()
+                {
+                    browser.request_metadata_fill(depth, position, entry.location.clone());
+                }
+                crate::util::set_modified_date(&modified, Some(&entry), "—");
             }
-            name.set_label(&entry.display_name);
-            mode.set_label(&entry_mode(&entry));
-            size.set_label(&entry_size(&entry));
-            kind.set_label(entry_type(&entry));
-            crate::util::set_modified_date(&modified, Some(&entry), "—");
         } else {
             row.remove_css_class("cut-item");
             let icon_name = if entry_kind_for_bind.get() {
@@ -2744,6 +2744,22 @@ fn build_explorer_pane(
         .vexpand(true)
         .build();
     scroll.add_css_class("fixed-scrollbar");
+    let browser_for_settle = Rc::downgrade(&browser);
+    let source_index_for_settle = source_index.clone();
+    let sections_for_settle = Rc::downgrade(&sections);
+    let cuts_for_settle = cut_locations.clone();
+    install_scroll_settle(&scroll, scrolling, "explorer-fast-scroll", move || {
+        let Some(browser) = browser_for_settle.upgrade() else {
+            return;
+        };
+        let Some(sections) = sections_for_settle.upgrade() else {
+            return;
+        };
+        let cuts = cuts_for_settle.borrow();
+        for section in sections.borrow().iter() {
+            refresh_explorer_section(&browser, depth, &source_index_for_settle, section, &cuts);
+        }
+    });
     let table = gtk::Box::new(gtk::Orientation::Vertical, 0);
     table.set_vexpand(true);
     table.append(&headings);
@@ -3572,6 +3588,72 @@ fn clear_box(container: &gtk::Box) {
     }
 }
 
+fn explorer_row_parts(
+    row: &gtk::Box,
+) -> Option<(
+    gtk::Image,
+    gtk::Label,
+    gtk::Entry,
+    gtk::Label,
+    gtk::Label,
+    gtk::Label,
+    gtk::Label,
+)> {
+    let name_cell = row.first_child()?.downcast::<gtk::Box>().ok()?;
+    let icon = name_cell.first_child()?.downcast::<gtk::Image>().ok()?;
+    let name = icon.next_sibling()?.downcast::<gtk::Label>().ok()?;
+    let field = name.next_sibling()?.downcast::<gtk::Entry>().ok()?;
+    let mode = name_cell.next_sibling()?.downcast::<gtk::Label>().ok()?;
+    let size = mode.next_sibling()?.downcast::<gtk::Label>().ok()?;
+    let kind = size.next_sibling()?.downcast::<gtk::Label>().ok()?;
+    let modified = kind.next_sibling()?.downcast::<gtk::Label>().ok()?;
+    Some((icon, name, field, mode, size, kind, modified))
+}
+
+fn set_label_if_changed(label: &gtk::Label, text: &str) {
+    if label.label() != text {
+        label.set_label(text);
+    }
+}
+
+fn refresh_explorer_section(
+    browser: &Rc<Browser>,
+    depth: usize,
+    source_index: &SourceIndexMap,
+    section: &PaneSection,
+    cuts: &HashSet<Location>,
+) {
+    section.bound_items.borrow().iter().for_each(|bound| {
+        let Some(row) = bound.widget.upgrade().and_downcast::<gtk::Box>() else {
+            return;
+        };
+        let Some((icon, _, _, _, _, _, modified)) = explorer_row_parts(&row) else {
+            return;
+        };
+        let Some(item) = bound.item.upgrade() else {
+            return;
+        };
+        let Some(position) = item.item().and_then(|value| source_index.of_item(&value)) else {
+            return;
+        };
+        let Some(entry) = browser.entry_at(depth, position) else {
+            return;
+        };
+        set_mode_cut_style(&row, cuts.contains(&entry.location));
+        super::thumbnail::set_thumbnail_or_icon(
+            &icon,
+            &entry,
+            super::browser::entry_icon(&entry),
+            18,
+            18,
+        );
+        if let Some(position) = metadata_fill_position(Some(position), &entry, true) {
+            browser.request_metadata_fill(depth, position, entry.location.clone());
+        }
+        crate::util::set_modified_date(&modified, Some(&entry), "—");
+    });
+}
+
 fn explorer_metadata_label() -> gtk::Label {
     let label = gtk::Label::new(None);
     label.add_css_class("explorer-metadata-cell");
@@ -3631,19 +3713,10 @@ fn update_bound_explorer_metadata(pane: &Pane, updates: &[(usize, FileEntry)]) {
             let Some(entry) = updates.get(&position) else {
                 return true;
             };
-            let Some(name_cell) = row.first_child().and_downcast::<gtk::Box>() else {
+            let Some(row) = row.downcast::<gtk::Box>().ok() else {
                 return true;
             };
-            let Some(mode) = name_cell.next_sibling().and_downcast::<gtk::Label>() else {
-                return true;
-            };
-            let Some(size) = mode.next_sibling().and_downcast::<gtk::Label>() else {
-                return true;
-            };
-            let Some(kind) = size.next_sibling().and_downcast::<gtk::Label>() else {
-                return true;
-            };
-            let Some(modified) = kind.next_sibling().and_downcast::<gtk::Label>() else {
+            let Some((_, _, _, mode, size, _, modified)) = explorer_row_parts(&row) else {
                 return true;
             };
             mode.set_label(&entry_mode(entry));
