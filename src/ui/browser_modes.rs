@@ -30,6 +30,8 @@ const MIN_GRID_THUMBNAIL_SIZE: i32 = 64;
 const MAX_GRID_THUMBNAIL_SIZE: i32 = 256;
 const GRID_CARD_LABEL_CHARS: i32 = 16;
 const GRID_CARD_LABEL_LINES: i32 = 2;
+const GRID_CARD_LABEL_LINE_PX: i32 = 18;
+const GRID_CARD_PAD_Y: i32 = 4;
 
 #[derive(Clone)]
 struct ExplorerColumnLayout {
@@ -174,7 +176,7 @@ impl SourceIndexMap {
 
 struct ActiveModeRename {
     field: gtk::Entry,
-    label: gtk::Label,
+    label: gtk::Widget,
 }
 
 struct ActiveModeNewEntry {
@@ -512,9 +514,7 @@ impl ModeViews {
         let Some(widget) = widget else {
             return false;
         };
-        let Some(label) =
-            descendant_with_class(&widget, "alternate-rename-label").and_downcast::<gtk::Label>()
-        else {
+        let Some(label) = descendant_with_class(&widget, "alternate-rename-label") else {
             return false;
         };
         let Some(field) =
@@ -1547,6 +1547,7 @@ fn build_grid_view(
     let peek_for_setup = context.state.clone();
     let active_for_setup = context.active_new_entry.clone();
     let thumbnail_size_for_setup = context.thumbnail_size.clone();
+    let scrolling_for_setup = context.scrolling.clone();
     let folder_location = context.browser.location_at(depth);
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -1554,22 +1555,24 @@ fn build_grid_view(
         };
         let card = gtk::Box::new(gtk::Orientation::Vertical, 3);
         card.add_css_class("grid-card");
-        card.add_css_class("file-appear");
-        let weak_card = card.downgrade();
-        glib::idle_add_local_once(move || {
-            if let Some(card) = weak_card.upgrade() {
-                card.remove_css_class("file-appear");
-            }
-        });
-        card.set_halign(gtk::Align::Center);
-        card.set_valign(gtk::Align::Center);
+        if !scrolling_for_setup.get() {
+            card.add_css_class("file-appear");
+            let weak_card = card.downgrade();
+            glib::idle_add_local_once(move || {
+                if let Some(card) = weak_card.upgrade() {
+                    card.remove_css_class("file-appear");
+                }
+            });
+        }
+        card.set_halign(gtk::Align::Fill);
+        card.set_valign(gtk::Align::Fill);
+        card.set_overflow(gtk::Overflow::Hidden);
+        let thumbnail_size = grid_card_icon_slot(thumbnail_size_for_setup.get());
+        ensure_grid_card_slot(&card, thumbnail_size);
         let icon = gtk::Image::new();
-        super::thumbnail::ensure_image_slot(
-            &icon,
-            grid_card_icon_slot(thumbnail_size_for_setup.get()),
-        );
+        super::thumbnail::ensure_image_slot(&icon, thumbnail_size);
         icon.add_css_class("grid-card-icon");
-        let label = gtk::Label::new(None);
+        let label = gtk::Inscription::new(None);
         label.add_css_class("grid-card-label");
         label.add_css_class("alternate-rename-label");
         configure_grid_card_label(&label);
@@ -1667,18 +1670,20 @@ fn build_grid_view(
             source_position.and_then(|position| browser.entry_at(depth, position))
         });
         let thumbnail_size = grid_card_icon_slot(thumbnail_size_for_bind.get());
+        ensure_grid_card_slot(&card, thumbnail_size);
         if let Some(entry) = entry {
             label.set_visible(true);
             field.set_visible(false);
-            label.set_label(&entry.display_name);
-            let fallback = super::browser::entry_icon(&entry);
+            if label.text().as_deref() != Some(entry.display_name.as_str()) {
+                label.set_text(Some(&entry.display_name));
+            }
             if grid_bind_requests_metadata(scrolling_for_bind.get()) {
                 set_mode_cut_style(&card, cuts_for_bind.borrow().contains(&entry.location));
                 label.set_tooltip_text(Some(&entry.display_name));
                 super::thumbnail::set_thumbnail_or_icon(
                     &icon,
                     &entry,
-                    fallback,
+                    super::browser::entry_icon(&entry),
                     thumbnail_size,
                     thumbnail_size,
                 );
@@ -1688,8 +1693,6 @@ fn build_grid_view(
                     browser.request_metadata_fill(depth, position, entry.location.clone());
                 }
                 icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
-            } else {
-                super::thumbnail::show_fallback_icon(&icon, fallback, thumbnail_size);
             }
         } else {
             set_mode_cut_style(&card, false);
@@ -1879,16 +1882,19 @@ fn install_grid_scroll_settle(scroll: &gtk::ScrolledWindow, context: &Rc<GridCon
     for adjustment in [scroll.vadjustment(), scroll.hadjustment()] {
         let pending = pending.clone();
         let context = Rc::downgrade(context);
+        let scroll = scroll.clone();
         adjustment.connect_value_changed(move |_| {
             let Some(context) = context.upgrade() else {
                 return;
             };
             context.scrolling.set(true);
+            scroll.add_css_class("grid-fast-scroll");
             if let Some(source) = pending.borrow_mut().take() {
                 source.remove();
             }
             let pending_for_timeout = pending.clone();
             let context = Rc::downgrade(&context);
+            let scroll = scroll.clone();
             pending.replace(Some(glib::timeout_add_local_once(
                 GRID_SCROLL_SETTLE_DELAY,
                 move || {
@@ -1897,6 +1903,7 @@ fn install_grid_scroll_settle(scroll: &gtk::ScrolledWindow, context: &Rc<GridCon
                         return;
                     };
                     context.scrolling.set(false);
+                    scroll.remove_css_class("grid-fast-scroll");
                     refresh_grid_expensive_content(&context);
                 },
             )));
@@ -1953,6 +1960,7 @@ fn refresh_grid_section(
             return;
         };
         super::thumbnail::ensure_image_slot(&icon, size);
+        ensure_grid_card_slot(&card, size);
         let Some(item) = bound.item.upgrade() else {
             return;
         };
@@ -1986,23 +1994,40 @@ fn grid_card_icon_slot(thumbnail_size: i32) -> i32 {
     thumbnail_size.clamp(MIN_GRID_THUMBNAIL_SIZE, MAX_GRID_THUMBNAIL_SIZE)
 }
 
+fn grid_card_extent(thumbnail_size: i32) -> (i32, i32) {
+    let slot = grid_card_icon_slot(thumbnail_size);
+    let width = slot.max(FALLBACK_GRID_COLUMN_WIDTH - GRID_CARD_SPACING);
+    let height = slot + GRID_CARD_LABEL_LINE_PX * GRID_CARD_LABEL_LINES + GRID_CARD_PAD_Y + 3;
+    (width, height)
+}
+
+fn ensure_grid_card_slot(card: &gtk::Box, thumbnail_size: i32) {
+    let (width, height) = grid_card_extent(thumbnail_size);
+    if card.width_request() != width || card.height_request() != height {
+        card.set_size_request(width, height);
+    }
+}
+
 fn grid_bind_requests_metadata(scrolling: bool) -> bool {
     !scrolling
 }
 
-fn configure_grid_card_label(label: &gtk::Label) {
-    label.set_justify(gtk::Justification::Center);
-    label.set_width_chars(GRID_CARD_LABEL_CHARS);
-    label.set_max_width_chars(GRID_CARD_LABEL_CHARS);
-    label.set_lines(GRID_CARD_LABEL_LINES);
-    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    label.set_wrap(true);
+fn configure_grid_card_label(label: &gtk::Inscription) {
+    let chars = GRID_CARD_LABEL_CHARS as u32;
+    let lines = GRID_CARD_LABEL_LINES as u32;
+    label.set_min_chars(chars);
+    label.set_nat_chars(chars);
+    label.set_min_lines(lines);
+    label.set_nat_lines(lines);
+    label.set_xalign(0.5);
+    label.set_yalign(0.0);
     label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    label.set_text_overflow(gtk::InscriptionOverflow::EllipsizeEnd);
 }
 
-fn grid_card_parts(card: &gtk::Box) -> Option<(gtk::Image, gtk::Label, gtk::Entry)> {
+fn grid_card_parts(card: &gtk::Box) -> Option<(gtk::Image, gtk::Inscription, gtk::Entry)> {
     let icon = card.first_child()?.downcast::<gtk::Image>().ok()?;
-    let label = icon.next_sibling()?.downcast::<gtk::Label>().ok()?;
+    let label = icon.next_sibling()?.downcast::<gtk::Inscription>().ok()?;
     let field = label.next_sibling()?.downcast::<gtk::Entry>().ok()?;
     Some((icon, label, field))
 }
