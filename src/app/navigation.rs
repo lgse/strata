@@ -920,6 +920,14 @@ impl NavigationState {
         Some((depth, position))
     }
 
+    pub fn focus_column(&mut self, depth: usize) -> bool {
+        if depth >= self.columns.len() {
+            return false;
+        }
+        self.active_column = Some(depth);
+        true
+    }
+
     pub fn focus_parent(&mut self) -> Option<(usize, Option<usize>)> {
         let depth = self.active_column?;
         let parent_depth = depth.checked_sub(1)?;

@@ -28,6 +28,39 @@ fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
 }
 
 #[test]
+fn navigation_keys_claim_keyboard_ownership_but_commands_do_not() {
+    use gtk::gdk::{Key, ModifierType};
+    for key in [
+        Key::Up,
+        Key::Down,
+        Key::h,
+        Key::j,
+        Key::k,
+        Key::l,
+        Key::Tab,
+        Key::ISO_Left_Tab,
+        Key::Page_Down,
+        Key::Return,
+    ] {
+        assert!(super::is_browser_navigation_key(key, ModifierType::empty()));
+    }
+    assert!(super::is_browser_navigation_key(
+        Key::Down,
+        ModifierType::SHIFT_MASK
+    ));
+    assert!(super::is_browser_navigation_key(
+        Key::Left,
+        ModifierType::ALT_MASK
+    ));
+    for key in [Key::v, Key::c, Key::x, Key::z, Key::Control_L, Key::Delete] {
+        assert!(!super::is_browser_navigation_key(
+            key,
+            ModifierType::CONTROL_MASK
+        ));
+    }
+}
+
+#[test]
 fn sidebar_update_label_stays_plain_for_a_stable_release() {
     assert_eq!(
         sidebar_update_label(&release("0.6.0", BuildKind::Stable)),

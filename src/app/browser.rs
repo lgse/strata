@@ -636,6 +636,11 @@ impl Browser {
         self.state.borrow().can_trash_at(depth)
     }
 
+    /// Synchronizes widget focus without changing selection or reopening a directory.
+    pub fn set_active_column(&self, depth: usize) {
+        self.state.borrow_mut().focus_column(depth);
+    }
+
     pub fn focus_active(&self) {
         let focus = self.state.borrow().active_focus();
         if let Some((depth, position)) = focus {
@@ -1081,6 +1086,10 @@ impl Browser {
 
     pub fn focused_entry(&self) -> Option<FileEntry> {
         self.focused_item().map(|(_, _, entry)| entry)
+    }
+
+    pub fn selected_positions(&self, depth: usize) -> Vec<usize> {
+        self.state.borrow().selected_positions(depth)
     }
 
     pub fn selected_entries(&self) -> Vec<FileEntry> {

@@ -1832,8 +1832,28 @@ entry.preview-command-entry selection {
 }
 
 .directory-column:focus-within .column-header {
-  background: transparent;
-  color: @theme_accent;
+  color: @theme_text;
+}
+
+.destination-column .column-header {
+  background: @theme_surface;
+  color: @theme_text;
+  box-shadow: inset 0 3px @theme_accent;
+}
+
+.column-destination-hint {
+  min-height: 24px;
+  padding: 0 12px;
+  font-size: 0.85em;
+  color: @theme_dim_text;
+  background: @theme_bg;
+  border-top: 1px solid transparent;
+}
+
+.destination-column .column-destination-hint {
+  color: @theme_text;
+  background: @theme_surface;
+  border-top-color: @theme_accent;
 }
 
 .directory-column scrolledwindow,
@@ -2768,7 +2788,7 @@ colorchooser colorswatch overlay {
   box-shadow: inset 0 0 0 1px alpha(@theme_accent, 0.72);
 }
 
-.file-list row:hover {
+.file-list row:hover:not(:selected) {
   background: alpha(@theme_accent, 0.15);
   color: @theme_text;
 }
@@ -2865,8 +2885,29 @@ colorchooser colorswatch overlay {
 }
 
 .file-list row:focus-visible {
-  outline: 2px solid @theme_accent;
+  outline: none;
+}
+
+.keyboard-navigation .file-list:focus-within .file-row.keyboard-cursor {
+  outline: 2px solid @theme_text;
   outline-offset: -2px;
+}
+
+.directory-column:not(:focus-within) .file-list row:selected {
+  background: alpha(@theme_highlight, 0.55);
+  color: @theme_text;
+}
+
+.keyboard-navigation .file-list row:hover:not(:selected),
+.keyboard-navigation .explorer-list row:hover:not(:selected),
+.keyboard-navigation .file-grid > child:hover:not(:selected),
+.keyboard-navigation .file-grid > child:hover:not(:selected) .grid-card {
+  background: transparent;
+  color: @theme_text;
+}
+
+.keyboard-navigation .file-list row:hover:not(:selected) .file-size {
+  opacity: 0;
 }
 
 .file-marquee,
@@ -2878,11 +2919,12 @@ colorchooser colorswatch overlay {
 }
 
 .file-list .file-row.active-path {
-  background: @theme_highlight;
-  color: @theme_accent;
-  outline: 1px solid alpha(@theme_accent, 0.92);
-  outline-offset: -1px;
-  box-shadow: 0 0 10px alpha(@theme_accent, 0.24);
+  color: @theme_text;
+  box-shadow: inset 3px 0 @theme_dim_text;
+}
+
+.file-list .file-row.active-path .file-chevron {
+  color: @theme_dim_text;
 }
 
 .loading-skeleton {

@@ -6,6 +6,7 @@ mod browser_modes;
 mod controls;
 mod entry_list_model;
 mod inline_search;
+mod input_ownership;
 mod loading_skeleton;
 mod marquee;
 mod motion;

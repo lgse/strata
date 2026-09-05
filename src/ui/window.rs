@@ -747,6 +747,7 @@ fn install_keyboard_navigation(
             return glib::Propagation::Stop;
         }
         if is_sidebar_focus_shortcut(key, modifiers) {
+            view.keyboard_navigation();
             if sidebar_has_focus {
                 let restored = focus_before_sidebar
                     .borrow_mut()
@@ -786,6 +787,9 @@ fn install_keyboard_navigation(
             && type_to_search.show(query)
         {
             return glib::Propagation::Stop;
+        }
+        if !text_has_focus && is_browser_navigation_key(key, modifiers) {
+            view.keyboard_navigation();
         }
         if alt
             && !control
@@ -979,6 +983,36 @@ fn install_keyboard_navigation(
         glib::Propagation::Stop
     });
     window.add_controller(keys);
+}
+
+fn is_browser_navigation_key(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    if modifiers
+        .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SUPER_MASK)
+    {
+        return false;
+    }
+    matches!(
+        key,
+        gtk::gdk::Key::j
+            | gtk::gdk::Key::k
+            | gtk::gdk::Key::h
+            | gtk::gdk::Key::l
+            | gtk::gdk::Key::Up
+            | gtk::gdk::Key::Down
+            | gtk::gdk::Key::Left
+            | gtk::gdk::Key::Right
+            | gtk::gdk::Key::Home
+            | gtk::gdk::Key::End
+            | gtk::gdk::Key::Page_Up
+            | gtk::gdk::Key::Page_Down
+            | gtk::gdk::Key::KP_Page_Up
+            | gtk::gdk::Key::KP_Page_Down
+            | gtk::gdk::Key::Tab
+            | gtk::gdk::Key::ISO_Left_Tab
+            | gtk::gdk::Key::Return
+            | gtk::gdk::Key::KP_Enter
+            | gtk::gdk::Key::BackSpace
+    )
 }
 
 fn page_direction(key: gtk::gdk::Key) -> Option<i32> {

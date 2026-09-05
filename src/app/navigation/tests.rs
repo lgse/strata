@@ -30,6 +30,31 @@ fn named_entry(path: &str, name: &str) -> FileEntry {
 }
 
 #[test]
+fn focusing_a_column_preserves_selection_and_descendants() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/alpha", "alpha"),
+            named_entry("/fixture/bravo", "bravo"),
+        ],
+    );
+    state.set_selection(0, &[0, 1], Some(1));
+    state.descend(0, location("/fixture/alpha"), RequestId(2));
+    let path = state.current_path();
+    assert!(state.focus_column(0));
+    assert_eq!(state.selected_positions(0), [0, 1]);
+    assert_eq!(state.active_focus(), Some((0, Some(1))));
+    assert_eq!(state.current_path(), path);
+    assert!(state.focus_column(1));
+    assert_eq!(state.active_focus(), Some((1, None)));
+    assert!(state.selected_entries().is_empty());
+    assert!(!state.focus_column(2));
+    assert_eq!(state.active_depth(), Some(1));
+}
+
+#[test]
 fn multi_selection_tracks_entries_and_replaces_cleanly() {
     let mut state = NavigationState::default();
     state.navigate(location("/fixture"), RequestId(1));
