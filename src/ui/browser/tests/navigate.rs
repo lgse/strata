@@ -84,14 +84,14 @@ fn assert_navigate_lands_on_first_item(view: &BrowserView, browser: &crate::app:
 
 #[test]
 #[ignore = "requires a mapped GTK window; run this test alone"]
-fn grid_navigate_focuses_first_item_so_arrows_move_without_left_right() {
-    const CHILD: &str = "STRATA_GRID_NAVIGATE_FOCUS_GTK_CHILD";
+fn icons_navigate_focuses_first_item_so_arrows_move_without_left_right() {
+    const CHILD: &str = "STRATA_ICONS_NAVIGATE_FOCUS_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
         let sandbox = tempfile::tempdir().expect("isolated settings");
         let status = std::process::Command::new(std::env::current_exe().expect("test executable"))
             .args([
                 "--exact",
-                "ui::browser::tests::navigate::grid_navigate_focuses_first_item_so_arrows_move_without_left_right",
+                "ui::browser::tests::navigate::icons_navigate_focuses_first_item_so_arrows_move_without_left_right",
                 "--nocapture",
                 "--ignored",
             ])
@@ -109,7 +109,7 @@ fn grid_navigate_focuses_first_item_so_arrows_move_without_left_right() {
     }
     crate::assets::prepare().expect("assets");
     crate::assets::register_icon_theme();
-    let (view, browser, window, _home, place) = present_single_pane(BrowserMode::Grid);
+    let (view, browser, window, _home, place) = present_single_pane(BrowserMode::Icons);
     browser.navigate(Location::local(place.path()));
     assert_navigate_lands_on_first_item(&view, &browser);
     window.destroy();
@@ -118,14 +118,14 @@ fn grid_navigate_focuses_first_item_so_arrows_move_without_left_right() {
 
 #[test]
 #[ignore = "requires a mapped GTK window; run this test alone"]
-fn explorer_navigate_focuses_first_item_so_arrows_move() {
-    const CHILD: &str = "STRATA_EXPLORER_NAVIGATE_FOCUS_GTK_CHILD";
+fn list_navigate_focuses_first_item_so_arrows_move() {
+    const CHILD: &str = "STRATA_LIST_NAVIGATE_FOCUS_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
         let sandbox = tempfile::tempdir().expect("isolated settings");
         let status = std::process::Command::new(std::env::current_exe().expect("test executable"))
             .args([
                 "--exact",
-                "ui::browser::tests::navigate::explorer_navigate_focuses_first_item_so_arrows_move",
+                "ui::browser::tests::navigate::list_navigate_focuses_first_item_so_arrows_move",
                 "--nocapture",
                 "--ignored",
             ])
@@ -143,7 +143,7 @@ fn explorer_navigate_focuses_first_item_so_arrows_move() {
     }
     crate::assets::prepare().expect("assets");
     crate::assets::register_icon_theme();
-    let (view, browser, window, _home, place) = present_single_pane(BrowserMode::Explorer);
+    let (view, browser, window, _home, place) = present_single_pane(BrowserMode::List);
     browser.navigate(Location::local(place.path()));
     assert_navigate_lands_on_first_item(&view, &browser);
     window.destroy();

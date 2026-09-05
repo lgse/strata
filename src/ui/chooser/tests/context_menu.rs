@@ -109,11 +109,7 @@ fn edit_name(state: &ChooserState, name: &str) {
 fn chooser_context_menus_and_rename_work_in_every_view() {
     gtk::init().expect("GTK display");
     crate::ui::prepare_portal_ui();
-    for mode in [
-        BrowserMode::Columns,
-        BrowserMode::Grid,
-        BrowserMode::Explorer,
-    ] {
+    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
         for grouped in [false, true] {
             let root = tempfile::tempdir().expect("fixture");
             std::fs::create_dir(root.path().join("Folder")).expect("folder");

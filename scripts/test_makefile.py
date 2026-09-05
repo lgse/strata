@@ -49,11 +49,11 @@ class ChooserLauncherTests(unittest.TestCase):
 
     def test_case_and_options_can_be_overridden(self):
         result, calls = self.run_target(
-            "CHOOSER_CASE=multiple", "CHOOSER_ARGS=--view grid --group-by-type"
+            "CHOOSER_CASE=multiple", "CHOOSER_ARGS=--view icons --group-by-type"
         )
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls[1][1], ["scripts/portal-test.py", "multiple", "--binary",
-                                      "target/debug/strata", "--view", "grid", "--group-by-type"])
+                                      "target/debug/strata", "--view", "icons", "--group-by-type"])
 
     def test_a_failed_build_does_not_launch_a_stale_binary(self):
         result, calls = self.run_target(build_status=1)

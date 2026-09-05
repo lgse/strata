@@ -2,7 +2,7 @@
 
 Strata can serve the XDG Desktop Portal FileChooser interface for portal-aware applications. Native file pickers and applications that do not use the portal are unchanged.
 
-The chooser is deliberately limited to local files and folders. It uses the main app's sidebar, Columns/Grid/Explorer views, type grouping, filters, metadata, previews, and themed controls. Overwrite confirmation uses the same in-window modal as the app.
+The chooser is deliberately limited to local files and folders. It uses the main app's sidebar, Columns/Icons/List views, type grouping, filters, metadata, previews, and themed controls. Overwrite confirmation uses the same in-window modal as the app.
 
 Wayland applications can provide an exported parent handle. X11 parent handles are not attached; these requests appear as standalone windows.
 
@@ -101,7 +101,7 @@ On a desktop that does not manage the frontend as a systemd user unit, log out a
   requiring a click.
 - Tab/Shift+Tab traverse controls; arrows move between toolbar icons and options.
 - Up from the first file row reaches the pane toolbar; Down returns to files.
-- Grid arrows follow the visual rows and columns. Explorer arrows follow the
+- Icons arrows follow the visual rows and columns. List arrows follow the
   displayed order, including type grouping. Shift+arrows extend or shrink a range
   across groups; plain arrows select only the focused item.
 - Space/Enter activate focused buttons and toggles. Down or Enter opens a focused
@@ -113,7 +113,7 @@ On a desktop that does not manage the frontend as a systemd user unit, log out a
   while Rename is disabled for multiple selected items.
 - Text fields keep their cursor keys and Ctrl+A. Ctrl+L edits the location;
   Ctrl+F opens the pane filter; Ctrl+Shift+N creates a folder.
-- Left from the outer file-list edge or a leftmost Grid cell focuses the visible
+- Left from the outer file-list edge or a leftmost Icons cell focuses the visible
   sidebar. Ctrl+Shift+B also focuses it; Right returns to files without changing
   selection. Up from Home reaches the sidebar toggle in the top bar.
 - Space on a file toggles preview. Ctrl+Enter accepts a selected folder in a
@@ -156,7 +156,7 @@ From the repository root, use `make run-chooser-dev` to rebuild and open an isol
 
 ```bash
 make run-chooser-dev
-make run-chooser-dev CHOOSER_CASE=multiple CHOOSER_ARGS="--view grid --group-by-type"
+make run-chooser-dev CHOOSER_CASE=multiple CHOOSER_ARGS="--view icons --group-by-type"
 make run-chooser-dev CHOOSER_ARGS="--choices --theme classic-light"
 ```
 
@@ -167,7 +167,7 @@ You can also build Strata and run the dedicated client directly:
 ```bash
 cargo build
 python3 scripts/portal-test.py single --binary target/debug/strata
-python3 scripts/portal-test.py multiple --binary target/debug/strata --view grid --group-by-type
+python3 scripts/portal-test.py multiple --binary target/debug/strata --view icons --group-by-type
 python3 scripts/portal-test.py directory --binary target/debug/strata --view columns
 python3 scripts/portal-test.py filters --binary target/debug/strata
 python3 scripts/portal-test.py save --binary target/debug/strata --choices
@@ -180,7 +180,7 @@ Use `--folder /absolute/path` for your own files, `--theme classic-light` for a 
 
 Check these interactions:
 
-- Single-selection requests remain single-selection with Ctrl/Shift clicks, including grouped Grid sections. Multiple-selection requests return all selected files.
+- Single-selection requests remain single-selection with Ctrl/Shift clicks, including grouped Icons sections. Multiple-selection requests return all selected files.
 - Ctrl+L edits the location; Ctrl+F opens the browser filter; F5 refreshes; Ctrl+H or Ctrl+. toggles hidden files. Remote locations show an error.
 - Space opens/closes a preview. Escape dismisses a filter/menu/preview before cancelling the chooser.
 - Ctrl+Shift+N or the **New Folder** icon beside Refresh in the browser toolbar creates a directory inline. In folder requests, Ctrl+Enter accepts the current folder when the file view has focus.

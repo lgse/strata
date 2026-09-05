@@ -49,11 +49,7 @@ fn every_view_enforces_single_selection_including_type_groups() {
     let root = tempfile::tempdir().expect("fixture directory");
     std::fs::write(root.path().join("notes.txt"), "notes").expect("text fixture");
     std::fs::write(root.path().join("data.json"), "{}").expect("JSON fixture");
-    for mode in [
-        BrowserMode::Columns,
-        BrowserMode::Grid,
-        BrowserMode::Explorer,
-    ] {
+    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
         for multiple in [false, true] {
             let view = BrowserView::new_chooser(ChooserFileSource::new(), multiple);
             view.set_view_mode(mode);

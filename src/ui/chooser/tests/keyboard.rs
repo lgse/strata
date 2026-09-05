@@ -199,11 +199,7 @@ fn keyboard_only_controls_and_file_navigation_work_in_every_chooser_view() {
     for index in 0..2 {
         std::fs::write(root.path().join(format!("code-{index}.json")), "{}").expect("JSON file");
     }
-    for mode in [
-        BrowserMode::Columns,
-        BrowserMode::Grid,
-        BrowserMode::Explorer,
-    ] {
+    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
         for grouped in [false, true] {
             let request = ChooserRequest {
                 token: format!("keyboard-{mode:?}-{grouped}"),
@@ -394,17 +390,17 @@ fn keyboard_only_controls_and_file_navigation_work_in_every_chooser_view() {
             browser.focus_active();
             settle();
             sidebar_round_trip(&state);
-            if mode == BrowserMode::Grid {
+            if mode == BrowserMode::Icons {
                 key("Right");
                 assert_eq!(
                     selected(&state),
                     "01.txt",
-                    "Grid Right moves a cell, not into a folder"
+                    "Icons Right moves a cell, not into a folder"
                 );
                 key("Left");
                 assert!(
                     state.view.item_view_has_focus(),
-                    "Left inside a Grid row stays in the grid"
+                    "Left inside an Icons row stays in the view"
                 );
                 assert_eq!(selected(&state), "00.txt");
                 key("shift+Left");
@@ -438,7 +434,7 @@ fn keyboard_only_controls_and_file_navigation_work_in_every_chooser_view() {
                     .expect("next row bounds");
                 assert!(
                     (before.x() - after.x()).abs() < 1.0 && after.y() > before.y(),
-                    "Grid Down keeps its visual column"
+                    "Icons Down keeps its visual column"
                 );
                 key("Up");
                 assert_eq!(selected(&state), "01.txt");
@@ -460,7 +456,7 @@ fn keyboard_only_controls_and_file_navigation_work_in_every_chooser_view() {
                 "Shift+Up restores the focused range endpoint"
             );
 
-            if mode == BrowserMode::Grid && grouped {
+            if mode == BrowserMode::Icons && grouped {
                 let grids = collections(&state.view.widget())
                     .into_iter()
                     .filter_map(|widget| widget.downcast::<gtk::GridView>().ok())

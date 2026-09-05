@@ -38,10 +38,10 @@ fn plain_single_pane_arrows_move_focus_not_directories() {
     use gtk::gdk::{Key, ModifierType};
     let plain = ModifierType::empty();
     assert_eq!(
-        single_pane_arrow_action(BrowserMode::Grid, Key::Left, plain, false, true),
+        single_pane_arrow_action(BrowserMode::Icons, Key::Left, plain, false, true),
         Some(SinglePaneArrow::Native)
     );
-    for mode in [BrowserMode::Grid, BrowserMode::Explorer] {
+    for mode in [BrowserMode::Icons, BrowserMode::List] {
         assert_eq!(
             single_pane_arrow_action(mode, Key::Left, plain, true, true),
             Some(SinglePaneArrow::Sidebar)
@@ -64,15 +64,15 @@ fn plain_single_pane_arrows_move_focus_not_directories() {
         );
     }
     assert_eq!(
-        single_pane_arrow_action(BrowserMode::Explorer, Key::Right, plain, true, true),
+        single_pane_arrow_action(BrowserMode::List, Key::Right, plain, true, true),
         Some(SinglePaneArrow::Stay)
     );
     assert_eq!(
-        single_pane_arrow_action(BrowserMode::Explorer, Key::Left, plain, true, false),
+        single_pane_arrow_action(BrowserMode::List, Key::Left, plain, true, false),
         Some(SinglePaneArrow::Stay)
     );
     assert_eq!(
-        single_pane_arrow_action(BrowserMode::Grid, Key::Left, plain, true, false),
+        single_pane_arrow_action(BrowserMode::Icons, Key::Left, plain, true, false),
         Some(SinglePaneArrow::Native)
     );
     assert_eq!(
@@ -81,7 +81,7 @@ fn plain_single_pane_arrows_move_focus_not_directories() {
     );
     for modifier in [ModifierType::SHIFT_MASK, ModifierType::CONTROL_MASK] {
         assert_eq!(
-            single_pane_arrow_action(BrowserMode::Grid, Key::Left, modifier, true, true),
+            single_pane_arrow_action(BrowserMode::Icons, Key::Left, modifier, true, true),
             Some(SinglePaneArrow::Native)
         );
     }

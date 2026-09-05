@@ -106,11 +106,11 @@ def main():
     parser.add_argument("--folder", type=Path, help="Initial folder; defaults to a disposable sample fixture")
     parser.add_argument("--choices", action="store_true")
     parser.add_argument("--cancel-after", type=float, metavar="SECONDS")
-    parser.add_argument("--view", choices=["columns", "grid", "explorer"], default="explorer")
+    parser.add_argument("--view", choices=["columns", "icons", "list"], default="list")
     parser.add_argument("--theme", default="tokyo-night", help="Built-in theme for the isolated backend")
     parser.add_argument("--group-by-type", action="store_true")
     args = parser.parse_args()
-    if not args.binary and (args.theme != "tokyo-night" or args.view != "explorer" or args.group_by_type):
+    if not args.binary and (args.theme != "tokyo-night" or args.view != "list" or args.group_by_type):
         parser.error("Theme and view overrides require --binary; existing user settings are never modified")
     with tempfile.TemporaryDirectory(prefix="strata-portal-test-") as temporary:
         root = Path(temporary)

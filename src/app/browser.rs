@@ -1856,7 +1856,7 @@ impl Browser {
             == Some(location)
     }
 
-    /// Activates an item using conventional single-pane explorer navigation.
+    /// Activates an item using conventional single-pane list navigation.
     pub fn activate_in_place(self: &Rc<Self>, depth: usize, position: usize) {
         self.select(depth, position);
         let Some(entry) = self.entry_at(depth, position) else {

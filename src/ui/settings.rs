@@ -761,9 +761,9 @@ fn general_page(
     activation_options.add_css_class("settings-option");
     activation_options.add_css_class("click-activation-options");
     for (label, mode) in [
-        ("List", BrowserMode::Columns),
-        ("Grid", BrowserMode::Grid),
-        ("Explorer", BrowserMode::Explorer),
+        ("Columns", BrowserMode::Columns),
+        ("Icons", BrowserMode::Icons),
+        ("List", BrowserMode::List),
     ] {
         let activation = manager.click_activation(mode);
         browser.set_click_activation(mode, activation);
@@ -2288,7 +2288,7 @@ fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
     content.append(&row);
     append_heading(&content, "NAVIGATION");
     for (label, keys) in [
-        ("Move through items", "↑ / ↓ (← / → in Grid)"),
+        ("Move through items", "↑ / ↓ (← / → in Icons)"),
         ("Jump to top / bottom", "Ctrl + ↑ / Ctrl + ↓"),
         ("Open item", "Enter"),
         ("Go to parent", "Alt + ↑"),
