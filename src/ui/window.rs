@@ -330,6 +330,7 @@ fn present_target(
     window_overlay.add_overlay(&search_dialog.widget());
     let shown_search = search_dialog.clone();
     let search_blurred_root = blurred_root.clone();
+    let search_preferences = theme_manager.clone();
     search_button.connect_clicked(move |button| {
         if shown_search.is_visible() {
             shown_search.hide();
@@ -338,12 +339,13 @@ fn present_target(
         let root = home_directory();
         button.add_css_class("active");
         search_blurred_root.set_blurred(true);
-        shown_search.show(root);
+        shown_search.show(root, search_preferences.sort_preferences().show_hidden);
     });
     let search_action = gio::SimpleAction::new("search", None);
     let shortcut_search = search_dialog.clone();
     let shortcut_search_button = search_button.clone();
     let shortcut_search_root = blurred_root.clone();
+    let shortcut_search_preferences = theme_manager.clone();
     search_action.connect_activate(move |_, _| {
         if shortcut_search.is_visible() {
             shortcut_search.hide();
@@ -351,7 +353,10 @@ fn present_target(
             let root = home_directory();
             shortcut_search_button.add_css_class("active");
             shortcut_search_root.set_blurred(true);
-            shortcut_search.show(root);
+            shortcut_search.show(
+                root,
+                shortcut_search_preferences.sort_preferences().show_hidden,
+            );
         }
     });
     window.add_action(&search_action);

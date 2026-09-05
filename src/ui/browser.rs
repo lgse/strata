@@ -1895,6 +1895,7 @@ impl ViewState {
             &suggestions_box,
             &generation,
             base.clone(),
+            self.browser.preferences().show_hidden,
             move |field| {
                 field.remove_css_class("error");
                 suggestions_error.set_visible(false);
@@ -3184,6 +3185,7 @@ impl ViewState {
             &suggestions_box,
             &generation,
             base.clone(),
+            self.browser.preferences().show_hidden,
             move |field| {
                 field.remove_css_class("error");
                 extract_error.set_visible(false);
@@ -5000,7 +5002,12 @@ impl ViewState {
                 };
                 search_gen.set(search_gen.get().saturating_add(1));
                 let poll_gen = search_gen.get();
-                let (h, receiver) = crate::services::index_tree(path);
+                let show_hidden = state
+                    .browser
+                    .column_preferences(depth_for_search)
+                    .unwrap_or_else(|| state.browser.preferences())
+                    .show_hidden;
+                let (h, receiver) = crate::services::index_tree(path, show_hidden);
                 handle.replace(Some(h));
                 filtered.set_filter(None::<&gtk::CustomFilter>);
                 filtered.set_model(Some(&sm));
@@ -7885,9 +7892,10 @@ fn setup_transfer_search(
     suggestions: &gtk::Box,
     generation: &Rc<Cell<u64>>,
     base: std::path::PathBuf,
+    show_hidden: bool,
     on_changed: impl Fn(&gtk::Entry) + 'static,
 ) {
-    let (search_handle, search_receiver) = index_tree(glib::home_dir());
+    let (search_handle, search_receiver) = index_tree(glib::home_dir(), show_hidden);
     let search_handle = Rc::new(search_handle);
     let query_handle = Rc::downgrade(&search_handle);
     let search_mode = Rc::new(Cell::new(false));

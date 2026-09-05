@@ -73,12 +73,19 @@ impl Drop for SearchHandle {
 
 /// Builds and searches the index entirely off the GTK thread. The UI receives only the best
 /// bounded result set, so typing remains responsive even while very large trees are being walked.
-pub fn index_tree(root: PathBuf) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_tree_with_budget(root, MAX_INDEX_ENTRIES, MAX_INDEX_DEPTH, INDEX_TIME_BUDGET)
+pub fn index_tree(root: PathBuf, show_hidden: bool) -> (SearchHandle, Receiver<SearchEvent>) {
+    index_tree_with_budget(
+        root,
+        show_hidden,
+        MAX_INDEX_ENTRIES,
+        MAX_INDEX_DEPTH,
+        INDEX_TIME_BUDGET,
+    )
 }
 
 fn index_tree_with_budget(
     root: PathBuf,
+    show_hidden: bool,
     max_entries: usize,
     max_depth: usize,
     time_budget: Duration,
@@ -96,10 +103,12 @@ fn index_tree_with_budget(
             let walk_start = Instant::now();
             // Walk one level past `max_depth` so a directory at the cap with real children
             // yields at least one entry beyond it, letting depth truncation be detected below.
+            // `hidden` must come after `standard_filters`: that bundle enables its own
+            // `hidden(true)` internally, which would otherwise override this call back on.
             let walker = ignore::WalkBuilder::new(&root)
-                .hidden(true)
                 .follow_links(false)
                 .standard_filters(true)
+                .hidden(!show_hidden)
                 .require_git(false)
                 .max_depth(Some(max_depth + 1))
                 .build();
