@@ -3,8 +3,9 @@
 use super::{
     BrowserMode, ClickActivation, ClickCount, EXPLORER_COLUMN_MIN_WIDTHS, EXPLORER_COLUMN_WIDTHS,
     MAX_GRID_THUMBNAIL_SIZE, MIN_GRID_THUMBNAIL_SIZE, SourceIndexMap, compare_type_groups,
-    explorer_column_width, grid_card_extent, grid_card_icon_slot, metadata_fill_position,
-    scroll_delta_for_unit, should_activate_pointer_click, type_groups_of, value_type_group,
+    explorer_column_width, first_model_type_group, grid_card_extent, grid_card_icon_slot,
+    metadata_fill_position, scroll_delta_for_unit, should_activate_pointer_click,
+    type_group_sorter, type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use gtk::{gio, prelude::*};
@@ -166,6 +167,81 @@ fn entries_of_one_type_share_a_group() {
         value_type_group(&value('f', "notes.md")),
         value_type_group(&value('f', "notes.json"))
     );
+}
+
+#[test]
+fn type_group_sort_clusters_mixed_entries_and_keeps_placeholder_first() {
+    let mut values = [
+        value('f', "notes.json"),
+        String::new(),
+        value('d', "projects"),
+        value('f', "data.json"),
+        value('d', "archive"),
+        value('f', "README.md"),
+    ];
+    values.sort_by(|left, right| {
+        compare_type_groups(&value_type_group(left), &value_type_group(right))
+    });
+
+    assert_eq!(values[0], "");
+    assert_eq!(value_type_group(&values[1]), "Folder");
+    assert_eq!(value_type_group(&values[2]), "Folder");
+    let json = value_type_group(&value('f', "notes.json"));
+    let markdown = value_type_group(&value('f', "README.md"));
+    assert_eq!(value_type_group(&values[3]), json);
+    assert_eq!(value_type_group(&values[4]), json);
+    assert_eq!(value_type_group(&values[5]), markdown);
+    assert!(compare_type_groups(&json, &markdown).is_lt());
+}
+
+const TYPE_GROUP_SORT_GTK_CHILD: &str = "STRATA_TYPE_GROUP_SORT_GTK_CHILD";
+const TYPE_GROUP_SORT_TEST: &str =
+    "ui::browser_modes::tests::type_group_sorter_clusters_a_flattened_grid_model";
+
+fn run_type_group_sorter_checks() {
+    let source = gtk::StringList::new(&[
+        &value('f', "notes.json"),
+        &value('d', "projects"),
+        &value('f', "data.json"),
+        &value('d', "archive"),
+        &value('f', "README.md"),
+    ]);
+    let placeholder = gtk::StringList::new(&[""]);
+    let stacked = gio::ListStore::new::<gio::ListModel>();
+    stacked.append(&placeholder.clone().upcast::<gio::ListModel>());
+    stacked.append(&source.clone().upcast::<gio::ListModel>());
+    let flattened = gtk::FlattenListModel::new(Some(stacked));
+    let sorted = gtk::SortListModel::new(Some(flattened), Some(type_group_sorter()));
+
+    let groups: Vec<String> = (0..sorted.n_items())
+        .filter_map(|index| sorted.item(index).map(|item| super::model_value(&item)))
+        .map(|value| value_type_group(&value))
+        .collect();
+    assert_eq!(groups[0], "");
+    assert_eq!(&groups[1..3], ["Folder", "Folder"]);
+    let json = value_type_group(&value('f', "notes.json"));
+    let markdown = value_type_group(&value('f', "README.md"));
+    assert_eq!(&groups[3..5], [json.as_str(), json.as_str()]);
+    assert_eq!(groups[5], markdown);
+    assert_eq!(first_model_type_group(sorted.upcast_ref()), "Folder");
+}
+
+#[test]
+fn type_group_sorter_clusters_a_flattened_grid_model() {
+    if std::env::var_os(TYPE_GROUP_SORT_GTK_CHILD).is_some() {
+        if gtk::init().is_err() {
+            return;
+        }
+        run_type_group_sorter_checks();
+        return;
+    }
+
+    let status = Command::new(std::env::current_exe().expect("test executable should exist"))
+        .args(["--exact", TYPE_GROUP_SORT_TEST])
+        .env(TYPE_GROUP_SORT_GTK_CHILD, "1")
+        .status()
+        .expect("isolated GTK grouping test should start");
+    assert!(status.success(), "isolated GTK grouping test failed");
 }
 
 const GTK_CHILD: &str = "STRATA_SOURCE_INDEX_MAP_GTK_CHILD";
