@@ -1304,18 +1304,22 @@ switch:checked slider {
   min-height: 14px;
 }
 
+scrollbar slider:active {
+  background: @theme_accent;
+}
+
 .fixed-scrollbar scrollbar > range > trough > slider {
   border-width: 1px;
 }
 
 .fixed-scrollbar scrollbar.vertical > range > trough > slider {
-  margin: 0 5px;
-  min-width: 3px;
+  margin: 0 4px;
+  min-width: 6px;
 }
 
 .fixed-scrollbar scrollbar.horizontal > range > trough > slider {
-  margin: 5px 0;
-  min-height: 3px;
+  margin: 4px 0;
+  min-height: 6px;
 }
 
 .autoscroll-anchor {
@@ -2985,9 +2989,12 @@ entry.theme-search {
   min-height: 32px;
 }
 
-.theme-catalog-scroll scrollbar slider:hover,
-.theme-catalog-scroll scrollbar slider:active {
+.theme-catalog-scroll scrollbar slider:hover {
   background: @theme_dim_text;
+}
+
+.theme-catalog-scroll scrollbar slider:active {
+  background: @theme_accent;
 }
 
 .theme-grid > flowboxchild,
@@ -3143,9 +3150,12 @@ entry.theme-search {
   min-height: 32px;
 }
 
-.settings-content-scroll scrollbar slider:hover,
-.settings-content-scroll scrollbar slider:active {
+.settings-content-scroll scrollbar slider:hover {
   background: @theme_dim_text;
+}
+
+.settings-content-scroll scrollbar slider:active {
+  background: @theme_accent;
 }
 
 .keybinding-row {
