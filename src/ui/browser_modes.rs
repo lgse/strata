@@ -1216,6 +1216,7 @@ fn grid_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> Gr
     thumbnail_scale.set_draw_value(false);
     thumbnail_scale.set_value(f64::from(thumbnail_size));
     thumbnail_scale.set_size_request(220, -1);
+    disable_scale_long_press_zoom(&thumbnail_scale);
     let thumbnail_extremes = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     thumbnail_extremes.add_css_class("grid-thumbnail-extremes");
     let small = gtk::Label::new(Some("Small"));
@@ -1264,6 +1265,21 @@ fn grid_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> Gr
         thumbnail_scale,
         thumbnail_value,
         empty_trash_button: is_trash.then_some(empty_trash),
+    }
+}
+
+fn disable_scale_long_press_zoom(scale: &gtk::Scale) {
+    let controllers = scale.observe_controllers();
+    let long_presses: Vec<gtk::GestureLongPress> = (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)?
+                .downcast::<gtk::GestureLongPress>()
+                .ok()
+        })
+        .collect();
+    for long_press in long_presses {
+        scale.remove_controller(&long_press);
     }
 }
 
