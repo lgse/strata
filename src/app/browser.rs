@@ -140,8 +140,9 @@ pub enum BrowserEvent {
         moving: bool,
     },
     TransferProgress {
-        completed: usize,
-        total: usize,
+        completed_items: usize,
+        transferred_bytes: u64,
+        total_bytes: Option<u64>,
     },
     TransferFinished {
         moved_locations: Vec<Location>,
@@ -1563,12 +1564,16 @@ impl Browser {
                 return;
             }
             if let OperationEvent::TransferProgress {
-                completed, total, ..
+                completed_items,
+                transferred_bytes,
+                total_bytes,
+                ..
             } = &event
             {
                 browser.emit(BrowserEvent::TransferProgress {
-                    completed: *completed,
-                    total: *total,
+                    completed_items: *completed_items,
+                    transferred_bytes: *transferred_bytes,
+                    total_bytes: *total_bytes,
                 });
                 return;
             }
