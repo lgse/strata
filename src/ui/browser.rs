@@ -6441,8 +6441,24 @@ pub(crate) const FILTER_DEBOUNCE_DELAY: Duration = Duration::from_millis(200);
 /// `scroll_to` before the view has a real height leaves ListView/GridView with a
 /// one-row widget pool, so scrolling after a mode switch stays janky.
 pub(crate) fn scroll_collection_when_allocated(view: &gtk::Widget, position: u32) {
+    scroll_collection_when_allocated_with(view, position, gtk::ListScrollFlags::FOCUS);
+}
+
+pub(crate) fn focus_collection_item_when_allocated(view: &gtk::Widget, position: u32) {
+    scroll_collection_when_allocated_with(
+        view,
+        position,
+        gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
+    );
+}
+
+fn scroll_collection_when_allocated_with(
+    view: &gtk::Widget,
+    position: u32,
+    flags: gtk::ListScrollFlags,
+) {
     if view.height() > 1 {
-        apply_collection_scroll(view, position);
+        apply_collection_scroll(view, position, flags);
         return;
     }
     // ponytail: a few frames is enough for the first layout. Upgrade: a real
@@ -6450,7 +6466,12 @@ pub(crate) fn scroll_collection_when_allocated(view: &gtk::Widget, position: u32
     let frames = Cell::new(0u8);
     view.add_tick_callback(move |view, _| {
         if view.height() > 1 {
-            apply_collection_scroll(view, position);
+            if flags.intersects(gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT)
+                && !collection_view_holds_focus(view)
+            {
+                return glib::ControlFlow::Break;
+            }
+            apply_collection_scroll(view, position, flags);
             return glib::ControlFlow::Break;
         }
         let waited = frames.get().saturating_add(1);
@@ -6463,17 +6484,24 @@ pub(crate) fn scroll_collection_when_allocated(view: &gtk::Widget, position: u32
     });
 }
 
-fn apply_collection_scroll(view: &gtk::Widget, position: u32) {
+fn collection_view_holds_focus(view: &gtk::Widget) -> bool {
+    let Some(focused) = view.root().and_then(|root| root.focus()) else {
+        return false;
+    };
+    view.has_focus() || focused == *view || view.is_ancestor(&focused) || focused.is_ancestor(view)
+}
+
+fn apply_collection_scroll(view: &gtk::Widget, position: u32, flags: gtk::ListScrollFlags) {
     if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
         if position < list.model().map_or(0, |model| model.n_items()) {
-            list.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+            list.scroll_to(position, flags, None);
         }
         return;
     }
     if let Ok(grid) = view.clone().downcast::<gtk::GridView>()
         && position < grid.model().map_or(0, |model| model.n_items())
     {
-        grid.scroll_to(position, gtk::ListScrollFlags::FOCUS, None);
+        grid.scroll_to(position, flags, None);
     }
 }
 
