@@ -2913,6 +2913,9 @@ colorchooser colorswatch overlay {
 
 .file-appear {
   opacity: 0;
+}
+
+.file-row.file-appear {
   transform: translate(0, 6px);
 }
 
@@ -3549,7 +3552,9 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
   color: @theme_text;
 }
 
-.grid-fast-scroll .grid-card {
+.grid-fast-scroll .grid-card,
+.explorer-fast-scroll .explorer-row,
+.explorer-fast-scroll .explorer-list row {
   transition: none;
 }
 
