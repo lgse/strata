@@ -10,10 +10,31 @@ use std::{
 
 use super::{
     Cancellation, MAX_RASTER_INPUT_BYTES, MEDIA_WALL_TIME_LIMIT, MediaPreviewBackend,
-    ParseOperation, PrivateOutput, WALL_TIME_LIMIT, gpu_devices, parse, polaris_gpu_available_at,
-    sandbox_command, sandbox_input_path, spawn_renderer, valid_output, wait_for_renderer,
-    wait_for_renderer_output,
+    ParseOperation, PrivateOutput, SandboxRequest, WALL_TIME_LIMIT, gpu_devices, parse,
+    polaris_gpu_available_at, sandbox_command, sandbox_input_path, spawn_renderer, valid_output,
+    wait_for_renderer, wait_for_renderer_output,
 };
+
+fn test_sandbox_command(
+    executable: &Path,
+    input: &Path,
+    output: &Path,
+    operation: ParseOperation,
+    value: i32,
+    media_backend: MediaPreviewBackend,
+    devices: &[PathBuf],
+) -> Command {
+    sandbox_command(&SandboxRequest {
+        executable,
+        input,
+        output,
+        operation,
+        value,
+        media_backend,
+        devices,
+        database_companions: &[],
+    })
+}
 
 fn limit_from(arguments: &[String], flag: &str) -> u64 {
     arguments
@@ -33,7 +54,7 @@ fn file_size_limit_holds_a_full_resolution_decoded_frame() {
     const LARGEST_SUPPORTED_PIXELS: u64 = 50_000_000;
     const RGBA_CHANNELS: u64 = 4;
 
-    let command = sandbox_command(
+    let command = test_sandbox_command(
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Pictures/photo.jpg"),
         Path::new("/tmp/private-output"),
@@ -65,7 +86,7 @@ fn png(width: u32, height: u32) -> Vec<u8> {
 
 #[test]
 fn sandbox_exposes_only_runtime_input_and_private_output() {
-    let command = sandbox_command(
+    let command = test_sandbox_command(
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Downloads/untrusted.pdf"),
         Path::new("/tmp/private-output"),
@@ -99,7 +120,7 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
 #[test]
 fn media_previews_use_bounded_streaming_instead_of_driver_wide_resource_limits() {
     let operation = ParseOperation::PreviewMedia;
-    let command = sandbox_command(
+    let command = test_sandbox_command(
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
@@ -203,7 +224,7 @@ fn every_polaris_range_uses_the_safe_default_but_remains_available_for_opt_in() 
     let devices = gpu_devices(&dev, MediaPreviewBackend::Automatic);
     assert_eq!(devices.len(), blocked.len());
     assert!(polaris_gpu_available_at(&dev, &drm));
-    let command = sandbox_command(
+    let command = test_sandbox_command(
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
@@ -282,7 +303,7 @@ fn media_sandbox_exposes_only_supplied_gpu_devices_and_sysfs() {
         "/dev/nvidia0".into(),
         "/dev/nvidiactl".into(),
     ];
-    let command = sandbox_command(
+    let command = test_sandbox_command(
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
@@ -309,7 +330,7 @@ fn media_sandbox_exposes_only_supplied_gpu_devices_and_sysfs() {
 
 #[test]
 fn software_media_sandbox_exposes_no_gpu_devices_or_sysfs() {
-    let command = sandbox_command(
+    let command = test_sandbox_command(
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
@@ -331,7 +352,7 @@ fn software_media_sandbox_exposes_no_gpu_devices_or_sysfs() {
 
 #[test]
 fn non_media_sandboxes_never_expose_gpu_devices_or_sysfs() {
-    let command = sandbox_command(
+    let command = test_sandbox_command(
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
@@ -353,7 +374,7 @@ fn non_media_sandboxes_never_expose_gpu_devices_or_sysfs() {
 
 #[test]
 fn video_thumbnails_execute_directly_inside_the_bounded_sandbox() {
-    let command = sandbox_command(
+    let command = test_sandbox_command(
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
@@ -562,24 +583,39 @@ fn assert_process_marker_stopped(marker: &Path) {
 }
 
 #[test]
-fn database_sandbox_command_binds_wal_and_journal_companions() {
-    let command = sandbox_command(
-        Path::new("/tmp/strata"),
-        Path::new("/home/alice/data/app.db"),
-        Path::new("/tmp/private-output"),
-        ParseOperation::PreviewDatabase,
-        0,
-        MediaPreviewBackend::Software,
-        &[],
-    );
-    let arguments: Vec<_> = command
-        .get_args()
-        .map(|argument| argument.to_string_lossy().into_owned())
-        .collect();
-    let joined = arguments.join(" ");
+fn open_database_companions_finds_regular_files_and_ignores_symlinks() {
+    let directory = PrivateOutput::create().expect("create temp dir");
+    let db = directory.path().join("test.db");
+    let wal = directory.path().join("test.db-wal");
+    let shm = directory.path().join("test.db-shm");
 
-    assert!(joined.contains("--ro-bind /home/alice/data/app.db /input.db"));
-    assert!(joined.contains("--ro-bind-try /home/alice/data/app.db-wal /input.db-wal"));
-    assert!(joined.contains("--ro-bind-try /home/alice/data/app.db-shm /input.db-shm"));
-    assert!(joined.contains("--ro-bind-try /home/alice/data/app.db-journal /input.db-journal"));
+    fs::write(&db, b"sqlite db").expect("write db");
+    fs::write(&wal, b"wal content").expect("write wal");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink("/etc/passwd", &shm).expect("create symlink");
+
+    let companions = super::open_database_companions(&db);
+    assert_eq!(companions.len(), 1);
+    assert_eq!(companions[0].1, "-wal");
+
+    let command = sandbox_command(&SandboxRequest {
+        executable: Path::new("/tmp/strata"),
+        input: &db,
+        output: Path::new("/tmp/private-output"),
+        operation: ParseOperation::PreviewDatabase,
+        value: 0,
+        media_backend: MediaPreviewBackend::Software,
+        devices: &[],
+        database_companions: &companions,
+    });
+    use std::os::fd::AsRawFd;
+    let wal_fd = companions[0].0.as_raw_fd().to_string();
+    let joined = command
+        .get_args()
+        .map(|argument| argument.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
+    assert!(joined.contains(&format!("--ro-bind-fd {wal_fd} /input.db-wal")));
+    assert!(!joined.contains("/input.db-shm"));
+    assert!(!joined.contains("/input.db-journal"));
 }
