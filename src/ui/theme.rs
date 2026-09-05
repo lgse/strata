@@ -131,6 +131,10 @@ struct Preferences {
     explorer_file_clicks: u8,
     #[serde(default = "default_double_clicks")]
     explorer_folder_clicks: u8,
+    #[serde(default = "default_file_clicks")]
+    tree_file_clicks: u8,
+    #[serde(default = "default_double_clicks")]
+    tree_folder_clicks: u8,
     #[serde(default = "default_sidebar_order")]
     sidebar_order: Vec<String>,
     #[serde(default)]
@@ -180,6 +184,8 @@ impl Default for Preferences {
             grid_folder_clicks: default_double_clicks(),
             explorer_file_clicks: default_file_clicks(),
             explorer_folder_clicks: default_double_clicks(),
+            tree_file_clicks: default_file_clicks(),
+            tree_folder_clicks: default_double_clicks(),
             sidebar_order: default_sidebar_order(),
             show_hidden: false,
             text_size: default_text_size(),
@@ -584,6 +590,7 @@ impl ThemeManager {
         match self.preferences.borrow().browser_mode.as_str() {
             "grid" => super::browser_modes::BrowserMode::Grid,
             "explorer" => super::browser_modes::BrowserMode::Explorer,
+            "tree" => super::browser_modes::BrowserMode::Tree,
             _ => super::browser_modes::BrowserMode::Columns,
         }
     }
@@ -593,6 +600,7 @@ impl ThemeManager {
             super::browser_modes::BrowserMode::Columns => "columns",
             super::browser_modes::BrowserMode::Grid => "grid",
             super::browser_modes::BrowserMode::Explorer => "explorer",
+            super::browser_modes::BrowserMode::Tree => "tree",
         }
         .to_owned();
         self.save_preferences();
@@ -647,6 +655,7 @@ impl ThemeManager {
                 preferences.explorer_file_clicks,
                 preferences.explorer_folder_clicks,
             ),
+            BrowserMode::Tree => (preferences.tree_file_clicks, preferences.tree_folder_clicks),
         };
         let defaults = ClickActivation::default_for(mode);
         ClickActivation {
@@ -677,6 +686,10 @@ impl ThemeManager {
             BrowserMode::Explorer => {
                 preferences.explorer_file_clicks = files;
                 preferences.explorer_folder_clicks = folders;
+            }
+            BrowserMode::Tree => {
+                preferences.tree_file_clicks = files;
+                preferences.tree_folder_clicks = folders;
             }
         }
         drop(preferences);

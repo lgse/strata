@@ -1808,6 +1808,49 @@ impl Browser {
         self.emit(BrowserEvent::OpenRequested { location });
     }
 
+    /// Requests a preview for an entry the navigation state does not own, such as a
+    /// row inside an expanded tree branch.
+    pub fn preview_entry(&self, entry: FileEntry) {
+        self.emit(BrowserEvent::PreviewRequested { entry });
+    }
+
+    /// Lists a directory outside the column stack, for views that show entries the
+    /// navigation state does not own. Entries arrive in enumeration order; callers
+    /// order them with `sorted_entries`.
+    pub fn list_directory(
+        self: &Rc<Self>,
+        location: Location,
+        emit: Rc<dyn Fn(DirectoryEvent)>,
+    ) -> LoadHandle {
+        let request_id = self.new_request_id();
+        let batch_size = if location.native_path().is_some() {
+            NATIVE_DIRECTORY_BATCH_SIZE
+        } else {
+            REMOTE_DIRECTORY_BATCH_SIZE
+        };
+        let include_metadata = matches!(
+            self.preferences.get().sort_key,
+            SortKey::Size | SortKey::Modified
+        );
+        self.source.enumerate(
+            DirectoryRequest {
+                id: request_id,
+                location,
+                batch_size,
+                include_metadata,
+                max_entries: MAX_DIRECTORY_ENTRIES,
+                time_budget: DIRECTORY_LOAD_TIME_BUDGET,
+            },
+            emit,
+        )
+    }
+
+    /// Orders entries by the browser-wide view preferences, for views that hold
+    /// entries of their own.
+    pub fn sorted_entries(&self, entries: Vec<FileEntry>) -> Vec<FileEntry> {
+        sort_entries(entries, self.preferences.get())
+    }
+
     pub fn request_empty_trash(&self) {
         self.emit(BrowserEvent::EmptyTrashRequested);
     }

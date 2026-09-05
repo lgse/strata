@@ -16,6 +16,7 @@ mod settings;
 mod theme;
 mod thumbnail;
 mod thumbnail_cache;
+mod tree_entry;
 mod window;
 
 pub use window::{present, present_location, present_reveal};

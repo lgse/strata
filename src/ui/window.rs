@@ -23,7 +23,7 @@ use crate::{
 use super::{
     blur::BlurBin,
     browser::{BrowserView, PeekBehavior, PinStatus, show_error_dialog},
-    browser_modes::{BrowserDensity, BrowserMode},
+    browser_modes::{BrowserDensity, BrowserMode, TreeStep},
     motion::{animations_enabled, emphasized_deceleration},
     preview::PreviewDrawer,
     search::SearchDialog,
@@ -957,22 +957,33 @@ fn install_keyboard_navigation(
             (gtk::gdk::Key::Home, true) => {
                 browser.navigate(Location::local(home_directory()));
             }
-            (gtk::gdk::Key::j | gtk::gdk::Key::Down, false) => browser.move_selection(1),
-            (gtk::gdk::Key::k | gtk::gdk::Key::Up, false) => browser.move_selection(-1),
+            (gtk::gdk::Key::j | gtk::gdk::Key::Down, false) => {
+                if !view.tree_step(TreeStep::Next) {
+                    browser.move_selection(1);
+                }
+            }
+            (gtk::gdk::Key::k | gtk::gdk::Key::Up, false) => {
+                if !view.tree_step(TreeStep::Previous) {
+                    browser.move_selection(-1);
+                }
+            }
             (gtk::gdk::Key::h | gtk::gdk::Key::Left, false)
                 if !control && view.first_column_has_focus() && sidebar_toggle.is_active() =>
             {
                 focus_before_sidebar.replace(focused.clone());
                 sidebar_state.focus_active_place();
             }
-            (gtk::gdk::Key::h | gtk::gdk::Key::Left, false) => view.navigate_left(),
-            (
-                gtk::gdk::Key::l
-                | gtk::gdk::Key::Right
-                | gtk::gdk::Key::Return
-                | gtk::gdk::Key::KP_Enter,
-                false,
-            ) => view.activate_focused(),
+            (gtk::gdk::Key::h | gtk::gdk::Key::Left, false) => {
+                if !view.tree_step(TreeStep::Collapse) {
+                    view.navigate_left();
+                }
+            }
+            (gtk::gdk::Key::l | gtk::gdk::Key::Right, false) => {
+                if !view.tree_step(TreeStep::Expand) {
+                    view.activate_focused();
+                }
+            }
+            (gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter, false) => view.activate_focused(),
             (gtk::gdk::Key::Escape, false) => browser.escape(),
             _ => return glib::Propagation::Proceed,
         }
@@ -1072,6 +1083,12 @@ fn install_modal_focus_trap(window: &gtk::ApplicationWindow) {
     });
 }
 
+/// Only the flat single-pane modes can group entries under file-type headings: the
+/// columns walk one directory per pane and the tree groups by hierarchy already.
+fn supports_grouping(mode: BrowserMode) -> bool {
+    matches!(mode, BrowserMode::Grid | BrowserMode::Explorer)
+}
+
 fn build_appearance_menu(
     view: &BrowserView,
     controller: &Rc<Browser>,
@@ -1092,22 +1109,28 @@ fn build_appearance_menu(
     let popover_weak = popover.downgrade();
     append_menu_heading(&content, "VIEW");
     let current_mode = view.view_mode();
-    let (list, list_check, _) = appearance_option(
+    let (columns, columns_check, _) = appearance_option(
         crate::assets::icons::LIST,
-        "List",
+        "Columns",
         current_mode == BrowserMode::Columns,
         true,
     );
-    let (grid, grid_check, _) = appearance_option(
+    let (icons, icons_check, _) = appearance_option(
         crate::assets::icons::GRID,
-        "Grid",
+        "Icons",
         current_mode == BrowserMode::Grid,
         true,
     );
-    let (explorer, explorer_check, _) = appearance_option(
+    let (list, list_check, _) = appearance_option(
         crate::assets::icons::ROWS,
-        "Explorer",
+        "List",
         current_mode == BrowserMode::Explorer,
+        true,
+    );
+    let (tree, tree_check, _) = appearance_option(
+        crate::assets::icons::LIST_TREE,
+        "Tree",
+        current_mode == BrowserMode::Tree,
         true,
     );
     let grouped = preferences.group_by_type();
@@ -1115,10 +1138,10 @@ fn build_appearance_menu(
         crate::assets::icons::LIST_CHECKS,
         "Group by file type",
         grouped,
-        current_mode != BrowserMode::Columns,
+        supports_grouping(current_mode),
     );
     group_by_type.set_tooltip_text(Some(
-        "Group Explorer and Grid entries under file-type headings",
+        "Group List and Icons entries under file-type headings",
     ));
     {
         let view = view.clone();
@@ -1137,32 +1160,37 @@ fn build_appearance_menu(
         });
     }
     for (button, mode) in [
-        (&list, BrowserMode::Columns),
-        (&grid, BrowserMode::Grid),
-        (&explorer, BrowserMode::Explorer),
+        (&columns, BrowserMode::Columns),
+        (&icons, BrowserMode::Grid),
+        (&list, BrowserMode::Explorer),
+        (&tree, BrowserMode::Tree),
     ] {
         let view = view.clone();
-        let list_check = list_check.clone();
-        let grid_check = grid_check.clone();
-        let explorer_check = explorer_check.clone();
+        let checks = [
+            (columns_check.clone(), BrowserMode::Columns),
+            (icons_check.clone(), BrowserMode::Grid),
+            (list_check.clone(), BrowserMode::Explorer),
+            (tree_check.clone(), BrowserMode::Tree),
+        ];
         let group_by_type = group_by_type.clone();
         let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
         button.connect_clicked(move |_| {
             view.set_view_mode(mode);
             preferences.set_browser_mode(mode);
-            list_check.set_visible(mode == BrowserMode::Columns);
-            grid_check.set_visible(mode == BrowserMode::Grid);
-            explorer_check.set_visible(mode == BrowserMode::Explorer);
-            group_by_type.set_sensitive(mode != BrowserMode::Columns);
+            for (check, checked) in &checks {
+                check.set_visible(mode == *checked);
+            }
+            group_by_type.set_sensitive(supports_grouping(mode));
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
         });
     }
+    content.append(&columns);
+    content.append(&icons);
     content.append(&list);
-    content.append(&grid);
-    content.append(&explorer);
+    content.append(&tree);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     append_menu_heading(&content, "DENSITY");

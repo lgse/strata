@@ -185,6 +185,8 @@ theme = "azure-glow"
     assert_eq!(preferences.grid_folder_clicks, 2);
     assert_eq!(preferences.explorer_file_clicks, 2);
     assert_eq!(preferences.explorer_folder_clicks, 2);
+    assert_eq!(preferences.tree_file_clicks, 2);
+    assert_eq!(preferences.tree_folder_clicks, 2);
     assert_eq!(sort_preferences(&preferences), ViewPreferences::default());
 }
 
@@ -258,6 +260,8 @@ fn general_preferences_round_trip() {
         grid_folder_clicks: 2,
         explorer_file_clicks: 1,
         explorer_folder_clicks: 2,
+        tree_file_clicks: 1,
+        tree_folder_clicks: 2,
         ..Preferences::default()
     };
 
@@ -276,6 +280,8 @@ fn general_preferences_round_trip() {
     assert_eq!(restored.grid_folder_clicks, 2);
     assert_eq!(restored.explorer_file_clicks, 1);
     assert_eq!(restored.explorer_folder_clicks, 2);
+    assert_eq!(restored.tree_file_clicks, 1);
+    assert_eq!(restored.tree_folder_clicks, 2);
 }
 
 #[test]
