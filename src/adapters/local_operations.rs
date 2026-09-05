@@ -676,18 +676,7 @@ fn copy_recursively_local_path(
         let Some(name) = source_path.file_name().map(OsStr::to_os_string) else {
             return Err(io_error("Invalid copy source"));
         };
-        let parent = run_local_fs_step(move || {
-            rustix::fs::open(
-                &parent_path,
-                rustix::fs::OFlags::RDONLY
-                    | rustix::fs::OFlags::DIRECTORY
-                    | rustix::fs::OFlags::NOFOLLOW
-                    | rustix::fs::OFlags::CLOEXEC,
-                rustix::fs::Mode::empty(),
-            )
-            .map_err(|error| format!("Could not open {}: {error}", parent_path.display()))
-        })
-        .await?;
+        let parent = run_local_fs_step(move || open_local_parent_directory(&parent_path)).await?;
         copy_recursively_local(
             parent,
             name,
@@ -1043,6 +1032,63 @@ async fn move_local_with(
     move_local_with_progress(source, target, cancellable, None, attempt_move).await
 }
 
+/// Moves `source_path` to `target_path` with a single `renameat2`, opening
+/// each side's parent directory fresh right before the call so a symlink or
+/// path-component swap between when these paths were chosen and this attempt
+/// cannot redirect it outside the directories the user actually selected.
+/// `NOREPLACE` fails closed if a race put something new at the destination
+/// name rather than silently overwriting it. Reports the same `WouldRecurse`
+/// error GIO's own move would for one the kernel can't do atomically -- into
+/// the source's own subtree, or across filesystems -- so the caller's
+/// existing copy-then-delete fallback handles it.
+fn move_local_path(
+    source_path: PathBuf,
+    target_path: PathBuf,
+    cancellable: gio::Cancellable,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    Box::pin(async move {
+        if cancellable.is_cancelled() {
+            return Err(cancelled_local_operation());
+        }
+        let Some(source_parent_path) = source_path.parent().map(Path::to_path_buf) else {
+            return Err(io_error("Cannot move the filesystem root"));
+        };
+        let Some(source_name) = source_path.file_name().map(OsStr::to_os_string) else {
+            return Err(io_error("Invalid move source"));
+        };
+        let Some(target_parent_path) = target_path.parent().map(Path::to_path_buf) else {
+            return Err(io_error("The move destination has no parent directory"));
+        };
+        let Some(target_name) = target_path.file_name().map(OsStr::to_os_string) else {
+            return Err(io_error("Invalid move destination"));
+        };
+
+        let source_parent =
+            run_local_fs_step(move || open_local_parent_directory(&source_parent_path)).await?;
+        let target_parent =
+            run_local_fs_step(move || open_local_parent_directory(&target_parent_path)).await?;
+
+        let display_name = source_name.to_string_lossy().into_owned();
+        gio::spawn_blocking(move || {
+            rustix::fs::renameat_with(
+                &source_parent,
+                &source_name,
+                &target_parent,
+                &target_name,
+                rustix::fs::RenameFlags::NOREPLACE,
+            )
+        })
+        .await
+        .map_err(|_| io_error("Move task panicked"))?
+        .map_err(|error| match error {
+            rustix::io::Errno::XDEV | rustix::io::Errno::INVAL => {
+                glib::Error::new(gio::IOErrorEnum::WouldRecurse, "Cannot move directly")
+            }
+            error => io_error(format!("Could not move {display_name}: {error}")),
+        })
+    })
+}
+
 async fn move_local(
     source: gio::File,
     target: gio::File,
@@ -1056,6 +1102,15 @@ async fn move_local(
         cancellable,
         fallback_progress,
         Rc::new(move |source, target, cancellable| {
+            if source.is_native()
+                && target.is_native()
+                && let (Some(source_path), Some(target_path)) = (source.path(), target.path())
+            {
+                return move_local_path(source_path, target_path, cancellable);
+            }
+            // Remote (GVfs) locations have no local descriptor to walk against, so
+            // anything not fully local keeps the GIO path-based move below rather
+            // than claiming an equivalent guarantee.
             let move_progress = progress.as_ref().map(TransferProgressTracker::begin_file);
             let progress_callback = move_progress.as_ref().map(FileTransferProgress::callback);
             Box::pin(async move {
@@ -1275,49 +1330,8 @@ async fn replace_local_with_progress(
         move_source,
         cancellable,
         affected_locations,
-        Rc::new(move |source, staged, directory, cancellable| {
-            let progress = progress.clone();
-            Box::pin(async move {
-                if directory {
-                    copy_recursively_with_progress(
-                        source,
-                        staged,
-                        true,
-                        cancellable,
-                        None,
-                        progress,
-                    )
-                    .await
-                } else {
-                    let flags = gio::FileCopyFlags::ALL_METADATA
-                        | gio::FileCopyFlags::NOFOLLOW_SYMLINKS
-                        | gio::FileCopyFlags::OVERWRITE;
-                    let file_progress = progress.as_ref().map(TransferProgressTracker::begin_file);
-                    let progress_callback =
-                        file_progress.as_ref().map(FileTransferProgress::callback);
-                    let result = await_cancellable(
-                        &source,
-                        &cancellable,
-                        move |source, cancellable, result| {
-                            source.copy_async(
-                                &staged,
-                                flags,
-                                glib::Priority::DEFAULT,
-                                Some(cancellable),
-                                progress_callback,
-                                move |output| result.resolve(output),
-                            );
-                        },
-                    )
-                    .await;
-                    if result.is_ok()
-                        && let Some(file_progress) = file_progress
-                    {
-                        file_progress.finish();
-                    }
-                    result
-                }
-            })
+        Rc::new(move |source, staged, _directory, cancellable| {
+            copy_recursively_with_progress(source, staged, true, cancellable, None, progress.clone())
         }),
     )
     .await
@@ -1579,9 +1593,16 @@ fn permanently_delete_local(
     })
 }
 
-fn open_local_delete_parent(parent_path: &Path) -> Result<OwnedFd, String> {
+/// Opens `parent_path`'s directory by walking from the filesystem root and
+/// resolving every intermediate component with `RESOLVE_BENEATH` and
+/// `RESOLVE_NO_SYMLINKS`/`RESOLVE_NO_MAGICLINKS`, so a symlink swapped into
+/// any ancestor segment -- not just the final one -- fails closed instead of
+/// redirecting the caller outside the directory tree the path names. Shared
+/// by every local operation that needs a race-safe directory handle: delete,
+/// copy, move, and identity checks.
+fn open_local_parent_directory(parent_path: &Path) -> Result<OwnedFd, String> {
     if !parent_path.is_absolute() {
-        return Err("A local delete target must use an absolute path".to_owned());
+        return Err("A local operation target must use an absolute path".to_owned());
     }
     let root = rustix::fs::open(
         c"/",
@@ -1591,7 +1612,7 @@ fn open_local_delete_parent(parent_path: &Path) -> Result<OwnedFd, String> {
     .map_err(|error| format!("Could not open the filesystem root: {error}"))?;
     let relative = parent_path
         .strip_prefix(Path::new("/"))
-        .map_err(|_| "A local delete target must use an absolute path".to_owned())?;
+        .map_err(|_| "A local operation target must use an absolute path".to_owned())?;
     if relative.as_os_str().is_empty() {
         return Ok(root);
     }
@@ -1622,7 +1643,8 @@ fn permanently_delete_local_path_if_unchanged(
         let Some(name) = path.file_name().map(OsStr::to_os_string) else {
             return Err(io_error("Invalid delete target"));
         };
-        let parent = run_local_delete_step(move || open_local_delete_parent(&parent_path)).await?;
+        let parent =
+            run_local_delete_step(move || open_local_parent_directory(&parent_path)).await?;
         permanently_delete_local(parent, name, expected, cancellable).await
     })
 }
@@ -1641,7 +1663,7 @@ async fn local_file_identity(file: &gio::File) -> Result<Option<LocalFileIdentit
         let name = path
             .file_name()
             .ok_or_else(|| "Invalid local filesystem target".to_owned())?;
-        let parent = open_local_delete_parent(parent_path)?;
+        let parent = open_local_parent_directory(parent_path)?;
         let stat = rustix::fs::statat(&parent, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
             .map_err(|error| format!("Could not inspect {}: {error}", path.display()))?;
         Ok(LocalFileIdentity::from_stat(&stat))

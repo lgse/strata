@@ -26,8 +26,9 @@ use super::{
     copy_new_recursively, copy_new_remote_file_with, copy_recursively, deletion_error_message,
     deletion_error_summary, duplicate_candidate_name, extract_7z_from_reader, extract_tar,
     extract_zip_from_archive, home_trash_entries_at, io_error, is_trash_unsupported_failure,
-    move_local_with, operation_error_summary, parse_copy_suffix, replace_local, replace_local_with,
-    transfer_is_noop, validated_archive_path, validated_child, write_staged_archive,
+    move_local, move_local_with, operation_error_summary, parse_copy_suffix, replace_local,
+    replace_local_with, transfer_is_noop, validated_archive_path, validated_child,
+    write_staged_archive,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
@@ -470,6 +471,121 @@ fn a_successful_move_attempt_is_used_without_falling_back_to_copy() -> Result<()
 }
 
 #[test]
+fn a_plain_move_relocates_the_entry_via_the_hardened_rename_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.txt");
+    let target = root.path().join("target.txt");
+    fs::write(&source, b"payload")?;
+
+    let result = glib::MainContext::default().block_on(move_local(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok());
+    assert!(!source.exists());
+    assert_eq!(fs::read(target)?, b"payload");
+    Ok(())
+}
+
+/// The kernel refuses a rename that would make a directory its own
+/// subdirectory (`EINVAL`), which is mapped to the same `WouldRecurse`
+/// signal GIO's own move would give. Falling back to a copy is exercised
+/// here, but a copy into the source's own subtree is just as impossible, so
+/// the fallback must fail cleanly too -- never delete the original after a
+/// copy that didn't actually finish.
+#[test]
+fn moving_a_directory_into_its_own_child_fails_instead_of_deleting_it() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    fs::create_dir_all(source.join("nested"))?;
+    fs::write(source.join("top.txt"), b"top")?;
+    let target = source.join("nested").join("moved-source");
+
+    let result = glib::MainContext::default().block_on(move_local(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_err());
+    assert_eq!(fs::read(source.join("top.txt"))?, b"top");
+    Ok(())
+}
+
+/// Guards `move_local_with`'s upfront `local_file_identity` check on the
+/// source, which already walks its whole ancestor path with
+/// `RESOLVE_NO_SYMLINKS` -- that check runs before `move_local_path` ever
+/// does, so a static symlink swap can't isolate the new rename path's own
+/// contribution on the source side (see the destination-side test below for
+/// coverage of protection this change actually adds).
+#[test]
+fn move_rejects_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual_parent = root.path().join("actual");
+    let linked_parent = root.path().join("linked");
+    fs::create_dir(&actual_parent)?;
+    fs::write(actual_parent.join("source.txt"), b"keep")?;
+    std::os::unix::fs::symlink(&actual_parent, &linked_parent)?;
+    let target = root.path().join("target.txt");
+
+    let result = glib::MainContext::default().block_on(move_local(
+        gio::File::for_path(linked_parent.join("source.txt")),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_err());
+    assert_eq!(fs::read(actual_parent.join("source.txt"))?, b"keep");
+    assert!(!target.exists());
+    Ok(())
+}
+
+/// Unlike the source, nothing checked the destination's identity before this
+/// change -- the old GIO-based move only ever protected the source. This is
+/// new protection: against the pre-fix implementation, this same scenario
+/// moves the file straight through the symlinked destination parent.
+#[test]
+fn move_rejects_a_symlink_in_the_destinations_parent_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.txt");
+    let actual_destination = root.path().join("actual");
+    let linked_destination = root.path().join("linked");
+    fs::create_dir(&actual_destination)?;
+    fs::write(&source, b"keep")?;
+    std::os::unix::fs::symlink(&actual_destination, &linked_destination)?;
+
+    let result = glib::MainContext::default().block_on(move_local(
+        gio::File::for_path(&source),
+        gio::File::for_path(linked_destination.join("target.txt")),
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_err());
+    assert_eq!(fs::read(&source)?, b"keep");
+    assert!(!actual_destination.join("target.txt").exists());
+    Ok(())
+}
+
+#[test]
 fn cancelling_staging_preserves_the_destination_and_cleans_the_partial_copy()
 -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -598,6 +714,73 @@ fn replacement_move_does_not_delete_a_substituted_source() -> Result<(), Box<dyn
     assert_eq!(fs::read(target)?, b"replacement");
     assert_eq!(fs::read(source)?, b"new arrival");
     assert_eq!(fs::read(original_source)?, b"replacement");
+    Ok(())
+}
+
+/// Guards `replace_local_with`'s upfront `local_file_identity` check on the
+/// source, which already walks the whole ancestor path with
+/// `RESOLVE_NO_SYMLINKS` -- this is regression coverage for that ordering,
+/// not new coverage from routing the file branch through `copy_recursively`
+/// below (that check runs first regardless, so a static symlink swap can't
+/// distinguish the two; the routing change closes the narrower window
+/// between that check and the actual read).
+#[test]
+fn replace_rejects_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual_parent = root.path().join("actual");
+    let linked_parent = root.path().join("linked");
+    fs::create_dir(&actual_parent)?;
+    fs::write(actual_parent.join("source.txt"), b"new")?;
+    std::os::unix::fs::symlink(&actual_parent, &linked_parent)?;
+    let target = root.path().join("target.txt");
+    fs::write(&target, b"old")?;
+
+    let mut affected_locations = HashSet::new();
+    let result = glib::MainContext::default().block_on(replace_local(
+        gio::File::for_path(linked_parent.join("source.txt")),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        Some(&mut affected_locations),
+    ));
+
+    assert!(result.is_err());
+    assert_eq!(fs::read(&target)?, b"old");
+    assert_eq!(fs::read(actual_parent.join("source.txt"))?, b"new");
+    Ok(())
+}
+
+/// The symlink sits one level above the immediate parent directory, so a
+/// check that only guards the final path component (like a plain
+/// `O_NOFOLLOW` open of that parent) would miss it; only resolving the
+/// whole path with `RESOLVE_NO_SYMLINKS` catches a swap this far up.
+#[test]
+fn copy_rejects_a_symlink_higher_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual_root = root.path().join("actual");
+    let linked_root = root.path().join("linked");
+    fs::create_dir_all(actual_root.join("subdir"))?;
+    fs::write(actual_root.join("subdir/source.txt"), b"keep")?;
+    std::os::unix::fs::symlink(&actual_root, &linked_root)?;
+    let target = root.path().join("target.txt");
+
+    let result = glib::MainContext::default().block_on(copy_recursively(
+        gio::File::for_path(linked_root.join("subdir/source.txt")),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_err());
+    assert!(!target.exists());
+    assert_eq!(fs::read(actual_root.join("subdir/source.txt"))?, b"keep");
     Ok(())
 }
 
