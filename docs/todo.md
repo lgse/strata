@@ -247,7 +247,7 @@ Legend: **P0** blocks the milestone, **P1** is required for its exit criteria, *
 ### Views
 
 - [x] **P0** Production virtualized list mode
-- [ ] **P0** Virtualized grid mode
+- [ ] **P0** Virtualized Icons mode
 - [ ] **P0** Compact and airy density presets
 - [ ] **P1** Configurable icon/thumbnail size
 - [x] **P1** Resizable and collapsible preview pane

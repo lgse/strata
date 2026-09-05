@@ -1725,7 +1725,7 @@ fn requesting_first_selection_during_navigate_selects_the_first_entry() {
 }
 
 #[test]
-fn explorer_activation_replaces_the_directory_instead_of_adding_a_column() {
+fn list_activation_replaces_the_directory_instead_of_adding_a_column() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
     let observed = events.clone();

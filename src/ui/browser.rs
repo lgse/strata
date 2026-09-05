@@ -714,8 +714,8 @@ impl BrowserView {
             .widget()
             .connect_visible_child_name_notify(move |stack| {
                 let mode = match stack.visible_child_name().as_deref() {
-                    Some("grid") => BrowserMode::Grid,
-                    Some("explorer") => BrowserMode::Explorer,
+                    Some("icons") => BrowserMode::Icons,
+                    Some("list") => BrowserMode::List,
                     _ => BrowserMode::Columns,
                 };
                 handler(mode);
@@ -736,7 +736,7 @@ impl BrowserView {
         }
         match previous {
             BrowserMode::Columns => self.state.truncate(0),
-            BrowserMode::Grid | BrowserMode::Explorer => self
+            BrowserMode::Icons | BrowserMode::List => self
                 .state
                 .mode_views
                 .borrow_mut()
@@ -754,8 +754,7 @@ impl BrowserView {
         });
     }
 
-    /// Groups Explorer and Grid entries under file-type headings. The Miller-column
-    /// mode is unaffected.
+    /// Groups List and Icons entries under file-type headings. The Columns mode is unaffected.
     pub fn set_group_by_type(&self, enabled: bool) {
         self.state
             .mode_views
@@ -819,8 +818,8 @@ impl BrowserView {
         }
     }
 
-    pub fn move_grid_group(&self, direction: gtk::DirectionType) -> bool {
-        self.state.mode_views.borrow().move_grid_group(direction)
+    pub fn move_icons_group(&self, direction: gtk::DirectionType) -> bool {
+        self.state.mode_views.borrow().move_icons_group(direction)
     }
 
     pub fn at_left_edge(&self) -> bool {
@@ -9218,7 +9217,7 @@ enum PeekOriginBounds {
 fn peek_origin_bounds(mode: BrowserMode) -> PeekOriginBounds {
     match mode {
         BrowserMode::Columns => PeekOriginBounds::Column,
-        BrowserMode::Grid | BrowserMode::Explorer => PeekOriginBounds::Anchor,
+        BrowserMode::Icons | BrowserMode::List => PeekOriginBounds::Anchor,
     }
 }
 

@@ -12,15 +12,15 @@ fn settle() {
 }
 
 fn find_grid(widget: &gtk::Widget) -> Option<gtk::GridView> {
-    if let Ok(grid) = widget.clone().downcast::<gtk::GridView>()
-        && grid.is_mapped()
+    if let Ok(icons) = widget.clone().downcast::<gtk::GridView>()
+        && icons.is_mapped()
     {
-        return Some(grid);
+        return Some(icons);
     }
     let mut child = widget.first_child();
     while let Some(widget) = child {
-        if let Some(grid) = find_grid(&widget) {
-            return Some(grid);
+        if let Some(icons) = find_grid(&widget) {
+            return Some(icons);
         }
         child = widget.next_sibling();
     }
@@ -29,14 +29,14 @@ fn find_grid(widget: &gtk::Widget) -> Option<gtk::GridView> {
 
 #[test]
 #[ignore = "requires a mapped GTK window; run this test alone"]
-fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
+fn sidebar_boundary_tracks_icons_layout_and_empty_views() {
     const CHILD: &str = "STRATA_SIDEBAR_BOUNDARY_GTK_CHILD";
     if std::env::var_os(CHILD).is_none() {
         let sandbox = tempfile::tempdir().expect("isolated settings");
         let status = std::process::Command::new(std::env::current_exe().expect("test executable"))
             .args([
                 "--exact",
-                "ui::browser::tests::sidebar::sidebar_boundary_tracks_grid_layout_and_empty_views",
+                "ui::browser::tests::sidebar::sidebar_boundary_tracks_icons_layout_and_empty_views",
                 "--nocapture",
                 "--ignored",
             ])
@@ -68,7 +68,7 @@ fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
         PeekBehavior::default(),
     );
     let browser = view.browser();
-    view.set_view_mode(BrowserMode::Grid);
+    view.set_view_mode(BrowserMode::Icons);
     let root = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     let sidebar = gtk::Button::with_label("Sidebar");
     root.append(&sidebar);
@@ -89,12 +89,12 @@ fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
         glib::MainContext::default().iteration(false);
     }
     settle();
-    let grid = find_grid(&view.widget()).expect("grid view");
-    grid.set_max_columns(3);
-    grid.set_min_columns(3);
+    let icons = find_grid(&view.widget()).expect("icons view");
+    icons.set_max_columns(3);
+    icons.set_min_columns(3);
     settle();
     for (position, edge) in [(0, true), (1, false), (3, true), (4, false)] {
-        grid.scroll_to(
+        icons.scroll_to(
             position,
             gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
             None,
@@ -112,10 +112,10 @@ fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
             assert_eq!(browser.selected_positions(0), selection);
         }
     }
-    grid.set_min_columns(1);
-    grid.set_max_columns(1);
+    icons.set_min_columns(1);
+    icons.set_max_columns(1);
     settle();
-    grid.scroll_to(
+    icons.scroll_to(
         1,
         gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
         None,
@@ -145,7 +145,7 @@ fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
     settle();
     assert!(view.at_left_edge());
     group.grab_focus();
-    assert!(view.move_grid_group(gtk::DirectionType::Down));
+    assert!(view.move_icons_group(gtk::DirectionType::Down));
     settle();
     assert_eq!(
         browser
@@ -155,7 +155,7 @@ fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
         "file-00.txt"
     );
     assert!(view.at_left_edge());
-    assert!(view.move_grid_group(gtk::DirectionType::Up));
+    assert!(view.move_icons_group(gtk::DirectionType::Up));
     settle();
     assert_eq!(
         browser
@@ -166,7 +166,7 @@ fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
     );
 
     view.set_group_by_type(false);
-    view.set_view_mode(BrowserMode::Explorer);
+    view.set_view_mode(BrowserMode::List);
     settle();
     browser.select(0, 0);
     browser.focus_active();
@@ -179,7 +179,7 @@ fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
     let list = gtk::prelude::RootExt::focus(&window)
         .and_then(|focus| focus.ancestor(gtk::ListView::static_type()))
         .and_downcast::<gtk::ListView>()
-        .expect("focused Explorer list");
+        .expect("focused List view");
     list.scroll_to(
         2,
         gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
@@ -189,7 +189,7 @@ fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
     assert!(!view.focus_header_from_top_item());
 
     let empty = tempfile::tempdir().expect("empty fixture");
-    for mode in [BrowserMode::Grid, BrowserMode::Explorer] {
+    for mode in [BrowserMode::Icons, BrowserMode::List] {
         view.set_view_mode(mode);
         browser.navigate(Location::local(empty.path()));
         settle();

@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::{
-    BrowserMode, ClickActivation, ClickCount, EXPLORER_COLUMN_MIN_WIDTHS, EXPLORER_COLUMN_WIDTHS,
-    MAX_GRID_THUMBNAIL_SIZE, MIN_GRID_THUMBNAIL_SIZE, SourceIndexMap, compare_type_groups,
-    explorer_column_width, grid_card_extent, grid_card_icon_slot, metadata_fill_position,
+    BrowserMode, ClickActivation, ClickCount, LIST_COLUMN_MIN_WIDTHS, LIST_COLUMN_WIDTHS,
+    MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, SourceIndexMap, compare_type_groups,
+    icons_card_extent, icons_card_icon_slot, list_column_width, metadata_fill_position,
     scroll_delta_for_unit, should_activate_pointer_click, type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
@@ -16,19 +16,16 @@ fn value(kind: char, name: &str) -> String {
 }
 
 #[test]
-fn explorer_columns_have_usable_minimum_widths() {
-    for (index, minimum) in EXPLORER_COLUMN_MIN_WIDTHS.into_iter().enumerate() {
-        assert_eq!(explorer_column_width(index, minimum - 1), minimum);
-        assert_eq!(explorer_column_width(index, minimum + 1), minimum + 1);
+fn list_columns_have_usable_minimum_widths() {
+    for (index, minimum) in LIST_COLUMN_MIN_WIDTHS.into_iter().enumerate() {
+        assert_eq!(list_column_width(index, minimum - 1), minimum);
+        assert_eq!(list_column_width(index, minimum + 1), minimum + 1);
     }
 }
 
 #[test]
-fn explorer_default_widths_respect_column_minimums() {
-    for (default, minimum) in EXPLORER_COLUMN_WIDTHS
-        .into_iter()
-        .zip(EXPLORER_COLUMN_MIN_WIDTHS)
-    {
+fn list_default_widths_respect_column_minimums() {
+    for (default, minimum) in LIST_COLUMN_WIDTHS.into_iter().zip(LIST_COLUMN_MIN_WIDTHS) {
         assert!(default >= minimum);
     }
 }
@@ -50,7 +47,7 @@ fn click_activation_defaults_follow_view_conventions() {
             folders: ClickCount::One,
         }
     );
-    for mode in [BrowserMode::Grid, BrowserMode::Explorer] {
+    for mode in [BrowserMode::Icons, BrowserMode::List] {
         assert_eq!(
             ClickActivation::default_for(mode),
             ClickActivation {
@@ -99,19 +96,19 @@ fn alternate_modes_request_missing_metadata_for_bound_entries() {
 }
 
 #[test]
-fn grid_cards_keep_a_uniform_icon_slot_and_two_line_label() {
-    assert_eq!(grid_card_icon_slot(26), MIN_GRID_THUMBNAIL_SIZE);
-    assert_eq!(grid_card_icon_slot(128), 128);
-    assert_eq!(grid_card_icon_slot(512), MAX_GRID_THUMBNAIL_SIZE);
-    assert_eq!(grid_card_extent(26), grid_card_extent(64));
-    assert_eq!(grid_card_extent(64), (156, 107));
-    assert_eq!(grid_card_extent(128), (156, 171));
-    assert_eq!(grid_card_extent(256), (256, 299));
-    assert_eq!(grid_card_extent(512), grid_card_extent(256));
+fn icons_cards_keep_a_uniform_icon_slot_and_two_line_label() {
+    assert_eq!(icons_card_icon_slot(26), MIN_ICONS_THUMBNAIL_SIZE);
+    assert_eq!(icons_card_icon_slot(128), 128);
+    assert_eq!(icons_card_icon_slot(512), MAX_ICONS_THUMBNAIL_SIZE);
+    assert_eq!(icons_card_extent(26), icons_card_extent(64));
+    assert_eq!(icons_card_extent(64), (156, 107));
+    assert_eq!(icons_card_extent(128), (156, 171));
+    assert_eq!(icons_card_extent(256), (256, 299));
+    assert_eq!(icons_card_extent(512), icons_card_extent(256));
 }
 
 #[test]
-fn grid_scroll_maps_a_wheel_notch_from_page_size() {
+fn icons_scroll_maps_a_wheel_notch_from_page_size() {
     let wheel = scroll_delta_for_unit(1.0, 1000.0, gtk::gdk::ScrollUnit::Wheel);
     assert!((wheel - 100.0).abs() < 1e-9);
     assert!(scroll_delta_for_unit(1.0, 8000.0, gtk::gdk::ScrollUnit::Wheel) > wheel);
@@ -171,8 +168,8 @@ fn entries_of_one_type_share_a_group() {
 const GTK_CHILD: &str = "STRATA_SOURCE_INDEX_MAP_GTK_CHILD";
 const SOURCE_INDEX_TEST: &str =
     "ui::browser_modes::tests::source_index_map_tracks_filter_sort_and_placeholder";
-const EXPLORER_ROW_GTK_CHILD: &str = "STRATA_EXPLORER_ROW_GTK_CHILD";
-const EXPLORER_ROW_TEST: &str = "ui::browser_modes::tests::explorer_bind_can_read_the_rename_field";
+const LIST_ROW_GTK_CHILD: &str = "STRATA_LIST_ROW_GTK_CHILD";
+const LIST_ROW_TEST: &str = "ui::browser_modes::tests::list_bind_can_read_the_rename_field";
 
 fn run_source_index_map_checks() {
     let source = gtk::StringList::new(&["fv\talpha", "dh\t.secret", "fv\tneedle"]);
@@ -266,25 +263,25 @@ fn run_source_index_map_checks() {
 mod skeletons;
 
 #[test]
-fn explorer_bind_can_read_the_rename_field() {
-    if std::env::var_os(EXPLORER_ROW_GTK_CHILD).is_some() {
+fn list_bind_can_read_the_rename_field() {
+    if std::env::var_os(LIST_ROW_GTK_CHILD).is_some() {
         if gtk::init().is_err() {
             return;
         }
-        let row = super::assemble_explorer_row();
+        let row = super::assemble_list_row();
         let (_, name, field, _, _, _, _) =
-            super::explorer_row_parts(&row).expect("bind and settle walk this row");
+            super::list_row_parts(&row).expect("bind and settle walk this row");
         assert!(name.has_css_class("alternate-rename-label"));
         assert!(field.has_css_class("inline-rename"));
         return;
     }
 
     let status = Command::new(std::env::current_exe().expect("test executable should exist"))
-        .args(["--exact", EXPLORER_ROW_TEST])
-        .env(EXPLORER_ROW_GTK_CHILD, "1")
+        .args(["--exact", LIST_ROW_TEST])
+        .env(LIST_ROW_GTK_CHILD, "1")
         .status()
-        .expect("isolated GTK explorer row test should start");
-    assert!(status.success(), "isolated GTK explorer row test failed");
+        .expect("isolated GTK list row test should start");
+    assert!(status.success(), "isolated GTK list row test failed");
 }
 
 #[test]
