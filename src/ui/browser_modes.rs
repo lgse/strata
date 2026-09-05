@@ -2455,9 +2455,12 @@ fn install_scroll_settle(
         adjustment.connect_value_changed(move |_| {
             let started = !scrolling.replace(true);
             if started {
+                let scrolling = scrolling.clone();
                 let scroll = scroll.clone();
                 glib::idle_add_local_once(move || {
-                    scroll.add_css_class(css_class);
+                    if scrolling.get() {
+                        scroll.add_css_class(css_class);
+                    }
                 });
             }
             if let Some(source) = pending.borrow_mut().take() {
