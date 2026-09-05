@@ -15,4 +15,4 @@ mod thumbnail;
 mod thumbnail_cache;
 mod window;
 
-pub use window::{present, present_location};
+pub use window::{present, present_location, present_reveal};

@@ -28,6 +28,10 @@ const GRID_CARD_SPACING: i32 = 4;
 const FALLBACK_GRID_COLUMN_WIDTH: i32 = 160;
 const MIN_GRID_THUMBNAIL_SIZE: i32 = 64;
 const MAX_GRID_THUMBNAIL_SIZE: i32 = 256;
+const GRID_CARD_LABEL_CHARS: i32 = 16;
+const GRID_CARD_LABEL_LINES: i32 = 2;
+const GRID_CARD_LABEL_LINE_PX: i32 = 18;
+const GRID_CARD_PAD_Y: i32 = 4;
 
 #[derive(Clone)]
 struct ExplorerColumnLayout {
@@ -172,7 +176,7 @@ impl SourceIndexMap {
 
 struct ActiveModeRename {
     field: gtk::Entry,
-    label: gtk::Label,
+    label: gtk::Widget,
 }
 
 struct ActiveModeNewEntry {
@@ -510,9 +514,7 @@ impl ModeViews {
         let Some(widget) = widget else {
             return false;
         };
-        let Some(label) =
-            descendant_with_class(&widget, "alternate-rename-label").and_downcast::<gtk::Label>()
-        else {
+        let Some(label) = descendant_with_class(&widget, "alternate-rename-label") else {
             return false;
         };
         let Some(field) =
@@ -1146,6 +1148,7 @@ struct GridControls {
     filter_button: gtk::ToggleButton,
     thumbnail_scale: gtk::Scale,
     thumbnail_value: gtk::Label,
+    thumbnail_popover: gtk::Popover,
     empty_trash_button: Option<gtk::Button>,
 }
 
@@ -1210,10 +1213,12 @@ fn grid_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> Gr
         f64::from(MAX_GRID_THUMBNAIL_SIZE),
         16.0,
     );
+    thumbnail_scale.set_increments(16.0, 1.0);
     thumbnail_scale.add_css_class("grid-thumbnail-scale");
     thumbnail_scale.set_draw_value(false);
     thumbnail_scale.set_value(f64::from(thumbnail_size));
     thumbnail_scale.set_size_request(220, -1);
+    disable_scale_long_press_zoom(&thumbnail_scale);
     let thumbnail_extremes = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     thumbnail_extremes.add_css_class("grid-thumbnail-extremes");
     let small = gtk::Label::new(Some("Small"));
@@ -1261,8 +1266,108 @@ fn grid_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> Gr
         filter_button,
         thumbnail_scale,
         thumbnail_value,
+        thumbnail_popover,
         empty_trash_button: is_trash.then_some(empty_trash),
     }
+}
+
+fn disable_scale_long_press_zoom(scale: &gtk::Scale) {
+    let controllers = scale.observe_controllers();
+    let long_presses: Vec<gtk::GestureLongPress> = (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)?
+                .downcast::<gtk::GestureLongPress>()
+                .ok()
+        })
+        .collect();
+    for long_press in long_presses {
+        scale.remove_controller(&long_press);
+    }
+}
+
+fn close_thumbnail_popover_on_outside_scroll(popover: &gtk::Popover, scroll: &gtk::ScrolledWindow) {
+    let wheel = gtk::EventControllerScroll::new(
+        gtk::EventControllerScrollFlags::VERTICAL | gtk::EventControllerScrollFlags::HORIZONTAL,
+    );
+    wheel.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let popover_for_scroll = popover.clone();
+    let scroll = scroll.clone();
+    wheel.connect_scroll(move |controller, dx, dy| {
+        if !popover_for_scroll.is_visible() || pointer_over_widget(&popover_for_scroll) {
+            return glib::Propagation::Proceed;
+        }
+        let over_grid = pointer_over_widget(&scroll);
+        popover_for_scroll.popdown();
+        if over_grid {
+            apply_scrolled_window_wheel(&scroll, controller, dx, dy);
+        }
+        glib::Propagation::Stop
+    });
+    popover.add_controller(wheel);
+}
+
+fn pointer_over_widget(widget: &impl IsA<gtk::Widget>) -> bool {
+    let widget = widget.as_ref();
+    let Some(native) = widget.native() else {
+        return false;
+    };
+    let Some(surface) = native.surface() else {
+        return false;
+    };
+    let Some(pointer) = widget
+        .display()
+        .default_seat()
+        .and_then(|seat| seat.pointer())
+    else {
+        return false;
+    };
+    let Some((x, y, _)) = surface.device_position(&pointer) else {
+        return false;
+    };
+    let (ox, oy) = native.surface_transform();
+    let Some(bounds) = widget.compute_bounds(native.upcast_ref::<gtk::Widget>()) else {
+        return false;
+    };
+    bounds.contains_point(&gtk::graphene::Point::new((x - ox) as f32, (y - oy) as f32))
+}
+
+fn apply_scrolled_window_wheel(
+    scroll: &gtk::ScrolledWindow,
+    controller: &gtk::EventControllerScroll,
+    mut dx: f64,
+    mut dy: f64,
+) {
+    if controller
+        .current_event_state()
+        .contains(gtk::gdk::ModifierType::SHIFT_MASK)
+    {
+        std::mem::swap(&mut dx, &mut dy);
+    }
+    let unit = controller.unit();
+    if dx != 0.0 {
+        apply_adjustment_scroll(&scroll.hadjustment(), dx, unit);
+    }
+    if dy != 0.0 {
+        apply_adjustment_scroll(&scroll.vadjustment(), dy, unit);
+    }
+}
+
+fn apply_adjustment_scroll(adjustment: &gtk::Adjustment, delta: f64, unit: gtk::gdk::ScrollUnit) {
+    let max = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
+    adjustment.set_value(
+        (adjustment.value() + scroll_delta_for_unit(delta, adjustment.page_size(), unit))
+            .clamp(adjustment.lower(), max),
+    );
+}
+
+fn scroll_delta_for_unit(delta: f64, page_size: f64, unit: gtk::gdk::ScrollUnit) -> f64 {
+    delta
+        * match unit {
+            gtk::gdk::ScrollUnit::Wheel => page_size.powf(2.0 / 3.0),
+            gtk::gdk::ScrollUnit::Surface => 2.5,
+            _ => 1.0,
+        }
 }
 
 /// Shared wiring every grid view in a pane needs, so a pane that groups entries by
@@ -1392,12 +1497,9 @@ fn build_grid_pane(
         (section.view.clone(), section, None)
     };
 
-    let pending_thumbnail_resize = Rc::new(RefCell::new(None::<glib::SourceId>));
     let groups_for_pane = groups.clone();
     let density_for_size = context.density.get();
     let sections_for_size = Rc::downgrade(&sections);
-    let browser_for_size = Rc::downgrade(&context.browser);
-    let source_index_for_size = source_index.clone();
     let thumbnail_size_for_change = options.thumbnail_size.clone();
     let value_for_change = controls.thumbnail_value.clone();
     controls
@@ -1405,30 +1507,16 @@ fn build_grid_pane(
         .connect_value_changed(move |scale| {
             let size = scale.value().round() as i32;
             value_for_change.set_label(&format!("{size} px"));
-            if let Some(pending) = pending_thumbnail_resize.take() {
-                pending.remove();
+            thumbnail_size_for_change.set(size);
+            let Some(sections) = sections_for_size.upgrade() else {
+                return;
+            };
+            for section in sections.borrow().iter() {
+                resize_grid_thumbnail_slots(section, size);
             }
-            let pending_for_timeout = pending_thumbnail_resize.clone();
-            let browser = browser_for_size.clone();
-            let source_index = source_index_for_size.clone();
-            let sections = sections_for_size.clone();
-            let groups_for_size = groups_for_pane.clone();
-            let size_state = thumbnail_size_for_change.clone();
-            let source_id =
-                glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
-                    pending_for_timeout.take();
-                    size_state.set(size);
-                    let Some(sections) = sections.upgrade() else {
-                        return;
-                    };
-                    for section in sections.borrow().iter() {
-                        refresh_grid_thumbnail_size(&browser, depth, &source_index, section, size);
-                    }
-                    if let Some(groups) = groups_for_size.as_ref() {
-                        refresh_group_columns(groups, groups.container.width(), density_for_size);
-                    }
-                });
-            pending_thumbnail_resize.replace(Some(source_id));
+            if let Some(groups) = groups_for_pane.as_ref() {
+                refresh_group_columns(groups, groups.container.width(), density_for_size);
+            }
         });
 
     let scroll = gtk::ScrolledWindow::builder()
@@ -1443,6 +1531,7 @@ fn build_grid_pane(
         .vexpand(true)
         .build();
     scroll.add_css_class("fixed-scrollbar");
+    close_thumbnail_popover_on_outside_scroll(&controls.thumbnail_popover, &scroll);
     install_grid_scroll_settle(&scroll, &context);
     if let Some(groups) = groups.clone() {
         let context = Rc::downgrade(&context);
@@ -1544,42 +1633,39 @@ fn build_grid_view(
     let transfers_for_setup = context.transfer.clone();
     let peek_for_setup = context.state.clone();
     let active_for_setup = context.active_new_entry.clone();
+    let thumbnail_size_for_setup = context.thumbnail_size.clone();
+    let scrolling_for_setup = context.scrolling.clone();
     let folder_location = context.browser.location_at(depth);
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
         };
-        let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let card = gtk::Box::new(gtk::Orientation::Vertical, 3);
         card.add_css_class("grid-card");
-        card.add_css_class("file-appear");
-        let weak_card = card.downgrade();
-        glib::idle_add_local_once(move || {
-            if let Some(card) = weak_card.upgrade() {
-                card.remove_css_class("file-appear");
-            }
-        });
-        card.set_halign(gtk::Align::Center);
-        card.set_valign(gtk::Align::Center);
-        let centered = gtk::CenterBox::new();
-        centered.set_orientation(gtk::Orientation::Vertical);
-        centered.set_vexpand(true);
-        let item_content = gtk::Box::new(gtk::Orientation::Vertical, 3);
-        item_content.set_halign(gtk::Align::Center);
-        item_content.set_valign(gtk::Align::Center);
+        if !scrolling_for_setup.get() {
+            card.add_css_class("file-appear");
+            let weak_card = card.downgrade();
+            glib::idle_add_local_once(move || {
+                if let Some(card) = weak_card.upgrade() {
+                    card.remove_css_class("file-appear");
+                }
+            });
+        }
+        card.set_halign(gtk::Align::Fill);
+        card.set_valign(gtk::Align::Fill);
+        card.set_overflow(gtk::Overflow::Hidden);
+        let thumbnail_size = grid_card_icon_slot(thumbnail_size_for_setup.get());
+        ensure_grid_card_slot(&card, thumbnail_size);
         let icon = gtk::Image::new();
-        icon.set_pixel_size(26);
+        super::thumbnail::ensure_image_slot(&icon, thumbnail_size);
         icon.add_css_class("grid-card-icon");
-        let label = gtk::Label::new(None);
+        let label = gtk::Inscription::new(None);
         label.add_css_class("grid-card-label");
         label.add_css_class("alternate-rename-label");
-        label.set_justify(gtk::Justification::Center);
-        label.set_width_chars(12);
-        label.set_max_width_chars(16);
-        label.set_wrap(true);
-        label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+        configure_grid_card_label(&label);
         let field = gtk::Entry::new();
         field.add_css_class("inline-rename");
-        field.set_width_chars(12);
+        field.set_width_chars(GRID_CARD_LABEL_CHARS);
         field.set_visible(false);
         field.connect_changed(|field| {
             super::browser::update_basename_validation(field);
@@ -1609,11 +1695,9 @@ fn build_grid_view(
             );
         });
         field.add_controller(focus);
-        item_content.append(&icon);
-        item_content.append(&label);
-        item_content.append(&field);
-        centered.set_center_widget(Some(&item_content));
-        card.append(&centered);
+        card.append(&icon);
+        card.append(&label);
+        card.append(&field);
         install_preview_click(
             &card,
             item,
@@ -1662,19 +1746,7 @@ fn build_grid_view(
         let Some(card) = item.child().and_downcast::<gtk::Box>() else {
             return;
         };
-        let Some(centered) = card.first_child().and_downcast::<gtk::CenterBox>() else {
-            return;
-        };
-        let Some(item_content) = centered.center_widget().and_downcast::<gtk::Box>() else {
-            return;
-        };
-        let Some(icon) = item_content.first_child().and_downcast::<gtk::Image>() else {
-            return;
-        };
-        let Some(label) = icon.next_sibling().and_downcast::<gtk::Label>() else {
-            return;
-        };
-        let Some(field) = label.next_sibling().and_downcast::<gtk::Entry>() else {
+        let Some((icon, label, field)) = grid_card_parts(&card) else {
             return;
         };
         let source_position = item
@@ -1684,37 +1756,39 @@ fn build_grid_view(
         let entry = browser.as_ref().and_then(|browser| {
             source_position.and_then(|position| browser.entry_at(depth, position))
         });
+        let thumbnail_size = grid_card_icon_slot(thumbnail_size_for_bind.get());
+        ensure_grid_card_slot(&card, thumbnail_size);
         if let Some(entry) = entry {
             label.set_visible(true);
             field.set_visible(false);
-            set_mode_cut_style(&card, cuts_for_bind.borrow().contains(&entry.location));
-            label.set_label(&entry.display_name);
-            label.set_tooltip_text(Some(&entry.display_name));
-            let fallback = super::browser::entry_icon(&entry);
-            if scrolling_for_bind.get() {
-                super::thumbnail::show_fallback_icon(&icon, fallback, 26);
-            } else {
+            if label.text().as_deref() != Some(entry.display_name.as_str()) {
+                label.set_text(Some(&entry.display_name));
+            }
+            if !scrolling_for_bind.get() {
+                set_mode_cut_style(&card, cuts_for_bind.borrow().contains(&entry.location));
+                label.set_tooltip_text(Some(&entry.display_name));
                 super::thumbnail::set_thumbnail_or_icon(
                     &icon,
                     &entry,
-                    fallback,
-                    26,
-                    thumbnail_size_for_bind.get(),
+                    super::browser::entry_icon(&entry),
+                    thumbnail_size,
+                    thumbnail_size,
                 );
                 if let Some(position) = metadata_fill_position(source_position, &entry, false)
                     && let Some(browser) = browser.as_ref()
                 {
                     browser.request_metadata_fill(depth, position, entry.location.clone());
                 }
+                icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
             }
-            icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
         } else {
-            card.remove_css_class("cut-item");
+            set_mode_cut_style(&card, false);
             let icon_name = if entry_kind_for_bind.get() {
                 crate::assets::icons::FOLDER
             } else {
                 crate::assets::icons::DOCUMENTS
             };
+            super::thumbnail::ensure_image_slot(&icon, thumbnail_size);
             crate::assets::set_primary_icon(&icon, icon_name);
             icon.set_opacity(1.0);
             label.set_visible(false);
@@ -1895,16 +1969,19 @@ fn install_grid_scroll_settle(scroll: &gtk::ScrolledWindow, context: &Rc<GridCon
     for adjustment in [scroll.vadjustment(), scroll.hadjustment()] {
         let pending = pending.clone();
         let context = Rc::downgrade(context);
+        let scroll = scroll.clone();
         adjustment.connect_value_changed(move |_| {
             let Some(context) = context.upgrade() else {
                 return;
             };
             context.scrolling.set(true);
+            scroll.add_css_class("grid-fast-scroll");
             if let Some(source) = pending.borrow_mut().take() {
                 source.remove();
             }
             let pending_for_timeout = pending.clone();
             let context = Rc::downgrade(&context);
+            let scroll = scroll.clone();
             pending.replace(Some(glib::timeout_add_local_once(
                 GRID_SCROLL_SETTLE_DELAY,
                 move || {
@@ -1913,6 +1990,7 @@ fn install_grid_scroll_settle(scroll: &gtk::ScrolledWindow, context: &Rc<GridCon
                         return;
                     };
                     context.scrolling.set(false);
+                    scroll.remove_css_class("grid-fast-scroll");
                     refresh_grid_expensive_content(&context);
                 },
             )));
@@ -1924,6 +2002,7 @@ fn refresh_grid_expensive_content(context: &GridContext) {
     let Some(sections) = context.sections.upgrade() else {
         return;
     };
+    let cuts = context.cuts.borrow();
     for section in sections.borrow().iter() {
         refresh_grid_section(
             &Rc::downgrade(&context.browser),
@@ -1932,18 +2011,23 @@ fn refresh_grid_expensive_content(context: &GridContext) {
             section,
             context.thumbnail_size.get(),
             true,
+            Some(&cuts),
         );
     }
 }
 
-fn refresh_grid_thumbnail_size(
-    browser: &Weak<Browser>,
-    depth: usize,
-    source_index: &SourceIndexMap,
-    section: &PaneSection,
-    size: i32,
-) {
-    refresh_grid_section(browser, depth, source_index, section, size, false);
+fn resize_grid_thumbnail_slots(section: &PaneSection, size: i32) {
+    let size = grid_card_icon_slot(size);
+    section.bound_items.borrow().iter().for_each(|bound| {
+        let Some(card) = bound.widget.upgrade().and_downcast::<gtk::Box>() else {
+            return;
+        };
+        let Some((icon, _, _)) = grid_card_parts(&card) else {
+            return;
+        };
+        super::thumbnail::ensure_image_slot(&icon, size);
+        ensure_grid_card_slot(&card, size);
+    });
 }
 
 fn refresh_grid_section(
@@ -1953,25 +2037,22 @@ fn refresh_grid_section(
     section: &PaneSection,
     size: i32,
     request_metadata: bool,
+    cuts: Option<&HashSet<Location>>,
 ) {
     let Some(browser) = browser.upgrade() else {
         return;
     };
+    let size = grid_card_icon_slot(size);
     section.bound_items.borrow().iter().for_each(|bound| {
-        let Some(item) = bound.item.upgrade() else {
-            return;
-        };
         let Some(card) = bound.widget.upgrade().and_downcast::<gtk::Box>() else {
             return;
         };
-        let Some(icon) = card
-            .first_child()
-            .and_downcast::<gtk::CenterBox>()
-            .and_then(|centered| centered.center_widget())
-            .and_downcast::<gtk::Box>()
-            .and_then(|content| content.first_child())
-            .and_downcast::<gtk::Image>()
-        else {
+        let Some((icon, label, _)) = grid_card_parts(&card) else {
+            return;
+        };
+        super::thumbnail::ensure_image_slot(&icon, size);
+        ensure_grid_card_slot(&card, size);
+        let Some(item) = bound.item.upgrade() else {
             return;
         };
         let Some(position) = item.item().and_then(|value| source_index.of_item(&value)) else {
@@ -1984,16 +2065,58 @@ fn refresh_grid_section(
             &icon,
             &entry,
             super::browser::entry_icon(&entry),
-            26,
+            size,
             size,
         );
-        if request_metadata
-            && let Some(position) = metadata_fill_position(Some(position), &entry, false)
-        {
-            browser.request_metadata_fill(depth, position, entry.location.clone());
+        if request_metadata {
+            label.set_tooltip_text(Some(&entry.display_name));
+            if let Some(cuts) = cuts {
+                set_mode_cut_style(&card, cuts.contains(&entry.location));
+            }
+            if let Some(position) = metadata_fill_position(Some(position), &entry, false) {
+                browser.request_metadata_fill(depth, position, entry.location.clone());
+            }
         }
         icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
     });
+}
+
+fn grid_card_icon_slot(thumbnail_size: i32) -> i32 {
+    thumbnail_size.clamp(MIN_GRID_THUMBNAIL_SIZE, MAX_GRID_THUMBNAIL_SIZE)
+}
+
+fn grid_card_extent(thumbnail_size: i32) -> (i32, i32) {
+    let slot = grid_card_icon_slot(thumbnail_size);
+    let width = slot.max(FALLBACK_GRID_COLUMN_WIDTH - GRID_CARD_SPACING);
+    let height = slot + GRID_CARD_LABEL_LINE_PX * GRID_CARD_LABEL_LINES + GRID_CARD_PAD_Y + 3;
+    (width, height)
+}
+
+fn ensure_grid_card_slot(card: &gtk::Box, thumbnail_size: i32) {
+    let (width, height) = grid_card_extent(thumbnail_size);
+    if card.width_request() != width || card.height_request() != height {
+        card.set_size_request(width, height);
+    }
+}
+
+fn configure_grid_card_label(label: &gtk::Inscription) {
+    let chars = GRID_CARD_LABEL_CHARS as u32;
+    let lines = GRID_CARD_LABEL_LINES as u32;
+    label.set_min_chars(chars);
+    label.set_nat_chars(chars);
+    label.set_min_lines(lines);
+    label.set_nat_lines(lines);
+    label.set_xalign(0.5);
+    label.set_yalign(0.0);
+    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    label.set_text_overflow(gtk::InscriptionOverflow::EllipsizeEnd);
+}
+
+fn grid_card_parts(card: &gtk::Box) -> Option<(gtk::Image, gtk::Inscription, gtk::Entry)> {
+    let icon = card.first_child()?.downcast::<gtk::Image>().ok()?;
+    let label = icon.next_sibling()?.downcast::<gtk::Inscription>().ok()?;
+    let field = label.next_sibling()?.downcast::<gtk::Entry>().ok()?;
+    Some((icon, label, field))
 }
 
 fn configure_grid_density(pane: &Pane, density: BrowserDensity) {

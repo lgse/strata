@@ -2,8 +2,9 @@
 
 use super::{
     BrowserMode, ClickActivation, ClickCount, EXPLORER_COLUMN_MIN_WIDTHS, EXPLORER_COLUMN_WIDTHS,
-    SourceIndexMap, compare_type_groups, explorer_column_width, metadata_fill_position,
-    should_activate_pointer_click, type_groups_of, value_type_group,
+    MAX_GRID_THUMBNAIL_SIZE, MIN_GRID_THUMBNAIL_SIZE, SourceIndexMap, compare_type_groups,
+    explorer_column_width, grid_card_extent, grid_card_icon_slot, metadata_fill_position,
+    scroll_delta_for_unit, should_activate_pointer_click, type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use gtk::{gio, prelude::*};
@@ -95,6 +96,33 @@ fn alternate_modes_request_missing_metadata_for_bound_entries() {
     assert_eq!(metadata_fill_position(Some(7), &entry, true), Some(7));
     entry.mode = MetadataValue::Known(0o100644);
     assert_eq!(metadata_fill_position(Some(7), &entry, true), None);
+}
+
+#[test]
+fn grid_cards_keep_a_uniform_icon_slot_and_two_line_label() {
+    assert_eq!(grid_card_icon_slot(26), MIN_GRID_THUMBNAIL_SIZE);
+    assert_eq!(grid_card_icon_slot(128), 128);
+    assert_eq!(grid_card_icon_slot(512), MAX_GRID_THUMBNAIL_SIZE);
+    assert_eq!(grid_card_extent(26), grid_card_extent(64));
+    assert_eq!(grid_card_extent(64), (156, 107));
+    assert_eq!(grid_card_extent(128), (156, 171));
+    assert_eq!(grid_card_extent(256), (256, 299));
+    assert_eq!(grid_card_extent(512), grid_card_extent(256));
+}
+
+#[test]
+fn grid_scroll_maps_a_wheel_notch_from_page_size() {
+    let wheel = scroll_delta_for_unit(1.0, 1000.0, gtk::gdk::ScrollUnit::Wheel);
+    assert!((wheel - 100.0).abs() < 1e-9);
+    assert!(scroll_delta_for_unit(1.0, 8000.0, gtk::gdk::ScrollUnit::Wheel) > wheel);
+    assert_eq!(
+        scroll_delta_for_unit(4.0, 100.0, gtk::gdk::ScrollUnit::Surface),
+        10.0
+    );
+    assert_eq!(
+        scroll_delta_for_unit(1.0, 50.0, gtk::gdk::ScrollUnit::Surface),
+        scroll_delta_for_unit(1.0, 999.0, gtk::gdk::ScrollUnit::Surface)
+    );
 }
 
 #[test]

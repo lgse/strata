@@ -3194,6 +3194,10 @@ entry.theme-search {
   font-size: 0.8em;
 }
 
+.grid-thumbnail-scale {
+  padding: 0 16px;
+}
+
 .grid-thumbnail-scale trough {
   background: alpha(@theme_muted, 0.72);
   border: 1px solid alpha(@theme_border, 0.68);
@@ -3314,6 +3318,10 @@ menubutton.grid-thumbnail-menu > button:focus-visible {
 
 .grid-card-label {
   color: @theme_text;
+}
+
+.grid-fast-scroll .grid-card {
+  transition: none;
 }
 
 .grid-card.drop-destination,
