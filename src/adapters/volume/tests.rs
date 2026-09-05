@@ -32,10 +32,18 @@ fn ready(volumes: DropVolumes) -> DropVolumeLookup {
     }
 }
 
-/// Drives a URI lookup on a private main context until `on_ready` fires or
+/// Drives a lookup on a private main context until `on_ready` fires or
 /// `deadline` passes, returning the lookup and whether it was pending at first.
 fn resolve_on_private_context(
     query: &DropVolumeQuery,
+    deadline: Duration,
+) -> (Option<DropVolumeLookup>, bool) {
+    resolve_with_mounts(query, &MountTable::current(), deadline)
+}
+
+fn resolve_with_mounts(
+    query: &DropVolumeQuery,
+    mounts: &MountTable,
     deadline: Duration,
 ) -> (Option<DropVolumeLookup>, bool) {
     let context = glib::MainContext::new();
@@ -43,7 +51,7 @@ fn resolve_on_private_context(
         .with_thread_default(|| {
             let result = Rc::new(RefCell::new(None));
             let sink = result.clone();
-            let volumes = lookup_drop_volumes(query, move |lookup| {
+            let volumes = lookup_drop_volumes_with_mounts(query, mounts, move |lookup| {
                 *sink.borrow_mut() = Some(lookup);
             });
             let was_pending = matches!(volumes, DropVolumes::Pending(_));
@@ -180,7 +188,6 @@ fn uri_lookup_is_pending_then_reports_once_resolved() {
     let dest = Location::uri(gio::File::for_path(root.path()).uri().to_string());
     let source = Location::uri(gio::File::for_path(&file).uri().to_string());
     let query = DropVolumeQuery::new(&dest, &[source]);
-    assert!(!query.is_native());
     let (lookup, was_pending) = resolve_on_private_context(&query, Duration::from_secs(5));
     assert!(was_pending);
     let lookup = lookup.expect("file uri lookup should resolve");
@@ -200,7 +207,6 @@ fn native_path_and_file_uri_of_the_same_directory_share_an_identity() {
     let native = Location::local(root.path());
     let uri = Location::uri(gio::File::for_path(&file).uri().to_string());
     let query = DropVolumeQuery::new(&native, &[uri]);
-    assert!(!query.is_native());
     let (lookup, was_pending) = resolve_on_private_context(&query, Duration::from_secs(5));
     assert!(was_pending);
     let lookup = lookup.expect("mixed lookup should resolve");
@@ -210,6 +216,63 @@ fn native_path_and_file_uri_of_the_same_directory_share_an_identity() {
         "native and file:// ids must use one encoding: {}",
         lookup.describe()
     );
+}
+
+/// A mount table that claims `path` sits on an NFS mount.
+fn mounts_treating_as_nfs(path: &Path) -> MountTable {
+    MountTable::parse(&format!(
+        "1 0 0:1 / / rw - ext4 /dev/root rw\n2 1 0:2 / {} rw - nfs4 server:/export rw\n",
+        path.display()
+    ))
+}
+
+#[test]
+fn native_path_on_a_remote_mount_is_looked_up_asynchronously() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let dest = root.path().join("dest");
+    let file = root.path().join("file");
+    fs::create_dir(&dest).expect("dest");
+    fs::write(&file, b"x").expect("file");
+    let query = DropVolumeQuery::new(&Location::local(&dest), &[Location::local(&file)]);
+    let mounts = mounts_treating_as_nfs(root.path());
+    let (lookup, was_pending) = resolve_with_mounts(&query, &mounts, Duration::from_secs(5));
+    assert!(
+        was_pending,
+        "a remote-mounted native path must not stat on the caller"
+    );
+    let lookup = lookup.expect("remote native lookup should resolve");
+    assert_eq!(lookup.relation, VolumeRelation::Same);
+    assert!(lookup.dest.is_some_and(|identity| identity.is_remote));
+}
+
+#[test]
+fn remote_and_local_native_paths_never_match() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let remote = root.path().join("remote");
+    let local = root.path().join("local");
+    fs::create_dir(&remote).expect("remote");
+    fs::create_dir(&local).expect("local");
+    fs::write(local.join("file"), b"x").expect("file");
+    let query = DropVolumeQuery::new(
+        &Location::local(&remote),
+        &[Location::local(local.join("file"))],
+    );
+    let mounts = mounts_treating_as_nfs(&remote);
+    let (lookup, _) = resolve_with_mounts(&query, &mounts, Duration::from_secs(5));
+    let lookup = lookup.expect("mixed lookup should resolve");
+    assert_eq!(lookup.relation, VolumeRelation::Different);
+}
+
+#[test]
+fn local_native_paths_stay_synchronous() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let query = DropVolumeQuery::new(
+        &Location::local(root.path()),
+        &[Location::local(root.path())],
+    );
+    let mounts = MountTable::parse("1 0 0:1 / / rw - ext4 /dev/root rw\n");
+    let volumes = lookup_drop_volumes_with_mounts(&query, &mounts, |_| {});
+    assert_eq!(ready(volumes).relation, VolumeRelation::Same);
 }
 
 #[test]
@@ -245,6 +308,38 @@ fn dropping_the_pending_handle_inside_on_ready_is_safe() {
         })
         .expect("private main context should be acquirable");
     assert_eq!(relation, Some(VolumeRelation::Same));
+}
+
+#[test]
+fn timeout_finishes_with_partial_results_and_ignores_late_callbacks() {
+    let reported = Rc::new(RefCell::new(Vec::new()));
+    let sink = reported.clone();
+    let state = Rc::new(RefCell::new(PendingState {
+        identities: vec![None, None],
+        remaining: 2,
+        on_ready: Some(Box::new(move |lookup: DropVolumeLookup| {
+            sink.borrow_mut().push(lookup);
+        })),
+    }));
+    let dest = VolumeIdentity {
+        filesystem_id: "l1".into(),
+        is_remote: true,
+    };
+    PendingState::resolve(&state, 0, Some(dest.clone()));
+    assert!(reported.borrow().is_empty());
+
+    PendingState::finish(&state);
+    {
+        let reported = reported.borrow();
+        assert_eq!(reported.len(), 1);
+        assert_eq!(reported[0].dest.as_ref(), Some(&dest));
+        assert_eq!(reported[0].sources, vec![None]);
+        assert_eq!(reported[0].relation, VolumeRelation::Unknown);
+    }
+
+    PendingState::resolve(&state, 1, Some(dest));
+    PendingState::finish(&state);
+    assert_eq!(reported.borrow().len(), 1);
 }
 
 #[test]

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod mounts;
 #[cfg(test)]
 mod tests;
 
@@ -11,6 +12,8 @@ use crate::{
     model::Location,
     services::{VolumeIdentity, VolumeRelation, volume_relation},
 };
+
+use mounts::MountTable;
 
 const REMOTE_QUERY_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -36,11 +39,6 @@ impl DropVolumeQuery {
             dest: dest.clone(),
             source_parents,
         }
-    }
-
-    pub(crate) fn is_native(&self) -> bool {
-        self.locations()
-            .all(|location| location.native_path().is_some())
     }
 
     fn locations(&self) -> impl Iterator<Item = &Location> {
@@ -103,20 +101,61 @@ impl DropVolumes {
     }
 }
 
-/// Native directories resolve synchronously with one `stat` each. Anything
-/// involving a URI is queried asynchronously under a shared timeout and reports
-/// through `on_ready` exactly once, from the main context, never re-entrantly
-/// from this call. Dropping the returned `Pending` handle cancels the lookup
-/// and suppresses `on_ready`.
+/// Directories on local filesystems resolve synchronously with one `stat`
+/// each. Anything that could stall, meaning URIs and native paths on network
+/// or FUSE mounts, is queried asynchronously under a shared timeout and
+/// reports through `on_ready` exactly once, from the main context, never
+/// re-entrantly from this call. Dropping the returned `Pending` handle cancels
+/// the lookup and suppresses `on_ready`.
 pub(crate) fn lookup_drop_volumes(
     query: &DropVolumeQuery,
     on_ready: impl FnOnce(DropVolumeLookup) + 'static,
 ) -> DropVolumes {
-    if query.is_native() {
-        let identities = query.locations().map(native_volume_identity).collect();
+    lookup_drop_volumes_with_mounts(query, &MountTable::current(), on_ready)
+}
+
+fn lookup_drop_volumes_with_mounts(
+    query: &DropVolumeQuery,
+    mounts: &MountTable,
+    on_ready: impl FnOnce(DropVolumeLookup) + 'static,
+) -> DropVolumes {
+    let locations = query
+        .locations()
+        .map(|location| Directory::classify(location, mounts))
+        .collect::<Vec<_>>();
+    if locations
+        .iter()
+        .all(|directory| directory.resolves_synchronously())
+    {
+        let identities = locations
+            .iter()
+            .map(|directory| native_volume_identity(directory.location))
+            .collect();
         return DropVolumes::Ready(DropVolumeLookup::from_identities(identities));
     }
-    DropVolumes::Pending(PendingVolumeLookup::start(query, Box::new(on_ready)))
+    DropVolumes::Pending(PendingVolumeLookup::start(&locations, Box::new(on_ready)))
+}
+
+struct Directory<'a> {
+    location: &'a Location,
+    is_remote: bool,
+}
+
+impl<'a> Directory<'a> {
+    fn classify(location: &'a Location, mounts: &MountTable) -> Self {
+        let is_remote = match location.native_path() {
+            Some(path) => mounts.is_remote_path(path),
+            None => location_is_remote(location),
+        };
+        Self {
+            location,
+            is_remote,
+        }
+    }
+
+    fn resolves_synchronously(&self) -> bool {
+        self.location.native_path().is_some() && !self.is_remote
+    }
 }
 
 pub(crate) struct PendingVolumeLookup {
@@ -131,24 +170,23 @@ struct PendingState {
 }
 
 impl PendingVolumeLookup {
-    fn start(query: &DropVolumeQuery, on_ready: Box<dyn FnOnce(DropVolumeLookup)>) -> Self {
-        let locations = query.locations().collect::<Vec<_>>();
+    fn start(directories: &[Directory<'_>], on_ready: Box<dyn FnOnce(DropVolumeLookup)>) -> Self {
         let cancellable = gio::Cancellable::new();
         let state = Rc::new(RefCell::new(PendingState {
-            identities: vec![None; locations.len()],
-            remaining: locations.len(),
+            identities: vec![None; directories.len()],
+            remaining: directories.len(),
             on_ready: Some(on_ready),
         }));
-        for (index, location) in locations.into_iter().enumerate() {
-            if location.native_path().is_some() {
+        for (index, directory) in directories.iter().enumerate() {
+            if directory.resolves_synchronously() {
                 let mut state = state.borrow_mut();
-                state.identities[index] = native_volume_identity(location);
+                state.identities[index] = native_volume_identity(directory.location);
                 state.remaining -= 1;
                 continue;
             }
-            let is_remote = location_is_remote(location);
+            let is_remote = directory.is_remote;
             let state = state.clone();
-            gio_file(location).query_info_async(
+            gio_file(directory.location).query_info_async(
                 gio::FILE_ATTRIBUTE_ID_FILESYSTEM,
                 gio::FileQueryInfoFlags::NONE,
                 glib::Priority::DEFAULT,
@@ -161,17 +199,15 @@ impl PendingVolumeLookup {
                 },
             );
         }
+        // Cancelling does not unblock a stat already stuck in the kernel on a
+        // dead mount, so the timeout finishes the lookup with what it has.
         let cancel = cancellable.clone();
-        glib::timeout_source_new(
-            REMOTE_QUERY_TIMEOUT,
-            None,
-            glib::Priority::DEFAULT,
-            move || {
-                cancel.cancel();
-                glib::ControlFlow::Break
-            },
-        )
-        .attach(Some(&glib::MainContext::ref_thread_default()));
+        let timed_out = state.clone();
+        glib::MainContext::ref_thread_default().spawn_local(async move {
+            glib::timeout_future(REMOTE_QUERY_TIMEOUT).await;
+            cancel.cancel();
+            PendingState::finish(&timed_out);
+        });
         Self { cancellable, state }
     }
 
@@ -189,13 +225,23 @@ impl Drop for PendingVolumeLookup {
 
 impl PendingState {
     fn resolve(state: &Rc<RefCell<Self>>, index: usize, identity: Option<VolumeIdentity>) {
-        let (on_ready, lookup) = {
+        {
             let mut state = state.borrow_mut();
+            if state.on_ready.is_none() {
+                return;
+            }
             state.identities[index] = identity;
             state.remaining -= 1;
             if state.remaining > 0 {
                 return;
             }
+        }
+        Self::finish(state);
+    }
+
+    fn finish(state: &Rc<RefCell<Self>>) {
+        let (on_ready, lookup) = {
+            let mut state = state.borrow_mut();
             let Some(on_ready) = state.on_ready.take() else {
                 return;
             };
@@ -221,7 +267,7 @@ pub(crate) fn native_volume_identity(location: &Location) -> Option<VolumeIdenti
 
 pub(crate) fn location_is_remote(location: &Location) -> bool {
     match location.native_path() {
-        Some(_) => false,
+        Some(path) => MountTable::current().is_remote_path(path),
         None => {
             let scheme = location.backend_name();
             scheme != "file" && scheme != "trash"
