@@ -953,8 +953,14 @@ impl ModeViews {
             {
                 match self.mode {
                     BrowserMode::Columns => {}
-                    BrowserMode::Grid => self.rebuild_grid(),
-                    BrowserMode::Explorer => self.rebuild_explorer(),
+                    BrowserMode::Grid => {
+                        self.browser.select_first_on_load(*depth);
+                        self.rebuild_grid();
+                    }
+                    BrowserMode::Explorer => {
+                        self.browser.select_first_on_load(*depth);
+                        self.rebuild_explorer();
+                    }
                 }
             }
             BrowserEvent::ColumnAdded { .. } => {}
@@ -1095,10 +1101,14 @@ impl ModeViews {
                 take_focus,
                 ..
             } => {
+                let view_has_focus = self
+                    .panes_at(*depth)
+                    .iter()
+                    .any(|pane| pane_holds_keyboard_focus(pane));
                 for pane in self.panes_at(*depth) {
                     set_selections(pane, positions);
                 }
-                if *take_focus {
+                if *take_focus || view_has_focus {
                     self.focus_visible_pane(*depth);
                 }
             }
@@ -1325,6 +1335,9 @@ impl ModeViews {
             }
             return;
         }
+        if let Some(position) = position {
+            focus_collection_item(&view, position);
+        }
         let view = view.downgrade();
         glib::idle_add_local_once(move || {
             if let Some(view) = view.upgrade()
@@ -1340,9 +1353,10 @@ impl ModeViews {
                 {
                     return;
                 }
-                view.grab_focus();
                 if let Some(position) = position {
-                    scroll_collection_to(&view, position);
+                    focus_collection_item(&view, position);
+                } else {
+                    view.grab_focus();
                 }
             }
         });
@@ -1496,6 +1510,15 @@ fn widget_has_focus(widget: &impl IsA<gtk::Widget>, focused: Option<&gtk::Widget
         || focused.is_some_and(|focused| {
             focused == widget.as_ref() || focused.is_ancestor(widget.as_ref())
         })
+}
+
+fn pane_holds_keyboard_focus(pane: &Pane) -> bool {
+    let focused = pane.stack.root().and_then(|root| root.focus());
+    widget_has_focus(&pane.stack, focused.as_ref())
+        || pane
+            .item_sections()
+            .iter()
+            .any(|section| widget_has_focus(&section.view, focused.as_ref()))
 }
 
 #[derive(Clone)]
@@ -3944,6 +3967,10 @@ fn scroll_pane_to_source(pane: &Pane, source_position: usize) {
 
 fn scroll_collection_to(view: &gtk::Widget, position: u32) {
     super::browser::scroll_collection_when_allocated(view, position);
+}
+
+fn focus_collection_item(view: &gtk::Widget, position: u32) {
+    super::browser::focus_collection_item_when_allocated(view, position);
 }
 
 fn set_mode_cut_style(widget: &impl IsA<gtk::Widget>, cut: bool) {
