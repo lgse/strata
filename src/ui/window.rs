@@ -1833,6 +1833,12 @@ impl SidebarState {
         row.add_controller(drag);
 
         let drop = gtk::DropTarget::new(String::static_type(), gtk::gdk::DragAction::MOVE);
+        drop.connect_accept(|_, offered| {
+            offered.formats().contains_type(String::static_type())
+                && !offered
+                    .formats()
+                    .contains_type(gtk::gdk::FileList::static_type())
+        });
         let weak_state = Rc::downgrade(self);
         let target_row = row.clone();
         drop.connect_drop(move |_, value, _, y| {
@@ -2203,6 +2209,7 @@ fn install_sidebar_file_drop(
         gtk::gdk::FileList::static_type(),
         gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
     );
+    drop.set_propagation_phase(gtk::PropagationPhase::Capture);
     drop.connect_enter(|target, _, _| file_drop_action(target));
     drop.connect_motion(|target, _, _| file_drop_action(target));
     let view = view.clone();
