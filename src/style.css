@@ -2278,11 +2278,11 @@ menubutton.column-header-action > button:active {
 
 .path-completion-popover contents {
   background: @theme_surface;
-  border: 1px solid alpha(@theme_border, 0.6);
+  border: 1px solid alpha(@theme_border, 0.45);
   border-radius: 8px;
-  box-shadow: 0 4px 16px alpha(@theme_shadow, 0.35);
-  padding: 4px;
-  min-width: 320px;
+  box-shadow: 0 8px 24px alpha(@theme_shadow, 0.32);
+  padding: 6px;
+  min-width: 460px;
 }
 
 .path-completion-scroll,
@@ -2298,22 +2298,36 @@ menubutton.column-header-action > button:active {
 .path-completion-row {
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: 6px;
   color: @theme_text;
   font-size: 0.9em;
-  padding: 4px 8px;
+  min-height: 32px;
+  padding: 5px 10px;
   transition: background 120ms ease-out, color 120ms ease-out;
 }
 
 .path-completion-row:hover,
 .path-completion-row:selected {
-  background: alpha(@theme_highlight, 0.72);
+  background: alpha(@theme_highlight, 0.85);
   color: @theme_accent;
 }
 
 .path-completion-row:active {
   background: alpha(@theme_accent, 0.22);
   color: @theme_accent;
+}
+
+.path-completion-parent {
+  color: @theme_dim_text;
+  font-size: 0.82em;
+}
+
+.path-completion-footer {
+  border-top: 1px solid alpha(@theme_border, 0.25);
+  color: @theme_dim_text;
+  font-size: 0.76em;
+  margin-top: 4px;
+  padding: 6px 8px 2px 8px;
 }
 
 .properties-content {

@@ -23,6 +23,8 @@ fn suggest_completions_for_home_shorthand() {
         vec![CompletionCandidate {
             display_name: "~/".to_owned(),
             replacement: "~/".to_owned(),
+            parent_hint: "home".to_owned(),
+            match_len: 1,
             is_dir: true,
         }]
     );
@@ -48,6 +50,8 @@ fn suggest_completions_for_home_shorthand() {
         vec![CompletionCandidate {
             display_name: "Documents/".to_owned(),
             replacement: "~/Documents/".to_owned(),
+            parent_hint: "~".to_owned(),
+            match_len: 3,
             is_dir: true,
         }]
     );
@@ -58,6 +62,8 @@ fn suggest_completions_for_home_shorthand() {
         vec![CompletionCandidate {
             display_name: ".config/".to_owned(),
             replacement: "~/.config/".to_owned(),
+            parent_hint: "~".to_owned(),
+            match_len: 3,
             is_dir: true,
         }]
     );
@@ -88,12 +94,14 @@ fn suggest_completions_for_absolute_paths() {
     assert_eq!(al_completions.len(), 2);
     assert_eq!(al_completions[0].display_name, "alpha/");
     assert_eq!(al_completions[0].replacement, format!("{sub_str}/alpha/"));
+    assert_eq!(al_completions[0].match_len, 2);
     assert!(al_completions[0].is_dir);
     assert_eq!(al_completions[1].display_name, "albatross.txt");
     assert_eq!(
         al_completions[1].replacement,
         format!("{sub_str}/albatross.txt")
     );
+    assert_eq!(al_completions[1].match_len, 2);
     assert!(!al_completions[1].is_dir);
 }
 
@@ -120,6 +128,8 @@ fn suggest_completions_for_relative_paths() {
         vec![CompletionCandidate {
             display_name: "vacation/".to_owned(),
             replacement: "photos/vacation/".to_owned(),
+            parent_hint: current.join("photos").to_string_lossy().into_owned(),
+            match_len: 2,
             is_dir: true,
         }]
     );

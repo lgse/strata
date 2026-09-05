@@ -15,6 +15,8 @@ use crate::app::Browser;
 pub(crate) struct CompletionCandidate {
     pub(crate) display_name: String,
     pub(crate) replacement: String,
+    pub(crate) parent_hint: String,
+    pub(crate) match_len: usize,
     pub(crate) is_dir: bool,
 }
 
@@ -33,12 +35,67 @@ impl Drop for PathCompletion {
     }
 }
 
+fn candidate_icon(name: &str, is_dir: bool) -> &'static str {
+    if is_dir {
+        return crate::assets::icons::FOLDER;
+    }
+    let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase());
+    match ext.as_deref() {
+        Some("sh" | "bash" | "zsh" | "fish") => crate::assets::icons::TERMINAL,
+        Some(
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "svg" | "bmp" | "avif" | "tif" | "tiff"
+            | "dng" | "raw",
+        ) => crate::assets::icons::PICTURES,
+        Some("mp4" | "mkv" | "webm" | "mov" | "avi" | "m4v") => crate::assets::icons::VIDEOS,
+        Some("zip" | "tar" | "gz" | "bz2" | "xz" | "7z" | "rar" | "zst") => {
+            crate::assets::icons::FILE_ARCHIVE
+        }
+        Some(
+            "rs" | "c" | "h" | "cpp" | "go" | "py" | "rb" | "java" | "js" | "jsx" | "ts" | "tsx"
+            | "lua" | "php" | "html" | "css" | "scss" | "json" | "toml" | "yaml" | "yml",
+        ) => crate::assets::icons::FILE_CODE,
+        _ => crate::assets::icons::DOCUMENTS,
+    }
+}
+
+fn format_highlighted_markup(display_name: &str, match_len: usize) -> String {
+    if match_len == 0 {
+        return glib::markup_escape_text(display_name).to_string();
+    }
+    let mut byte_split = 0;
+    for (char_count, (i, c)) in display_name.char_indices().enumerate() {
+        if char_count == match_len {
+            byte_split = i;
+            break;
+        }
+        byte_split = i + c.len_utf8();
+    }
+    let (matched, remainder) = display_name.split_at(byte_split);
+    format!(
+        "<b>{}</b>{}",
+        glib::markup_escape_text(matched),
+        glib::markup_escape_text(remainder)
+    )
+}
+
+fn compact_hint(path: &Path, home: &Path) -> String {
+    if path == home {
+        return "~".to_owned();
+    }
+    if let Ok(suffix) = path.strip_prefix(home) {
+        return format!("~/{}", suffix.to_string_lossy());
+    }
+    path.to_string_lossy().into_owned()
+}
+
 impl PathCompletion {
     pub(crate) fn attach(
         entry: &gtk::Entry,
         browser: Rc<Browser>,
         on_activate: impl Fn() + 'static,
     ) -> Rc<Self> {
+        let content_box = gtk::Box::new(gtk::Orientation::Vertical, 4);
+
         let list = gtk::ListBox::builder()
             .selection_mode(gtk::SelectionMode::Single)
             .can_focus(false)
@@ -51,14 +108,24 @@ impl PathCompletion {
             .hscrollbar_policy(gtk::PolicyType::Never)
             .vscrollbar_policy(gtk::PolicyType::Automatic)
             .min_content_height(36)
-            .max_content_height(240)
-            .min_content_width(320)
+            .max_content_height(260)
+            .min_content_width(460)
             .propagate_natural_height(true)
             .propagate_natural_width(true)
             .can_focus(false)
             .focusable(false)
             .build();
         scroll.add_css_class("path-completion-scroll");
+        content_box.append(&scroll);
+
+        let footer = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        footer.add_css_class("path-completion-footer");
+        let hints = gtk::Label::new(None);
+        hints.set_markup("<span alpha='65%'><b>Tab</b> complete</span>  •  <span alpha='65%'><b>↑↓</b> select</span>  •  <span alpha='65%'><b>↵</b> navigate</span>  •  <span alpha='65%'><b>Esc</b> close</span>");
+        hints.set_xalign(0.0);
+        hints.set_hexpand(true);
+        footer.append(&hints);
+        content_box.append(&footer);
 
         let popover = gtk::Popover::builder()
             .has_arrow(false)
@@ -67,7 +134,7 @@ impl PathCompletion {
             .halign(gtk::Align::Fill)
             .can_focus(false)
             .focusable(false)
-            .child(&scroll)
+            .child(&content_box)
             .build();
         popover.add_css_class("path-completion-popover");
         popover.set_parent(entry);
@@ -242,21 +309,31 @@ impl PathCompletion {
             self.list.remove(&child);
         }
         for candidate in candidates {
-            let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
             row.add_css_class("path-completion-row");
 
-            let icon_name = if candidate.is_dir {
-                crate::assets::icons::FOLDER
-            } else {
-                crate::assets::icons::DOCUMENTS
-            };
-            row.append(&crate::assets::primary_icon(icon_name, 16));
+            let icon_name = candidate_icon(&candidate.display_name, candidate.is_dir);
+            let icon = crate::assets::primary_icon(icon_name, 16);
+            icon.set_valign(gtk::Align::Center);
+            row.append(&icon);
 
-            let label = gtk::Label::new(Some(&candidate.display_name));
+            let label = gtk::Label::new(None);
+            label.set_markup(&format_highlighted_markup(
+                &candidate.display_name,
+                candidate.match_len,
+            ));
             label.set_xalign(0.0);
             label.set_hexpand(true);
             label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
             row.append(&label);
+
+            if !candidate.parent_hint.is_empty() {
+                let parent_label = gtk::Label::new(Some(&candidate.parent_hint));
+                parent_label.add_css_class("path-completion-parent");
+                parent_label.set_xalign(1.0);
+                parent_label.set_ellipsize(gtk::pango::EllipsizeMode::Start);
+                row.append(&parent_label);
+            }
 
             self.list.append(&row);
         }
@@ -269,22 +346,17 @@ impl PathCompletion {
         }
         let current = self.selected_index.get();
         let next = match current {
-            Some(index) => {
-                let next = (index as i32 + delta).rem_euclid(count as i32) as usize;
-                Some(next)
-            }
+            Some(index) => (index as i32 + delta).rem_euclid(count as i32) as usize,
             None => {
                 if delta >= 0 {
-                    Some(0)
+                    0
                 } else {
-                    Some(count.saturating_sub(1))
+                    count.saturating_sub(1)
                 }
             }
         };
-        self.selected_index.set(next);
-        if let Some(index) = next
-            && let Some(row) = self.list.row_at_index(index as i32)
-        {
+        self.selected_index.set(Some(next));
+        if let Some(row) = self.list.row_at_index(next as i32) {
             self.list.select_row(Some(&row));
         }
     }
@@ -339,7 +411,8 @@ pub(crate) fn suggest_completions(
     let input = input.trim();
     if input.is_empty() {
         if let Some(current) = current_dir {
-            return list_directory_candidates(current, "", "", show_hidden_pref);
+            let hint = compact_hint(current, home);
+            return list_directory_candidates(current, "", "", &hint, 0, show_hidden_pref);
         }
         return Vec::new();
     }
@@ -348,6 +421,8 @@ pub(crate) fn suggest_completions(
         return vec![CompletionCandidate {
             display_name: "~/".to_owned(),
             replacement: "~/".to_owned(),
+            parent_hint: "home".to_owned(),
+            match_len: 1,
             is_dir: true,
         }];
     }
@@ -368,7 +443,15 @@ pub(crate) fn suggest_completions(
         } else {
             (home.to_path_buf(), relative, "~/".to_owned())
         };
-        return list_directory_candidates(&base_dir, leaf_prefix, &prepend, show_hidden_pref);
+        let hint = compact_hint(&base_dir, home);
+        return list_directory_candidates(
+            &base_dir,
+            leaf_prefix,
+            &prepend,
+            &hint,
+            leaf_prefix.chars().count(),
+            show_hidden_pref,
+        );
     }
 
     if input.starts_with('~') {
@@ -395,7 +478,15 @@ pub(crate) fn suggest_completions(
         } else {
             (PathBuf::from("/"), stripped, "/".to_owned())
         };
-        return list_directory_candidates(&base_dir, leaf_prefix, &prepend, show_hidden_pref);
+        let hint = compact_hint(&base_dir, home);
+        return list_directory_candidates(
+            &base_dir,
+            leaf_prefix,
+            &prepend,
+            &hint,
+            leaf_prefix.chars().count(),
+            show_hidden_pref,
+        );
     }
 
     if let Some(current) = current_dir {
@@ -406,7 +497,15 @@ pub(crate) fn suggest_completions(
         } else {
             (current.to_path_buf(), input, "".to_owned())
         };
-        return list_directory_candidates(&base_dir, leaf_prefix, &prepend, show_hidden_pref);
+        let hint = compact_hint(&base_dir, home);
+        return list_directory_candidates(
+            &base_dir,
+            leaf_prefix,
+            &prepend,
+            &hint,
+            leaf_prefix.chars().count(),
+            show_hidden_pref,
+        );
     }
 
     Vec::new()
@@ -416,6 +515,8 @@ fn list_directory_candidates(
     base_dir: &Path,
     leaf_prefix: &str,
     prepend: &str,
+    parent_hint: &str,
+    match_len: usize,
     show_hidden_pref: bool,
 ) -> Vec<CompletionCandidate> {
     let Ok(entries) = fs::read_dir(base_dir) else {
@@ -446,12 +547,16 @@ fn list_directory_candidates(
             dirs.push(CompletionCandidate {
                 display_name: format!("{name}/"),
                 replacement: format!("{prepend}{name}/"),
+                parent_hint: parent_hint.to_owned(),
+                match_len,
                 is_dir: true,
             });
         } else {
             files.push(CompletionCandidate {
                 display_name: name.clone(),
                 replacement: format!("{prepend}{name}"),
+                parent_hint: parent_hint.to_owned(),
+                match_len,
                 is_dir: false,
             });
         }
