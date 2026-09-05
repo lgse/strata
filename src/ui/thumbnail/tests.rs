@@ -182,7 +182,7 @@ fn failed_jobs_release_their_active_requests() {
             image: glib::WeakRef::new(),
         }],
         None,
-        64,
+        Path::new("image.png"),
     );
 
     ACTIVE_REQUESTS.with(|requests| assert!(requests.borrow().is_empty()));
@@ -410,6 +410,31 @@ fn cancellation_removes_metadata_waiters() {
     cancel_thumbnail(7);
 
     METADATA_WAITERS.with(|waiters| assert!(!waiters.borrow().contains_key(&path)));
+}
+
+#[test]
+fn cancelling_drops_hooked_settle_groups_with_a_dead_viewport() {
+    SETTLE_VIEWS.with(|views| {
+        views.borrow_mut().insert(
+            42,
+            ViewSettle {
+                viewport: glib::WeakRef::new(),
+                pending: Vec::new(),
+                timer: None,
+                first_park: None,
+                hooked: true,
+            },
+        );
+    });
+
+    cancel_thumbnail(1);
+
+    SETTLE_VIEWS.with(|views| {
+        assert!(
+            !views.borrow().contains_key(&42),
+            "a hooked settle group whose viewport is gone should drop"
+        );
+    });
 }
 
 #[test]

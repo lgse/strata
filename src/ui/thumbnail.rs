@@ -40,6 +40,21 @@ thread_local! {
     /// Parked while metadata is unknown to avoid rendering twice.
     static METADATA_WAITERS: RefCell<HashMap<PathBuf, Vec<MetadataWaiter>>> =
         RefCell::new(HashMap::new());
+    static TRACKED_CUSTOMIZED_ICONS: RefCell<Vec<TrackedCustomizedIcon>> =
+        const { RefCell::new(Vec::new()) };
+    static TRACKED_THUMBNAILS: RefCell<Vec<TrackedThumbnail>> = const { RefCell::new(Vec::new()) };
+}
+
+struct TrackedThumbnail {
+    image: glib::WeakRef<gtk::Image>,
+    path: PathBuf,
+}
+
+struct TrackedCustomizedIcon {
+    image: glib::WeakRef<gtk::Image>,
+    path: PathBuf,
+    icon: String,
+    customized: bool,
 }
 
 struct ActiveRequest {
@@ -356,13 +371,29 @@ struct ThumbnailRequest<'a> {
 }
 
 fn set_thumbnail_for_path(request: ThumbnailRequest<'_>) {
-    let (image_id, request_id) =
-        set_fallback_icon(request.image, request.fallback_icon, request.icon_size);
+    let has_custom_icon = super::theme::ThemeManager::shared()
+        .custom_icon(request.path)
+        .is_some();
+    if has_custom_icon {
+        set_fallback_icon(
+            request.image,
+            Some(request.path),
+            request.fallback_icon,
+            request.icon_size,
+        );
+        return;
+    }
     let path = request.path.to_path_buf();
+    let thumbnail_size = request.thumbnail_size.clamp(16, 256);
     let Some(kind) = thumbnail_kind(&path) else {
+        set_fallback_icon(
+            request.image,
+            Some(request.path),
+            request.fallback_icon,
+            request.icon_size,
+        );
         return;
     };
-    let thumbnail_size = request.thumbnail_size.clamp(16, 256);
     let key = ThumbnailKey {
         path: path.clone(),
         modified: request.modified,
@@ -372,12 +403,33 @@ fn set_thumbnail_for_path(request: ThumbnailRequest<'_>) {
     // Disk validation moves to fire time so offscreen rows never touch the disk.
     match THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().get(&key)) {
         Some(CacheHit::Ready(bytes)) => {
-            apply_thumbnail(request.image, &bytes, thumbnail_size);
+            cancel_thumbnail(request.image.as_ptr() as usize);
+            ensure_image_slot(request.image, thumbnail_size);
+            apply_thumbnail(request.image, &bytes, &path);
             return;
         }
-        Some(CacheHit::Failed) => return,
+        Some(CacheHit::Failed) => {
+            set_fallback_icon(
+                request.image,
+                Some(request.path),
+                request.fallback_icon,
+                request.icon_size,
+            );
+            return;
+        }
         None => {}
     }
+    let (image_id, request_id) = if displayed_thumbnail_matches(request.image, request.path) {
+        prepare_thumbnail_target(request.image, thumbnail_size)
+    } else {
+        set_fallback_icon(
+            request.image,
+            Some(request.path),
+            request.fallback_icon,
+            request.icon_size,
+        )
+    };
+    ensure_image_slot(request.image, thumbnail_size);
     let weak_image = glib::WeakRef::new();
     weak_image.set(Some(request.image));
     ACTIVE_REQUESTS.with(|requests| {
@@ -699,7 +751,7 @@ fn fire_parks(mut drained: Vec<SettledPark>, viewport: Option<&gtk::ScrolledWind
         {
             match hit {
                 CacheHit::Ready(bytes) => {
-                    apply_thumbnail(image, &bytes, park.key.thumbnail_size);
+                    apply_thumbnail(image, &bytes, &park.key.path);
                 }
                 CacheHit::Failed => {}
             }
@@ -881,7 +933,7 @@ fn start_thumbnail_jobs() {
 async fn run_thumbnail_job(job: ThumbnailJob) {
     let job_id = job.id;
     let key = job.key.clone();
-    let thumbnail_size = key.thumbnail_size;
+    let path = key.path.clone();
     let result = gio::spawn_blocking(move || {
         if let Some(mtime) = job.key.modified
             && let Some(png) = super::thumbnail_cache::lookup(&job.key.path, mtime)
@@ -906,7 +958,7 @@ async fn run_thumbnail_job(job: ThumbnailJob) {
                 crate::metrics::mark_thumbnail_completed();
                 let bytes = glib::Bytes::from_owned(png.clone());
                 THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().insert(key.clone(), bytes.clone()));
-                finish_thumbnail_targets(targets, Some(&bytes), thumbnail_size);
+                finish_thumbnail_targets(targets, Some(&bytes), &path);
                 // Unverifiable keys (unknown mtime) skip persistence: nothing validates them later.
                 if rendered && let Some(mtime) = key.modified {
                     enqueue_persist(key.path.clone(), mtime, png);
@@ -915,7 +967,7 @@ async fn run_thumbnail_job(job: ThumbnailJob) {
             Ok(Err(_)) | Err(_) => {
                 crate::metrics::mark_thumbnail_cancelled();
                 THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().insert_failure(key));
-                finish_thumbnail_targets(targets, None, thumbnail_size);
+                finish_thumbnail_targets(targets, None, &path);
             }
         }
     }
@@ -995,11 +1047,7 @@ fn take_pending_targets(key: &ThumbnailKey, job_id: u64) -> Option<Vec<PendingTa
     })
 }
 
-fn finish_thumbnail_targets(
-    targets: Vec<PendingTarget>,
-    bytes: Option<&glib::Bytes>,
-    thumbnail_size: i32,
-) {
+fn finish_thumbnail_targets(targets: Vec<PendingTarget>, bytes: Option<&glib::Bytes>, path: &Path) {
     for target in targets {
         let is_current = ACTIVE_REQUESTS.with(|requests| {
             let mut requests = requests.borrow_mut();
@@ -1024,7 +1072,7 @@ fn finish_thumbnail_targets(
             crate::metrics::mark_thumbnail_stale();
             continue;
         };
-        apply_thumbnail(&image, bytes, thumbnail_size);
+        apply_thumbnail(&image, bytes, path);
         crate::metrics::mark_thumbnail_applied();
     }
 }
@@ -1036,18 +1084,68 @@ fn known_metadata<T: Copy>(value: &MetadataValue<T>) -> Option<T> {
     }
 }
 
-fn apply_thumbnail(image: &gtk::Image, bytes: &glib::Bytes, thumbnail_size: i32) {
+fn apply_thumbnail(image: &gtk::Image, bytes: &glib::Bytes, path: &Path) {
     if let Ok(texture) = gdk::Texture::from_bytes(bytes) {
         crate::assets::remove_primary_icon(image);
-        image.set_pixel_size(thumbnail_size);
-        image.set_size_request(thumbnail_size, thumbnail_size);
         image.set_paintable(Some(&texture));
         image.set_opacity(1.0);
+        register_displayed_thumbnail(image, path);
     }
 }
 
+fn displayed_thumbnail_matches(image: &gtk::Image, path: &Path) -> bool {
+    TRACKED_THUMBNAILS.with(|thumbnails| {
+        let mut thumbnails = thumbnails.borrow_mut();
+        thumbnails.retain(|tracked| tracked.image.upgrade().is_some());
+        thumbnails
+            .iter()
+            .find(|tracked| tracked.image.upgrade().as_ref() == Some(image))
+            .is_some_and(|tracked| tracked.path == path)
+    })
+}
+
+fn register_displayed_thumbnail(image: &gtk::Image, path: &Path) {
+    let weak_ref = glib::WeakRef::new();
+    weak_ref.set(Some(image));
+    TRACKED_THUMBNAILS.with(|thumbnails| {
+        let mut thumbnails = thumbnails.borrow_mut();
+        thumbnails.retain(|tracked| tracked.image.upgrade().is_some());
+        if let Some(existing) = thumbnails
+            .iter_mut()
+            .find(|tracked| tracked.image.upgrade().as_ref() == Some(image))
+        {
+            existing.path = path.to_path_buf();
+        } else {
+            thumbnails.push(TrackedThumbnail {
+                image: weak_ref,
+                path: path.to_path_buf(),
+            });
+        }
+    });
+}
+
+fn clear_displayed_thumbnail(image: &gtk::Image) {
+    TRACKED_THUMBNAILS.with(|thumbnails| {
+        thumbnails.borrow_mut().retain(|tracked| {
+            tracked
+                .image
+                .upgrade()
+                .is_some_and(|tracked_image| tracked_image != *image)
+        });
+    });
+}
+
 pub(super) fn show_fallback_icon(image: &gtk::Image, icon: &str, size: i32) {
-    set_fallback_icon(image, icon, size);
+    set_fallback_icon(image, None, icon, size);
+}
+
+pub(super) fn show_customized_icon(
+    image: &gtk::Image,
+    path: &Path,
+    fallback_icon: &str,
+    size: i32,
+) {
+    set_fallback_icon(image, Some(path), fallback_icon, size);
 }
 
 pub(super) fn cancel_list_item_thumbnails(item: &glib::Object) {
@@ -1070,14 +1168,117 @@ pub(super) fn cancel_thumbnails_in(widget: &gtk::Widget) {
     }
 }
 
-fn set_fallback_icon(image: &gtk::Image, icon: &str, size: i32) -> (usize, u64) {
+pub(super) fn ensure_image_slot(image: &gtk::Image, size: i32) {
+    if image.pixel_size() != size {
+        image.set_pixel_size(size);
+    }
+    if image.width_request() != size || image.height_request() != size {
+        image.set_size_request(size, size);
+    }
+}
+
+fn prepare_thumbnail_target(image: &gtk::Image, size: i32) -> (usize, u64) {
     let request = NEXT_REQUEST.fetch_add(1, Ordering::Relaxed);
     let image_id = image.as_ptr() as usize;
     cancel_thumbnail(image_id);
-    image.set_pixel_size(size);
-    image.set_size_request(size, size);
-    crate::assets::set_primary_icon(image, icon);
+    ensure_image_slot(image, size);
     (image_id, request)
+}
+
+fn set_fallback_icon(
+    image: &gtk::Image,
+    path: Option<&Path>,
+    icon: &str,
+    size: i32,
+) -> (usize, u64) {
+    let ids = prepare_thumbnail_target(image, size);
+    clear_displayed_thumbnail(image);
+    if let Some(p) = path {
+        let customized = apply_path_customization(image, p, icon);
+        register_tracked_icon(image, p, icon, customized);
+    } else {
+        crate::assets::set_primary_icon(image, icon);
+    }
+    ids
+}
+
+fn apply_path_customization(image: &gtk::Image, path: &Path, fallback_icon: &str) -> bool {
+    let theme_manager = super::theme::ThemeManager::shared();
+    let custom_icon = theme_manager.custom_icon(path);
+    let color = theme_manager.folder_color(path);
+    let customized = custom_icon.is_some() || color.is_some();
+
+    if fallback_icon == crate::assets::icons::FOLDER
+        && let Some(decoration) = custom_icon.as_deref()
+    {
+        let color = color
+            .as_ref()
+            .map_or_else(crate::assets::primary_icon_color, |color| {
+                color.hex().to_owned()
+            });
+        crate::assets::set_folder_decoration_icon(image, decoration, &color);
+    } else if let Some(emoji) = custom_icon
+        .as_deref()
+        .and_then(crate::assets::icons::custom_emoji)
+    {
+        crate::assets::set_emoji_icon(image, emoji);
+    } else {
+        let rendered_icon = custom_icon.as_deref().unwrap_or(fallback_icon);
+        if let Some(color) = color {
+            crate::assets::set_custom_colored_icon(image, rendered_icon, color.hex());
+        } else {
+            crate::assets::set_primary_icon(image, rendered_icon);
+        }
+    }
+    customized
+}
+
+fn register_tracked_icon(image: &gtk::Image, path: &Path, icon: &str, customized: bool) {
+    let weak_ref = glib::WeakRef::new();
+    weak_ref.set(Some(image));
+    TRACKED_CUSTOMIZED_ICONS.with(|icons| {
+        let mut icons = icons.borrow_mut();
+        icons.retain(|t| t.image.upgrade().is_some());
+        if let Some(existing) = icons
+            .iter_mut()
+            .find(|t| t.image.upgrade().as_ref() == Some(image))
+        {
+            existing.path = path.to_path_buf();
+            existing.icon = icon.to_owned();
+            existing.customized = customized;
+        } else {
+            icons.push(TrackedCustomizedIcon {
+                image: weak_ref,
+                path: path.to_path_buf(),
+                icon: icon.to_owned(),
+                customized,
+            });
+        }
+    });
+}
+
+pub(super) fn refresh_customized_icons(paths: &[PathBuf]) {
+    refresh_tracked_icons(|tracked| paths.iter().any(|candidate| candidate == &tracked.path));
+}
+
+pub(super) fn refresh_all_customized_icons() {
+    refresh_tracked_icons(|tracked| tracked.customized);
+}
+
+fn refresh_tracked_icons(matches: impl Fn(&TrackedCustomizedIcon) -> bool) {
+    TRACKED_CUSTOMIZED_ICONS.with(|icons| {
+        let mut icons = icons.borrow_mut();
+        icons.retain_mut(|tracked| {
+            let Some(image) = tracked.image.upgrade() else {
+                return false;
+            };
+            if matches(tracked) {
+                cancel_thumbnail(image.as_ptr() as usize);
+                tracked.customized = apply_path_customization(&image, &tracked.path, &tracked.icon);
+            }
+            true
+        });
+    });
 }
 
 fn cancel_thumbnail(image_id: usize) {
@@ -1095,7 +1296,7 @@ fn cancel_thumbnail(image_id: usize) {
             settle
                 .pending
                 .retain(|park| park.target.image_id != image_id);
-            !settle.pending.is_empty() || settle.hooked
+            !settle.pending.is_empty() || (settle.hooked && settle.viewport.upgrade().is_some())
         });
     });
     let cancelled = PENDING_THUMBNAILS.with(|pending| {

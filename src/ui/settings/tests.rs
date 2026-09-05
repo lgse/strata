@@ -10,12 +10,13 @@ use crate::services::{
 use super::{
     CHANNEL_ORDER, COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
     RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, UPDATE_DUE_INTERVAL, aur_update_command,
-    channel_index, effective_update_channel, install_guard, installed_version_status,
-    is_stale_check, managed_channel_description, managed_install_summary, offer_still_eligible,
-    omarchy_update_command, resolve_update_method_async, responsive_dialog_size,
-    shows_available_release_notes, theme_background_is_light, theme_name_matches, update_check_due,
-    update_check_message, update_dialog_status, update_status_markup, uses_compact_navigation,
-    video_preview_backend_label, video_preview_control_state,
+    channel_index, effective_update_channel, force_due_update_check, install_guard,
+    installed_version_status, is_stale_check, managed_channel_description, managed_install_summary,
+    offer_still_eligible, omarchy_update_command, resolve_update_method_async,
+    responsive_dialog_size, shows_available_release_notes, theme_background_is_light,
+    theme_name_matches, update_check_due, update_check_message, update_dialog_status,
+    update_status_markup, uses_compact_navigation, video_preview_backend_label,
+    video_preview_control_state,
 };
 use crate::sandbox::MediaPreviewBackend;
 
@@ -391,6 +392,14 @@ fn due_check_respects_its_ttl() {
         Some(now - UPDATE_DUE_INTERVAL + Duration::from_secs(1)),
         now
     ));
+}
+
+#[test]
+fn the_first_session_check_bypasses_the_persisted_cache() {
+    use std::time::Instant;
+
+    assert!(force_due_update_check(None));
+    assert!(!force_due_update_check(Some(Instant::now())));
 }
 
 #[test]

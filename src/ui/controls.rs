@@ -101,6 +101,7 @@ pub(super) struct ModalLayout {
     pub close: gtk::Button,
     pub cancel: gtk::Button,
     pub confirm: gtk::Button,
+    pub icon: gtk::Image,
 }
 
 impl ModalLayout {
@@ -242,6 +243,7 @@ pub(super) fn modal_layout_with_tone(
         close,
         cancel,
         confirm,
+        icon,
     }
 }
 

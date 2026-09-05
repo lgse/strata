@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use std::{process::Command, rc::Rc};
+
 use super::*;
+
+const GTK_CHILD: &str = "STRATA_MARQUEE_GTK_CHILD";
+const PIN_TEST: &str = "ui::marquee::tests::marquee_does_not_pin_the_collection_view";
 
 #[test]
 fn pointer_inside_the_viewport_does_not_scroll() {
@@ -61,4 +66,54 @@ fn items_touching_the_band_are_captured() {
 fn an_unmoved_band_still_captures_the_item_under_it() {
     let bounds = graphene::Rect::new(0.0, 100.0, 300.0, 24.0);
     assert!(intersects(&bounds, 20.0, 110.0, 20.0, 110.0));
+}
+
+fn assert_marquee_releases_the_collection_view() {
+    let overlay = gtk::Overlay::new();
+    let model = gtk::StringList::new(&["fv\talpha"]);
+    let selection = gtk::NoSelection::new(Some(model));
+    let list = gtk::ListView::new(Some(selection), Some(gtk::SignalListItemFactory::new()));
+    let scroll = gtk::ScrolledWindow::builder().child(&list).build();
+    overlay.set_child(Some(&scroll));
+    let weak_list = list.downgrade();
+    let weak_scroll = scroll.downgrade();
+    let marquee = install(MarqueeSetup {
+        view: list.clone().upcast(),
+        scroll,
+        overlay: overlay.clone(),
+        targets: Rc::new(RefCell::new(Vec::new())),
+        is_item: Rc::new(|_| false),
+    });
+    marquee.add_origin_surface(&overlay);
+    drop(list);
+    drop(marquee);
+    overlay.set_child(None::<&gtk::Widget>);
+    drop(overlay);
+    while glib::MainContext::default().iteration(false) {}
+    assert!(
+        weak_list.upgrade().is_none(),
+        "marquee must not pin the collection view after the pane drops"
+    );
+    assert!(
+        weak_scroll.upgrade().is_none(),
+        "marquee must not pin the scrolled window after the pane drops"
+    );
+}
+
+#[test]
+fn marquee_does_not_pin_the_collection_view() {
+    if std::env::var_os(GTK_CHILD).is_some() {
+        if gtk::init().is_err() {
+            return;
+        }
+        assert_marquee_releases_the_collection_view();
+        return;
+    }
+
+    let status = Command::new(std::env::current_exe().expect("test executable should exist"))
+        .args(["--exact", PIN_TEST])
+        .env(GTK_CHILD, "1")
+        .status()
+        .expect("isolated GTK marquee test should start");
+    assert!(status.success(), "isolated GTK marquee test failed");
 }

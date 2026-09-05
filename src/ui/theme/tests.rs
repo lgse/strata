@@ -531,3 +531,76 @@ fn a_channel_change_with_no_surviving_views_clears_the_registry() {
     assert_eq!(ran.into_inner(), 0);
     assert!(live.is_empty());
 }
+
+#[test]
+fn preferences_folder_colors_round_trip() {
+    let mut preferences = Preferences::default();
+    assert!(preferences.folder_colors.is_empty());
+
+    let empty_serialized = toml::to_string_pretty(&preferences).expect("serialization succeeds");
+    assert!(!empty_serialized.contains("folder_colors"));
+
+    preferences
+        .folder_colors
+        .insert("/tmp/test-folder".to_owned(), "blue".to_owned());
+    preferences
+        .folder_colors
+        .insert("/tmp/custom-folder".to_owned(), "#34d399".to_owned());
+    let serialized = toml::to_string_pretty(&preferences).expect("serialization succeeds");
+    assert!(serialized.contains("folder_colors"));
+    assert!(serialized.contains("/tmp/test-folder"));
+    assert!(serialized.contains("/tmp/custom-folder"));
+
+    let deserialized: Preferences = toml::from_str(&serialized).expect("deserialization succeeds");
+    assert_eq!(
+        deserialized.folder_colors.get("/tmp/test-folder"),
+        Some(&"blue".to_owned())
+    );
+    assert_eq!(
+        deserialized
+            .folder_colors
+            .get("/tmp/test-folder")
+            .and_then(|c| crate::model::FolderColorValue::parse(c)),
+        Some(crate::model::FolderColorValue::Preset(
+            crate::model::FolderColor::Blue
+        ))
+    );
+    assert_eq!(
+        deserialized
+            .folder_colors
+            .get("/tmp/custom-folder")
+            .and_then(|c| crate::model::FolderColorValue::parse(c)),
+        Some(crate::model::FolderColorValue::Custom("#34d399".to_owned()))
+    );
+}
+
+#[test]
+fn preferences_custom_icons_round_trip() {
+    let mut preferences = Preferences::default();
+    assert!(preferences.custom_icons.is_empty());
+
+    let empty_serialized = toml::to_string_pretty(&preferences).expect("serialization succeeds");
+    assert!(!empty_serialized.contains("custom_icons"));
+
+    preferences.custom_icons.insert(
+        "/tmp/folder".to_owned(),
+        crate::assets::icons::PICTURES.to_owned(),
+    );
+    preferences
+        .custom_icons
+        .insert("/tmp/file.txt".to_owned(), "emoji:🚀".to_owned());
+    let serialized = toml::to_string_pretty(&preferences).expect("serialization succeeds");
+    assert!(serialized.contains("custom_icons"));
+    assert!(serialized.contains("/tmp/folder"));
+    assert!(serialized.contains(crate::assets::icons::PICTURES));
+
+    let deserialized: Preferences = toml::from_str(&serialized).expect("deserialization succeeds");
+    assert_eq!(
+        deserialized.custom_icons.get("/tmp/folder"),
+        Some(&crate::assets::icons::PICTURES.to_owned())
+    );
+    assert_eq!(
+        deserialized.custom_icons.get("/tmp/file.txt"),
+        Some(&"emoji:🚀".to_owned())
+    );
+}

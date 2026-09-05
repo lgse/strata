@@ -52,6 +52,11 @@ package() {
     warning "Strata ${_releasever} ships no desktop entry or application icon; installing without a launcher."
   fi
 
+  if [[ -f "${dist}/io.github.lgse.Strata.FileManager1.service" ]]; then
+    install -Dm644 "${dist}/io.github.lgse.Strata.FileManager1.service" \
+      "${pkgdir}/usr/share/strata/io.github.lgse.Strata.FileManager1.service"
+  fi
+
   install -Dm644 /dev/stdin "${pkgdir}/usr/share/strata/install-source.toml" <<'MARKER'
 manager = "pacman"
 package = "strata-bin"

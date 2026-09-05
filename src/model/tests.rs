@@ -105,3 +105,78 @@ fn root_has_one_breadcrumb() {
         vec![Location::local("/")]
     );
 }
+
+#[test]
+fn folder_colors_parse_names_and_resolve_hex() {
+    assert_eq!(FolderColor::from_name("red"), Some(FolderColor::Red));
+    assert_eq!(FolderColor::from_name("Blue"), Some(FolderColor::Blue));
+    assert_eq!(FolderColor::from_name("green"), Some(FolderColor::Green));
+    assert_eq!(FolderColor::from_name("grey"), Some(FolderColor::Gray));
+    assert_eq!(FolderColor::from_name("unknown"), None);
+    assert_eq!(FolderColor::Red.hex(), "#e5484d");
+    assert_eq!(FolderColor::Blue.hex(), "#0090ff");
+    assert_eq!(FolderColor::ALL.len(), 7);
+}
+
+#[test]
+fn folder_color_values_parse_and_resolve_hex() {
+    assert_eq!(
+        FolderColorValue::parse("red"),
+        Some(FolderColorValue::Preset(FolderColor::Red))
+    );
+    assert_eq!(
+        FolderColorValue::parse("#34d399"),
+        Some(FolderColorValue::Custom("#34d399".to_owned()))
+    );
+    assert_eq!(
+        FolderColorValue::parse("#FFF"),
+        Some(FolderColorValue::Custom("#fff".to_owned()))
+    );
+    assert_eq!(FolderColorValue::parse("not-a-color"), None);
+    assert_eq!(FolderColorValue::parse("#invalid"), None);
+    assert_eq!(FolderColorValue::Preset(FolderColor::Red).hex(), "#e5484d");
+    assert_eq!(
+        FolderColorValue::Custom("#34d399".to_owned()).hex(),
+        "#34d399"
+    );
+    assert_eq!(
+        FolderColorValue::Preset(FolderColor::Red).to_preference_string(),
+        "red"
+    );
+    assert_eq!(
+        FolderColorValue::Custom("#34d399".to_owned()).to_preference_string(),
+        "#34d399"
+    );
+}
+
+#[test]
+fn transfer_targets_keep_the_item_name_under_the_destination() {
+    assert_eq!(
+        Location::local("/home/user/report.txt")
+            .transfer_target(&Location::local("/home/user/archive")),
+        Some(Location::local("/home/user/archive/report.txt"))
+    );
+    assert_eq!(
+        Location::uri("smb://host/share/notes/report.txt")
+            .transfer_target(&Location::uri("smb://host/share/archive")),
+        Some(Location::uri("smb://host/share/archive/report.txt"))
+    );
+    assert_eq!(
+        Location::local("/home/user/a b.txt").transfer_target(&Location::uri("smb://host/share")),
+        Some(Location::uri("smb://host/share/a%20b.txt"))
+    );
+}
+
+#[test]
+fn children_reject_names_that_would_escape_the_parent() {
+    let parent = Location::local("/home/user");
+
+    for name in ["", ".", "..", "nested/child"] {
+        assert_eq!(parent.child(std::ffi::OsStr::new(name)), None);
+    }
+    assert_eq!(
+        Location::local("/").transfer_target(&parent),
+        None,
+        "a root has no name to carry into a destination"
+    );
+}

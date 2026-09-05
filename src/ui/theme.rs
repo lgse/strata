@@ -2,6 +2,7 @@
 
 use std::{
     cell::{Cell, RefCell},
+    collections::HashMap,
     fs, io,
     path::{Path, PathBuf},
     rc::Rc,
@@ -13,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use sourceview5::prelude::BufferExt as _;
 
 use crate::{
-    model::{SortDirection, SortKey, ViewPreferences},
+    model::{FolderColorValue, SortDirection, SortKey, ViewPreferences},
     sandbox::MediaPreviewBackend,
     services::Channel,
 };
@@ -150,6 +151,10 @@ struct Preferences {
     auto_refresh_interval: u32,
     #[serde(default = "default_release_channel")]
     release_channel: String,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    folder_colors: HashMap<String, String>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    custom_icons: HashMap<String, String>,
 }
 
 impl Default for Preferences {
@@ -183,6 +188,8 @@ impl Default for Preferences {
             preview_volume: default_full_volume(),
             auto_refresh_interval: 0,
             release_channel: default_release_channel(),
+            folder_colors: HashMap::new(),
+            custom_icons: HashMap::new(),
         }
     }
 }
@@ -356,6 +363,81 @@ impl ThemeManager {
     pub fn set_folder_peeking(&self, enabled: bool) {
         self.preferences.borrow_mut().folder_peeking = enabled;
         self.save_preferences();
+    }
+
+    pub fn folder_color(&self, path: &Path) -> Option<FolderColorValue> {
+        let preferences = self.preferences.borrow();
+        if preferences.folder_colors.is_empty() {
+            return None;
+        }
+        let key = path.to_string_lossy();
+        let color_name = preferences.folder_colors.get(key.as_ref())?;
+        FolderColorValue::parse(color_name)
+    }
+
+    pub fn set_folder_color(&self, path: &Path, color: Option<FolderColorValue>) {
+        self.set_folder_colors(&[path.to_path_buf()], color);
+    }
+
+    pub fn set_folder_colors(&self, paths: &[PathBuf], color: Option<FolderColorValue>) {
+        if paths.is_empty() {
+            return;
+        }
+        {
+            let mut preferences = self.preferences.borrow_mut();
+            for path in paths {
+                let key = path.to_string_lossy().into_owned();
+                if let Some(color) = &color {
+                    preferences
+                        .folder_colors
+                        .insert(key, color.to_preference_string());
+                } else {
+                    preferences.folder_colors.remove(&key);
+                }
+            }
+        }
+        self.save_preferences();
+        super::thumbnail::refresh_customized_icons(paths);
+    }
+
+    pub fn custom_icon(&self, path: &Path) -> Option<String> {
+        let preferences = self.preferences.borrow();
+        if preferences.custom_icons.is_empty() {
+            return None;
+        }
+        let key = path.to_string_lossy();
+        preferences
+            .custom_icons
+            .get(key.as_ref())
+            .filter(|name| crate::assets::icons::is_customization_choice(name))
+            .cloned()
+    }
+
+    pub fn set_custom_icon(&self, path: &Path, icon_name: Option<&str>) {
+        {
+            let mut preferences = self.preferences.borrow_mut();
+            let key = path.to_string_lossy().into_owned();
+            if let Some(name) =
+                icon_name.filter(|name| crate::assets::icons::is_customization_choice(name))
+            {
+                preferences.custom_icons.insert(key, name.to_owned());
+            } else {
+                preferences.custom_icons.remove(&key);
+            }
+        }
+        self.save_preferences();
+        super::thumbnail::refresh_customized_icons(&[path.to_path_buf()]);
+    }
+
+    pub fn clear_item_customization(&self, path: &Path) {
+        {
+            let mut preferences = self.preferences.borrow_mut();
+            let key = path.to_string_lossy();
+            preferences.folder_colors.remove(key.as_ref());
+            preferences.custom_icons.remove(key.as_ref());
+        }
+        self.save_preferences();
+        super::thumbnail::refresh_customized_icons(&[path.to_path_buf()]);
     }
 
     pub fn single_click_previews(&self) -> bool {
@@ -743,6 +825,7 @@ impl ThemeManager {
             .load_from_string(&tokens_css(tokens, self.text_size().root_font_px()));
         crate::assets::set_primary_icon_color(&tokens.accent);
         crate::assets::set_danger_icon_color(&tokens.danger);
+        super::thumbnail::refresh_all_customized_icons();
         stage_source_style_scheme(tokens);
     }
 
