@@ -2543,6 +2543,9 @@ fn build_explorer_pane(
     // GTK bundles single-click activation with hover selection, which collapses
     // multi-selection. Per-row gestures honor the configured click behavior instead.
     view.set_single_click_activate(false);
+    if let Some(destination) = browser.location_at(depth) {
+        install_mode_directory_drop_target(&view, destination, transfer_handler.clone());
+    }
     let weak_browser = Rc::downgrade(&browser);
     let source_index_for_activation = source_index.clone();
     let view_model_for_activation = view_model_object.clone();
@@ -2836,12 +2839,32 @@ fn install_mode_directory_drop_target(
     transfer_handler: TransferHandlerSlot,
 ) {
     widget.add_css_class("file-drop-zone");
-    let drop = gtk::DropTarget::new(
-        gtk::gdk::FileList::static_type(),
-        gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
-    );
-    drop.connect_enter(|target, _, _| super::browser::file_drop_action(target));
-    drop.connect_motion(|target, _, _| super::browser::file_drop_action(target));
+    let super::browser::PreparedFileDrop {
+        target: drop,
+        last_override,
+        destination: destination_of,
+    } = super::browser::prepare_file_drop_target({
+        let destination = destination.clone();
+        move || Some(destination.clone())
+    });
+    let destination_for_enter = destination_of.clone();
+    let override_for_enter = last_override.clone();
+    drop.connect_enter(move |target, _, _| {
+        super::browser::file_drop_action(
+            target,
+            destination_for_enter().as_ref(),
+            &override_for_enter,
+        )
+    });
+    let destination_for_motion = destination_of;
+    let override_for_motion = last_override.clone();
+    drop.connect_motion(move |target, _, _| {
+        super::browser::file_drop_action(
+            target,
+            destination_for_motion().as_ref(),
+            &override_for_motion,
+        )
+    });
     drop.connect_drop(move |target, value, _, _| {
         let Some(sources) = super::browser::locations_from_file_list_value(value) else {
             return false;
@@ -2851,8 +2874,13 @@ fn install_mode_directory_drop_target(
         };
         handler(
             destination.clone(),
-            sources,
-            super::browser::file_drop_action(target) == gtk::gdk::DragAction::MOVE,
+            sources.clone(),
+            super::browser::file_drop_commits_move(
+                target,
+                Some(&destination),
+                &sources,
+                &last_override,
+            ),
         );
         true
     });
@@ -2914,23 +2942,54 @@ fn install_explorer_drag_drop(
     });
     row.add_controller(drag);
 
-    let drop = gtk::DropTarget::new(
-        gtk::gdk::FileList::static_type(),
-        gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
-    );
+    let dest_for_row = {
+        let dropped_item = item.downgrade();
+        let browser_for_dest = browser.clone();
+        let map_for_dest = position_map.clone();
+        move || {
+            let browser = browser_for_dest.upgrade()?;
+            let dropped_item = dropped_item.upgrade()?;
+            let position = dropped_item.position();
+            let position = map_for_dest.as_ref().map_or(
+                (position != gtk::INVALID_LIST_POSITION).then_some(position as usize),
+                |(map, view)| source_position_for_view(map, Some(view), position),
+            );
+            position
+                .and_then(|position| browser.entry_at(depth, position))
+                .filter(FileEntry::is_directory)
+                .map(|entry| entry.location)
+        }
+    };
+    let super::browser::PreparedFileDrop {
+        target: drop,
+        last_override,
+        destination: destination_of,
+    } = super::browser::prepare_file_drop_target(dest_for_row);
     let highlighted_row = row.downgrade();
+    let destination_for_enter = destination_of.clone();
+    let override_for_enter = last_override.clone();
     drop.connect_enter(move |target, _, _| {
         if let Some(row) = highlighted_row.upgrade() {
             row.add_css_class("drop-destination");
         }
-        super::browser::file_drop_action(target)
+        super::browser::file_drop_action(
+            target,
+            destination_for_enter().as_ref(),
+            &override_for_enter,
+        )
     });
     let highlighted_row = row.downgrade();
+    let destination_for_motion = destination_of.clone();
+    let override_for_motion = last_override.clone();
     drop.connect_motion(move |target, _, _| {
         if let Some(row) = highlighted_row.upgrade() {
             row.add_css_class("drop-destination");
         }
-        super::browser::file_drop_action(target)
+        super::browser::file_drop_action(
+            target,
+            destination_for_motion().as_ref(),
+            &override_for_motion,
+        )
     });
     let highlighted_row = row.downgrade();
     drop.connect_leave(move |_| {
@@ -2961,30 +3020,14 @@ fn install_explorer_drag_drop(
                 .formats()
                 .contains_type(gtk::gdk::FileList::static_type())
     });
-    let dropped_item = item.downgrade();
-    let browser_for_drop = browser;
-    let map_for_drop = position_map;
     let dropped_row = row.downgrade();
+    let destination_for_drop = destination_of;
+    let override_for_drop = last_override;
     drop.connect_drop(move |target, value, _, _| {
         if let Some(row) = dropped_row.upgrade() {
             row.remove_css_class("drop-destination");
         }
-        let Some(browser) = browser_for_drop.upgrade() else {
-            return false;
-        };
-        let Some(dropped_item) = dropped_item.upgrade() else {
-            return false;
-        };
-        let position = dropped_item.position();
-        let position = map_for_drop.as_ref().map_or(
-            (position != gtk::INVALID_LIST_POSITION).then_some(position as usize),
-            |(map, view)| source_position_for_view(map, Some(view), position),
-        );
-        let Some(destination) = position
-            .and_then(|position| browser.entry_at(depth, position))
-            .filter(FileEntry::is_directory)
-            .map(|entry| entry.location)
-        else {
+        let Some(destination) = destination_for_drop() else {
             return false;
         };
         let Some(sources) = super::browser::locations_from_file_list_value(value) else {
@@ -2994,9 +3037,14 @@ fn install_explorer_drag_drop(
             return false;
         };
         handler(
-            destination,
-            sources,
-            super::browser::file_drop_action(target) == gtk::gdk::DragAction::MOVE,
+            destination.clone(),
+            sources.clone(),
+            super::browser::file_drop_commits_move(
+                target,
+                Some(&destination),
+                &sources,
+                &override_for_drop,
+            ),
         );
         true
     });

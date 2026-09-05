@@ -521,20 +521,111 @@ fn incoming_file_lists_sanitize_remote_credentials() {
 }
 
 #[test]
-fn local_file_drops_prefer_move_while_external_drops_prefer_copy() {
+fn file_drop_action_follows_volume_relation_not_local_vs_external() {
     let both = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
 
     assert_eq!(
-        preferred_file_drop_action(both, true),
+        preferred_file_drop_action(
+            both,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Same,
+            false,
+        ),
         gtk::gdk::DragAction::MOVE
     );
     assert_eq!(
-        preferred_file_drop_action(both, false),
+        preferred_file_drop_action(
+            both,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Different,
+            false,
+        ),
         gtk::gdk::DragAction::COPY
     );
     assert_eq!(
-        preferred_file_drop_action(gtk::gdk::DragAction::MOVE, false),
+        preferred_file_drop_action(
+            both,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Unknown,
+            false,
+        ),
+        gtk::gdk::DragAction::COPY
+    );
+    assert_eq!(
+        preferred_file_drop_action(
+            gtk::gdk::DragAction::MOVE,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Different,
+            false,
+        ),
         gtk::gdk::DragAction::MOVE
+    );
+    assert_eq!(
+        preferred_file_drop_action(
+            both,
+            crate::services::DropOverride::ForceCopy,
+            crate::services::VolumeRelation::Same,
+            false,
+        ),
+        gtk::gdk::DragAction::COPY
+    );
+    assert_eq!(
+        preferred_file_drop_action(
+            both,
+            crate::services::DropOverride::ForceMove,
+            crate::services::VolumeRelation::Different,
+            false,
+        ),
+        gtk::gdk::DragAction::MOVE
+    );
+    assert_eq!(
+        preferred_file_drop_action(
+            both,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Same,
+            true,
+        ),
+        gtk::gdk::DragAction::empty()
+    );
+}
+
+#[test]
+fn move_only_protocol_still_copies_across_volumes() {
+    let dest = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
+    let offered = offered_file_actions(dest, gtk::gdk::DragAction::MOVE);
+    assert!(offered.contains(gtk::gdk::DragAction::COPY));
+    assert_eq!(
+        preferred_file_drop_action(
+            offered,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Different,
+            false,
+        ),
+        gtk::gdk::DragAction::COPY
+    );
+    assert_eq!(
+        preferred_file_drop_action(
+            offered,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Same,
+            false,
+        ),
+        gtk::gdk::DragAction::MOVE
+    );
+}
+
+#[test]
+fn copy_only_source_does_not_move_on_the_same_volume() {
+    let dest = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
+    let offered = offered_file_actions(dest, gtk::gdk::DragAction::COPY);
+    assert_eq!(
+        preferred_file_drop_action(
+            offered,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Same,
+            false,
+        ),
+        gtk::gdk::DragAction::COPY
     );
 }
 
