@@ -368,20 +368,26 @@ fn set_thumbnail_for_path(request: ThumbnailRequest<'_>) {
     let has_custom_icon = super::theme::ThemeManager::shared()
         .custom_icon(request.path)
         .is_some();
-    let (image_id, request_id) = set_fallback_icon(
-        request.image,
-        Some(request.path),
-        request.fallback_icon,
-        request.icon_size,
-    );
     if has_custom_icon {
+        set_fallback_icon(
+            request.image,
+            Some(request.path),
+            request.fallback_icon,
+            request.icon_size,
+        );
         return;
     }
     let path = request.path.to_path_buf();
+    let thumbnail_size = request.thumbnail_size.clamp(16, 256);
     let Some(kind) = thumbnail_kind(&path) else {
+        set_fallback_icon(
+            request.image,
+            Some(request.path),
+            request.fallback_icon,
+            request.icon_size,
+        );
         return;
     };
-    let thumbnail_size = request.thumbnail_size.clamp(16, 256);
     let key = ThumbnailKey {
         path: path.clone(),
         modified: request.modified,
@@ -391,12 +397,31 @@ fn set_thumbnail_for_path(request: ThumbnailRequest<'_>) {
     // Disk validation moves to fire time so offscreen rows never touch the disk.
     match THUMBNAIL_CACHE.with(|cache| cache.borrow_mut().get(&key)) {
         Some(CacheHit::Ready(bytes)) => {
+            cancel_thumbnail(request.image.as_ptr() as usize);
             apply_thumbnail(request.image, &bytes, thumbnail_size);
             return;
         }
-        Some(CacheHit::Failed) => return,
+        Some(CacheHit::Failed) => {
+            set_fallback_icon(
+                request.image,
+                Some(request.path),
+                request.fallback_icon,
+                request.icon_size,
+            );
+            return;
+        }
         None => {}
     }
+    let (image_id, request_id) = if should_paint_fallback(request.image.paintable().is_some()) {
+        set_fallback_icon(
+            request.image,
+            Some(request.path),
+            request.fallback_icon,
+            request.icon_size,
+        )
+    } else {
+        prepare_thumbnail_target(request.image, thumbnail_size)
+    };
     let weak_image = glib::WeakRef::new();
     weak_image.set(Some(request.image));
     ACTIVE_REQUESTS.with(|requests| {
@@ -1106,23 +1131,32 @@ pub(super) fn ensure_image_slot(image: &gtk::Image, size: i32) {
     }
 }
 
+fn should_paint_fallback(has_content: bool) -> bool {
+    !has_content
+}
+
+fn prepare_thumbnail_target(image: &gtk::Image, size: i32) -> (usize, u64) {
+    let request = NEXT_REQUEST.fetch_add(1, Ordering::Relaxed);
+    let image_id = image.as_ptr() as usize;
+    cancel_thumbnail(image_id);
+    ensure_image_slot(image, size);
+    (image_id, request)
+}
+
 fn set_fallback_icon(
     image: &gtk::Image,
     path: Option<&Path>,
     icon: &str,
     size: i32,
 ) -> (usize, u64) {
-    let request = NEXT_REQUEST.fetch_add(1, Ordering::Relaxed);
-    let image_id = image.as_ptr() as usize;
-    cancel_thumbnail(image_id);
-    ensure_image_slot(image, size);
+    let ids = prepare_thumbnail_target(image, size);
     if let Some(p) = path {
         let customized = apply_path_customization(image, p, icon);
         register_tracked_icon(image, p, icon, customized);
     } else {
         crate::assets::set_primary_icon(image, icon);
     }
-    (image_id, request)
+    ids
 }
 
 fn apply_path_customization(image: &gtk::Image, path: &Path, fallback_icon: &str) -> bool {

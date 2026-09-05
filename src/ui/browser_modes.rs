@@ -1394,12 +1394,9 @@ fn build_grid_pane(
         (section.view.clone(), section, None)
     };
 
-    let pending_thumbnail_resize = Rc::new(RefCell::new(None::<glib::SourceId>));
     let groups_for_pane = groups.clone();
     let density_for_size = context.density.get();
     let sections_for_size = Rc::downgrade(&sections);
-    let browser_for_size = Rc::downgrade(&context.browser);
-    let source_index_for_size = source_index.clone();
     let thumbnail_size_for_change = options.thumbnail_size.clone();
     let value_for_change = controls.thumbnail_value.clone();
     controls
@@ -1407,30 +1404,16 @@ fn build_grid_pane(
         .connect_value_changed(move |scale| {
             let size = scale.value().round() as i32;
             value_for_change.set_label(&format!("{size} px"));
-            if let Some(pending) = pending_thumbnail_resize.take() {
-                pending.remove();
+            thumbnail_size_for_change.set(size);
+            let Some(sections) = sections_for_size.upgrade() else {
+                return;
+            };
+            for section in sections.borrow().iter() {
+                resize_grid_thumbnail_slots(section, size);
             }
-            let pending_for_timeout = pending_thumbnail_resize.clone();
-            let browser = browser_for_size.clone();
-            let source_index = source_index_for_size.clone();
-            let sections = sections_for_size.clone();
-            let groups_for_size = groups_for_pane.clone();
-            let size_state = thumbnail_size_for_change.clone();
-            let source_id =
-                glib::timeout_add_local_once(std::time::Duration::from_millis(100), move || {
-                    pending_for_timeout.take();
-                    size_state.set(size);
-                    let Some(sections) = sections.upgrade() else {
-                        return;
-                    };
-                    for section in sections.borrow().iter() {
-                        refresh_grid_thumbnail_size(&browser, depth, &source_index, section, size);
-                    }
-                    if let Some(groups) = groups_for_size.as_ref() {
-                        refresh_group_columns(groups, groups.container.width(), density_for_size);
-                    }
-                });
-            pending_thumbnail_resize.replace(Some(source_id));
+            if let Some(groups) = groups_for_pane.as_ref() {
+                refresh_group_columns(groups, groups.container.width(), density_for_size);
+            }
         });
 
     let scroll = gtk::ScrolledWindow::builder()
@@ -1929,14 +1912,18 @@ fn refresh_grid_expensive_content(context: &GridContext) {
     }
 }
 
-fn refresh_grid_thumbnail_size(
-    browser: &Weak<Browser>,
-    depth: usize,
-    source_index: &SourceIndexMap,
-    section: &PaneSection,
-    size: i32,
-) {
-    refresh_grid_section(browser, depth, source_index, section, size, false, None);
+fn resize_grid_thumbnail_slots(section: &PaneSection, size: i32) {
+    let size = grid_card_icon_slot(size);
+    section.bound_items.borrow().iter().for_each(|bound| {
+        let Some(card) = bound.widget.upgrade().and_downcast::<gtk::Box>() else {
+            return;
+        };
+        let Some((icon, _, _)) = grid_card_parts(&card) else {
+            return;
+        };
+        super::thumbnail::ensure_image_slot(&icon, size);
+        ensure_grid_card_slot(&card, size);
+    });
 }
 
 fn refresh_grid_section(

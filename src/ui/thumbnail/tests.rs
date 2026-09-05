@@ -14,7 +14,7 @@ use super::{
     SETTLE_VIEWS, SettledPark, THUMBNAIL_QUEUE, ThumbnailCache, ThumbnailKey, ThumbnailKind,
     ThumbnailQueue, ViewSettle, cancel_thumbnail, finish_thumbnail_targets,
     fire_settled_thumbnails, note_metadata, retry_deferred_thumbnail, schedule_or_defer,
-    take_pending_targets, thumbnail_kind,
+    should_paint_fallback, take_pending_targets, thumbnail_kind,
 };
 
 fn key(index: usize) -> ThumbnailKey {
@@ -24,6 +24,12 @@ fn key(index: usize) -> ThumbnailKey {
         file_size: Some(1),
         thumbnail_size: 64,
     }
+}
+
+#[test]
+fn fallback_icon_is_skipped_when_the_image_already_has_content() {
+    assert!(should_paint_fallback(false));
+    assert!(!should_paint_fallback(true));
 }
 
 #[test]
