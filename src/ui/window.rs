@@ -1259,6 +1259,11 @@ impl SidebarView {
 }
 
 impl SidebarState {
+    fn on_volume_monitor_event(self: &Rc<Self>) {
+        crate::adapters::flush_volume_identity_cache();
+        self.rebuild();
+    }
+
     fn rebuild(self: &Rc<Self>) {
         while let Some(child) = self.widget.first_child() {
             self.widget.remove(&child);
@@ -2388,37 +2393,37 @@ fn build_sidebar(view: BrowserView, theme_manager: Rc<super::theme::ThemeManager
     let weak = Rc::downgrade(&state);
     handlers.push(state.volume_monitor.connect_mount_added(move |_, _| {
         if let Some(state) = weak.upgrade() {
-            state.rebuild();
+            state.on_volume_monitor_event();
         }
     }));
     let weak = Rc::downgrade(&state);
     handlers.push(state.volume_monitor.connect_mount_removed(move |_, _| {
         if let Some(state) = weak.upgrade() {
-            state.rebuild();
+            state.on_volume_monitor_event();
         }
     }));
     let weak = Rc::downgrade(&state);
     handlers.push(state.volume_monitor.connect_mount_changed(move |_, _| {
         if let Some(state) = weak.upgrade() {
-            state.rebuild();
+            state.on_volume_monitor_event();
         }
     }));
     let weak = Rc::downgrade(&state);
     handlers.push(state.volume_monitor.connect_volume_added(move |_, _| {
         if let Some(state) = weak.upgrade() {
-            state.rebuild();
+            state.on_volume_monitor_event();
         }
     }));
     let weak = Rc::downgrade(&state);
     handlers.push(state.volume_monitor.connect_volume_removed(move |_, _| {
         if let Some(state) = weak.upgrade() {
-            state.rebuild();
+            state.on_volume_monitor_event();
         }
     }));
     let weak = Rc::downgrade(&state);
     handlers.push(state.volume_monitor.connect_volume_changed(move |_, _| {
         if let Some(state) = weak.upgrade() {
-            state.rebuild();
+            state.on_volume_monitor_event();
         }
     }));
     state.append_static_places();

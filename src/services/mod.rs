@@ -6,6 +6,7 @@ mod operations;
 mod preview;
 mod release_channel;
 mod search;
+mod transfer_action;
 mod update_check;
 mod update_install;
 
@@ -29,6 +30,10 @@ pub use preview::{
 pub(crate) use preview::{
     content_family, has_plain_text_extension, is_extensionless_dotfile,
     is_non_executable_extensionless_dotfile,
+};
+pub(crate) use transfer_action::{
+    DropActionInput, DropOverride, TransferKind, VolumeIdentity, VolumeRelation, drop_is_noop,
+    preferred_transfer_kind, volume_relation,
 };
 // `best_update`, `rollback_target`, and `ReleaseSummary` are deliberately not
 // re-exported here: `rollback_target` is the never-downgrade bypass, and only
