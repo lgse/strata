@@ -288,6 +288,21 @@ fn external_removals_close_affected_descendant_columns() {
 }
 
 #[test]
+fn remote_external_removals_close_the_exact_open_column() {
+    let root = Location::uri("sftp://user@host/mnt/share");
+    let removed = Location::uri("sftp://user@host/mnt/share/removed");
+    let mut state = NavigationState::default();
+    state.navigate(root.clone(), RequestId(1));
+    assert!(state.descend(0, removed.clone(), RequestId(2)));
+
+    let path = state
+        .path_after_external_change(0, &DirectoryChange::Remove(removed))
+        .expect("the removed remote column should be closed");
+
+    assert_eq!(path.locations(), &[root]);
+}
+
+#[test]
 fn selecting_a_sibling_replaces_deeper_columns() {
     let mut state = NavigationState::default();
     state.navigate(location("/home"), RequestId(1));

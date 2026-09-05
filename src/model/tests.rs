@@ -62,6 +62,7 @@ fn is_within_matches_remote_descendants() {
     let unrelated = Location::uri("sftp://user@host/other");
 
     assert!(child.is_within(&parent));
+    assert!(parent.is_within(&parent));
     assert!(!parent.is_within(&child));
     assert!(!child.is_within(&unrelated));
 }

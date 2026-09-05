@@ -120,7 +120,9 @@ impl Location {
         let (Some(uri), Some(parent_uri)) = (self.uri_value(), other.uri_value()) else {
             return false;
         };
-        gio::File::for_uri(uri).has_prefix(&gio::File::for_uri(parent_uri))
+        let file = gio::File::for_uri(uri);
+        let parent = gio::File::for_uri(parent_uri);
+        file.equal(&parent) || file.has_prefix(&parent)
     }
 
     pub fn compare(&self, other: &Self) -> Ordering {
