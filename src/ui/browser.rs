@@ -5031,7 +5031,13 @@ impl ViewState {
             let selection_anchor_for_click = mouse_selection_anchor.clone();
             let modified_for_click = modified_selection_for_rows.clone();
             let map_for_click = map_for_hover.clone();
+            // Open on release so a press-and-move can start a drag first.
+            let pending_activation = Rc::new(Cell::new(None::<usize>));
+            let pending_activation_for_press = pending_activation.clone();
+            let pending_activation_for_release = pending_activation.clone();
+            let pending_activation_for_cancel = pending_activation;
             selection_click.connect_pressed(move |gesture, press_count, _, _| {
+                pending_activation_for_press.set(None);
                 let Some(clicked_item) = clicked_item.upgrade() else {
                     return;
                 };
@@ -5087,8 +5093,7 @@ impl ViewState {
                             preserve_group,
                         )
                     }) {
-                        gesture.set_state(gtk::EventSequenceState::Claimed);
-                        state.browser.activate(depth, source_position);
+                        pending_activation_for_press.set(Some(source_position));
                     } else if should_preview_pointer_press(
                         press_count,
                         control,
@@ -5100,6 +5105,20 @@ impl ViewState {
                         state.browser.preview(depth, source_position);
                     }
                 }
+            });
+            let weak_state_for_release = weak_state.clone();
+            selection_click.connect_released(move |gesture, _, _, _| {
+                let Some(source_position) = pending_activation_for_release.take() else {
+                    return;
+                };
+                let Some(state) = weak_state_for_release.upgrade() else {
+                    return;
+                };
+                gesture.set_state(gtk::EventSequenceState::Claimed);
+                state.browser.activate(depth, source_position);
+            });
+            selection_click.connect_cancel(move |_, _| {
+                pending_activation_for_cancel.set(None);
             });
             row.add_controller(selection_click);
             item.set_child(Some(&row));
