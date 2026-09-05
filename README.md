@@ -95,7 +95,24 @@ Then:
 
 ### Manual release installation
 
-Install the release archive directly to receive stable releases as soon as they are published and to select any available release channel.
+The interactive installer detects the Linux architecture, glibc version, Arch
+Linux, and Omarchy 3 or 4. It installs the latest verified stable release and
+offers optional desktop-menu, default-folder-handler, SMB, and Omarchy keybind
+integration:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lgse/strata/main/install.sh | bash
+```
+
+The installer shows every privileged package operation before asking to run it.
+It verifies both the published SHA-256 digest and GitHub Actions provenance before
+installing anything from the release archive. The binary is installed per-user at
+`~/.local/bin/strata`.
+
+<details>
+<summary>Manual download and verification</summary>
+
+Install the release archive directly if you prefer to perform each step yourself.
 
 #### 1. Check the architecture and install dependencies
 
@@ -141,6 +158,8 @@ strata
 ```
 
 If `command -v` fails, add `$HOME/.local/bin` to your shell's `PATH`. Every archive contains `SOURCE_COMMIT`, identifying the exact source revision used by GitHub Actions.
+
+</details>
 
 #### Debug a release crash
 
