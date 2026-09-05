@@ -1523,7 +1523,67 @@ pub(super) struct SidebarState {
     place_order: RefCell<Vec<&'static str>>,
     pinned_places: Rc<RefCell<Vec<(Location, String)>>>,
     place_rows: RefCell<Vec<(Location, gtk::Button)>>,
+    trash_contents: Cell<TrashContents>,
+    trash_menu_rows: RefCell<Option<TrashMenuRows>>,
+    trash_monitor: RefCell<Option<gio::FileMonitor>>,
+    trash_probe_running: Cell<bool>,
+    trash_probe_pending: Cell<bool>,
     local_only: bool,
+}
+
+/// Rows of the Trash sidebar context menu that only make sense while Trash holds items.
+struct TrashMenuRows {
+    separator: gtk::Separator,
+    empty: gtk::Button,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TrashContents {
+    /// Not probed yet, or the probe failed.
+    Unknown,
+    Empty,
+    NonEmpty,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TrashMenuVisibility {
+    separator: bool,
+    empty: bool,
+}
+
+/// Destructive actions stay hidden until Trash is confirmed to hold something, and the
+/// separator goes with them so Properties is not left above an empty gap.
+fn trash_menu_visibility(contents: TrashContents) -> TrashMenuVisibility {
+    let visible = matches!(contents, TrashContents::NonEmpty);
+    TrashMenuVisibility {
+        separator: visible,
+        empty: visible,
+    }
+}
+
+fn sync_trash_menu_rows(rows: &TrashMenuRows, contents: TrashContents) {
+    let visibility = trash_menu_visibility(contents);
+    rows.separator.set_visible(visibility.separator);
+    rows.empty.set_visible(visibility.empty);
+}
+
+fn trash_contents_from_probe(probe: Result<bool, glib::Error>) -> TrashContents {
+    match probe {
+        Ok(true) => TrashContents::NonEmpty,
+        Ok(false) => TrashContents::Empty,
+        Err(_) => TrashContents::Unknown,
+    }
+}
+
+fn event_changes_trash_contents(event: &BrowserEvent) -> bool {
+    matches!(
+        event,
+        BrowserEvent::DeletionFinished
+            | BrowserEvent::RestorationFinished
+            | BrowserEvent::TransferFinished { .. }
+            | BrowserEvent::OperationCompletedWithErrors { .. }
+            | BrowserEvent::OperationCancelled { .. }
+    )
 }
 
 pub(super) struct SidebarView {
@@ -1714,6 +1774,71 @@ impl SidebarState {
             .is_some_and(|(_, row)| row.grab_focus())
     }
 
+    fn apply_trash_menu_visibility(&self) {
+        if let Some(rows) = self.trash_menu_rows.borrow().as_ref() {
+            sync_trash_menu_rows(rows, self.trash_contents.get());
+        }
+    }
+
+    fn set_trash_contents(&self, contents: TrashContents) {
+        if self.trash_contents.get() == contents {
+            return;
+        }
+        self.trash_contents.set(contents);
+        self.apply_trash_menu_visibility();
+    }
+
+    fn refresh_trash_contents(self: &Rc<Self>) {
+        if self.local_only {
+            return;
+        }
+        // A probe already in flight may have read Trash before this change landed, so queue
+        // another pass instead of trusting the result it is about to return.
+        if self.trash_probe_running.get() {
+            self.trash_probe_pending.set(true);
+            return;
+        }
+        self.trash_probe_running.set(true);
+        let weak = Rc::downgrade(self);
+        glib::MainContext::default().spawn_local(async move {
+            let probe = trash_has_entries(&gio::File::for_uri("trash:///")).await;
+            if let Err(error) = &probe {
+                tracing::warn!(
+                    error_domain = ?error.domain(),
+                    error_code = error.code(),
+                    "unable to read trash contents"
+                );
+            }
+            if let Some(state) = weak.upgrade() {
+                state.trash_probe_running.set(false);
+                state.set_trash_contents(trash_contents_from_probe(probe));
+                if state.trash_probe_pending.replace(false) {
+                    state.refresh_trash_contents();
+                }
+            }
+        });
+    }
+
+    /// Keeps the context menu current when another application changes `trash:///`.
+    fn watch_trash(self: &Rc<Self>) {
+        if self.trash_monitor.borrow().is_some() {
+            return;
+        }
+        let trash = gio::File::for_uri("trash:///");
+        let Ok(monitor) =
+            trash.monitor_directory(gio::FileMonitorFlags::NONE, gio::Cancellable::NONE)
+        else {
+            return;
+        };
+        let weak = Rc::downgrade(self);
+        monitor.connect_changed(move |_, _, _, _| {
+            if let Some(state) = weak.upgrade() {
+                state.refresh_trash_contents();
+            }
+        });
+        *self.trash_monitor.borrow_mut() = Some(monitor);
+    }
+
     fn append_trash_place(self: &Rc<Self>) {
         let location = Location::uri("trash:///");
         let row = sidebar_button(crate::assets::icons::TRASH, "Trash");
@@ -1736,9 +1861,17 @@ impl SidebarState {
         let properties = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
         let empty = sidebar_context_option(crate::assets::icons::TRASH, "Empty Trash…", true);
         empty.add_css_class("danger");
+        let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
         menu.append(&properties);
-        menu.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        menu.append(&separator);
         menu.append(&empty);
+        *self.trash_menu_rows.borrow_mut() = Some(TrashMenuRows {
+            separator,
+            empty: empty.clone(),
+        });
+        self.apply_trash_menu_visibility();
+        self.watch_trash();
+        self.refresh_trash_contents();
         let popover = gtk::Popover::builder()
             .child(&menu)
             .autohide(true)
@@ -1765,11 +1898,15 @@ impl SidebarState {
         let context = gtk::GestureClick::new();
         context.set_button(3);
         let weak_popover = popover.downgrade();
+        let weak_state = Rc::downgrade(self);
         context.connect_pressed(move |gesture, _, x, y| {
             gesture.set_state(gtk::EventSequenceState::Claimed);
             let Some(popover) = weak_popover.upgrade() else {
                 return;
             };
+            if let Some(state) = weak_state.upgrade() {
+                state.refresh_trash_contents();
+            }
             popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
                 x.round() as i32,
                 y.round() as i32,
@@ -2545,6 +2682,20 @@ fn standard_place(id: &str) -> Option<(&'static str, &'static str, glib::UserDir
     }
 }
 
+async fn trash_has_entries(root: &gio::File) -> Result<bool, glib::Error> {
+    let enumerator = root
+        .enumerate_children_future(
+            gio::FILE_ATTRIBUTE_STANDARD_NAME,
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            glib::Priority::DEFAULT,
+        )
+        .await?;
+    let children = enumerator
+        .next_files_future(1, glib::Priority::DEFAULT)
+        .await?;
+    Ok(!children.is_empty())
+}
+
 fn sidebar_context_option(icon: &str, label: &str, danger: bool) -> gtk::Button {
     let button = gtk::Button::new();
     button.add_css_class("item-context-option");
@@ -2727,16 +2878,29 @@ pub(super) fn build_sidebar(
         place_order: RefCell::new(place_order),
         pinned_places: Rc::new(RefCell::new(load_pinned_places())),
         place_rows: RefCell::new(Vec::new()),
+        trash_contents: Cell::new(TrashContents::Unknown),
+        trash_menu_rows: RefCell::new(None),
+        trash_monitor: RefCell::new(None),
+        trash_probe_running: Cell::new(false),
+        trash_probe_pending: Cell::new(false),
         local_only,
     });
 
     let weak = Rc::downgrade(&state);
     state.browser.observe(move |event| {
-        if !SidebarState::event_changes_active_place(event) {
+        let changes_active_place = SidebarState::event_changes_active_place(event);
+        let changes_trash = event_changes_trash_contents(event);
+        if !changes_active_place && !changes_trash {
             return;
         }
-        if let Some(state) = weak.upgrade() {
+        let Some(state) = weak.upgrade() else {
+            return;
+        };
+        if changes_active_place {
             state.sync_active_place();
+        }
+        if changes_trash {
+            state.refresh_trash_contents();
         }
     });
 
