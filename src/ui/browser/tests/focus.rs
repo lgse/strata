@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::*;
+use crate::{app::BrowserEvent, ui::browser::columns::is_column_background};
 use std::time::{Duration, Instant};
 
 #[track_caller]
