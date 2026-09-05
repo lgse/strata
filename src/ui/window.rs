@@ -686,16 +686,16 @@ fn present_target(
         &sidebar.widget,
         &sidebar_toggle,
     );
-    install_keyboard_navigation(
-        &window,
-        &tabs,
-        &sidebar,
-        &top_bar,
-        &preview,
-        &type_to_search,
-        &open_tab,
-        &shortcuts,
-    );
+    install_keyboard_navigation(KeyboardNavigation {
+        window: &window,
+        tabs: tabs.clone(),
+        sidebar: &sidebar,
+        top_bar: &top_bar,
+        preview: preview.clone(),
+        type_to_search: type_to_search.clone(),
+        open_tab: open_tab.clone(),
+        shortcuts: shortcuts.clone(),
+    });
     schedule_after_first_paint(&window, &sidebar);
     let destroy_tabs = tabs.clone();
     let destroy_sidebar = sidebar;
@@ -819,28 +819,36 @@ fn animate_sidebar(
     });
 }
 
-fn install_keyboard_navigation(
-    window: &gtk::ApplicationWindow,
-    tabs: &Rc<TabsModel>,
-    sidebar: &SidebarView,
-    top_bar: &super::top_bar_navigation::TopBarNavigation,
-    preview: &PreviewDrawer,
-    type_to_search: &TypeToSearch,
-    open_tab: &OpenTabHandler,
-    shortcuts: &super::shortcut_footer::ShortcutFooter,
-) {
+struct KeyboardNavigation<'a> {
+    window: &'a gtk::ApplicationWindow,
+    tabs: Rc<TabsModel>,
+    sidebar: &'a SidebarView,
+    top_bar: &'a super::top_bar_navigation::TopBarNavigation,
+    preview: PreviewDrawer,
+    type_to_search: TypeToSearch,
+    open_tab: OpenTabHandler,
+    shortcuts: super::shortcut_footer::ShortcutFooter,
+}
+
+fn install_keyboard_navigation(nav: KeyboardNavigation<'_>) {
+    let KeyboardNavigation {
+        window,
+        tabs,
+        sidebar,
+        top_bar,
+        preview,
+        type_to_search,
+        open_tab,
+        shortcuts,
+    } = nav;
     let shortcuts = shortcuts.clone();
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let tabs = tabs.clone();
     let sidebar_state = sidebar.state.clone();
     let sidebar_widget = sidebar.widget.clone();
     let sidebar_toggle = top_bar.sidebar_toggle().clone();
     let top_bar = top_bar.clone();
-    let preview = preview.clone();
-    let type_to_search = type_to_search.clone();
     let dialog_parent = window.clone();
-    let open_tab = open_tab.clone();
     let focus_before_sidebar = Rc::new(RefCell::new(None::<gtk::Widget>));
     let tab_command_pending = Rc::new(Cell::new(false));
     let tab_command_generation = Rc::new(Cell::new(0_u64));
