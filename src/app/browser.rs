@@ -131,6 +131,9 @@ pub enum BrowserEvent {
     OpenRequested {
         location: Location,
     },
+    OpenInNewTab {
+        location: Location,
+    },
     RenameCompleted,
     RenameFailed {
         message: String,
@@ -1826,6 +1829,10 @@ impl Browser {
 
     pub fn open_location(&self, location: Location) {
         self.emit(BrowserEvent::OpenRequested { location });
+    }
+
+    pub fn open_in_new_tab(&self, location: Location) {
+        self.emit(BrowserEvent::OpenInNewTab { location });
     }
 
     pub fn request_empty_trash(&self) {

@@ -24,9 +24,10 @@ mod tests;
 
 use super::{
     blur::BlurBin,
-    browser::{BrowserView, dismiss_modal_layer, modal_layer},
+    browser::{dismiss_modal_layer, modal_layer},
     browser_modes::{BrowserMode, ClickActivation, ClickCount},
     controls::{form_entry, menu_option, modal_layout, segmented_control},
+    tabs::TabsModel,
     theme::{TextSize, Theme, ThemeManager, ThemeTokens},
 };
 
@@ -379,7 +380,7 @@ fn uses_compact_navigation(dialog_width: i32) -> bool {
     reason = "GTK 4.12 deprecated translate_coordinates and allocation without a replacement for click-in-bounds checks"
 )]
 pub fn build_layer(
-    browser: &BrowserView,
+    tabs: &Rc<TabsModel>,
     settings_button: &gtk::Button,
     root: &BlurBin,
     themes: Rc<ThemeManager>,
@@ -432,7 +433,7 @@ pub fn build_layer(
         .vexpand(true)
         .build();
     let (general, responsive_setting_rows, responsive_activation_rows) =
-        general_page(browser, themes.clone());
+        general_page(tabs, themes.clone());
     stack.add_named(&general, Some("general"));
     stack.add_named(&keybindings_page(themes.clone()), Some("keybindings"));
     stack.add_named(&about_page(), Some("about"));
@@ -622,39 +623,47 @@ fn hide(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin) {
 }
 
 fn general_page(
-    browser: &BrowserView,
+    tabs: &Rc<TabsModel>,
     manager: Rc<ThemeManager>,
 ) -> (gtk::Widget, Vec<gtk::Box>, Vec<ResponsiveActivationRow>) {
     let preferences = page_content();
     append_heading(&preferences, "BROWSING");
     let peeking_enabled = manager.folder_peeking();
-    browser.set_peek_enabled(peeking_enabled);
+    for view in tabs.views() {
+        view.set_peek_enabled(peeking_enabled);
+    }
     let (peeking_row, peeking) = settings_option(
         "Folder peeking",
         "Preview folders automatically while moving through a pane.",
         peeking_enabled,
     );
-    let browser_for_peeking = browser.clone();
+    let tabs_for_peeking = tabs.clone();
     let manager_for_peeking = manager.clone();
     peeking.connect_active_notify(move |toggle| {
         let enabled = toggle.is_active();
-        browser_for_peeking.set_peek_enabled(enabled);
+        for view in tabs_for_peeking.views() {
+            view.set_peek_enabled(enabled);
+        }
         manager_for_peeking.set_folder_peeking(enabled);
     });
     preferences.append(&peeking_row);
 
     let single_click_enabled = manager.single_click_previews();
-    browser.set_single_click_previews(single_click_enabled);
+    for view in tabs.views() {
+        view.set_single_click_previews(single_click_enabled);
+    }
     let (preview_row, single_click_previews) = settings_option(
         "Single-click file previews",
         "Show a quick preview when selecting a supported file.",
         single_click_enabled,
     );
-    let browser_for_previews = browser.clone();
+    let tabs_for_previews = tabs.clone();
     let manager_for_previews = manager.clone();
     single_click_previews.connect_active_notify(move |toggle| {
         let enabled = toggle.is_active();
-        browser_for_previews.set_single_click_previews(enabled);
+        for view in tabs_for_previews.views() {
+            view.set_single_click_previews(enabled);
+        }
         manager_for_previews.set_single_click_previews(enabled);
     });
     preferences.append(&preview_row);
@@ -709,12 +718,14 @@ fn general_page(
     preferences.append(&refresh_row);
     for (idx, button) in buttons.iter().enumerate() {
         let manager = manager.clone();
-        let browser = browser.clone();
+        let tabs = tabs.clone();
         let secs = secs[idx];
         button.connect_toggled(move |toggled| {
             if toggled.is_active() {
                 manager.set_auto_refresh_interval(secs);
-                browser.set_auto_refresh_interval(secs);
+                for view in tabs.views() {
+                    view.set_auto_refresh_interval(secs);
+                }
             }
         });
     }
@@ -765,15 +776,19 @@ fn general_page(
         ("Explorer", BrowserMode::Explorer),
     ] {
         let activation = manager.click_activation(mode);
-        browser.set_click_activation(mode, activation);
+        for view in tabs.views() {
+            view.set_click_activation(mode, activation);
+        }
         let (row, options, file_buttons, folder_buttons) =
             click_activation_option(label, activation);
         let update = Rc::new({
-            let browser = browser.clone();
+            let tabs = tabs.clone();
             let manager = manager.clone();
             move |files, folders| {
                 let activation = ClickActivation { files, folders };
-                browser.set_click_activation(mode, activation);
+                for view in tabs.views() {
+                    view.set_click_activation(mode, activation);
+                }
                 manager.set_click_activation(mode, activation);
             }
         });
@@ -2294,6 +2309,23 @@ fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
         ("Edit location", "Ctrl + L"),
         ("Filter items", "Ctrl + F"),
         ("Toggle sidebar", "Ctrl + B"),
+    ] {
+        append_keybinding(&content, label, keys);
+    }
+
+    append_heading(&content, "TABS");
+    for (label, keys) in [
+        ("New tab", "Ctrl + S, T  or  Ctrl + Shift + T"),
+        ("Close tab", "Ctrl + S, X  or  Ctrl + W"),
+        (
+            "Next / previous tab",
+            "Ctrl + Tab / Ctrl + Shift + Tab  or  Ctrl + PageDown / PageUp",
+        ),
+        ("Go to tab 1-9", "Ctrl + S, 1 … 9  or  Ctrl + 1 … 9"),
+        (
+            "Move tab",
+            "Ctrl + S, Shift + ← / →  or  Ctrl + Shift + PageUp / PageDown",
+        ),
     ] {
         append_keybinding(&content, label, keys);
     }

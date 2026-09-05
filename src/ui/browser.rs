@@ -964,6 +964,17 @@ impl BrowserView {
         }
     }
 
+    pub(super) fn drop_files_on_active_location(
+        &self,
+        target: &gtk::DropTarget,
+        value: &glib::Value,
+    ) -> bool {
+        let Some(destination) = self.state.browser.active_location() else {
+            return false;
+        };
+        transfer_dropped_files(&self.state, target, value, destination)
+    }
+
     pub fn copy_selection(&self) -> bool {
         self.state.sync_mode_selection();
         let entries = self.state.browser.selected_entries();
@@ -4468,6 +4479,7 @@ impl ViewState {
             BrowserEvent::OpenRequested { location } => {
                 open_location(location, &self.overlay);
             }
+            BrowserEvent::OpenInNewTab { .. } => {}
             BrowserEvent::RenameCompleted => {
                 self.cancel_rename();
                 self.browser.focus_active();
@@ -7040,6 +7052,9 @@ pub(super) fn install_item_context_menu(
     let extract = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract here", "");
     let extract_to = item_context_option(crate::assets::icons::FILE_ARCHIVE, "Extract to…", "");
     single.append(&open);
+    let open_in_new_tab =
+        item_context_option(crate::assets::icons::FOLDER_PLUS, "Open in new tab", "");
+    single.append(&open_in_new_tab);
     single.append(&open_terminal);
     single.append(&preview);
     single.append(&print);
@@ -7127,7 +7142,21 @@ pub(super) fn install_item_context_menu(
         }
     });
     let weak = Rc::downgrade(state);
+    let new_tab_target = target.clone();
+    let new_tab_popover = popover.downgrade();
+    open_in_new_tab.connect_clicked(move |_| {
+        if let Some(popover) = new_tab_popover.upgrade() {
+            popover.popdown();
+        }
+        let Some((_, entry)) = new_tab_target.borrow().clone() else {
+            return;
+        };
+        if let Some(state) = weak.upgrade() {
+            state.browser.open_in_new_tab(entry.location);
+        }
+    });
     let preview_target = target.clone();
+    let weak = Rc::downgrade(state);
     let preview_popover = popover.downgrade();
     preview.connect_clicked(move |_| {
         if let Some(popover) = preview_popover.upgrade() {
@@ -7353,6 +7382,7 @@ pub(super) fn install_item_context_menu(
             summary.set_text(&compact_display_path(&entry.location));
             single.set_visible(true);
             multiple.set_visible(false);
+            open_in_new_tab.set_visible(!in_trash && entry.is_directory());
         }
         let Some(anchor) = gesture.widget() else {
             return;

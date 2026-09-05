@@ -1778,6 +1778,23 @@ fn preview_and_open_are_distinct_file_actions() {
 }
 
 #[test]
+fn opening_a_location_in_a_new_tab_is_routed_without_navigating() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let location = Location::local("/fixture/child");
+
+    browser.open_in_new_tab(location.clone());
+
+    assert!(matches!(
+        events.borrow().as_slice(),
+        [BrowserEvent::OpenInNewTab { location: emitted }] if emitted == &location
+    ));
+    assert!(browser.active_location().is_none());
+}
+
+#[test]
 fn directory_navigation_does_not_open_or_preview_files() {
     let browser = Browser::new(Rc::new(FilePreviewSource));
     let events = Rc::new(RefCell::new(Vec::new()));
