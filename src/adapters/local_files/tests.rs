@@ -430,6 +430,13 @@ fn finished_can_trash(events: &[DirectoryEvent]) -> Option<Option<bool>> {
     })
 }
 
+fn finished_can_delete(events: &[DirectoryEvent]) -> Option<Option<bool>> {
+    events.iter().find_map(|event| match event {
+        DirectoryEvent::Finished { can_delete, .. } => Some(*can_delete),
+        _ => None,
+    })
+}
+
 #[test]
 fn enumerate_reports_truncated_once_the_entry_budget_is_exceeded() {
     let root = unique_fixture_root("entry-budget");
@@ -487,6 +494,34 @@ fn enumerate_resolves_can_trash_from_a_child_entry() {
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
 
     assert_eq!(finished_can_trash(&events), Some(Some(expected)));
+}
+
+#[test]
+fn enumerate_resolves_can_delete_from_a_child_entry() {
+    let root = unique_fixture_root("can-delete");
+    fs::create_dir_all(&root).expect("the fixture directory should be created");
+    let child = root.join("child.txt");
+    fs::write(&child, b"content").expect("the fixture file should be written");
+    let expected = gio::File::for_path(&child)
+        .query_info(
+            gio::FILE_ATTRIBUTE_ACCESS_CAN_DELETE,
+            gio::FileQueryInfoFlags::NONE,
+            None::<&gio::Cancellable>,
+        )
+        .expect("the child capability query should succeed")
+        .boolean(gio::FILE_ATTRIBUTE_ACCESS_CAN_DELETE);
+
+    let events = run_enumerate(DirectoryRequest {
+        id: RequestId(1),
+        location: Location::local(&root),
+        batch_size: 64,
+        include_metadata: false,
+        max_entries: 10,
+        time_budget: Duration::from_secs(10),
+    });
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+
+    assert_eq!(finished_can_delete(&events), Some(Some(expected)));
 }
 
 #[test]

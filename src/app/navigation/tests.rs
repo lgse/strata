@@ -337,6 +337,21 @@ fn truncated_load_state_survives_until_reload() {
 }
 
 #[test]
+fn reload_clears_the_resolved_delete_capability() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+
+    assert_eq!(
+        state.finish(RequestId(1), false, None, Some(false)),
+        Some(0)
+    );
+    assert_eq!(state.can_delete_at(0), Some(false));
+
+    state.reload_column(0, RequestId(2));
+    assert_eq!(state.can_delete_at(0), None);
+}
+
+#[test]
 fn navigation_availability_tracks_history_and_parent() {
     let mut state = NavigationState::default();
     assert!(!state.can_go_back());
