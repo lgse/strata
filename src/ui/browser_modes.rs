@@ -2521,8 +2521,7 @@ fn build_explorer_pane(
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
         };
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        row.add_css_class("explorer-row");
+        let row = assemble_explorer_row();
         if !scrolling_for_setup.get() {
             row.add_css_class("file-appear");
             let weak_row = row.downgrade();
@@ -2532,21 +2531,12 @@ fn build_explorer_pane(
                 }
             });
         }
-        let name_cell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        name_cell.add_css_class("explorer-name-cell");
-        let icon = gtk::Image::new();
-        icon.set_pixel_size(18);
-        let name = gtk::Label::new(None);
-        name.add_css_class("alternate-rename-label");
-        name.set_xalign(0.0);
-        name.set_hexpand(true);
-        name.set_ellipsize(gtk::pango::EllipsizeMode::End);
-        // Keep the label's natural width from widening this fixed-width table cell.
-        name.set_max_width_chars(1);
-        let field = gtk::Entry::new();
-        field.add_css_class("inline-rename");
-        field.set_hexpand(true);
-        field.set_visible(false);
+        let Some((_, _, field, mode, size, kind, modified)) = explorer_row_parts(&row) else {
+            return;
+        };
+        let Some(name_cell) = row.first_child() else {
+            return;
+        };
         field.connect_changed(|field| {
             super::browser::update_basename_validation(field);
         });
@@ -2575,30 +2565,18 @@ fn build_explorer_pane(
             );
         });
         field.add_controller(focus);
-        name_cell.append(&icon);
-        name_cell.append(&name);
-        name_cell.append(&field);
-        let mode = explorer_metadata_label();
-        let size = explorer_metadata_label();
-        let kind = explorer_metadata_label();
-        let modified = explorer_metadata_label();
         for (index, widget) in [
-            name_cell.clone().upcast::<gtk::Widget>(),
-            mode.clone().upcast(),
-            size.clone().upcast(),
-            kind.clone().upcast(),
-            modified.clone().upcast(),
+            name_cell,
+            mode.upcast(),
+            size.upcast(),
+            kind.upcast(),
+            modified.upcast(),
         ]
         .into_iter()
         .enumerate()
         {
             register_explorer_column_cell(&columns, index, &widget);
         }
-        row.append(&name_cell);
-        row.append(&mode);
-        row.append(&size);
-        row.append(&kind);
-        row.append(&modified);
         install_preview_click(
             &row,
             item,
@@ -3586,6 +3564,35 @@ fn clear_box(container: &gtk::Box) {
     while let Some(child) = container.first_child() {
         container.remove(&child);
     }
+}
+
+fn assemble_explorer_row() -> gtk::Box {
+    let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    row.add_css_class("explorer-row");
+    let name_cell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    name_cell.add_css_class("explorer-name-cell");
+    let icon = gtk::Image::new();
+    icon.set_pixel_size(18);
+    let name = gtk::Label::new(None);
+    name.add_css_class("alternate-rename-label");
+    name.set_xalign(0.0);
+    name.set_hexpand(true);
+    name.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    // Keep the label's natural width from widening this fixed-width table cell.
+    name.set_max_width_chars(1);
+    let field = gtk::Entry::new();
+    field.add_css_class("inline-rename");
+    field.set_hexpand(true);
+    field.set_visible(false);
+    name_cell.append(&icon);
+    name_cell.append(&name);
+    name_cell.append(&field);
+    row.append(&name_cell);
+    row.append(&explorer_metadata_label());
+    row.append(&explorer_metadata_label());
+    row.append(&explorer_metadata_label());
+    row.append(&explorer_metadata_label());
+    row
 }
 
 fn explorer_row_parts(
