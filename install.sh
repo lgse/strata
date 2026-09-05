@@ -16,6 +16,7 @@ WITH_SMB=ask
 WITH_RAW=ask
 WITH_DESKTOP_ENTRY=ask
 WITH_FOLDER_ASSOCIATION=ask
+WITH_FILE_MANAGER=ask
 WITH_OMARCHY_KEYBINDS=ask
 
 info() {
@@ -91,11 +92,12 @@ Options:
   --with-raw                    Install broader image and camera RAW support
   --with-desktop-entry          Add Strata to the desktop application menu
   --with-folder-association     Make Strata the default folder handler
+  --with-file-manager           Handle "Open file location" requests
   --with-omarchy-keybinds       Replace Omarchy's file-manager keybinds
   -h, --help                    Show this help
 
 Integration flags imply --non-interactive. Folder association also installs the
-required desktop entry.
+required desktop entry and enables "Open file location" integration.
 EOF
 }
 
@@ -110,7 +112,9 @@ parse_args() {
         NON_INTERACTIVE=yes
         WITH_DESKTOP_ENTRY=yes
         WITH_FOLDER_ASSOCIATION=yes
+        WITH_FILE_MANAGER=yes
         ;;
+      --with-file-manager) NON_INTERACTIVE=yes; WITH_FILE_MANAGER=yes ;;
       --with-omarchy-keybinds) NON_INTERACTIVE=yes; WITH_OMARCHY_KEYBINDS=yes ;;
       -h | --help) usage; exit 0 ;;
       *) die "Unknown option: $1 (run with --help for usage)." ;;
@@ -248,6 +252,28 @@ install_desktop_entry() {
       || die "The folder association did not change (current value: $current)."
     info "Strata is now the default application for folders."
   fi
+}
+
+install_file_manager_service() {
+  local extracted=$1 service_dir target conflict escaped_bin staged
+  service_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dbus-1/services
+  target=$service_dir/$APP_ID.FileManager1.service
+
+  [[ -r $extracted/$APP_ID.FileManager1.service ]] \
+    || die "The verified archive is missing FileManager1 integration."
+  install -d "$service_dir"
+  conflict=$(grep -l '^Name=org\.freedesktop\.FileManager1$' \
+    "$service_dir"/*.service 2>/dev/null \
+    | grep -v "/$APP_ID.FileManager1.service$" | head -n 1 || true)
+  [[ -z $conflict ]] \
+    || die "Another per-user FileManager1 provider is already installed: $conflict"
+
+  staged=$TEMP_DIR/$APP_ID.FileManager1.service
+  escaped_bin=${BIN_PATH//&/\\&}
+  sed "s|^Exec=/usr/bin/strata |Exec=$escaped_bin |" \
+    "$extracted/$APP_ID.FileManager1.service" >"$staged"
+  install -Dm644 "$staged" "$target"
+  info 'Strata now handles "Open file location" requests.'
 }
 
 configure_omarchy_bindings() {
@@ -420,8 +446,14 @@ main() {
     if want_option "$WITH_FOLDER_ASSOCIATION" \
       "Make Strata the default application for opening folders?"; then
       make_default=yes
+      WITH_FILE_MANAGER=yes
     fi
     install_desktop_entry "$extracted" "$make_default"
+  fi
+
+  if want_option "$WITH_FILE_MANAGER" \
+    'Use Strata for "Open file location" from other applications?'; then
+    install_file_manager_service "$extracted"
   fi
 
   if want_option "$WITH_OMARCHY_KEYBINDS" \

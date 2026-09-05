@@ -43,16 +43,62 @@ class InstallerTests(unittest.TestCase):
     def test_unattended_flags_select_only_requested_integrations(self) -> None:
         result = bash(
             "parse_args --with-folder-association --with-raw; "
-            'printf "%s %s %s %s %s %s" "$NON_INTERACTIVE" "$WITH_SMB" '
+            'printf "%s %s %s %s %s %s %s" "$NON_INTERACTIVE" "$WITH_SMB" '
             '"$WITH_RAW" "$WITH_DESKTOP_ENTRY" "$WITH_FOLDER_ASSOCIATION" '
-            '"$WITH_OMARCHY_KEYBINDS"'
+            '"$WITH_FILE_MANAGER" "$WITH_OMARCHY_KEYBINDS"'
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "yes ask yes yes yes ask")
+        self.assertEqual(result.stdout, "yes ask yes yes yes yes ask")
+
+    def test_file_manager_flag_can_be_selected_independently(self) -> None:
+        result = bash(
+            "parse_args --with-file-manager; "
+            'printf "%s %s %s" "$NON_INTERACTIVE" "$WITH_DESKTOP_ENTRY" '
+            '"$WITH_FILE_MANAGER"'
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "yes ask yes")
 
     def test_non_interactive_mode_declines_unspecified_options(self) -> None:
         result = bash("NON_INTERACTIVE=yes; ! want_option ask ignored")
         self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_file_manager_service_uses_the_installed_binary(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            result = bash(
+                'TEMP_DIR="$HOME/tmp"; mkdir -p "$TEMP_DIR"; '
+                'BIN_PATH="$HOME/.local/bin/strata"; '
+                'install_file_manager_service "$(dirname "$1")/data"',
+                env={"HOME": home, "XDG_DATA_HOME": f"{home}/data"},
+            )
+            service = (
+                pathlib.Path(home)
+                / "data/dbus-1/services/io.github.lgse.Strata.FileManager1.service"
+            )
+            contents = service.read_text()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(f"Exec={home}/.local/bin/strata --gapplication-service", contents)
+
+    def test_file_manager_service_refuses_another_per_user_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            service_dir = pathlib.Path(home) / "data/dbus-1/services"
+            service_dir.mkdir(parents=True)
+            other = service_dir / "other.service"
+            other.write_text(
+                "[D-BUS Service]\n"
+                "Name=org.freedesktop.FileManager1\n"
+                "Exec=/usr/bin/other-files\n"
+            )
+            result = bash(
+                'TEMP_DIR="$HOME/tmp"; mkdir -p "$TEMP_DIR"; '
+                'BIN_PATH="$HOME/.local/bin/strata"; '
+                'install_file_manager_service "$(dirname "$1")/data"',
+                env={"HOME": home, "XDG_DATA_HOME": f"{home}/data"},
+            )
+            target = service_dir / "io.github.lgse.Strata.FileManager1.service"
+            self.assertFalse(target.exists())
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Another per-user FileManager1 provider", result.stderr)
 
     def test_non_interactive_pacman_disables_sudo_and_pacman_prompts(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

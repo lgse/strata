@@ -64,8 +64,8 @@ Arch Linux and Omarchy are the primary supported environments. Current binaries 
 
 The interactive installer detects the Linux architecture, glibc version, Arch
 Linux, and Omarchy 3 or 4. It installs the latest verified stable release and
-offers optional desktop-menu, default-folder-handler, SMB, broader image/RAW,
-and Omarchy keybind integration:
+offers optional desktop-menu, default-folder-handler, "Open file location", SMB,
+broader image/RAW, and Omarchy keybind integration:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lgse/strata/main/install.sh | bash
@@ -91,8 +91,9 @@ curl -fsSL https://raw.githubusercontent.com/lgse/strata/main/install.sh \
 ```
 
 Each `--with-*` flag implies `--non-interactive`, and folder association implies
-the desktop entry. Non-interactive package installation requires passwordless
-sudo or cached credentials. Run `./install.sh --help` for the full option list.
+the desktop entry and `--with-file-manager`. Use `--with-file-manager` by itself
+to enable only "Open file location" integration. Non-interactive package
+installation requires passwordless sudo or cached credentials. Run `./install.sh --help` for the full option list.
 
 ### AI-assisted installation
 
@@ -123,9 +124,11 @@ Then:
 - Ask whether I want a per-user desktop entry and inode/directory association;
   if yes, install the archive's io.github.lgse.Strata.desktop and io.github.lgse.Strata.svg
   under ~/.local/share, pointing Exec at the installed binary, then refresh the
-  desktop database and icon cache. Install the archive's
-  io.github.lgse.Strata.FileManager1.service the same way so "Open file location"
-  in other applications reveals files in Strata.
+  desktop database and icon cache.
+- Separately ask whether Strata should handle "Open file location" requests. If
+  yes, verify no other per-user service provides org.freedesktop.FileManager1,
+  then install the archive's io.github.lgse.Strata.FileManager1.service under
+  ~/.local/share/dbus-1/services with Exec pointing at the installed binary.
 - Launch `strata`, report its installed version/source release, and verify the
   desktop association if one was requested. Do not weaken the preview sandbox.
 ```
@@ -190,6 +193,7 @@ For a manual installation, use **Settings → Updates** for verified in-app upda
 ```bash
 rm -f ~/.local/bin/strata \
   ~/.local/share/applications/io.github.lgse.Strata.desktop \
+  ~/.local/share/dbus-1/services/io.github.lgse.Strata.FileManager1.service \
   ~/.local/share/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg
 update-desktop-database ~/.local/share/applications 2>/dev/null || true
 gtk-update-icon-cache -qtf ~/.local/share/icons/hicolor 2>/dev/null || true
@@ -231,7 +235,9 @@ When building from source, `make install-local` installs the binary, icon, and d
 
 ### "Open file location" from other applications
 
-Browsers and GTK/GNOME applications reveal a file by calling the `org.freedesktop.FileManager1` D-Bus interface instead of consulting the `inode/directory` association. Enable Strata as the per-user activatable provider explicitly after installing it:
+Browsers and GTK/GNOME applications reveal a file by calling the `org.freedesktop.FileManager1` D-Bus interface instead of consulting the `inode/directory` association. The interactive installer offers this separately; for unattended installation, pass `--with-file-manager`. Folder association enables it automatically.
+
+For a source installation, enable Strata as the per-user activatable provider explicitly:
 
 ```bash
 make install-file-manager
