@@ -525,7 +525,8 @@ impl ModeViews {
             .unwrap_or(true)
     }
 
-    /// GTK handles spatial movement within a grid; separate type groups need a handoff.
+    /// Multi-view grids need an explicit handoff; a single GridView returns false so
+    /// GTK handles movement natively.
     pub fn move_grid_group(&self, direction: gtk::DirectionType) -> bool {
         if self.mode != BrowserMode::Grid {
             return false;
@@ -1793,7 +1794,6 @@ fn scroll_delta_for_unit(delta: f64, page_size: f64, unit: gtk::gdk::ScrollUnit)
         }
 }
 
-/// Shared wiring the grid pane needs when building its view and binding cards.
 struct GridContext {
     browser: Rc<Browser>,
     depth: usize,

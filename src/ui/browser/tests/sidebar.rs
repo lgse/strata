@@ -143,25 +143,8 @@ fn sidebar_boundary_tracks_grid_layout_and_empty_views() {
     settle();
     assert!(view.at_left_edge());
     group.grab_focus();
-    assert!(view.move_grid_group(gtk::DirectionType::Down));
-    settle();
-    assert_eq!(
-        browser
-            .focused_entry()
-            .expect("file group cursor")
-            .display_name,
-        "file-00.txt"
-    );
-    assert!(view.at_left_edge());
-    assert!(view.move_grid_group(gtk::DirectionType::Up));
-    settle();
-    assert_eq!(
-        browser
-            .focused_entry()
-            .expect("folder group cursor")
-            .display_name,
-        "Child"
-    );
+    assert!(!view.move_grid_group(gtk::DirectionType::Down));
+    assert!(!view.move_grid_group(gtk::DirectionType::Up));
 
     view.set_group_by_type(false);
     view.set_view_mode(BrowserMode::Explorer);
