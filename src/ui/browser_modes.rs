@@ -193,9 +193,8 @@ struct BoundModeItem {
     widget: glib::WeakRef<gtk::Widget>,
 }
 
-/// One collection view inside a pane. A pane normally has a single section; a pane
-/// that groups entries by file type has one per group, each with its own model and
-/// selection over the same source entries.
+/// One collection view inside a pane. Explorer and Grid each use a single section;
+/// type grouping is a sort of that section, not extra views.
 #[derive(Clone)]
 struct PaneSection {
     view: gtk::Widget,
@@ -242,11 +241,9 @@ struct Pane {
     model: gtk::StringList,
     source_index: SourceIndexMap,
     filter_model: Option<gtk::FilterListModel>,
-    /// The section that owns the pane's chrome and hosts the inline new-entry row. In
-    /// a grouped grid it holds nothing else, since entries live in group sections.
+    /// The section that owns the pane's chrome and hosts the inline new-entry row.
     section: PaneSection,
     sections: Rc<RefCell<Vec<PaneSection>>>,
-    groups: Option<Rc<GridGroups>>,
     grid: Option<Rc<GridContext>>,
     targets: super::marquee::MarqueeTargets,
     /// Set while a reload has detached the pane's models from their views.
@@ -528,7 +525,8 @@ impl ModeViews {
             .unwrap_or(true)
     }
 
-    /// GTK handles spatial movement within a grid; separate type groups need a handoff.
+    /// Multi-view grids need an explicit handoff; a single GridView returns false so
+    /// GTK handles movement natively.
     pub fn move_grid_group(&self, direction: gtk::DirectionType) -> bool {
         if self.mode != BrowserMode::Grid {
             return false;
@@ -969,7 +967,6 @@ impl ModeViews {
                         let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
                         pane.model.splice(insertion.position as u32, 0, &values_ref);
                     }
-                    sync_grid_groups(pane);
                     if !pane.spinner.is_spinning() {
                         show_count(pane);
                     }
@@ -1005,7 +1002,6 @@ impl ModeViews {
                         .unwrap_or_default();
                     let values: Vec<_> = values.iter().map(String::as_str).collect();
                     pane.model.splice(*position as u32, 0, &values);
-                    sync_grid_groups(pane);
                     if !pane.spinner.is_spinning() {
                         show_count(pane);
                     }
@@ -1047,7 +1043,6 @@ impl ModeViews {
                             &values_ref,
                         );
                     }
-                    sync_grid_groups(pane);
                     show_count(pane);
                 }
             }
@@ -1062,7 +1057,6 @@ impl ModeViews {
                         filtered.set_model(None::<&gio::ListModel>);
                     }
                     pane.model.splice(0, pane.model.n_items(), &[]);
-                    sync_grid_groups(pane);
                     pane.truncated_hint.set_visible(false);
                     pane.spinner.set_visible(true);
                     pane.spinner.start();
@@ -1072,7 +1066,6 @@ impl ModeViews {
             BrowserEvent::LoadFinished { depth, truncated } => {
                 for pane in self.panes_at(*depth) {
                     reconnect_pane_model(pane);
-                    sync_grid_groups(pane);
                     pane.spinner.stop();
                     pane.spinner.set_visible(false);
                     pane.truncated_hint.set_visible(*truncated);
@@ -1801,8 +1794,6 @@ fn scroll_delta_for_unit(delta: f64, page_size: f64, unit: gtk::gdk::ScrollUnit)
         }
 }
 
-/// Shared wiring every grid view in a pane needs, so a pane that groups entries by
-/// type can build one view per group without threading a dozen arguments through.
 struct GridContext {
     browser: Rc<Browser>,
     depth: usize,
@@ -1817,24 +1808,8 @@ struct GridContext {
     sections: Weak<RefCell<Vec<PaneSection>>>,
     scrolling: Rc<Cell<bool>>,
     density: Cell<BrowserDensity>,
-}
-
-type GridGroupBuilder = Rc<dyn Fn(&str) -> GridGroup>;
-
-#[derive(Clone)]
-struct GridGroup {
-    label: String,
-    heading: gtk::Widget,
-    section: PaneSection,
-}
-
-/// The grouped grid's heading-and-grid pairs, rebuilt as the file-type groups a
-/// directory contains change.
-struct GridGroups {
-    container: gtk::Box,
-    placeholder: gtk::Widget,
-    groups: RefCell<Vec<GridGroup>>,
-    build: RefCell<Option<GridGroupBuilder>>,
+    type_heading: RefCell<Option<gtk::Label>>,
+    type_heading_refresh: RefCell<Option<Rc<dyn Fn()>>>,
 }
 
 fn build_grid_pane(
@@ -1894,53 +1869,33 @@ fn build_grid_pane(
         sections: Rc::downgrade(&sections),
         scrolling: Rc::new(Cell::new(false)),
         density: Cell::new(options.density),
+        type_heading: RefCell::new(None),
+        type_heading_refresh: RefCell::new(None),
     });
-    let (root, pane_section, groups) = if options.group_by_type {
-        let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        container.add_css_class("grid-type-groups");
-        let placeholder = build_grid_view(&context, &new_entry_placeholder, false);
-        placeholder.view.set_visible(false);
-        let placeholder_view = placeholder.view.clone();
-        new_entry_placeholder.connect_items_changed(move |model, _, _, _| {
-            placeholder_view.set_visible(model.n_items() > 0);
-        });
-        container.append(&placeholder.view);
-        // Groups take their natural height and the filler soaks up what is left, so a
-        // short group does not stretch to fill the viewport. It also keeps the blank
-        // area below the last group inside the marquee's drag surface.
-        let filler = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        filler.set_vexpand(true);
-        container.append(&filler);
-        let groups = Rc::new(GridGroups {
-            container: container.clone(),
-            placeholder: placeholder.view.clone(),
-            groups: RefCell::new(Vec::new()),
-            build: RefCell::new(None),
-        });
-        let build_context = context.clone();
-        let build_model = filtered_model.clone();
-        groups.build.replace(Some(Rc::new(move |label: &str| {
-            build_grid_group(&build_context, &build_model, label)
-        })));
-        (container.upcast::<gtk::Widget>(), placeholder, Some(groups))
+    let flattened_models = gio::ListStore::new::<gio::ListModel>();
+    flattened_models.append(&new_entry_placeholder.clone().upcast::<gio::ListModel>());
+    flattened_models.append(&filtered_model.clone().upcast::<gio::ListModel>());
+    let flattened = gtk::FlattenListModel::new(Some(flattened_models));
+    let view_model = if options.group_by_type {
+        let sorted = gtk::SortListModel::new(Some(flattened), None::<gtk::CustomSorter>);
+        let sorter = type_group_sorter();
+        sorted.set_sorter(Some(&sorter));
+        sorted.set_section_sorter(Some(&sorter));
+        sorted.upcast::<gio::ListModel>()
     } else {
-        let flattened_models = gio::ListStore::new::<gio::ListModel>();
-        flattened_models.append(&new_entry_placeholder.clone().upcast::<gio::ListModel>());
-        flattened_models.append(&filtered_model.clone().upcast::<gio::ListModel>());
-        let view_model = gtk::FlattenListModel::new(Some(flattened_models));
-        let section = build_grid_view(&context, &view_model, true);
-        section.view.set_vexpand(true);
-        sections.borrow_mut().push(section.clone());
-        (section.view.clone(), section, None)
+        flattened.upcast()
     };
+    let pane_section = build_grid_view(&context, &view_model);
+    pane_section.view.set_vexpand(true);
+    sections.borrow_mut().push(pane_section.clone());
+    let type_heading = options.group_by_type.then(grid_type_heading);
 
-    let groups_for_pane = groups.clone();
-    let density_for_size = context.density.get();
     let sections_for_size = Rc::downgrade(&sections);
     let thumbnail_size_for_change = options.thumbnail_size.clone();
     let value_for_change = controls.thumbnail_value.clone();
     let loading_stack = stack.downgrade();
     let loading_context = Rc::downgrade(&context);
+    let heading_context_for_size = Rc::downgrade(&context);
     controls
         .thumbnail_scale
         .connect_value_changed(move |scale| {
@@ -1968,43 +1923,28 @@ fn build_grid_pane(
             for section in sections.borrow().iter() {
                 resize_grid_thumbnail_slots(section, size);
             }
-            if let Some(groups) = groups_for_pane.as_ref() {
-                refresh_group_columns(groups, groups.container.width(), density_for_size);
+            if let Some(context) = heading_context_for_size.upgrade() {
+                queue_grid_type_heading_refresh(&context);
             }
         });
 
     let scroll = gtk::ScrolledWindow::builder()
-        .child(&root)
-        .hscrollbar_policy(if groups.is_some() {
-            // Grouped grids wrap to the pane's width; only the ungrouped grid manages
-            // its own horizontal scrolling.
-            gtk::PolicyType::Never
-        } else {
-            gtk::PolicyType::Automatic
-        })
+        .child(&pane_section.view)
+        .hscrollbar_policy(gtk::PolicyType::Automatic)
         .vexpand(true)
         .build();
     scroll.add_css_class("fixed-scrollbar");
     close_thumbnail_popover_on_outside_scroll(&controls.thumbnail_popover, &scroll);
     install_grid_scroll_settle(&scroll, &context);
-    if let Some(groups) = groups.clone() {
-        let context = Rc::downgrade(&context);
-        scroll
-            .hadjustment()
-            .connect_page_size_notify(move |adjustment| {
-                let Some(context) = context.upgrade() else {
-                    return;
-                };
-                refresh_group_columns(
-                    &groups,
-                    adjustment.page_size() as i32,
-                    context.density.get(),
-                );
-            });
+    if let Some(heading) = type_heading.as_ref() {
+        install_grid_type_heading(&context, heading, &pane_section, &scroll);
     }
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
     let (collection, marquee) =
-        collection_with_marquee(&root, scroll, targets.clone(), "grid-card");
+        collection_with_marquee(&pane_section.view, scroll, targets.clone(), "grid-card");
+    if let Some(heading) = type_heading.as_ref() {
+        content.append(heading);
+    }
     content.append(&super::inline_search::wrap(
         &collection,
         &controls.filter_entry,
@@ -2024,7 +1964,6 @@ fn build_grid_pane(
         filter_model: Some(filtered_model),
         section: pane_section,
         sections,
-        groups,
         grid: Some(context),
         targets,
         detached: Rc::new(Cell::new(false)),
@@ -2045,40 +1984,7 @@ fn build_grid_pane(
     pane
 }
 
-/// A heading and the grid that renders one file-type group.
-fn build_grid_group(
-    context: &Rc<GridContext>,
-    entries: &gtk::FilterListModel,
-    label: &str,
-) -> GridGroup {
-    let heading = type_group_heading(label);
-    let group_model = gtk::FilterListModel::new(
-        Some(entries.clone()),
-        Some(type_group_filter(label.to_owned())),
-    );
-    let section = build_grid_view(context, &group_model, true);
-    let heading_for_items = heading.clone();
-    let view_for_items = section.view.clone();
-    let update_visibility = move |populated: bool| {
-        heading_for_items.set_visible(populated);
-        view_for_items.set_visible(populated);
-    };
-    update_visibility(group_model.n_items() > 0);
-    group_model.connect_items_changed(move |model, _, _, _| {
-        update_visibility(model.n_items() > 0);
-    });
-    GridGroup {
-        label: label.to_owned(),
-        heading: heading.upcast(),
-        section,
-    }
-}
-
-fn build_grid_view(
-    context: &Rc<GridContext>,
-    model: &impl IsA<gio::ListModel>,
-    syncs_selection: bool,
-) -> PaneSection {
+fn build_grid_view(context: &Rc<GridContext>, model: &impl IsA<gio::ListModel>) -> PaneSection {
     let depth = context.depth;
     let view_model = model.clone().upcast::<gio::ListModel>();
     let selection = gtk::MultiSelection::new(Some(view_model.clone()));
@@ -2288,17 +2194,15 @@ fn build_grid_view(
         syncing: syncing_selection,
         visit: bound_item_visitor(bound_items),
     };
-    if syncs_selection {
-        connect_selection(
-            &section,
-            context.sections.clone(),
-            &context.browser,
-            depth,
-            context.source_index.clone(),
-            context.click.multiple_selection.clone(),
-        );
-        install_exclusive_section_click(&section, context);
-    }
+    connect_selection(
+        &section,
+        context.sections.clone(),
+        &context.browser,
+        depth,
+        context.source_index.clone(),
+        context.click.multiple_selection.clone(),
+    );
+    install_exclusive_section_click(&section, context);
     if let Some(state) = context.state.as_ref().and_then(Weak::upgrade) {
         install_section_context_menu(
             &state,
@@ -2311,109 +2215,126 @@ fn build_grid_view(
     section
 }
 
-/// Keeps the grouped grid's sections in step with the file types the directory
-/// holds, adding and removing a heading and grid per type.
-fn sync_grid_groups(pane: &Pane) {
-    let Some(groups) = pane.groups.clone() else {
-        return;
-    };
-    let Some(build) = groups.build.borrow().clone() else {
-        return;
-    };
-    let desired = source_type_groups(&pane.model);
-    let existing = groups.groups.borrow().clone();
-    if existing.len() == desired.len()
-        && existing
-            .iter()
-            .zip(desired.iter())
-            .all(|(group, label)| group.label == *label)
-    {
-        return;
-    }
-    for group in &existing {
-        if !desired.contains(&group.label) {
-            groups.container.remove(&group.heading);
-            groups.container.remove(&group.section.view);
+fn grid_type_heading() -> gtk::Label {
+    let heading = type_group_heading("");
+    heading.add_css_class("grid-type-heading");
+    heading.set_hexpand(true);
+    heading.set_visible(false);
+    heading
+}
+
+/// Pins a type-group label above the single scrollable GridView. GridView has no
+/// header factory, so the label tracks the first bound card instead of sitting
+/// inside the view. Updates run on idle after the model changes, and again when
+/// scroll settles, so a fling does not walk bound cards on every wheel tick.
+fn install_grid_type_heading(
+    context: &Rc<GridContext>,
+    heading: &gtk::Label,
+    section: &PaneSection,
+    scroll: &gtk::ScrolledWindow,
+) {
+    context.type_heading.replace(Some(heading.clone()));
+    let pending = Rc::new(Cell::new(false));
+    let weak_context = Rc::downgrade(context);
+    let queue = Rc::new(move || {
+        if pending.replace(true) {
+            return;
         }
-    }
-    let mut next = Vec::with_capacity(desired.len());
-    let mut previous = groups.placeholder.clone();
-    for label in &desired {
-        let group = match existing.iter().find(|group| group.label == *label) {
-            Some(group) => {
-                groups
-                    .container
-                    .reorder_child_after(&group.heading, Some(&previous));
-                groups
-                    .container
-                    .reorder_child_after(&group.section.view, Some(&group.heading));
-                group.clone()
-            }
-            None => {
-                let group = build(label);
-                groups
-                    .container
-                    .insert_child_after(&group.heading, Some(&previous));
-                groups
-                    .container
-                    .insert_child_after(&group.section.view, Some(&group.heading));
-                group
-            }
-        };
-        previous = group.section.view.clone();
-        next.push(group);
-    }
-    *pane.sections.borrow_mut() = next.iter().map(|group| group.section.clone()).collect();
-    *groups.groups.borrow_mut() = next;
-    refresh_marquee_targets(pane);
-    if let Some(context) = pane.grid.as_ref() {
-        let density = context.density.get();
-        let groups = groups.clone();
-        // Cards bind during the next layout pass, so the columns they allow are only
-        // measurable once it has run.
+        let pending = pending.clone();
+        let weak_context = weak_context.clone();
         glib::idle_add_local_once(move || {
-            refresh_group_columns(&groups, groups.container.width(), density);
+            pending.set(false);
+            let Some(context) = weak_context.upgrade() else {
+                return;
+            };
+            if context.scrolling.get() {
+                return;
+            }
+            refresh_grid_type_heading(&context);
+        });
+    });
+    let queue_for_items = queue.clone();
+    section.view_model.connect_items_changed(move |_, _, _, _| {
+        queue_for_items();
+    });
+    for adjustment in [scroll.vadjustment(), scroll.hadjustment()] {
+        let queue_for_layout = queue.clone();
+        adjustment.connect_changed(move |_| {
+            queue_for_layout();
         });
     }
+    context.type_heading_refresh.replace(Some(queue.clone()));
+    queue();
 }
 
-/// A grouped grid shares one scroller with its siblings, so it has to ask for the
-/// height its own rows need. `GtkGridView` only knows its row count once its column
-/// count is fixed, so the columns are pinned to what the viewport width allows and
-/// recomputed whenever that width or the card size changes.
-fn refresh_group_columns(groups: &Rc<GridGroups>, width: i32, density: BrowserDensity) {
-    if width <= 0 {
+fn queue_grid_type_heading_refresh(context: &GridContext) {
+    if let Some(queue) = context.type_heading_refresh.borrow().as_ref() {
+        queue();
+    }
+}
+
+fn refresh_grid_type_heading(context: &GridContext) {
+    let Some(heading) = context.type_heading.borrow().clone() else {
         return;
-    }
-    let groups = groups.groups.borrow();
-    let column = groups
-        .iter()
-        .find_map(|group| measured_card_width(&group.section))
-        .unwrap_or(FALLBACK_GRID_COLUMN_WIDTH);
-    let columns = (width / column.max(1)).clamp(1, density_grid_columns(density) as i32) as u32;
-    for group in groups.iter() {
-        let Ok(grid) = group.section.view.clone().downcast::<gtk::GridView>() else {
-            continue;
-        };
-        if grid.min_columns() == columns && grid.max_columns() == columns {
-            continue;
-        }
-        if columns > grid.max_columns() {
-            grid.set_max_columns(columns);
-            grid.set_min_columns(columns);
-        } else {
-            grid.set_min_columns(columns);
-            grid.set_max_columns(columns);
-        }
+    };
+    let Some(sections) = context.sections.upgrade() else {
+        return;
+    };
+    let Some(section) = sections.borrow().first().cloned() else {
+        return;
+    };
+    let group = first_visible_type_group(&section);
+    heading.set_visible(!group.is_empty());
+    if heading.label() != group {
+        heading.set_label(&group);
     }
 }
 
-fn measured_card_width(section: &PaneSection) -> Option<i32> {
-    section.bound_items.borrow().iter().find_map(|bound| {
-        let widget = bound.widget.upgrade()?;
-        let (_, natural, _, _) = widget.measure(gtk::Orientation::Horizontal, -1);
-        (natural > 0).then_some(natural + GRID_CARD_SPACING)
-    })
+fn first_visible_type_group(section: &PaneSection) -> String {
+    let viewport_height = section.view.height() as f32;
+    type_group_for_first_intersecting(
+        section.bound_items.borrow().iter().filter_map(|bound| {
+            let item = bound.item.upgrade()?;
+            let widget = bound.widget.upgrade()?;
+            if !widget.is_mapped() {
+                return None;
+            }
+            let bounds = widget.compute_bounds(&section.view)?;
+            Some((
+                item.position(),
+                model_value(&item.item()?),
+                bounds.y(),
+                bounds.height(),
+            ))
+        }),
+        viewport_height,
+    )
+    .unwrap_or_else(|| first_model_type_group(&section.view_model))
+}
+
+fn type_group_for_first_intersecting(
+    items: impl Iterator<Item = (u32, String, f32, f32)>,
+    viewport_height: f32,
+) -> Option<String> {
+    items
+        .filter(|(_, value, y, height)| {
+            !value.is_empty() && *height > 0.0 && *y < viewport_height && *y + *height > 0.0
+        })
+        .min_by(|left, right| {
+            left.2
+                .total_cmp(&right.2)
+                .then_with(|| left.0.cmp(&right.0))
+        })
+        .map(|(_, value, _, _)| value_type_group(&value))
+}
+
+fn first_model_type_group(model: &gio::ListModel) -> String {
+    (0..model.n_items())
+        .find_map(|index| {
+            let group = value_type_group(&model_value(&model.item(index)?));
+            (!group.is_empty()).then_some(group)
+        })
+        .unwrap_or_default()
 }
 
 fn refresh_marquee_targets(pane: &Pane) {
@@ -2463,6 +2384,7 @@ fn install_grid_scroll_settle(scroll: &gtk::ScrolledWindow, context: &Rc<GridCon
 }
 
 fn refresh_grid_expensive_content(context: &GridContext) {
+    refresh_grid_type_heading(context);
     let Some(sections) = context.sections.upgrade() else {
         return;
     };
@@ -2597,9 +2519,6 @@ fn configure_grid_density(pane: &Pane, density: BrowserDensity) {
         if let Ok(grid) = section.view.clone().downcast::<gtk::GridView>() {
             configure_grid_view_density(&grid, density);
         }
-    }
-    if let Some(groups) = pane.groups.as_ref() {
-        refresh_group_columns(groups, groups.container.width(), density);
     }
 }
 
@@ -3223,7 +3142,6 @@ fn build_explorer_pane(
         filter_model: Some(filtered_model),
         section,
         sections,
-        groups: None,
         grid: None,
         targets,
         detached: Rc::new(Cell::new(false)),
@@ -3980,7 +3898,6 @@ fn replace_entries(pane: &Pane, browser: &Browser, count: usize) {
         .unwrap_or_default();
     let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
     pane.model.splice(0, pane.model.n_items(), &values_ref);
-    sync_grid_groups(pane);
     show_count(pane);
 }
 
@@ -4176,15 +4093,7 @@ fn type_group_sorter() -> gtk::CustomSorter {
     })
 }
 
-fn type_group_filter(label: String) -> gtk::CustomFilter {
-    gtk::CustomFilter::new(move |item| value_type_group(&model_value(item)) == label)
-}
-
-/// Every file-type group the loaded entries fall into, in the order they are shown.
-fn source_type_groups(model: &gtk::StringList) -> Vec<String> {
-    type_groups_of((0..model.n_items()).filter_map(|index| model.string(index)))
-}
-
+#[cfg(test)]
 fn type_groups_of(values: impl Iterator<Item = impl AsRef<str>>) -> Vec<String> {
     let mut labels: Vec<String> = Vec::new();
     for value in values {
