@@ -37,12 +37,12 @@ use crate::{
 
 use super::{
     blur::BlurBin,
-    browser::{BrowserView, dismiss_modal_layer, entry_supports_quick_preview, modal_layer},
+    browser::{BrowserView, dismiss_modal_layer, modal_layer},
     browser_modes::BrowserMode,
     controls::{
         ModalTone, form_check_button, form_entry, form_label, menu_option, message_dialog_layout,
     },
-    preview::PreviewDrawer,
+    preview::{PreviewDrawer, preview_target},
     theme::ThemeManager,
     window::{
         MIN_SIDEBAR_WIDTH, SIDEBAR_WIDTH, SidebarView, build_appearance_menu, build_sidebar,
@@ -180,10 +180,6 @@ fn filter_directory_change(
         }
         change => change,
     }
-}
-
-fn chooser_preview_target(entry: Option<FileEntry>) -> Option<FileEntry> {
-    entry.filter(entry_supports_quick_preview)
 }
 
 #[derive(Clone)]
@@ -662,7 +658,7 @@ fn build_chooser(
     view.set_group_by_type(theme.group_by_type());
     view.set_auto_refresh_interval(theme.auto_refresh_interval());
     view.set_peek_enabled(false);
-    view.set_single_click_previews(false);
+    view.set_single_click_previews(theme.single_click_previews());
     view.set_operation_provider(Rc::new(LocalOperationProvider));
     let browser = view.browser();
     let preview_preferences = theme.clone();
@@ -922,34 +918,15 @@ fn build_chooser(
     }
 
     let state_for_observer = state.clone();
-    let preview_for_selection = preview.clone();
+    let preview_for_browser = preview.clone();
     let weak_browser = Rc::downgrade(&browser);
-    browser.observe(move |event| match event {
-        BrowserEvent::OpenRequested { location } => state_for_observer.activate_file(location),
-        BrowserEvent::PreviewRequested { entry } => preview_for_selection.show(entry.clone()),
-        BrowserEvent::FocusChanged {
-            depth,
-            position: Some(position),
+    browser.observe(move |event| {
+        if let BrowserEvent::OpenRequested { location } = event {
+            state_for_observer.activate_file(location);
         }
-        | BrowserEvent::SelectionSetChanged {
-            depth,
-            focused: position,
-            ..
-        } if preview_for_selection.is_open() => {
-            if let Some(entry) = weak_browser
-                .upgrade()
-                .and_then(|browser| browser.entry_at(*depth, *position))
-                .and_then(|entry| chooser_preview_target(Some(entry)))
-            {
-                preview_for_selection.show(entry);
-            } else {
-                preview_for_selection.close();
-            }
+        if let Some(browser) = weak_browser.upgrade() {
+            preview_for_browser.handle_browser_event(&browser, event);
         }
-        BrowserEvent::FocusChanged { position: None, .. } if preview_for_selection.is_open() => {
-            preview_for_selection.close();
-        }
-        _ => {}
     });
 
     let weak = Rc::downgrade(&state);
@@ -1388,6 +1365,25 @@ fn install_shortcuts(
                 return glib::Propagation::Proceed;
             }
         }
+        if preview.has_video()
+            && state.view.item_view_has_focus()
+            && !alt
+            && !control
+            && !shift
+            && matches!(
+                key,
+                gtk::gdk::Key::space
+                    | gtk::gdk::Key::Up
+                    | gtk::gdk::Key::Down
+                    | gtk::gdk::Key::Left
+                    | gtk::gdk::Key::Right
+                    | gtk::gdk::Key::m
+                    | gtk::gdk::Key::M
+            )
+        {
+            preview.handle_video_key(key);
+            return glib::Propagation::Stop;
+        }
         let mut header_left_boundary = false;
         if state.view.header_actions_have_focus() && !control && !alt {
             match key {
@@ -1468,7 +1464,7 @@ fn install_shortcuts(
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::space && !control && !alt {
-            preview.toggle(chooser_preview_target(browser.focused_entry()));
+            preview.toggle(preview_target(browser.focused_entry()));
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::BackSpace && !control && !alt {

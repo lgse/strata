@@ -12,7 +12,8 @@ use gtk::{gio, glib, prelude::*};
 use sourceview5::prelude::*;
 
 use crate::{
-    model::{FileEntry, MetadataValue},
+    app::{Browser, BrowserEvent},
+    model::{EntryKind, FileEntry, MetadataValue},
     services::{
         LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
         PreviewRequestId,
@@ -31,6 +32,25 @@ const PDF_PAGE_GAP: i32 = 6;
 const PDF_MIN_ZOOM: f64 = 1.0;
 const PDF_MAX_ZOOM: f64 = 4.0;
 const MEDIA_PLUGIN_INSTALL_COMMAND: &str = "sudo pacman -S --needed gst-plugins-good gst-libav";
+
+pub(crate) fn preview_target(entry: Option<FileEntry>) -> Option<FileEntry> {
+    entry.filter(entry_supports_quick_preview)
+}
+
+pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
+    if !matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink) {
+        return false;
+    }
+
+    let (content_type, _) =
+        gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
+    !matches!(
+        crate::services::content_family(&content_type),
+        PreviewContent::Unsupported
+    ) || gio::content_type_is_a(&content_type, "text/plain")
+        || crate::services::has_plain_text_extension(&entry.native_name)
+        || crate::services::is_extensionless_dotfile(&entry.native_name)
+}
 
 struct PrintProgress {
     layer: gtk::Box,
@@ -227,6 +247,43 @@ impl PreviewDrawer {
         });
 
         Self { state }
+    }
+
+    pub fn observe_browser(&self, browser: &Rc<Browser>) {
+        let preview = self.clone();
+        let weak_browser = Rc::downgrade(browser);
+        browser.observe(move |event| {
+            let Some(browser) = weak_browser.upgrade() else {
+                return;
+            };
+            preview.handle_browser_event(&browser, event);
+        });
+    }
+
+    pub fn handle_browser_event(&self, browser: &Browser, event: &BrowserEvent) {
+        match event {
+            BrowserEvent::PreviewRequested { entry } => self.show(entry.clone()),
+            BrowserEvent::FocusChanged {
+                depth,
+                position: Some(position),
+            }
+            | BrowserEvent::SelectionSetChanged {
+                depth,
+                focused: position,
+                ..
+            } if self.is_open() => {
+                if let Some(entry) = browser
+                    .entry_at(*depth, *position)
+                    .and_then(|entry| preview_target(Some(entry)))
+                {
+                    self.show(entry);
+                } else {
+                    self.close();
+                }
+            }
+            BrowserEvent::FocusChanged { position: None, .. } if self.is_open() => self.close(),
+            _ => {}
+        }
     }
 
     pub fn widget(&self) -> gtk::Widget {

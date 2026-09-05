@@ -5,6 +5,7 @@ use super::*;
 #[derive(Clone, Copy)]
 enum Action {
     Rename,
+    Preview,
     Properties,
     NewFolder,
 }
@@ -123,44 +124,50 @@ pub(super) fn install_item(
             selection.select_item(position, true);
         }
         let single = state.browser.selected_entries().len() == 1;
+        let mut options = vec![(
+            Action::Rename,
+            crate::assets::icons::PENCIL,
+            "Rename",
+            "F2",
+            single,
+        )];
+        if single && super::super::preview::entry_supports_quick_preview(&entry) {
+            options.push((
+                Action::Preview,
+                crate::assets::icons::EYE,
+                "Quick preview",
+                "Space",
+                true,
+            ));
+        }
+        options.push((
+            Action::Properties,
+            crate::assets::icons::INFO,
+            "Properties",
+            "Alt+Enter",
+            true,
+        ));
         let weak = weak.clone();
-        let (popover, scroll) = menu(
-            &[
-                (
-                    Action::Rename,
-                    crate::assets::icons::PENCIL,
-                    "Rename",
-                    "F2",
-                    single,
-                ),
-                (
-                    Action::Properties,
-                    crate::assets::icons::INFO,
-                    "Properties",
-                    "Alt+Enter",
-                    true,
-                ),
-            ],
-            move |action| {
-                let Some(state) = weak.upgrade() else {
-                    return;
-                };
-                match action {
-                    Action::Rename => {
-                        state.browser.select(depth, source);
-                        let weak = Rc::downgrade(&state);
-                        // Selection queues collection focus; enter the editor after it settles.
-                        glib::idle_add_local_once(move || {
-                            if let Some(state) = weak.upgrade() {
-                                state.begin_rename();
-                            }
-                        });
-                    }
-                    Action::Properties => state.show_entry_properties(entry.clone()),
-                    Action::NewFolder => unreachable!(),
+        let (popover, scroll) = menu(&options, move |action| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            match action {
+                Action::Rename => {
+                    state.browser.select(depth, source);
+                    let weak = Rc::downgrade(&state);
+                    // Selection queues collection focus; enter the editor after it settles.
+                    glib::idle_add_local_once(move || {
+                        if let Some(state) = weak.upgrade() {
+                            state.begin_rename();
+                        }
+                    });
                 }
-            },
-        );
+                Action::Preview => state.browser.preview(depth, source),
+                Action::Properties => state.show_entry_properties(entry.clone()),
+                Action::NewFolder => unreachable!(),
+            }
+        });
         show_context_popover(&popover, &scroll, &anchor, x, y);
     });
     widget.add_controller(click);
