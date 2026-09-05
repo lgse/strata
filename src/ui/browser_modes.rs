@@ -1294,21 +1294,28 @@ fn close_thumbnail_popover_on_outside_scroll(popover: &gtk::Popover, scroll: &gt
     let popover_for_scroll = popover.clone();
     let scroll = scroll.clone();
     wheel.connect_scroll(move |controller, dx, dy| {
-        if !popover_for_scroll.is_visible() || pointer_over_popover(&popover_for_scroll) {
+        if !popover_for_scroll.is_visible() || pointer_over_widget(&popover_for_scroll) {
             return glib::Propagation::Proceed;
         }
+        let over_grid = pointer_over_widget(&scroll);
         popover_for_scroll.popdown();
-        apply_scrolled_window_wheel(&scroll, controller, dx, dy);
+        if over_grid {
+            apply_scrolled_window_wheel(&scroll, controller, dx, dy);
+        }
         glib::Propagation::Stop
     });
     popover.add_controller(wheel);
 }
 
-fn pointer_over_popover(popover: &gtk::Popover) -> bool {
-    let Some(surface) = popover.surface() else {
+fn pointer_over_widget(widget: &impl IsA<gtk::Widget>) -> bool {
+    let widget = widget.as_ref();
+    let Some(native) = widget.native() else {
         return false;
     };
-    let Some(pointer) = popover
+    let Some(surface) = native.surface() else {
+        return false;
+    };
+    let Some(pointer) = widget
         .display()
         .default_seat()
         .and_then(|seat| seat.pointer())
@@ -1318,8 +1325,11 @@ fn pointer_over_popover(popover: &gtk::Popover) -> bool {
     let Some((x, y, _)) = surface.device_position(&pointer) else {
         return false;
     };
-    (0.0..f64::from(surface.width())).contains(&x)
-        && (0.0..f64::from(surface.height())).contains(&y)
+    let (ox, oy) = native.surface_transform();
+    let Some(bounds) = widget.compute_bounds(native.upcast_ref::<gtk::Widget>()) else {
+        return false;
+    };
+    bounds.contains_point(&gtk::graphene::Point::new((x - ox) as f32, (y - oy) as f32))
 }
 
 fn apply_scrolled_window_wheel(
