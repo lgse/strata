@@ -108,6 +108,7 @@ struct ActiveNewEntry {
 }
 
 const FILE_PROGRESS_DELAY: Duration = Duration::from_millis(350);
+const INDETERMINATE_PROGRESS_INTERVAL: Duration = Duration::from_millis(100);
 const IMMEDIATE_PROGRESS_ITEM_COUNT: usize = 16;
 
 fn should_show_progress_immediately(total: usize) -> bool {
@@ -120,6 +121,8 @@ struct DeleteProgressView {
     blurred_root: Option<BlurBin>,
     progress: gtk::ProgressBar,
     status: gtk::Label,
+    indeterminate: Rc<Cell<bool>>,
+    pulse_source: Rc<RefCell<Option<glib::SourceId>>>,
 }
 
 struct TrashLoadingView {
@@ -1995,6 +1998,25 @@ impl ViewState {
         let content = layout.content;
         let cancel = layout.confirm;
 
+        let indeterminate = Rc::new(Cell::new(false));
+        let pulse_source = Rc::new(RefCell::new(None));
+        let weak_progress = progress.downgrade();
+        let indeterminate_for_pulse = indeterminate.clone();
+        let source_for_pulse = pulse_source.clone();
+        let source = glib::timeout_add_local(INDETERMINATE_PROGRESS_INTERVAL, move || {
+            if !indeterminate_for_pulse.get() {
+                source_for_pulse.borrow_mut().take();
+                return glib::ControlFlow::Break;
+            }
+            let Some(progress) = weak_progress.upgrade() else {
+                source_for_pulse.borrow_mut().take();
+                return glib::ControlFlow::Break;
+            };
+            progress.pulse();
+            glib::ControlFlow::Continue
+        });
+        pulse_source.replace(Some(source));
+
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
         self.delete_progress.replace(Some(DeleteProgressView {
@@ -2003,6 +2025,8 @@ impl ViewState {
             blurred_root,
             progress,
             status,
+            indeterminate,
+            pulse_source,
         }));
         let cancel_action = on_cancel.clone();
         cancel.connect_clicked(move |_| cancel_action());
@@ -2042,13 +2066,13 @@ impl ViewState {
         let Some(view) = progress_view.as_ref() else {
             return;
         };
+        let total_items = self.file_operation_progress.get().1;
         let (status, fraction) =
-            transfer_progress_status(completed_items, transferred_bytes, total_bytes);
+            transfer_progress_status(completed_items, total_items, transferred_bytes, total_bytes);
         view.status.set_text(&status);
+        view.indeterminate.set(fraction.is_none());
         if let Some(fraction) = fraction {
             view.progress.set_fraction(fraction);
-        } else {
-            view.progress.pulse();
         }
     }
 
@@ -2064,6 +2088,7 @@ impl ViewState {
             0
         };
         view.status.set_text(&format!("{pct}%"));
+        view.indeterminate.set(false);
         view.progress
             .set_fraction(completed as f64 / total.max(1) as f64);
     }
@@ -2075,10 +2100,11 @@ impl ViewState {
         };
         if total == 0 {
             view.status.set_text(&format!("{completed} files"));
-            view.progress.pulse();
+            view.indeterminate.set(true);
         } else {
             view.status
                 .set_text(&format!("{completed} / {total} files"));
+            view.indeterminate.set(false);
             view.progress.set_fraction(completed as f64 / total as f64);
         }
     }
@@ -2090,6 +2116,10 @@ impl ViewState {
         self.file_operation_progress.set((0, 0));
         self.transfer_progress.set(None);
         if let Some(view) = self.delete_progress.take() {
+            view.indeterminate.set(false);
+            if let Some(source) = view.pulse_source.take() {
+                source.remove();
+            }
             dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
         }
     }
@@ -2114,7 +2144,7 @@ impl ViewState {
         };
         view.status
             .set_text(&format!("{} deleted", item_count_label(processed)));
-        view.progress.pulse();
+        view.indeterminate.set(true);
     }
 
     /// Safe to call more than once: whichever of cancel or completion runs first leaves the
@@ -5973,11 +6003,17 @@ pub(super) fn format_file_size(bytes: u64) -> String {
 
 fn transfer_progress_status(
     completed_items: usize,
+    total_items: usize,
     transferred_bytes: u64,
     total_bytes: Option<u64>,
 ) -> (String, Option<f64>) {
     match total_bytes {
-        Some(0) => ("100%".to_owned(), Some(1.0)),
+        Some(0) if total_items > 0 => {
+            let fraction = (completed_items as f64 / total_items as f64).clamp(0.0, 1.0);
+            let percentage = (fraction * 100.0) as usize;
+            (format!("{percentage}%"), Some(fraction))
+        }
+        Some(0) => ("Preparing…".to_owned(), None),
         Some(total) => {
             let fraction = (transferred_bytes as f64 / total as f64).clamp(0.0, 1.0);
             let percentage = (fraction * 100.0) as usize;

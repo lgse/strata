@@ -1644,6 +1644,61 @@ fn transfer_progress_aggregates_completed_and_in_flight_file_bytes() {
 }
 
 #[test]
+fn copying_a_file_emits_bytes_before_item_completion() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.bin");
+    let destination = root.path().join("destination");
+    let contents = vec![0x5a; 1024 * 1024];
+    fs::write(&source, &contents)?;
+    fs::create_dir(&destination)?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(25),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. }
+                | OperationEvent::Cancelled { .. }
+                | OperationEvent::TransferFailed { .. }
+                | OperationEvent::Failed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        OperationEvent::TransferProgress {
+            completed_items: 0,
+            transferred_bytes,
+            total_bytes: Some(total_bytes),
+            ..
+        } if *transferred_bytes > 0 && *total_bytes == contents.len() as u64
+    )));
+    assert_eq!(fs::read(destination.join("source.bin"))?, contents);
+    Ok(())
+}
+
+#[test]
 fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Result<(), Box<dyn Error>>
 {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
