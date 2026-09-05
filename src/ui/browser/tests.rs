@@ -1561,6 +1561,29 @@ fn move_to_trash_stays_visible_inside_trash_regardless_of_can_trash() {
     assert!(move_to_trash_is_visible(true, None));
 }
 
+#[test]
+fn permanently_delete_hides_only_for_a_confirmed_unsupported_location() {
+    assert!(!permanently_delete_is_visible(false, Some(false)));
+}
+
+#[test]
+fn permanently_delete_shows_for_a_confirmed_supported_location() {
+    assert!(permanently_delete_is_visible(false, Some(true)));
+}
+
+#[test]
+fn permanently_delete_defaults_to_visible_before_the_check_resolves() {
+    assert!(permanently_delete_is_visible(false, None));
+}
+
+#[test]
+fn permanently_delete_hides_inside_trash_regardless_of_can_delete() {
+    // Inside Trash, "Move to Trash" already serves as permanent delete under a
+    // shared label, so this separate option would be redundant.
+    assert!(!permanently_delete_is_visible(true, Some(true)));
+    assert!(!permanently_delete_is_visible(true, None));
+}
+
 fn mapped_source(values: &[&str]) -> EntryListModel {
     let owned: Vec<String> = values.iter().map(|value| (*value).to_owned()).collect();
     let model = EntryListModel::new(std::rc::Rc::new(move |position| {
