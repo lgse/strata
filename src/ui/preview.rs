@@ -699,8 +699,6 @@ impl PreviewState {
         }
         match event {
             PreviewEvent::Ready(preview) if preview.request_id == expected => {
-                self.current_request.set(None);
-                self.load.borrow_mut().take();
                 self.render(preview);
             }
             PreviewEvent::Failed {

@@ -387,11 +387,8 @@ fn video_thumbnails_execute_directly_inside_the_bounded_sandbox() {
 fn accepts_only_bounded_png_webm_or_mp4_outputs() {
     assert!(valid_output(ParseOperation::ThumbnailImage, &png(256, 256)));
     assert!(!valid_output(ParseOperation::ThumbnailImage, &png(257, 1)));
-    assert!(valid_output(
-        ParseOperation::PreviewImage,
-        &png(1_400, 1_400)
-    ));
-    assert!(!valid_output(ParseOperation::PreviewImage, &png(1_401, 1)));
+    assert!(valid_output(ParseOperation::PreviewImage, &png(800, 800)));
+    assert!(!valid_output(ParseOperation::PreviewImage, &png(801, 1)));
     assert!(valid_output(ParseOperation::PreviewPdf, &png(1_400, 1_785)));
     assert!(!valid_output(
         ParseOperation::PreviewPdf,

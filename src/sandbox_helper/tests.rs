@@ -239,16 +239,18 @@ fn media_commands_select_the_backend_and_preserve_limits() {
 
     let software = arguments(&MediaBackend::Software);
     assert!(software.contains(
-        "-vf scale=w=1280:h=1280:force_original_aspect_ratio=decrease,format=yuv420p -c:v libvpx -auto-alt-ref 0"
+        "-vf scale=w=1280:h=1280:force_original_aspect_ratio=decrease,format=yuv420p -c:v libvpx -auto-alt-ref 0 -lag-in-frames 0"
     ));
-    assert!(software.contains("-threads 2 -deadline realtime -cpu-used 8"));
+    assert!(software.contains("-threads 4 -deadline realtime -cpu-used 8"));
     assert!(software.contains("-c:a libopus -b:a 96k -f webm"));
 
     for command in [vaapi, vulkan, software] {
-        assert!(command.contains("-max_alloc 536870912 -max_pixels 50000000"));
+        assert!(command.contains(
+            "-probesize 500000 -analyzeduration 500000 -max_alloc 536870912 -max_pixels 50000000"
+        ));
         assert!(command.contains("-map 0:v:0 -map 0:a:0? -sn -dn -t 30"));
         assert!(command.contains("-fpsmax 30"));
-        assert!(command.contains("-b:v 2M -maxrate 3M -bufsize 4M"));
+        assert!(command.contains("-b:v 4M -maxrate 6M -bufsize 8M"));
         assert!(command.ends_with("pipe:1"));
     }
 }
@@ -278,13 +280,13 @@ fn preview_image_uses_raw_fallbacks() {
     let output = directory.path().join("result.png");
     std::fs::write(&input, b"not a camera file").expect("write stub");
 
-    let pixbuf = render_pixbuf(&input, 1400).expect_err("stub must fail pixbuf");
-    let raw = render_raw(&input, 1400);
+    let pixbuf = render_pixbuf(&input, 800).expect_err("stub must fail pixbuf");
+    let raw = render_raw(&input, 800);
     let preview = run(&[
         "preview-image".into(),
         input.to_string_lossy().into_owned(),
         output.to_string_lossy().into_owned(),
-        "1400".into(),
+        "800".into(),
         "software".into(),
     ]);
 

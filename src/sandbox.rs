@@ -100,7 +100,7 @@ impl ParseOperation {
             | Self::ThumbnailRaw
             | Self::ThumbnailPdf
             | Self::ThumbnailVideo => Some((256, 256, 256 * 256)),
-            Self::PreviewImage => Some((1_400, 1_400, 1_400 * 1_400)),
+            Self::PreviewImage => Some((800, 800, 800 * 800)),
             Self::PreviewPdf => Some((1_400, 1_800, 2_500_000)),
             Self::PreviewMedia => None,
         }

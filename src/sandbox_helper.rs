@@ -15,7 +15,7 @@ use gtk::gio;
 
 use crate::sandbox::{MAX_OUTPUT_BYTES, MediaPreviewBackend, gpu_devices, numbered_name};
 
-const HARDWARE_ATTEMPT_TIME_LIMIT: Duration = Duration::from_secs(8);
+const HARDWARE_ATTEMPT_TIME_LIMIT: Duration = Duration::from_millis(400);
 const HARDWARE_TOTAL_TIME_LIMIT: Duration = Duration::from_secs(12);
 const MEDIA_TOTAL_TIME_LIMIT: Duration = Duration::from_secs(28);
 const MAX_MEDIA_ALLOCATION_BYTES: u64 = 512 * 1024 * 1024;
@@ -46,7 +46,7 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
         "thumbnail-raw" => (render_raw_thumbnail(input, value.clamp(16, 256))?, None),
         "thumbnail-pdf" => (render_pdf_thumbnail(input, value.clamp(16, 256))?, None),
         "thumbnail-video" => (render_media(input, value.clamp(16, 256))?, None),
-        "preview-image" => (render_raw(input, 1400)?, None),
+        "preview-image" => (render_raw(input, 800)?, None),
         "preview-pdf" => {
             let (png, page, pages) = render_pdf_page(input, value)?;
             (png, Some(format!("{page} {pages}")))
@@ -65,7 +65,7 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
 fn render_pixbuf(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     gdk_pixbuf::Pixbuf::from_file_at_scale(path, size, size, true)
         .map_err(|error| error.to_string())?
-        .save_to_bufferv("png", &[])
+        .save_to_bufferv("png", &[("compression", "1")])
         .map_err(|error| error.to_string())
 }
 
@@ -174,7 +174,7 @@ fn scale_embedded_thumbnail(data: &[u8], size: i32) -> Result<Vec<u8>, String> {
             gdk_pixbuf::InterpType::Bilinear,
         )
         .ok_or_else(|| "Unable to scale embedded RAW thumbnail".to_owned())?
-        .save_to_bufferv("png", &[])
+        .save_to_bufferv("png", &[("compression", "1")])
         .map_err(|error| error.to_string())
 }
 
@@ -317,7 +317,16 @@ fn media_backends(devices: &[PathBuf], policy: MediaPreviewBackend) -> Vec<Media
 fn media_command(backend: &MediaBackend, path: &Path) -> Command {
     let mut command = Command::new("ffmpeg");
     command
-        .args(["-nostdin", "-v", "error", "-max_alloc"])
+        .args([
+            "-nostdin",
+            "-v",
+            "error",
+            "-probesize",
+            "500000",
+            "-analyzeduration",
+            "500000",
+            "-max_alloc",
+        ])
         .arg(MAX_MEDIA_ALLOCATION_BYTES.to_string())
         .arg("-max_pixels")
         .arg(MAX_MEDIA_DECODE_PIXELS.to_string());
@@ -354,7 +363,7 @@ fn media_command(backend: &MediaBackend, path: &Path) -> Command {
                 ]);
         }
         MediaBackend::Software => {
-            command.args(["-threads", "2"]);
+            command.args(["-threads", "4"]);
         }
     }
     command
@@ -390,8 +399,10 @@ fn media_command(backend: &MediaBackend, path: &Path) -> Command {
                 "libvpx",
                 "-auto-alt-ref",
                 "0",
+                "-lag-in-frames",
+                "0",
                 "-threads",
-                "2",
+                "4",
                 "-deadline",
                 "realtime",
                 "-cpu-used",
@@ -399,21 +410,27 @@ fn media_command(backend: &MediaBackend, path: &Path) -> Command {
             ]);
         }
     }
-    command.args(["-fpsmax", "30"]);
-    command.args(["-b:v", "2M", "-maxrate", "3M", "-bufsize", "4M"]);
     match backend {
-        MediaBackend::Software => command.args(["-c:a", "libopus", "-b:a", "96k", "-f", "webm"]),
-        MediaBackend::VaApi(_) | MediaBackend::Vulkan(_) => command.args([
-            "-c:a",
-            "aac",
-            "-b:a",
-            "96k",
-            "-movflags",
-            "+frag_keyframe+empty_moov",
-            "-f",
-            "mp4",
-        ]),
-    };
+        MediaBackend::Software => {
+            command.args(["-fpsmax", "30"]);
+            command.args(["-b:v", "4M", "-maxrate", "6M", "-bufsize", "8M"]);
+            command.args(["-c:a", "libopus", "-b:a", "96k", "-f", "webm"]);
+        }
+        MediaBackend::VaApi(_) | MediaBackend::Vulkan(_) => {
+            command.args(["-fpsmax", "30"]);
+            command.args(["-b:v", "4M", "-maxrate", "6M", "-bufsize", "8M"]);
+            command.args([
+                "-c:a",
+                "aac",
+                "-b:a",
+                "96k",
+                "-movflags",
+                "+frag_keyframe+empty_moov",
+                "-f",
+                "mp4",
+            ]);
+        }
+    }
     command.arg("pipe:1");
     command
 }
