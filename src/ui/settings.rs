@@ -2289,6 +2289,7 @@ fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
     append_heading(&content, "NAVIGATION");
     for (label, keys) in [
         ("Move through items", "↑ / ↓ (← / → in Grid)"),
+        ("Jump to top / bottom", "Ctrl + ↑ / Ctrl + ↓"),
         ("Open item", "Enter"),
         ("Go to parent", "Alt + ↑"),
         ("Back / forward", "Alt + ← / →"),

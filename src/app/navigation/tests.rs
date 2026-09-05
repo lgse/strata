@@ -628,6 +628,25 @@ fn paging_skips_hidden_entries_when_hidden_files_are_not_shown() {
 }
 
 #[test]
+fn paging_by_usize_max_jumps_to_the_first_or_last_visible_entry() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            hidden_entry("/home/alpha", "alpha"),
+            named_entry("/home/bravo", "bravo"),
+            named_entry("/home/charlie", "charlie"),
+            hidden_entry("/home/delta", "delta"),
+        ],
+    );
+
+    assert!(state.select(0, 2));
+    assert_eq!(state.page_selection(1, usize::MAX), Some((0, 2)));
+    assert_eq!(state.page_selection(-1, usize::MAX), Some((0, 1)));
+}
+
+#[test]
 fn paging_an_empty_column_keeps_the_selection_unchanged() {
     let mut state = NavigationState::default();
     state.navigate(location("/home"), RequestId(1));

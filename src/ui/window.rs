@@ -985,6 +985,11 @@ fn install_keyboard_navigation(
         if !control && !alt && !view.item_view_has_focus() && !header_left_boundary {
             return glib::Propagation::Proceed;
         }
+        if let Some(direction) = jump_direction(key, modifiers)
+            && view.jump_selection(direction)
+        {
+            return glib::Propagation::Stop;
+        }
         if view.item_view_has_focus()
             && let Some(action) = single_pane_arrow_action(
                 view.view_mode(),
@@ -1162,6 +1167,22 @@ fn page_direction(key: gtk::gdk::Key) -> Option<i32> {
     match key {
         gtk::gdk::Key::Page_Up | gtk::gdk::Key::KP_Page_Up => Some(-1),
         gtk::gdk::Key::Page_Down | gtk::gdk::Key::KP_Page_Down => Some(1),
+        _ => None,
+    }
+}
+
+fn jump_direction(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> Option<i32> {
+    use gtk::gdk::{Key, ModifierType};
+    if !modifiers.contains(ModifierType::CONTROL_MASK)
+        || modifiers.intersects(
+            ModifierType::SHIFT_MASK | ModifierType::ALT_MASK | ModifierType::SUPER_MASK,
+        )
+    {
+        return None;
+    }
+    match key {
+        Key::Up => Some(-1),
+        Key::Down => Some(1),
         _ => None,
     }
 }

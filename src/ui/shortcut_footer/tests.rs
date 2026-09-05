@@ -11,6 +11,7 @@ fn navigation_reference_matches_each_mode() {
     ] {
         let navigation = navigation_shortcuts(mode);
         assert!(navigation.contains(&("Alt+↑", "Go to the parent folder")));
+        assert!(navigation.contains(&("Ctrl+↑ / Ctrl+↓", "First / last item")));
         assert!(navigation.contains(&("↑ at top", "Focus the navigation header")));
         assert!(navigation.contains(&("↓ in header", "Return to the files")));
         assert!(navigation.contains(&("↑ at sidebar top", "Focus the top navigation bar")));

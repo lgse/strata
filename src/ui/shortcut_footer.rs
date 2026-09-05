@@ -466,6 +466,7 @@ fn navigation_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
         ("Alt+↑", "Go to the parent folder"),
         ("Alt+Home", "Go to Home"),
         ("Home / End", "First / last item"),
+        ("Ctrl+↑ / Ctrl+↓", "First / last item"),
         ("PgUp / PgDn", "Move one page"),
         ("Tab / Shift+Tab", "Next / previous interface control"),
     ]);
