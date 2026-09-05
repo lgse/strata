@@ -944,9 +944,18 @@ impl NavigationState {
             return None;
         }
         self.record_navigation();
+        self.truncate_to(depth)
+    }
+
+    /// Drops descendant columns without recording history. Used when an
+    /// operation or monitor event invalidates the open path.
+    pub fn truncate_to(&mut self, len: usize) -> Option<(usize, Option<usize>)> {
+        if len == 0 || len >= self.columns.len() {
+            return None;
+        }
         self.peek = None;
-        self.columns.truncate(depth);
-        let parent_depth = depth - 1;
+        self.columns.truncate(len);
+        let parent_depth = len - 1;
         self.active_column = Some(parent_depth);
         Some((parent_depth, self.columns[parent_depth].selected))
     }
