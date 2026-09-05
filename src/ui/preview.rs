@@ -14,8 +14,8 @@ use sourceview5::prelude::*;
 use crate::{
     model::{FileEntry, MetadataValue},
     services::{
-        LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
-        PreviewRequestId,
+        DATABASE_PAGE_SIZE, LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider,
+        PreviewRequest, PreviewRequestId, encode_database_page,
     },
 };
 
@@ -47,6 +47,7 @@ struct PreviewState {
     header_handle: gtk::Box,
     icon: gtk::Image,
     title: gtk::Label,
+    actions: gtk::Box,
     size: gtk::Label,
     modified: gtk::Label,
     content_type: gtk::Label,
@@ -58,6 +59,11 @@ struct PreviewState {
     media_volume_icon: RefCell<Option<gtk::Image>>,
     media_volume_save: Rc<RefCell<Option<glib::SourceId>>>,
     media_toggle_mute: RefCell<Option<Rc<dyn Fn()>>>,
+    database_tables: RefCell<Vec<crate::services::DatabaseTableItem>>,
+    database_active: Cell<Option<usize>>,
+    database_page: Cell<usize>,
+    database_total_rows: Cell<Option<usize>>,
+    database_content: RefCell<Option<gtk::Box>>,
     split: RefCell<Option<gtk::Paned>>,
     occupied_width: RefCell<Option<Rc<dyn Fn() -> i32>>>,
     current: RefCell<Option<FileEntry>>,
@@ -95,6 +101,8 @@ impl PreviewDrawer {
         title.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
         title.set_hexpand(true);
         title.set_xalign(0.0);
+        let actions = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+        actions.add_css_class("preview-header-actions");
         let open = gtk::Button::builder()
             .tooltip_text("Open in default application")
             .valign(gtk::Align::Center)
@@ -131,6 +139,7 @@ impl PreviewDrawer {
         header_handle.append(&icon);
         header_handle.append(&title);
         header.append(&header_handle);
+        header.append(&actions);
         header.append(&open);
         header.append(&print);
         header.append(&close);
@@ -165,6 +174,7 @@ impl PreviewDrawer {
             header_handle: header_handle.clone(),
             icon,
             title,
+            actions,
             size,
             modified,
             content_type,
@@ -176,6 +186,11 @@ impl PreviewDrawer {
             media_volume_icon: RefCell::new(None),
             media_volume_save: Rc::new(RefCell::new(None)),
             media_toggle_mute: RefCell::new(None),
+            database_tables: RefCell::new(Vec::new()),
+            database_active: Cell::new(None),
+            database_page: Cell::new(0),
+            database_total_rows: Cell::new(None),
+            database_content: RefCell::new(None),
             split: RefCell::new(None),
             occupied_width: RefCell::new(None),
             current: RefCell::new(None),
@@ -355,7 +370,7 @@ impl PreviewState {
             }
         }
         if !was_open || !already_showing {
-            self.load(entry, 0);
+            self.load(entry, -1);
         }
     }
 
@@ -426,6 +441,7 @@ impl PreviewState {
         self.current_request.set(None);
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
+        self.database_total_rows.set(None);
         self.cancel_print();
         self.clear_content();
         self.revealer.set_transition_duration(0);
@@ -640,6 +656,8 @@ impl PreviewState {
                     PreviewContent::Image
                     | PreviewContent::Media
                     | PreviewContent::SandboxedMedia { .. }
+                    | PreviewContent::Database { .. }
+                    | PreviewContent::DatabaseTable(_)
                     | PreviewContent::Unsupported => {}
                 }
             }
@@ -658,15 +676,29 @@ impl PreviewState {
     }
 
     fn load(self: &Rc<Self>, entry: FileEntry, pdf_page: i32) {
+        let switching_table = pdf_page >= 0 && self.database_content.borrow().is_some();
         self.current.replace(Some(entry.clone()));
-        crate::assets::set_primary_icon(&self.icon, super::browser::entry_icon(&entry));
-        self.title.set_text(&entry.display_name);
-        self.title
-            .set_tooltip_text(Some(&entry.location.display_path()));
-        self.size.set_text(&metadata_size(&entry));
-        crate::util::set_modified_date(&self.modified, Some(&entry), "—");
-        self.content_type.set_text(file_extension(&entry));
-        self.show_loading();
+        if !switching_table {
+            crate::assets::set_primary_icon(&self.icon, super::browser::entry_icon(&entry));
+            self.title.set_text(&entry.display_name);
+            self.title
+                .set_tooltip_text(Some(&entry.location.display_path()));
+            self.size.set_text(&metadata_size(&entry));
+            crate::util::set_modified_date(&self.modified, Some(&entry), "—");
+            self.content_type.set_text(file_extension(&entry));
+        }
+        if pdf_page < 0 {
+            self.database_active.set(None);
+            self.database_page.set(0);
+            self.database_total_rows.set(None);
+            self.database_tables.replace(Vec::new());
+            self.show_loading();
+        } else if let Some(area) = self.database_content.borrow().clone() {
+            clear_box(&area);
+            area.append(&database_spinner());
+        } else {
+            self.show_loading();
+        }
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
 
@@ -718,6 +750,13 @@ impl PreviewState {
     }
 
     fn render(self: &Rc<Self>, preview: Preview) {
+        if let PreviewContent::DatabaseTable(data) = &preview.content
+            && let Some(area) = self.database_content.borrow().clone()
+        {
+            clear_box(&area);
+            self.populate_database_table(&area, data);
+            return;
+        }
         self.content_type.set_text(&preview.content_type);
         self.clear_content();
         match preview.content {
@@ -894,6 +933,14 @@ impl PreviewState {
             PreviewContent::Pdf { png, page, pages } => {
                 self.print.set_visible(true);
                 self.render_pdf_viewer(preview.entry, png, page, pages);
+            }
+            PreviewContent::Database { tables, selected } => {
+                self.database_tables.replace(tables.clone());
+                self.render_database_viewer(&preview.entry, &tables, selected.as_ref());
+            }
+            PreviewContent::DatabaseTable(data) => {
+                let tables = self.database_tables.borrow().clone();
+                self.render_database_viewer(&preview.entry, &tables, Some(&data));
             }
             PreviewContent::Unsupported => {
                 self.show_message(
@@ -1384,6 +1431,495 @@ impl PreviewState {
         });
     }
 
+    fn render_database_viewer(
+        self: &Rc<Self>,
+        _entry: &FileEntry,
+        tables: &[crate::services::DatabaseTableItem],
+        selected: Option<&crate::services::DatabaseTableData>,
+    ) {
+        if tables.is_empty() {
+            self.show_message("Empty database", "No tables or views found in this file.");
+            return;
+        }
+        self.content.add_css_class("preview-database-mode");
+        let content_area = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        content_area.add_css_class("preview-database-content");
+        content_area.set_hexpand(true);
+        content_area.set_vexpand(true);
+
+        self.database_content.replace(Some(content_area.clone()));
+        self.content.append(&content_area);
+
+        if let Some(data) = selected {
+            if let Some(pos) = tables.iter().position(|t| t.name == data.name) {
+                self.database_active.set(Some(pos));
+            } else {
+                self.database_active.set(Some(0));
+            }
+            self.populate_database_table(&content_area, data);
+        } else {
+            let hint = gtk::Label::new(Some("Select a table"));
+            hint.add_css_class("preview-database-empty");
+            hint.set_hexpand(true);
+            hint.set_vexpand(true);
+            content_area.append(&hint);
+        }
+    }
+
+    fn populate_database_table(
+        self: &Rc<Self>,
+        content_area: &gtk::Box,
+        data: &crate::services::DatabaseTableData,
+    ) {
+        clear_box(content_area);
+        clear_box(&self.actions);
+        if data.total_rows.is_some() {
+            self.database_total_rows.set(data.total_rows);
+        }
+        let total_rows = data.total_rows.or_else(|| self.database_total_rows.get());
+        let (headers, data_rows) = parse_csv_rows(&data.rows_csv);
+        let page = data.page;
+        let col_count = if headers.is_empty() {
+            data.columns.len()
+        } else {
+            headers.len()
+        };
+
+        let tables_list = self.database_tables.borrow().clone();
+        let active_table_idx = tables_list
+            .iter()
+            .position(|t| t.name == data.name)
+            .unwrap_or(0);
+
+        let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        content.add_css_class("column-menu");
+        let popover = gtk::Popover::builder()
+            .has_arrow(false)
+            .halign(gtk::Align::Start)
+            .position(gtk::PositionType::Bottom)
+            .build();
+        popover.add_css_class("column-popover");
+
+        let weak_table = Rc::downgrade(self);
+        let current_entry = self.current.borrow().clone();
+        let checks: Rc<RefCell<Vec<(usize, gtk::Image)>>> = Rc::new(RefCell::new(Vec::new()));
+        let popover_weak = popover.downgrade();
+
+        let list = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let scroll = gtk::ScrolledWindow::builder()
+            .child(&list)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .max_content_height(360)
+            .propagate_natural_height(true)
+            .build();
+
+        let search = gtk::Entry::builder()
+            .placeholder_text("Search tables…")
+            .hexpand(true)
+            .build();
+        search.add_css_class("form-control");
+        content.append(&search);
+        content.append(&scroll);
+
+        let filter_items: Vec<(String, gtk::Button)> = tables_list
+            .iter()
+            .enumerate()
+            .map(|(idx, t)| {
+                let label = if t.is_view {
+                    format!("{} (view)", t.name)
+                } else {
+                    t.name.clone()
+                };
+                let (option, check) =
+                    crate::ui::controls::menu_option(&label, idx == active_table_idx);
+                checks.borrow_mut().push((idx, check));
+                let weak = weak_table.clone();
+                let entry = current_entry.clone();
+                let checks = checks.clone();
+                let popover_weak = popover_weak.clone();
+                option.connect_clicked(move |_| {
+                    for (check_idx, check) in checks.borrow().iter() {
+                        check.set_visible(*check_idx == idx);
+                    }
+                    if let Some(popover) = popover_weak.upgrade() {
+                        popover.popdown();
+                    }
+                    let Some(state) = weak.upgrade() else {
+                        return;
+                    };
+                    let Some(entry) = entry.clone() else {
+                        return;
+                    };
+                    if state.database_active.get() == Some(idx) {
+                        return;
+                    }
+                    state.database_active.set(Some(idx));
+                    state.database_page.set(0);
+                    state.database_total_rows.set(None);
+                    if let Some(area) = state.database_content.borrow().clone() {
+                        clear_box(&area);
+                        area.append(&database_spinner());
+                    }
+                    state.load(entry, encode_database_page(idx, 0));
+                });
+                list.append(&option);
+                (label, option)
+            })
+            .collect();
+
+        let weak_table_for_map = Rc::downgrade(self);
+        let checks_for_map = checks.clone();
+        popover.connect_map(move |_| {
+            let Some(state) = weak_table_for_map.upgrade() else {
+                return;
+            };
+            let active = state.database_active.get();
+            for (idx, check) in checks_for_map.borrow().iter() {
+                check.set_visible(active == Some(*idx));
+            }
+        });
+
+        let filter_items = Rc::new(filter_items);
+        search.connect_changed(move |entry| {
+            let query = entry.text().to_lowercase();
+            for (label, option) in filter_items.iter() {
+                option.set_visible(label.to_lowercase().contains(&query));
+            }
+        });
+
+        popover.set_child(Some(&content));
+        let table_button = gtk::MenuButton::builder()
+            .popover(&popover)
+            .tooltip_text(format!("Select table ({})", data.name))
+            .valign(gtk::Align::Center)
+            .build();
+        table_button.set_child(Some(&crate::assets::primary_icon(
+            crate::assets::icons::DATABASE,
+            16,
+        )));
+        table_button.add_css_class("preview-header-action");
+
+        let stack = gtk::Stack::new();
+        stack.set_transition_type(gtk::StackTransitionType::Crossfade);
+        stack.set_transition_duration(120);
+        stack.set_hexpand(true);
+        stack.set_vexpand(true);
+
+        let view_toggle = gtk::Button::builder()
+            .tooltip_text("View schema")
+            .valign(gtk::Align::Center)
+            .build();
+        view_toggle.add_css_class("preview-header-action");
+        view_toggle.set_child(Some(&crate::assets::primary_icon(
+            crate::assets::icons::FILE_CODE,
+            16,
+        )));
+        let stack_for_toggle = stack.clone();
+        view_toggle.connect_clicked(move |btn| {
+            let showing_schema = stack_for_toggle.visible_child_name().as_deref() == Some("schema");
+            if showing_schema {
+                stack_for_toggle.set_visible_child_name("data");
+                btn.set_tooltip_text(Some("View schema"));
+                btn.set_child(Some(&crate::assets::primary_icon(
+                    crate::assets::icons::FILE_CODE,
+                    16,
+                )));
+            } else {
+                stack_for_toggle.set_visible_child_name("schema");
+                btn.set_tooltip_text(Some("View data"));
+                btn.set_child(Some(&crate::assets::primary_icon(
+                    crate::assets::icons::ROWS,
+                    16,
+                )));
+            }
+        });
+
+        let copy_button = gtk::Button::builder()
+            .tooltip_text("Copy")
+            .valign(gtk::Align::Center)
+            .build();
+        copy_button.add_css_class("preview-header-action");
+        copy_button.set_child(Some(&crate::assets::primary_icon(
+            crate::assets::icons::COPY,
+            16,
+        )));
+        let page_csv = data
+            .rows_csv
+            .replace(crate::sandbox_helper::SQLITE_NULL_SENTINEL, "");
+        let schema_sql = data.schema.clone();
+        let stack_for_copy = stack.clone();
+        copy_button.connect_clicked(move |btn| {
+            let showing_schema = stack_for_copy.visible_child_name().as_deref() == Some("schema");
+            if let Some(display) = gtk::gdk::Display::default() {
+                display.clipboard().set_text(if showing_schema {
+                    &schema_sql
+                } else {
+                    &page_csv
+                });
+                btn.set_tooltip_text(Some("Copied!"));
+            }
+        });
+
+        self.actions.append(&table_button);
+        self.actions.append(&view_toggle);
+        self.actions.append(&copy_button);
+
+        stack.set_vexpand(true);
+
+        let data_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        data_box.set_hexpand(true);
+        data_box.set_vexpand(true);
+
+        if headers.is_empty() {
+            let empty_box = gtk::Box::new(gtk::Orientation::Vertical, 8);
+            empty_box.set_halign(gtk::Align::Center);
+            empty_box.set_valign(gtk::Align::Center);
+            empty_box.set_hexpand(true);
+            empty_box.set_vexpand(true);
+
+            let empty_icon = crate::assets::primary_icon(crate::assets::icons::INFO, 28);
+            let empty_title = gtk::Label::new(Some("Table has no data"));
+            empty_title.add_css_class("preview-database-empty-title");
+            let empty_desc = gtk::Label::new(Some("0 rows recorded in this table."));
+            empty_desc.add_css_class("preview-database-empty");
+
+            empty_box.append(&empty_icon);
+            empty_box.append(&empty_title);
+            empty_box.append(&empty_desc);
+            data_box.append(&empty_box);
+        } else {
+            let rows_data: Rc<Vec<Vec<String>>> = Rc::new(data_rows);
+            let model = gtk::StringList::new(&[] as &[&str]);
+            for index in 0..rows_data.len() {
+                model.append(&index.to_string());
+            }
+            let selection = gtk::NoSelection::new(Some(model));
+            let column_view = gtk::ColumnView::new(Some(selection));
+            column_view.set_hexpand(true);
+            column_view.set_vexpand(true);
+            column_view.set_show_row_separators(false);
+            column_view.set_show_column_separators(true);
+
+            for (col_idx, header) in headers.iter().enumerate() {
+                let decl = column_decl_for(&data.columns, &headers, col_idx).to_owned();
+                let rows_for_bind = rows_data.clone();
+                let factory = gtk::SignalListItemFactory::new();
+                let col_idx_for_bind = col_idx;
+                factory.connect_setup(move |_, item| {
+                    let label = gtk::Label::new(None);
+                    label.add_css_class("preview-database-cell");
+                    label.set_halign(gtk::Align::Start);
+                    label.set_xalign(0.0);
+                    label.set_single_line_mode(true);
+                    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                    if let Some(item) = item.downcast_ref::<gtk::ListItem>() {
+                        item.set_child(Some(&label));
+                    }
+                });
+                factory.connect_bind(move |_, item| {
+                    let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+                        return;
+                    };
+                    let Some(label) = item.child().and_downcast::<gtk::Label>() else {
+                        return;
+                    };
+                    let cell = rows_for_bind
+                        .get(item.position() as usize)
+                        .and_then(|row| row.get(col_idx_for_bind))
+                        .map_or("", String::as_str);
+                    label.set_halign(gtk::Align::Start);
+                    label.set_xalign(0.0);
+                    if cell == crate::sandbox_helper::SQLITE_NULL_SENTINEL {
+                        label.set_text("NULL");
+                        label.add_css_class("preview-database-cell-null");
+                        label.remove_css_class("preview-database-cell-numeric");
+                        label.set_tooltip_text(None);
+                    } else if cell.is_empty() {
+                        label.set_text("");
+                        label.remove_css_class("preview-database-cell-null");
+                        label.remove_css_class("preview-database-cell-numeric");
+                        label.set_tooltip_text(Some("(empty string)"));
+                    } else if declares_blob(&decl) {
+                        label.set_text("BLOB");
+                        label.add_css_class("preview-database-cell-null");
+                        label.remove_css_class("preview-database-cell-numeric");
+                        label.set_tooltip_text(Some(cell));
+                    } else {
+                        let display = format_database_cell(cell);
+                        label.remove_css_class("preview-database-cell-null");
+                        if (!decl.is_empty() && declares_numeric_affinity(&decl))
+                            || is_numeric_cell(cell)
+                        {
+                            label.add_css_class("preview-database-cell-numeric");
+                        } else {
+                            label.remove_css_class("preview-database-cell-numeric");
+                        }
+                        label.set_text(&display);
+                        if display != cell || cell.len() > 15 {
+                            label.set_tooltip_text(Some(cell));
+                        } else {
+                            label.set_tooltip_text(None);
+                        }
+                    }
+                });
+
+                let column = gtk::ColumnViewColumn::new(Some(header), Some(factory));
+                column.set_expand(true);
+                column.set_resizable(true);
+                column_view.append_column(&column);
+            }
+
+            let scroll = gtk::ScrolledWindow::builder()
+                .child(&column_view)
+                .hscrollbar_policy(gtk::PolicyType::Automatic)
+                .vscrollbar_policy(gtk::PolicyType::Automatic)
+                .hexpand(true)
+                .vexpand(true)
+                .build();
+            data_box.append(&scroll);
+
+            let has_more = match total_rows {
+                Some(total) => (page + 1) * DATABASE_PAGE_SIZE < total,
+                None => rows_data.len() >= DATABASE_PAGE_SIZE,
+            };
+
+            if page > 0 || has_more {
+                let pager = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+                pager.add_css_class("preview-database-pager");
+
+                let start = page * DATABASE_PAGE_SIZE + 1;
+                let end = start + rows_data.len().saturating_sub(1);
+                let range_text = match total_rows {
+                    Some(total) if total > 0 => {
+                        format!("{start}–{end} of {total} · {col_count} cols")
+                    }
+                    Some(0) => format!("0 rows · {col_count} cols"),
+                    _ => format!("{start}–{end} · {col_count} cols"),
+                };
+                let range_label = gtk::Label::new(Some(&range_text));
+                range_label.add_css_class("preview-database-pager-range");
+                range_label.set_halign(gtk::Align::Start);
+                range_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+                range_label.set_tooltip_text(Some(&database_count_badge(total_rows, col_count)));
+
+                let pager_spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                pager_spacer.set_hexpand(true);
+
+                let prev = gtk::Button::builder().tooltip_text("Previous page").build();
+                prev.add_css_class("preview-header-action");
+                let prev_icon = crate::assets::primary_icon(crate::assets::icons::ARROW_LEFT, 12);
+                prev.set_child(Some(&prev_icon));
+                prev.set_sensitive(page > 0);
+
+                let total_pages = total_rows
+                    .map(|t| t.div_ceil(DATABASE_PAGE_SIZE))
+                    .unwrap_or(0);
+                let page_info = if total_pages > 0 {
+                    format!("{}/{}", page + 1, total_pages)
+                } else {
+                    format!("{}", page + 1)
+                };
+                let page_label = gtk::Label::new(Some(&page_info));
+                page_label.add_css_class("preview-database-pager-label");
+
+                let next = gtk::Button::builder().tooltip_text("Next page").build();
+                next.add_css_class("preview-header-action");
+                let next_icon = crate::assets::primary_icon(crate::assets::icons::ARROW_RIGHT, 12);
+                next.set_child(Some(&next_icon));
+                next.set_sensitive(has_more);
+
+                pager.append(&range_label);
+                pager.append(&pager_spacer);
+                pager.append(&prev);
+                pager.append(&page_label);
+                pager.append(&next);
+                data_box.append(&pager);
+
+                let weak = Rc::downgrade(self);
+                if let Some(entry) = self.current.borrow().clone() {
+                    let entry_prev = entry.clone();
+                    prev.connect_clicked(move |_| {
+                        let Some(state) = weak.upgrade() else {
+                            return;
+                        };
+                        let Some(table) = state.database_active.get() else {
+                            return;
+                        };
+                        let cur = state.database_page.get();
+                        if cur == 0 {
+                            return;
+                        }
+                        let new_page = cur - 1;
+                        state.database_page.set(new_page);
+                        if let Some(area) = state.database_content.borrow().clone() {
+                            clear_box(&area);
+                            area.append(&database_spinner());
+                        }
+                        state.load(entry_prev.clone(), encode_database_page(table, new_page));
+                    });
+
+                    let weak_next = Rc::downgrade(self);
+                    next.connect_clicked(move |_| {
+                        let Some(state) = weak_next.upgrade() else {
+                            return;
+                        };
+                        let Some(table) = state.database_active.get() else {
+                            return;
+                        };
+                        let new_page = state.database_page.get() + 1;
+                        state.database_page.set(new_page);
+                        if let Some(area) = state.database_content.borrow().clone() {
+                            clear_box(&area);
+                            area.append(&database_spinner());
+                        }
+                        state.load(entry.clone(), encode_database_page(table, new_page));
+                    });
+                }
+            }
+        }
+        stack.add_named(&data_box, Some("data"));
+
+        let schema_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        schema_box.set_hexpand(true);
+        schema_box.set_vexpand(true);
+
+        let buffer = sourceview5::Buffer::new(None);
+        let languages = sourceview5::LanguageManager::default();
+        let language = languages.language("sql");
+        buffer.set_language(language.as_ref());
+        super::theme::register_source_buffer(&buffer);
+        buffer.set_highlight_syntax(true);
+        buffer.set_text(&data.schema);
+
+        let view = sourceview5::View::builder()
+            .buffer(&buffer)
+            .cursor_visible(false)
+            .editable(false)
+            .highlight_current_line(false)
+            .left_margin(14)
+            .right_margin(14)
+            .top_margin(12)
+            .bottom_margin(12)
+            .monospace(true)
+            .show_line_numbers(true)
+            .wrap_mode(gtk::WrapMode::Word)
+            .build();
+
+        let schema_scroll = gtk::ScrolledWindow::builder()
+            .child(&view)
+            .hscrollbar_policy(gtk::PolicyType::Automatic)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .hexpand(true)
+            .vexpand(true)
+            .build();
+        schema_box.append(&schema_scroll);
+
+        stack.add_named(&schema_box, Some("schema"));
+
+        content_area.append(&stack);
+    }
+
     fn clear_content(&self) {
         if let Some(stream) = self.media.borrow_mut().take() {
             for handler in self.media_signals.borrow_mut().drain(..) {
@@ -1397,7 +1933,10 @@ impl PreviewState {
         self.media_toggle_mute.replace(None);
         self.media_volume_slider.replace(None);
         self.media_volume_icon.replace(None);
+        self.database_content.replace(None);
+        self.content.remove_css_class("preview-database-mode");
         self.print.set_visible(false);
+        clear_box(&self.actions);
         clear_box(&self.content);
     }
 
@@ -1811,6 +2350,16 @@ fn clear_box(box_: &gtk::Box) {
     }
 }
 
+fn database_spinner() -> gtk::Spinner {
+    let spinner = gtk::Spinner::new();
+    spinner.start();
+    spinner.set_halign(gtk::Align::Center);
+    spinner.set_valign(gtk::Align::Center);
+    spinner.set_hexpand(true);
+    spinner.set_vexpand(true);
+    spinner
+}
+
 fn metadata_size(entry: &FileEntry) -> String {
     match entry.size {
         MetadataValue::Known(bytes) => format_file_size(bytes),
@@ -1909,6 +2458,151 @@ fn fmt_time(microseconds: i64) -> String {
     let minutes = total_seconds / 60;
     let seconds = total_seconds % 60;
     format!("{minutes}:{seconds:02}")
+}
+
+fn database_count_badge(total_rows: Option<usize>, column_count: usize) -> String {
+    let rows = match total_rows {
+        Some(1) => "1 row".to_owned(),
+        Some(total) => format!("{total} rows"),
+        None => String::new(),
+    };
+    if column_count == 0 {
+        return rows;
+    }
+    let columns = if column_count == 1 {
+        "1 col".to_owned()
+    } else {
+        format!("{column_count} cols")
+    };
+    if rows.is_empty() {
+        columns
+    } else {
+        format!("{rows} · {columns}")
+    }
+}
+
+fn declares_blob(decl_type: &str) -> bool {
+    decl_type.to_ascii_uppercase().contains("BLOB")
+}
+
+fn declares_numeric_affinity(decl_type: &str) -> bool {
+    if decl_type.trim().is_empty() {
+        return false;
+    }
+    let normalized = decl_type.to_ascii_uppercase();
+    normalized.contains("INT")
+        || normalized.contains("REAL")
+        || normalized.contains("FLOA")
+        || normalized.contains("DOUB")
+        || !(normalized.contains("CHAR")
+            || normalized.contains("CLOB")
+            || normalized.contains("TEXT")
+            || normalized.contains("BLOB"))
+}
+
+fn column_decl_for<'a>(
+    columns: &'a [crate::services::DatabaseColumn],
+    headers: &[String],
+    index: usize,
+) -> &'a str {
+    if let Some(column) = columns.get(index).filter(|column| {
+        headers
+            .get(index)
+            .is_some_and(|header| *header == column.name)
+    }) {
+        return column.decl_type.as_str();
+    }
+    headers
+        .get(index)
+        .and_then(|header| columns.iter().find(|column| column.name == *header))
+        .map_or("", |column| column.decl_type.as_str())
+}
+
+const DATABASE_CELL_DISPLAY_LIMIT: usize = 200;
+
+fn is_numeric_cell(cell: &str) -> bool {
+    !cell.is_empty() && cell.parse::<f64>().is_ok()
+}
+
+fn format_database_cell(cell: &str) -> String {
+    let single_line = cell.replace('\r', "").replace('\n', " ⏎ ");
+    if single_line.chars().count() > DATABASE_CELL_DISPLAY_LIMIT {
+        format!(
+            "{}…",
+            single_line
+                .chars()
+                .take(DATABASE_CELL_DISPLAY_LIMIT)
+                .collect::<String>()
+        )
+    } else {
+        single_line
+    }
+}
+
+fn parse_csv_rows(csv: &str) -> (Vec<String>, Vec<Vec<String>>) {
+    let mut rows: Vec<Vec<String>> = Vec::new();
+    let mut current_row: Vec<String> = Vec::new();
+    let mut current_cell = String::new();
+    let mut in_quotes = false;
+    let mut saw_cell_content = false;
+    let mut chars = csv.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if in_quotes {
+            if ch == '"' {
+                if chars.peek() == Some(&'"') {
+                    current_cell.push('"');
+                    chars.next();
+                } else {
+                    in_quotes = false;
+                }
+            } else {
+                current_cell.push(ch);
+            }
+        } else {
+            match ch {
+                '"' => {
+                    in_quotes = true;
+                    saw_cell_content = true;
+                }
+                ',' => {
+                    current_row.push(std::mem::take(&mut current_cell));
+                    saw_cell_content = false;
+                }
+                '\r' => {
+                    if chars.peek() == Some(&'\n') {
+                        chars.next();
+                    }
+                    if saw_cell_content || !current_cell.is_empty() || !current_row.is_empty() {
+                        current_row.push(std::mem::take(&mut current_cell));
+                        rows.push(std::mem::take(&mut current_row));
+                        saw_cell_content = false;
+                    }
+                }
+                '\n' => {
+                    if saw_cell_content || !current_cell.is_empty() || !current_row.is_empty() {
+                        current_row.push(std::mem::take(&mut current_cell));
+                        rows.push(std::mem::take(&mut current_row));
+                        saw_cell_content = false;
+                    }
+                }
+                other => {
+                    current_cell.push(other);
+                    saw_cell_content = true;
+                }
+            }
+        }
+    }
+    if saw_cell_content || !current_cell.is_empty() || !current_row.is_empty() {
+        current_row.push(current_cell);
+        rows.push(current_row);
+    }
+
+    if rows.is_empty() {
+        return (Vec::new(), Vec::new());
+    }
+    let headers = rows.remove(0);
+    (headers, rows)
 }
 
 fn preview_drag_entries(entry: Option<&FileEntry>) -> Option<Vec<FileEntry>> {

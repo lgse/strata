@@ -9,7 +9,8 @@ use crate::{
     sandbox::{Cancellation, MediaPreviewBackend, ParseOperation},
     services::{
         LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
-        content_family, has_plain_text_extension, is_non_executable_extensionless_dotfile,
+        content_family, has_database_extension, has_plain_text_extension,
+        is_non_executable_extensionless_dotfile,
     },
 };
 
@@ -60,24 +61,32 @@ impl PreviewProvider for LocalPreviewProvider {
                 .has_attribute(gio::FILE_ATTRIBUTE_UNIX_MODE)
                 .then(|| info.attribute_uint32(gio::FILE_ATTRIBUTE_UNIX_MODE));
             let mut content = content_family(&content_type);
-            if matches!(content, PreviewContent::Unsupported)
-                && (gio::content_type_is_a(&content_type, "text/plain")
+            if matches!(content, PreviewContent::Unsupported) {
+                if gio::content_type_is_a(&content_type, "text/plain")
                     || has_plain_text_extension(&entry.native_name)
-                    || is_non_executable_extensionless_dotfile(&entry.native_name, unix_mode))
-            {
-                content = PreviewContent::Text {
-                    content: String::new(),
-                    truncated: false,
-                };
+                    || is_non_executable_extensionless_dotfile(&entry.native_name, unix_mode)
+                {
+                    content = PreviewContent::Text {
+                        content: String::new(),
+                        truncated: false,
+                    };
+                } else if has_database_extension(&entry.native_name) {
+                    content = PreviewContent::Database {
+                        tables: Vec::new(),
+                        selected: None,
+                    };
+                }
             }
 
             let operation = match content {
                 PreviewContent::Pdf { .. } => Some(ParseOperation::PreviewPdf),
                 PreviewContent::Image => Some(ParseOperation::PreviewImage),
                 PreviewContent::Media => Some(ParseOperation::PreviewMedia),
+                PreviewContent::Database { .. } => Some(ParseOperation::PreviewDatabase),
                 PreviewContent::Text { .. }
                 | PreviewContent::Rasterized { .. }
                 | PreviewContent::SandboxedMedia { .. }
+                | PreviewContent::DatabaseTable(_)
                 | PreviewContent::Unsupported => None,
             };
             if let Some(operation) = operation {
@@ -89,7 +98,11 @@ impl PreviewProvider for LocalPreviewProvider {
                     });
                     return;
                 };
-                let value = request.pdf_page;
+                let value = if operation == ParseOperation::PreviewPdf && request.pdf_page < 0 {
+                    0
+                } else {
+                    request.pdf_page
+                };
                 let cancellation = cancellation_for_task.clone();
                 content = match gio::spawn_blocking(move || {
                     crate::sandbox::parse(
@@ -111,6 +124,9 @@ impl PreviewProvider for LocalPreviewProvider {
                     }
                     Ok(Ok(output)) if operation == ParseOperation::PreviewMedia => {
                         PreviewContent::SandboxedMedia { data: output.data }
+                    }
+                    Ok(Ok(output)) if operation == ParseOperation::PreviewDatabase => {
+                        parse_database_output(&output.data, value)
                     }
                     Ok(Ok(output)) => PreviewContent::Rasterized { png: output.data },
                     Ok(Err(message)) => {
@@ -168,6 +184,93 @@ async fn read_text(file: &gio::File, byte_limit: usize) -> Result<(String, bool)
     let truncated = bytes.len() > byte_limit;
     let sample = &bytes[..bytes.len().min(byte_limit)];
     Ok((String::from_utf8_lossy(sample).into_owned(), truncated))
+}
+
+fn parse_database_output(data: &[u8], value: i32) -> PreviewContent {
+    let text = String::from_utf8_lossy(data);
+    if text.is_empty() {
+        return PreviewContent::Database {
+            tables: Vec::new(),
+            selected: None,
+        };
+    }
+
+    if let Some((tables_part, data_part)) = text.split_once("\n---DATA---\n") {
+        let tables = parse_tables_list(tables_part);
+        let selected = parse_table_data(data_part, 0);
+        PreviewContent::Database { tables, selected }
+    } else if value >= 0 {
+        let page = crate::services::decode_database_page(value)
+            .map(|(_, page)| page)
+            .unwrap_or(0);
+        let data = parse_table_data(&text, page);
+        if let Some(data) = data {
+            PreviewContent::DatabaseTable(data)
+        } else {
+            PreviewContent::Database {
+                tables: Vec::new(),
+                selected: None,
+            }
+        }
+    } else {
+        let tables = parse_tables_list(&text);
+        PreviewContent::Database {
+            tables,
+            selected: None,
+        }
+    }
+}
+
+fn parse_tables_list(raw: &str) -> Vec<crate::services::DatabaseTableItem> {
+    raw.lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let mut parts = line.split('\t');
+            let name = parts.next().unwrap_or("").to_owned();
+            let kind = parts.next().unwrap_or("table");
+            crate::services::DatabaseTableItem {
+                name,
+                is_view: kind == "view",
+            }
+        })
+        .collect()
+}
+
+fn parse_table_data(raw: &str, page: usize) -> Option<crate::services::DatabaseTableData> {
+    let (name_block, count_and_rows) = raw.split_once("\n---COUNT---\n")?;
+    let (name, rest) = name_block
+        .split_once("\n---SCHEMA---\n")
+        .unwrap_or((name_block, ""));
+    // Helpers predating ---TYPES--- emit no marker; the whole block is schema.
+    let (schema, types_raw) = rest.split_once("\n---TYPES---\n").unwrap_or((rest, ""));
+    let (count_str, rows_csv) = count_and_rows
+        .split_once("\n---ROWS---\n")
+        .unwrap_or((count_and_rows, ""));
+    let total_rows = count_str.trim().parse::<usize>().ok();
+
+    Some(crate::services::DatabaseTableData {
+        name: name.to_owned(),
+        is_view: false,
+        schema: schema.to_owned(),
+        columns: parse_columns_list(types_raw),
+        total_rows,
+        rows_csv: rows_csv.to_owned(),
+        page,
+    })
+}
+
+fn parse_columns_list(raw: &str) -> Vec<crate::services::DatabaseColumn> {
+    raw.lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            let mut parts = line.split('\t');
+            crate::services::DatabaseColumn {
+                name: parts.next().unwrap_or("").to_owned(),
+                decl_type: parts.next().unwrap_or("").trim().to_owned(),
+            }
+        })
+        .filter(|column| !column.name.is_empty())
+        .collect()
 }
 
 #[cfg(test)]

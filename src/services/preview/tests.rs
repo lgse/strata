@@ -59,8 +59,41 @@ fn classifies_common_preview_content_types() {
         content_family("application/problem+json"),
         PreviewContent::Text { .. }
     ));
+    assert!(matches!(
+        content_family("application/vnd.sqlite3"),
+        PreviewContent::Database { .. }
+    ));
+    assert!(matches!(
+        content_family("application/x-sqlite3"),
+        PreviewContent::Database { .. }
+    ));
     assert_eq!(
         content_family("application/octet-stream"),
         PreviewContent::Unsupported
     );
+}
+
+#[test]
+fn database_page_codec_round_trips_large_pages() {
+    for (table, page) in [(0, 0), (0, 1), (2, 1), (3, 45_000)] {
+        let encoded = super::encode_database_page(table, page);
+        assert_eq!(super::decode_database_page(encoded), Some((table, page)));
+    }
+    assert_eq!(super::decode_database_page(-1), None);
+}
+
+#[test]
+fn recognizes_database_file_extensions() {
+    for ext in [
+        "db", "sqlite", "sqlite3", "db3", "s3db", "sl3", "DB", "SQLITE3",
+    ] {
+        let name = format!("app.{ext}");
+        assert!(super::has_database_extension(std::ffi::OsStr::new(&name)));
+    }
+    assert!(!super::has_database_extension(std::ffi::OsStr::new(
+        "data.json"
+    )));
+    assert!(!super::has_database_extension(std::ffi::OsStr::new(
+        "document.pdf"
+    )));
 }

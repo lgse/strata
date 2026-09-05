@@ -25,6 +25,7 @@ pub mod icons {
     pub const CLIPBOARD_PASTE: &str = "strata-clipboard-paste";
     pub const COPY: &str = "strata-copy";
     pub const CORNER_DOWN_LEFT: &str = "strata-corner-down-left";
+    pub const DATABASE: &str = "strata-database";
     pub const DOCUMENTS: &str = "strata-file-text";
     pub const DOWNLOADS: &str = "strata-download";
     pub const EJECT: &str = "strata-eject";

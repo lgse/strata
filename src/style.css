@@ -1514,7 +1514,14 @@ paned > separator {
   font-weight: 700;
 }
 
-.preview-header-action {
+menubutton.preview-header-action {
+  background: transparent;
+  border: none;
+  padding: 0;
+}
+
+button.preview-header-action,
+menubutton.preview-header-action > button {
   background: transparent;
   border: 1px solid transparent;
   border-radius: 5px;
@@ -1526,25 +1533,30 @@ paned > separator {
   transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
 }
 
-.preview-header-action:hover {
+button.preview-header-action:hover,
+menubutton.preview-header-action > button:hover,
+menubutton.preview-header-action > button:checked {
   background: alpha(@theme_accent, 0.15);
   border-color: alpha(@theme_border, 0.42);
   color: @theme_accent;
 }
 
-.preview-header-action:active {
+button.preview-header-action:active,
+menubutton.preview-header-action > button:active {
   background: alpha(@theme_accent, 0.22);
   border-color: @theme_accent;
   color: @theme_accent;
   transform: scale(0.97);
 }
 
-.preview-header-action:focus-visible {
+button.preview-header-action:focus-visible,
+menubutton.preview-header-action > button:focus-visible {
   outline: 2px solid alpha(@theme_accent, 0.52);
   outline-offset: 1px;
 }
 
-.preview-header-action:disabled {
+button.preview-header-action:disabled,
+menubutton.preview-header-action > button:disabled {
   background: transparent;
   border-color: transparent;
   color: @theme_dim_text;
@@ -1742,6 +1754,124 @@ paned > separator {
 
 .preview-pdf-list > row {
   padding: 0 6px 6px;
+}
+
+/* ── Background reset ─────────────────────────────────────────────── */
+
+.preview-content.preview-database-mode,
+.preview-content.preview-database-mode scrolledwindow,
+.preview-content.preview-database-mode viewport,
+.preview-content.preview-database-mode paned,
+.preview-content.preview-database-mode columnview,
+.preview-content.preview-database-mode listview,
+.preview-content.preview-database-mode listview row {
+  background: @theme_bg;
+}
+
+/* ── ColumnView data grid (reusing explorer table design tokens) ─── */
+
+.preview-database-content columnview {
+  background: @theme_bg;
+}
+
+.preview-database-content columnview header {
+  background: @theme_surface;
+  border-bottom: 1px solid alpha(@theme_border, 0.6);
+  min-height: 28px;
+  padding: 0;
+}
+
+.preview-database-content columnview header > button {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: @theme_dim_text;
+  font-size: 0.82em;
+  font-weight: 700;
+  min-height: 28px;
+  padding: 0 12px;
+  transition: background 160ms ease-out, color 160ms ease-out;
+}
+
+.preview-database-content columnview separator {
+  background: alpha(@theme_border, 0.18);
+  min-width: 1px;
+}
+
+.preview-database-content columnview header > button label {
+  font-size: 11px;
+  font-weight: 700;
+  color: @theme_dim_text;
+}
+
+.preview-database-content columnview header > button:hover {
+  background: alpha(@theme_accent, 0.15);
+  color: @theme_text;
+}
+
+.preview-database-content columnview row {
+  background: transparent;
+  border-bottom: 1px solid alpha(@theme_border, 0.16);
+  color: @theme_text;
+  min-height: 28px;
+}
+
+.preview-database-content columnview row:hover {
+  background: alpha(@theme_accent, 0.12);
+}
+
+.preview-database-content columnview row:selected {
+  background: alpha(@theme_highlight, 0.72);
+  color: @theme_text;
+}
+
+.preview-database-cell {
+  color: @theme_text;
+  font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", "Cascadia Code", monospace;
+  font-size: 11.5px;
+  padding: 4px 12px;
+}
+
+.preview-database-cell-null {
+  color: alpha(@theme_dim_text, 0.35);
+  font-style: italic;
+  font-size: 10.5px;
+}
+
+.preview-database-cell-numeric {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Pager ─────────────────────────────────────────────────────────── */
+
+.preview-database-pager {
+  padding: 4px 10px;
+  border-top: 1px solid alpha(@theme_border, 0.25);
+  background: alpha(@theme_surface, 0.25);
+  min-height: 28px;
+}
+
+.preview-database-pager-range,
+.preview-database-pager-label {
+  color: @theme_dim_text;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* ── Empty state ──────────────────────────────────────────────────── */
+
+.preview-database-empty {
+  color: @theme_dim_text;
+  padding: 20px;
+  font-size: 12px;
+}
+
+.preview-database-empty-title {
+  color: @theme_text;
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 2px;
 }
 
 .preview-feedback {

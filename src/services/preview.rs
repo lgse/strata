@@ -18,13 +18,73 @@ pub struct PreviewRequest {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DatabaseTableItem {
+    pub name: String,
+    pub is_view: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DatabaseColumn {
+    pub name: String,
+    pub decl_type: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DatabaseTableData {
+    pub name: String,
+    pub is_view: bool,
+    pub schema: String,
+    pub columns: Vec<DatabaseColumn>,
+    pub total_rows: Option<usize>,
+    pub rows_csv: String,
+    pub page: usize,
+}
+
+/// Rows per database page. Mirrors `MAX_DATABASE_ROWS` in the sandbox helper.
+pub const DATABASE_PAGE_SIZE: usize = 50;
+
+/// Stride separating the table index from the page number when both are packed
+/// into the single `pdf_page` request field. Large enough for ~5M rows per table.
+pub const DATABASE_PAGE_STRIDE: i32 = 100_000;
+
+pub fn encode_database_page(table: usize, page: usize) -> i32 {
+    (table
+        .saturating_mul(DATABASE_PAGE_STRIDE as usize)
+        .saturating_add(page)) as i32
+}
+
+pub fn decode_database_page(value: i32) -> Option<(usize, usize)> {
+    if value < 0 {
+        return None;
+    }
+    let stride = DATABASE_PAGE_STRIDE as usize;
+    Some(((value as usize) / stride, (value as usize) % stride))
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PreviewContent {
-    Text { content: String, truncated: bool },
+    Text {
+        content: String,
+        truncated: bool,
+    },
     Image,
     Media,
-    Rasterized { png: Vec<u8> },
-    SandboxedMedia { data: Vec<u8> },
-    Pdf { png: Vec<u8>, page: i32, pages: i32 },
+    Rasterized {
+        png: Vec<u8>,
+    },
+    SandboxedMedia {
+        data: Vec<u8>,
+    },
+    Pdf {
+        png: Vec<u8>,
+        page: i32,
+        pages: i32,
+    },
+    Database {
+        tables: Vec<DatabaseTableItem>,
+        selected: Option<DatabaseTableData>,
+    },
+    DatabaseTable(DatabaseTableData),
     Unsupported,
 }
 
@@ -69,12 +129,40 @@ pub(crate) fn is_non_executable_extensionless_dotfile(
     is_extensionless_dotfile(name) && unix_mode.is_some_and(|mode| mode & 0o111 == 0)
 }
 
+pub(crate) fn has_database_extension(name: &OsStr) -> bool {
+    Path::new(name)
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| {
+            matches!(
+                extension.to_ascii_lowercase().as_str(),
+                "db" | "sqlite" | "sqlite3" | "db3" | "s3db" | "sl3"
+            )
+        })
+}
+
+fn is_sqlite_content_type(content_type: &str) -> bool {
+    matches!(
+        content_type,
+        "application/vnd.sqlite3"
+            | "application/x-sqlite3"
+            | "application/sqlite3"
+            | "application/x-sqlite"
+            | "application/vnd.sqlite"
+    )
+}
+
 pub(crate) fn content_family(content_type: &str) -> PreviewContent {
     if content_type == "application/pdf" {
         PreviewContent::Pdf {
             png: Vec::new(),
             page: 0,
             pages: 0,
+        }
+    } else if is_sqlite_content_type(content_type) {
+        PreviewContent::Database {
+            tables: Vec::new(),
+            selected: None,
         }
     } else if content_type == "image/gif" {
         PreviewContent::Media

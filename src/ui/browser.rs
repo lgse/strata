@@ -23,8 +23,9 @@ use crate::{
     services::{
         ArchiveFormat, FileSource, LoadHandle, LocationValidationError, MoveRecord,
         OperationProvider, PasteItem, PreviewContent, SearchEvent, TransferConflict, UndoMoveItem,
-        UriCredentials, backend_unavailable_message, content_family, has_plain_text_extension,
-        index_tree, is_extensionless_dotfile, sanitize_uri_credentials, validate_basename,
+        UriCredentials, backend_unavailable_message, content_family, has_database_extension,
+        has_plain_text_extension, index_tree, is_extensionless_dotfile, sanitize_uri_credentials,
+        validate_basename,
     },
 };
 
@@ -7366,6 +7367,7 @@ pub(super) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
         || gio::content_type_is_a(&content_type, "text/plain")
         || has_plain_text_extension(&entry.native_name)
         || is_extensionless_dotfile(&entry.native_name)
+        || has_database_extension(&entry.native_name)
 }
 
 fn entry_supports_printing(entry: &FileEntry) -> bool {

@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::{
-    MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, format_file_size, format_media_time,
-    media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
-    preview_width_for_empty_space, print_fit, print_page_starts, print_progress_for_page,
+    MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, column_decl_for,
+    database_count_badge, declares_blob, declares_numeric_affinity, format_database_cell,
+    format_file_size, format_media_time, is_numeric_cell, media_error_feedback,
+    pdf_zoom_after_scroll, preview_drag_entries, preview_width_for_empty_space, print_fit,
+    print_page_starts, print_progress_for_page,
 };
 
 #[test]
@@ -114,6 +116,149 @@ fn media_time_formats_minutes_and_seconds() {
 #[test]
 fn media_time_clamps_negative_timestamps_to_zero() {
     assert_eq!(format_media_time(-500_000, 10_000_000), "0:00/0:10");
+}
+
+#[test]
+fn parse_csv_rows_handles_basic_table() {
+    let csv = "id,name,role\n1,Alice,admin\n2,Bob,member";
+    let (headers, rows) = super::parse_csv_rows(csv);
+    assert_eq!(headers, vec!["id", "name", "role"]);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0], vec!["1", "Alice", "admin"]);
+    assert_eq!(rows[1], vec!["2", "Bob", "member"]);
+}
+
+#[test]
+fn parse_csv_rows_handles_quotes_and_commas() {
+    let csv = "id,description\n1,\"Item, with comma\"\n2,\"Item with \"\"quotes\"\"\"";
+    let (headers, rows) = super::parse_csv_rows(csv);
+    assert_eq!(headers, vec!["id", "description"]);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0], vec!["1", "Item, with comma"]);
+    assert_eq!(rows[1], vec!["2", "Item with \"quotes\""]);
+}
+
+#[test]
+fn parse_csv_rows_handles_multiline_cells() {
+    let csv = "id,notes\n1,\"Line 1\nLine 2\"\n2,Single line";
+    let (headers, rows) = super::parse_csv_rows(csv);
+    assert_eq!(headers, vec!["id", "notes"]);
+    assert_eq!(rows.len(), 2);
+    assert_eq!(rows[0], vec!["1", "Line 1\nLine 2"]);
+    assert_eq!(rows[1], vec!["2", "Single line"]);
+}
+
+#[test]
+fn parse_csv_rows_handles_empty_input() {
+    let (headers, rows) = super::parse_csv_rows("");
+    assert!(headers.is_empty());
+    assert!(rows.is_empty());
+}
+
+#[test]
+fn numeric_cells_cover_plain_and_scientific_notation() {
+    for cell in ["42", "-3.5", "+0.25", "1e6", "007"] {
+        assert!(is_numeric_cell(cell), "{cell} should align numerically");
+    }
+    for cell in ["", "12px", "1,000", "2024-01-02", "NULL", "  "] {
+        assert!(!is_numeric_cell(cell), "{cell} should align as text");
+    }
+}
+
+#[test]
+fn database_cells_flatten_newlines_and_truncate() {
+    assert_eq!(format_database_cell("Line 1\nLine 2"), "Line 1 ⏎ Line 2");
+    assert_eq!(format_database_cell("a\rb\nc"), "ab ⏎ c");
+    let long = "x".repeat(250);
+    let display = format_database_cell(&long);
+    assert_eq!(display.chars().count(), 201);
+    assert!(display.ends_with('…'));
+    assert_eq!(format_database_cell("short"), "short");
+}
+
+#[test]
+fn database_count_badge_combines_rows_and_columns() {
+    assert_eq!(database_count_badge(Some(1), 3), "1 row · 3 cols");
+    assert_eq!(database_count_badge(Some(42), 1), "42 rows · 1 col");
+    assert_eq!(database_count_badge(Some(0), 2), "0 rows · 2 cols");
+    assert_eq!(database_count_badge(None, 4), "4 cols");
+    assert_eq!(database_count_badge(Some(7), 0), "7 rows");
+    assert_eq!(database_count_badge(None, 0), "");
+}
+
+#[test]
+fn declared_types_drive_numeric_and_blob_cells() {
+    for decl in [
+        "INTEGER",
+        "INT",
+        "BIGINT",
+        "REAL",
+        "DOUBLE PRECISION",
+        "FLOAT",
+        "DECIMAL(10,2)",
+        "NUMERIC",
+        "BOOLEAN",
+    ] {
+        assert!(
+            declares_numeric_affinity(decl),
+            "{decl} should align numerically"
+        );
+        assert!(!declares_blob(decl));
+    }
+    for decl in ["TEXT", "VARCHAR(10)", "CHAR(1)", "CLOB", "BLOB", "", "  "] {
+        assert!(
+            !declares_numeric_affinity(decl),
+            "{decl} should not force alignment"
+        );
+    }
+    assert!(declares_blob("BLOB"));
+    assert!(!declares_blob("TEXT"));
+    assert!(!declares_blob(""));
+}
+
+#[test]
+fn column_decls_prefer_position_then_fall_back_to_name() {
+    let columns = vec![
+        crate::services::DatabaseColumn {
+            name: "id".to_owned(),
+            decl_type: "INTEGER".to_owned(),
+        },
+        crate::services::DatabaseColumn {
+            name: "name".to_owned(),
+            decl_type: "TEXT".to_owned(),
+        },
+    ];
+    let headers = vec!["id".to_owned(), "name".to_owned()];
+    assert_eq!(column_decl_for(&columns, &headers, 0), "INTEGER");
+    assert_eq!(column_decl_for(&columns, &headers, 5), "");
+
+    let reordered = vec!["name".to_owned(), "id".to_owned()];
+    assert_eq!(column_decl_for(&columns, &reordered, 0), "TEXT");
+    assert_eq!(column_decl_for(&[], &headers, 0), "");
+}
+
+#[test]
+fn parse_csv_rows_preserves_single_column_empty_and_null_rows() {
+    let csv = "name\n\x01\n\"\"\nvisible\n\"\"\n";
+    let (headers, rows) = super::parse_csv_rows(csv);
+    assert_eq!(headers, vec!["name"]);
+    assert_eq!(rows.len(), 4);
+    assert_eq!(rows[0], vec!["\x01"]);
+    assert_eq!(rows[1], vec![""]);
+    assert_eq!(rows[2], vec!["visible"]);
+    assert_eq!(rows[3], vec![""]);
+}
+
+#[test]
+fn parse_csv_rows_handles_multi_column_empty_and_null_cells() {
+    let csv = "c1,c2\r\n\x01,\"\"\r\n\"\",\x01\r\n\x01,\x01\r\n\"\",\"\"\r\n";
+    let (headers, rows) = super::parse_csv_rows(csv);
+    assert_eq!(headers, vec!["c1", "c2"]);
+    assert_eq!(rows.len(), 4);
+    assert_eq!(rows[0], vec!["\x01", ""]);
+    assert_eq!(rows[1], vec!["", "\x01"]);
+    assert_eq!(rows[2], vec!["\x01", "\x01"]);
+    assert_eq!(rows[3], vec!["", ""]);
 }
 
 #[test]

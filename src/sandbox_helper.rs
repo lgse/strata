@@ -52,6 +52,7 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             (png, Some(format!("{page} {pages}")))
         }
         "preview-media" => (render_media_preview(input, media_backend)?, None),
+        "preview-database" => (render_database(input, value)?, None),
         _ => return Err("Unknown preview helper operation".to_owned()),
     };
     fs::write(output, png).map_err(|error| error.to_string())?;
@@ -600,3 +601,167 @@ fn bounded_output(command: &mut Command, max_bytes: u64) -> io::Result<Output> {
 
 #[cfg(test)]
 mod tests;
+
+const MAX_DATABASE_ROWS: i32 = 50;
+pub const SQLITE_NULL_SENTINEL: &str = "\x01";
+
+#[derive(Clone, Debug)]
+struct DbTableItem {
+    name: String,
+    is_view: bool,
+}
+
+fn render_database(path: &Path, encoded: i32) -> Result<Vec<u8>, String> {
+    let tables = list_tables(path)?;
+    if tables.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    // ponytail: stride duplicated from services::preview to keep the sandbox
+    // helper dependency-free; keep in sync with DATABASE_PAGE_STRIDE.
+    const STRIDE: i32 = 100_000;
+    if encoded < 0 {
+        let first = &tables[0];
+        let (schema, types, count_str, rows) = query_table_details(path, &first.name, 0, true);
+        let tables_block = tables
+            .iter()
+            .map(|t| format!("{}\t{}", t.name, if t.is_view { "view" } else { "table" }))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let output = format!(
+            "{tables_block}\n---DATA---\n{}\n---SCHEMA---\n{schema}\n---TYPES---\n{types}\n---COUNT---\n{count_str}\n---ROWS---\n{rows}",
+            first.name
+        );
+        Ok(output.into_bytes())
+    } else {
+        let table_index = (encoded / STRIDE) as usize;
+        let page = (encoded % STRIDE) as usize;
+        let item = tables
+            .get(table_index)
+            .ok_or_else(|| "Table index out of range".to_owned())?;
+        let should_count = page == 0;
+        let (schema, types, count_str, rows) =
+            query_table_details(path, &item.name, page, should_count);
+        let output = format!(
+            "{}\n---SCHEMA---\n{schema}\n---TYPES---\n{types}\n---COUNT---\n{count_str}\n---ROWS---\n{rows}",
+            item.name
+        );
+        Ok(output.into_bytes())
+    }
+}
+
+fn list_tables(path: &Path) -> Result<Vec<DbTableItem>, String> {
+    let stdout = sqlite_command(
+        path,
+        &["-readonly", "-list"],
+        "SELECT name || char(9) || type FROM sqlite_master WHERE type IN ('table', 'view') AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name LIMIT 200;",
+        "Unable to read database tables",
+    )?;
+    let text = String::from_utf8_lossy(&stdout);
+    let items = text
+        .lines()
+        .filter(|line| !line.is_empty())
+        .map(|line| {
+            let mut parts = line.split('\t');
+            let name = parts.next().unwrap_or("").to_owned();
+            let kind = parts.next().unwrap_or("table");
+            DbTableItem {
+                name,
+                is_view: kind == "view",
+            }
+        })
+        .collect();
+    Ok(items)
+}
+
+fn query_table_details(
+    path: &Path,
+    name: &str,
+    page: usize,
+    should_count: bool,
+) -> (String, String, String, String) {
+    let quoted = quote_sql_string(name);
+    let ident = quote_sql_ident(name);
+    let schema = sqlite_scalar(
+        path,
+        &format!("SELECT sql FROM sqlite_master WHERE name={quoted};"),
+    )
+    .unwrap_or_default();
+    let types = sqlite_scalar(
+        path,
+        &format!("SELECT name || char(9) || \"type\" FROM pragma_table_info({quoted});"),
+    )
+    .unwrap_or_default();
+    let count_str = if should_count {
+        sqlite_scalar(path, &format!("SELECT COUNT(*) FROM {ident};")).unwrap_or_default()
+    } else {
+        String::new()
+    };
+    let offset = page * (MAX_DATABASE_ROWS as usize);
+    let rows = sqlite_query(
+        path,
+        &format!("SELECT * FROM {ident} LIMIT {MAX_DATABASE_ROWS} OFFSET {offset};"),
+    )
+    .unwrap_or_default();
+
+    (schema, types, count_str, rows)
+}
+
+fn sqlite_scalar(path: &Path, sql: &str) -> Result<String, String> {
+    let stdout = sqlite_command(
+        path,
+        &["-readonly", "-list"],
+        sql,
+        "Unable to query database schema",
+    )?;
+    Ok(String::from_utf8_lossy(&stdout).into_owned())
+}
+
+fn sqlite_query(path: &Path, sql: &str) -> Result<String, String> {
+    sqlite_command(
+        path,
+        &[
+            "-readonly",
+            "-csv",
+            "-header",
+            "-nullvalue",
+            SQLITE_NULL_SENTINEL,
+        ],
+        sql,
+        "Unable to query database table",
+    )
+    .map(|stdout| String::from_utf8_lossy(&stdout).into_owned())
+}
+
+fn sqlite_command(
+    path: &Path,
+    flags: &[&str],
+    sql: &str,
+    failure: &str,
+) -> Result<Vec<u8>, String> {
+    let output = bounded_output(
+        Command::new("sqlite3").args(flags).arg(path).arg(sql),
+        MAX_OUTPUT_BYTES,
+    )
+    .map_err(sqlite_command_error)?;
+    if !output.status.success() {
+        return Err(failure.to_owned());
+    }
+    Ok(output.stdout)
+}
+
+fn sqlite_command_error(error: io::Error) -> String {
+    if error.kind() == io::ErrorKind::NotFound {
+        "sqlite3 is required to preview database files".to_owned()
+    } else {
+        error.to_string()
+    }
+}
+
+fn quote_sql_ident(name: &str) -> String {
+    format!("\"{}\"", name.replace('"', "\"\""))
+}
+
+fn quote_sql_string(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "''"))
+}

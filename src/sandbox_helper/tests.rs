@@ -325,3 +325,37 @@ fn thumbnail_raw_uses_embedded_preview_fallbacks() {
         }
     }
 }
+
+#[test]
+fn sqlite_query_table_details_skips_count_when_not_requested() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let db = directory.path().join("test.db");
+    let status = Command::new("sqlite3")
+        .arg(&db)
+        .arg("CREATE TABLE users(id INTEGER PRIMARY KEY, name TEXT); INSERT INTO users VALUES (1, 'Alice'), (2, NULL), (3, '');")
+        .status();
+    if !status.is_ok_and(|s| s.success()) {
+        return;
+    }
+
+    let (_, _, count_with_flag, rows) = super::query_table_details(&db, "users", 0, true);
+    assert_eq!(count_with_flag.trim(), "3");
+    assert!(rows.contains("Alice"));
+    assert!(rows.contains(super::SQLITE_NULL_SENTINEL));
+
+    let (_, _, count_without_flag, _) = super::query_table_details(&db, "users", 1, false);
+    assert!(count_without_flag.is_empty());
+}
+
+#[test]
+fn sqlite_render_database_empty_table_list_returns_empty_bytes() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let db = directory.path().join("empty.db");
+    let status = Command::new("sqlite3").arg(&db).arg("VACUUM;").status();
+    if !status.is_ok_and(|s| s.success()) {
+        return;
+    }
+
+    let output = super::render_database(&db, -1).expect("render empty database");
+    assert!(output.is_empty());
+}

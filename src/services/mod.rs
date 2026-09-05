@@ -24,10 +24,12 @@ pub use operations::{
     TransferConflict, UndoMoveItem, UndoMoveRequest, validate_basename,
 };
 pub use preview::{
-    Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,
+    DATABASE_PAGE_SIZE, DatabaseColumn, DatabaseTableData, DatabaseTableItem, Preview,
+    PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,
+    decode_database_page, encode_database_page,
 };
 pub(crate) use preview::{
-    content_family, has_plain_text_extension, is_extensionless_dotfile,
+    content_family, has_database_extension, has_plain_text_extension, is_extensionless_dotfile,
     is_non_executable_extensionless_dotfile,
 };
 // `best_update`, `rollback_target`, and `ReleaseSummary` are deliberately not

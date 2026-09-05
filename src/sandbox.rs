@@ -63,6 +63,7 @@ pub(crate) enum ParseOperation {
     PreviewImage,
     PreviewPdf,
     PreviewMedia,
+    PreviewDatabase,
 }
 
 impl ParseOperation {
@@ -75,14 +76,15 @@ impl ParseOperation {
             Self::PreviewImage => "preview-image",
             Self::PreviewPdf => "preview-pdf",
             Self::PreviewMedia => "preview-media",
+            Self::PreviewDatabase => "preview-database",
         }
     }
 
     fn output_name(self) -> &'static str {
-        if self == Self::PreviewMedia {
-            "result.media"
-        } else {
-            "result.png"
+        match self {
+            Self::PreviewMedia => "result.media",
+            Self::PreviewDatabase => "result.db",
+            _ => "result.png",
         }
     }
 
@@ -102,7 +104,7 @@ impl ParseOperation {
             | Self::ThumbnailVideo => Some((256, 256, 256 * 256)),
             Self::PreviewImage => Some((1_400, 1_400, 1_400 * 1_400)),
             Self::PreviewPdf => Some((1_400, 1_800, 2_500_000)),
-            Self::PreviewMedia => None,
+            Self::PreviewMedia | Self::PreviewDatabase => None,
         }
     }
 
@@ -113,7 +115,7 @@ impl ParseOperation {
             | Self::ThumbnailPdf
             | Self::PreviewImage
             | Self::PreviewPdf => Some(MAX_RASTER_INPUT_BYTES),
-            Self::ThumbnailVideo | Self::PreviewMedia => None,
+            Self::ThumbnailVideo | Self::PreviewMedia | Self::PreviewDatabase => None,
         }
     }
 }
@@ -170,15 +172,22 @@ pub(crate) fn parse(
     } else {
         Vec::new()
     };
-    let mut command = sandbox_command(
-        &executable,
-        &input,
-        output.path(),
+    let database_companions = if operation == ParseOperation::PreviewDatabase {
+        open_database_companions(&input)
+    } else {
+        Vec::new()
+    };
+    let request = SandboxRequest {
+        executable: &executable,
+        input: &input,
+        output: output.path(),
         operation,
         value,
         media_backend,
-        &devices,
-    );
+        devices: &devices,
+        database_companions: &database_companions,
+    };
+    let mut command = sandbox_command(&request);
     command.stderr(Stdio::null());
     if operation == ParseOperation::PreviewMedia {
         command.stdout(Stdio::piped());
@@ -218,7 +227,9 @@ pub(crate) fn parse(
     let result_path = output.path().join(operation.output_name());
     let metadata = fs::metadata(&result_path)
         .map_err(|_| "The preview renderer produced no output".to_owned())?;
-    if metadata.len() == 0 || metadata.len() > MAX_OUTPUT_BYTES {
+    if (metadata.len() == 0 && operation != ParseOperation::PreviewDatabase)
+        || metadata.len() > MAX_OUTPUT_BYTES
+    {
         return Err("The preview renderer produced an invalid output size".to_owned());
     }
     let data = fs::read(result_path).map_err(|error| error.to_string())?;
@@ -365,15 +376,43 @@ fn wait_for_renderer_output(
     }
 }
 
-fn sandbox_command(
-    executable: &Path,
-    input: &Path,
-    output: &Path,
-    operation: ParseOperation,
-    value: i32,
-    media_backend: MediaPreviewBackend,
-    devices: &[PathBuf],
-) -> Command {
+fn open_database_companions(input: &Path) -> Vec<(rustix::fd::OwnedFd, &'static str)> {
+    let mut companions = Vec::new();
+    for suffix in ["-wal", "-shm", "-journal"] {
+        let mut companion_path = input.as_os_str().to_os_string();
+        companion_path.push(suffix);
+        let Ok(fd) = rustix::fs::open(
+            Path::new(&companion_path),
+            rustix::fs::OFlags::RDONLY
+                | rustix::fs::OFlags::NOFOLLOW
+                | rustix::fs::OFlags::NONBLOCK,
+            rustix::fs::Mode::empty(),
+        ) else {
+            continue;
+        };
+        let Ok(stat) = rustix::fs::fstat(&fd) else {
+            continue;
+        };
+        if rustix::fs::FileType::from_raw_mode(stat.st_mode) != rustix::fs::FileType::RegularFile {
+            continue;
+        }
+        companions.push((fd, suffix));
+    }
+    companions
+}
+
+pub(crate) struct SandboxRequest<'a> {
+    pub(crate) executable: &'a Path,
+    pub(crate) input: &'a Path,
+    pub(crate) output: &'a Path,
+    pub(crate) operation: ParseOperation,
+    pub(crate) value: i32,
+    pub(crate) media_backend: MediaPreviewBackend,
+    pub(crate) devices: &'a [PathBuf],
+    pub(crate) database_companions: &'a [(rustix::fd::OwnedFd, &'static str)],
+}
+
+fn sandbox_command(request: &SandboxRequest<'_>) -> Command {
     let mut command = Command::new("bwrap");
     command.args([
         "--unshare-all",
@@ -423,34 +462,49 @@ fn sandbox_command(
         "/etc/ImageMagick-6",
         "/etc/ImageMagick-6",
     ]);
-    let sandbox_input = sandbox_input_path(input);
-    if operation != ParseOperation::ThumbnailVideo {
-        command.arg("--ro-bind").arg(executable).arg("/app/strata");
+    let sandbox_input = sandbox_input_path(request.input);
+    if request.operation != ParseOperation::ThumbnailVideo {
+        command
+            .arg("--ro-bind")
+            .arg(request.executable)
+            .arg("/app/strata");
     }
-    command.arg("--ro-bind").arg(input).arg(&sandbox_input);
-    if operation != ParseOperation::PreviewMedia {
-        command.arg("--bind").arg(output).arg("/output");
+    command
+        .arg("--ro-bind")
+        .arg(request.input)
+        .arg(&sandbox_input);
+    for (fd, suffix) in request.database_companions {
+        use std::os::fd::AsRawFd;
+        command
+            .arg("--ro-bind-fd")
+            .arg(fd.as_raw_fd().to_string())
+            .arg(format!("{sandbox_input}{suffix}"));
     }
-    if operation == ParseOperation::PreviewMedia && media_backend != MediaPreviewBackend::Software {
+    if request.operation != ParseOperation::PreviewMedia {
+        command.arg("--bind").arg(request.output).arg("/output");
+    }
+    if request.operation == ParseOperation::PreviewMedia
+        && request.media_backend != MediaPreviewBackend::Software
+    {
         // Hardware media drivers need selected render nodes plus read-only sysfs discovery data.
-        for device in devices {
+        for device in request.devices {
             command.arg("--dev-bind-try").arg(device).arg(device);
         }
         command.args(["--ro-bind", "/sys", "/sys"]);
     }
-    if operation != ParseOperation::PreviewMedia {
+    if request.operation != ParseOperation::PreviewMedia {
         // Keep CPU-scaled glibc arenas within the helper's address-space limit.
         command.args(["--setenv", "MALLOC_ARENA_MAX", "1"]);
     }
     command.arg("--");
-    if operation != ParseOperation::PreviewMedia {
+    if request.operation != ParseOperation::PreviewMedia {
         command
             .arg("/usr/bin/prlimit")
             .arg(format!("--as={ADDRESS_SPACE_LIMIT_BYTES}"))
             .arg("--cpu=10")
             .arg(format!(
                 "--fsize={}",
-                if operation == ParseOperation::ThumbnailVideo {
+                if request.operation == ParseOperation::ThumbnailVideo {
                     MAX_OUTPUT_BYTES
                 } else {
                     FILE_SIZE_LIMIT_BYTES
@@ -458,28 +512,28 @@ fn sandbox_command(
             ))
             .arg("--");
     }
-    if operation == ParseOperation::ThumbnailVideo {
+    if request.operation == ParseOperation::ThumbnailVideo {
         command
             .args(["/usr/bin/ffmpegthumbnailer", "-i", &sandbox_input, "-o"])
-            .arg(format!("/output/{}", operation.output_name()))
+            .arg(format!("/output/{}", request.operation.output_name()))
             .arg("-s")
-            .arg(value.to_string())
+            .arg(request.value.to_string())
             .args(["-q", "8"]);
         return command;
     }
     command.args([
         "/app/strata",
         "--preview-helper",
-        operation.argument(),
+        request.operation.argument(),
         &sandbox_input,
     ]);
-    if operation == ParseOperation::PreviewMedia {
+    if request.operation == ParseOperation::PreviewMedia {
         command.arg("/dev/stdout");
     } else {
-        command.arg(format!("/output/{}", operation.output_name()));
+        command.arg(format!("/output/{}", request.operation.output_name()));
     }
-    command.arg(value.to_string());
-    command.arg(media_backend.argument());
+    command.arg(request.value.to_string());
+    command.arg(request.media_backend.argument());
     command
 }
 
@@ -564,6 +618,8 @@ fn valid_output(operation: ParseOperation, data: &[u8]) -> bool {
     if operation == ParseOperation::PreviewMedia {
         data.starts_with(b"\x1a\x45\xdf\xa3")
             || data.get(4..8).is_some_and(|signature| signature == b"ftyp")
+    } else if operation == ParseOperation::PreviewDatabase {
+        true
     } else {
         let Some((width, height)) = png_dimensions(data) else {
             return false;
