@@ -5107,20 +5107,19 @@ impl ViewState {
             if query.is_empty() {
                 search_gen_for_changed.set(search_gen_for_changed.get().saturating_add(1));
                 search_handle_for_changed.borrow_mut().take();
-                search_results_for_changed.borrow_mut().clear();
-                search_model_for_changed.splice(0, search_model_for_changed.n_items(), &[]);
-                if filtered_model_for_search.model().as_ref()
-                    != Some(model_for_search.upcast_ref::<gio::ListModel>())
-                {
-                    filtered_model_for_search.set_model(Some(&model_for_search));
-                }
+                deactivate_recursive_search(
+                    &search_active_for_changed,
+                    &search_results_for_changed,
+                    &search_model_for_changed,
+                    &filtered_model_for_search,
+                    &model_for_search,
+                );
                 apply_filter_query(
                     &filtered_model_for_search,
                     &filter,
                     &filter_query,
                     text.to_lowercase(),
                 );
-                search_active_for_changed.set(false);
                 return;
             }
             *filter_query.borrow_mut() = text.to_lowercase();
@@ -6650,6 +6649,28 @@ pub(crate) fn notify_filter_query(
     let change = filter_change_for(&previous, &settled);
     *query.borrow_mut() = settled;
     filter.changed(change);
+}
+
+/// Restores a miller column to its directory listing after its recursive search filter is cleared.
+///
+/// The flag must drop before the model swap: GTK binds the visible rows synchronously inside
+/// `set_model`, and the row factory reads it to decide whether to source entries from the
+/// search results or the directory. Clearing it afterwards binds every visible row against the
+/// already-emptied results, so they keep fallback icons and no hover size until an unrelated
+/// rebuild.
+pub(crate) fn deactivate_recursive_search(
+    search_active: &Cell<bool>,
+    search_results: &RefCell<Vec<crate::services::SearchItem>>,
+    search_model: &gtk::StringList,
+    filtered_model: &gtk::FilterListModel,
+    directory_model: &EntryListModel,
+) {
+    search_active.set(false);
+    search_results.borrow_mut().clear();
+    search_model.splice(0, search_model.n_items(), &[]);
+    if filtered_model.model().as_ref() != Some(directory_model.upcast_ref::<gio::ListModel>()) {
+        filtered_model.set_model(Some(directory_model));
+    }
 }
 
 pub(crate) fn apply_filter_query(
