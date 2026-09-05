@@ -290,6 +290,7 @@ pub(super) struct ViewState {
     global_activity: RefCell<GlobalActivityState>,
     breadcrumbs: gtk::Box,
     location_entry: gtk::Entry,
+    path_completion: Rc<super::path_completion::PathCompletion>,
     columns_widget: gtk::Box,
     scroller: gtk::ScrolledWindow,
     mode_views: RefCell<ModeViews>,
@@ -463,6 +464,17 @@ impl BrowserView {
         let multiple_selection = Rc::new(Cell::new(multiple));
         let mode_views = ModeViews::new(&scroller, browser.clone(), multiple_selection.clone());
         overlay.set_child(Some(&mode_views.widget()));
+        let pending_submit = Rc::new(RefCell::new(None::<Rc<dyn Fn()>>));
+        let pending_submit_cb = pending_submit.clone();
+        let path_completion = super::path_completion::PathCompletion::attach(
+            &location_entry,
+            browser.clone(),
+            move || {
+                if let Some(submit) = pending_submit_cb.borrow().as_ref() {
+                    submit();
+                }
+            },
+        );
         let state = Rc::new(ViewState {
             overlay,
             location_control,
@@ -471,6 +483,7 @@ impl BrowserView {
             global_activity: RefCell::new(GlobalActivityState::default()),
             breadcrumbs,
             location_entry,
+            path_completion,
             columns_widget,
             scroller,
             mode_views: RefCell::new(mode_views),
@@ -510,6 +523,13 @@ impl BrowserView {
             auto_refresh: RefCell::new(None),
             browser,
         });
+
+        let weak_state = Rc::downgrade(&state);
+        *pending_submit.borrow_mut() = Some(Rc::new(move || {
+            if let Some(state) = weak_state.upgrade() {
+                state.submit_location();
+            }
+        }));
 
         // Columns are laid out from the start edge, so the blank strip beside the last
         // one is the natural place to begin a marquee that runs into it.
@@ -3752,12 +3772,14 @@ impl ViewState {
     }
 
     fn cancel_location_edit(&self) {
+        self.path_completion.dismiss();
         self.restore_location_text();
         self.location_stack.set_visible_child_name("breadcrumbs");
         self.browser.focus_active();
     }
 
     fn submit_location(self: &Rc<Self>) {
+        self.path_completion.dismiss();
         let input = self.location_entry.text();
         let (input, credentials) = match credentials_from_location_input(input.as_str()) {
             Ok(parsed) => parsed,
