@@ -2313,6 +2313,7 @@ fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
         ("Cut", "Ctrl + X"),
         ("Copy", "Ctrl + C"),
         ("Paste", "Ctrl + V"),
+        ("Rename", "F2 / Ctrl + R"),
     ] {
         append_keybinding(&content, label, keys);
     }
@@ -2321,7 +2322,7 @@ fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
     for (label, keys) in [
         ("Search", "Ctrl + K"),
         ("Open terminal", "Ctrl + T"),
-        ("Refresh", "F5 / Ctrl + R"),
+        ("Refresh", "F5"),
         ("Open settings", "Ctrl + ,"),
         ("Shortcut reference", "F1"),
     ] {

@@ -128,7 +128,7 @@ pub(super) fn install_item(
             Action::Rename,
             crate::assets::icons::PENCIL,
             "Rename",
-            "F2",
+            "F2 / Ctrl+R",
             single,
         )];
         if single && super::super::preview::entry_supports_quick_preview(&entry) {
