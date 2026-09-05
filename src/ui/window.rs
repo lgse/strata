@@ -22,7 +22,10 @@ use crate::{
 
 use super::{
     blur::BlurBin,
-    browser::{BrowserView, PeekBehavior, PinStatus, show_error_dialog},
+    browser::{
+        BrowserView, PeekBehavior, PinStatus, file_drop_action, locations_from_file_list_value,
+        show_error_dialog,
+    },
     browser_modes::{BrowserDensity, BrowserMode},
     motion::{animations_enabled, emphasized_deceleration},
     preview::PreviewDrawer,
@@ -1830,6 +1833,14 @@ impl SidebarState {
         row.add_controller(drag);
 
         let drop = gtk::DropTarget::new(String::static_type(), gtk::gdk::DragAction::MOVE);
+        drop.connect_accept(|_, offered| {
+            accepts_sidebar_reorder_payload(
+                offered.formats().contains_type(String::static_type()),
+                offered
+                    .formats()
+                    .contains_type(gtk::gdk::FileList::static_type()),
+            )
+        });
         let weak_state = Rc::downgrade(self);
         let target_row = row.clone();
         drop.connect_drop(move |_, value, _, y| {
@@ -1857,6 +1868,7 @@ impl SidebarState {
         self.place_rows
             .borrow_mut()
             .push((location.clone(), row.clone()));
+        install_sidebar_file_drop(&self.view, &row, location.clone());
         let weak_browser = Rc::downgrade(&self.browser);
         let sidebar = self.widget.clone();
         let selected_row = row.clone();
@@ -1926,7 +1938,10 @@ impl SidebarState {
         if let Some(mount) = volume.get_mount()
             && let Some(location) = location_for_file(&mount.root())
         {
-            self.place_rows.borrow_mut().push((location, row.clone()));
+            self.place_rows
+                .borrow_mut()
+                .push((location.clone(), row.clone()));
+            install_sidebar_file_drop(&self.view, &row, location);
         }
         let weak_browser = Rc::downgrade(&self.browser);
         let sidebar = self.widget.clone();
@@ -2152,6 +2167,7 @@ impl SidebarState {
         self.place_rows
             .borrow_mut()
             .push((location.clone(), row.clone()));
+        install_sidebar_file_drop(&self.view, &row, location.clone());
         let weak_browser = Rc::downgrade(&self.browser);
         let sidebar = self.widget.clone();
         let selected_row = row.clone();
@@ -2176,6 +2192,45 @@ impl SidebarState {
         }
         row
     }
+}
+
+fn accepts_sidebar_reorder_payload(has_string: bool, has_file_list: bool) -> bool {
+    has_string && !has_file_list
+}
+
+fn sidebar_accepts_file_drop(location: &Location) -> bool {
+    location.native_path().is_some()
+}
+
+fn install_sidebar_file_drop(
+    view: &BrowserView,
+    row: &impl IsA<gtk::Widget>,
+    destination: Location,
+) {
+    if !sidebar_accepts_file_drop(&destination) {
+        return;
+    }
+    row.add_css_class("file-drop-zone");
+    let drop = gtk::DropTarget::new(
+        gtk::gdk::FileList::static_type(),
+        gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
+    );
+    drop.set_propagation_phase(gtk::PropagationPhase::Capture);
+    drop.connect_enter(|target, _, _| file_drop_action(target));
+    drop.connect_motion(|target, _, _| file_drop_action(target));
+    let view = view.clone();
+    drop.connect_drop(move |target, value, _, _| {
+        let Some(sources) = locations_from_file_list_value(value) else {
+            return false;
+        };
+        if sources.is_empty() {
+            return false;
+        }
+        let move_sources = file_drop_action(target) == gtk::gdk::DragAction::MOVE;
+        view.start_transfer(destination.clone(), sources, move_sources);
+        true
+    });
+    row.add_controller(drop);
 }
 
 fn select_sidebar_row(sidebar: &gtk::Box, selected: &gtk::Button) {

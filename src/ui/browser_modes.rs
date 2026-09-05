@@ -2215,6 +2215,7 @@ fn build_grid_view(
             transfers_for_setup.clone(),
             depth,
             Some((source_index_for_setup.clone(), filtered_for_setup.clone())),
+            None,
         );
         item.set_child(Some(&card));
         register_bound_mode_item(&bound_items_for_setup, item, &card);
@@ -3007,7 +3008,7 @@ fn build_explorer_pane(
                 }
             });
         }
-        let Some((_, _, field, mode, size, kind, modified)) = explorer_row_parts(&row) else {
+        let Some((_, name, field, mode, size, kind, modified)) = explorer_row_parts(&row) else {
             return;
         };
         let Some(name_cell) = row.first_child() else {
@@ -3075,6 +3076,7 @@ fn build_explorer_pane(
             transfers_for_setup.clone(),
             depth,
             Some((source_index_for_setup.clone(), view_model_for_setup.clone())),
+            Some(name.upcast_ref()),
         );
         item.set_child(Some(&row));
         register_bound_mode_item(&bound_items_for_setup, item, &row);
@@ -3593,6 +3595,7 @@ fn install_explorer_drag_drop(
     transfer_handler: TransferHandlerSlot,
     depth: usize,
     position_map: Option<(SourceIndexMap, gio::ListModel)>,
+    drag_icon: Option<&gtk::Widget>,
 ) {
     if transfer_handler.borrow().is_none() {
         return;
@@ -3604,6 +3607,7 @@ fn install_explorer_drag_drop(
     let dragged_item = item.downgrade();
     let browser_for_drag = browser.clone();
     let map_for_drag = position_map.clone();
+    let drag_icon = drag_icon.map(gtk::Widget::downgrade);
     drag.connect_prepare(move |source, x, y| {
         let browser = browser_for_drag.upgrade()?;
         let dragged_item = dragged_item.upgrade()?;
@@ -3626,8 +3630,15 @@ fn install_explorer_drag_drop(
         } else {
             vec![entry]
         };
-        let paintable = gtk::WidgetPaintable::new(source.widget().as_ref());
-        source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);
+        let compact_icon = drag_icon.as_ref().and_then(glib::WeakRef::upgrade);
+        let fallback_icon = source.widget();
+        let paintable = gtk::WidgetPaintable::new(compact_icon.as_ref().or(fallback_icon.as_ref()));
+        let (hot_x, hot_y) = if compact_icon.is_some() {
+            (0, 0)
+        } else {
+            (x.round() as i32, y.round() as i32)
+        };
+        source.set_icon(Some(&paintable), hot_x, hot_y);
         super::browser::file_drag_content(&entries)
     });
     let dragged_row = row.downgrade();
