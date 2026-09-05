@@ -836,6 +836,40 @@ fn pointer_activation_respects_entry_type_click_count_and_modifiers() {
 }
 
 #[test]
+fn deferred_pointer_activation_requires_an_unchanged_item_without_drag_motion() {
+    let location = Location::local("/fixture/folder");
+    let mut pending = PendingPointerActivation {
+        position: 3,
+        location: location.clone(),
+        press: (10.0, 20.0),
+        moved: false,
+    };
+
+    pending.update(18.0, 12.0, 8);
+    assert!(pending.can_activate(&location));
+    assert!(!pending.can_activate(&Location::local("/fixture/replacement")));
+
+    pending.update(19.0, 20.0, 8);
+    assert!(!pending.can_activate(&location));
+}
+
+#[test]
+fn deferred_pointer_activation_remembers_prior_drag_motion() {
+    let location = Location::local("/fixture/folder");
+    let mut pending = PendingPointerActivation {
+        position: 3,
+        location: location.clone(),
+        press: (10.0, 20.0),
+        moved: false,
+    };
+
+    pending.update(10.0, 29.0, 8);
+    pending.update(10.0, 20.0, 8);
+
+    assert!(!pending.can_activate(&location));
+}
+
+#[test]
 fn pressing_an_item_in_a_multi_selection_preserves_the_drag_group() {
     assert!(should_preserve_drag_selection(true, 2));
     assert!(should_preserve_drag_selection(true, 8));
