@@ -1331,7 +1331,14 @@ async fn replace_local_with_progress(
         cancellable,
         affected_locations,
         Rc::new(move |source, staged, _directory, cancellable| {
-            copy_recursively_with_progress(source, staged, true, cancellable, None, progress.clone())
+            copy_recursively_with_progress(
+                source,
+                staged,
+                true,
+                cancellable,
+                None,
+                progress.clone(),
+            )
         }),
     )
     .await
