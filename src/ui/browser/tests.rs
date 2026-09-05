@@ -462,26 +462,24 @@ fn quick_preview_is_offered_only_for_supported_files() {
         mode: crate::model::MetadataValue::Unknown,
     };
 
-    assert!(entry_supports_quick_preview(&entry(
+    assert!(super::super::preview::entry_supports_quick_preview(&entry(
         "photo.png",
         crate::model::EntryKind::File,
     )));
-    assert!(entry_supports_quick_preview(&entry(
+    assert!(super::super::preview::entry_supports_quick_preview(&entry(
         "notes.txt",
         crate::model::EntryKind::FileSymbolicLink,
     )));
-    assert!(entry_supports_quick_preview(&entry(
+    assert!(super::super::preview::entry_supports_quick_preview(&entry(
         ".steampath",
         crate::model::EntryKind::File,
     )));
-    assert!(!entry_supports_quick_preview(&entry(
-        "archive.zip",
-        crate::model::EntryKind::File,
-    )));
-    assert!(!entry_supports_quick_preview(&entry(
-        "photos.png",
-        crate::model::EntryKind::Directory,
-    )));
+    assert!(!super::super::preview::entry_supports_quick_preview(
+        &entry("archive.zip", crate::model::EntryKind::File,)
+    ));
+    assert!(!super::super::preview::entry_supports_quick_preview(
+        &entry("photos.png", crate::model::EntryKind::Directory,)
+    ));
 
     let supported = entry("photo.png", crate::model::EntryKind::File);
     let unsupported = entry("archive.zip", crate::model::EntryKind::File);

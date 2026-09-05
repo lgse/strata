@@ -7573,7 +7573,7 @@ pub(super) fn install_item_context_menu(
         }
         target.replace(Some((resolved_position, entry.clone())));
         let entries = state.browser.selected_entries();
-        preview.set_visible(entry_supports_quick_preview(&entry));
+        preview.set_visible(super::preview::entry_supports_quick_preview(&entry));
         print.set_visible(entry_supports_printing(&entry));
         open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
         let trash_visible = move_to_trash_is_visible(in_trash, state.browser.can_trash_at(depth));
@@ -7615,20 +7615,7 @@ pub(super) fn install_item_context_menu(
 }
 
 fn entry_responds_to_preview_click(entry: &FileEntry, previews_enabled: bool) -> bool {
-    previews_enabled && !entry.is_directory() && entry_supports_quick_preview(entry)
-}
-
-pub(super) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
-    if !matches!(entry.kind, EntryKind::File | EntryKind::FileSymbolicLink) {
-        return false;
-    }
-
-    let (content_type, _) =
-        gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
-    !matches!(content_family(&content_type), PreviewContent::Unsupported)
-        || gio::content_type_is_a(&content_type, "text/plain")
-        || has_plain_text_extension(&entry.native_name)
-        || is_extensionless_dotfile(&entry.native_name)
+    previews_enabled && !entry.is_directory() && super::preview::entry_supports_quick_preview(entry)
 }
 
 fn entry_supports_printing(entry: &FileEntry) -> bool {
