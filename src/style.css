@@ -2282,7 +2282,6 @@ menubutton.column-header-action > button:active {
   border-radius: 8px;
   box-shadow: 0 8px 24px alpha(@theme_shadow, 0.32);
   padding: 6px;
-  min-width: 460px;
 }
 
 .path-completion-scroll,
