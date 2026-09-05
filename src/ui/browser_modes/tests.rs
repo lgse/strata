@@ -5,7 +5,7 @@ use super::{
     MAX_GRID_THUMBNAIL_SIZE, MIN_GRID_THUMBNAIL_SIZE, SourceIndexMap, compare_type_groups,
     explorer_column_width, first_model_type_group, grid_card_extent, grid_card_icon_slot,
     metadata_fill_position, scroll_delta_for_unit, should_activate_pointer_click,
-    type_group_for_lowest_populated, type_group_sorter, type_groups_of, value_type_group,
+    type_group_for_first_intersecting, type_group_sorter, type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use gtk::{gio, prelude::*};
@@ -195,18 +195,30 @@ fn type_group_sort_clusters_mixed_entries_and_keeps_placeholder_first() {
 }
 
 #[test]
-fn the_sticky_heading_uses_the_topmost_populated_card() {
+fn the_sticky_heading_uses_the_first_card_intersecting_the_viewport() {
     let json = value('f', "notes.json");
     let folder = value('d', "projects");
+    let markdown = value('f', "README.md");
+    let json_group = value_type_group(&json);
     assert_eq!(
-        type_group_for_lowest_populated(
-            [(0, String::new()), (12, json.clone()), (3, folder.clone())].into_iter()
+        type_group_for_first_intersecting(
+            [
+                (0, String::new(), 0.0, 40.0),
+                (1, folder, -80.0, 40.0),
+                (12, markdown, 35.0, 40.0),
+                (8, json.clone(), -10.0, 40.0),
+            ]
+            .into_iter(),
+            100.0,
         )
         .as_deref(),
-        Some("Folder")
+        Some(json_group.as_str())
     );
     assert_eq!(
-        type_group_for_lowest_populated([(0, String::new()), (1, String::new())].into_iter()),
+        type_group_for_first_intersecting(
+            [(0, String::new(), 0.0, 40.0), (1, json, 100.0, 40.0)].into_iter(),
+            100.0,
+        ),
         None
     );
 }
@@ -221,6 +233,9 @@ fn run_type_group_sorter_checks() {
         &value('d', "projects"),
         &value('f', "data.json"),
         &value('d', "archive"),
+        &value('d', "alpha"),
+        &value('d', "beta"),
+        &value('d', "gamma"),
         &value('f', "README.md"),
     ]);
     let placeholder = gtk::StringList::new(&[""]);
@@ -228,18 +243,23 @@ fn run_type_group_sorter_checks() {
     stacked.append(&placeholder.clone().upcast::<gio::ListModel>());
     stacked.append(&source.clone().upcast::<gio::ListModel>());
     let flattened = gtk::FlattenListModel::new(Some(stacked));
-    let sorted = gtk::SortListModel::new(Some(flattened), Some(type_group_sorter()));
+    let sorter = type_group_sorter();
+    let sorted = gtk::SortListModel::new(Some(flattened), Some(sorter.clone()));
+    sorted.set_section_sorter(Some(&sorter));
 
     let groups: Vec<String> = (0..sorted.n_items())
         .filter_map(|index| sorted.item(index).map(|item| super::model_value(&item)))
         .map(|value| value_type_group(&value))
         .collect();
     assert_eq!(groups[0], "");
-    assert_eq!(&groups[1..3], ["Folder", "Folder"]);
+    assert_eq!(&groups[1..6], ["Folder"; 5]);
     let json = value_type_group(&value('f', "notes.json"));
     let markdown = value_type_group(&value('f', "README.md"));
-    assert_eq!(&groups[3..5], [json.as_str(), json.as_str()]);
-    assert_eq!(groups[5], markdown);
+    assert_eq!(&groups[6..8], [json.as_str(), json.as_str()]);
+    assert_eq!(groups[8], markdown);
+    assert_eq!(sorted.section(1), (1, 6));
+    assert_eq!(sorted.section(5), (1, 6));
+    assert_eq!(sorted.section(6), (6, 8));
     assert_eq!(first_model_type_group(sorted.upcast_ref()), "Folder");
 }
 

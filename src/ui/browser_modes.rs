@@ -1378,6 +1378,7 @@ struct GridContext {
     scrolling: Rc<Cell<bool>>,
     density: Cell<BrowserDensity>,
     type_heading: RefCell<Option<gtk::Label>>,
+    type_heading_refresh: RefCell<Option<Rc<dyn Fn()>>>,
 }
 
 fn build_grid_pane(
@@ -1433,6 +1434,7 @@ fn build_grid_pane(
         scrolling: Rc::new(Cell::new(false)),
         density: Cell::new(options.density),
         type_heading: RefCell::new(None),
+        type_heading_refresh: RefCell::new(None),
     });
     let flattened_models = gio::ListStore::new::<gio::ListModel>();
     flattened_models.append(&new_entry_placeholder.clone().upcast::<gio::ListModel>());
@@ -1440,7 +1442,9 @@ fn build_grid_pane(
     let flattened = gtk::FlattenListModel::new(Some(flattened_models));
     let view_model = if options.group_by_type {
         let sorted = gtk::SortListModel::new(Some(flattened), None::<gtk::CustomSorter>);
-        sorted.set_sorter(Some(&type_group_sorter()));
+        let sorter = type_group_sorter();
+        sorted.set_sorter(Some(&sorter));
+        sorted.set_section_sorter(Some(&sorter));
         sorted.upcast::<gio::ListModel>()
     } else {
         flattened.upcast()
@@ -1455,6 +1459,7 @@ fn build_grid_pane(
     let value_for_change = controls.thumbnail_value.clone();
     let loading_stack = stack.downgrade();
     let loading_context = Rc::downgrade(&context);
+    let heading_context_for_size = Rc::downgrade(&context);
     controls
         .thumbnail_scale
         .connect_value_changed(move |scale| {
@@ -1482,6 +1487,9 @@ fn build_grid_pane(
             for section in sections.borrow().iter() {
                 resize_grid_thumbnail_slots(section, size);
             }
+            if let Some(context) = heading_context_for_size.upgrade() {
+                queue_grid_type_heading_refresh(&context);
+            }
         });
 
     let scroll = gtk::ScrolledWindow::builder()
@@ -1493,7 +1501,7 @@ fn build_grid_pane(
     close_thumbnail_popover_on_outside_scroll(&controls.thumbnail_popover, &scroll);
     install_grid_scroll_settle(&scroll, &context);
     if let Some(heading) = type_heading.as_ref() {
-        install_grid_type_heading(&context, heading, &pane_section);
+        install_grid_type_heading(&context, heading, &pane_section, &scroll);
     }
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
     let (collection, marquee) =
@@ -1784,19 +1792,20 @@ fn install_grid_type_heading(
     context: &Rc<GridContext>,
     heading: &gtk::Label,
     section: &PaneSection,
+    scroll: &gtk::ScrolledWindow,
 ) {
     context.type_heading.replace(Some(heading.clone()));
     let pending = Rc::new(Cell::new(false));
-    let context = Rc::downgrade(context);
+    let weak_context = Rc::downgrade(context);
     let queue = Rc::new(move || {
         if pending.replace(true) {
             return;
         }
         let pending = pending.clone();
-        let context = context.clone();
+        let weak_context = weak_context.clone();
         glib::idle_add_local_once(move || {
             pending.set(false);
-            let Some(context) = context.upgrade() else {
+            let Some(context) = weak_context.upgrade() else {
                 return;
             };
             if context.scrolling.get() {
@@ -1809,7 +1818,20 @@ fn install_grid_type_heading(
     section.view_model.connect_items_changed(move |_, _, _, _| {
         queue_for_items();
     });
+    for adjustment in [scroll.vadjustment(), scroll.hadjustment()] {
+        let queue_for_layout = queue.clone();
+        adjustment.connect_changed(move |_| {
+            queue_for_layout();
+        });
+    }
+    context.type_heading_refresh.replace(Some(queue.clone()));
     queue();
+}
+
+fn queue_grid_type_heading_refresh(context: &GridContext) {
+    if let Some(queue) = context.type_heading_refresh.borrow().as_ref() {
+        queue();
+    }
 }
 
 fn refresh_grid_type_heading(context: &GridContext) {
@@ -1830,18 +1852,41 @@ fn refresh_grid_type_heading(context: &GridContext) {
 }
 
 fn first_visible_type_group(section: &PaneSection) -> String {
-    type_group_for_lowest_populated(section.bound_items.borrow().iter().filter_map(|bound| {
-        let item = bound.item.upgrade()?;
-        Some((item.position(), model_value(&item.item()?)))
-    }))
+    let viewport_height = section.view.height() as f32;
+    type_group_for_first_intersecting(
+        section.bound_items.borrow().iter().filter_map(|bound| {
+            let item = bound.item.upgrade()?;
+            let widget = bound.widget.upgrade()?;
+            if !widget.is_mapped() {
+                return None;
+            }
+            let bounds = widget.compute_bounds(&section.view)?;
+            Some((
+                item.position(),
+                model_value(&item.item()?),
+                bounds.y(),
+                bounds.height(),
+            ))
+        }),
+        viewport_height,
+    )
     .unwrap_or_else(|| first_model_type_group(&section.view_model))
 }
 
-fn type_group_for_lowest_populated(items: impl Iterator<Item = (u32, String)>) -> Option<String> {
+fn type_group_for_first_intersecting(
+    items: impl Iterator<Item = (u32, String, f32, f32)>,
+    viewport_height: f32,
+) -> Option<String> {
     items
-        .filter(|(_, value)| !value.is_empty())
-        .min_by_key(|(position, _)| *position)
-        .map(|(_, value)| value_type_group(&value))
+        .filter(|(_, value, y, height)| {
+            !value.is_empty() && *height > 0.0 && *y < viewport_height && *y + *height > 0.0
+        })
+        .min_by(|left, right| {
+            left.2
+                .total_cmp(&right.2)
+                .then_with(|| left.0.cmp(&right.0))
+        })
+        .map(|(_, value, _, _)| value_type_group(&value))
 }
 
 fn first_model_type_group(model: &gio::ListModel) -> String {
