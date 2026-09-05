@@ -1,6 +1,27 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::*;
+
+#[test]
+fn entry_matching_uses_the_display_name_and_hidden_flag() {
+    for (value, show_hidden, query, expected) in [
+        ("fv\tAlpha.txt", false, "alpha", true),
+        ("fh\tAlpha.txt", false, "alpha", false),
+        ("fh\tAlpha.txt", true, "alpha", true),
+        ("fv\tAlpha.txt", false, "fv", false),
+        ("dv\tFolder", false, "", true),
+        ("dh\tFolder", false, "", false),
+        ("fv\tÉcole\tNotes", false, "école\tnotes", true),
+        ("plain name", false, "name", true),
+        ("fv\tAlpha.txt", true, "beta", false),
+    ] {
+        assert_eq!(
+            entry_matches(value, show_hidden, query),
+            expected,
+            "{value:?}, {show_hidden}, {query:?}"
+        );
+    }
+}
 use crate::model::{FileEntry, Location};
 use gtk::gio;
 use std::path::Path;

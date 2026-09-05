@@ -4,7 +4,7 @@ use crate::ui::blur::BlurBin;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::entry::{format_file_size, item_count_label};
 use crate::ui::controls::modal_layout;
-use crate::ui::modal::{dismiss_modal_layer, modal_layer};
+use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer};
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
@@ -21,14 +21,14 @@ fn should_show_progress_immediately(total: usize) -> bool {
     total == 0 || total >= IMMEDIATE_PROGRESS_ITEM_COUNT
 }
 
-pub(super) struct DeleteProgressView {
-    pub(super) layer: gtk::Box,
-    pub(super) overlay: gtk::Overlay,
-    pub(super) blurred_root: Option<BlurBin>,
-    pub(super) progress: gtk::ProgressBar,
-    pub(super) status: gtk::Label,
-    pub(super) indeterminate: Rc<Cell<bool>>,
-    pub(super) pulse_source: Rc<RefCell<Option<glib::SourceId>>>,
+pub(super) struct FileProgressView {
+    layer: gtk::Box,
+    overlay: gtk::Overlay,
+    blurred_root: Option<BlurBin>,
+    progress: gtk::ProgressBar,
+    status: gtk::Label,
+    indeterminate: Rc<Cell<bool>>,
+    pulse_source: Rc<RefCell<Option<glib::SourceId>>>,
 }
 
 fn transfer_progress_status(
@@ -82,7 +82,7 @@ impl ViewState {
         subtitle_text: &str,
         on_cancel: Rc<dyn Fn()>,
     ) {
-        self.dismiss_delete_progress();
+        self.dismiss_file_operation_progress();
         self.file_operation_progress.set((0, total));
         if should_show_progress_immediately(total) {
             self.present_file_operation_progress(icon, title_text, subtitle_text, on_cancel);
@@ -110,19 +110,13 @@ impl ViewState {
         subtitle_text: &str,
         on_cancel: Rc<dyn Fn()>,
     ) {
-        let Some(window_overlay) = self
-            .overlay
-            .root()
-            .and_downcast::<gtk::Window>()
-            .and_then(|window| window.child())
-            .and_downcast::<gtk::Overlay>()
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
         else {
             return;
         };
-        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-        if let Some(root) = blurred_root.as_ref() {
-            root.set_blurred(true);
-        }
 
         let layout = modal_layout(icon, title_text, subtitle_text, "Cancel");
         layout.content.add_css_class("compact");
@@ -160,7 +154,7 @@ impl ViewState {
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
-        self.delete_progress.replace(Some(DeleteProgressView {
+        self.file_progress_view.replace(Some(FileProgressView {
             layer,
             overlay: window_overlay,
             blurred_root,
@@ -181,7 +175,7 @@ impl ViewState {
                 glib::Propagation::Proceed
             }
         });
-        if let Some(progress) = self.delete_progress.borrow().as_ref() {
+        if let Some(progress) = self.file_progress_view.borrow().as_ref() {
             progress.layer.add_controller(escape);
         }
         cancel.grab_focus();
@@ -191,7 +185,7 @@ impl ViewState {
             self.update_transfer_progress(completed_items, transferred_bytes, total_bytes);
         } else {
             let (completed, total) = self.file_operation_progress.get();
-            self.update_delete_progress(completed, total);
+            self.update_item_progress(completed, total);
         }
     }
 
@@ -203,7 +197,7 @@ impl ViewState {
     ) {
         self.transfer_progress
             .set(Some((completed_items, transferred_bytes, total_bytes)));
-        let progress_view = self.delete_progress.borrow();
+        let progress_view = self.file_progress_view.borrow();
         let Some(view) = progress_view.as_ref() else {
             return;
         };
@@ -217,9 +211,9 @@ impl ViewState {
         }
     }
 
-    pub(super) fn update_delete_progress(&self, completed: usize, total: usize) {
+    pub(super) fn update_item_progress(&self, completed: usize, total: usize) {
         self.file_operation_progress.set((completed, total));
-        let progress_view = self.delete_progress.borrow();
+        let progress_view = self.file_progress_view.borrow();
         let Some(view) = progress_view.as_ref() else {
             return;
         };
@@ -235,7 +229,7 @@ impl ViewState {
     }
 
     pub(super) fn update_archive_progress(&self, completed: usize, total: usize) {
-        let progress_view = self.delete_progress.borrow();
+        let progress_view = self.file_progress_view.borrow();
         let Some(view) = progress_view.as_ref() else {
             return;
         };
@@ -250,13 +244,13 @@ impl ViewState {
         }
     }
 
-    pub(super) fn dismiss_delete_progress(&self) {
+    pub(super) fn dismiss_file_operation_progress(&self) {
         if let Some(source) = self.pending_file_progress.take() {
             source.remove();
         }
         self.file_operation_progress.set((0, 0));
         self.transfer_progress.set(None);
-        if let Some(view) = self.delete_progress.take() {
+        if let Some(view) = self.file_progress_view.take() {
             view.indeterminate.set(false);
             if let Some(source) = view.pulse_source.take() {
                 source.remove();
@@ -279,7 +273,7 @@ impl ViewState {
     }
 
     pub(super) fn update_empty_trash_progress(&self, processed: usize) {
-        let progress_view = self.delete_progress.borrow();
+        let progress_view = self.file_progress_view.borrow();
         let Some(view) = progress_view.as_ref() else {
             return;
         };

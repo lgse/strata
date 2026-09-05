@@ -56,14 +56,6 @@ pub(super) fn context_menu_popover(
     )
 }
 
-fn context_popover_overlay(anchor: &gtk::Widget) -> Option<gtk::Overlay> {
-    anchor
-        .root()
-        .and_downcast::<gtk::Window>()
-        .and_then(|window| window.child())
-        .and_downcast::<gtk::Overlay>()
-}
-
 pub(super) fn show_context_popover(
     popover: &gtk::Popover,
     scroll: &gtk::ScrolledWindow,
@@ -71,7 +63,7 @@ pub(super) fn show_context_popover(
     x: f64,
     y: f64,
 ) {
-    let Some(overlay) = context_popover_overlay(anchor) else {
+    let Some(overlay) = crate::ui::modal::window_overlay(anchor) else {
         return;
     };
     if popover.parent().is_none() {
@@ -560,22 +552,46 @@ pub(in crate::ui) fn install_item_context_menu(
             }
         });
     });
-    connect_context_restore(&restore, &popover, state, &target);
-    connect_context_restore(&restore_multiple, &popover, state, &target);
-    connect_context_transfer(&move_to, &popover, state, &target, true);
-    connect_context_transfer(&copy_to, &popover, state, &target, false);
-    connect_context_transfer(&move_multiple, &popover, state, &target, true);
-    connect_context_transfer(&copy_to_multiple, &popover, state, &target, false);
-    connect_context_cut(&cut, &popover, state, &target);
-    connect_context_cut(&cut_multiple, &popover, state, &target);
-    connect_context_copy(&copy, &popover, state, &target);
-    connect_context_copy(&copy_multiple, &popover, state, &target);
-    connect_context_trash(&move_to_trash, &popover, state, &target, in_trash);
-    connect_context_trash(&trash_multiple, &popover, state, &target, in_trash);
-    connect_context_trash(&permanent_delete, &popover, state, &target, true);
-    connect_context_trash(&permanent_delete_multiple, &popover, state, &target, true);
-    connect_context_compress(&compress, &popover, state, &target);
-    connect_context_compress(&compress_multiple, &popover, state, &target);
+    for button in [&restore, &restore_multiple] {
+        connect_selection_action(button, &popover, state, &target, |state, entries| {
+            state.browser.restore(entries);
+        });
+    }
+    for (button, moving) in [
+        (&move_to, true),
+        (&copy_to, false),
+        (&move_multiple, true),
+        (&copy_to_multiple, false),
+    ] {
+        connect_selection_action(button, &popover, state, &target, move |state, entries| {
+            state.show_transfer_dialog(entries, moving);
+        });
+    }
+    for button in [&cut, &cut_multiple] {
+        connect_selection_action(button, &popover, state, &target, |state, entries| {
+            state.cut_entries(&entries);
+        });
+    }
+    for button in [&copy, &copy_multiple] {
+        connect_selection_action(button, &popover, state, &target, |state, entries| {
+            state.copy_entries(&entries);
+        });
+    }
+    for (button, permanent) in [
+        (&move_to_trash, in_trash),
+        (&trash_multiple, in_trash),
+        (&permanent_delete, true),
+        (&permanent_delete_multiple, true),
+    ] {
+        connect_selection_action(button, &popover, state, &target, move |state, entries| {
+            state.request_delete(entries, permanent);
+        });
+    }
+    for button in [&compress, &compress_multiple] {
+        connect_selection_action(button, &popover, state, &target, |state, entries| {
+            state.show_compress_dialog(entries);
+        });
+    }
     connect_context_extract(&extract, &popover, state, &target, false);
     connect_context_extract(&extract_to, &popover, state, &target, true);
     let weak = Rc::downgrade(state);
@@ -735,12 +751,12 @@ fn context_entries(
     }
 }
 
-fn connect_context_trash(
+fn connect_selection_action(
     button: &gtk::Button,
     popover: &gtk::Popover,
     state: &Rc<ViewState>,
     target: &Rc<RefCell<Option<(usize, FileEntry)>>>,
-    permanent: bool,
+    run: impl Fn(&Rc<ViewState>, Vec<FileEntry>) + 'static,
 ) {
     let weak = Rc::downgrade(state);
     let target = target.clone();
@@ -751,104 +767,7 @@ fn connect_context_trash(
         }
         if let Some(state) = weak.upgrade() {
             let entries = context_entries(&state, &target);
-            state.request_delete(entries, permanent);
-        }
-    });
-}
-
-fn connect_context_restore(
-    button: &gtk::Button,
-    popover: &gtk::Popover,
-    state: &Rc<ViewState>,
-    target: &Rc<RefCell<Option<(usize, FileEntry)>>>,
-) {
-    let weak = Rc::downgrade(state);
-    let target = target.clone();
-    let popover = popover.downgrade();
-    button.connect_clicked(move |_| {
-        if let Some(popover) = popover.upgrade() {
-            popover.popdown();
-        }
-        if let Some(state) = weak.upgrade() {
-            state.browser.restore(context_entries(&state, &target));
-        }
-    });
-}
-
-fn connect_context_transfer(
-    button: &gtk::Button,
-    popover: &gtk::Popover,
-    state: &Rc<ViewState>,
-    target: &Rc<RefCell<Option<(usize, FileEntry)>>>,
-    move_sources: bool,
-) {
-    let weak = Rc::downgrade(state);
-    let target = target.clone();
-    let popover = popover.downgrade();
-    button.connect_clicked(move |_| {
-        if let Some(popover) = popover.upgrade() {
-            popover.popdown();
-        }
-        if let Some(state) = weak.upgrade() {
-            state.show_transfer_dialog(context_entries(&state, &target), move_sources);
-        }
-    });
-}
-
-fn connect_context_cut(
-    button: &gtk::Button,
-    popover: &gtk::Popover,
-    state: &Rc<ViewState>,
-    target: &Rc<RefCell<Option<(usize, FileEntry)>>>,
-) {
-    let weak = Rc::downgrade(state);
-    let target = target.clone();
-    let popover = popover.downgrade();
-    button.connect_clicked(move |_| {
-        if let Some(popover) = popover.upgrade() {
-            popover.popdown();
-        }
-        if let Some(state) = weak.upgrade() {
-            state.cut_entries(&context_entries(&state, &target));
-        }
-    });
-}
-
-fn connect_context_copy(
-    button: &gtk::Button,
-    popover: &gtk::Popover,
-    state: &Rc<ViewState>,
-    target: &Rc<RefCell<Option<(usize, FileEntry)>>>,
-) {
-    let weak = Rc::downgrade(state);
-    let target = target.clone();
-    let popover = popover.downgrade();
-    button.connect_clicked(move |_| {
-        if let Some(popover) = popover.upgrade() {
-            popover.popdown();
-        }
-        if let Some(state) = weak.upgrade() {
-            state.copy_entries(&context_entries(&state, &target));
-        }
-    });
-}
-
-fn connect_context_compress(
-    button: &gtk::Button,
-    popover: &gtk::Popover,
-    state: &Rc<ViewState>,
-    target: &Rc<RefCell<Option<(usize, FileEntry)>>>,
-) {
-    let weak = Rc::downgrade(state);
-    let target = target.clone();
-    let popover = popover.downgrade();
-    button.connect_clicked(move |_| {
-        if let Some(popover) = popover.upgrade() {
-            popover.popdown();
-        }
-        if let Some(state) = weak.upgrade() {
-            let entries = context_entries(&state, &target);
-            state.show_compress_dialog(entries);
+            run(&state, entries);
         }
     });
 }

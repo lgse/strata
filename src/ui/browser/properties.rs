@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::adapters::gio_location::gio_file_for_location;
+use crate::adapters::gio_file_for_location;
 use crate::adapters::trash::summarize_trash;
 use crate::model::{FileEntry, Location};
-use crate::ui::blur::BlurBin;
 use crate::ui::browser::clipboard::copy_path_text;
 use crate::ui::browser::desktop::open_location;
 use crate::ui::browser::entry::{entry_icon, format_file_size, item_count_label};
 use crate::ui::browser::paths::{compact_display_path, is_trash_location, is_trash_root};
 use crate::ui::browser::{PinStatus, ViewState};
 use crate::ui::controls::{form_check_button, modal_layout};
-use crate::ui::modal::{dismiss_modal_layer, modal_layer, show_error_dialog};
+use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::Cell;
@@ -208,19 +207,13 @@ impl ViewState {
     }
 
     fn show_properties(self: &Rc<Self>, location: Location, entry: Option<FileEntry>) {
-        let Some(window_overlay) = self
-            .overlay
-            .root()
-            .and_downcast::<gtk::Window>()
-            .and_then(|window| window.child())
-            .and_downcast::<gtk::Overlay>()
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
         else {
             return;
         };
-        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-        if let Some(root) = blurred_root.as_ref() {
-            root.set_blurred(true);
-        }
         let is_directory = entry.as_ref().is_none_or(FileEntry::is_directory);
         let name = entry
             .as_ref()

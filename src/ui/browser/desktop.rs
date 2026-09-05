@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::adapters::gio_location::gio_file_for_location;
+use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::paths::is_trash_location;
 use crate::ui::modal::show_error_dialog;

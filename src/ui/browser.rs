@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+//! Browser composition and public commands. Feature modules share this view's state and the
+//! application controller; they must not create independent navigation or operation state.
+
 use crate::app::Browser;
 use crate::model::{FileEntry, Location};
 use crate::services::{FileSource, LoadHandle, OperationProvider};
@@ -11,7 +14,7 @@ use crate::ui::browser::inline_edit::{ActiveNewEntry, ActiveRename};
 use crate::ui::browser::location::{MountCredentials, is_breadcrumb_button_target};
 use crate::ui::browser::paths::{can_pin_entry, is_trash_location};
 use crate::ui::browser::peek::{PeekAnchor, PeekView};
-use crate::ui::browser::progress::DeleteProgressView;
+use crate::ui::browser::progress::FileProgressView;
 use crate::ui::browser::transfer::duplicate_transfer;
 use crate::ui::browser::trash::TrashLoadingView;
 use crate::ui::browser_modes::{BrowserDensity, BrowserMode, ClickActivation, ModeViews};
@@ -145,7 +148,7 @@ pub(super) struct ViewState {
     columns_click_activation: Cell<ClickActivation>,
     active_rename: RefCell<Option<ActiveRename>>,
     active_new_entry: RefCell<Option<ActiveNewEntry>>,
-    delete_progress: RefCell<Option<DeleteProgressView>>,
+    file_progress_view: RefCell<Option<FileProgressView>>,
     pending_file_progress: RefCell<Option<glib::SourceId>>,
     file_operation_progress: Cell<(usize, usize)>,
     transfer_progress: Cell<Option<(usize, u64, Option<u64>)>>,
@@ -326,7 +329,7 @@ impl BrowserView {
             columns_click_activation: Cell::new(ClickActivation::default()),
             active_rename: RefCell::new(None),
             active_new_entry: RefCell::new(None),
-            delete_progress: RefCell::new(None),
+            file_progress_view: RefCell::new(None),
             pending_file_progress: RefCell::new(None),
             file_operation_progress: Cell::new((0, 0)),
             transfer_progress: Cell::new(None),

@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::adapters::gio_location::gio_file_for_location;
+use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::services::{ArchiveFormat, TransferConflict, validate_basename};
-use crate::ui::blur::BlurBin;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::destination::{
     folder_input_path, resolve_destination_path, setup_transfer_search,
@@ -15,7 +14,7 @@ use crate::ui::controls::{
     ModalTone, form_entry, form_label, form_password_entry, message_dialog_description,
     message_dialog_layout, modal_layout, segmented_control,
 };
-use crate::ui::modal::{dismiss_modal_layer, modal_layer, show_error_dialog};
+use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::Cell;
@@ -42,19 +41,13 @@ impl ViewState {
         confirm_label: &str,
         block_dismiss: Option<Rc<dyn Fn() -> bool>>,
     ) -> (gtk::Box, gtk::Button, Rc<dyn Fn()>) {
-        let Some(window_overlay) = self
-            .overlay
-            .root()
-            .and_downcast::<gtk::Window>()
-            .and_then(|window| window.child())
-            .and_downcast::<gtk::Overlay>()
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
         else {
             return (gtk::Box::default(), gtk::Button::default(), Rc::new(|| {}));
         };
-        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-        if let Some(root) = blurred_root.as_ref() {
-            root.set_blurred(true);
-        }
 
         let layout = modal_layout(
             crate::assets::icons::FILE_ARCHIVE,
@@ -114,19 +107,13 @@ impl ViewState {
             );
             return;
         }
-        let Some(window_overlay) = self
-            .overlay
-            .root()
-            .and_downcast::<gtk::Window>()
-            .and_then(|window| window.child())
-            .and_downcast::<gtk::Overlay>()
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
         else {
             return;
         };
-        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-        if let Some(root) = blurred_root.as_ref() {
-            root.set_blurred(true);
-        }
         let layout = message_dialog_layout(
             crate::assets::icons::FILE_ARCHIVE,
             "File already exists",

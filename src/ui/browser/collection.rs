@@ -2,7 +2,7 @@
 
 use crate::app::Browser;
 use crate::model::Location;
-use crate::ui::browser::entry::{model_is_hidden, pane_filter_matches};
+use crate::ui::browser::entry::entry_matches;
 use crate::ui::entry_list_model::EntryListModel;
 use gtk::prelude::*;
 use gtk::{gio, glib};
@@ -207,7 +207,7 @@ fn rebuild_position_map(
         let Some(text) = source.value(source_position as u32) else {
             continue;
         };
-        if (show_hidden || !model_is_hidden(&text)) && pane_filter_matches(&text, query) {
+        if entry_matches(&text, show_hidden, query) {
             *filtered_position = forward.len() as u32;
             forward.push(source_position);
         }

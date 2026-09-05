@@ -8,6 +8,36 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
 
+#[cfg(test)]
+mod tests;
+
+pub(super) struct ModalHost {
+    pub(super) overlay: gtk::Overlay,
+    pub(super) blurred_root: Option<BlurBin>,
+}
+
+impl ModalHost {
+    pub(super) fn blurred_for(parent: &impl IsA<gtk::Widget>) -> Option<Self> {
+        let overlay = window_overlay(parent)?;
+        let blurred_root = overlay.child().and_downcast::<BlurBin>();
+        if let Some(root) = blurred_root.as_ref() {
+            root.set_blurred(true);
+        }
+        Some(Self {
+            overlay,
+            blurred_root,
+        })
+    }
+}
+
+pub(super) fn window_overlay(parent: &impl IsA<gtk::Widget>) -> Option<gtk::Overlay> {
+    parent
+        .root()
+        .and_downcast::<gtk::Window>()
+        .and_then(|window| window.child())
+        .and_downcast::<gtk::Overlay>()
+}
+
 #[expect(
     deprecated,
     reason = "GTK 4.12 deprecated translate_coordinates and allocation without a replacement for click-in-bounds checks"
@@ -165,19 +195,14 @@ pub(super) fn show_error_dialog_after_close(
     detail: &str,
     on_close: Rc<dyn Fn()>,
 ) {
-    let Some(window_overlay) = parent
-        .root()
-        .and_downcast::<gtk::Window>()
-        .and_then(|window| window.child())
-        .and_downcast::<gtk::Overlay>()
+    let Some(ModalHost {
+        overlay: window_overlay,
+        blurred_root,
+    }) = ModalHost::blurred_for(parent)
     else {
         on_close();
         return;
     };
-    let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-    if let Some(root) = blurred_root.as_ref() {
-        root.set_blurred(true);
-    }
 
     let layout = message_dialog_layout(
         crate::assets::icons::X,
@@ -241,18 +266,13 @@ pub(super) fn show_delete_error_dialog(
     detail: &str,
     on_retry: Rc<dyn Fn()>,
 ) {
-    let Some(window_overlay) = parent
-        .root()
-        .and_downcast::<gtk::Window>()
-        .and_then(|window| window.child())
-        .and_downcast::<gtk::Overlay>()
+    let Some(ModalHost {
+        overlay: window_overlay,
+        blurred_root,
+    }) = ModalHost::blurred_for(parent)
     else {
         return;
     };
-    let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-    if let Some(root) = blurred_root.as_ref() {
-        root.set_blurred(true);
-    }
 
     let layout = message_dialog_layout(
         crate::assets::icons::X,

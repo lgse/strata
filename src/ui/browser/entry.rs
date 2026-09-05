@@ -157,14 +157,7 @@ pub(in crate::ui) fn entry_filter(
             return false;
         };
         let value = item.string();
-        if !show_hidden.get() && model_is_hidden(&value) {
-            return false;
-        }
-        let query = filter_query.borrow();
-        query.is_empty()
-            || model_display_name(&value)
-                .to_lowercase()
-                .contains(query.as_str())
+        entry_matches(&value, show_hidden.get(), &filter_query.borrow())
     })
 }
 
@@ -179,8 +172,9 @@ pub(in crate::ui) fn entry_icon(entry: &FileEntry) -> &'static str {
 }
 
 /// `query` must already be folded to lowercase by the caller.
-pub(in crate::ui) fn pane_filter_matches(value: &str, query: &str) -> bool {
-    query.is_empty() || model_display_name(value).to_lowercase().contains(query)
+pub(super) fn entry_matches(value: &str, show_hidden: bool, query: &str) -> bool {
+    (show_hidden || !model_is_hidden(value))
+        && (query.is_empty() || model_display_name(value).to_lowercase().contains(query))
 }
 
 pub(super) fn icon_for_name(name: &str) -> &'static str {

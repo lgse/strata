@@ -11,16 +11,16 @@ use crate::ui::browser::{ViewState, vim_focus_direction};
 use crate::ui::controls::{
     ModalTone, message_dialog_description, message_dialog_layout, modal_layout,
 };
-use crate::ui::modal::{dismiss_modal_layer, modal_layer, show_error_dialog};
+use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
 pub(super) struct TrashLoadingView {
-    pub(super) layer: gtk::Box,
-    pub(super) overlay: gtk::Overlay,
-    pub(super) blurred_root: Option<BlurBin>,
+    layer: gtk::Box,
+    overlay: gtk::Overlay,
+    blurred_root: Option<BlurBin>,
 }
 
 fn empty_trash_error_summary(outcome: &EmptyTrashOutcome) -> String {
@@ -74,7 +74,7 @@ impl ViewState {
     /// other a no-op.
     fn clear_empty_trash(&self) {
         self.pending_empty_trash.borrow_mut().take();
-        self.dismiss_delete_progress();
+        self.dismiss_file_operation_progress();
     }
 
     pub(super) fn load_trash_summary(self: &Rc<Self>) {
@@ -147,19 +147,13 @@ impl ViewState {
     /// The walk is bounded but can still take a few seconds on a large trash, hence the indicator.
     fn show_trash_loading_indicator(self: &Rc<Self>) {
         self.dismiss_trash_loading();
-        let Some(window_overlay) = self
-            .overlay
-            .root()
-            .and_downcast::<gtk::Window>()
-            .and_then(|window| window.child())
-            .and_downcast::<gtk::Overlay>()
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
         else {
             return;
         };
-        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-        if let Some(root) = blurred_root.as_ref() {
-            root.set_blurred(true);
-        }
 
         let layout = modal_layout(
             crate::assets::icons::TRASH,
@@ -224,19 +218,13 @@ impl ViewState {
     }
 
     fn show_empty_trash_confirmation(self: &Rc<Self>, summary: TrashSummary) {
-        let Some(window_overlay) = self
-            .overlay
-            .root()
-            .and_downcast::<gtk::Window>()
-            .and_then(|window| window.child())
-            .and_downcast::<gtk::Overlay>()
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
         else {
             return;
         };
-        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-        if let Some(root) = blurred_root.as_ref() {
-            root.set_blurred(true);
-        }
 
         let layout = message_dialog_layout(
             crate::assets::icons::TRASH,
@@ -390,19 +378,13 @@ impl ViewState {
     }
 
     pub(super) fn show_delete_confirmation(self: &Rc<Self>, entries: Vec<FileEntry>) {
-        let Some(window_overlay) = self
-            .overlay
-            .root()
-            .and_downcast::<gtk::Window>()
-            .and_then(|window| window.child())
-            .and_downcast::<gtk::Overlay>()
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
         else {
             return;
         };
-        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-        if let Some(root) = blurred_root.as_ref() {
-            root.set_blurred(true);
-        }
 
         let count = entries.len();
         let title = format!("Permanently delete {}?", item_count_label(count));

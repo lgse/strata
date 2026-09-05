@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+//! Exhaustive browser event dispatch. Shared effects and column publication run before alternate
+//! presentations consume the event; preserve that order when adding a feature handler.
+
 use crate::app::BrowserEvent;
 use crate::model::FileEntry;
 use crate::services::LocationValidationError;
@@ -412,7 +415,7 @@ impl ViewState {
                 if !moved_locations.is_empty() {
                     self.complete_cut_transfer(moved_locations);
                 }
-                self.dismiss_delete_progress();
+                self.dismiss_file_operation_progress();
             }
             BrowserEvent::DeletionStarted { total } => {
                 let browser = self.browser.clone();
@@ -425,9 +428,9 @@ impl ViewState {
                 );
             }
             BrowserEvent::DeletionProgress { completed, total } => {
-                self.update_delete_progress(*completed, *total);
+                self.update_item_progress(*completed, *total);
             }
-            BrowserEvent::DeletionFinished => self.dismiss_delete_progress(),
+            BrowserEvent::DeletionFinished => self.dismiss_file_operation_progress(),
             BrowserEvent::RestorationStarted { total } => {
                 let browser = self.browser.clone();
                 self.show_file_operation_progress(
@@ -439,11 +442,11 @@ impl ViewState {
                 );
             }
             BrowserEvent::RestorationProgress { completed, total } => {
-                self.update_delete_progress(*completed, *total);
+                self.update_item_progress(*completed, *total);
             }
-            BrowserEvent::RestorationFinished => self.dismiss_delete_progress(),
+            BrowserEvent::RestorationFinished => self.dismiss_file_operation_progress(),
             BrowserEvent::OperationFailed { message } => {
-                self.dismiss_delete_progress();
+                self.dismiss_file_operation_progress();
                 let retry = self.pending_extract_retry.take();
                 if let Some((entry, dest)) = retry {
                     let lower = message.to_lowercase();
@@ -548,7 +551,7 @@ impl ViewState {
                 self.update_archive_progress(*completed, *total);
             }
             BrowserEvent::ArchiveCompleted { select_name, .. } => {
-                self.dismiss_delete_progress();
+                self.dismiss_file_operation_progress();
                 self.pending_extract_retry.replace(None);
                 if !select_name.is_empty() {
                     self.pending_select.borrow_mut().push(select_name.clone());

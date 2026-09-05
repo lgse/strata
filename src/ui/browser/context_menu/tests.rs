@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod actions;
+
 use super::*;
 use crate::model::{FileEntry, Location};
 

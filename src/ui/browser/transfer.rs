@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::adapters::gio_location::gio_file_for_location;
+use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::services::{MoveRecord, PasteItem, TransferConflict, UndoMoveItem};
-use crate::ui::blur::BlurBin;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::destination::{
     folder_input_path, resolve_destination_path, setup_transfer_search,
@@ -14,7 +13,7 @@ use crate::ui::controls::{
     ModalTone, form_check_button, form_entry, form_label, message_dialog_description,
     message_dialog_layout, modal_layout,
 };
-use crate::ui::modal::{dismiss_modal_layer, modal_layer};
+use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
@@ -217,19 +216,13 @@ impl ViewState {
         has_more_conflicts: bool,
         on_choice: Rc<dyn Fn(ConflictChoice, bool)>,
     ) {
-        let Some(window_overlay) = self
-            .overlay
-            .root()
-            .and_downcast::<gtk::Window>()
-            .and_then(|window| window.child())
-            .and_downcast::<gtk::Overlay>()
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
         else {
             return;
         };
-        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-        if let Some(root) = blurred_root.as_ref() {
-            root.set_blurred(true);
-        }
 
         let layout = message_dialog_layout(
             crate::assets::icons::COPY,
@@ -304,19 +297,13 @@ impl ViewState {
         if entries.is_empty() {
             return;
         }
-        let Some(window_overlay) = self
-            .overlay
-            .root()
-            .and_downcast::<gtk::Window>()
-            .and_then(|window| window.child())
-            .and_downcast::<gtk::Overlay>()
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
         else {
             return;
         };
-        let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-        if let Some(root) = blurred_root.as_ref() {
-            root.set_blurred(true);
-        }
 
         let base = self
             .browser

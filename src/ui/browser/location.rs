@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::adapters::gio_location::gio_file_for_location;
+use crate::adapters::gio_file_for_location;
 use crate::model::Location;
 use crate::services::{
     LocationValidationError, UriCredentials, backend_unavailable_message, sanitize_uri_credentials,
@@ -11,7 +11,7 @@ use crate::ui::browser::{BrowserView, ViewState};
 use crate::ui::controls::{
     form_entry, form_label, form_password_entry, modal_layout, segmented_control, wrap_dialog_text,
 };
-use crate::ui::modal::{dismiss_modal_layer, modal_layer, show_error_dialog};
+use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
@@ -81,21 +81,16 @@ fn show_authentication_dialog(
         submitted,
         cancelled,
     } = handlers;
-    let Some(window_overlay) = browser_overlay
-        .root()
-        .and_downcast::<gtk::Window>()
-        .and_then(|window| window.child())
-        .and_downcast::<gtk::Overlay>()
+    let Some(ModalHost {
+        overlay: window_overlay,
+        blurred_root,
+    }) = ModalHost::blurred_for(browser_overlay)
     else {
         if let Some(operation) = operation {
             operation.reply(gio::MountOperationResult::Unhandled);
         }
         return None;
     };
-    let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-    if let Some(root) = blurred_root.as_ref() {
-        root.set_blurred(true);
-    }
 
     let layout = modal_layout(
         crate::assets::icons::KEY,
@@ -300,12 +295,7 @@ fn dismiss_authentication_prompt(browser_overlay: &gtk::Overlay, layer: &gtk::Bo
     if layer.parent().is_none() {
         return;
     }
-    let Some(window_overlay) = browser_overlay
-        .root()
-        .and_downcast::<gtk::Window>()
-        .and_then(|window| window.child())
-        .and_downcast::<gtk::Overlay>()
-    else {
+    let Some(window_overlay) = crate::ui::modal::window_overlay(browser_overlay) else {
         return;
     };
     let blurred_root = window_overlay.child().and_downcast::<BlurBin>();

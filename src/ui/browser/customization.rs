@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::model::{FolderColor, FolderColorValue};
-use crate::ui::blur::BlurBin;
 use crate::ui::controls::modal_layout;
-use crate::ui::modal::{dismiss_modal_layer, modal_layer};
+use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer};
 use gtk::prelude::*;
 use gtk::{gdk, glib};
 use std::cell::RefCell;
@@ -30,18 +29,13 @@ fn show_custom_color_modal(
     item_label: &'static str,
     on_confirm: impl Fn(FolderColorValue) + 'static,
 ) {
-    let Some(window_overlay) = parent
-        .root()
-        .and_downcast::<gtk::Window>()
-        .and_then(|window| window.child())
-        .and_downcast::<gtk::Overlay>()
+    let Some(ModalHost {
+        overlay: window_overlay,
+        blurred_root,
+    }) = ModalHost::blurred_for(parent)
     else {
         return;
     };
-    let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-    if let Some(root) = blurred_root.as_ref() {
-        root.set_blurred(true);
-    }
     if let Some(popover) = parent
         .ancestor(gtk::Popover::static_type())
         .and_downcast::<gtk::Popover>()
@@ -162,18 +156,13 @@ pub(super) fn show_customize_modal(
     is_directory: bool,
     fallback_icon: &'static str,
 ) {
-    let Some(window_overlay) = parent
-        .root()
-        .and_downcast::<gtk::Window>()
-        .and_then(|window| window.child())
-        .and_downcast::<gtk::Overlay>()
+    let Some(ModalHost {
+        overlay: window_overlay,
+        blurred_root,
+    }) = ModalHost::blurred_for(parent)
     else {
         return;
     };
-    let blurred_root = window_overlay.child().and_downcast::<BlurBin>();
-    if let Some(root) = blurred_root.as_ref() {
-        root.set_blurred(true);
-    }
     if let Some(popover) = parent
         .ancestor(gtk::Popover::static_type())
         .and_downcast::<gtk::Popover>()

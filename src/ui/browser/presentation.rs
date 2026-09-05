@@ -5,10 +5,10 @@ use gtk::prelude::*;
 #[derive(Clone)]
 pub(super) struct LoadPresentation {
     pub(super) stack: gtk::Stack,
-    pub(super) skeleton: gtk::Box,
-    pub(super) feedback: gtk::Box,
-    pub(super) message: gtk::Label,
-    pub(super) retry: Option<gtk::Button>,
+    skeleton: gtk::Box,
+    feedback: gtk::Box,
+    message: gtk::Label,
+    retry: Option<gtk::Button>,
 }
 
 impl LoadPresentation {

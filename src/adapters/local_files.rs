@@ -15,11 +15,12 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
+    adapters::{gio_file_for_location, location_for_file},
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
-        backend_unavailable_message, sanitize_uri_credentials,
+        backend_unavailable_message,
     },
 };
 
@@ -58,23 +59,6 @@ fn map_validation_error(error: std::io::Error) -> LocationValidationError {
         ErrorKind::PermissionDenied => LocationValidationError::Inaccessible,
         _ => LocationValidationError::Unavailable(error.to_string()),
     }
-}
-
-/// Builds a `Location` for a `gio::File`, preferring a native path only when
-/// the file is genuinely on a local filesystem. A mounted GVfs backend (SMB,
-/// SFTP, ...) can still return a `.path()` via its FUSE mirror even though the
-/// file isn't native; using that path would leak the mirror's opaque
-/// `/run/user/$UID/gvfs/...` location instead of the clean URI (lgse/strata#5).
-/// Returns `None` when GIO provides a malformed URI.
-pub(crate) fn location_for_file(file: &gio::File) -> Option<Location> {
-    if file.is_native()
-        && let Some(path) = file.path()
-    {
-        return Some(Location::local(path));
-    }
-    let uri = file.uri();
-    let (sanitized, _) = sanitize_uri_credentials(&uri).ok()?;
-    Some(Location::uri(sanitized))
 }
 
 fn uri_validation_result(
@@ -518,10 +502,7 @@ impl FileSource for LocalFileSource {
         }
 
         let task = glib::MainContext::default().spawn_local(async move {
-            let directory = location
-                .native_path()
-                .map(gio::File::for_path)
-                .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()));
+            let directory = gio_file_for_location(&location);
             let deadline = started + request.time_budget;
             let finish_truncated = |entries: usize,
                                     reason: &'static str,
