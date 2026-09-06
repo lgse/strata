@@ -3770,9 +3770,3 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   padding-bottom: 5px;
   padding-top: 5px;
 }
-
-@media (prefers-reduced-motion: reduce) {
-  * {
-    transition-duration: 1ms;
-  }
-}

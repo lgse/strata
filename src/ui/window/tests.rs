@@ -4,7 +4,10 @@ mod type_to_search;
 
 use std::{cell::Cell, path::Path};
 
+use gtk::glib;
+
 use crate::{
+    app::BrowserEvent,
     model::Location,
     services::{BuildKind, ReleaseMetadata},
     test_support::gtk_test,
@@ -12,15 +15,17 @@ use crate::{
 };
 
 use super::{
-    MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, TypeToSearchQuery,
-    accepts_sidebar_reorder_payload, begin_media_release, browser_for_window,
-    browser_mode_for_digit, is_open_terminal_shortcut, is_sidebar_focus_shortcut, is_smb_location,
+    MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, TrashContents,
+    TrashMenuVisibility, TypeToSearchQuery, accepts_sidebar_reorder_payload, begin_media_release,
+    browser_for_window, browser_mode_for_digit, event_changes_trash_contents,
+    is_open_terminal_shortcut, is_sidebar_focus_shortcut, is_smb_location,
     is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction,
     media_release_label, mount_release_action, mouse_history_action, page_direction,
     parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
     reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
     should_show_standard_place, sidebar_accepts_file_drop, sidebar_update_label, standard_place,
-    type_to_search_query, vim_focus_direction, volume_release_action,
+    trash_contents_from_probe, trash_has_entries, trash_menu_visibility, type_to_search_query,
+    vim_focus_direction, volume_release_action,
 };
 
 #[test]
@@ -780,6 +785,85 @@ fn sidebar_file_drops_accept_local_places_but_not_virtual_locations() {
 }
 
 #[test]
+fn the_empty_trash_row_and_its_separator_appear_only_for_confirmed_non_empty_trash() {
+    assert_eq!(
+        trash_menu_visibility(TrashContents::NonEmpty),
+        TrashMenuVisibility {
+            separator: true,
+            empty: true,
+        }
+    );
+    assert_eq!(
+        trash_menu_visibility(TrashContents::Empty),
+        TrashMenuVisibility {
+            separator: false,
+            empty: false,
+        }
+    );
+    assert_eq!(
+        trash_menu_visibility(TrashContents::Unknown),
+        TrashMenuVisibility {
+            separator: false,
+            empty: false,
+        }
+    );
+}
+
+#[test]
+fn trash_probe_results_map_to_menu_state() {
+    assert_eq!(trash_contents_from_probe(Ok(true)), TrashContents::NonEmpty);
+    assert_eq!(trash_contents_from_probe(Ok(false)), TrashContents::Empty);
+    assert_eq!(
+        trash_contents_from_probe(Err(glib::Error::new(
+            gtk::gio::IOErrorEnum::NotSupported,
+            "trash backend unavailable",
+        ))),
+        TrashContents::Unknown
+    );
+}
+
+#[test]
+fn trash_mutating_operations_refresh_the_context_menu() {
+    assert!(event_changes_trash_contents(
+        &BrowserEvent::DeletionFinished
+    ));
+    assert!(event_changes_trash_contents(
+        &BrowserEvent::RestorationFinished
+    ));
+    assert!(event_changes_trash_contents(
+        &BrowserEvent::TransferFinished {
+            moved_locations: Vec::new(),
+        }
+    ));
+    assert!(!event_changes_trash_contents(&BrowserEvent::Reset));
+    assert!(!event_changes_trash_contents(
+        &BrowserEvent::HiddenToggled { show_hidden: true }
+    ));
+}
+
+#[test]
+fn the_trash_probe_reports_emptiness_from_the_first_entry_alone() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let root = gtk::gio::File::for_path(fixture.path());
+
+    let empty = glib::MainContext::new()
+        .block_on(trash_has_entries(&root))
+        .expect("an empty directory should enumerate");
+    assert!(!empty);
+
+    std::fs::write(fixture.path().join("note.txt"), b"trashed").expect("fixture entry");
+    let non_empty = glib::MainContext::new()
+        .block_on(trash_has_entries(&root))
+        .expect("a populated directory should enumerate");
+    assert!(non_empty);
+
+    let missing = glib::MainContext::new().block_on(trash_has_entries(&gtk::gio::File::for_path(
+        fixture.path().join("absent"),
+    )));
+    assert!(missing.is_err());
+}
+
+#[test]
 fn control_digits_select_each_browser_presentation() {
     use super::BrowserMode;
 
@@ -801,4 +885,28 @@ fn control_digits_select_each_browser_presentation() {
     );
     assert_eq!(browser_mode_for_digit(gtk::gdk::Key::_4), None);
     assert_eq!(browser_mode_for_digit(gtk::gdk::Key::a), None);
+}
+
+#[test]
+fn the_bundled_stylesheet_only_uses_at_rules_gtk_parses() {
+    // GTK's CSS parser rejects anything outside this set with a startup
+    // "Unknown @ rule" warning; `@media` only became valid in GTK 4.20.
+    const SUPPORTED: [&str; 3] = ["define-color", "import", "keyframes"];
+
+    let unsupported: Vec<&str> = include_str!("../../style.css")
+        .lines()
+        .filter_map(|line| line.trim_start().strip_prefix('@'))
+        .map(|rule| {
+            let end = rule
+                .find(|character: char| !character.is_ascii_alphanumeric() && character != '-')
+                .unwrap_or(rule.len());
+            &rule[..end]
+        })
+        .filter(|rule| !SUPPORTED.contains(rule))
+        .collect();
+
+    assert!(
+        unsupported.is_empty(),
+        "the stylesheet uses at-rules GTK 4.12 cannot parse: {unsupported:?}"
+    );
 }
