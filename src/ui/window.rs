@@ -703,6 +703,14 @@ fn install_keyboard_navigation(
         let sidebar_has_focus = focused.as_ref().is_some_and(|focused| {
             focused == &sidebar_widget || focused.is_ancestor(&sidebar_widget)
         });
+        if control
+            && !shift
+            && !alt
+            && let Some(mode) = browser_mode_for_digit(key)
+        {
+            apply_browser_mode(&view, &super::theme::ThemeManager::shared(), mode);
+            return glib::Propagation::Stop;
+        }
         if control && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::K) {
             if let Err(error) =
                 gtk::prelude::WidgetExt::activate_action(&dialog_parent, "win.search", None)
@@ -1264,6 +1272,26 @@ pub(super) fn install_modal_focus_trap(window: &impl IsA<gtk::Window>) {
     });
 }
 
+/// Switches presentation and remembers the choice.
+pub(super) fn apply_browser_mode(
+    view: &BrowserView,
+    preferences: &super::theme::ThemeManager,
+    mode: BrowserMode,
+) {
+    view.set_view_mode(mode);
+    preferences.set_browser_mode(mode);
+}
+
+/// The presentation each `Ctrl+<digit>` shortcut selects.
+pub(super) fn browser_mode_for_digit(key: gtk::gdk::Key) -> Option<BrowserMode> {
+    match key {
+        gtk::gdk::Key::_1 | gtk::gdk::Key::KP_1 => Some(BrowserMode::Columns),
+        gtk::gdk::Key::_2 | gtk::gdk::Key::KP_2 => Some(BrowserMode::Icons),
+        gtk::gdk::Key::_3 | gtk::gdk::Key::KP_3 => Some(BrowserMode::List),
+        _ => None,
+    }
+}
+
 pub(super) fn build_appearance_menu(
     view: &BrowserView,
     controller: &Rc<Browser>,
@@ -1337,22 +1365,27 @@ pub(super) fn build_appearance_menu(
         (&list, BrowserMode::List),
     ] {
         let view = view.clone();
+        let preferences = preferences.clone();
+        let popover_weak = popover_weak.clone();
+        button.connect_clicked(move |_| {
+            apply_browser_mode(&view, &preferences, mode);
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+            }
+        });
+    }
+    {
+        // The mode also changes from the keyboard, so track the view rather
+        // than only the buttons in this menu.
         let columns_check = columns_check.clone();
         let icons_check = icons_check.clone();
         let list_check = list_check.clone();
         let group_by_type = group_by_type.clone();
-        let preferences = preferences.clone();
-        let popover_weak = popover_weak.clone();
-        button.connect_clicked(move |_| {
-            view.set_view_mode(mode);
-            preferences.set_browser_mode(mode);
+        view.connect_view_mode_changed(move |mode| {
             columns_check.set_visible(mode == BrowserMode::Columns);
             icons_check.set_visible(mode == BrowserMode::Icons);
             list_check.set_visible(mode == BrowserMode::List);
             group_by_type.set_sensitive(mode != BrowserMode::Columns);
-            if let Some(popover) = popover_weak.upgrade() {
-                popover.popdown();
-            }
         });
     }
     content.append(&columns);
