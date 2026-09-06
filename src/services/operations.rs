@@ -72,6 +72,12 @@ pub struct UndoMoveRequest {
 }
 
 #[derive(Clone, Debug)]
+pub struct UndoCopyRequest {
+    pub id: OperationRequestId,
+    pub locations: Vec<Location>,
+}
+
+#[derive(Clone, Debug)]
 pub struct CreateFileRequest {
     pub id: OperationRequestId,
     pub parent: Location,
@@ -192,6 +198,10 @@ pub enum OperationEvent {
         completed_items: usize,
         transferred_bytes: u64,
         total_bytes: Option<u64>,
+        /// Set once per item a copy newly wrote, so an undo knows exactly what
+        /// to remove. Always `None` while a move transfers its sources, and for
+        /// the byte-level updates within one item.
+        created_location: Option<Location>,
     },
     DeleteProgress {
         request_id: OperationRequestId,
@@ -270,6 +280,8 @@ pub trait OperationProvider {
     fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     /// Moves completed transfers back to their original locations.
     fn undo_move(&self, request: UndoMoveRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
+    /// Removes the destination items a completed copy created.
+    fn undo_copy(&self, request: UndoCopyRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
     fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle;
