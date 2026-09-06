@@ -42,6 +42,17 @@ impl ViewState {
                 self.set_location(location);
                 if self.mode_views.borrow().mode() == BrowserMode::Columns {
                     self.append_column(*depth, location);
+                    // A pointer click that opens a folder leaves the mouse on
+                    // the parent column, so paste would target the folder's
+                    // parent instead of the folder itself. Follow the newly
+                    // opened column while the pointer owns navigation.
+                    if self.input_ownership.borrow().last_navigation
+                        == super::super::input_ownership::NavigationInput::Pointer
+                        && self.hovered_column.get() == depth.checked_sub(1)
+                    {
+                        self.hovered_column.set(Some(*depth));
+                        self.refresh_destination_style();
+                    }
                 }
             }
             BrowserEvent::EntriesInserted { depth, insertions } => {

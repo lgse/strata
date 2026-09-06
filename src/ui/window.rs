@@ -101,6 +101,18 @@ pub fn present_reveal(application: &gtk::Application, request: RevealRequest) {
     );
 }
 
+fn browser_for_window(theme_manager: &ThemeManager) -> BrowserView {
+    let browser = BrowserView::new(Rc::new(LocalFileSource), PeekBehavior::default());
+    browser.set_view_mode(theme_manager.browser_mode());
+    browser.set_density(theme_manager.browser_density());
+    browser.set_group_by_type(theme_manager.group_by_type());
+    apply_click_activation(&browser, theme_manager);
+    browser.set_operation_provider(Rc::new(LocalOperationProvider));
+    browser.set_auto_refresh_interval(theme_manager.auto_refresh_interval());
+    browser.set_single_click_previews(theme_manager.single_click_previews());
+    browser
+}
+
 fn present_target(
     application: &gtk::Application,
     location: Option<Location>,
@@ -123,13 +135,7 @@ fn present_target(
         .default_height(760)
         .build();
 
-    let browser = BrowserView::new(Rc::new(LocalFileSource), PeekBehavior::default());
-    browser.set_view_mode(theme_manager.browser_mode());
-    browser.set_density(theme_manager.browser_density());
-    browser.set_group_by_type(theme_manager.group_by_type());
-    apply_click_activation(&browser, &theme_manager);
-    browser.set_operation_provider(Rc::new(LocalOperationProvider));
-    browser.set_auto_refresh_interval(theme_manager.auto_refresh_interval());
+    let browser = browser_for_window(&theme_manager);
     let controller = browser.browser();
 
     let preview_preferences = theme_manager.clone();

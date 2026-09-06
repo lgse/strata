@@ -28,6 +28,36 @@ def test_copy_leaves_the_source_in_place(strata, mode):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
+def test_paste_targets_a_single_selected_directory(strata, mode):
+    fixture = strata.fixture
+
+    strata.select_entry("todo.txt")
+    strata.keyboard.press("ctrl+c")
+    strata.select_entry_with_keyboard("archive")
+    strata.keyboard.press("ctrl+v")
+
+    strata.wait(
+        lambda: fixture.path("archive/todo.txt").exists(),
+        "the copy to land in the selected folder",
+    )
+    assert fixture.path("todo.txt").exists()
+
+
+def test_paste_follows_a_child_column_opened_by_pointer(strata):
+    fixture = strata.fixture
+
+    strata.select_entry("todo.txt")
+    strata.keyboard.press("ctrl+c")
+    strata.open_directory("archive")
+    strata.keyboard.press("ctrl+v")
+
+    strata.wait(
+        lambda: fixture.path("archive/todo.txt").exists(),
+        "the copy to land in the opened child column",
+    )
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
 def test_cut_moves_only_after_paste(strata, mode):
     fixture = strata.fixture
 

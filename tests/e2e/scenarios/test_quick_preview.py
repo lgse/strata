@@ -7,7 +7,6 @@ import pytest
 
 from harness.fixtures import FixtureTree
 from harness.modes import ALL_MODES
-from harness.tree import TreeTimeout
 
 PREVIEW_FIXTURE = {
     "notes.txt": "the quick brown fox\n",
@@ -95,11 +94,6 @@ def test_opening_the_preview_leaves_the_listing_intact(strata):
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=TreeTimeout,
-    reason="Pointer selection still needs a second Space before quick preview opens.",
-)
 def test_space_opens_the_preview_after_a_pointer_selection(strata):
     strata.select_entry("notes.txt")
 
