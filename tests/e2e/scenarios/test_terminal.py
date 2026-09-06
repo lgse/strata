@@ -1,5 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Opening a terminal, and what is reported when the launcher is missing."""
 
 from __future__ import annotations
 
@@ -12,11 +11,7 @@ LAUNCHER = "xdg-terminal-exec"
 
 @pytest.fixture
 def test_environment():
-    """A HOME whose PATH holds no terminal launcher.
-
-    The whole module covers what Strata reports when the helper is absent, so
-    the search path is emptied rather than depending on what the host installs.
-    """
+    """Empty PATH so launcher availability does not depend on the host."""
 
     environment = harness_environment.TestEnvironment()
     inherited = environment.variables
