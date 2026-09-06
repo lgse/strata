@@ -52,12 +52,53 @@ def test_the_pane_context_menu_offers_directory_actions(strata):
     strata.dismiss_menu()
 
 
-def test_properties_opens_and_closes(strata):
-    strata.open_context_menu("readme.md")
+def _open_properties(strata, name):
+    strata.open_context_menu(name)
     strata.choose_menu_item("Properties")
+    return strata.wait_for_dialog()
 
-    dialog = strata.wait_for_dialog()
+
+def test_properties_opens_and_closes(strata):
+    dialog = _open_properties(strata, "readme.md")
     assert "readme.md" in dialog.dump(), "the dialog should describe the file"
+
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.dialog() is None, "Escape to close the dialog")
+
+
+def test_properties_pins_a_folder_and_offers_unpin_afterwards(strata):
+    dialog = _open_properties(strata, "documents")
+    pin = dialog.find(role="button", name="Pin")
+    assert pin is not None, dialog.dump()
+    assert "sensitive" in pin.states
+    strata.pointer.click(pin)
+    strata.wait(lambda: strata.dialog() is None, "the dialog to close after pinning")
+    strata.wait(
+        lambda: strata.window.find(role="button", name="documents"),
+        "the pinned sidebar row",
+    )
+
+    dialog = _open_properties(strata, "documents")
+    unpin = dialog.find(role="button", name="Unpin")
+    assert unpin is not None, (
+        f"Properties must offer Unpin for a pinned folder\n{dialog.dump()}"
+    )
+    assert "sensitive" in unpin.states, "the Unpin control must stay readable"
+    assert dialog.find(role="button", name="Pin") is None
+
+    strata.pointer.click(unpin)
+    strata.wait(lambda: strata.dialog() is None, "the dialog to close after unpinning")
+    strata.wait(
+        lambda: strata.window.find(role="button", name="documents") is None,
+        "the sidebar row to disappear",
+    )
+
+
+def test_properties_hides_the_pin_control_for_a_file(strata):
+    dialog = _open_properties(strata, "readme.md")
+
+    assert dialog.find(role="button", name="Pin") is None, dialog.dump()
+    assert dialog.find(role="button", name="Unpin") is None, dialog.dump()
 
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.dialog() is None, "Escape to close the dialog")

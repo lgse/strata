@@ -207,11 +207,17 @@ fn present_target(
     content.set_vexpand(true);
     let sidebar = build_sidebar(browser.clone(), theme_manager.clone(), false);
     let weak_sidebar = Rc::downgrade(&sidebar.state);
+    let weak_unpin_sidebar = Rc::downgrade(&sidebar.state);
     let pinned_places = sidebar.state.pinned_places.clone();
     browser.set_pin_handlers(
         Rc::new(move |location, name| {
             if let Some(sidebar) = weak_sidebar.upgrade() {
                 sidebar.pin_location(location, name);
+            }
+        }),
+        Rc::new(move |location| {
+            if let Some(sidebar) = weak_unpin_sidebar.upgrade() {
+                sidebar.unpin_location(location);
             }
         }),
         Rc::new(move |location| pin_status(&pinned_places.borrow(), location)),
