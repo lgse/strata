@@ -58,8 +58,7 @@ pub enum BrowserMode {
 }
 
 impl BrowserMode {
-    /// File-type headings are List-only for now. Icons grouping is disabled
-    /// until a follow-up can restore per-type separators.
+    /// File-type headings are List-only. Icons clustering is wired but gated off.
     pub fn supports_type_grouping(self) -> bool {
         matches!(self, Self::List)
     }
@@ -197,9 +196,7 @@ struct BoundModeItem {
     widget: glib::WeakRef<gtk::Widget>,
 }
 
-/// One collection view inside a pane. A pane normally has a single section; a pane
-/// that groups entries by file type has one per group, each with its own model and
-/// selection over the same source entries.
+/// One collection view inside a pane. Icons and List each keep a single section.
 #[derive(Clone)]
 struct PaneSection {
     view: gtk::Widget,
@@ -210,34 +207,6 @@ struct PaneSection {
     visit: super::marquee::ItemVisitor,
 }
 
-impl PaneSection {
-    fn item_bounds(&self, position: u32) -> Option<gtk::graphene::Rect> {
-        self.bound_items.borrow().iter().find_map(|bound| {
-            let item = bound.item.upgrade()?;
-            if item.position() != position {
-                return None;
-            }
-            let widget = bound.widget.upgrade()?;
-            widget
-                .is_mapped()
-                .then(|| widget.compute_bounds(&self.view))
-                .flatten()
-        })
-    }
-
-    fn first_row_contains(&self, position: u32) -> bool {
-        if position == 0 {
-            return true;
-        }
-        if !self.view.is::<gtk::GridView>() {
-            return false;
-        }
-        self.item_bounds(0)
-            .zip(self.item_bounds(position))
-            .is_some_and(|(first, current)| (first.y() - current.y()).abs() <= 1.0)
-    }
-}
-
 #[derive(Clone)]
 struct Pane {
     depth: usize,
@@ -246,11 +215,9 @@ struct Pane {
     model: gtk::StringList,
     source_index: SourceIndexMap,
     filter_model: Option<gtk::FilterListModel>,
-    /// The section that owns the pane's chrome and hosts the inline new-entry row. In
-    /// the grouped Icons mode it holds nothing else, since entries live in group sections.
+    /// The section that owns the pane's chrome and hosts the inline new-entry row.
     section: PaneSection,
     sections: Rc<RefCell<Vec<PaneSection>>>,
-    groups: Option<Rc<IconsGroups>>,
     icons: Option<Rc<IconsContext>>,
     targets: super::marquee::MarqueeTargets,
     /// Set while a reload has detached the pane's models from their views.
@@ -934,7 +901,6 @@ impl ModeViews {
                         let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
                         pane.model.splice(insertion.position as u32, 0, &values_ref);
                     }
-                    sync_icons_groups(pane);
                     if !pane.spinner.is_spinning() {
                         show_count(pane);
                     }
@@ -970,7 +936,6 @@ impl ModeViews {
                         .unwrap_or_default();
                     let values: Vec<_> = values.iter().map(String::as_str).collect();
                     pane.model.splice(*position as u32, 0, &values);
-                    sync_icons_groups(pane);
                     if !pane.spinner.is_spinning() {
                         show_count(pane);
                     }
@@ -1012,7 +977,6 @@ impl ModeViews {
                             &values_ref,
                         );
                     }
-                    sync_icons_groups(pane);
                     show_count(pane);
                 }
             }
@@ -1027,7 +991,6 @@ impl ModeViews {
                         filtered.set_model(None::<&gio::ListModel>);
                     }
                     pane.model.splice(0, pane.model.n_items(), &[]);
-                    sync_icons_groups(pane);
                     pane.truncated_hint.set_visible(false);
                     pane.spinner.set_visible(true);
                     pane.spinner.start();
@@ -1037,7 +1000,6 @@ impl ModeViews {
             BrowserEvent::LoadFinished { depth, truncated } => {
                 for pane in self.panes_at(*depth) {
                     reconnect_pane_model(pane);
-                    sync_icons_groups(pane);
                     pane.spinner.stop();
                     pane.spinner.set_visible(false);
                     pane.truncated_hint.set_visible(*truncated);
@@ -1193,77 +1155,6 @@ impl ModeViews {
                     .collect::<Vec<_>>()
             })
             .collect()
-    }
-
-    pub fn group_boundary_target(&self, direction: gtk::DirectionType) -> Option<(usize, usize)> {
-        let (depth, source) = self.focused_position()?;
-        let pane = self
-            .visible_panes()
-            .into_iter()
-            .find(|pane| pane.depth == depth)?;
-        let sections = pane.item_sections();
-        if sections.len() < 2 {
-            return None;
-        }
-        let (index, position) = sections.iter().enumerate().find_map(|(index, section)| {
-            view_position_for_source(&pane.model, Some(&section.view_model), source)
-                .map(|position| (index, position))
-        })?;
-        let current = &sections[index];
-        let last = current.view_model.n_items().checked_sub(1)?;
-        let previous = match direction {
-            gtk::DirectionType::Up if current.first_row_contains(position) => true,
-            gtk::DirectionType::Left if position == 0 => true,
-            gtk::DirectionType::Down
-                if current
-                    .item_bounds(position)
-                    .zip(current.item_bounds(last))
-                    .is_some_and(|(a, b)| (a.y() - b.y()).abs() <= 1.0) =>
-            {
-                false
-            }
-            gtk::DirectionType::Right if position == last => false,
-            _ => return None,
-        };
-        let target = if previous {
-            sections[..index]
-                .iter()
-                .rev()
-                .find(|section| section.view_model.n_items() > 0)?
-        } else {
-            sections[index + 1..]
-                .iter()
-                .find(|section| section.view_model.n_items() > 0)?
-        };
-        let edge = if previous {
-            target.view_model.n_items().checked_sub(1)?
-        } else {
-            0
-        };
-        let mut target_position = edge;
-        if matches!(direction, gtk::DirectionType::Up | gtk::DirectionType::Down)
-            && let (Some(origin), Some(row)) =
-                (current.item_bounds(position), target.item_bounds(edge))
-        {
-            target_position = target
-                .bound_items
-                .borrow()
-                .iter()
-                .filter_map(|bound| {
-                    let position = bound.item.upgrade()?.position();
-                    let bounds = bound.widget.upgrade()?.compute_bounds(&target.view)?;
-                    ((bounds.y() - row.y()).abs() <= 1.0)
-                        .then_some((position, (bounds.x() - origin.x()).abs()))
-                })
-                .min_by(|a, b| a.1.total_cmp(&b.1))
-                .map_or(edge, |(position, _)| position);
-        }
-        source_position_for_view(
-            &pane.source_index,
-            Some(&target.view_model),
-            target_position,
-        )
-        .map(|position| (depth, position))
     }
 
     pub fn suppress_focus_scroll(&self) {
@@ -1853,24 +1744,6 @@ struct IconsContext {
     scrolling: Rc<Cell<bool>>,
 }
 
-type IconsGroupBuilder = Rc<dyn Fn(&str) -> IconsGroup>;
-
-#[derive(Clone)]
-struct IconsGroup {
-    label: String,
-    heading: gtk::Widget,
-    section: PaneSection,
-}
-
-/// The grouped Icons mode's heading-and-grid pairs, rebuilt as the file-type groups a
-/// directory contains change.
-struct IconsGroups {
-    container: gtk::Box,
-    placeholder: gtk::Widget,
-    groups: RefCell<Vec<IconsGroup>>,
-    build: RefCell<Option<IconsGroupBuilder>>,
-}
-
 fn build_icons_pane(
     browser: Rc<Browser>,
     click_options: ModeClickOptions,
@@ -1930,46 +1803,23 @@ fn build_icons_pane(
         density: Cell::new(options.density),
         scrolling: Rc::new(Cell::new(false)),
     });
-    let (root, pane_section, groups) = if options.group_by_type {
-        let container = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        container.add_css_class("icons-type-groups");
-        let placeholder = build_icons_view(&context, &new_entry_placeholder, false);
-        placeholder.view.set_visible(false);
-        let placeholder_view = placeholder.view.clone();
-        new_entry_placeholder.connect_items_changed(move |model, _, _, _| {
-            placeholder_view.set_visible(model.n_items() > 0);
-        });
-        container.append(&placeholder.view);
-        // Groups take their natural height and the filler soaks up what is left, so a
-        // short group does not stretch to fill the viewport. It also keeps the blank
-        // area below the last group inside the marquee's drag surface.
-        let filler = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        filler.set_vexpand(true);
-        container.append(&filler);
-        let groups = Rc::new(IconsGroups {
-            container: container.clone(),
-            placeholder: placeholder.view.clone(),
-            groups: RefCell::new(Vec::new()),
-            build: RefCell::new(None),
-        });
-        let build_context = context.clone();
-        let build_model = filtered_model.clone();
-        groups.build.replace(Some(Rc::new(move |label: &str| {
-            build_icons_group(&build_context, &build_model, label)
-        })));
-        (container.upcast::<gtk::Widget>(), placeholder, Some(groups))
+    let flattened_models = gio::ListStore::new::<gio::ListModel>();
+    flattened_models.append(&new_entry_placeholder.clone().upcast::<gio::ListModel>());
+    flattened_models.append(&filtered_model.clone().upcast::<gio::ListModel>());
+    let flattened = gtk::FlattenListModel::new(Some(flattened_models));
+    let view_model = if options.group_by_type {
+        let sorted = gtk::SortListModel::new(Some(flattened), None::<gtk::CustomSorter>);
+        let sorter = type_group_sorter();
+        sorted.set_sorter(Some(&sorter));
+        sorted.upcast::<gio::ListModel>()
     } else {
-        let flattened_models = gio::ListStore::new::<gio::ListModel>();
-        flattened_models.append(&new_entry_placeholder.clone().upcast::<gio::ListModel>());
-        flattened_models.append(&filtered_model.clone().upcast::<gio::ListModel>());
-        let view_model = gtk::FlattenListModel::new(Some(flattened_models));
-        let section = build_icons_view(&context, &view_model, true);
-        section.view.set_vexpand(true);
-        sections.borrow_mut().push(section.clone());
-        (section.view.clone(), section, None)
+        flattened.upcast()
     };
+    let pane_section = build_icons_view(&context, &view_model);
+    pane_section.view.set_vexpand(true);
+    sections.borrow_mut().push(pane_section.clone());
+    let root = pane_section.view.clone();
 
-    let groups_for_pane = groups.clone();
     let density_for_size = context.density.get();
     let sections_for_size = Rc::downgrade(&sections);
     let thumbnail_size_for_change = options.thumbnail_size.clone();
@@ -2003,32 +1853,18 @@ fn build_icons_pane(
             for section in sections.borrow().iter() {
                 resize_icons_thumbnail_slots(section, size);
             }
-            if let Some(groups) = groups_for_pane.as_ref() {
-                refresh_group_columns(groups, groups.container.width(), density_for_size);
-            } else {
-                let density = loading_context
-                    .upgrade()
-                    .map(|context| context.density.get())
-                    .unwrap_or(density_for_size);
-                for section in sections.borrow().iter() {
-                    pin_ungrouped_icons_columns(
-                        section,
-                        viewport_page_width(&section.view),
-                        density,
-                    );
-                }
+            let density = loading_context
+                .upgrade()
+                .map(|context| context.density.get())
+                .unwrap_or(density_for_size);
+            for section in sections.borrow().iter() {
+                pin_ungrouped_icons_columns(section, viewport_page_width(&section.view), density);
             }
         });
 
     let scroll = gtk::ScrolledWindow::builder()
         .child(&root)
-        .hscrollbar_policy(if groups.is_some() {
-            // Grouped icon grids wrap to the pane's width; only the ungrouped view manages
-            // its own horizontal scrolling.
-            gtk::PolicyType::Never
-        } else {
-            gtk::PolicyType::Automatic
-        })
+        .hscrollbar_policy(gtk::PolicyType::Automatic)
         .vexpand(true)
         .build();
     scroll.add_css_class("fixed-scrollbar");
@@ -2056,24 +1892,14 @@ fn build_icons_pane(
             );
         }
     });
-    if let Some(groups) = groups.clone() {
-        let context = Rc::downgrade(&context);
-        after_icons_viewport_width_changes(&scroll, move |width| {
-            let Some(context) = context.upgrade() else {
-                return;
-            };
-            refresh_group_columns(&groups, width, context.density.get());
-        });
-    } else {
-        let section = pane_section.clone();
-        let context = Rc::downgrade(&context);
-        after_icons_viewport_width_changes(&scroll, move |width| {
-            let Some(context) = context.upgrade() else {
-                return;
-            };
-            pin_ungrouped_icons_columns(&section, width, context.density.get());
-        });
-    }
+    let section = pane_section.clone();
+    let width_context = Rc::downgrade(&context);
+    after_icons_viewport_width_changes(&scroll, move |width| {
+        let Some(context) = width_context.upgrade() else {
+            return;
+        };
+        pin_ungrouped_icons_columns(&section, width, context.density.get());
+    });
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
     let (collection, marquee) =
         collection_with_marquee(&root, scroll, targets.clone(), "icons-card");
@@ -2096,7 +1922,6 @@ fn build_icons_pane(
         filter_model: Some(filtered_model),
         section: pane_section,
         sections,
-        groups,
         icons: Some(context),
         targets,
         detached: Rc::new(Cell::new(false)),
@@ -2117,35 +1942,6 @@ fn build_icons_pane(
     pane
 }
 
-/// A heading and the icons that renders one file-type group.
-fn build_icons_group(
-    context: &Rc<IconsContext>,
-    entries: &gtk::FilterListModel,
-    label: &str,
-) -> IconsGroup {
-    let heading = type_group_heading(label);
-    let group_model = gtk::FilterListModel::new(
-        Some(entries.clone()),
-        Some(type_group_filter(label.to_owned())),
-    );
-    let section = build_icons_view(context, &group_model, true);
-    let heading_for_items = heading.clone();
-    let view_for_items = section.view.clone();
-    let update_visibility = move |populated: bool| {
-        heading_for_items.set_visible(populated);
-        view_for_items.set_visible(populated);
-    };
-    update_visibility(group_model.n_items() > 0);
-    group_model.connect_items_changed(move |model, _, _, _| {
-        update_visibility(model.n_items() > 0);
-    });
-    IconsGroup {
-        label: label.to_owned(),
-        heading: heading.upcast(),
-        section,
-    }
-}
-
 fn pane_directory_name(browser: &Rc<Browser>, depth: usize) -> String {
     browser
         .location_at(depth)
@@ -2153,11 +1949,7 @@ fn pane_directory_name(browser: &Rc<Browser>, depth: usize) -> String {
         .unwrap_or_default()
 }
 
-fn build_icons_view(
-    context: &Rc<IconsContext>,
-    model: &impl IsA<gio::ListModel>,
-    syncs_selection: bool,
-) -> PaneSection {
+fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>) -> PaneSection {
     let depth = context.depth;
     let view_model = model.clone().upcast::<gio::ListModel>();
     let selection = gtk::MultiSelection::new(Some(view_model.clone()));
@@ -2319,17 +2111,14 @@ fn build_icons_view(
         syncing: syncing_selection,
         visit: bound_item_visitor(bound_items),
     };
-    if syncs_selection {
-        connect_selection(
-            &section,
-            context.sections.clone(),
-            &context.browser,
-            depth,
-            context.source_index.clone(),
-            context.click.multiple_selection.clone(),
-        );
-        install_exclusive_section_click(&section, context);
-    }
+    connect_selection(
+        &section,
+        context.sections.clone(),
+        &context.browser,
+        depth,
+        context.source_index.clone(),
+        context.click.multiple_selection.clone(),
+    );
     if let Some(state) = context.state.as_ref().and_then(Weak::upgrade) {
         install_section_context_menu(
             &state,
@@ -2340,94 +2129,6 @@ fn build_icons_view(
         );
     }
     section
-}
-
-/// Keeps the grouped Icons mode's sections in step with the file types the directory
-/// holds, adding and removing a heading and icons per type.
-fn sync_icons_groups(pane: &Pane) {
-    let Some(groups) = pane.groups.clone() else {
-        return;
-    };
-    let Some(build) = groups.build.borrow().clone() else {
-        return;
-    };
-    let desired = source_type_groups(&pane.model);
-    let existing = groups.groups.borrow().clone();
-    if existing.len() == desired.len()
-        && existing
-            .iter()
-            .zip(desired.iter())
-            .all(|(group, label)| group.label == *label)
-    {
-        return;
-    }
-    for group in &existing {
-        if !desired.contains(&group.label) {
-            groups.container.remove(&group.heading);
-            groups.container.remove(&group.section.view);
-        }
-    }
-    let mut next = Vec::with_capacity(desired.len());
-    let mut previous = groups.placeholder.clone();
-    for label in &desired {
-        let group = match existing.iter().find(|group| group.label == *label) {
-            Some(group) => {
-                groups
-                    .container
-                    .reorder_child_after(&group.heading, Some(&previous));
-                groups
-                    .container
-                    .reorder_child_after(&group.section.view, Some(&group.heading));
-                group.clone()
-            }
-            None => {
-                let group = build(label);
-                groups
-                    .container
-                    .insert_child_after(&group.heading, Some(&previous));
-                groups
-                    .container
-                    .insert_child_after(&group.section.view, Some(&group.heading));
-                group
-            }
-        };
-        previous = group.section.view.clone();
-        next.push(group);
-    }
-    *pane.sections.borrow_mut() = next.iter().map(|group| group.section.clone()).collect();
-    *groups.groups.borrow_mut() = next;
-    refresh_marquee_targets(pane);
-    if let Some(context) = pane.icons.as_ref() {
-        let density = context.density.get();
-        let groups = groups.clone();
-        // Cards bind during the next layout pass, so the columns they allow are only
-        // measurable once it has run.
-        glib::idle_add_local_once(move || {
-            refresh_group_columns(&groups, groups.container.width(), density);
-        });
-    }
-}
-
-/// A grouped icon grid shares one scroller with its siblings, so it has to ask for the
-/// height its own rows need. `GtkIconsView` only knows its row count once its column
-/// count is fixed, so the columns are pinned to what the viewport width allows and
-/// recomputed whenever that width or the card size changes.
-fn refresh_group_columns(groups: &Rc<IconsGroups>, width: i32, density: BrowserDensity) {
-    if width <= 0 {
-        return;
-    }
-    let groups = groups.groups.borrow();
-    let column = groups
-        .iter()
-        .find_map(|group| measured_card_width(&group.section))
-        .unwrap_or(FALLBACK_ICONS_COLUMN_WIDTH);
-    let columns = (width / column.max(1)).clamp(1, density_icons_columns(density) as i32) as u32;
-    for group in groups.iter() {
-        let Ok(icons) = group.section.view.clone().downcast::<gtk::GridView>() else {
-            continue;
-        };
-        pin_grid_columns(&icons, columns);
-    }
 }
 
 fn pin_ungrouped_icons_columns(section: &PaneSection, width: i32, density: BrowserDensity) {
@@ -2477,19 +2178,6 @@ fn after_icons_viewport_width_changes(
                 on_width(adjustment.page_size() as i32);
             });
         });
-}
-
-fn pin_grid_columns(icons: &gtk::GridView, columns: u32) {
-    if icons.min_columns() == columns && icons.max_columns() == columns {
-        return;
-    }
-    if columns > icons.max_columns() {
-        icons.set_max_columns(columns);
-        icons.set_min_columns(columns);
-    } else {
-        icons.set_min_columns(columns);
-        icons.set_max_columns(columns);
-    }
 }
 
 fn viewport_page_width(widget: &gtk::Widget) -> i32 {
@@ -2601,12 +2289,8 @@ fn configure_icons_density(pane: &Pane, density: BrowserDensity) {
             configure_icons_view_density(&icons, density);
         }
     }
-    if let Some(groups) = pane.groups.as_ref() {
-        refresh_group_columns(groups, groups.container.width(), density);
-    } else {
-        for section in pane.all_sections() {
-            pin_ungrouped_icons_columns(&section, viewport_page_width(&section.view), density);
-        }
+    for section in pane.all_sections() {
+        pin_ungrouped_icons_columns(&section, viewport_page_width(&section.view), density);
     }
 }
 
@@ -3199,7 +2883,6 @@ fn build_list_pane(
         filter_model: Some(filtered_model),
         section,
         sections,
-        groups: None,
         icons: None,
         targets,
         detached: Rc::new(Cell::new(false)),
@@ -4031,7 +3714,6 @@ fn replace_entries(pane: &Pane, browser: &Browser, count: usize) {
         .unwrap_or_default();
     let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
     pane.model.splice(0, pane.model.n_items(), &values_ref);
-    sync_icons_groups(pane);
     show_count(pane);
 }
 
@@ -4393,8 +4075,8 @@ fn value_type_group(value: &str) -> String {
 }
 
 /// Sorts entries into their file-type groups. `GtkSortListModel` sorts stably, so
-/// entries keep the pane's own sort order inside each group, and the same sorter
-/// marks where one section ends and the next begins.
+/// entries keep the pane's own sort order inside each group. List also uses this
+/// sorter as `section_sorter` so headings mark where one type ends and the next begins.
 fn type_group_sorter() -> gtk::CustomSorter {
     gtk::CustomSorter::new(|left, right| {
         compare_type_groups(
@@ -4405,15 +4087,7 @@ fn type_group_sorter() -> gtk::CustomSorter {
     })
 }
 
-fn type_group_filter(label: String) -> gtk::CustomFilter {
-    gtk::CustomFilter::new(move |item| value_type_group(&model_value(item)) == label)
-}
-
-/// Every file-type group the loaded entries fall into, in the order they are shown.
-fn source_type_groups(model: &gtk::StringList) -> Vec<String> {
-    type_groups_of((0..model.n_items()).filter_map(|index| model.string(index)))
-}
-
+#[cfg(test)]
 fn type_groups_of(values: impl Iterator<Item = impl AsRef<str>>) -> Vec<String> {
     let mut labels: Vec<String> = Vec::new();
     for value in values {
@@ -4508,52 +4182,6 @@ fn sync_browser_selection(
     positions.dedup();
     let focused = focused.or_else(|| positions.last().copied());
     browser.set_selection(depth, &positions, focused);
-}
-
-/// A plain click selects only what it lands on, so it clears the sections it did not
-/// land in. Modified clicks extend the selection and leave them alone.
-fn install_exclusive_section_click(section: &PaneSection, context: &Rc<IconsContext>) {
-    let click = gtk::GestureClick::new();
-    click.set_button(1);
-    click.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let sections = context.sections.clone();
-    let browser = Rc::downgrade(&context.browser);
-    let source_index = context.source_index.clone();
-    let depth = context.depth;
-    click.connect_pressed(move |gesture, _, x, y| {
-        if gesture
-            .current_event_state()
-            .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
-        {
-            return;
-        }
-        let Some(view) = gesture.widget() else {
-            return;
-        };
-        if !view
-            .pick(x, y, gtk::PickFlags::DEFAULT)
-            .is_some_and(|picked| widget_or_ancestor_has_class(&picked, "icons-card"))
-        {
-            return;
-        }
-        let (Some(sections), Some(browser)) = (sections.upgrade(), browser.upgrade()) else {
-            return;
-        };
-        let mut cleared = false;
-        for other in sections.borrow().iter() {
-            if other.view == view || other.selection.selection().is_empty() {
-                continue;
-            }
-            other.syncing.set(true);
-            other.selection.unselect_all();
-            other.syncing.set(false);
-            cleared = true;
-        }
-        if cleared {
-            sync_browser_selection(&sections, &browser, depth, &source_index, None);
-        }
-    });
-    section.view.add_controller(click);
 }
 
 fn focused_section_item(

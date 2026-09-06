@@ -935,8 +935,14 @@ impl NavigationState {
     }
 
     /// Moves the focus `page` visible entries at a time, clamped to the first and
-    /// last visible entry, for page-sized keyboard navigation.
-    pub fn page_selection(&mut self, direction: i32, page: usize) -> Option<(usize, usize)> {
+    /// last visible entry, for page-sized keyboard navigation. `order` is the
+    /// displayed source indices when the view is not in source order.
+    pub fn page_along(
+        &mut self,
+        direction: i32,
+        page: usize,
+        order: Option<&[usize]>,
+    ) -> Option<(usize, usize)> {
         if direction == 0 {
             return None;
         }
@@ -944,19 +950,27 @@ impl NavigationState {
             .active_column
             .or_else(|| self.columns.len().checked_sub(1))?;
         let column = self.columns.get_mut(depth)?;
-        let show_hidden = column.preferences.show_hidden;
-        let visible: Vec<usize> = column
-            .entries
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| show_hidden || !entry.is_hidden)
-            .map(|(position, _)| position)
-            .collect();
+        let visible: Vec<usize> = match order {
+            Some(order) if !order.is_empty() => order.to_vec(),
+            _ => {
+                let show_hidden = column.preferences.show_hidden;
+                column
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| show_hidden || !entry.is_hidden)
+                    .map(|(position, _)| position)
+                    .collect()
+            }
+        };
         let last = visible.len().checked_sub(1)?;
         let steps = page.max(1);
-        let current = column
-            .selected
-            .and_then(|selected| visible.iter().position(|position| *position >= selected));
+        let current = column.selected.and_then(|selected| {
+            visible
+                .iter()
+                .position(|position| *position == selected)
+                .or_else(|| visible.iter().position(|position| *position >= selected))
+        });
         let target = match (current, direction < 0) {
             (None, true) => last,
             (None, false) => 0,

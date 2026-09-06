@@ -3632,10 +3632,6 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   padding: 10px 12px 4px;
 }
 
-.icons-type-groups .type-group-heading {
-  margin: 0 6px;
-}
-
 .list-pane {
   background: @theme_bg;
   color: @theme_text;

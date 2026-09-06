@@ -1564,8 +1564,7 @@ fn install_shortcuts(
             if !shift && key == gtk::gdk::Key::Up && state.view.focus_header_from_top_item() {
                 return glib::Propagation::Stop;
             }
-            // Keep GTK's spatial movement, then reconcile selection in visual order
-            // across the independent collection views used for type groups.
+            // Keep GTK's spatial movement, then reconcile selection in visual order.
             let weak = Rc::downgrade(&state);
             glib::idle_add_local_once(move || {
                 let Some(state) = weak.upgrade() else {

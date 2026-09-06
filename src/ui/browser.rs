@@ -615,18 +615,8 @@ impl BrowserView {
         }
     }
 
-    pub fn cross_type_group(&self, direction: gtk::DirectionType, extend: bool) -> bool {
-        let target = self
-            .state
-            .mode_views
-            .borrow()
-            .group_boundary_target(direction);
-        if let Some((depth, focused)) = target {
-            self.select_native_target(depth, focused, extend);
-            true
-        } else {
-            false
-        }
+    pub fn cross_type_group(&self, _direction: gtk::DirectionType, _extend: bool) -> bool {
+        false
     }
 
     fn select_native_target(&self, depth: usize, focused: usize, extend: bool) {
@@ -1119,7 +1109,15 @@ impl BrowserView {
         };
         let page = super::scrolling::page(&view, &scroll);
         self.state.mode_views.borrow().suppress_focus_scroll();
-        self.state.browser.page_selection(direction, page.items);
+        let order = self
+            .state
+            .browser
+            .active_depth()
+            .map(|depth| self.state.mode_views.borrow().visual_order(depth))
+            .filter(|order| !order.is_empty());
+        self.state
+            .browser
+            .page_along(direction, page.items, order.as_deref());
         super::scrolling::reveal_selection(&view, &scroll, direction, &page);
         true
     }
@@ -1134,7 +1132,15 @@ impl BrowserView {
         else {
             return false;
         };
-        self.state.browser.page_selection(direction, usize::MAX);
+        let order = self
+            .state
+            .browser
+            .active_depth()
+            .map(|depth| self.state.mode_views.borrow().visual_order(depth))
+            .filter(|order| !order.is_empty());
+        self.state
+            .browser
+            .page_along(direction, usize::MAX, order.as_deref());
         super::scrolling::reveal_jump(&view, &scroll, direction);
         true
     }

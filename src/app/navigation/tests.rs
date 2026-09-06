@@ -600,13 +600,13 @@ fn paging_moves_by_a_page_and_stops_at_the_ends() {
         .collect();
     state.apply_batch(RequestId(1), entries);
 
-    assert_eq!(state.page_selection(1, 5), Some((0, 0)));
-    assert_eq!(state.page_selection(1, 5), Some((0, 5)));
-    assert_eq!(state.page_selection(1, 5), Some((0, 10)));
-    assert_eq!(state.page_selection(1, 5), Some((0, 11)));
-    assert_eq!(state.page_selection(-1, 5), Some((0, 6)));
-    assert_eq!(state.page_selection(-1, 5), Some((0, 1)));
-    assert_eq!(state.page_selection(-1, 5), Some((0, 0)));
+    assert_eq!(state.page_along(1, 5, None), Some((0, 0)));
+    assert_eq!(state.page_along(1, 5, None), Some((0, 5)));
+    assert_eq!(state.page_along(1, 5, None), Some((0, 10)));
+    assert_eq!(state.page_along(1, 5, None), Some((0, 11)));
+    assert_eq!(state.page_along(-1, 5, None), Some((0, 6)));
+    assert_eq!(state.page_along(-1, 5, None), Some((0, 1)));
+    assert_eq!(state.page_along(-1, 5, None), Some((0, 0)));
     assert_eq!(state.selected_entries().len(), 1);
 }
 
@@ -625,8 +625,8 @@ fn paging_skips_hidden_entries_when_hidden_files_are_not_shown() {
     );
 
     assert!(state.select(0, 0));
-    assert_eq!(state.page_selection(1, 1), Some((0, 2)));
-    assert_eq!(state.page_selection(-1, 1), Some((0, 0)));
+    assert_eq!(state.page_along(1, 1, None), Some((0, 2)));
+    assert_eq!(state.page_along(-1, 1, None), Some((0, 0)));
 }
 
 #[test]
@@ -644,8 +644,8 @@ fn paging_by_usize_max_jumps_to_the_first_or_last_visible_entry() {
     );
 
     assert!(state.select(0, 2));
-    assert_eq!(state.page_selection(1, usize::MAX), Some((0, 2)));
-    assert_eq!(state.page_selection(-1, usize::MAX), Some((0, 1)));
+    assert_eq!(state.page_along(1, usize::MAX, None), Some((0, 2)));
+    assert_eq!(state.page_along(-1, usize::MAX, None), Some((0, 1)));
 }
 
 #[test]
@@ -654,7 +654,31 @@ fn paging_an_empty_column_keeps_the_selection_unchanged() {
     state.navigate(location("/home"), RequestId(1));
     state.apply_batch(RequestId(1), Vec::new());
 
-    assert_eq!(state.page_selection(1, 4), None);
+    assert_eq!(state.page_along(1, 4, None), None);
+}
+
+#[test]
+fn paging_along_visual_order_follows_display_order_not_source_indices() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/home/a.txt", "a.txt"),
+            named_entry("/home/b.json", "b.json"),
+            named_entry("/home/c.txt", "c.txt"),
+            named_entry("/home/d.json", "d.json"),
+        ],
+    );
+    assert!(state.select(0, 0));
+    let visual_order = [0, 2, 1, 3];
+    assert_eq!(
+        state.page_along(1, 2, Some(&visual_order)),
+        Some((0, 1)),
+        "two steps from a.txt along txt-then-json lands on b.json"
+    );
+    assert_eq!(state.page_along(1, 1, Some(&visual_order)), Some((0, 3)));
+    assert_eq!(state.page_along(-1, 2, Some(&visual_order)), Some((0, 2)));
 }
 
 #[test]

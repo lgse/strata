@@ -4,8 +4,8 @@ use super::{
     BrowserDensity, BrowserMode, ClickActivation, ClickCount, LIST_COLUMN_MIN_WIDTHS,
     LIST_COLUMN_WIDTHS, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, SourceIndexMap,
     compare_type_groups, icons_card_extent, icons_card_icon_slot, list_column_width,
-    metadata_fill_position, scroll_delta_for_unit, should_activate_pointer_click, type_groups_of,
-    value_type_group,
+    metadata_fill_position, scroll_delta_for_unit, should_activate_pointer_click,
+    type_group_sorter, type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use crate::test_support::gtk_test;
@@ -298,6 +298,45 @@ fn entries_of_one_type_share_a_group() {
     assert_ne!(
         value_type_group(&value('f', "notes.md")),
         value_type_group(&value('f', "notes.json"))
+    );
+}
+
+#[test]
+fn type_group_sorter_clusters_mime_types_and_keeps_source_order_inside_a_group() {
+    gtk_test(
+        "ui::browser_modes::tests::type_group_sorter_clusters_mime_types_and_keeps_source_order_inside_a_group",
+        || {
+            let source = gtk::StringList::new(&[
+                &value('f', "notes.json"),
+                &value('d', "projects"),
+                &value('f', "data.json"),
+                &value('f', "readme.md"),
+            ]);
+            let sorted = gtk::SortListModel::new(Some(source), Some(type_group_sorter()));
+            let names: Vec<String> = (0..sorted.n_items())
+                .filter_map(|index| {
+                    let value = sorted.item(index)?.downcast::<gtk::StringObject>().ok()?;
+                    Some(
+                        value
+                            .string()
+                            .split_once('\t')
+                            .map(|(_, name)| name.to_string())
+                            .unwrap_or_default(),
+                    )
+                })
+                .collect();
+            assert_eq!(names.first().map(String::as_str), Some("projects"));
+            let json: Vec<_> = names
+                .iter()
+                .enumerate()
+                .filter(|(_, name)| name.ends_with(".json"))
+                .collect();
+            assert_eq!(json.len(), 2);
+            assert_eq!(json[1].0, json[0].0 + 1, "same type stays together");
+            assert_eq!(json[0].1.as_str(), "notes.json");
+            assert_eq!(json[1].1.as_str(), "data.json");
+            assert!(names.iter().any(|name| name == "readme.md"));
+        },
     );
 }
 
