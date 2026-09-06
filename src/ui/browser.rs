@@ -872,18 +872,13 @@ impl BrowserView {
     }
 
     pub fn paste(&self) {
-        // A single selected directory receives the paste itself; otherwise
-        // the paste targets the destination column.
         self.state.sync_mode_selection();
         let selected = self.state.browser.selected_entries();
-        if let [folder] = selected.as_slice()
-            && folder.is_directory()
-        {
-            self.state.paste_into(folder.location.clone());
-            return;
-        }
-        let depth = self.state.destination_depth();
-        if let Some(location) = depth.and_then(|depth| self.state.browser.location_at(depth)) {
+        let column = self
+            .state
+            .destination_depth()
+            .and_then(|depth| self.state.browser.location_at(depth));
+        if let Some(location) = paste_destination(&selected, column) {
             self.state.paste_into(location);
         }
     }
@@ -1251,14 +1246,7 @@ impl ViewState {
             if !state.input_ownership.borrow_mut().pointer_motion(position) {
                 return;
             }
-            let picked = state.overlay.pick(x, y, gtk::PickFlags::DEFAULT);
-            let depth = picked.and_then(|picked| {
-                state.columns.borrow().iter().position(|column| {
-                    picked == column.shell.upcast_ref::<gtk::Widget>().clone()
-                        || picked.is_ancestor(&column.shell)
-                })
-            });
-            state.hovered_column.set(depth);
+            state.hovered_column.set(state.column_depth_at(x, y));
             state.overlay.remove_css_class("keyboard-navigation");
             state.refresh_destination_style();
         });
@@ -1267,8 +1255,9 @@ impl ViewState {
         click.set_button(0);
         click.set_propagation_phase(gtk::PropagationPhase::Capture);
         let weak = Rc::downgrade(self);
-        click.connect_pressed(move |_, _, _, _| {
+        click.connect_pressed(move |_, _, x, y| {
             if let Some(state) = weak.upgrade() {
+                state.hovered_column.set(state.column_depth_at(x, y));
                 state.pointer_navigation();
             }
         });
@@ -1283,6 +1272,14 @@ impl ViewState {
             glib::Propagation::Proceed
         });
         self.overlay.add_controller(scroll);
+    }
+
+    fn column_depth_at(&self, x: f64, y: f64) -> Option<usize> {
+        let picked = self.overlay.pick(x, y, gtk::PickFlags::DEFAULT)?;
+        self.columns.borrow().iter().position(|column| {
+            picked == column.shell.upcast_ref::<gtk::Widget>().clone()
+                || picked.is_ancestor(&column.shell)
+        })
     }
 
     fn pointer_navigation(&self) {
@@ -1358,6 +1355,13 @@ impl ViewState {
             column.selection.select_all();
             column.list.grab_focus();
         }
+    }
+}
+
+fn paste_destination(selected: &[FileEntry], column: Option<Location>) -> Option<Location> {
+    match selected {
+        [folder] if folder.is_directory() => Some(folder.location.clone()),
+        _ => column,
     }
 }
 

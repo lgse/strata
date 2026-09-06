@@ -48,6 +48,7 @@ impl ViewState {
                     // opened column while the pointer owns navigation.
                     if self.input_ownership.borrow().last_navigation
                         == super::super::input_ownership::NavigationInput::Pointer
+                        && self.hovered_column.get() == depth.checked_sub(1)
                     {
                         self.hovered_column.set(Some(*depth));
                         self.refresh_destination_style();

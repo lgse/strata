@@ -42,6 +42,39 @@ fn vim_focus_keys_map_to_dialog_directions() {
 }
 
 #[test]
+fn paste_prefers_only_a_single_selected_directory() {
+    let entry = |name: &str, kind: crate::model::EntryKind| FileEntry {
+        location: Location::local(format!("/fixture/{name}")),
+        thumbnail_path: None,
+        native_name: name.into(),
+        display_name: name.to_owned(),
+        kind,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        mode: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let folder = entry("folder", crate::model::EntryKind::Directory);
+    let file = entry("file.txt", crate::model::EntryKind::File);
+    let column = Location::local("/fixture");
+
+    assert_eq!(
+        paste_destination(std::slice::from_ref(&folder), Some(column.clone())),
+        Some(folder.location.clone())
+    );
+    assert_eq!(
+        paste_destination(std::slice::from_ref(&file), Some(column.clone())),
+        Some(column.clone())
+    );
+    assert_eq!(
+        paste_destination(&[folder, file], Some(column.clone())),
+        Some(column.clone())
+    );
+    assert_eq!(paste_destination(&[], Some(column.clone())), Some(column));
+    assert_eq!(paste_destination(&[], None), None);
+}
+
+#[test]
 fn new_folder_prefers_the_focused_pane_then_falls_back_safely() {
     assert_eq!(new_folder_destination_depth(Some(1), Some(2), 3), Some(1));
     assert_eq!(new_folder_destination_depth(None, Some(2), 3), Some(2));
