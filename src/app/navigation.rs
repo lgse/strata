@@ -53,8 +53,7 @@ pub struct ColumnState {
     preferences: ViewPreferences,
     request_id: RequestId,
     select_first_on_load: bool,
-    /// Location auto-selected after a directory load, until the user picks
-    /// something else. Paste must not treat this folder as a destination.
+    // Auto-selection must not redirect paste into the first folder.
     load_cursor: Option<Location>,
 }
 
@@ -92,8 +91,7 @@ pub struct NavigationState {
     back_history: Vec<NavigationPath>,
     forward_history: Vec<NavigationPath>,
     preferences: ViewPreferences,
-    /// GTK ListView/GridView can change selection without a user pick (focus,
-    /// pointer-under-row after a rebuild). Those echoes must not arm paste-into.
+    // GTK focus/rebuild selection echoes must not arm paste-into.
     selection_commit: bool,
 }
 
@@ -1101,8 +1099,6 @@ impl NavigationState {
     }
 }
 
-/// Collapses a column's selection onto a single entry and anchors further
-/// range selections there.
 fn focus_only(column: &mut ColumnState, position: usize) {
     let location = column.entries[position].location.clone();
     adopt_selected_locations(column, HashSet::from([location.clone()]), true);
