@@ -520,7 +520,7 @@ fn moving_a_directory_into_its_own_child_fails_instead_of_deleting_it() -> Resul
 }
 
 #[test]
-fn move_rejects_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
+fn move_accepts_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
@@ -539,14 +539,14 @@ fn move_rejects_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn Err
         None,
     ));
 
-    assert!(result.is_err());
-    assert_eq!(fs::read(actual_parent.join("source.txt"))?, b"keep");
-    assert!(!target.exists());
+    assert!(result.is_ok(), "{result:?}");
+    assert!(!actual_parent.join("source.txt").exists());
+    assert_eq!(fs::read(target)?, b"keep");
     Ok(())
 }
 
 #[test]
-fn move_rejects_a_symlink_in_the_destinations_parent_path() -> Result<(), Box<dyn Error>> {
+fn move_accepts_a_symlink_in_the_destinations_parent_path() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
@@ -565,9 +565,9 @@ fn move_rejects_a_symlink_in_the_destinations_parent_path() -> Result<(), Box<dy
         None,
     ));
 
-    assert!(result.is_err());
-    assert_eq!(fs::read(&source)?, b"keep");
-    assert!(!actual_destination.join("target.txt").exists());
+    assert!(result.is_ok(), "{result:?}");
+    assert!(!source.exists());
+    assert_eq!(fs::read(actual_destination.join("target.txt"))?, b"keep");
     Ok(())
 }
 
@@ -729,7 +729,7 @@ fn replacement_move_does_not_delete_a_substituted_source() -> Result<(), Box<dyn
 }
 
 #[test]
-fn replace_rejects_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
+fn replace_accepts_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
@@ -751,14 +751,14 @@ fn replace_rejects_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn 
         Some(&mut affected_locations),
     ));
 
-    assert!(result.is_err());
-    assert_eq!(fs::read(&target)?, b"old");
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(fs::read(&target)?, b"new");
     assert_eq!(fs::read(actual_parent.join("source.txt"))?, b"new");
     Ok(())
 }
 
 #[test]
-fn copy_rejects_a_symlink_higher_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
+fn copy_accepts_a_symlink_higher_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
@@ -778,8 +778,8 @@ fn copy_rejects_a_symlink_higher_in_the_sources_parent_path() -> Result<(), Box<
         None,
     ));
 
-    assert!(result.is_err());
-    assert!(!target.exists());
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(fs::read(target)?, b"keep");
     assert_eq!(fs::read(actual_root.join("subdir/source.txt"))?, b"keep");
     Ok(())
 }
@@ -2317,7 +2317,7 @@ fn permanent_delete_does_not_follow_a_symlink_nested_inside_the_tree() -> Result
 }
 
 #[test]
-fn permanent_delete_rejects_a_symlink_in_the_parent_path() -> Result<(), Box<dyn Error>> {
+fn permanent_delete_accepts_a_symlink_in_the_parent_path() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
@@ -2340,15 +2340,264 @@ fn permanent_delete_rejects_a_symlink_in_the_parent_path() -> Result<(), Box<dyn
         Rc::new(move |event| emitted.borrow_mut().push(event)),
     );
     let context = glib::MainContext::default();
-    while !events
-        .borrow()
-        .iter()
-        .any(|event| matches!(event, OperationEvent::CompletedWithErrors { .. }))
-    {
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Deleted { .. }
+                | OperationEvent::CompletedWithErrors { .. }
+                | OperationEvent::Failed { .. }
+        )
+    }) {
         context.iteration(true);
     }
 
-    assert_eq!(fs::read(target)?, b"keep");
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, OperationEvent::Deleted { .. })),
+        "{:?}",
+        events.borrow()
+    );
+    assert!(!target.exists());
+    assert!(linked_parent.is_symlink());
+    assert!(actual_parent.is_dir());
+    Ok(())
+}
+
+#[test]
+fn parent_resolution_accepts_absolute_relative_and_chained_aliases() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let actual = root.path().join("actual");
+    fs::create_dir_all(actual.join("nested"))?;
+    std::os::unix::fs::symlink(&actual, root.path().join("absolute"))?;
+    std::os::unix::fs::symlink("actual", root.path().join("relative"))?;
+    std::os::unix::fs::symlink("relative", root.path().join("chain"))?;
+    std::os::unix::fs::symlink("../relative", actual.join("up"))?;
+    let expected = super::LocalFileIdentity::from_stat(&rustix::fs::stat(&actual)?);
+
+    for name in [
+        "actual",
+        "absolute",
+        "relative",
+        "chain",
+        "actual/up",
+        "chain/nested/..",
+    ] {
+        let parent = super::open_local_parent_directory(&root.path().join(name))?;
+        assert_eq!(
+            super::LocalFileIdentity::from_stat(&rustix::fs::fstat(&parent)?),
+            expected,
+            "{name}"
+        );
+    }
+    let parent = super::open_local_parent_directory(Path::new("/"))?;
+    assert_eq!(
+        super::LocalFileIdentity::from_stat(&rustix::fs::fstat(&parent)?),
+        super::LocalFileIdentity::from_stat(&rustix::fs::stat(c"/")?)
+    );
+    Ok(())
+}
+
+#[test]
+fn parent_resolution_rejects_magic_links_loops_and_dangling_aliases() -> Result<(), Box<dyn Error>>
+{
+    use std::os::fd::AsRawFd;
+
+    let root = tempfile::tempdir()?;
+    let handle = fs::File::open(root.path())?;
+    let magic = PathBuf::from(format!("/proc/self/fd/{}", handle.as_raw_fd()));
+    assert!(
+        magic.is_dir(),
+        "the fixture must expose a working procfs magic link"
+    );
+    std::os::unix::fs::symlink(&magic, root.path().join("magic"))?;
+    std::os::unix::fs::symlink("loop", root.path().join("loop"))?;
+    std::os::unix::fs::symlink("missing", root.path().join("dangling"))?;
+
+    for path in [
+        magic,
+        root.path().join("magic"),
+        root.path().join("loop"),
+        root.path().join("dangling"),
+        PathBuf::from("relative"),
+    ] {
+        assert!(
+            super::open_local_parent_directory(&path).is_err(),
+            "{}",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn permanent_delete_keeps_the_open_parent_when_its_alias_is_retargeted()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual = root.path().join("actual");
+    let outside = root.path().join("outside");
+    let alias = root.path().join("alias");
+    fs::create_dir_all(actual.join("tree/nested"))?;
+    fs::create_dir_all(outside.join("tree"))?;
+    fs::write(actual.join("tree/nested/file.txt"), b"delete")?;
+    fs::write(outside.join("tree/sentinel.txt"), b"keep")?;
+    std::os::unix::fs::symlink(&outside, actual.join("tree/decoy"))?;
+    std::os::unix::fs::symlink(&actual, &alias)?;
+    let parent = super::open_local_parent_directory(&alias)?;
+
+    std::os::unix::fs::symlink(&outside, root.path().join("replacement"))?;
+    fs::rename(root.path().join("replacement"), &alias)?;
+    glib::MainContext::default().block_on(super::permanently_delete_local(
+        parent,
+        OsString::from("tree"),
+        None,
+        gio::Cancellable::new(),
+    ))?;
+
+    assert!(!actual.join("tree").exists());
+    assert_eq!(fs::read(outside.join("tree/sentinel.txt"))?, b"keep");
+    assert_eq!(fs::read_link(alias)?, outside);
+    Ok(())
+}
+
+#[test]
+fn permanent_delete_revalidates_identity_after_a_parent_alias_changes() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual = root.path().join("actual");
+    let outside = root.path().join("outside");
+    let alias = root.path().join("alias");
+    fs::create_dir(&actual)?;
+    fs::create_dir(&outside)?;
+    fs::write(actual.join("file.txt"), b"original")?;
+    fs::write(outside.join("file.txt"), b"keep")?;
+    std::os::unix::fs::symlink(&actual, &alias)?;
+    let file = gio::File::for_path(alias.join("file.txt"));
+    let context = glib::MainContext::default();
+    let expected = context.block_on(super::local_file_identity(&file))?;
+
+    std::os::unix::fs::symlink(&outside, root.path().join("replacement"))?;
+    fs::rename(root.path().join("replacement"), &alias)?;
+    let error = context
+        .block_on(super::permanently_delete_local_path_if_unchanged(
+            alias.join("file.txt"),
+            expected,
+            gio::Cancellable::new(),
+        ))
+        .expect_err("retargeting the alias must not delete a different entry");
+
+    assert!(error.to_string().contains("changed"), "{error}");
+    assert_eq!(fs::read(actual.join("file.txt"))?, b"original");
+    assert_eq!(fs::read(outside.join("file.txt"))?, b"keep");
+    Ok(())
+}
+
+#[test]
+fn permanent_delete_of_a_symlink_through_an_alias_keeps_its_referent() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual = root.path().join("actual");
+    let alias = root.path().join("alias");
+    fs::create_dir(&actual)?;
+    fs::write(actual.join("sentinel.txt"), b"keep")?;
+    std::os::unix::fs::symlink("actual", &alias)?;
+    std::os::unix::fs::symlink(".", actual.join("link"))?;
+
+    glib::MainContext::default().block_on(super::permanently_delete_local_path_if_unchanged(
+        alias.join("link"),
+        None,
+        gio::Cancellable::new(),
+    ))?;
+
+    assert!(!actual.join("link").is_symlink());
+    assert_eq!(fs::read(actual.join("sentinel.txt"))?, b"keep");
+    assert!(alias.is_symlink());
+    Ok(())
+}
+
+#[test]
+fn copying_and_replacing_symlinks_accepts_an_aliased_destination() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual = root.path().join("actual");
+    let alias = root.path().join("alias");
+    let source = root.path().join("source");
+    fs::create_dir(&actual)?;
+    fs::write(root.path().join("sentinel.txt"), b"keep")?;
+    std::os::unix::fs::symlink("actual", &alias)?;
+    std::os::unix::fs::symlink("../sentinel.txt", &source)?;
+    let context = glib::MainContext::default();
+
+    for overwrite in [false, true] {
+        context.block_on(copy_recursively(
+            gio::File::for_path(&source),
+            gio::File::for_path(alias.join("link")),
+            overwrite,
+            gio::Cancellable::new(),
+            None,
+        ))?;
+        assert_eq!(
+            fs::read_link(actual.join("link"))?,
+            Path::new("../sentinel.txt")
+        );
+    }
+    context.block_on(copy_new_recursively(
+        gio::File::for_path(root.path().join("sentinel.txt")),
+        gio::File::for_path(alias.join("new.txt")),
+        gio::Cancellable::new(),
+    ))?;
+    assert_eq!(fs::read(actual.join("new.txt"))?, b"keep");
+    assert_eq!(fs::read(root.path().join("sentinel.txt"))?, b"keep");
+    Ok(())
+}
+
+#[test]
+fn compression_accepts_a_symlink_in_the_parent_path() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let actual = root.path().join("actual");
+    let alias = root.path().join("alias");
+    fs::create_dir_all(actual.join("tree"))?;
+    fs::write(actual.join("tree/file.txt"), b"contents")?;
+    std::os::unix::fs::symlink("actual", &alias)?;
+    let entries = [alias.join("tree")];
+    let expected = BTreeMap::from([
+        (PathBuf::from("tree"), CompressedEntry::Directory),
+        (
+            PathBuf::from("tree/file.txt"),
+            CompressedEntry::File(b"contents".to_vec()),
+        ),
+    ]);
+
+    for format in [
+        ArchiveFormat::Zip,
+        ArchiveFormat::Tar,
+        ArchiveFormat::TarGz,
+        ArchiveFormat::SevenZ,
+    ] {
+        let archive = root.path().join("archive");
+        assert_eq!(count_archive_files(&entries, &never_cancelled())?, 1);
+        assert_eq!(
+            write_compression_fixture(&archive, &entries, format, None)?,
+            1
+        );
+        assert_eq!(
+            read_compressed_entries(&archive, format, None)?,
+            expected,
+            "{format:?}"
+        );
+    }
     Ok(())
 }
 

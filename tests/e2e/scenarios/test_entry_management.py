@@ -156,6 +156,32 @@ def test_permanent_delete_removes_the_entry_when_confirmed(strata):
     )
 
 
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_permanent_delete_through_a_symlinked_parent(strata, mode):
+    fixture = strata.fixture
+    alias = fixture.path("documents-alias")
+    alias.symlink_to(fixture.path("documents"), target_is_directory=True)
+
+    strata.open_directory("documents-alias")
+    strata.wait_for_directory("documents-alias")
+
+    strata.select_entry("notes.txt", directory="documents-alias")
+    strata.keyboard.press("shift+Delete")
+    strata.wait_for_dialog()
+    strata.pointer.click(strata.dialog_button("Permanently delete 1 item"))
+
+    strata.wait(
+        lambda: not fixture.path("documents/notes.txt").exists()
+        or (strata.dialog() is not None and strata.dialog().name == "Completed with errors"),
+        "the delete operation to finish",
+    )
+    assert not fixture.path("documents/notes.txt").exists()
+    strata.wait_for_entry_gone("notes.txt", directory="documents-alias")
+    strata.wait(lambda: strata.dialog() is None, "the confirmation dialog to close")
+    assert alias.is_symlink()
+    assert fixture.path("documents").is_dir()
+
+
 def test_undo_restores_a_completed_move(strata):
     fixture = strata.fixture
 

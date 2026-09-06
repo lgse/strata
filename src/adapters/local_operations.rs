@@ -1033,8 +1033,8 @@ async fn move_local_with(
     move_local_with_progress(source, target, cancellable, None, attempt_move).await
 }
 
-/// Opens both parents without following symlinks, then atomically renames
-/// without replacing a destination created by a concurrent process.
+/// Pins both resolved parents, then atomically renames without following either
+/// entry or replacing a destination created by a concurrent process.
 fn move_local_path(
     source_path: PathBuf,
     target_path: PathBuf,
@@ -1629,7 +1629,10 @@ fn copy_local_symlink(
     result.map_err(|error| format!("Could not recreate {}: {error}", target_path.display()))
 }
 
-/// Resolves every component from the filesystem root without following symlinks.
+/// Resolves ordinary parent aliases in one kernel lookup and pins the directory.
+/// This is the operation's starting point, not a recursive traversal: selected
+/// entries and their children retain their separate no-follow policy. Rooting at
+/// `/` permits absolute symlink targets without allowing procfs magic links.
 fn open_local_parent_directory(parent_path: &Path) -> Result<OwnedFd, String> {
     if !parent_path.is_absolute() {
         return Err("A local operation target must use an absolute path".to_owned());
@@ -1651,9 +1654,7 @@ fn open_local_parent_directory(parent_path: &Path) -> Result<OwnedFd, String> {
         relative,
         rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
         rustix::fs::Mode::empty(),
-        rustix::fs::ResolveFlags::BENEATH
-            | rustix::fs::ResolveFlags::NO_SYMLINKS
-            | rustix::fs::ResolveFlags::NO_MAGICLINKS,
+        rustix::fs::ResolveFlags::IN_ROOT | rustix::fs::ResolveFlags::NO_MAGICLINKS,
     )
     .map_err(|error| format!("Could not safely open {}: {error}", parent_path.display()))
 }
