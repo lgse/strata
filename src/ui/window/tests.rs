@@ -787,3 +787,27 @@ fn control_digits_select_each_browser_presentation() {
     assert_eq!(browser_mode_for_digit(gtk::gdk::Key::_4), None);
     assert_eq!(browser_mode_for_digit(gtk::gdk::Key::a), None);
 }
+
+#[test]
+fn the_bundled_stylesheet_only_uses_at_rules_gtk_parses() {
+    // GTK's CSS parser rejects anything outside this set with a startup
+    // "Unknown @ rule" warning; `@media` only became valid in GTK 4.20.
+    const SUPPORTED: [&str; 3] = ["define-color", "import", "keyframes"];
+
+    let unsupported: Vec<&str> = include_str!("../../style.css")
+        .lines()
+        .filter_map(|line| line.trim_start().strip_prefix('@'))
+        .map(|rule| {
+            let end = rule
+                .find(|character: char| !character.is_ascii_alphanumeric() && character != '-')
+                .unwrap_or(rule.len());
+            &rule[..end]
+        })
+        .filter(|rule| !SUPPORTED.contains(rule))
+        .collect();
+
+    assert!(
+        unsupported.is_empty(),
+        "the stylesheet uses at-rules GTK 4.12 cannot parse: {unsupported:?}"
+    );
+}

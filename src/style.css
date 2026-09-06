@@ -3774,8 +3774,3 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   padding-top: 5px;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  * {
-    transition-duration: 1ms;
-  }
-}
