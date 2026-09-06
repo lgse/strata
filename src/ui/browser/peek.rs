@@ -25,6 +25,7 @@ pub(super) struct PeekAnchor {
 
 pub(super) struct PeekView {
     pub(super) revealer: gtk::Revealer,
+    pub(super) anchor: gtk::Widget,
     pub(super) location: Location,
     pub(super) presentation: LoadPresentation,
     pub(super) model: gtk::StringList,
@@ -299,6 +300,7 @@ impl ViewState {
         let selection = gtk::NoSelection::new(Some(model.clone()));
         let factory = peek_label_factory(entries.clone());
         let list = gtk::ListView::new(Some(selection), Some(factory));
+        list.set_focusable(false);
         list.add_css_class("file-list");
         let weak_browser = Rc::downgrade(&self.browser);
         list.connect_activate(move |_, _| {
@@ -362,8 +364,11 @@ impl ViewState {
             .margin_top(row_bounds.y().round().max(0.0) as i32)
             .build();
         self.overlay.add_overlay(&revealer);
+        self.overlay.add_css_class("peek-open");
+        anchor.widget.add_css_class("peek-anchor");
         self.peek.replace(Some(PeekView {
             revealer: revealer.clone(),
+            anchor: anchor.widget,
             location: location.clone(),
             presentation,
             model,
@@ -377,7 +382,10 @@ impl ViewState {
     pub(super) fn close_peek_visual(&self) {
         cancel_source(&self.pending_peek);
         cancel_source(&self.pending_close);
+        self.overlay.remove_css_class("peek-open");
+        self.peek_anchor.take();
         if let Some(peek) = self.peek.take() {
+            peek.anchor.remove_css_class("peek-anchor");
             peek.revealer.set_can_target(false);
             peek.revealer.set_reveal_child(false);
             let overlay = self.overlay.clone();

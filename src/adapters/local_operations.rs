@@ -4,7 +4,7 @@
 mod tests;
 
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
     ffi::{OsStr, OsString},
     future::Future,
@@ -1757,44 +1757,60 @@ async fn write_staged_archive<F>(
     destination: &Path,
     archive_path: &Path,
     conflict: TransferConflict,
+    cancelled: &AtomicBool,
     write_archive: F,
-) -> Result<(), String>
+) -> Result<(), ArchiveError>
 where
-    F: FnOnce(std::fs::File) -> Result<(), String> + Send + 'static,
+    F: FnOnce(std::fs::File) -> Result<(), ArchiveError> + Send + 'static,
 {
-    let existing_permissions = if conflict == TransferConflict::ReplaceExisting {
+    let published_permissions = if conflict == TransferConflict::ReplaceExisting {
         match std::fs::symlink_metadata(archive_path) {
             Ok(metadata) if metadata.file_type().is_file() => Some(metadata.permissions()),
             Ok(_) => None,
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-            Err(error) => return Err(error.to_string()),
+            Err(error) => return Err(archive_failed(error)),
         }
     } else {
         None
-    };
+    }
+    .unwrap_or_else(umask_adjusted_file_permissions);
     let mut builder = tempfile::Builder::new();
     builder
         .prefix(".strata-compression-")
-        .permissions(std::fs::Permissions::from_mode(0o666));
-    let staged = builder
-        .tempfile_in(destination)
-        .map_err(|error| error.to_string())?;
-    let file = staged.reopen().map_err(|error| error.to_string())?;
+        .permissions(std::fs::Permissions::from_mode(0o600));
+    let staged = builder.tempfile_in(destination).map_err(archive_failed)?;
+    let file = staged.reopen().map_err(archive_failed)?;
     gio::spawn_blocking(move || write_archive(file))
         .await
-        .map_err(|_| "Compression task panicked".to_owned())??;
-    if let Some(permissions) = existing_permissions {
-        staged
-            .as_file()
-            .set_permissions(permissions)
-            .map_err(|error| error.to_string())?;
-    }
+        .map_err(|_| archive_failed("Compression task panicked"))??;
+    check_archive_cancelled(cancelled)?;
+    staged
+        .as_file()
+        .set_permissions(published_permissions)
+        .map_err(archive_failed)?;
     match conflict {
         TransferConflict::FailIfExists => staged.persist_noclobber(archive_path),
         TransferConflict::ReplaceExisting => staged.persist(archive_path),
     }
     .map(|_| ())
-    .map_err(|error| error.to_string())
+    .map_err(archive_failed)
+}
+
+fn umask_adjusted_file_permissions() -> std::fs::Permissions {
+    std::fs::Permissions::from_mode(0o666 & !process_umask())
+}
+
+fn process_umask() -> u32 {
+    // /proc avoids the process-global umask(2) set-and-restore race in a GUI.
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|status| {
+            status.lines().find_map(|line| {
+                line.strip_prefix("Umask:")
+                    .and_then(|value| u32::from_str_radix(value.trim(), 8).ok())
+            })
+        })
+        .unwrap_or(0o022)
 }
 
 fn deletion_error_summary(errors: &[String]) -> String {
@@ -2817,7 +2833,14 @@ impl OperationProvider for LocalOperationProvider {
     fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         let cancelled = Arc::new(AtomicBool::new(false));
         let task_cancelled = cancelled.clone();
-        let task = glib::MainContext::default().spawn_local(async move {
+        let work_cancelled = cancelled.clone();
+        let destination = request.destination.clone();
+        let source_locations = request
+            .entries
+            .iter()
+            .map(|entry| entry.location.clone())
+            .collect::<Vec<_>>();
+        let _task = glib::MainContext::default().spawn_local(async move {
             let Some(dest_dir) = request.destination.native_path().map(Path::to_path_buf) else {
                 emit(OperationEvent::Failed {
                     request_id: request.id,
@@ -2858,29 +2881,53 @@ impl OperationProvider for LocalOperationProvider {
             let password = request.password.clone();
             let work_progress = progress.clone();
             let work_total = total.clone();
-            let result =
-                write_staged_archive(&dest_dir, &archive_path, request.conflict, move |file| {
-                    let count = count_archive_files(&entries)?;
+            let result = write_staged_archive(
+                &dest_dir,
+                &archive_path,
+                request.conflict,
+                &task_cancelled,
+                move |file| {
+                    let count = count_archive_files(&entries, &work_cancelled)?;
                     work_total.store(count, Ordering::Relaxed);
                     match format {
-                        ArchiveFormat::Zip => {
-                            compress_zip(file, &entries, password.as_deref(), &work_progress)
+                        ArchiveFormat::Zip => compress_zip(
+                            file,
+                            &entries,
+                            password.as_deref(),
+                            &work_progress,
+                            &work_cancelled,
+                        ),
+                        ArchiveFormat::SevenZ => compress_7z(
+                            file,
+                            &entries,
+                            password.as_deref(),
+                            &work_progress,
+                            &work_cancelled,
+                        ),
+                        ArchiveFormat::TarGz => {
+                            compress_tar(file, &entries, true, &work_progress, &work_cancelled)
                         }
-                        ArchiveFormat::SevenZ => {
-                            compress_7z(file, &entries, password.as_deref(), &work_progress)
+                        ArchiveFormat::Tar => {
+                            compress_tar(file, &entries, false, &work_progress, &work_cancelled)
                         }
-                        ArchiveFormat::TarGz => compress_tar(file, &entries, true, &work_progress),
-                        ArchiveFormat::Tar => compress_tar(file, &entries, false, &work_progress),
                     }
-                })
-                .await;
+                },
+            )
+            .await;
             timer_id.remove();
             match result {
                 Ok(()) => emit(OperationEvent::Compressed {
                     request_id: request.id,
                     archive_name: archive_name.clone(),
                 }),
-                Err(error) => emit(OperationEvent::Failed {
+                Err(ArchiveError::Cancelled) => emit(cancelled_archive_event(
+                    request.id,
+                    destination,
+                    Vec::new(),
+                    Vec::new(),
+                    source_locations,
+                )),
+                Err(ArchiveError::Failed(error)) => emit(OperationEvent::Failed {
                     request_id: request.id,
                     message: error,
                 }),
@@ -2888,14 +2935,15 @@ impl OperationProvider for LocalOperationProvider {
         });
         LoadHandle::new(move || {
             cancelled.store(true, Ordering::Relaxed);
-            task.abort();
         })
     }
 
     fn extract(&self, request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         let cancelled = Arc::new(AtomicBool::new(false));
         let task_cancelled = cancelled.clone();
-        let task = glib::MainContext::default().spawn_local(async move {
+        let work_cancelled = cancelled.clone();
+        let destination = request.destination.clone();
+        let _task = glib::MainContext::default().spawn_local(async move {
             let Some(archive_path) = request.entry.location.native_path().map(Path::to_path_buf)
             else {
                 emit(OperationEvent::Failed {
@@ -2934,6 +2982,7 @@ impl OperationProvider for LocalOperationProvider {
                         &dest_dir,
                         password.as_deref(),
                         &work_progress,
+                        &work_cancelled,
                     )
                 }
                 Some(ArchiveFormat::SevenZ) => {
@@ -2942,24 +2991,52 @@ impl OperationProvider for LocalOperationProvider {
                         .map(sevenz_rust2::Password::from)
                         .unwrap_or_default();
                     let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
-                    extract_7z_from_reader(file, &dest_dir, pw, &work_progress)
+                    extract_7z_from_reader(file, &dest_dir, pw, &work_progress, &work_cancelled)
                 }
-                Some(ArchiveFormat::TarGz) => {
-                    extract_tar(&archive_path, &dest_dir, true, &work_progress)
-                }
-                Some(ArchiveFormat::Tar) => {
-                    extract_tar(&archive_path, &dest_dir, false, &work_progress)
-                }
-                None => Err(format!("Unsupported archive format: {}", display_name)),
+                Some(ArchiveFormat::TarGz) => extract_tar(
+                    &archive_path,
+                    &dest_dir,
+                    true,
+                    &work_progress,
+                    &work_cancelled,
+                ),
+                Some(ArchiveFormat::Tar) => extract_tar(
+                    &archive_path,
+                    &dest_dir,
+                    false,
+                    &work_progress,
+                    &work_cancelled,
+                ),
+                None => Err(archive_failed(format!(
+                    "Unsupported archive format: {display_name}"
+                ))),
             })
             .await;
             timer_id.remove();
             match result {
-                Ok(Ok(first_name)) => emit(OperationEvent::Extracted {
+                Ok(Ok(ArchiveOutcome::Completed(first_name))) => emit(OperationEvent::Extracted {
                     request_id: request.id,
                     first_name,
                 }),
-                Ok(Err(error)) => emit(OperationEvent::Failed {
+                Ok(Ok(ArchiveOutcome::Cancelled {
+                    completed,
+                    failed,
+                    not_attempted,
+                })) => emit(cancelled_archive_event(
+                    request.id,
+                    destination,
+                    completed,
+                    failed,
+                    not_attempted,
+                )),
+                Ok(Err(ArchiveError::Cancelled)) => emit(cancelled_archive_event(
+                    request.id,
+                    destination,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                )),
+                Ok(Err(ArchiveError::Failed(error))) => emit(OperationEvent::Failed {
                     request_id: request.id,
                     message: error,
                 }),
@@ -2971,7 +3048,6 @@ impl OperationProvider for LocalOperationProvider {
         });
         LoadHandle::new(move || {
             cancelled.store(true, Ordering::Relaxed);
-            task.abort();
         })
     }
 }
@@ -3025,12 +3101,14 @@ fn open_archive_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<ArchiveSou
 
 fn visit_archive_entries(
     entries: &[PathBuf],
-    visit: &mut impl FnMut(&Path, &ArchiveSource) -> Result<(), String>,
-) -> Result<(), String> {
+    cancelled: &AtomicBool,
+    visit: &mut impl FnMut(&Path, &ArchiveSource) -> Result<(), ArchiveError>,
+) -> Result<(), ArchiveError> {
     for entry in entries {
+        check_archive_cancelled(cancelled)?;
         let name = entry.file_name().ok_or("Entry has no file name")?;
         let parent = open_local_parent_directory(entry.parent().ok_or("Entry has no parent")?)?;
-        visit_archive_entry(&parent, name, Path::new(name), visit)?;
+        visit_archive_entry(&parent, name, Path::new(name), cancelled, visit)?;
     }
     Ok(())
 }
@@ -3039,14 +3117,26 @@ fn visit_archive_entry<Fd: AsFd>(
     parent: &Fd,
     name: &OsStr,
     archive_path: &Path,
-    visit: &mut impl FnMut(&Path, &ArchiveSource) -> Result<(), String>,
-) -> Result<(), String> {
-    let source = open_archive_source(parent, name)
-        .map_err(|error| format!("Could not compress {}: {error}", archive_path.display()))?;
+    cancelled: &AtomicBool,
+    visit: &mut impl FnMut(&Path, &ArchiveSource) -> Result<(), ArchiveError>,
+) -> Result<(), ArchiveError> {
+    check_archive_cancelled(cancelled)?;
+    let source = open_archive_source(parent, name).map_err(|error| {
+        archive_failed(format!(
+            "Could not compress {}: {error}",
+            archive_path.display()
+        ))
+    })?;
     visit(archive_path, &source)?;
     if let ArchiveSource::Directory(directory) = source {
         for child in local_directory_children(&directory)? {
-            visit_archive_entry(&directory, &child, &archive_path.join(&child), visit)?;
+            visit_archive_entry(
+                &directory,
+                &child,
+                &archive_path.join(&child),
+                cancelled,
+                visit,
+            )?;
         }
     }
     Ok(())
@@ -3057,7 +3147,8 @@ fn compress_zip(
     entries: &[std::path::PathBuf],
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
-) -> Result<(), String> {
+    cancelled: &AtomicBool,
+) -> Result<(), ArchiveError> {
     let writer = std::io::BufWriter::with_capacity(COPY_BUF, file);
     let mut writer = zip::ZipWriter::new(writer);
     let deflated = zip::write::SimpleFileOptions::default()
@@ -3075,13 +3166,11 @@ fn compress_zip(
     } else {
         stored
     };
-    visit_archive_entries(entries, &mut |path, source| {
+    visit_archive_entries(entries, cancelled, &mut |path, source| {
         let name = path.to_string_lossy();
         match source {
             ArchiveSource::Directory(_) => {
-                return writer
-                    .add_directory(name, stored)
-                    .map_err(|error| error.to_string());
+                return writer.add_directory(name, stored).map_err(archive_failed);
             }
             ArchiveSource::Symlink(target) => {
                 let target = target.to_str().ok_or_else(|| {
@@ -3106,13 +3195,14 @@ fn compress_zip(
                 copy_with_big_buf(
                     std::io::BufReader::with_capacity(COPY_BUF, file),
                     &mut writer,
-                )
-                .map_err(|error| error.to_string())?;
+                    cancelled,
+                )?;
             }
         }
         progress.fetch_add(1, Ordering::Relaxed);
         Ok(())
     })?;
+    check_archive_cancelled(cancelled)?;
     writer
         .finish()
         .map_err(|error| error.to_string())?
@@ -3126,11 +3216,12 @@ fn compress_tar(
     entries: &[std::path::PathBuf],
     gzip: bool,
     progress: &Arc<AtomicUsize>,
-) -> Result<(), String> {
+    cancelled: &AtomicBool,
+) -> Result<(), ArchiveError> {
     let writer = std::io::BufWriter::with_capacity(COPY_BUF, file);
     if gzip {
         let mut encoder = flate2::write::GzEncoder::new(writer, flate2::Compression::default());
-        append_tar_entries(&mut encoder, entries, progress)?;
+        append_tar_entries(&mut encoder, entries, progress, cancelled)?;
         encoder
             .finish()
             .map_err(|error| error.to_string())?
@@ -3138,7 +3229,7 @@ fn compress_tar(
             .map_err(|error| error.to_string())?;
     } else {
         let mut writer = writer;
-        append_tar_entries(&mut writer, entries, progress)?;
+        append_tar_entries(&mut writer, entries, progress, cancelled)?;
         writer.into_inner().map_err(|error| error.to_string())?;
     }
     Ok(())
@@ -3148,9 +3239,10 @@ fn append_tar_entries(
     writer: &mut dyn std::io::Write,
     entries: &[std::path::PathBuf],
     progress: &Arc<AtomicUsize>,
-) -> Result<(), String> {
+    cancelled: &AtomicBool,
+) -> Result<(), ArchiveError> {
     let mut builder = tar::Builder::new(writer);
-    visit_archive_entries(entries, &mut |path, source| {
+    visit_archive_entries(entries, cancelled, &mut |path, source| {
         let mut header = tar::Header::new_gnu();
         match source {
             ArchiveSource::Symlink(target) => {
@@ -3167,7 +3259,7 @@ fn append_tar_entries(
                 header.set_metadata(&directory.metadata().map_err(|error| error.to_string())?);
                 return builder
                     .append_data(&mut header, path, std::io::empty())
-                    .map_err(|error| error.to_string());
+                    .map_err(archive_failed);
             }
             ArchiveSource::File(file) => {
                 let mut file = file.try_clone().map_err(|error| error.to_string())?;
@@ -3176,10 +3268,12 @@ fn append_tar_entries(
                     .map_err(|error| error.to_string())?;
             }
         }
+        check_archive_cancelled(cancelled)?;
         progress.fetch_add(1, Ordering::Relaxed);
         Ok(())
     })?;
-    builder.finish().map_err(|e| e.to_string())?;
+    check_archive_cancelled(cancelled)?;
+    builder.finish().map_err(archive_failed)?;
     Ok(())
 }
 
@@ -3291,13 +3385,21 @@ impl ExtractionDestination {
         Ok(directory)
     }
 
-    fn create_file(&self, path: &Path) -> Result<std::fs::File, String> {
+    fn create_file(&self, path: &Path) -> Result<(std::fs::File, PathBuf), String> {
         let parent = self.create_directories(path.parent().unwrap_or_else(|| Path::new("")))?;
         let name = path
             .file_name()
             .ok_or_else(|| "Archive entry has no file name".to_owned())?;
         let name = self.available_name(&parent, name)?;
-        rustix::fs::openat(
+        let mut created = PathBuf::new();
+        if let Some(parent_path) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            created.push(parent_path);
+        }
+        created.push(&name);
+        let file = rustix::fs::openat(
             parent,
             name,
             rustix::fs::OFlags::WRONLY
@@ -3308,13 +3410,27 @@ impl ExtractionDestination {
             rustix::fs::Mode::from_raw_mode(0o666),
         )
         .map(std::fs::File::from)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+        Ok((file, created))
+    }
+
+    fn remove_file(&self, path: &Path) -> Result<(), String> {
+        let parent = self.create_directories(path.parent().unwrap_or_else(|| Path::new("")))?;
+        let name = path
+            .file_name()
+            .ok_or_else(|| "Archive entry has no file name".to_owned())?;
+        rustix::fs::unlinkat(&parent, name, rustix::fs::AtFlags::empty()).map_err(|error| {
+            format!(
+                "Could not remove incomplete extraction {}: {error}",
+                path.display()
+            )
+        })
     }
 }
 
-fn count_archive_files(entries: &[PathBuf]) -> Result<usize, String> {
+fn count_archive_files(entries: &[PathBuf], cancelled: &AtomicBool) -> Result<usize, ArchiveError> {
     let mut count = 0;
-    visit_archive_entries(entries, &mut |_, source| {
+    visit_archive_entries(entries, cancelled, &mut |_, source| {
         if !matches!(source, ArchiveSource::Directory(_)) {
             count += 1;
         }
@@ -3324,19 +3440,166 @@ fn count_archive_files(entries: &[PathBuf]) -> Result<usize, String> {
 }
 
 const COPY_BUF: usize = 1 << 20; // 1 MiB
+const ARCHIVE_CANCELLED: &str = "Operation cancelled";
+
+#[derive(Debug, PartialEq, Eq)]
+enum ArchiveError {
+    Cancelled,
+    Failed(String),
+}
+
+impl std::fmt::Display for ArchiveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cancelled => f.write_str(ARCHIVE_CANCELLED),
+            Self::Failed(message) => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for ArchiveError {}
+
+impl From<String> for ArchiveError {
+    fn from(message: String) -> Self {
+        Self::Failed(message)
+    }
+}
+
+impl From<&str> for ArchiveError {
+    fn from(message: &str) -> Self {
+        Self::Failed(message.to_owned())
+    }
+}
+
+fn archive_failed(error: impl std::fmt::Display) -> ArchiveError {
+    ArchiveError::Failed(error.to_string())
+}
+
+fn sevenz_cancelled() -> sevenz_rust2::Error {
+    sevenz_rust2::Error::Other(ARCHIVE_CANCELLED.into())
+}
+
+fn sevenz_is_cancelled(error: &sevenz_rust2::Error) -> bool {
+    matches!(error, sevenz_rust2::Error::Other(message) if message.as_ref() == ARCHIVE_CANCELLED)
+}
+
+enum ArchiveOutcome<T> {
+    Completed(T),
+    Cancelled {
+        completed: Vec<Location>,
+        failed: Vec<Location>,
+        not_attempted: Vec<Location>,
+    },
+}
+
+fn check_archive_cancelled(cancelled: &AtomicBool) -> Result<(), ArchiveError> {
+    if cancelled.load(Ordering::Relaxed) {
+        Err(ArchiveError::Cancelled)
+    } else {
+        Ok(())
+    }
+}
+
+fn cancelled_archive_event(
+    request_id: OperationRequestId,
+    destination: Location,
+    completed: Vec<Location>,
+    failed: Vec<Location>,
+    not_attempted: Vec<Location>,
+) -> OperationEvent {
+    OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation {
+            completed,
+            failed,
+            not_attempted,
+            affected_locations: HashSet::from([destination]),
+        },
+    }
+}
+
+fn extract_entry_location(destination: &Path, relative: &Path) -> Location {
+    Location::local(destination.join(relative))
+}
+
+fn zip_entry_locations(
+    archive: &zip::ZipArchive<std::fs::File>,
+    destination: &Path,
+    from: usize,
+) -> Vec<Location> {
+    (from..archive.len())
+        .filter_map(|index| archive.name_for_index(index))
+        .map(|name| Location::local(destination.join(name)))
+        .collect()
+}
+
+fn tar_entry_location<'a, R: std::io::Read + 'a>(
+    entry: tar::Entry<'a, R>,
+    dest_dir: &Path,
+) -> Option<Location> {
+    let name = entry.path().ok()?;
+    let path = validated_archive_path(&name.to_string_lossy()).ok()?;
+    Some(extract_entry_location(dest_dir, &path))
+}
+
+fn sevenz_locations_from(
+    dest_dir: &Path,
+    names: &[String],
+    from_name: &str,
+    skip_current: bool,
+) -> Vec<Location> {
+    let Some(index) = names.iter().position(|name| name == from_name) else {
+        return Vec::new();
+    };
+    let start = if skip_current { index + 1 } else { index };
+    names
+        .get(start..)
+        .unwrap_or(&[])
+        .iter()
+        .filter_map(|name| validated_archive_path(name).ok())
+        .map(|path| extract_entry_location(dest_dir, &path))
+        .collect()
+}
+
+fn cancelled_extract_after_partial_write(
+    dest_dir: &Path,
+    created: &Path,
+    completed: Vec<Location>,
+    remaining: Vec<Location>,
+    removed: Result<(), String>,
+) -> ArchiveOutcome<Option<String>> {
+    let interrupted = extract_entry_location(dest_dir, created);
+    if removed.is_ok() {
+        let mut not_attempted = vec![interrupted];
+        not_attempted.extend(remaining);
+        ArchiveOutcome::Cancelled {
+            completed,
+            failed: Vec::new(),
+            not_attempted,
+        }
+    } else {
+        ArchiveOutcome::Cancelled {
+            completed,
+            failed: vec![interrupted],
+            not_attempted: remaining,
+        }
+    }
+}
 
 fn copy_with_big_buf(
     mut reader: impl std::io::Read,
     writer: &mut (impl std::io::Write + ?Sized),
-) -> std::io::Result<u64> {
+    cancelled: &AtomicBool,
+) -> Result<u64, ArchiveError> {
     let mut buf = vec![0u8; COPY_BUF];
     let mut total = 0;
     loop {
-        let n = reader.read(&mut buf)?;
+        check_archive_cancelled(cancelled)?;
+        let n = reader.read(&mut buf).map_err(archive_failed)?;
         if n == 0 {
             break;
         }
-        writer.write_all(&buf[..n])?;
+        writer.write_all(&buf[..n]).map_err(archive_failed)?;
         total += n as u64;
     }
     Ok(total)
@@ -3355,14 +3618,14 @@ fn archive_progress_timer(
     let timer_cancelled = cancelled.clone();
     let timer_emit = emit.clone();
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-        if timer_cancelled.load(Ordering::Relaxed) {
-            return glib::ControlFlow::Break;
+        // Keep the source until the task calls remove(); Break would double-remove.
+        if !timer_cancelled.load(Ordering::Relaxed) {
+            timer_emit(OperationEvent::ArchiveProgress {
+                request_id,
+                completed: timer_progress.load(Ordering::Relaxed),
+                total: timer_total.load(Ordering::Relaxed),
+            });
         }
-        timer_emit(OperationEvent::ArchiveProgress {
-            request_id,
-            completed: timer_progress.load(Ordering::Relaxed),
-            total: timer_total.load(Ordering::Relaxed),
-        });
         glib::ControlFlow::Continue
     })
 }
@@ -3431,16 +3694,25 @@ fn extract_zip_from_archive(
     dest_dir: &Path,
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
-) -> Result<Option<String>, String> {
+    cancelled: &AtomicBool,
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let destination = ExtractionDestination::open(dest_dir)?;
     let pw_bytes = password.map(|p| p.as_bytes());
     let mut resolver = ExtractNameResolver::new();
     let mut first_name = None;
+    let mut completed = Vec::new();
     for i in 0..archive.len() {
+        if cancelled.load(Ordering::Relaxed) {
+            return Ok(ArchiveOutcome::Cancelled {
+                completed,
+                failed: Vec::new(),
+                not_attempted: zip_entry_locations(archive, dest_dir, i),
+            });
+        }
         let read_options = zip::read::ZipReadOptions::new().password(pw_bytes);
         let mut entry = archive
             .by_index_with_options(i, read_options)
-            .map_err(|e| e.to_string())?;
+            .map_err(archive_failed)?;
         let name = entry.name();
         entry
             .enclosed_name()
@@ -3456,12 +3728,27 @@ fn extract_zip_from_archive(
         if entry.is_dir() {
             destination.create_directories(&outpath)?;
         } else {
-            let mut outfile = destination.create_file(&outpath)?;
-            copy_with_big_buf(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
+            let (mut outfile, created) = destination.create_file(&outpath)?;
+            if let Err(error) = copy_with_big_buf(&mut entry, &mut outfile, cancelled) {
+                drop(outfile);
+                drop(entry);
+                let removed = destination.remove_file(&created);
+                return match error {
+                    ArchiveError::Cancelled => Ok(cancelled_extract_after_partial_write(
+                        dest_dir,
+                        &created,
+                        completed,
+                        zip_entry_locations(archive, dest_dir, i + 1),
+                        removed,
+                    )),
+                    failed => Err(failed),
+                };
+            }
         }
+        completed.push(extract_entry_location(dest_dir, &outpath));
         progress.fetch_add(1, Ordering::Relaxed);
     }
-    Ok(first_name)
+    Ok(ArchiveOutcome::Completed(first_name))
 }
 
 fn extract_tar(
@@ -3469,9 +3756,10 @@ fn extract_tar(
     dest_dir: &Path,
     gzip: bool,
     progress: &Arc<AtomicUsize>,
-) -> Result<Option<String>, String> {
+    cancelled: &AtomicBool,
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let destination = ExtractionDestination::open(dest_dir)?;
-    let file = std::fs::File::open(archive_path).map_err(|e| e.to_string())?;
+    let file = std::fs::File::open(archive_path).map_err(archive_failed)?;
     let reader: Box<dyn std::io::Read> = if gzip {
         Box::new(flate2::read::GzDecoder::new(file))
     } else {
@@ -3480,9 +3768,23 @@ fn extract_tar(
     let mut archive = tar::Archive::new(reader);
     let mut resolver = ExtractNameResolver::new();
     let mut first_name = None;
-    for entry in archive.entries().map_err(|e| e.to_string())? {
-        let mut entry = entry.map_err(|e| e.to_string())?;
-        let name = entry.path().map_err(|e| e.to_string())?;
+    let mut completed = Vec::new();
+    let entries = archive.entries().map_err(archive_failed)?;
+    for entry in entries {
+        if cancelled.load(Ordering::Relaxed) {
+            let not_attempted = entry
+                .ok()
+                .and_then(|entry| tar_entry_location(entry, dest_dir))
+                .into_iter()
+                .collect();
+            return Ok(ArchiveOutcome::Cancelled {
+                completed,
+                failed: Vec::new(),
+                not_attempted,
+            });
+        }
+        let mut entry = entry.map_err(archive_failed)?;
+        let name = entry.path().map_err(archive_failed)?;
         let path = validated_archive_path(&name.to_string_lossy())?;
         let outpath = resolver.resolve(&destination, &path)?;
         if first_name.is_none() {
@@ -3494,12 +3796,27 @@ fn extract_tar(
         if entry.header().entry_type().is_dir() {
             destination.create_directories(&outpath)?;
         } else {
-            let mut outfile = destination.create_file(&outpath)?;
-            copy_with_big_buf(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
+            let (mut outfile, created) = destination.create_file(&outpath)?;
+            if let Err(error) = copy_with_big_buf(&mut entry, &mut outfile, cancelled) {
+                drop(outfile);
+                drop(entry);
+                let removed = destination.remove_file(&created);
+                return match error {
+                    ArchiveError::Cancelled => Ok(cancelled_extract_after_partial_write(
+                        dest_dir,
+                        &created,
+                        completed,
+                        Vec::new(),
+                        removed,
+                    )),
+                    failed => Err(failed),
+                };
+            }
         }
+        completed.push(extract_entry_location(dest_dir, &outpath));
         progress.fetch_add(1, Ordering::Relaxed);
     }
-    Ok(first_name)
+    Ok(ArchiveOutcome::Completed(first_name))
 }
 
 fn compress_7z(
@@ -3507,7 +3824,8 @@ fn compress_7z(
     entries: &[std::path::PathBuf],
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
-) -> Result<(), String> {
+    cancelled: &AtomicBool,
+) -> Result<(), ArchiveError> {
     use sevenz_rust2::encoder_options::{AesEncoderOptions, EncoderOptions, Lzma2Options};
     let mut writer = sevenz_rust2::ArchiveWriter::new(file).map_err(|e| e.to_string())?;
     let threads = std::thread::available_parallelism()
@@ -3523,14 +3841,14 @@ fn compress_7z(
     } else {
         writer.set_content_methods(vec![lzma2]);
     }
-    visit_archive_entries(entries, &mut |path, source| {
+    visit_archive_entries(entries, cancelled, &mut |path, source| {
         let name = path.to_string_lossy();
         let (mut entry, file) = match source {
             ArchiveSource::Symlink(_) => {
-                return Err(format!(
+                return Err(archive_failed(format!(
                     "7z compression does not support symbolic links: {}. Use ZIP or TAR instead.",
                     path.display()
-                ));
+                )));
             }
             ArchiveSource::Directory(file) => {
                 (sevenz_rust2::ArchiveEntry::new_directory(&name), file)
@@ -3563,13 +3881,15 @@ fn compress_7z(
         };
         writer
             .push_archive_entry(entry, reader)
-            .map_err(|error| error.to_string())?;
+            .map_err(archive_failed)?;
+        check_archive_cancelled(cancelled)?;
         if reader.is_some() {
             progress.fetch_add(1, Ordering::Relaxed);
         }
         Ok(())
     })?;
-    writer.finish().map_err(|e| e.to_string())?;
+    check_archive_cancelled(cancelled)?;
+    writer.finish().map_err(archive_failed)?;
     Ok(())
 }
 
@@ -3578,43 +3898,91 @@ fn extract_7z_from_reader(
     dest_dir: &Path,
     password: sevenz_rust2::Password,
     progress: &Arc<AtomicUsize>,
-) -> Result<Option<String>, String> {
+    cancelled: &AtomicBool,
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let destination = ExtractionDestination::open(dest_dir)?;
-    let resolver = std::cell::RefCell::new(ExtractNameResolver::new());
-    let first_name = std::cell::RefCell::new(None::<String>);
+    let mut archive = sevenz_rust2::ArchiveReader::new(reader, password).map_err(archive_failed)?;
+    let entry_names: Vec<String> = archive
+        .archive()
+        .files
+        .iter()
+        .map(|entry| entry.name.clone())
+        .collect();
+    let resolver = RefCell::new(ExtractNameResolver::new());
+    let first_name = RefCell::new(None::<String>);
+    let completed = RefCell::new(Vec::new());
+    let failed = RefCell::new(Vec::new());
+    let not_attempted = RefCell::new(Vec::new());
     let progress = progress.clone();
-    sevenz_rust2::decompress_with_extract_fn_and_password(
-        reader,
-        dest_dir,
-        password,
-        |entry, reader, _safe_path| {
-            let path = validated_archive_path(&entry.name)
-                .map_err(|e| sevenz_rust2::Error::Other(e.into()))?;
-            let outpath = resolver
-                .borrow_mut()
-                .resolve(&destination, &path)
-                .map_err(|e| sevenz_rust2::Error::Other(e.into()))?;
-            if first_name.borrow().is_none() {
-                *first_name.borrow_mut() = outpath
-                    .components()
-                    .next()
-                    .map(|c| c.as_os_str().to_string_lossy().to_string());
+    let dest_dir = dest_dir.to_path_buf();
+    let result = archive.for_each_entries(|entry, reader| {
+        if cancelled.load(Ordering::Relaxed) {
+            *not_attempted.borrow_mut() =
+                sevenz_locations_from(&dest_dir, &entry_names, &entry.name, false);
+            return Err(sevenz_cancelled());
+        }
+        let path = validated_archive_path(&entry.name)
+            .map_err(|error| sevenz_rust2::Error::Other(error.into()))?;
+        let outpath = resolver
+            .borrow_mut()
+            .resolve(&destination, &path)
+            .map_err(|error| sevenz_rust2::Error::Other(error.into()))?;
+        if first_name.borrow().is_none() {
+            *first_name.borrow_mut() = outpath
+                .components()
+                .next()
+                .map(|c| c.as_os_str().to_string_lossy().to_string());
+        }
+        if entry.is_directory {
+            destination
+                .create_directories(&outpath)
+                .map_err(|error| sevenz_rust2::Error::Other(error.into()))?;
+        } else {
+            let (mut file, created) = destination
+                .create_file(&outpath)
+                .map_err(|error| sevenz_rust2::Error::Other(error.into()))?;
+            if let Err(error) = copy_with_big_buf(reader, &mut file, cancelled) {
+                drop(file);
+                let removed = destination.remove_file(&created);
+                return match error {
+                    ArchiveError::Cancelled => {
+                        if removed.is_err() {
+                            failed
+                                .borrow_mut()
+                                .push(extract_entry_location(&dest_dir, &created));
+                            *not_attempted.borrow_mut() =
+                                sevenz_locations_from(&dest_dir, &entry_names, &entry.name, true);
+                        } else {
+                            let mut remaining = vec![extract_entry_location(&dest_dir, &created)];
+                            remaining.extend(sevenz_locations_from(
+                                &dest_dir,
+                                &entry_names,
+                                &entry.name,
+                                true,
+                            ));
+                            *not_attempted.borrow_mut() = remaining;
+                        }
+                        Err(sevenz_cancelled())
+                    }
+                    ArchiveError::Failed(message) => {
+                        Err(sevenz_rust2::Error::Other(message.into()))
+                    }
+                };
             }
-            if entry.is_directory {
-                destination
-                    .create_directories(&outpath)
-                    .map_err(|e| sevenz_rust2::Error::Other(e.into()))?;
-            } else {
-                let mut file = destination
-                    .create_file(&outpath)
-                    .map_err(|e| sevenz_rust2::Error::Other(e.into()))?;
-                copy_with_big_buf(reader, &mut file)
-                    .map_err(|e| sevenz_rust2::Error::Other(e.to_string().into()))?;
-            }
-            progress.fetch_add(1, Ordering::Relaxed);
-            Ok(true)
-        },
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(first_name.into_inner())
+        }
+        completed
+            .borrow_mut()
+            .push(extract_entry_location(&dest_dir, &outpath));
+        progress.fetch_add(1, Ordering::Relaxed);
+        Ok(true)
+    });
+    match result {
+        Ok(()) => Ok(ArchiveOutcome::Completed(first_name.into_inner())),
+        Err(error) if sevenz_is_cancelled(&error) => Ok(ArchiveOutcome::Cancelled {
+            completed: completed.into_inner(),
+            failed: failed.into_inner(),
+            not_attempted: not_attempted.into_inner(),
+        }),
+        Err(error) => Err(archive_failed(error)),
+    }
 }

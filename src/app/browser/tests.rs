@@ -660,6 +660,132 @@ impl OperationProvider for ImmediateOperationProvider {
     }
 }
 
+type OperationEmit = Rc<dyn Fn(OperationEvent)>;
+
+struct HeldExtractProvider {
+    cancelled: Rc<Cell<bool>>,
+    emit: Rc<RefCell<Option<OperationEmit>>>,
+    request_id: Rc<Cell<Option<OperationRequestId>>>,
+}
+
+impl OperationProvider for HeldExtractProvider {
+    fn rename(&self, request: RenameRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.rename(request, emit)
+    }
+
+    fn create_directory(
+        &self,
+        request: CreateDirectoryRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        ImmediateOperationProvider.create_directory(request, emit)
+    }
+
+    fn create_file(
+        &self,
+        request: CreateFileRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        ImmediateOperationProvider.create_file(request, emit)
+    }
+
+    fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.paste(request, emit)
+    }
+
+    fn undo_move(&self, request: UndoMoveRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.undo_move(request, emit)
+    }
+
+    fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.delete(request, emit)
+    }
+
+    fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.restore(request, emit)
+    }
+
+    fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.compress(request, emit)
+    }
+
+    fn extract(&self, request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        self.request_id.set(Some(request.id));
+        self.emit.replace(Some(emit));
+        let cancelled = self.cancelled.clone();
+        LoadHandle::new(move || cancelled.set(true))
+    }
+}
+
+#[test]
+fn cancelling_extraction_keeps_progress_until_the_worker_reports_cancellation() {
+    let cancelled = Rc::new(Cell::new(false));
+    let emit = Rc::new(RefCell::new(None));
+    let request_id = Rc::new(Cell::new(None));
+    let provider = Rc::new(HeldExtractProvider {
+        cancelled: cancelled.clone(),
+        emit: emit.clone(),
+        request_id: request_id.clone(),
+    });
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(provider);
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    let entry = FileEntry {
+        location: Location::local("/fixture/archive.zip"),
+        thumbnail_path: None,
+        native_name: OsString::from("archive.zip"),
+        display_name: "archive.zip".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+    };
+    browser.extract(entry, Location::local("/fixture"), None);
+
+    let request_id = request_id.get().expect("extract request");
+    assert_eq!(browser.current_operation.get(), Some(request_id));
+    browser.cancel_file_operation();
+
+    assert!(cancelled.get());
+    assert_eq!(browser.current_operation.get(), Some(request_id));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::ArchiveCompleted { .. }))
+    );
+
+    let callback = emit.borrow().clone().expect("extract callback");
+    callback(OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation {
+            completed: Vec::new(),
+            failed: Vec::new(),
+            not_attempted: vec![Location::local("/fixture/archive.zip")],
+            affected_locations: HashSet::from([Location::local("/fixture")]),
+        },
+    });
+
+    assert_eq!(browser.current_operation.get(), None);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::ArchiveCompleted { select_name } if select_name.is_empty()
+    )));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::OperationCancelled {
+            completed: 0,
+            failed: 0,
+            not_attempted: 1,
+            ..
+        }
+    )));
+}
+
 #[test]
 fn a_completed_trash_operation_can_be_undone_once() {
     let browser = Browser::new(Rc::new(FakeFileSource));

@@ -66,9 +66,16 @@ fn selection_actions_resolve_at_click_time_and_do_not_keep_the_view_alive() {
             );
 
             selection.unselect_all();
+            selection.select_item(0, true);
+            let direct_target = browser.entry_at(0, 1).expect("direct target");
+            target.replace(Some((1, direct_target.clone())));
+            button.emit_clicked();
+            assert_eq!(received.borrow()[2], vec![direct_target.location]);
+
+            selection.unselect_all();
             target.take();
             button.emit_clicked();
-            assert!(received.borrow()[2].is_empty());
+            assert!(received.borrow()[3].is_empty());
 
             let weak = Rc::downgrade(&view.state);
             browser.clear_observer();
@@ -78,7 +85,7 @@ fn selection_actions_resolve_at_click_time_and_do_not_keep_the_view_alive() {
                 "menu callback must not own the browser view"
             );
             button.emit_clicked();
-            assert_eq!(received.borrow().len(), 3, "a stale action must not run");
+            assert_eq!(received.borrow().len(), 4, "a stale action must not run");
         },
     );
 }

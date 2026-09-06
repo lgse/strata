@@ -486,6 +486,7 @@ pub struct Browser {
     deletion_operation: Cell<bool>,
     deletion_permanent: Cell<bool>,
     restoration_operation: Cell<bool>,
+    archive_operation: Cell<bool>,
     transfer_destination: RefCell<Option<Location>>,
     undo_claim: RefCell<Option<(u64, UndoEntry)>>,
     next_request: Cell<u64>,
@@ -531,6 +532,7 @@ impl Browser {
             deletion_operation: Cell::new(false),
             deletion_permanent: Cell::new(false),
             restoration_operation: Cell::new(false),
+            archive_operation: Cell::new(false),
             transfer_destination: RefCell::new(None),
             undo_claim: RefCell::new(None),
             next_request: Cell::new(1),
@@ -1451,6 +1453,7 @@ impl Browser {
             return;
         };
         let request_id = self.begin_operation();
+        self.archive_operation.set(true);
         let load = provider.compress(
             CompressRequest {
                 id: request_id,
@@ -1479,6 +1482,7 @@ impl Browser {
             return;
         };
         let request_id = self.begin_operation();
+        self.archive_operation.set(true);
         let load = provider.extract(
             ExtractRequest {
                 id: request_id,
@@ -1492,19 +1496,6 @@ impl Browser {
     }
 
     pub fn cancel_file_operation(&self) {
-        if self.transfer_operation.get().is_none()
-            && !self.deletion_operation.get()
-            && !self.restoration_operation.get()
-        {
-            let had_operation = self.current_operation.replace(None).is_some();
-            self.operation_load.borrow_mut().take();
-            if had_operation {
-                self.emit(BrowserEvent::ArchiveCompleted {
-                    select_name: String::new(),
-                });
-            }
-            return;
-        }
         self.operation_load.borrow_mut().take();
     }
 
@@ -1518,6 +1509,7 @@ impl Browser {
         self.deletion_operation.set(false);
         self.deletion_permanent.set(false);
         self.restoration_operation.set(false);
+        self.archive_operation.set(false);
         let request_id = OperationRequestId(self.next_request.get());
         self.next_request
             .set(self.next_request.get().saturating_add(1));
@@ -1636,6 +1628,7 @@ impl Browser {
             let deleting = browser.deletion_operation.replace(false);
             let deletion_permanent = browser.deletion_permanent.replace(false);
             let restoring = browser.restoration_operation.replace(false);
+            let archiving = browser.archive_operation.replace(false);
             let destination = browser.transfer_destination.replace(None);
             let undoing = browser.undo_claim.take();
             if let Some((generation, entry)) = &undoing {
@@ -1763,6 +1756,11 @@ impl Browser {
                 OperationEvent::Cancelled { result, .. } => {
                     let mut affected_locations = refresh_locations.clone();
                     affected_locations.extend(result.affected_locations);
+                    if archiving {
+                        browser.emit(BrowserEvent::ArchiveCompleted {
+                            select_name: String::new(),
+                        });
+                    }
                     browser.emit(BrowserEvent::OperationCancelled {
                         completed: result.completed.len(),
                         failed: result.failed.len(),

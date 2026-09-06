@@ -188,9 +188,10 @@ impl ViewState {
         if entries.is_empty() {
             return;
         }
-        let destination = self
-            .browser
-            .active_location()
+        let destination = entries[0]
+            .location
+            .parent()
+            .or_else(|| self.browser.active_location())
             .unwrap_or_else(|| Location::local(glib::home_dir()));
 
         let default_name = if entries.len() == 1 {
