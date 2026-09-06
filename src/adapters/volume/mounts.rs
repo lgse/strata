@@ -8,12 +8,12 @@ use std::path::{Path, PathBuf};
 /// Mount points and filesystem types from `/proc/self/mountinfo`. Reading it
 /// never touches the mounted filesystems, so it is safe to consult for a path
 /// on a network mount that may be unresponsive.
-pub(super) struct MountTable {
+pub(crate) struct MountTable {
     entries: Vec<(PathBuf, String)>,
 }
 
 impl MountTable {
-    pub(super) fn current() -> Self {
+    pub(crate) fn current() -> Self {
         std::fs::read_to_string("/proc/self/mountinfo")
             .map(|mountinfo| Self::parse(&mountinfo))
             .unwrap_or(Self {
@@ -21,7 +21,7 @@ impl MountTable {
             })
     }
 
-    pub(super) fn parse(mountinfo: &str) -> Self {
+    pub(crate) fn parse(mountinfo: &str) -> Self {
         let entries = mountinfo
             .lines()
             .filter_map(|line| {
@@ -36,11 +36,7 @@ impl MountTable {
 
     /// Filesystem type of the innermost mount containing `path`.
     pub(super) fn fs_type_for(&self, path: &Path) -> Option<&str> {
-        self.entries
-            .iter()
-            .filter(|(mount_point, _)| path.starts_with(mount_point))
-            .max_by_key(|(mount_point, _)| mount_point.as_os_str().len())
-            .map(|(_, fs_type)| fs_type.as_str())
+        self.innermost(path).map(|(_, fs_type)| fs_type.as_str())
     }
 
     pub(super) fn is_remote_path(&self, path: &Path) -> bool {
@@ -51,6 +47,24 @@ impl MountTable {
         self.entries
             .iter()
             .any(|(mount_point, _)| mount_point == path)
+    }
+
+    pub(crate) fn mount_point_for(&self, path: &Path) -> Option<&Path> {
+        self.innermost(path)
+            .map(|(mount_point, _)| mount_point.as_path())
+    }
+
+    pub(crate) fn mount_points(&self) -> impl Iterator<Item = &Path> {
+        self.entries
+            .iter()
+            .map(|(mount_point, _)| mount_point.as_path())
+    }
+
+    fn innermost(&self, path: &Path) -> Option<&(PathBuf, String)> {
+        self.entries
+            .iter()
+            .filter(|(mount_point, _)| path.starts_with(mount_point))
+            .max_by_key(|(mount_point, _)| mount_point.as_os_str().len())
     }
 }
 

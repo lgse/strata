@@ -6,6 +6,7 @@ mod local_files;
 mod local_operations;
 mod local_preview;
 pub(crate) mod trash;
+pub(crate) mod trash_restore;
 mod volume;
 
 pub(crate) use file_manager1::{RevealRequest, export_file_manager};

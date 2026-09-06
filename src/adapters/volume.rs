@@ -20,7 +20,7 @@ use crate::{
     services::{VolumeIdentity, VolumeRelation, volume_relation},
 };
 
-use mounts::MountTable;
+pub(crate) use mounts::MountTable;
 
 const REMOTE_QUERY_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -291,6 +291,25 @@ impl PendingState {
         };
         on_ready(lookup);
     }
+}
+
+/// Walks to the nearest path GIO can identify, following parent symlinks.
+/// A missing restore destination therefore classifies as its existing ancestor.
+pub(crate) fn volume_identity_of_existing_ancestor(location: &Location) -> Option<VolumeIdentity> {
+    let mut current = location.clone();
+    loop {
+        if let Some(identity) = native_volume_identity(&current) {
+            return Some(identity);
+        }
+        current = current.parent()?;
+    }
+}
+
+pub(crate) fn restore_volume_relation(source: &Location, dest: &Location) -> VolumeRelation {
+    volume_relation(
+        volume_identity_of_existing_ancestor(dest).as_ref(),
+        &[volume_identity_of_existing_ancestor(source)],
+    )
 }
 
 /// Native directories go through GIO too so their ids share one encoding with

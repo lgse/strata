@@ -2975,6 +2975,133 @@ fn cancelling_restore_before_io_reports_every_item_as_unattempted() -> Result<()
     Ok(())
 }
 
+fn wait_for_restore(events: &Rc<RefCell<Vec<OperationEvent>>>) {
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Restored { .. }
+                | OperationEvent::RestoreCompletedWithErrors { .. }
+                | OperationEvent::Failed { .. }
+                | OperationEvent::Cancelled { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+}
+
+fn volume_trash_entry(
+    root: &Path,
+    name: &str,
+    orig_path: &str,
+    contents: &[u8],
+) -> Result<(PathBuf, FileEntry), Box<dyn Error>> {
+    let uid = rustix::process::getuid().as_raw();
+    let trash = root.join(format!(".Trash-{uid}"));
+    fs::create_dir_all(trash.join("files"))?;
+    fs::create_dir_all(trash.join("info"))?;
+    let source = trash.join("files").join(name);
+    fs::write(&source, contents)?;
+    fs::write(
+        trash.join("info").join(format!("{name}.trashinfo")),
+        format!("[Trash Info]\nPath={orig_path}\nDeletionDate=2026-01-01T00:00:00\n"),
+    )?;
+    Ok((source.clone(), file_entry(&source)))
+}
+
+#[test]
+fn restore_rejects_a_volume_orig_path_on_another_device() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let Some((home, stick)) = distinct_restore_devices() else {
+        return Ok(());
+    };
+    let dest = home.path().join(".config/autostart/payload.desktop");
+    let (source, entry) = volume_trash_entry(
+        stick.path(),
+        "payload",
+        &dest.to_string_lossy(),
+        b"ssh-ed25519 AAAA attacker",
+    )?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.restore(
+        RestoreRequest {
+            id: OperationRequestId(478),
+            source: RestoreSource::TrashEntries(vec![entry]),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    wait_for_restore(&events);
+
+    assert!(
+        matches!(
+            events.borrow().last(),
+            Some(OperationEvent::RestoreCompletedWithErrors { message, .. })
+                if message.contains("outside the trash volume")
+        ),
+        "{:?}",
+        events.borrow()
+    );
+    assert!(source.exists());
+    assert_eq!(fs::read(&source)?, b"ssh-ed25519 AAAA attacker");
+    assert!(!dest.exists());
+    Ok(())
+}
+
+#[test]
+fn restore_returns_a_volume_item_to_a_path_on_the_same_volume() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let fixture = tempfile::tempdir()?;
+    fs::create_dir_all(fixture.path().join("Documents"))?;
+    let orig = fixture.path().join("Documents/report.txt");
+    let (source, entry) = volume_trash_entry(
+        fixture.path(),
+        "report.txt",
+        &orig.to_string_lossy(),
+        b"notes",
+    )?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.restore(
+        RestoreRequest {
+            id: OperationRequestId(479),
+            source: RestoreSource::TrashEntries(vec![entry]),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    wait_for_restore(&events);
+
+    assert!(
+        matches!(
+            events.borrow().last(),
+            Some(OperationEvent::Restored { .. })
+        ),
+        "{:?}",
+        events.borrow()
+    );
+    assert_eq!(fs::read(&orig)?, b"notes");
+    assert!(!source.exists());
+    Ok(())
+}
+
+fn distinct_restore_devices() -> Option<(tempfile::TempDir, tempfile::TempDir)> {
+    use std::os::unix::fs::MetadataExt;
+    let first = tempfile::tempdir().ok()?;
+    let shm = Path::new("/dev/shm");
+    if !shm.is_dir() {
+        return None;
+    }
+    let second = tempfile::TempDir::new_in(shm).ok()?;
+    let first_dev = fs::metadata(first.path()).ok()?.dev();
+    let second_dev = fs::metadata(second.path()).ok()?.dev();
+    (first_dev != second_dev).then_some((first, second))
+}
+
 #[test]
 fn copy_suffix_parsing_and_candidate_naming() {
     assert_eq!(
