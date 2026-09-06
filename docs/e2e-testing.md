@@ -14,8 +14,10 @@ checks both what the window reports and what happened on disk.
 ```
 
 The script builds the debug binary, creates a virtual environment under
-`target/e2e-venv` on first use, and runs the same command CI runs. Set
-`STRATA_BINARY` to test a binary you built yourself.
+`target/e2e-venv` on first use, and runs the same command CI runs. CI sets
+`STRATA_E2E_VENV` under the runner's temporary directory so Rust artifact-cache
+cleanup cannot strip Python dependencies. Set `STRATA_BINARY` to test a binary
+you built yourself.
 
 ### Keep Rust test windows off the local desktop
 
