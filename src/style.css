@@ -1,8 +1,25 @@
+* {
+  font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
+}
+
 window {
   background: @theme_bg;
   color: @theme_text;
-  font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
   font-size: 13px;
+}
+
+/* GTK's default theme sets `font: initial` here, which drops the window font
+   and falls back to gtk-font-name (Adwaita Sans). */
+popover.background,
+popover.background > contents {
+  font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
+}
+
+popover.background label,
+popover.background button {
+  font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
+  font-size: inherit;
+  letter-spacing: 0;
 }
 
 .chooser-details {
@@ -138,7 +155,6 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .appearance-menu {
-  font-size: 0.88em;
   min-width: 220px;
   padding: 9px 8px;
 }
@@ -162,6 +178,9 @@ headerbar menubutton.header-action > button:focus-visible {
   border-radius: 5px;
   box-shadow: none;
   color: @theme_text;
+  font-size: inherit;
+  font-weight: 400;
+  letter-spacing: 0;
   margin: 0;
   min-height: 26px;
   padding: 0 8px;
@@ -2438,6 +2457,13 @@ menubutton.column-header-action > button:active {
   opacity: 0.46;
 }
 
+popover.folder-context-popover.background {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
 .folder-context-popover contents {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
@@ -2447,16 +2473,53 @@ menubutton.column-header-action > button:active {
   padding: 0;
 }
 
+.context-menu-scroll,
+.context-menu-scroll > viewport,
+.context-menu-scroll overshoot,
+.context-menu-scroll undershoot {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.context-menu-scroll scrollbar,
+.context-menu-scroll scrollbar:hover,
+.context-menu-scroll scrollbar range,
+.context-menu-scroll scrollbar trough {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+.context-menu-scroll scrollbar slider {
+  background: alpha(@theme_border, 0.62);
+  border: 3px solid transparent;
+  border-radius: 6px;
+  min-width: 8px;
+  min-height: 32px;
+}
+
+.context-menu-scroll scrollbar slider:hover {
+  background: @theme_dim_text;
+}
+
+.context-menu-scroll scrollbar slider:active {
+  background: @theme_accent;
+}
+
+.folder-context-menu,
+.item-context-menu {
+  font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
+  padding: 8px;
+}
+
 .folder-context-menu {
-  font-size: 0.88em;
   min-width: 230px;
-  padding: 7px;
 }
 
 .item-context-menu {
-  font-size: 0.88em;
   min-width: 190px;
-  padding: 5px;
 }
 
 .item-context-header {
@@ -2473,9 +2536,10 @@ menubutton.column-header-action > button:active {
   font-size: 0.82em;
 }
 
+.folder-context-menu separator,
 .item-context-menu separator {
-  background: alpha(@theme_border, 0.22);
-  margin: 3px 2px;
+  background: alpha(@theme_border, 0.2);
+  margin: 5px 0;
   min-height: 1px;
 }
 
@@ -2731,31 +2795,40 @@ colorchooser colorswatch overlay {
   border-radius: 9999px;
 }
 
-.item-context-option {
+.item-context-option,
+.folder-context-option {
   background: transparent;
   border: none;
   border-radius: 5px;
   box-shadow: none;
   color: @theme_text;
+  font-size: inherit;
+  font-weight: 400;
+  letter-spacing: 0;
   min-height: 26px;
-  padding: 1px 6px;
+  padding: 0 8px;
   transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 
-.item-context-option:hover {
+.item-context-option:hover,
+.item-context-option:focus-visible,
+.folder-context-option:hover,
+.folder-context-option:focus-visible {
   background: alpha(@theme_accent, 0.15);
   color: @theme_text;
 }
 
-.item-context-option:active {
+.item-context-option:active,
+.folder-context-option:active {
   background: alpha(@theme_accent, 0.22);
   transform: scale(0.97);
 }
 
-.item-context-option:disabled {
+.item-context-option:disabled,
+.folder-context-option:disabled {
   background: transparent;
   color: @theme_dim_text;
-  opacity: 0.46;
+  opacity: 0.42;
 }
 
 .item-context-icon,
@@ -2763,85 +2836,35 @@ colorchooser colorswatch overlay {
   opacity: 0.72;
 }
 
-.item-context-shortcut {
+.item-context-shortcut,
+.folder-context-shortcut {
   color: @theme_dim_text;
-  font-size: 0.76em;
-  margin-left: 8px;
+  font-size: 0.88em;
 }
 
-.item-context-option.danger {
-  color: @theme_danger;
-}
-
-.item-context-option.danger:hover {
-  background: alpha(@theme_danger, 0.14);
-  color: @theme_danger;
-}
-
-.item-context-option.danger:active {
-  background: alpha(@theme_danger, 0.24);
-  color: @theme_danger;
-  transform: scale(0.97);
-}
-
-.item-context-option.danger:focus-visible {
-  outline-color: @theme_accent;
-}
-
-.folder-context-menu separator {
-  background: alpha(@theme_border, 0.22);
-  margin: 5px 2px;
-  min-height: 1px;
-}
-
-.folder-context-option {
-  background: transparent;
-  border: none;
-  border-radius: 5px;
-  box-shadow: none;
-  color: @theme_text;
-  min-height: 30px;
-  padding: 3px 8px;
-  transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
-}
-
-.folder-context-option:hover {
-  background: alpha(@theme_accent, 0.15);
-  color: @theme_text;
-}
-
-.folder-context-option:active {
-  background: alpha(@theme_accent, 0.22);
-  transform: scale(0.97);
-}
-
+.item-context-option.danger,
 .folder-context-option.danger {
   color: @theme_danger;
 }
 
-.folder-context-option.danger:hover {
+.item-context-option.danger:hover,
+.item-context-option.danger:focus-visible,
+.folder-context-option.danger:hover,
+.folder-context-option.danger:focus-visible {
   background: alpha(@theme_danger, 0.14);
   color: @theme_danger;
 }
 
+.item-context-option.danger:active,
 .folder-context-option.danger:active {
   background: alpha(@theme_danger, 0.24);
   color: @theme_danger;
   transform: scale(0.97);
 }
 
+.item-context-option.danger:focus-visible,
 .folder-context-option.danger:focus-visible {
   outline-color: @theme_accent;
-}
-
-.folder-context-option:disabled {
-  color: @theme_dim_text;
-  opacity: 0.48;
-}
-
-.folder-context-shortcut {
-  color: @theme_dim_text;
-  font-size: 0.88em;
 }
 
 .new-entry-row {

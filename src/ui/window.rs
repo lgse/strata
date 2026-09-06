@@ -2774,7 +2774,8 @@ async fn trash_has_entries(root: &gio::File) -> Result<bool, glib::Error> {
 }
 
 fn sidebar_context_option(icon: &str, label: &str, danger: bool) -> gtk::Button {
-    let button = gtk::Button::new();
+    let button = super::accessibility::menu_item_button();
+    super::accessibility::describe_menu_item(&button, label, "");
     button.add_css_class("item-context-option");
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let icon = if danger {
@@ -2783,11 +2784,11 @@ fn sidebar_context_option(icon: &str, label: &str, danger: bool) -> gtk::Button 
         crate::assets::primary_icon(icon, 15)
     };
     icon.add_css_class("item-context-icon");
-    let label = gtk::Label::new(Some(label));
-    label.set_xalign(0.0);
-    label.set_hexpand(true);
+    let title = gtk::Label::new(Some(label));
+    title.set_xalign(0.0);
+    title.set_hexpand(true);
     row.append(&icon);
-    row.append(&label);
+    row.append(&title);
     button.set_child(Some(&row));
     button
 }

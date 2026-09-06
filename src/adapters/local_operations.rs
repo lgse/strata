@@ -29,12 +29,12 @@ use gtk::{gio, glib, prelude::*};
 
 use crate::{
     adapters::{gio_file_for_location, location_for_file},
-    model::Location,
+    model::{FileEntry, Location},
     services::{
         ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest,
         CreateFileRequest, DeleteRequest, ExtractRequest, LoadHandle, OperationEvent,
         OperationProvider, OperationRequestId, PasteRequest, RenameRequest, RestoreRequest,
-        RestoreSource, TransferConflict, UndoMoveRequest, validate_basename,
+        RestoreSource, TransferConflict, UndoCopyRequest, UndoMoveRequest, validate_basename,
     },
 };
 
@@ -79,11 +79,16 @@ impl TransferProgressTracker {
     }
 
     fn emit(&self) {
+        self.emit_progress(None);
+    }
+
+    fn emit_progress(&self, created_location: Option<Location>) {
         (self.emit)(OperationEvent::TransferProgress {
             request_id: self.request_id,
             completed_items: self.completed_items.get(),
             transferred_bytes: self.transferred_bytes.get(),
             total_bytes: self.total_bytes,
+            created_location,
         });
     }
 
@@ -101,7 +106,12 @@ impl TransferProgressTracker {
         }
     }
 
-    fn finish_item(&self, started_at: u64, expected_bytes: Option<u64>) {
+    fn finish_item(
+        &self,
+        started_at: u64,
+        expected_bytes: Option<u64>,
+        created_location: Option<Location>,
+    ) {
         if let Some(expected_bytes) = expected_bytes {
             let expected_end = started_at.saturating_add(expected_bytes);
             if self.transferred_bytes.get() < expected_end {
@@ -110,7 +120,7 @@ impl TransferProgressTracker {
         }
         self.completed_items
             .set(self.completed_items.get().saturating_add(1));
-        self.emit();
+        self.emit_progress(created_location);
     }
 }
 
@@ -1995,6 +2005,157 @@ fn cancellation_handle(cancellable: gio::Cancellable) -> LoadHandle {
     LoadHandle::new(move || cancellable.cancel())
 }
 
+struct DeletionTarget {
+    location: Location,
+    display_name: String,
+    is_directory: bool,
+}
+
+impl DeletionTarget {
+    fn from_entry(entry: &FileEntry) -> Self {
+        Self {
+            location: entry.location.clone(),
+            display_name: entry.display_name.clone(),
+            is_directory: entry.is_directory(),
+        }
+    }
+
+    async fn probed(location: &Location, cancellable: &gio::Cancellable) -> Self {
+        let file = gio_file_for_location(location);
+        let is_directory = await_cancellable(&file, cancellable, |file, cancellable, result| {
+            file.query_info_async(
+                "standard::type",
+                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                glib::Priority::DEFAULT,
+                Some(cancellable),
+                move |output| result.resolve(output),
+            );
+        })
+        .await
+        .is_ok_and(|info| info.file_type() == gio::FileType::Directory);
+        Self {
+            location: location.clone(),
+            display_name: location.display_name(),
+            is_directory,
+        }
+    }
+}
+
+async fn run_deletion(
+    request_id: OperationRequestId,
+    targets: Vec<DeletionTarget>,
+    permanent: bool,
+    emit: Rc<dyn Fn(OperationEvent)>,
+    cancellable: gio::Cancellable,
+) {
+    let mut errors = Vec::new();
+    let mut deleted_locations = Vec::new();
+    let mut failed_locations = Vec::new();
+    let mut retryable_locations = Vec::new();
+    let mut affected_locations = HashSet::new();
+    for target in &targets {
+        if let Some(parent) = target.location.parent() {
+            affected_locations.insert(parent);
+        }
+        if target.is_directory {
+            affected_locations.insert(target.location.clone());
+        }
+    }
+    if !permanent {
+        affected_locations.insert(Location::uri("trash:///"));
+    }
+    let total = targets.len();
+    for (index, target) in targets.iter().enumerate() {
+        if cancellable.is_cancelled() {
+            emit(cancelled_event(
+                request_id,
+                deleted_locations,
+                failed_locations,
+                targets[index..]
+                    .iter()
+                    .map(|target| target.location.clone())
+                    .collect(),
+                affected_locations,
+            ));
+            return;
+        }
+        let file = gio_file_for_location(&target.location);
+        let result = if permanent {
+            if target
+                .location
+                .uri_value()
+                .is_some_and(|uri| uri.starts_with("trash:"))
+            {
+                await_cancellable(&file, &cancellable, |file, cancellable, result| {
+                    file.delete_async(glib::Priority::DEFAULT, Some(cancellable), move |output| {
+                        result.resolve(output)
+                    });
+                })
+                .await
+            } else {
+                permanently_delete_maybe_local(file, target.is_directory, cancellable.clone()).await
+            }
+        } else {
+            await_cancellable(&file, &cancellable, |file, cancellable, result| {
+                file.trash_async(glib::Priority::DEFAULT, Some(cancellable), move |output| {
+                    result.resolve(output)
+                });
+            })
+            .await
+        };
+        let deleted_location = if let Err(error) = result {
+            if was_cancelled(&error) {
+                failed_locations.push(target.location.clone());
+                emit(cancelled_event(
+                    request_id,
+                    deleted_locations,
+                    failed_locations,
+                    targets[index + 1..]
+                        .iter()
+                        .map(|target| target.location.clone())
+                        .collect(),
+                    affected_locations,
+                ));
+                return;
+            }
+            if is_trash_unsupported_failure(permanent, &error) {
+                retryable_locations.push(target.location.clone());
+            }
+            errors.push(deletion_error_message(
+                &target.display_name,
+                permanent,
+                &error,
+            ));
+            failed_locations.push(target.location.clone());
+            None
+        } else {
+            deleted_locations.push(target.location.clone());
+            Some(target.location.clone())
+        };
+        emit(OperationEvent::DeleteProgress {
+            request_id,
+            completed: index + 1,
+            total,
+            deleted_location,
+        });
+    }
+    if errors.is_empty() {
+        emit(OperationEvent::Deleted {
+            request_id,
+            locations: deleted_locations,
+        });
+    } else {
+        let has_non_retryable_failures = errors.len() > retryable_locations.len();
+        emit(OperationEvent::CompletedWithErrors {
+            request_id,
+            deleted_locations,
+            retryable_locations,
+            has_non_retryable_failures,
+            message: deletion_error_summary(&errors),
+        });
+    }
+}
+
 fn cancelled_event(
     request_id: crate::services::OperationRequestId,
     completed: Vec<Location>,
@@ -2296,7 +2457,7 @@ impl OperationProvider for LocalOperationProvider {
                 let is_duplicate = !request.move_sources && source.equal(&default_target);
                 if !is_duplicate && transfer_is_noop(&source, &destination, &default_target) {
                     completed.push(item.source.clone());
-                    progress.finish_item(item_started_at, item_sizes[index]);
+                    progress.finish_item(item_started_at, item_sizes[index], None);
                     continue;
                 }
                 let target = if is_duplicate {
@@ -2371,7 +2532,8 @@ impl OperationProvider for LocalOperationProvider {
                     default_target
                 };
                 affected_locations.insert(item.source.clone());
-                if let Some(target) = location_for_file(&target) {
+                let target_location = location_for_file(&target);
+                if let Some(target) = target_location.clone() {
                     affected_locations.insert(target);
                 }
                 let result = if is_duplicate {
@@ -2431,7 +2593,8 @@ impl OperationProvider for LocalOperationProvider {
                     return;
                 }
                 completed.push(item.source.clone());
-                progress.finish_item(item_started_at, item_sizes[index]);
+                let created_location = target_location.filter(|_| !request.move_sources);
+                progress.finish_item(item_started_at, item_sizes[index], created_location);
             }
             emit(OperationEvent::Pasted {
                 request_id: request.id,
@@ -2549,7 +2712,7 @@ impl OperationProvider for LocalOperationProvider {
                     return;
                 }
                 completed.push(item.record.current.clone());
-                progress.finish_item(item_started_at, item_sizes[index]);
+                progress.finish_item(item_started_at, item_sizes[index], None);
             }
             emit(OperationEvent::Pasted {
                 request_id: request.id,
@@ -2563,129 +2726,32 @@ impl OperationProvider for LocalOperationProvider {
         let cancellable = gio::Cancellable::new();
         let operation_cancellable = cancellable.clone();
         let _task = glib::MainContext::default().spawn_local(async move {
-            let mut errors = Vec::new();
-            let mut deleted_locations = Vec::new();
-            let mut failed_locations = Vec::new();
-            let mut retryable_locations = Vec::new();
-            let mut affected_locations = HashSet::new();
-            for entry in &request.entries {
-                if let Some(parent) = entry.location.parent() {
-                    affected_locations.insert(parent);
-                }
-                if entry.is_directory() {
-                    affected_locations.insert(entry.location.clone());
-                }
+            let targets = request
+                .entries
+                .iter()
+                .map(DeletionTarget::from_entry)
+                .collect();
+            run_deletion(
+                request.id,
+                targets,
+                request.permanent,
+                emit,
+                operation_cancellable,
+            )
+            .await;
+        });
+        cancellation_handle(cancellable)
+    }
+
+    fn undo_copy(&self, request: UndoCopyRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        let cancellable = gio::Cancellable::new();
+        let operation_cancellable = cancellable.clone();
+        let _task = glib::MainContext::default().spawn_local(async move {
+            let mut targets = Vec::with_capacity(request.locations.len());
+            for location in &request.locations {
+                targets.push(DeletionTarget::probed(location, &operation_cancellable).await);
             }
-            if !request.permanent {
-                affected_locations.insert(Location::uri("trash:///"));
-            }
-            let total = request.entries.len();
-            for (index, entry) in request.entries.iter().enumerate() {
-                if operation_cancellable.is_cancelled() {
-                    emit(cancelled_event(
-                        request.id,
-                        deleted_locations,
-                        failed_locations,
-                        request.entries[index..]
-                            .iter()
-                            .map(|entry| entry.location.clone())
-                            .collect(),
-                        affected_locations,
-                    ));
-                    return;
-                }
-                let file = gio_file_for_location(&entry.location);
-                let result = if request.permanent {
-                    if entry
-                        .location
-                        .uri_value()
-                        .is_some_and(|uri| uri.starts_with("trash:"))
-                    {
-                        await_cancellable(
-                            &file,
-                            &operation_cancellable,
-                            |file, cancellable, result| {
-                                file.delete_async(
-                                    glib::Priority::DEFAULT,
-                                    Some(cancellable),
-                                    move |output| result.resolve(output),
-                                );
-                            },
-                        )
-                        .await
-                    } else {
-                        permanently_delete_maybe_local(
-                            file,
-                            entry.is_directory(),
-                            operation_cancellable.clone(),
-                        )
-                        .await
-                    }
-                } else {
-                    await_cancellable(
-                        &file,
-                        &operation_cancellable,
-                        |file, cancellable, result| {
-                            file.trash_async(
-                                glib::Priority::DEFAULT,
-                                Some(cancellable),
-                                move |output| result.resolve(output),
-                            );
-                        },
-                    )
-                    .await
-                };
-                let deleted_location = if let Err(error) = result {
-                    if was_cancelled(&error) {
-                        failed_locations.push(entry.location.clone());
-                        emit(cancelled_event(
-                            request.id,
-                            deleted_locations,
-                            failed_locations,
-                            request.entries[index + 1..]
-                                .iter()
-                                .map(|entry| entry.location.clone())
-                                .collect(),
-                            affected_locations,
-                        ));
-                        return;
-                    }
-                    if is_trash_unsupported_failure(request.permanent, &error) {
-                        retryable_locations.push(entry.location.clone());
-                    }
-                    errors.push(deletion_error_message(
-                        &entry.display_name,
-                        request.permanent,
-                        &error,
-                    ));
-                    failed_locations.push(entry.location.clone());
-                    None
-                } else {
-                    deleted_locations.push(entry.location.clone());
-                    Some(entry.location.clone())
-                };
-                emit(OperationEvent::DeleteProgress {
-                    request_id: request.id,
-                    completed: index + 1,
-                    total,
-                    deleted_location,
-                });
-            }
-            if errors.is_empty() {
-                emit(OperationEvent::Deleted {
-                    request_id: request.id,
-                    locations: deleted_locations,
-                });
-            } else {
-                let has_non_retryable_failures = errors.len() > retryable_locations.len();
-                emit(OperationEvent::CompletedWithErrors {
-                    request_id: request.id,
-                    deleted_locations,
-                    retryable_locations,
-                    has_non_retryable_failures,
-                    message: deletion_error_summary(&errors),
-                });
-            }
+            run_deletion(request.id, targets, false, emit, operation_cancellable).await;
         });
         cancellation_handle(cancellable)
     }

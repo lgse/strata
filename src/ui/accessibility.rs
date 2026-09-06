@@ -60,6 +60,7 @@ pub(super) fn describe_entry_container(container: &impl IsA<gtk::Accessible>, di
 pub(super) fn menu_item_button() -> gtk::Button {
     gtk::Button::builder()
         .accessible_role(gtk::AccessibleRole::MenuItem)
+        .has_frame(false)
         .build()
 }
 
