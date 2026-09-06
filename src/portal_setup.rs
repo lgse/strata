@@ -6,7 +6,10 @@ mod tests;
 use std::{
     env, fs, io,
     io::Write as _,
-    os::unix::fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+    os::unix::{
+        ffi::OsStrExt as _,
+        fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+    },
     path::{Path, PathBuf},
     process::{Command, Stdio},
 };
@@ -20,6 +23,7 @@ const PORTAL_FILE: &str = "strata.portal";
 const SERVICE_FILE: &str = "org.freedesktop.impl.portal.desktop.strata.service";
 const STATE_DIRECTORY: &str = "strata/portal-install";
 const STATE_FILE: &str = "state.toml";
+const PORTAL_BACKEND_UNIT: &str = "dbus-:*-org.freedesktop.impl.portal.desktop.strata@*.service";
 
 pub(crate) fn install() -> Result<String, String> {
     let executable = env::current_exe()
@@ -58,6 +62,95 @@ pub(crate) struct PortalStatus {
 
 pub(crate) fn status() -> Result<PortalStatus, String> {
     status_at(&SetupContext::from_environment()?)
+}
+
+pub(crate) fn refresh_after_in_place_update() -> Result<(), String> {
+    let context = SetupContext::from_environment()?;
+    refresh_configured_portal_at(&context, refresh_portals)
+}
+
+pub(crate) fn refresh_stale_portal() -> Result<(), String> {
+    let context = SetupContext::from_environment()?;
+    let executable = env::current_exe()
+        .map_err(|error| format!("Could not locate the Strata executable: {error}"))?;
+    refresh_stale_portal_at(&context, &executable, Path::new("/proc"), || {
+        refresh_portals()
+    })
+}
+
+fn refresh_stale_portal_at(
+    context: &SetupContext,
+    executable: &Path,
+    proc_root: &Path,
+    refresh: impl FnOnce() -> &'static str,
+) -> Result<(), String> {
+    if !portal_backend_is_stale_at(context, executable, proc_root)? {
+        return Ok(());
+    }
+    refresh_configured_portal_at(context, refresh)
+}
+
+fn refresh_configured_portal_at(
+    context: &SetupContext,
+    refresh: impl FnOnce() -> &'static str,
+) -> Result<(), String> {
+    if !status_at(context)?.configured {
+        return Ok(());
+    }
+    match refresh() {
+        "" => Ok(()),
+        warning => Err(warning.trim().to_owned()),
+    }
+}
+
+fn portal_backend_is_stale_at(
+    context: &SetupContext,
+    executable: &Path,
+    proc_root: &Path,
+) -> Result<bool, String> {
+    if !status_at(context)?.configured {
+        return Ok(false);
+    }
+    let service = context.data_home.join("dbus-1/services").join(SERVICE_FILE);
+    let expected_exec = format!("Exec={} --portal", executable.display());
+    // Do not interfere with a portal explicitly installed from another Strata build.
+    if !read_utf8(&service)?
+        .lines()
+        .any(|line| line == expected_exec)
+    {
+        return Ok(false);
+    }
+    let installed = fs::metadata(executable).map_err(|error| {
+        path_error("inspect the installed Strata executable", executable, error)
+    })?;
+    let entries = fs::read_dir(proc_root)
+        .map_err(|error| path_error("inspect running processes", proc_root, error))?;
+    for entry in entries.flatten() {
+        if entry
+            .file_name()
+            .to_str()
+            .is_none_or(|name| name.parse::<u32>().is_err())
+        {
+            continue;
+        }
+        let Ok(arguments) = fs::read(entry.path().join("cmdline")) else {
+            continue;
+        };
+        let mut arguments = arguments.split(|byte| *byte == 0);
+        if arguments.next() != Some(executable.as_os_str().as_bytes())
+            || arguments.next() != Some(b"--portal")
+        {
+            continue;
+        }
+        let Ok(running) = fs::metadata(entry.path().join("exe")) else {
+            continue;
+        };
+        // Replacing a running executable preserves its old inode under /proc.
+        if (running.dev(), running.ino()) != (installed.dev(), installed.ino()) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 fn status_at(context: &SetupContext) -> Result<PortalStatus, String> {
@@ -571,6 +664,12 @@ fn path_error(action: &str, path: &Path, error: io::Error) -> String {
 }
 
 fn refresh_portals() -> &'static str {
+    let backend_stopped = Command::new("systemctl")
+        .args(["--user", "stop", PORTAL_BACKEND_UNIT])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
     let dbus_reloaded = Command::new("gdbus")
         .args([
             "call",
@@ -592,7 +691,7 @@ fn refresh_portals() -> &'static str {
         .stderr(Stdio::null())
         .status()
         .is_ok_and(|status| status.success());
-    if dbus_reloaded && portal_restarted {
+    if backend_stopped && dbus_reloaded && portal_restarted {
         ""
     } else {
         "\nCould not reload every portal service. Ensure xdg-desktop-portal is installed, then log out and back in before testing."

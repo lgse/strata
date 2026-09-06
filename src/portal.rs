@@ -36,8 +36,7 @@ const MAX_CHOICES: usize = 16;
 const MAX_CHOICE_OPTIONS: usize = 32;
 const MAX_TOTAL_CHOICE_OPTIONS: usize = 128;
 const MAX_FILTERS: usize = 32;
-const MAX_FILTER_RULES: usize = 64;
-const MAX_TOTAL_FILTER_RULES: usize = 256;
+const FILTER_RULE_WARNING_THRESHOLD: usize = 1024;
 const MAX_GLOB_BYTES: usize = 256;
 const MAX_GLOB_STAR_RUNS: usize = 2;
 const MAX_SAVE_FILES: usize = 256;
@@ -394,19 +393,19 @@ fn validate_filters(
         let patterns = filter.pattern_filters();
         let mimetypes = filter.mimetype_filters();
         let rules = patterns.len().saturating_add(mimetypes.len());
-        if rules > MAX_FILTER_RULES {
-            return invalid_argument("a file filter has too many rules");
-        }
         total_rules = total_rules.saturating_add(rules);
-        if total_rules > MAX_TOTAL_FILTER_RULES {
-            return invalid_argument("file filters have too many rules");
-        }
         for pattern in patterns {
             validate_glob(pattern)?;
         }
         for mimetype in mimetypes {
             validate_string(mimetype, MAX_STRING_BYTES, "MIME filter rule")?;
         }
+    }
+    if total_rules > FILTER_RULE_WARNING_THRESHOLD {
+        tracing::warn!(
+            rules = total_rules,
+            "file filters exceeded the rule budget and were accepted untrimmed"
+        );
     }
     Ok(())
 }

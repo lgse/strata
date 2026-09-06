@@ -14,6 +14,8 @@ use crate::{
     services::{SearchEvent, SearchHandle, SearchItem, index_tree},
 };
 
+pub(super) const SEARCH_RESULTS_LABEL: &str = "Search results";
+
 struct State {
     entry: glib::WeakRef<gtk::Entry>,
     stack: gtk::Stack,
@@ -42,6 +44,7 @@ pub(super) fn wrap(
     results.append(&status);
     let list = gtk::ListBox::new();
     list.add_css_class("file-list");
+    super::accessibility::set_label(&list, SEARCH_RESULTS_LABEL);
     list.set_activate_on_single_click(false);
     list.set_selection_mode(gtk::SelectionMode::Single);
     let scroll = gtk::ScrolledWindow::builder()
@@ -160,7 +163,7 @@ pub(super) fn wrap(
                 query: returned,
                 items,
                 indexing,
-                truncated,
+                coverage,
             }) = latest
                 && !returned.is_empty()
                 && returned == entry.text().trim()
@@ -170,6 +173,7 @@ pub(super) fn wrap(
                     let row = gtk::ListBoxRow::new();
                     // Keep keyboard focus in the query, away from file-operation shortcuts.
                     row.set_focusable(false);
+                    super::accessibility::set_label(&row, &item.name);
                     let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
                     line.add_css_class("file-row");
                     line.append(&crate::assets::primary_icon(
@@ -204,13 +208,15 @@ pub(super) fn wrap(
                     row.set_child(Some(&line));
                     state.list.append(&row);
                 }
-                state.status.set_visible(items.is_empty() || truncated);
-                state.status.set_text(if truncated {
-                    "Showing partial search results"
+                state
+                    .status
+                    .set_visible(items.is_empty() || coverage.is_partial());
+                state.status.set_text(&if coverage.is_partial() {
+                    coverage.message()
                 } else if indexing {
-                    "Searching…"
+                    "Searching…".to_owned()
                 } else {
-                    "No matching files"
+                    "No matching files".to_owned()
                 });
                 state.items.replace(items);
             }

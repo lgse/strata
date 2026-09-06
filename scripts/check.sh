@@ -4,7 +4,8 @@ set -euo pipefail
 cargo fmt --all --check
 cargo check --all-targets --all-features
 cargo clippy --all-targets --all-features -- -D warnings
-cargo test --all-targets --all-features
+# Display-dependent tests are exercised by test-headless.py and e2e.sh.
+env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 cargo test --all-targets --all-features
 
 if command -v cargo-deny >/dev/null 2>&1; then
   cargo deny check

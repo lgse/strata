@@ -458,8 +458,13 @@ impl ViewState {
     }
 
     pub(super) fn append_column(self: &Rc<Self>, depth: usize, location: &Location) {
-        let column = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let column = crate::ui::accessibility::pane_box();
         column.add_css_class("directory-column");
+        crate::ui::accessibility::describe_pane(
+            &column,
+            &location.display_name(),
+            crate::ui::browser_modes::BrowserMode::Columns,
+        );
         column.set_hexpand(true);
         column.set_vexpand(true);
         let pane_motion = gtk::EventControllerMotion::new();
@@ -780,6 +785,7 @@ impl ViewState {
         list.set_enable_rubberband(false);
         list.set_single_click_activate(false);
         list.set_vexpand(true);
+        crate::ui::accessibility::describe_entry_container(&list, &location.display_name());
 
         let search_navigation = gtk::EventControllerKey::new();
         search_navigation.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -918,6 +924,7 @@ impl ViewState {
         new_entry_icon.add_css_class("file-icon");
         let new_entry_entry = gtk::Entry::new();
         new_entry_entry.add_css_class("inline-rename");
+        crate::ui::accessibility::set_label(&new_entry_entry, "New item name");
         new_entry_entry.set_hexpand(true);
         new_entry_entry.connect_changed(|field| {
             update_basename_validation(field);

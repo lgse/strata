@@ -59,6 +59,13 @@ fn click_activation_defaults_follow_view_conventions() {
 }
 
 #[test]
+fn type_grouping_is_list_only() {
+    assert!(!BrowserMode::Columns.supports_type_grouping());
+    assert!(!BrowserMode::Icons.supports_type_grouping());
+    assert!(BrowserMode::List.supports_type_grouping());
+}
+
+#[test]
 fn single_click_activation_distinguishes_files_and_folders() {
     let activation = ClickActivation {
         files: ClickCount::Two,

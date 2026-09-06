@@ -243,10 +243,11 @@ fn untrusted_request_inputs_are_bounded() {
         .map(|index| FileFilter::new(&format!("Filter {index}")))
         .collect::<Vec<_>>();
     assert!(validate_filters(&filters, None).is_err());
-    let filter = (0..=MAX_FILTER_RULES).fold(FileFilter::new("Filter"), |filter, index| {
-        filter.glob(&format!("*.{index}"))
-    });
-    assert!(validate_filters(&[filter], None).is_err());
+    let bulky = (0..=FILTER_RULE_WARNING_THRESHOLD)
+        .fold(FileFilter::new("GitHub accepted types"), |filter, index| {
+            filter.mimetype(&format!("application/x-attachment-{index}"))
+        });
+    assert!(validate_filters(&[bulky], None).is_ok());
     assert!(
         validate_filters(&[FileFilter::new("Filter").glob("*a*a*a*z")], None).is_err(),
         "backtracking-heavy globs must be rejected"

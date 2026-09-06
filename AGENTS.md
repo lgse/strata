@@ -1,5 +1,18 @@
 # Agent Instructions
 
+## Agent skills
+
+Restore project skills from the committed `skills-lock.json` after cloning:
+
+```bash
+npx skills experimental_install
+```
+
+That installs them into `.agents/skills/`, which is gitignored. Keep
+`skills-lock.json` in version control. Add or update skills with `npx skills add`
+and `npx skills update`, then commit the lockfile. Do not vendor skill files
+under `.agents/`.
+
 ## Git workflow
 
 - Never commit or push directly to `main`. Work from a GitHub issue and submit changes through a pull request.

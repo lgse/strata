@@ -35,11 +35,13 @@ pub struct LocalFileSource;
 
 #[derive(Clone)]
 enum PendingMonitorChange {
-    Upsert(PathBuf),
-    Remove(PathBuf),
-    Move { from: PathBuf, to: PathBuf },
+    Upsert(Location),
+    Remove(Location),
+    Move { from: Location, to: Location },
     Rescan,
 }
+
+type PendingMonitorKey = Option<Location>;
 
 enum NativeEnumeration {
     Complete {
@@ -768,8 +770,7 @@ impl FileSource for LocalFileSource {
         notify: Rc<dyn Fn(DirectoryChange)>,
     ) -> Option<LoadHandle> {
         let _ = include_hidden;
-        let path = location.native_path()?.to_path_buf();
-        let file = gio::File::for_path(&path);
+        let file = gio_file_for_location(&location);
         let monitor = match file.monitor_directory(
             gio::FileMonitorFlags::WATCH_MOVES,
             None::<&gio::Cancellable>,
@@ -791,32 +792,35 @@ impl FileSource for LocalFileSource {
         };
 
         let cancelled = Rc::new(Cell::new(false));
-        let pending = Rc::new(RefCell::new(HashMap::<PathBuf, PendingMonitorChange>::new()));
+        let pending = Rc::new(RefCell::new(HashMap::<
+            PendingMonitorKey,
+            PendingMonitorChange,
+        >::new()));
         let timeout = Rc::new(RefCell::new(None::<glib::SourceId>));
         let pending_for_change = pending.clone();
         let timeout_for_change = timeout.clone();
         let cancelled_for_change = cancelled.clone();
+        let watched = location.clone();
         monitor.connect_changed(move |_, file, other_file, event| {
-            if pending_for_change.borrow().contains_key(Path::new("")) {
+            if pending_for_change.borrow().contains_key(&None) {
                 return;
             }
-            let path = file.path();
-            let other_path = other_file.and_then(gio::File::path);
+            let changed = monitored_change_target(&watched, location_for_file(file), event);
+            let other = other_file.and_then(location_for_file);
             let change = match event {
                 gio::FileMonitorEvent::Deleted | gio::FileMonitorEvent::MovedOut => {
-                    path.clone().map(PendingMonitorChange::Remove)
+                    changed.map(PendingMonitorChange::Remove)
                 }
                 gio::FileMonitorEvent::Created | gio::FileMonitorEvent::MovedIn => {
-                    path.clone().map(PendingMonitorChange::Upsert)
+                    changed.map(PendingMonitorChange::Upsert)
                 }
                 gio::FileMonitorEvent::Changed
                 | gio::FileMonitorEvent::ChangesDoneHint
                 | gio::FileMonitorEvent::AttributeChanged => {
-                    path.clone().map(PendingMonitorChange::Upsert)
+                    changed.map(PendingMonitorChange::Upsert)
                 }
-                gio::FileMonitorEvent::Moved | gio::FileMonitorEvent::Renamed => path
-                    .clone()
-                    .zip(other_path)
+                gio::FileMonitorEvent::Moved | gio::FileMonitorEvent::Renamed => changed
+                    .zip(other)
                     .map(|(from, to)| PendingMonitorChange::Move { from, to }),
                 gio::FileMonitorEvent::PreUnmount | gio::FileMonitorEvent::Unmounted => {
                     Some(PendingMonitorChange::Rescan)
@@ -827,11 +831,11 @@ impl FileSource for LocalFileSource {
                 return;
             };
             let key = match &change {
-                PendingMonitorChange::Upsert(path) | PendingMonitorChange::Remove(path) => {
-                    path.clone()
+                PendingMonitorChange::Upsert(location) | PendingMonitorChange::Remove(location) => {
+                    Some(location.clone())
                 }
-                PendingMonitorChange::Move { to, .. } => to.clone(),
-                PendingMonitorChange::Rescan => PathBuf::new(),
+                PendingMonitorChange::Move { to, .. } => Some(to.clone()),
+                PendingMonitorChange::Rescan => None,
             };
             if !queue_monitor_change(&mut pending_for_change.borrow_mut(), key, change) {
                 return;
@@ -1057,12 +1061,26 @@ fn log_directory_load_started(request_id: RequestId, location: &Location) {
     );
 }
 
+// GVfs can report content changes against the watched directory itself; keep only departures.
+fn monitored_change_target(
+    watched: &Location,
+    changed: Option<Location>,
+    event: gio::FileMonitorEvent,
+) -> Option<Location> {
+    let changed = changed?;
+    let departed = matches!(
+        event,
+        gio::FileMonitorEvent::Deleted | gio::FileMonitorEvent::MovedOut
+    );
+    (&changed != watched || departed).then_some(changed)
+}
+
 fn queue_monitor_change(
-    pending: &mut HashMap<PathBuf, PendingMonitorChange>,
-    key: PathBuf,
+    pending: &mut HashMap<PendingMonitorKey, PendingMonitorChange>,
+    key: PendingMonitorKey,
     change: PendingMonitorChange,
 ) -> bool {
-    if pending.contains_key(Path::new("")) {
+    if pending.contains_key(&None) {
         return false;
     }
     pending
@@ -1073,7 +1091,7 @@ fn queue_monitor_change(
         .or_insert(change);
     if pending.len() > MAX_PENDING_MONITOR_CHANGES {
         pending.clear();
-        pending.insert(PathBuf::new(), PendingMonitorChange::Rescan);
+        pending.insert(None, PendingMonitorChange::Rescan);
     }
     true
 }
@@ -1096,7 +1114,7 @@ fn merge_pending_change(
 }
 
 fn flush_monitor_changes(
-    pending: &RefCell<HashMap<PathBuf, PendingMonitorChange>>,
+    pending: &RefCell<HashMap<PendingMonitorKey, PendingMonitorChange>>,
     notify: &Rc<dyn Fn(DirectoryChange)>,
     cancelled: &Rc<Cell<bool>>,
 ) {
@@ -1115,11 +1133,11 @@ fn flush_monitor_changes(
 
     for change in changes {
         match change {
-            PendingMonitorChange::Remove(path) => {
-                notify(DirectoryChange::Remove(Location::local(path)));
+            PendingMonitorChange::Remove(location) => {
+                notify(DirectoryChange::Remove(location));
             }
-            PendingMonitorChange::Upsert(path) => {
-                query_monitored_entry(path, None, notify.clone(), cancelled.clone())
+            PendingMonitorChange::Upsert(location) => {
+                query_monitored_entry(location, None, notify.clone(), cancelled.clone())
             }
             PendingMonitorChange::Move { from, to } => {
                 query_monitored_entry(to, Some(from), notify.clone(), cancelled.clone())
@@ -1130,13 +1148,13 @@ fn flush_monitor_changes(
 }
 
 fn query_monitored_entry(
-    path: PathBuf,
-    moved_from: Option<PathBuf>,
+    location: Location,
+    moved_from: Option<Location>,
     notify: Rc<dyn Fn(DirectoryChange)>,
     cancelled: Rc<Cell<bool>>,
 ) {
     glib::MainContext::default().spawn_local(async move {
-        let file = gio::File::for_path(&path);
+        let file = gio_file_for_location(&location);
         let result = file
             .query_info_future(
                 FULL_ATTRIBUTES,
@@ -1149,24 +1167,25 @@ fn query_monitored_entry(
         }
         match result {
             Ok(info) => {
-                let entry = entry_from_info(Location::local(path), info);
+                let entry = entry_from_info(location, info);
                 if let Some(from) = moved_from {
-                    notify(DirectoryChange::Move {
-                        from: Location::local(from),
-                        entry,
-                    });
+                    notify(DirectoryChange::Move { from, entry });
                 } else {
                     notify(DirectoryChange::Upsert(entry));
                 }
             }
             Err(error) if error.matches(gio::IOErrorEnum::NotFound) => {
-                let removed = moved_from.unwrap_or(path);
+                let removed = moved_from.unwrap_or(location);
                 if !cancelled.get() {
-                    notify(DirectoryChange::Remove(Location::local(removed)));
+                    notify(DirectoryChange::Remove(removed));
                 }
             }
             Err(error) => {
-                tracing::debug!(path = %path.display(), error = %error, "monitor metadata unavailable");
+                tracing::debug!(
+                    location = %location.diagnostic_path(),
+                    error = %error,
+                    "monitor metadata unavailable"
+                );
                 if !cancelled.get() {
                     notify(DirectoryChange::Rescan);
                 }

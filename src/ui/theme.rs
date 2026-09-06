@@ -60,6 +60,8 @@ fn notify_live<T>(listeners: Vec<T>, is_live: impl Fn(&T) -> bool, run: impl Fn(
 }
 
 const THEME_CATALOG: &str = include_str!("../../data/themes/catalog.toml");
+const GTK_DEFAULT_DPI: f64 = 96.0;
+const GTK_DPI_UNITS: f64 = 1024.0;
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 pub struct ThemeTokens {
@@ -367,6 +369,7 @@ impl ThemeManager {
         });
         manager.install_provider();
         manager.apply_selected();
+        manager.monitor_text_scaling();
         manager.monitor_omarchy();
         manager
     }
@@ -894,8 +897,11 @@ impl ThemeManager {
     }
 
     fn apply_tokens(&self, tokens: &ThemeTokens) {
+        let root_font_px =
+            snapped_root_font_px(self.text_size().root_font_px(), desktop_text_scale_factor());
         self.provider
-            .load_from_string(&tokens_css(tokens, self.text_size().root_font_px()));
+            .load_from_string(&tokens_css(tokens, root_font_px));
+        apply_interface_font(root_font_px);
         crate::assets::set_primary_icon_color(&tokens.accent);
         crate::assets::set_danger_icon_color(&tokens.danger);
         super::thumbnail::refresh_all_customized_icons();
@@ -915,6 +921,21 @@ impl ThemeManager {
         if let Err(error) = result {
             tracing::warn!(%error, "unable to save theme preference");
         }
+    }
+
+    fn monitor_text_scaling(self: &Rc<Self>) {
+        let Some(settings) = gtk::Settings::default() else {
+            return;
+        };
+        let weak = Rc::downgrade(self);
+        settings.connect_gtk_xft_dpi_notify(move |_| {
+            let Some(manager) = weak.upgrade() else {
+                return;
+            };
+            if !manager.previewing.get() {
+                manager.apply_selected();
+            }
+        });
     }
 
     fn monitor_omarchy(self: &Rc<Self>) {
@@ -1253,9 +1274,42 @@ fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
     )
 }
 
-fn tokens_css(tokens: &ThemeTokens, root_font_px: u32) -> String {
+const INTERFACE_FONT_FAMILY: &str = "JetBrains Mono";
+
+fn interface_font_name(root_font_px: f64) -> String {
+    format!("{INTERFACE_FONT_FAMILY} {root_font_px:.6}px")
+}
+
+fn apply_interface_font(root_font_px: f64) {
+    if let Some(settings) = gtk::Settings::default() {
+        settings.set_gtk_font_name(Some(&interface_font_name(root_font_px)));
+    }
+}
+
+fn desktop_text_scale_factor() -> f64 {
+    gtk::Settings::default()
+        .map(|settings| text_scale_factor_from_xft_dpi(settings.gtk_xft_dpi()))
+        .unwrap_or(1.0)
+}
+
+fn text_scale_factor_from_xft_dpi(xft_dpi: i32) -> f64 {
+    if xft_dpi <= 0 {
+        return 1.0;
+    }
+    f64::from(xft_dpi) / (GTK_DEFAULT_DPI * GTK_DPI_UNITS)
+}
+
+fn snapped_root_font_px(root_font_px: u32, scale_factor: f64) -> f64 {
+    if !scale_factor.is_finite() || scale_factor <= 0.0 {
+        return f64::from(root_font_px);
+    }
+    // Fractional effective pixels can lose hinted glyph rows in GTK's text renderer.
+    (f64::from(root_font_px) * scale_factor).round() / scale_factor
+}
+
+fn tokens_css(tokens: &ThemeTokens, root_font_px: f64) -> String {
     format!(
-        "@define-color theme_bg {};\n@define-color theme_surface {};\n@define-color theme_text {};\n@define-color theme_accent {};\n@define-color theme_danger {};\n@define-color theme_muted {};\n@define-color theme_highlight {};\n@define-color theme_border {};\n@define-color theme_dim_text {};\nwindow {{ font-size: {root_font_px}px; }}\n",
+        "@define-color theme_bg {};\n@define-color theme_surface {};\n@define-color theme_text {};\n@define-color theme_accent {};\n@define-color theme_danger {};\n@define-color theme_muted {};\n@define-color theme_highlight {};\n@define-color theme_border {};\n@define-color theme_dim_text {};\nwindow, popover, popover.background {{ font-size: {root_font_px:.6}px; }}\n",
         tokens.background,
         tokens.surface,
         tokens.text,

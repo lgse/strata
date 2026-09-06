@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::{
-    cell::Cell,
     cmp::Reverse,
-    collections::{BinaryHeap, HashMap},
-    path::PathBuf,
+    collections::{BinaryHeap, HashMap, HashSet},
+    path::{Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock, RwLock, Weak,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -16,21 +15,20 @@ use std::{
 const RESULT_LIMIT: usize = 100;
 const PUBLISH_INTERVAL: Duration = Duration::from_millis(50);
 
-/// High-volume generated trees pruned before they consume the index budget. Configuration files
-/// in the parent tool directories remain searchable when hidden files are shown.
+// Keep tool configuration searchable while pruning generated subtrees.
 const GENERATED_TREE_GLOBS: [&str; 12] = [
-    "!**/.cache",
-    "!**/.cargo/registry",
-    "!**/.cargo/git",
-    "!**/.rustup/downloads",
-    "!**/.gradle/caches",
-    "!**/.gradle/wrapper/dists",
-    "!**/.m2/repository",
-    "!**/.npm/_cacache",
-    "!**/.bun/install/cache",
-    "!**/node_modules",
-    "!**/target",
-    "!**/.venv",
+    "!**/.cache/",
+    "!**/.cargo/registry/",
+    "!**/.cargo/git/",
+    "!**/.rustup/downloads/",
+    "!**/.gradle/caches/",
+    "!**/.gradle/wrapper/dists/",
+    "!**/.m2/repository/",
+    "!**/.npm/_cacache/",
+    "!**/.bun/install/cache/",
+    "!**/node_modules/",
+    "!**/target/",
+    "!**/.venv/",
 ];
 
 /// Bounds worst-case index memory on an adversarially large tree. Each retained `SearchItem`
@@ -52,8 +50,71 @@ pub struct SearchItem {
 }
 
 impl SearchItem {
+    fn new(path: PathBuf, root: &Path, is_directory: bool) -> Self {
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        let relative = path.strip_prefix(root).unwrap_or(&path);
+        let depth = relative
+            .components()
+            .count()
+            .saturating_sub(1)
+            .min(MAX_INDEX_DEPTH) as u8;
+        let search_path = relative.to_string_lossy().to_lowercase();
+        let search_name_start = search_path
+            .rfind(std::path::MAIN_SEPARATOR)
+            .map_or(0, |position| {
+                position + std::path::MAIN_SEPARATOR.len_utf8()
+            });
+        Self {
+            name,
+            path,
+            is_directory,
+            search_path,
+            search_name_start,
+            depth,
+        }
+    }
+
     fn search_name(&self) -> &str {
         &self.search_path[self.search_name_start..]
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct SearchCoverage {
+    pub entry_limit: bool,
+    pub depth_limit: bool,
+    pub time_limit: bool,
+    pub unreadable: bool,
+}
+
+impl SearchCoverage {
+    pub fn is_partial(self) -> bool {
+        self != Self::default()
+    }
+
+    pub fn message(self) -> String {
+        let mut reasons = Vec::new();
+        if self.entry_limit {
+            reasons.push("entry limit reached");
+        }
+        if self.depth_limit {
+            reasons.push("depth limit reached");
+        }
+        if self.time_limit {
+            reasons.push("indexing time limit reached");
+        }
+        if self.unreadable {
+            reasons.push("some folders could not be read");
+        }
+        if reasons.is_empty() {
+            String::new()
+        } else {
+            format!("Partial search — {}", reasons.join("; "))
+        }
     }
 }
 
@@ -62,9 +123,7 @@ pub enum SearchEvent {
         query: String,
         items: Vec<SearchItem>,
         indexing: bool,
-        /// `true` if the index does not cover the full tree; results are the best matches found
-        /// so far, not necessarily complete.
-        truncated: bool,
+        coverage: SearchCoverage,
     },
 }
 
@@ -85,27 +144,33 @@ struct IndexLifecycle {
     retired: bool,
 }
 
+struct IndexState {
+    items: Vec<SearchItem>,
+    indexing: bool,
+    coverage: SearchCoverage,
+}
+
 struct SharedIndex {
-    items: RwLock<Vec<SearchItem>>,
+    state: RwLock<IndexState>,
     subscribers: Mutex<Vec<(usize, Sender<SearchCommand>)>>,
     next_subscriber: AtomicUsize,
     lifecycle: Mutex<IndexLifecycle>,
-    indexing: AtomicBool,
-    truncated: AtomicBool,
 }
 
 impl SharedIndex {
     fn new() -> Self {
         Self {
-            items: RwLock::new(Vec::new()),
+            state: RwLock::new(IndexState {
+                items: Vec::new(),
+                indexing: true,
+                coverage: SearchCoverage::default(),
+            }),
             subscribers: Mutex::new(Vec::new()),
             next_subscriber: AtomicUsize::new(1),
             lifecycle: Mutex::new(IndexLifecycle {
                 active_sessions: 1,
                 retired: false,
             }),
-            indexing: AtomicBool::new(true),
-            truncated: AtomicBool::new(false),
         }
     }
 
@@ -163,7 +228,7 @@ impl SharedIndex {
     }
 }
 
-type IndexRegistry = HashMap<(PathBuf, bool), Weak<SharedIndex>>;
+type IndexRegistry = HashMap<(Vec<PathBuf>, bool), Weak<SharedIndex>>;
 static SHARED_INDEXES: OnceLock<Mutex<IndexRegistry>> = OnceLock::new();
 
 pub struct SearchHandle {
@@ -190,10 +255,22 @@ impl Drop for SearchHandle {
     }
 }
 
-/// Builds and searches the index entirely off the GTK thread. Searches with the same root and
-/// hidden-file policy share indexed paths while keeping independent queries and result streams.
 pub fn index_tree(root: PathBuf, show_hidden: bool) -> (SearchHandle, Receiver<SearchEvent>) {
-    let key = (root.clone(), show_hidden);
+    index_trees(vec![root], show_hidden)
+}
+
+/// Concurrent sessions share a snapshot until the last handle is dropped.
+/// Indexing and scoring run off the GTK thread.
+pub fn index_trees(
+    roots: Vec<PathBuf>,
+    show_hidden: bool,
+) -> (SearchHandle, Receiver<SearchEvent>) {
+    let mut seen = HashSet::new();
+    let roots: Vec<_> = roots
+        .into_iter()
+        .filter(|root| seen.insert(root.clone()))
+        .collect();
+    let key = (roots.clone(), show_hidden);
     let registry = SHARED_INDEXES.get_or_init(|| Mutex::new(HashMap::new()));
     let mut registry = registry
         .lock()
@@ -210,7 +287,7 @@ pub fn index_tree(root: PathBuf, show_hidden: bool) -> (SearchHandle, Receiver<S
         registry.insert(key, Arc::downgrade(&index));
         start_indexer(
             index.clone(),
-            root,
+            roots,
             show_hidden,
             MAX_INDEX_ENTRIES,
             MAX_INDEX_DEPTH,
@@ -223,8 +300,8 @@ pub fn index_tree(root: PathBuf, show_hidden: bool) -> (SearchHandle, Receiver<S
 }
 
 #[cfg(test)]
-fn index_tree_with_budget(
-    root: PathBuf,
+fn index_trees_with_budget(
+    roots: Vec<PathBuf>,
     show_hidden: bool,
     max_entries: usize,
     max_depth: usize,
@@ -233,7 +310,7 @@ fn index_tree_with_budget(
     let index = Arc::new(SharedIndex::new());
     start_indexer(
         index.clone(),
-        root,
+        roots,
         show_hidden,
         max_entries,
         max_depth,
@@ -249,7 +326,7 @@ fn start_search_session(index: Arc<SharedIndex>) -> (SearchHandle, Receiver<Sear
     let subscriber_id = index.subscribe(command_sender.clone());
     let worker_cancelled = cancelled.clone();
     let worker_index = index.clone();
-    let _worker = std::thread::Builder::new()
+    let worker = std::thread::Builder::new()
         .name("strata-search-query".into())
         .spawn(move || {
             run_search_session(
@@ -259,6 +336,9 @@ fn start_search_session(index: Arc<SharedIndex>) -> (SearchHandle, Receiver<Sear
                 &event_sender,
             );
         });
+    if let Err(error) = worker {
+        tracing::error!(%error, "search query worker failed to start");
+    }
     let _initial = command_sender.send(SearchCommand::IndexChanged);
     (
         SearchHandle {
@@ -294,42 +374,39 @@ fn run_search_session(
             }
         }
         let query_changed = next_query.is_some();
-        let items = index
-            .items
+        let state = index
+            .state
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(query) = next_query {
-            set_query(&mut progress, query);
+            progress.normalized_query = query.to_lowercase();
+            progress.query = query;
             progress.matches = if progress.normalized_query.is_empty() {
                 Vec::new()
             } else {
-                score_index(&items, &progress.normalized_query)
+                score_index(&state.items, &progress.normalized_query)
             };
         } else if index_changed && !progress.normalized_query.is_empty() {
-            for item in &items[indexed_items.min(items.len())..] {
-                if let Some(score) = fuzzy_score_indexed(item, &progress.normalized_query) {
+            for item in &state.items[indexed_items..] {
+                if let Some(score) = fuzzy_score_normalized(item, &progress.normalized_query) {
                     insert_match(&mut progress.matches, score, item);
                 }
             }
         }
-        indexed_items = items.len();
-        drop(items);
-
-        let indexing = index.indexing.load(Ordering::Acquire);
+        indexed_items = state.items.len();
+        // Completion must describe the same snapshot that was scored.
+        let indexing = state.indexing;
+        let coverage = state.coverage;
+        drop(state);
         if query_changed || (index_changed && (!progress.query.is_empty() || !indexing)) {
-            publish(
-                events,
-                &progress,
-                indexing,
-                index.truncated.load(Ordering::Acquire),
-            );
+            publish(events, &progress, indexing, coverage);
         }
     }
 }
 
 fn start_indexer(
     index: Arc<SharedIndex>,
-    root: PathBuf,
+    roots: Vec<PathBuf>,
     show_hidden: bool,
     max_entries: usize,
     max_depth: usize,
@@ -341,7 +418,7 @@ fn start_indexer(
         .spawn(move || {
             build_index(
                 &worker_index,
-                root,
+                roots,
                 show_hidden,
                 max_entries,
                 max_depth,
@@ -350,15 +427,97 @@ fn start_indexer(
         });
     if let Err(error) = worker {
         tracing::error!(%error, "search index worker failed to start");
-        index.truncated.store(true, Ordering::Release);
-        index.indexing.store(false, Ordering::Release);
+        append_index_items(
+            &index,
+            &mut Vec::new(),
+            false,
+            SearchCoverage {
+                unreadable: true,
+                ..Default::default()
+            },
+        );
         index.broadcast_change();
+    }
+}
+
+struct RootWalker {
+    root: PathBuf,
+    builder: ignore::WalkBuilder,
+    walker: ignore::Walk,
+    priority_depth: usize,
+    priority_pass: bool,
+    has_deeper_entries: bool,
+    finished: bool,
+}
+
+impl RootWalker {
+    fn new(
+        root: PathBuf,
+        boundaries: Arc<HashSet<PathBuf>>,
+        show_hidden: bool,
+        max_depth: usize,
+    ) -> Self {
+        let mut overrides = ignore::overrides::OverrideBuilder::new(&root);
+        for generated_tree in GENERATED_TREE_GLOBS {
+            overrides
+                .add(generated_tree)
+                .expect("valid generated-tree prune glob");
+        }
+        let priority_depth = PRIORITY_INDEX_DEPTH.min(max_depth);
+        let mut builder = ignore::WalkBuilder::new(&root);
+        builder
+            .follow_links(false)
+            .standard_filters(true)
+            // `standard_filters` resets hidden-file filtering.
+            .hidden(!show_hidden)
+            .require_git(false)
+            .overrides(overrides.build().expect("valid generated-tree prune globs"))
+            .max_depth(Some(priority_depth))
+            // Nested mounts are walked separately, never through both roots.
+            .filter_entry(move |entry| entry.depth() == 0 || !boundaries.contains(entry.path()));
+        let walker = builder.build();
+        // Probe one level beyond the cap to distinguish empty folders from omitted children.
+        builder.max_depth(Some(max_depth.saturating_add(1)));
+        Self {
+            root,
+            builder,
+            walker,
+            priority_depth,
+            priority_pass: true,
+            has_deeper_entries: false,
+            finished: false,
+        }
+    }
+
+    fn next(&mut self) -> Option<Result<ignore::DirEntry, ignore::Error>> {
+        if self.finished {
+            return None;
+        }
+        if let Some(result) = self.walker.next() {
+            if self.priority_pass
+                && result.as_ref().is_ok_and(|entry| {
+                    entry.depth() == self.priority_depth
+                        && entry.file_type().is_some_and(|kind| kind.is_dir())
+                })
+            {
+                self.has_deeper_entries = true;
+            }
+            return Some(result);
+        }
+        if self.priority_pass && self.has_deeper_entries {
+            self.priority_pass = false;
+            self.walker = self.builder.build();
+            self.walker.next()
+        } else {
+            self.finished = true;
+            None
+        }
     }
 }
 
 fn build_index(
     index: &SharedIndex,
-    root: PathBuf,
+    roots: Vec<PathBuf>,
     show_hidden: bool,
     max_entries: usize,
     max_depth: usize,
@@ -366,126 +525,82 @@ fn build_index(
 ) {
     let mut indexed_entries = 0;
     let mut pending_items = Vec::with_capacity(256);
-    let mut truncated = false;
+    let mut coverage = SearchCoverage::default();
     let mut last_publish = Instant::now();
     let walk_start = Instant::now();
-    // Walk one level past `max_depth` so a directory at the cap with real children
-    // yields at least one entry beyond it, letting depth truncation be detected below.
-    // `hidden` must come after `standard_filters`: that bundle enables its own
-    // `hidden(true)` internally, which would otherwise override this call back on.
-    let mut overrides = ignore::overrides::OverrideBuilder::new(&root);
-    for generated_tree in GENERATED_TREE_GLOBS {
-        if let Err(error) = overrides.add(generated_tree) {
-            tracing::warn!(
-                %error,
-                pattern = generated_tree,
-                "invalid generated-tree prune glob"
-            );
-        }
-    }
-    let overrides = match overrides.build() {
-        Ok(overrides) => overrides,
-        Err(error) => {
-            tracing::warn!(%error, "generated-tree prune globs failed; walking unpruned");
-            ignore::overrides::Override::empty()
-        }
-    };
-    let mut walker = ignore::WalkBuilder::new(&root);
-    walker
-        .follow_links(false)
-        .standard_filters(true)
-        .hidden(!show_hidden)
-        .require_git(false)
-        .overrides(overrides);
-    let priority_depth = PRIORITY_INDEX_DEPTH.min(max_depth);
-    let priority_walker = walker.max_depth(Some(priority_depth)).build();
-    let remaining_walker = walker.max_depth(Some(max_depth + 1)).build();
-
-    let has_deeper_entries = Cell::new(false);
-    let priority_entries = priority_walker.map(|result| {
-        if result.as_ref().is_ok_and(|entry| {
-            entry.depth() == priority_depth
-                && entry
-                    .file_type()
-                    .is_some_and(|file_type| file_type.is_dir())
-        }) {
-            has_deeper_entries.set(true);
-        }
-        (true, result)
-    });
-    let remaining_entries = remaining_walker
-        .take_while(|_| has_deeper_entries.get())
-        .map(|result| (false, result));
-    let entries = priority_entries.chain(remaining_entries);
-    for (priority_pass, result) in entries {
-        if index.is_retired() {
-            return;
-        }
-        let entry = match result {
-            Ok(entry) if entry.depth() == 0 => continue,
-            Ok(entry) => entry,
-            Err(_) => {
-                truncated = true;
+    let mut seen = HashSet::new();
+    let roots: Vec<_> = roots
+        .into_iter()
+        .filter(|root| seen.insert(root.clone()))
+        .collect();
+    let boundaries = Arc::new(seen);
+    let mut walkers: Vec<_> = roots
+        .into_iter()
+        .map(|root| RootWalker::new(root, boundaries.clone(), show_hidden, max_depth))
+        .collect();
+    // Interleave roots so Home cannot exhaust the budget before mounted drives get a turn.
+    let mut walking = true;
+    'walk: while walking {
+        walking = false;
+        for walker in &mut walkers {
+            if index.is_retired() {
+                return;
+            }
+            if walk_start.elapsed() >= time_budget {
+                coverage.time_limit = true;
+                break 'walk;
+            }
+            let Some(result) = walker.next() else {
+                continue;
+            };
+            walking = true;
+            let entry = match result {
+                Ok(entry) => entry,
+                Err(_) => {
+                    coverage.unreadable = true;
+                    continue;
+                }
+            };
+            if entry.error().is_some() {
+                coverage.unreadable = true;
+            }
+            if entry.depth() == 0
+                || (!walker.priority_pass && entry.depth() <= walker.priority_depth)
+            {
                 continue;
             }
-        };
-        if !priority_pass && entry.depth() <= priority_depth {
-            continue;
-        }
-        if entry.depth() > max_depth {
-            truncated = true;
-            continue;
-        }
-        if indexed_entries >= max_entries || walk_start.elapsed() >= time_budget {
-            truncated = true;
-            break;
-        }
-        let is_directory = entry.file_type().is_some_and(|kind| kind.is_dir());
-        let depth = entry.depth().saturating_sub(1).min(MAX_INDEX_DEPTH) as u8;
-        let path = entry.into_path();
-        let name = path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .into_owned();
-        let search_path = path
-            .strip_prefix(&root)
-            .unwrap_or(&path)
-            .to_string_lossy()
-            .to_lowercase();
-        let search_name_start = search_path
-            .rfind(std::path::MAIN_SEPARATOR)
-            .map_or(0, |position| {
-                position + std::path::MAIN_SEPARATOR.len_utf8()
-            });
-        pending_items.push(SearchItem {
-            name,
-            is_directory,
-            path,
-            search_path,
-            search_name_start,
-            depth,
-        });
-        indexed_entries += 1;
-
-        if pending_items.len() >= 256 {
-            append_index_items(index, &mut pending_items);
-        }
-        if last_publish.elapsed() >= PUBLISH_INTERVAL {
-            append_index_items(index, &mut pending_items);
-            index.broadcast_change();
-            last_publish = Instant::now();
+            if entry.depth() > max_depth {
+                coverage.depth_limit = true;
+                continue;
+            }
+            if indexed_entries >= max_entries {
+                coverage.entry_limit = true;
+                break 'walk;
+            }
+            let is_directory = entry.file_type().is_some_and(|kind| kind.is_dir());
+            pending_items.push(SearchItem::new(
+                entry.into_path(),
+                &walker.root,
+                is_directory,
+            ));
+            indexed_entries += 1;
+            if pending_items.len() >= 256 {
+                append_index_items(index, &mut pending_items, true, coverage);
+            }
+            if last_publish.elapsed() >= PUBLISH_INTERVAL {
+                append_index_items(index, &mut pending_items, true, coverage);
+                index.broadcast_change();
+                last_publish = Instant::now();
+            }
         }
     }
-
-    append_index_items(index, &mut pending_items);
-    index.truncated.store(truncated, Ordering::Release);
-    index.indexing.store(false, Ordering::Release);
-    if truncated {
+    append_index_items(index, &mut pending_items, false, coverage);
+    if coverage.is_partial() {
         tracing::warn!(
             entries = indexed_entries,
             elapsed_ms = walk_start.elapsed().as_millis() as u64,
-            "search index truncated"
+            ?coverage,
+            "search index partial"
         );
     } else {
         tracing::info!(
@@ -497,20 +612,19 @@ fn build_index(
     index.broadcast_change();
 }
 
-fn append_index_items(index: &SharedIndex, items: &mut Vec<SearchItem>) {
-    if items.is_empty() {
-        return;
-    }
-    index
-        .items
+fn append_index_items(
+    index: &SharedIndex,
+    items: &mut Vec<SearchItem>,
+    indexing: bool,
+    coverage: SearchCoverage,
+) {
+    let mut state = index
+        .state
         .write()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .append(items);
-}
-
-fn set_query(progress: &mut WalkProgress, query: String) {
-    progress.normalized_query = query.to_lowercase();
-    progress.query = query;
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    state.items.append(items);
+    state.indexing = indexing;
+    state.coverage = coverage;
 }
 
 type RankedPosition = Reverse<(i64, Reverse<usize>)>;
@@ -528,9 +642,7 @@ fn score_index(index: &[SearchItem], normalized_query: &str) -> Vec<(i64, Search
                 .chunks(chunk_size)
                 .enumerate()
                 .map(|(chunk, items)| {
-                    scope.spawn(move || {
-                        score_range(items, normalized_query, chunk.saturating_mul(chunk_size))
-                    })
+                    scope.spawn(move || score_range(items, normalized_query, chunk * chunk_size))
                 })
                 .collect::<Vec<_>>();
             let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
@@ -564,13 +676,10 @@ fn score_range(
 ) -> BinaryHeap<RankedPosition> {
     let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
     for (position, item) in index.iter().enumerate() {
-        let Some(score) = fuzzy_score_indexed(item, normalized_query) else {
+        let Some(score) = fuzzy_score_normalized(item, normalized_query) else {
             continue;
         };
-        retain_candidate(
-            &mut best,
-            (score, Reverse(position_offset.saturating_add(position))),
-        );
+        retain_candidate(&mut best, (score, Reverse(position_offset + position)));
     }
     best
 }
@@ -585,16 +694,19 @@ fn retain_candidate(best: &mut BinaryHeap<RankedPosition>, candidate: (i64, Reve
 }
 
 fn insert_match(matches: &mut Vec<(i64, SearchItem)>, score: i64, item: &SearchItem) {
-    let position = matches
-        .binary_search_by(|candidate| candidate.0.cmp(&score).reverse())
-        .unwrap_or_else(|position| position);
+    let position = matches.partition_point(|candidate| candidate.0 >= score);
     if position < RESULT_LIMIT {
         matches.insert(position, (score, item.clone()));
         matches.truncate(RESULT_LIMIT);
     }
 }
 
-fn publish(sender: &Sender<SearchEvent>, progress: &WalkProgress, indexing: bool, truncated: bool) {
+fn publish(
+    sender: &Sender<SearchEvent>,
+    progress: &WalkProgress,
+    indexing: bool,
+    coverage: SearchCoverage,
+) {
     let _sent = sender.send(SearchEvent::Results {
         query: progress.query.clone(),
         items: progress
@@ -603,15 +715,11 @@ fn publish(sender: &Sender<SearchEvent>, progress: &WalkProgress, indexing: bool
             .map(|(_, item)| item.clone())
             .collect(),
         indexing,
-        truncated,
+        coverage,
     });
 }
 
-fn fuzzy_score_indexed(item: &SearchItem, normalized_query: &str) -> Option<i64> {
-    fuzzy_score_normalized(item, normalized_query, item.depth.into())
-}
-
-fn fuzzy_score_normalized(item: &SearchItem, query: &str, depth: usize) -> Option<i64> {
+fn fuzzy_score_normalized(item: &SearchItem, query: &str) -> Option<i64> {
     if query.is_empty() {
         return None;
     }
@@ -629,7 +737,7 @@ fn fuzzy_score_normalized(item: &SearchItem, query: &str, depth: usize) -> Optio
     if item.is_directory {
         score += 20;
     }
-    score -= depth.min(MAX_INDEX_DEPTH) as i64 * 32;
+    score -= i64::from(item.depth) * 32;
     Some(score)
 }
 
@@ -637,7 +745,6 @@ fn fuzzy_subsequence_score(haystack: &str, needle: &str) -> Option<i64> {
     if needle.is_ascii() {
         return fuzzy_ascii_subsequence_score(haystack.as_bytes(), needle.as_bytes());
     }
-
     let mut chars = haystack.char_indices();
     let mut previous = None;
     let mut score = 1_000i64;

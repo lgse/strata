@@ -14,7 +14,9 @@ use crate::ui::controls::{
     ModalTone, form_entry, form_label, form_password_entry, message_dialog_description,
     message_dialog_layout, modal_layout, segmented_control,
 };
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
+use crate::ui::modal::{
+    ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
+};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::Cell;
@@ -344,6 +346,7 @@ impl ViewState {
                 );
             }
         });
+        submit_on_enter(&body, &confirm);
         name_entry.grab_focus();
     }
 
@@ -460,6 +463,7 @@ impl ViewState {
             dismiss_for_confirm();
         });
 
+        submit_on_enter(&body, &confirm);
         field.grab_focus();
     }
 
@@ -491,6 +495,7 @@ impl ViewState {
             dismiss_for_confirm();
             browser.extract(entry.clone(), destination.clone(), password);
         });
+        submit_on_enter(&body, &confirm);
         password_entry.grab_focus();
     }
 }

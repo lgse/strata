@@ -2,7 +2,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    process::{Command, Stdio},
+    process::Command,
     rc::Rc,
     sync::{OnceLock, mpsc::TryRecvError},
     time::{Duration, Instant},
@@ -27,6 +27,7 @@ use super::{
     browser::{BrowserView, dismiss_modal_layer, modal_layer},
     browser_modes::{BrowserMode, ClickActivation, ClickCount},
     controls::{form_entry, menu_option, modal_layout, segmented_control},
+    terminal,
     theme::{TextSize, Theme, ThemeManager, ThemeTokens},
 };
 
@@ -2101,12 +2102,8 @@ fn aur_update_action_label() -> &'static str {
 }
 
 fn aur_update_command(helper: &str, package: &str) -> Command {
-    let mut command = Command::new("xdg-terminal-exec");
-    command
-        .args(["--", helper, "-Syu", package])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    let mut command = terminal::command();
+    command.args(["--", helper, "-Syu", package]);
     command
 }
 
@@ -2118,7 +2115,7 @@ fn launch_aur_update() -> Result<&'static str, String> {
         return aur_update_command(helper, package)
             .spawn()
             .map(|_child| "AUR update opened in your terminal.")
-            .map_err(|error| error.to_string());
+            .map_err(|error| terminal::launch_failure(&error));
     }
     let package = managed
         .package()
@@ -2130,12 +2127,8 @@ fn launch_aur_update() -> Result<&'static str, String> {
 }
 
 fn omarchy_update_command() -> Command {
-    let mut command = Command::new("xdg-terminal-exec");
-    command
-        .args(["--", "omarchy", "update"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    let mut command = terminal::command();
+    command.args(["--", "omarchy", "update"]);
     command
 }
 
@@ -2143,7 +2136,7 @@ fn launch_omarchy_update() -> Result<(), String> {
     omarchy_update_command()
         .spawn()
         .map(|_child| ())
-        .map_err(|error| error.to_string())
+        .map_err(|error| terminal::launch_failure(&error))
 }
 
 /// Renders `release`'s channel, tag, source commit, and publication date as
@@ -3011,7 +3004,10 @@ fn click_activation_option(
     let (folder_control, folder_buttons) =
         segmented_control(&["1 click", "2 clicks"], selected(activation.folders));
     let mut options = Vec::new();
-    for (label, control) in [("Files", &file_control), ("Folders", &folder_control)] {
+    for (label, control, buttons) in [
+        ("Files", &file_control, &file_buttons),
+        ("Folders", &folder_control, &folder_buttons),
+    ] {
         let option = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         option.set_hexpand(true);
         let label = gtk::Label::new(Some(label));
@@ -3020,6 +3016,16 @@ fn click_activation_option(
         label.add_css_class("settings-option-description");
         control.set_hexpand(true);
         control.add_css_class("click-activation-control");
+        // Twelve buttons on this page read "1 click" or "2 clicks". Naming each
+        // one after its row and its column turns them into distinguishable
+        // choices such as "List Folders 1 click".
+        for button in buttons {
+            button.update_relation(&[gtk::accessible::Relation::LabelledBy(&[
+                title.upcast_ref(),
+                label.upcast_ref(),
+                button.upcast_ref(),
+            ])]);
+        }
         option.append(&label);
         option.append(control);
         row.append(&option);

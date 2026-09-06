@@ -5,6 +5,40 @@ use crate::model::{FileEntry, Location};
 use std::path::Path;
 
 #[test]
+fn executable_fallback_requires_regular_executable_and_missing_handler()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::os::unix::fs::PermissionsExt;
+
+    let fixture = tempfile::tempdir()?;
+    let program = fixture.path().join("program");
+    std::fs::write(&program, b"#!/bin/sh\n")?;
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755))?;
+    let no_handler = glib::Error::new(gio::IOErrorEnum::NotSupported, "no handler");
+    let denied = glib::Error::new(gio::IOErrorEnum::PermissionDenied, "denied");
+
+    assert!(executable_without_handler(Some(&program), &no_handler));
+    assert!(!executable_without_handler(Some(&program), &denied));
+    assert!(!executable_without_handler(
+        Some(fixture.path()),
+        &no_handler
+    ));
+    assert!(!executable_without_handler(None, &no_handler));
+
+    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o644))?;
+    assert!(!executable_without_handler(Some(&program), &no_handler));
+    Ok(())
+}
+
+#[test]
+fn program_command_runs_from_program_directory() {
+    let path = Path::new("/tmp/tools/program");
+    let command = program_command(path);
+
+    assert_eq!(command.get_program(), path.as_os_str());
+    assert_eq!(command.get_current_dir(), Some(Path::new("/tmp/tools")));
+}
+
+#[test]
 fn terminal_shortcut_prefers_one_selected_directory() {
     let entry = |name: &str, kind| FileEntry {
         location: Location::local(format!("/fixture/{name}")),

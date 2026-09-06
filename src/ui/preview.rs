@@ -94,6 +94,8 @@ struct PreviewState {
     animation_generation: Rc<Cell<u64>>,
 }
 
+pub(super) const PREVIEW_LABEL: &str = "Preview";
+
 #[derive(Clone)]
 pub struct PreviewDrawer {
     state: Rc<PreviewState>,
@@ -101,8 +103,9 @@ pub struct PreviewDrawer {
 
 impl PreviewDrawer {
     pub fn new(provider: Rc<dyn PreviewProvider>, allow_external_open: bool) -> Self {
-        let pane = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let pane = super::accessibility::pane_box();
         pane.add_css_class("preview-pane");
+        super::accessibility::set_label(&pane, PREVIEW_LABEL);
         pane.set_size_request(MIN_WIDTH, -1);
         pane.set_hexpand(true);
         pane.set_vexpand(true);
