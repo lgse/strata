@@ -972,8 +972,6 @@ fn undoing_a_copy_removes_only_the_destinations_it_created() {
     assert_eq!(pending_undo_entry(), None);
 }
 
-/// Same-folder and conflict-resolved pastes pick their own destination names,
-/// so undo must remove exactly what the paste reported creating.
 #[test]
 fn undoing_a_copy_removes_the_destination_names_the_paste_reported() {
     let browser = Browser::new(Rc::new(FakeFileSource));

@@ -2005,8 +2005,6 @@ fn cancellation_handle(cancellable: gio::Cancellable) -> LoadHandle {
     LoadHandle::new(move || cancellable.cancel())
 }
 
-/// One item a deletion pass removes. Copy undo starts from locations alone, so
-/// it probes the directory flag a `FileEntry` already carries.
 struct DeletionTarget {
     location: Location,
     display_name: String,

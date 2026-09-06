@@ -154,8 +154,6 @@ impl ViewState {
         true
     }
 
-    /// Trashes the copies the latest copy created, skipping any the user has
-    /// already removed themselves.
     pub(super) fn undo_copy(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
         let existing = locations
             .into_iter()

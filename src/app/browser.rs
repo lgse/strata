@@ -209,8 +209,6 @@ type PreferencesObserver = Rc<dyn Fn(ViewPreferences)>;
 
 const MAX_INCREMENTAL_OPERATION_UPDATES: usize = 64;
 
-/// A reversible operation. Trash entries restore from Trash, moved entries
-/// transfer back to where they started, and copied entries are removed again.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UndoEntry {
     Trash(Vec<Location>),
@@ -233,12 +231,8 @@ struct PendingUndo {
     claimed: bool,
 }
 
-/// Bounds the history so a long session cannot accumulate undo entries
-/// indefinitely; the oldest is dropped once the cap is reached.
 const MAX_UNDO_HISTORY: usize = 32;
 
-/// Reversible operations in completion order, latest last. Undoing the latest
-/// pops it and leaves the one before it current again.
 #[derive(Default)]
 struct UndoState {
     next_generation: u64,
@@ -285,8 +279,6 @@ fn peek_pending_undo() -> Option<(u64, UndoEntry)> {
     })
 }
 
-/// Claims the latest entry so a second undo cannot run the same work twice.
-/// `expected` pins the claim to the entry a caller already inspected.
 fn claim_pending_undo(expected: Option<u64>) -> Option<(u64, UndoEntry)> {
     PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();
@@ -318,8 +310,6 @@ fn mark_undo_item_completed(generation: u64, location: &Location) {
     });
 }
 
-/// Releases the claim on an entry. A completed undo, or one with nothing left
-/// to retry, is dropped so the operation before it becomes current again.
 fn finish_undo(generation: u64, completed: bool) {
     PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();
@@ -346,8 +336,6 @@ fn retain_pending_move_items(generation: u64, items: &[UndoMoveItem]) {
     });
 }
 
-/// Narrows a copy undo to the destinations the caller is about to remove, so a
-/// retry never revisits ones it deliberately left alone.
 fn retain_pending_copy_items(generation: u64, locations: &[Location]) {
     PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();
@@ -534,8 +522,6 @@ pub struct Browser {
     restoration_operation: Cell<bool>,
     archive_operation: Cell<bool>,
     transfer_destination: RefCell<Option<Location>>,
-    /// Destinations the running copy has created so far, so a completed,
-    /// failed, or cancelled copy knows exactly what undoing it should remove.
     created_locations: RefCell<Vec<Location>>,
     undo_claim: RefCell<Option<(u64, UndoEntry)>>,
     next_request: Cell<u64>,
@@ -1396,7 +1382,6 @@ impl Browser {
         }
     }
 
-    /// The pending copy undo, if the latest reversible operation was a copy.
     pub fn pending_undo_copy(&self) -> Option<(u64, Vec<Location>)> {
         if self.current_operation.get().is_some() {
             return None;
@@ -1495,9 +1480,7 @@ impl Browser {
         true
     }
 
-    /// Removes the destinations a completed copy created. They go to Trash
-    /// rather than being erased, so an undo never destroys data outright.
-    /// `generation` pins the undo the caller inspected.
+    /// Copy undo uses Trash so it never permanently deletes data.
     pub fn undo_copy(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
         if locations.is_empty() || self.current_operation.get().is_some() {
             return false;
