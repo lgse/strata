@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod type_to_search;
+
 use std::{cell::Cell, path::Path};
 
 use gtk::glib;
@@ -8,20 +10,36 @@ use crate::{
     app::BrowserEvent,
     model::Location,
     services::{BuildKind, ReleaseMetadata},
+    test_support::gtk_test,
+    ui::theme::ThemeManager,
 };
 
 use super::{
     MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, TrashContents,
-    TrashMenuVisibility, accepts_sidebar_reorder_payload, begin_media_release,
-    event_changes_trash_contents, is_open_terminal_shortcut, is_sidebar_focus_shortcut,
-    is_smb_location, is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut,
-    jump_direction, media_release_label, mount_release_action, mouse_history_action,
-    page_direction, parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
+    TrashMenuVisibility, TypeToSearchQuery, accepts_sidebar_reorder_payload, begin_media_release,
+    browser_for_window, browser_mode_for_digit, event_changes_trash_contents,
+    is_open_terminal_shortcut, is_sidebar_focus_shortcut, is_smb_location,
+    is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction,
+    media_release_label, mount_release_action, mouse_history_action, page_direction,
+    parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
     reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
     should_show_standard_place, sidebar_accepts_file_drop, sidebar_update_label, standard_place,
     trash_contents_from_probe, trash_has_entries, trash_menu_visibility, type_to_search_query,
     vim_focus_direction, volume_release_action,
 };
+
+#[test]
+fn startup_applies_disabled_single_click_previews_before_the_first_click() {
+    gtk_test(
+        "ui::window::tests::startup_applies_disabled_single_click_previews_before_the_first_click",
+        || {
+            let manager = ThemeManager::shared();
+            manager.set_single_click_previews(false);
+            let browser = browser_for_window(&manager);
+            assert!(!browser.single_click_previews_enabled());
+        },
+    );
+}
 
 fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
     ReleaseMetadata {
@@ -271,16 +289,34 @@ fn sidebar_focus_shortcut_requires_control_and_shift() {
 fn type_to_search_accepts_printable_keys_without_command_modifiers() {
     assert_eq!(
         type_to_search_query(gtk::gdk::Key::a, gtk::gdk::ModifierType::empty()),
-        Some('a')
+        Some(TypeToSearchQuery::Character('a'))
     );
     assert_eq!(
         type_to_search_query(gtk::gdk::Key::A, gtk::gdk::ModifierType::SHIFT_MASK),
-        Some('A')
+        Some(TypeToSearchQuery::Character('A'))
     );
     assert_eq!(
-        type_to_search_query(gtk::gdk::Key::space, gtk::gdk::ModifierType::empty()),
-        Some(' ')
+        type_to_search_query(gtk::gdk::Key::period, gtk::gdk::ModifierType::empty()),
+        Some(TypeToSearchQuery::Character('.'))
     );
+}
+
+#[test]
+fn type_to_search_uses_slash_to_open_an_empty_filter() {
+    assert_eq!(
+        type_to_search_query(gtk::gdk::Key::slash, gtk::gdk::ModifierType::empty()),
+        Some(TypeToSearchQuery::Empty)
+    );
+}
+
+#[test]
+fn type_to_search_leaves_space_for_quick_preview() {
+    for modifiers in [
+        gtk::gdk::ModifierType::empty(),
+        gtk::gdk::ModifierType::SHIFT_MASK,
+    ] {
+        assert_eq!(type_to_search_query(gtk::gdk::Key::space, modifiers), None);
+    }
 }
 
 #[test]
@@ -825,4 +861,28 @@ fn the_trash_probe_reports_emptiness_from_the_first_entry_alone() {
         fixture.path().join("absent"),
     )));
     assert!(missing.is_err());
+}
+
+#[test]
+fn control_digits_select_each_browser_presentation() {
+    use super::BrowserMode;
+
+    assert_eq!(
+        browser_mode_for_digit(gtk::gdk::Key::_1),
+        Some(BrowserMode::Columns)
+    );
+    assert_eq!(
+        browser_mode_for_digit(gtk::gdk::Key::_2),
+        Some(BrowserMode::Icons)
+    );
+    assert_eq!(
+        browser_mode_for_digit(gtk::gdk::Key::_3),
+        Some(BrowserMode::List)
+    );
+    assert_eq!(
+        browser_mode_for_digit(gtk::gdk::Key::KP_3),
+        Some(BrowserMode::List)
+    );
+    assert_eq!(browser_mode_for_digit(gtk::gdk::Key::_4), None);
+    assert_eq!(browser_mode_for_digit(gtk::gdk::Key::a), None);
 }

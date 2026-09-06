@@ -10,6 +10,15 @@
 ## Pre-push checks
 
 - Do not push until the full local CI suite passes: `cargo fmt --all --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all-targets --all-features`.
+- Agents must never run GTK tests against the user's active Wayland or X11 display. Run the suite under a private Xvfb display with accessibility bridging disabled:
+
+  ```bash
+  xvfb-run -a env -u WAYLAND_DISPLAY GDK_BACKEND=x11 \
+    GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
+    cargo test --all-targets --all-features
+  ```
+
+  If `xvfb-run` is unavailable, use a non-root portable extraction of the distribution's Xvfb package or another isolated display server. Do not fall back to the active desktop display, and do not use a backend that causes GTK tests to skip because initialization failed.
 - Fix failures before pushing rather than relying on CI for feedback. Keep tests portable across supported environments and avoid assertions that depend on platform-specific URI normalization or other incidental system behavior.
 
 ## Issues and pull requests

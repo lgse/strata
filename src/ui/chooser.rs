@@ -622,6 +622,62 @@ fn eligible_open_entries(entries: Vec<FileEntry>, directory: bool) -> Vec<FileEn
         .collect()
 }
 
+const MIN_CHOOSER_WIDTH: i32 = 640;
+const MIN_CHOOSER_HEIGHT: i32 = 460;
+const MAX_CHOOSER_WIDTH: i32 = 1000;
+const MAX_CHOOSER_HEIGHT: i32 = 680;
+const FALLBACK_CHOOSER_WIDTH: i32 = 920;
+const FALLBACK_CHOOSER_HEIGHT: i32 = 580;
+
+fn chooser_default_dimensions_for_monitor(monitor_width: i32, monitor_height: i32) -> (i32, i32) {
+    if monitor_width <= 0 || monitor_height <= 0 {
+        return (FALLBACK_CHOOSER_WIDTH, FALLBACK_CHOOSER_HEIGHT);
+    }
+    let target_width = (monitor_width.saturating_mul(80) / 100)
+        .min(monitor_width.saturating_sub(120))
+        .clamp(MIN_CHOOSER_WIDTH.min(monitor_width), MAX_CHOOSER_WIDTH);
+    let target_height = (monitor_height.saturating_mul(78) / 100)
+        .min(monitor_height.saturating_sub(100))
+        .clamp(MIN_CHOOSER_HEIGHT.min(monitor_height), MAX_CHOOSER_HEIGHT);
+
+    (target_width, target_height)
+}
+
+fn detect_monitor_geometry(
+    display: Option<&gtk::gdk::Display>,
+    window: Option<&gtk::Window>,
+) -> Option<(i32, i32)> {
+    let window_display = window.map(gtk::prelude::WidgetExt::display);
+    let default_display = gtk::gdk::Display::default();
+    let display = display
+        .or(window_display.as_ref())
+        .or(default_display.as_ref())?;
+
+    if let Some(geom) = window
+        .and_then(|w| w.surface())
+        .and_then(|surface| display.monitor_at_surface(&surface))
+        .map(|monitor| monitor.geometry())
+        .filter(|geom| geom.width() > 0 && geom.height() > 0)
+    {
+        return Some((geom.width(), geom.height()));
+    }
+
+    let monitors = display.monitors();
+    for index in 0..monitors.n_items() {
+        if let Some(monitor) = monitors
+            .item(index)
+            .and_then(|item| item.downcast::<gtk::gdk::Monitor>().ok())
+        {
+            let geom = monitor.geometry();
+            if geom.width() > 0 && geom.height() > 0 {
+                return Some((geom.width(), geom.height()));
+            }
+        }
+    }
+
+    None
+}
+
 pub(crate) fn present_chooser(
     request: ChooserRequest,
     cancelled: Arc<AtomicBool>,
@@ -656,6 +712,7 @@ fn build_chooser(
     view.set_view_mode(theme.browser_mode());
     view.set_density(theme.browser_density());
     view.set_group_by_type(theme.group_by_type());
+    super::window::apply_click_activation(&view, &theme);
     view.set_auto_refresh_interval(theme.auto_refresh_interval());
     view.set_peek_enabled(false);
     view.set_single_click_previews(theme.single_click_previews());
@@ -669,10 +726,15 @@ fn build_chooser(
         false,
     );
 
+    let (initial_width, initial_height) = detect_monitor_geometry(None, None).map_or(
+        (FALLBACK_CHOOSER_WIDTH, FALLBACK_CHOOSER_HEIGHT),
+        |(w, h)| chooser_default_dimensions_for_monitor(w, h),
+    );
+
     let window = gtk::Window::builder()
         .title(&request.title)
-        .default_width(1050)
-        .default_height(720)
+        .default_width(initial_width)
+        .default_height(initial_height)
         .modal(request.modal)
         .build();
     let header = gtk::HeaderBar::new();
@@ -963,6 +1025,22 @@ fn build_chooser(
 
     gtk::prelude::WidgetExt::realize(&window);
     apply_external_parent(&window, state.request.parent.as_ref());
+    if let Some(surface) = window.surface() {
+        let weak_window = window.downgrade();
+        surface.connect_enter_monitor(move |_, monitor| {
+            let Some(window) = weak_window.upgrade() else {
+                return;
+            };
+            let geometry = monitor.geometry();
+            let dimensions =
+                chooser_default_dimensions_for_monitor(geometry.width(), geometry.height());
+            window.set_default_size(dimensions.0, dimensions.1);
+        });
+    }
+    if let Some((width, height)) = detect_monitor_geometry(None, Some(&window)) {
+        let dimensions = chooser_default_dimensions_for_monitor(width, height);
+        window.set_default_size(dimensions.0, dimensions.1);
+    }
     browser.navigate(Location::local(&state.request.initial_directory));
     window.present();
     if let Some(filename) = state.filename.as_ref() {

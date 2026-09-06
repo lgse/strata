@@ -16,6 +16,7 @@ fn deleted_trash_entries_refresh_the_trash_root() {
     let entry = FileEntry {
         location: Location::uri("trash:///photo.jpg"),
         native_name: "photo.jpg".into(),
+        thumbnail_path: None,
         display_name: "photo.jpg".into(),
         kind: EntryKind::File,
         size: MetadataValue::Known(10),
@@ -99,6 +100,7 @@ impl FileSource for WatchingFileSource {
         emit(DirectoryEvent::Batch {
             request_id: request.id,
             entries: vec![FileEntry {
+                thumbnail_path: None,
                 location: Location::local("/fixture/child"),
                 native_name: OsString::from("child"),
                 display_name: "child".into(),
@@ -178,6 +180,7 @@ impl FileSource for RetryFileSource {
                 entries: vec![FileEntry {
                     location: Location::local("/fixture/recovered"),
                     native_name: OsString::from("recovered"),
+                    thumbnail_path: None,
                     display_name: "recovered".into(),
                     kind: EntryKind::Directory,
                     size: MetadataValue::Unknown,
@@ -236,6 +239,7 @@ impl FileSource for FilePreviewSource {
             entries: vec![FileEntry {
                 location: Location::local("/fixture/example.conf"),
                 native_name: OsString::from("example.conf"),
+                thumbnail_path: None,
                 display_name: "example.conf".into(),
                 kind: EntryKind::File,
                 size: MetadataValue::Known(12),
@@ -265,6 +269,7 @@ impl FileSource for OpenChildBesideFileSource {
                 FileEntry {
                     location: Location::local("/fixture/child"),
                     native_name: OsString::from("child"),
+                    thumbnail_path: None,
                     display_name: "child".into(),
                     kind: EntryKind::Directory,
                     size: MetadataValue::Unknown,
@@ -275,6 +280,7 @@ impl FileSource for OpenChildBesideFileSource {
                 FileEntry {
                     location: Location::local("/fixture/example.conf"),
                     native_name: OsString::from("example.conf"),
+                    thumbnail_path: None,
                     display_name: "example.conf".into(),
                     kind: EntryKind::File,
                     size: MetadataValue::Known(12),
@@ -309,6 +315,7 @@ impl FileSource for RestoredSortingSource {
         let entry = |name: &str, size| FileEntry {
             location: Location::local(format!("/fixture/{name}")),
             native_name: OsString::from(name),
+            thumbnail_path: None,
             display_name: name.to_owned(),
             kind: EntryKind::File,
             size: MetadataValue::Known(size),
@@ -339,6 +346,7 @@ impl FileSource for FakeFileSource {
         emit(DirectoryEvent::Batch {
             request_id: request.id,
             entries: vec![FileEntry {
+                thumbnail_path: None,
                 location: Location::local("/fixture/child"),
                 native_name: OsString::from("child"),
                 display_name: "child".into(),
@@ -372,6 +380,7 @@ impl FileSource for TrashFileSource {
             entries: vec![FileEntry {
                 location: Location::uri("trash:///item"),
                 native_name: OsString::from("item"),
+                thumbnail_path: None,
                 display_name: "item".into(),
                 kind: EntryKind::File,
                 size: MetadataValue::Unknown,
@@ -651,6 +660,132 @@ impl OperationProvider for ImmediateOperationProvider {
     }
 }
 
+type OperationEmit = Rc<dyn Fn(OperationEvent)>;
+
+struct HeldExtractProvider {
+    cancelled: Rc<Cell<bool>>,
+    emit: Rc<RefCell<Option<OperationEmit>>>,
+    request_id: Rc<Cell<Option<OperationRequestId>>>,
+}
+
+impl OperationProvider for HeldExtractProvider {
+    fn rename(&self, request: RenameRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.rename(request, emit)
+    }
+
+    fn create_directory(
+        &self,
+        request: CreateDirectoryRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        ImmediateOperationProvider.create_directory(request, emit)
+    }
+
+    fn create_file(
+        &self,
+        request: CreateFileRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        ImmediateOperationProvider.create_file(request, emit)
+    }
+
+    fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.paste(request, emit)
+    }
+
+    fn undo_move(&self, request: UndoMoveRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.undo_move(request, emit)
+    }
+
+    fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.delete(request, emit)
+    }
+
+    fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.restore(request, emit)
+    }
+
+    fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.compress(request, emit)
+    }
+
+    fn extract(&self, request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        self.request_id.set(Some(request.id));
+        self.emit.replace(Some(emit));
+        let cancelled = self.cancelled.clone();
+        LoadHandle::new(move || cancelled.set(true))
+    }
+}
+
+#[test]
+fn cancelling_extraction_keeps_progress_until_the_worker_reports_cancellation() {
+    let cancelled = Rc::new(Cell::new(false));
+    let emit = Rc::new(RefCell::new(None));
+    let request_id = Rc::new(Cell::new(None));
+    let provider = Rc::new(HeldExtractProvider {
+        cancelled: cancelled.clone(),
+        emit: emit.clone(),
+        request_id: request_id.clone(),
+    });
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(provider);
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    let entry = FileEntry {
+        location: Location::local("/fixture/archive.zip"),
+        thumbnail_path: None,
+        native_name: OsString::from("archive.zip"),
+        display_name: "archive.zip".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+    };
+    browser.extract(entry, Location::local("/fixture"), None);
+
+    let request_id = request_id.get().expect("extract request");
+    assert_eq!(browser.current_operation.get(), Some(request_id));
+    browser.cancel_file_operation();
+
+    assert!(cancelled.get());
+    assert_eq!(browser.current_operation.get(), Some(request_id));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::ArchiveCompleted { .. }))
+    );
+
+    let callback = emit.borrow().clone().expect("extract callback");
+    callback(OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation {
+            completed: Vec::new(),
+            failed: Vec::new(),
+            not_attempted: vec![Location::local("/fixture/archive.zip")],
+            affected_locations: HashSet::from([Location::local("/fixture")]),
+        },
+    });
+
+    assert_eq!(browser.current_operation.get(), None);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::ArchiveCompleted { select_name } if select_name.is_empty()
+    )));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::OperationCancelled {
+            completed: 0,
+            failed: 0,
+            not_attempted: 1,
+            ..
+        }
+    )));
+}
+
 #[test]
 fn a_completed_trash_operation_can_be_undone_once() {
     let browser = Browser::new(Rc::new(FakeFileSource));
@@ -658,6 +793,7 @@ fn a_completed_trash_operation_can_be_undone_once() {
     let location = Location::local("/fixture/report.txt");
     let entry = FileEntry {
         location: location.clone(),
+        thumbnail_path: None,
         native_name: OsString::from("report.txt"),
         display_name: "report.txt".into(),
         kind: EntryKind::File,
@@ -685,6 +821,7 @@ fn another_browser_can_undo_the_latest_trash_operation() {
     undoing_browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
     let entry = FileEntry {
         location: Location::local("/fixture/report.txt"),
+        thumbnail_path: None,
         native_name: OsString::from("report.txt"),
         display_name: "report.txt".into(),
         kind: EntryKind::File,
@@ -910,6 +1047,7 @@ fn permanent_delete_preserves_the_previous_trash_undo() {
     browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
     let trashed = FileEntry {
         location: Location::local("/fixture/report.txt"),
+        thumbnail_path: None,
         native_name: OsString::from("report.txt"),
         display_name: "report.txt".into(),
         kind: EntryKind::File,
@@ -921,6 +1059,7 @@ fn permanent_delete_preserves_the_previous_trash_undo() {
     let permanently_deleted = FileEntry {
         location: Location::local("/fixture/draft.txt"),
         native_name: OsString::from("draft.txt"),
+        thumbnail_path: None,
         display_name: "draft.txt".into(),
         ..trashed.clone()
     };
@@ -985,6 +1124,7 @@ fn renaming_on_a_remote_location_refreshes_the_open_column() {
         FileEntry {
             location: Location::uri("smb://host/share/old-name.txt"),
             native_name: "old-name.txt".into(),
+            thumbnail_path: None,
             display_name: "old-name.txt".into(),
             kind: EntryKind::File,
             size: MetadataValue::Known(1),
@@ -1112,6 +1252,7 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
     callback(DirectoryChange::Upsert(FileEntry {
         location: Location::local("/fixture/added"),
         native_name: OsString::from("added"),
+        thumbnail_path: None,
         display_name: "added".into(),
         kind: EntryKind::File,
         size: MetadataValue::Known(4),
@@ -2013,6 +2154,7 @@ fn batch_entry(name: &str) -> FileEntry {
     FileEntry {
         location: Location::local(format!("/fixture/{name}")),
         native_name: OsString::from(name),
+        thumbnail_path: None,
         display_name: name.into(),
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
@@ -2416,6 +2558,7 @@ impl ScriptedSource {
         FileEntry {
             location: self.entry_location(name),
             native_name: std::ffi::OsString::from(name),
+            thumbnail_path: None,
             display_name: name.into(),
             kind: if is_dir {
                 EntryKind::Directory
@@ -3255,6 +3398,7 @@ fn staged_entry(name: &str, kind: EntryKind, size: MetadataValue<u64>, modified:
     FileEntry {
         location: Location::local(format!("/fixture/{name}")),
         native_name: std::ffi::OsString::from(name),
+        thumbnail_path: None,
         display_name: name.into(),
         kind,
         size,
@@ -3744,6 +3888,7 @@ impl FileSource for MixedPeekFileSource {
                 FileEntry {
                     location: Location::local("/fixture/.dotfile"),
                     native_name: OsString::from(".dotfile"),
+                    thumbnail_path: None,
                     display_name: ".dotfile".into(),
                     kind: EntryKind::File,
                     size: MetadataValue::Unknown,
@@ -3754,6 +3899,7 @@ impl FileSource for MixedPeekFileSource {
                 FileEntry {
                     location: Location::local("/fixture/normal.txt"),
                     native_name: OsString::from("normal.txt"),
+                    thumbnail_path: None,
                     display_name: "normal.txt".into(),
                     kind: EntryKind::File,
                     size: MetadataValue::Unknown,

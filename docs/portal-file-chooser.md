@@ -174,7 +174,7 @@ python3 scripts/portal-test.py save --binary target/debug/strata --choices
 python3 scripts/portal-test.py savefiles --binary target/debug/strata --choices
 ```
 
-`--binary` starts a private session bus and backend with disposable settings, cache, and sample files. It never installs portal metadata, changes your preferences, or restarts your desktop services. Closing the chooser prints the actual D-Bus response (`0` for success, `1` for cancellation) and cleans up the private backend. The client returns destinations but does not write to them.
+`--binary` starts a private session bus and backend with disposable settings, cache, and sample files. It disables accessibility integration for that isolated backend so it cannot replace the desktop's accessibility bus. It never installs portal metadata, changes your preferences, or restarts your desktop services. Closing the chooser prints the actual D-Bus response (`0` for success, `1` for cancellation) and cleans up the private backend. The client returns destinations but does not write to them.
 
 Use `--folder /absolute/path` for your own files, `--theme classic-light` for a light theme, or `--cancel-after 1` to exercise `Request.Close`. Omit `--binary` to call an already-running Strata backend on your session bus. This client tests the backend directly, not portal frontend routing.
 

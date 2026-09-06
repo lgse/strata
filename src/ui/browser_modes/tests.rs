@@ -59,6 +59,13 @@ fn click_activation_defaults_follow_view_conventions() {
 }
 
 #[test]
+fn type_grouping_is_list_only() {
+    assert!(!BrowserMode::Columns.supports_type_grouping());
+    assert!(!BrowserMode::Icons.supports_type_grouping());
+    assert!(BrowserMode::List.supports_type_grouping());
+}
+
+#[test]
 fn single_click_activation_distinguishes_files_and_folders() {
     let activation = ClickActivation {
         files: ClickCount::Two,
@@ -75,6 +82,7 @@ fn alternate_modes_request_missing_metadata_for_bound_entries() {
     let mut entry = FileEntry {
         location: Location::local("/fixture/photo.jpg"),
         native_name: "photo.jpg".into(),
+        thumbnail_path: None,
         display_name: "photo.jpg".into(),
         kind: EntryKind::File,
         size: MetadataValue::Unknown,

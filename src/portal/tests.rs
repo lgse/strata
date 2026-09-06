@@ -19,6 +19,7 @@ fn entry(path: &Path, directory: bool) -> FileEntry {
     FileEntry {
         location: Location::local(path),
         native_name: path.file_name().unwrap_or_default().to_owned(),
+        thumbnail_path: None,
         display_name: path
             .file_name()
             .unwrap_or_default()
