@@ -243,11 +243,10 @@ fn untrusted_request_inputs_are_bounded() {
         .map(|index| FileFilter::new(&format!("Filter {index}")))
         .collect::<Vec<_>>();
     assert!(validate_filters(&filters, None).is_err());
-    // A large but legitimate filter list, like GitHub's attach dialog, is
-    // accepted rather than rejected.
-    let bulky = (0..300).fold(FileFilter::new("Filter"), |filter, index| {
-        filter.glob(&format!("*.{index}"))
-    });
+    let bulky = (0..=FILTER_RULE_WARNING_THRESHOLD)
+        .fold(FileFilter::new("GitHub accepted types"), |filter, index| {
+            filter.mimetype(&format!("application/x-attachment-{index}"))
+        });
     assert!(validate_filters(&[bulky], None).is_ok());
     assert!(
         validate_filters(&[FileFilter::new("Filter").glob("*a*a*a*z")], None).is_err(),

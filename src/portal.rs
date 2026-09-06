@@ -36,7 +36,7 @@ const MAX_CHOICES: usize = 16;
 const MAX_CHOICE_OPTIONS: usize = 32;
 const MAX_TOTAL_CHOICE_OPTIONS: usize = 128;
 const MAX_FILTERS: usize = 32;
-const MAX_TOTAL_FILTER_RULES: usize = 1024;
+const FILTER_RULE_WARNING_THRESHOLD: usize = 1024;
 const MAX_GLOB_BYTES: usize = 256;
 const MAX_GLOB_STAR_RUNS: usize = 2;
 const MAX_SAVE_FILES: usize = 256;
@@ -401,10 +401,7 @@ fn validate_filters(
             validate_string(mimetype, MAX_STRING_BYTES, "MIME filter rule")?;
         }
     }
-    // Bulky-but-legitimate filter lists (GitHub's attach dialog sends one
-    // filter with hundreds of MIME rules) are trimmed, not rejected: an
-    // over-limit dialog is still usable, a refused one is not.
-    if total_rules > MAX_TOTAL_FILTER_RULES {
+    if total_rules > FILTER_RULE_WARNING_THRESHOLD {
         tracing::warn!(
             rules = total_rules,
             "file filters exceeded the rule budget and were accepted untrimmed"
