@@ -894,8 +894,10 @@ impl ThemeManager {
     }
 
     fn apply_tokens(&self, tokens: &ThemeTokens) {
+        let root_font_px = self.text_size().root_font_px();
         self.provider
-            .load_from_string(&tokens_css(tokens, self.text_size().root_font_px()));
+            .load_from_string(&tokens_css(tokens, root_font_px));
+        apply_interface_font(root_font_px);
         crate::assets::set_primary_icon_color(&tokens.accent);
         crate::assets::set_danger_icon_color(&tokens.danger);
         super::thumbnail::refresh_all_customized_icons();
@@ -1253,9 +1255,21 @@ fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
     )
 }
 
+const INTERFACE_FONT_FAMILY: &str = "JetBrains Mono";
+
+fn interface_font_name(root_font_px: u32) -> String {
+    format!("{INTERFACE_FONT_FAMILY} {root_font_px}px")
+}
+
+fn apply_interface_font(root_font_px: u32) {
+    if let Some(settings) = gtk::Settings::default() {
+        settings.set_gtk_font_name(Some(&interface_font_name(root_font_px)));
+    }
+}
+
 fn tokens_css(tokens: &ThemeTokens, root_font_px: u32) -> String {
     format!(
-        "@define-color theme_bg {};\n@define-color theme_surface {};\n@define-color theme_text {};\n@define-color theme_accent {};\n@define-color theme_danger {};\n@define-color theme_muted {};\n@define-color theme_highlight {};\n@define-color theme_border {};\n@define-color theme_dim_text {};\nwindow {{ font-size: {root_font_px}px; }}\n",
+        "@define-color theme_bg {};\n@define-color theme_surface {};\n@define-color theme_text {};\n@define-color theme_accent {};\n@define-color theme_danger {};\n@define-color theme_muted {};\n@define-color theme_highlight {};\n@define-color theme_border {};\n@define-color theme_dim_text {};\nwindow, popover, popover.background {{ font-size: {root_font_px}px; }}\n",
         tokens.background,
         tokens.surface,
         tokens.text,
