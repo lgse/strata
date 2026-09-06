@@ -115,6 +115,7 @@ fn present_target(
     browser.set_view_mode(theme_manager.browser_mode());
     browser.set_density(theme_manager.browser_density());
     browser.set_group_by_type(theme_manager.group_by_type());
+    apply_click_activation(&browser, &theme_manager);
     browser.set_operation_provider(Rc::new(LocalOperationProvider));
     browser.set_auto_refresh_interval(theme_manager.auto_refresh_interval());
     let controller = browser.browser();
@@ -650,6 +651,18 @@ fn animate_sidebar(
             glib::ControlFlow::Continue
         }
     });
+}
+
+/// Pushes the saved click-activation choice for every presentation into a
+/// browser.
+///
+/// Without this a saved single-click preference only took effect once the
+/// Settings page had been opened, because that page was the only place that
+/// applied it.
+pub(super) fn apply_click_activation(view: &BrowserView, preferences: &super::theme::ThemeManager) {
+    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+        view.set_click_activation(mode, preferences.click_activation(mode));
+    }
 }
 
 fn install_keyboard_navigation(
