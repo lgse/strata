@@ -6682,6 +6682,10 @@ pub(crate) fn deactivate_recursive_search(
     }
 }
 
+/// Applies a settled pane query.
+///
+/// The filter also hides dotfiles, so it stays attached even when the query is
+/// empty; detaching it on an empty query revealed every hidden entry.
 pub(crate) fn apply_filter_query(
     model: &gtk::FilterListModel,
     filter: &gtk::CustomFilter,
@@ -6691,9 +6695,7 @@ pub(crate) fn apply_filter_query(
     let previous = query.borrow().clone();
     let change = filter_change_for(&previous, &settled);
     *query.borrow_mut() = settled;
-    if query.borrow().is_empty() {
-        model.set_filter(None::<&gtk::Filter>);
-    } else if previous.is_empty() {
+    if model.filter().is_none() {
         model.set_filter(Some(filter));
     } else {
         filter.changed(change);
