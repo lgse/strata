@@ -75,6 +75,7 @@ pub(super) use crate::ui::modal::{
 };
 
 type PinHandler = Rc<dyn Fn(Location, String)>;
+type UnpinHandler = Rc<dyn Fn(&Location)>;
 type PinStatusHandler = Rc<dyn Fn(&Location) -> PinStatus>;
 type PrintHandler = Rc<dyn Fn(FileEntry)>;
 
@@ -153,6 +154,7 @@ pub(super) struct ViewState {
     file_operation_progress: Cell<(usize, usize)>,
     transfer_progress: Cell<Option<(usize, u64, Option<u64>)>>,
     pin_handler: RefCell<Option<PinHandler>>,
+    unpin_handler: RefCell<Option<UnpinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     print_handler: RefCell<Option<PrintHandler>>,
     pending_select: RefCell<Vec<String>>,
@@ -334,6 +336,7 @@ impl BrowserView {
             file_operation_progress: Cell::new((0, 0)),
             transfer_progress: Cell::new(None),
             pin_handler: RefCell::new(None),
+            unpin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
             print_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
@@ -457,8 +460,14 @@ impl BrowserView {
         self.state.browser.clone()
     }
 
-    pub(super) fn set_pin_handlers(&self, handler: PinHandler, status_handler: PinStatusHandler) {
+    pub(super) fn set_pin_handlers(
+        &self,
+        handler: PinHandler,
+        unpin_handler: UnpinHandler,
+        status_handler: PinStatusHandler,
+    ) {
         self.state.pin_handler.replace(Some(handler));
+        self.state.unpin_handler.replace(Some(unpin_handler));
         self.state.pin_status_handler.replace(Some(status_handler));
     }
 

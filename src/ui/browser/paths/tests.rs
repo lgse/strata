@@ -70,3 +70,35 @@ fn pinning_requires_an_available_non_trash_directory() {
     assert!(!can_pin_entry(&file, PinStatus::Available));
     assert!(!can_pin_entry(&trash_directory, PinStatus::Available));
 }
+
+#[test]
+fn properties_offers_unpin_for_an_already_pinned_directory() {
+    let folder = Location::local("/fixture/folder");
+
+    assert_eq!(
+        pin_action_for(&folder, true, PinStatus::Available),
+        Some(PinAction::Pin)
+    );
+    assert_eq!(
+        pin_action_for(&folder, true, PinStatus::Pinned),
+        Some(PinAction::Unpin)
+    );
+    assert_eq!(PinAction::Pin.label(), "Pin");
+    assert_eq!(PinAction::Unpin.label(), "Unpin");
+}
+
+#[test]
+fn properties_hides_the_pin_control_where_pinning_is_impossible() {
+    let folder = Location::local("/fixture/folder");
+
+    assert_eq!(pin_action_for(&folder, true, PinStatus::Unavailable), None);
+    assert_eq!(pin_action_for(&folder, false, PinStatus::Available), None);
+    assert_eq!(
+        pin_action_for(
+            &Location::uri("trash:///folder"),
+            true,
+            PinStatus::Available
+        ),
+        None
+    );
+}
