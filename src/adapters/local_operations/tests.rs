@@ -22,14 +22,16 @@ use gtk::{gio, glib, prelude::*};
 use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 
 use super::{
-    ArchiveError, ArchiveOutcome, LocalOperationProvider, TransferProgressTracker,
-    await_cancellable, compress_7z, compress_tar, compress_zip, copy_failure_after_cleanup,
-    copy_new_recursively, copy_new_remote_file_with, copy_recursively, copy_with_big_buf,
-    count_archive_files, deletion_error_message, deletion_error_summary, duplicate_candidate_name,
-    extract_7z_from_reader, extract_tar, extract_zip_from_archive, home_trash_entries_at, io_error,
-    is_trash_unsupported_failure, move_local, move_local_with, operation_error_summary,
-    parse_copy_suffix, process_umask, replace_local, replace_local_with, transfer_is_noop,
-    validated_archive_path, validated_child, write_staged_archive,
+    ArchiveError, ArchiveOutcome, ExtractBudget, ExtractLimits, LocalOperationProvider,
+    TransferProgressTracker, await_cancellable, compress_7z, compress_tar, compress_zip,
+    copy_extracted_with_budget, copy_failure_after_cleanup, copy_new_recursively,
+    copy_new_remote_file_with, copy_recursively, copy_with_big_buf, count_archive_files,
+    deletion_error_message, deletion_error_summary, duplicate_candidate_name,
+    extract_7z_from_reader, extract_7z_from_reader_with_limits, extract_tar,
+    extract_tar_with_limits, extract_zip_from_archive, extract_zip_from_archive_with_limits,
+    home_trash_entries_at, io_error, is_trash_unsupported_failure, move_local, move_local_with,
+    operation_error_summary, parse_copy_suffix, process_umask, replace_local, replace_local_with,
+    transfer_is_noop, validated_archive_path, validated_child, write_staged_archive,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
@@ -2951,6 +2953,315 @@ fn copy_with_big_buf_stops_when_cancelled() {
         .expect_err("cancelled copy must stop");
     assert!(matches!(error, ArchiveError::Cancelled));
     assert!(destination.is_empty());
+}
+
+fn extract_size_limits(max_uncompressed_bytes: u64) -> ExtractLimits {
+    ExtractLimits {
+        max_uncompressed_bytes,
+        ..ExtractLimits::production()
+    }
+}
+
+fn extract_entry_limits(max_entries: u64) -> ExtractLimits {
+    ExtractLimits {
+        max_entries,
+        ..ExtractLimits::production()
+    }
+}
+
+fn extract_ratio_limits(
+    max_compression_ratio: u64,
+    ratio_min_uncompressed_bytes: u64,
+) -> ExtractLimits {
+    ExtractLimits {
+        max_compression_ratio,
+        ratio_min_uncompressed_bytes,
+        ..ExtractLimits::production()
+    }
+}
+
+fn extract_must_fail(
+    result: Result<ArchiveOutcome<Option<String>>, ArchiveError>,
+    context: &str,
+) -> ArchiveError {
+    match result {
+        Err(error) => error,
+        Ok(_) => panic!("{context}"),
+    }
+}
+
+fn extract_failed_message(error: ArchiveError) -> String {
+    match error {
+        ArchiveError::Failed(message) => message,
+        ArchiveError::Cancelled => panic!("expected a limit failure, not cancellation"),
+    }
+}
+
+fn destination_is_empty(path: &Path) -> Result<bool, Box<dyn Error>> {
+    Ok(path.read_dir()?.next().is_none())
+}
+
+fn extract_zip_with_limits(
+    path: &Path,
+    destination: &Path,
+    limits: ExtractLimits,
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+    let compressed_size = fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    let file = fs::File::open(path).map_err(archive_io)?;
+    let mut archive =
+        zip::ZipArchive::new(file).map_err(|error| ArchiveError::Failed(error.to_string()))?;
+    extract_zip_from_archive_with_limits(
+        &mut archive,
+        destination,
+        None,
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+        limits,
+        compressed_size,
+    )
+}
+
+fn archive_io(error: std::io::Error) -> ArchiveError {
+    ArchiveError::Failed(error.to_string())
+}
+
+#[test]
+fn extract_budget_rejects_uncompressed_size_disk_space_ratio_and_entry_count() {
+    let mut budget = ExtractBudget::from_limits(0, extract_size_limits(100));
+    assert!(budget.account_bytes(50).is_ok());
+    let size_error = extract_failed_message(budget.account_bytes(60).expect_err("size limit"));
+    assert!(size_error.contains("uncompressed size exceeds the 100 byte limit"));
+
+    let mut disk_budget = ExtractBudget::from_limits(0, extract_size_limits(1_000_000));
+    disk_budget.disk_available = Some(32);
+    let disk_error = extract_failed_message(disk_budget.account_bytes(40).expect_err("disk limit"));
+    assert!(disk_error.contains("32 bytes of free space"));
+
+    let mut ratio_budget = ExtractBudget::from_limits(8, extract_ratio_limits(4, 16));
+    assert!(ratio_budget.account_bytes(16).is_ok());
+    let ratio_error =
+        extract_failed_message(ratio_budget.account_bytes(17).expect_err("ratio limit"));
+    assert!(ratio_error.contains("compression ratio exceeds 4:1"));
+
+    let mut entries = ExtractBudget::from_limits(0, extract_entry_limits(2));
+    assert!(entries.account_entry().is_ok());
+    assert!(entries.account_entry().is_ok());
+    let entry_error = extract_failed_message(entries.account_entry().expect_err("entry limit"));
+    assert!(entry_error.contains("exceeds the 2 entry limit"));
+}
+
+#[test]
+fn extract_budget_ignores_ratio_until_the_configured_floor() {
+    let mut budget = ExtractBudget::from_limits(1, extract_ratio_limits(2, 32));
+    assert!(budget.account_bytes(31).is_ok());
+}
+
+#[test]
+fn extract_budget_skips_ratio_when_compressed_size_is_unknown() {
+    let mut budget = ExtractBudget::from_limits(0, extract_ratio_limits(1, 1));
+    assert!(budget.account_bytes(1_000).is_ok());
+}
+
+#[test]
+fn copy_extracted_with_budget_does_not_write_past_the_size_limit() {
+    let mut budget = ExtractBudget::from_limits(0, extract_size_limits(4));
+    let mut destination = Vec::new();
+    let error = copy_extracted_with_budget(
+        &b"0123456789"[..],
+        &mut destination,
+        &never_cancelled(),
+        &mut budget,
+    )
+    .expect_err("bounded copy must stop");
+    assert!(extract_failed_message(error).contains("uncompressed size"));
+    assert!(destination.is_empty());
+}
+
+#[test]
+fn zip_extraction_aborts_before_writing_when_claimed_size_exceeds_the_limit()
+-> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    let archive_path = root.path().join("payload.zip");
+    write_zip(&archive_path, &[("payload.bin", &[0u8; 256][..])])?;
+
+    let error = extract_must_fail(
+        extract_zip_with_limits(&archive_path, &destination, extract_size_limits(64)),
+        "zip extract must honor the size ceiling",
+    );
+    assert!(extract_failed_message(error).contains("uncompressed size"));
+    assert!(destination_is_empty(&destination)?);
+    Ok(())
+}
+
+#[test]
+fn tar_and_7z_extraction_abort_when_uncompressed_size_exceeds_the_limit()
+-> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    let tar_path = root.path().join("payload.tar");
+    let seven_z_path = root.path().join("payload.7z");
+    write_tar(&tar_path, "payload.bin", &[7u8; 256], false)?;
+    write_7z(&seven_z_path, "payload.bin", &[7u8; 256])?;
+
+    let tar_error = extract_must_fail(
+        extract_tar_with_limits(
+            &tar_path,
+            &destination,
+            false,
+            &Arc::new(AtomicUsize::new(0)),
+            &never_cancelled(),
+            extract_size_limits(64),
+        ),
+        "tar extract must honor the size ceiling",
+    );
+    assert!(extract_failed_message(tar_error).contains("uncompressed size"));
+    assert!(destination_is_empty(&destination)?);
+
+    let seven_z_error = extract_must_fail(
+        extract_7z_from_reader_with_limits(
+            fs::File::open(&seven_z_path)?,
+            &destination,
+            sevenz_rust2::Password::empty(),
+            &Arc::new(AtomicUsize::new(0)),
+            &never_cancelled(),
+            extract_size_limits(64),
+        ),
+        "7z extract must honor the size ceiling",
+    );
+    assert!(extract_failed_message(seven_z_error).contains("uncompressed size"));
+    assert!(destination_is_empty(&destination)?);
+    Ok(())
+}
+
+#[test]
+fn extraction_aborts_when_entry_count_exceeds_the_limit() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let zip_destination = root.path().join("zip");
+    let tar_destination = root.path().join("tar");
+    let seven_z_destination = root.path().join("seven-z");
+    fs::create_dir(&zip_destination)?;
+    fs::create_dir(&tar_destination)?;
+    fs::create_dir(&seven_z_destination)?;
+    let entries = [
+        ("one.txt", b"a".as_slice()),
+        ("two.txt", b"b".as_slice()),
+        ("three.txt", b"c".as_slice()),
+    ];
+    let zip_path = root.path().join("files.zip");
+    let tar_path = root.path().join("files.tar");
+    let seven_z_path = root.path().join("files.7z");
+    write_zip(&zip_path, &entries)?;
+    write_tar_entries(&tar_path, &entries, false)?;
+    write_7z_entries(&seven_z_path, &entries)?;
+    let limits = extract_entry_limits(2);
+
+    let zip_error = extract_must_fail(
+        extract_zip_with_limits(&zip_path, &zip_destination, limits),
+        "zip extract must honor the entry ceiling",
+    );
+    assert!(extract_failed_message(zip_error).contains("entry limit"));
+    assert!(destination_is_empty(&zip_destination)?);
+
+    let tar_error = extract_must_fail(
+        extract_tar_with_limits(
+            &tar_path,
+            &tar_destination,
+            false,
+            &Arc::new(AtomicUsize::new(0)),
+            &never_cancelled(),
+            limits,
+        ),
+        "tar extract must honor the entry ceiling",
+    );
+    assert!(extract_failed_message(tar_error).contains("entry limit"));
+    assert_eq!(tar_destination.read_dir()?.count(), 2);
+
+    let seven_z_error = extract_must_fail(
+        extract_7z_from_reader_with_limits(
+            fs::File::open(&seven_z_path)?,
+            &seven_z_destination,
+            sevenz_rust2::Password::empty(),
+            &Arc::new(AtomicUsize::new(0)),
+            &never_cancelled(),
+            limits,
+        ),
+        "7z extract must honor the entry ceiling",
+    );
+    assert!(extract_failed_message(seven_z_error).contains("entry limit"));
+    assert!(destination_is_empty(&seven_z_destination)?);
+    Ok(())
+}
+
+#[test]
+fn extraction_aborts_when_compression_ratio_exceeds_the_limit() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    let zeros = vec![0u8; 4096];
+    let zip_path = root.path().join("zeros.zip");
+    let tar_gz_path = root.path().join("zeros.tar.gz");
+    let seven_z_path = root.path().join("zeros.7z");
+    write_zip(&zip_path, &[("zeros.bin", zeros.as_slice())])?;
+    write_tar(&tar_gz_path, "zeros.bin", &zeros, true)?;
+    write_7z(&seven_z_path, "zeros.bin", &zeros)?;
+    let limits = extract_ratio_limits(2, 16);
+
+    let zip_error = extract_must_fail(
+        extract_zip_with_limits(&zip_path, &destination, limits),
+        "zip extract must honor the ratio ceiling",
+    );
+    assert!(extract_failed_message(zip_error).contains("compression ratio"));
+    assert!(destination_is_empty(&destination)?);
+
+    let tar_error = extract_must_fail(
+        extract_tar_with_limits(
+            &tar_gz_path,
+            &destination,
+            true,
+            &Arc::new(AtomicUsize::new(0)),
+            &never_cancelled(),
+            limits,
+        ),
+        "tar.gz extract must honor the ratio ceiling",
+    );
+    assert!(extract_failed_message(tar_error).contains("compression ratio"));
+    assert!(destination_is_empty(&destination)?);
+
+    let seven_z_error = extract_must_fail(
+        extract_7z_from_reader_with_limits(
+            fs::File::open(&seven_z_path)?,
+            &destination,
+            sevenz_rust2::Password::empty(),
+            &Arc::new(AtomicUsize::new(0)),
+            &never_cancelled(),
+            limits,
+        ),
+        "7z extract must honor the ratio ceiling",
+    );
+    assert!(extract_failed_message(seven_z_error).contains("compression ratio"));
+    assert!(destination_is_empty(&destination)?);
+    Ok(())
+}
+
+#[test]
+fn zip_extraction_still_extracts_a_normal_archive_under_production_limits()
+-> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    let archive_path = root.path().join("normal.zip");
+    write_zip(&archive_path, &[("hello.txt", b"hello world")])?;
+    assert_eq!(
+        extract_zip(&archive_path, &destination)?.as_deref(),
+        Some("hello.txt")
+    );
+    assert_eq!(fs::read(destination.join("hello.txt"))?, b"hello world");
+    Ok(())
 }
 
 #[test]

@@ -3042,14 +3042,18 @@ impl OperationProvider for LocalOperationProvider {
             let result = gio::spawn_blocking(move || match format {
                 Some(ArchiveFormat::Zip) => {
                     let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
+                    let compressed_size =
+                        file.metadata().map(|metadata| metadata.len()).unwrap_or(0);
                     let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
                     work_total.store(archive.len(), Ordering::Relaxed);
-                    extract_zip_from_archive(
+                    extract_zip_from_archive_with_limits(
                         &mut archive,
                         &dest_dir,
                         password.as_deref(),
                         &work_progress,
                         &work_cancelled,
+                        ExtractLimits::production(),
+                        compressed_size,
                     )
                 }
                 Some(ArchiveFormat::SevenZ) => {
@@ -3396,6 +3400,22 @@ impl ExtractionDestination {
         Ok(Self { root })
     }
 
+    fn filesystem_resources(&self) -> (Option<u64>, Option<u64>) {
+        match rustix::fs::fstatvfs(&self.root) {
+            Ok(stat) => {
+                let block = if stat.f_frsize > 0 {
+                    stat.f_frsize
+                } else {
+                    stat.f_bsize.max(1)
+                };
+                let bytes = stat.f_bavail.saturating_mul(block);
+                let inodes = (stat.f_favail > 0).then_some(stat.f_favail);
+                (Some(bytes), inodes)
+            }
+            Err(_) => (None, None),
+        }
+    }
+
     fn available_name<Fd: AsFd>(&self, directory: &Fd, name: &OsStr) -> Result<OsString, String> {
         for index in 1.. {
             let candidate = if index == 1 {
@@ -3508,6 +3528,148 @@ fn count_archive_files(entries: &[PathBuf], cancelled: &AtomicBool) -> Result<us
 
 const COPY_BUF: usize = 1 << 20; // 1 MiB
 const ARCHIVE_CANCELLED: &str = "Operation cancelled";
+const EXTRACT_MAX_UNCOMPRESSED_BYTES: u64 = 1 << 40;
+const EXTRACT_MAX_ENTRIES: u64 = 1_000_000;
+const EXTRACT_MAX_COMPRESSION_RATIO: u64 = 100;
+const EXTRACT_RATIO_MIN_UNCOMPRESSED_BYTES: u64 = 64 * 1024 * 1024;
+
+#[derive(Clone, Copy, Debug)]
+struct ExtractLimits {
+    max_uncompressed_bytes: u64,
+    max_entries: u64,
+    max_compression_ratio: u64,
+    ratio_min_uncompressed_bytes: u64,
+}
+
+impl ExtractLimits {
+    fn production() -> Self {
+        Self {
+            max_uncompressed_bytes: EXTRACT_MAX_UNCOMPRESSED_BYTES,
+            max_entries: EXTRACT_MAX_ENTRIES,
+            max_compression_ratio: EXTRACT_MAX_COMPRESSION_RATIO,
+            ratio_min_uncompressed_bytes: EXTRACT_RATIO_MIN_UNCOMPRESSED_BYTES,
+        }
+    }
+}
+
+struct ExtractBudget {
+    compressed_size: u64,
+    uncompressed_written: u64,
+    entries: u64,
+    absolute_max: u64,
+    disk_available: Option<u64>,
+    max_entries: u64,
+    max_compression_ratio: u64,
+    ratio_min_uncompressed_bytes: u64,
+}
+
+impl ExtractBudget {
+    fn new(
+        destination: &ExtractionDestination,
+        compressed_size: u64,
+        limits: ExtractLimits,
+    ) -> Self {
+        let (available_bytes, available_inodes) = destination.filesystem_resources();
+        let max_entries = match available_inodes {
+            Some(inodes) => limits.max_entries.min(inodes),
+            None => limits.max_entries,
+        };
+        Self {
+            compressed_size,
+            uncompressed_written: 0,
+            entries: 0,
+            absolute_max: limits.max_uncompressed_bytes,
+            disk_available: available_bytes,
+            max_entries,
+            max_compression_ratio: limits.max_compression_ratio,
+            ratio_min_uncompressed_bytes: limits.ratio_min_uncompressed_bytes,
+        }
+    }
+
+    #[cfg(test)]
+    fn from_limits(compressed_size: u64, limits: ExtractLimits) -> Self {
+        Self {
+            compressed_size,
+            uncompressed_written: 0,
+            entries: 0,
+            absolute_max: limits.max_uncompressed_bytes,
+            disk_available: None,
+            max_entries: limits.max_entries,
+            max_compression_ratio: limits.max_compression_ratio,
+            ratio_min_uncompressed_bytes: limits.ratio_min_uncompressed_bytes,
+        }
+    }
+
+    fn reject_entry_count(&self, count: u64) -> Result<(), ArchiveError> {
+        if count > self.max_entries {
+            Err(self.entry_count_error(count))
+        } else {
+            Ok(())
+        }
+    }
+
+    fn account_entry(&mut self) -> Result<(), ArchiveError> {
+        let count = self.entries.saturating_add(1);
+        self.reject_entry_count(count)?;
+        self.entries = count;
+        Ok(())
+    }
+
+    fn reject_claimed_total(&self, claimed: u128) -> Result<(), ArchiveError> {
+        self.check_total(claimed)
+    }
+
+    fn reject_additional(&self, claimed: u64) -> Result<(), ArchiveError> {
+        self.check_total(u128::from(self.uncompressed_written).saturating_add(claimed.into()))
+    }
+
+    fn account_bytes(&mut self, n: u64) -> Result<(), ArchiveError> {
+        let total = u128::from(self.uncompressed_written).saturating_add(n.into());
+        self.check_total(total)?;
+        self.uncompressed_written = self.uncompressed_written.saturating_add(n);
+        Ok(())
+    }
+
+    fn check_total(&self, total: u128) -> Result<(), ArchiveError> {
+        if let Some(available) = self.disk_available
+            && total > u128::from(available)
+        {
+            return Err(archive_failed(format!(
+                "Extraction aborted: archive would expand beyond the {available} bytes of free space at the destination"
+            )));
+        }
+        if total > u128::from(self.absolute_max) {
+            return Err(archive_failed(format!(
+                "Extraction aborted: uncompressed size exceeds the {} byte limit",
+                self.absolute_max
+            )));
+        }
+        if total >= u128::from(self.ratio_min_uncompressed_bytes) && self.ratio_exceeded(total) {
+            return Err(archive_failed(format!(
+                "Extraction aborted: compression ratio exceeds {}:1; refusing to expand the archive",
+                self.max_compression_ratio
+            )));
+        }
+        Ok(())
+    }
+
+    fn ratio_exceeded(&self, uncompressed: u128) -> bool {
+        if self.compressed_size == 0 || self.max_compression_ratio == 0 {
+            return false;
+        }
+        match u128::from(self.compressed_size).checked_mul(self.max_compression_ratio.into()) {
+            Some(limit) => uncompressed > limit,
+            None => false,
+        }
+    }
+
+    fn entry_count_error(&self, count: u64) -> ArchiveError {
+        archive_failed(format!(
+            "Extraction aborted: archive has {count} entries, which exceeds the {} entry limit",
+            self.max_entries
+        ))
+    }
+}
 
 #[derive(Debug, PartialEq, Eq)]
 enum ArchiveError {
@@ -3654,9 +3816,27 @@ fn cancelled_extract_after_partial_write(
 }
 
 fn copy_with_big_buf(
+    reader: impl std::io::Read,
+    writer: &mut (impl std::io::Write + ?Sized),
+    cancelled: &AtomicBool,
+) -> Result<u64, ArchiveError> {
+    copy_with_extract_budget(reader, writer, cancelled, None)
+}
+
+fn copy_extracted_with_budget(
+    reader: impl std::io::Read,
+    writer: &mut (impl std::io::Write + ?Sized),
+    cancelled: &AtomicBool,
+    budget: &mut ExtractBudget,
+) -> Result<u64, ArchiveError> {
+    copy_with_extract_budget(reader, writer, cancelled, Some(budget))
+}
+
+fn copy_with_extract_budget(
     mut reader: impl std::io::Read,
     writer: &mut (impl std::io::Write + ?Sized),
     cancelled: &AtomicBool,
+    mut budget: Option<&mut ExtractBudget>,
 ) -> Result<u64, ArchiveError> {
     let mut buf = vec![0u8; COPY_BUF];
     let mut total = 0;
@@ -3666,8 +3846,12 @@ fn copy_with_big_buf(
         if n == 0 {
             break;
         }
+        let n64 = n as u64;
+        if let Some(budget) = budget.as_mut() {
+            budget.account_bytes(n64)?;
+        }
         writer.write_all(&buf[..n]).map_err(archive_failed)?;
-        total += n as u64;
+        total += n64;
     }
     Ok(total)
 }
@@ -3756,6 +3940,7 @@ impl ExtractNameResolver {
     }
 }
 
+#[cfg(test)]
 fn extract_zip_from_archive(
     archive: &mut zip::ZipArchive<std::fs::File>,
     dest_dir: &Path,
@@ -3763,7 +3948,32 @@ fn extract_zip_from_archive(
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+    extract_zip_from_archive_with_limits(
+        archive,
+        dest_dir,
+        password,
+        progress,
+        cancelled,
+        ExtractLimits::production(),
+        0,
+    )
+}
+
+fn extract_zip_from_archive_with_limits(
+    archive: &mut zip::ZipArchive<std::fs::File>,
+    dest_dir: &Path,
+    password: Option<&str>,
+    progress: &Arc<AtomicUsize>,
+    cancelled: &AtomicBool,
+    limits: ExtractLimits,
+    compressed_size: u64,
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let destination = ExtractionDestination::open(dest_dir)?;
+    let mut budget = ExtractBudget::new(&destination, compressed_size, limits);
+    budget.reject_entry_count(archive.len() as u64)?;
+    if let Some(claimed) = archive.decompressed_size() {
+        budget.reject_claimed_total(claimed)?;
+    }
     let pw_bytes = password.map(|p| p.as_bytes());
     let mut resolver = ExtractNameResolver::new();
     let mut first_name = None;
@@ -3792,11 +4002,15 @@ fn extract_zip_from_archive(
                 .next()
                 .map(|c| c.as_os_str().to_string_lossy().to_string());
         }
+        budget.account_entry()?;
         if entry.is_dir() {
             destination.create_directories(&outpath)?;
         } else {
+            budget.reject_additional(entry.size())?;
             let (mut outfile, created) = destination.create_file(&outpath)?;
-            if let Err(error) = copy_with_big_buf(&mut entry, &mut outfile, cancelled) {
+            if let Err(error) =
+                copy_extracted_with_budget(&mut entry, &mut outfile, cancelled, &mut budget)
+            {
                 drop(outfile);
                 drop(entry);
                 let removed = destination.remove_file(&created);
@@ -3825,7 +4039,29 @@ fn extract_tar(
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+    extract_tar_with_limits(
+        archive_path,
+        dest_dir,
+        gzip,
+        progress,
+        cancelled,
+        ExtractLimits::production(),
+    )
+}
+
+fn extract_tar_with_limits(
+    archive_path: &Path,
+    dest_dir: &Path,
+    gzip: bool,
+    progress: &Arc<AtomicUsize>,
+    cancelled: &AtomicBool,
+    limits: ExtractLimits,
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let destination = ExtractionDestination::open(dest_dir)?;
+    let compressed_size = std::fs::metadata(archive_path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    let mut budget = ExtractBudget::new(&destination, compressed_size, limits);
     let file = std::fs::File::open(archive_path).map_err(archive_failed)?;
     let reader: Box<dyn std::io::Read> = if gzip {
         Box::new(flate2::read::GzDecoder::new(file))
@@ -3860,11 +4096,15 @@ fn extract_tar(
                 .next()
                 .map(|c| c.as_os_str().to_string_lossy().to_string());
         }
+        budget.account_entry()?;
         if entry.header().entry_type().is_dir() {
             destination.create_directories(&outpath)?;
         } else {
+            budget.reject_additional(entry.size())?;
             let (mut outfile, created) = destination.create_file(&outpath)?;
-            if let Err(error) = copy_with_big_buf(&mut entry, &mut outfile, cancelled) {
+            if let Err(error) =
+                copy_extracted_with_budget(&mut entry, &mut outfile, cancelled, &mut budget)
+            {
                 drop(outfile);
                 drop(entry);
                 let removed = destination.remove_file(&created);
@@ -3967,7 +4207,29 @@ fn extract_7z_from_reader(
     progress: &Arc<AtomicUsize>,
     cancelled: &AtomicBool,
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+    extract_7z_from_reader_with_limits(
+        reader,
+        dest_dir,
+        password,
+        progress,
+        cancelled,
+        ExtractLimits::production(),
+    )
+}
+
+fn extract_7z_from_reader_with_limits(
+    reader: std::fs::File,
+    dest_dir: &Path,
+    password: sevenz_rust2::Password,
+    progress: &Arc<AtomicUsize>,
+    cancelled: &AtomicBool,
+    limits: ExtractLimits,
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let destination = ExtractionDestination::open(dest_dir)?;
+    let compressed_size = reader
+        .metadata()
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
     let mut archive = sevenz_rust2::ArchiveReader::new(reader, password).map_err(archive_failed)?;
     let entry_names: Vec<String> = archive
         .archive()
@@ -3975,6 +4237,14 @@ fn extract_7z_from_reader(
         .iter()
         .map(|entry| entry.name.clone())
         .collect();
+    let claimed = archive.archive().files.iter().fold(0u128, |total, entry| {
+        total.saturating_add(entry.size.into())
+    });
+    let budget = RefCell::new(ExtractBudget::new(&destination, compressed_size, limits));
+    budget
+        .borrow()
+        .reject_entry_count(entry_names.len() as u64)?;
+    budget.borrow().reject_claimed_total(claimed)?;
     let resolver = RefCell::new(ExtractNameResolver::new());
     let first_name = RefCell::new(None::<String>);
     let completed = RefCell::new(Vec::new());
@@ -4000,15 +4270,25 @@ fn extract_7z_from_reader(
                 .next()
                 .map(|c| c.as_os_str().to_string_lossy().to_string());
         }
+        budget
+            .borrow_mut()
+            .account_entry()
+            .map_err(sevenz_extract_error)?;
         if entry.is_directory {
             destination
                 .create_directories(&outpath)
                 .map_err(|error| sevenz_rust2::Error::Other(error.into()))?;
         } else {
+            budget
+                .borrow()
+                .reject_additional(entry.size)
+                .map_err(sevenz_extract_error)?;
             let (mut file, created) = destination
                 .create_file(&outpath)
                 .map_err(|error| sevenz_rust2::Error::Other(error.into()))?;
-            if let Err(error) = copy_with_big_buf(reader, &mut file, cancelled) {
+            if let Err(error) =
+                copy_extracted_with_budget(reader, &mut file, cancelled, &mut budget.borrow_mut())
+            {
                 drop(file);
                 let removed = destination.remove_file(&created);
                 return match error {
@@ -4051,5 +4331,12 @@ fn extract_7z_from_reader(
             not_attempted: not_attempted.into_inner(),
         }),
         Err(error) => Err(archive_failed(error)),
+    }
+}
+
+fn sevenz_extract_error(error: ArchiveError) -> sevenz_rust2::Error {
+    match error {
+        ArchiveError::Cancelled => sevenz_cancelled(),
+        ArchiveError::Failed(message) => sevenz_rust2::Error::Other(message.into()),
     }
 }
