@@ -11,6 +11,7 @@ mod inline_search;
 mod input_ownership;
 mod loading_skeleton;
 mod marquee;
+mod modal;
 mod motion;
 mod portal_preferences;
 mod preview;
