@@ -75,6 +75,7 @@ fn alternate_modes_request_missing_metadata_for_bound_entries() {
     let mut entry = FileEntry {
         location: Location::local("/fixture/photo.jpg"),
         native_name: "photo.jpg".into(),
+        thumbnail_path: None,
         display_name: "photo.jpg".into(),
         kind: EntryKind::File,
         size: MetadataValue::Unknown,

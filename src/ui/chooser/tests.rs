@@ -16,6 +16,7 @@ fn entry(name: &str, kind: EntryKind) -> FileEntry {
     FileEntry {
         location: Location::local(Path::new("/tmp").join(name)),
         native_name: OsString::from(name),
+        thumbnail_path: None,
         display_name: name.to_owned(),
         kind,
         is_hidden: false,

@@ -43,6 +43,7 @@ fn file_entry(path: &std::path::Path) -> FileEntry {
     FileEntry {
         location: Location::local(path),
         native_name: path.file_name().unwrap_or_default().to_owned(),
+        thumbnail_path: None,
         display_name: path
             .file_name()
             .unwrap_or_default()
@@ -1035,6 +1036,7 @@ fn test_file_entry(path: &Path) -> FileEntry {
     FileEntry {
         location: Location::local(path),
         native_name: name.clone(),
+        thumbnail_path: None,
         display_name: name.to_string_lossy().into_owned(),
         kind: EntryKind::File,
         size: MetadataValue::Unknown,

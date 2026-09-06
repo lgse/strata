@@ -126,6 +126,7 @@ fn preview_drag_entries_wraps_loaded_file_entry() {
     let entry = crate::model::FileEntry {
         location: crate::model::Location::local("/tmp/test.png"),
         native_name: std::ffi::OsString::from("test.png"),
+        thumbnail_path: None,
         display_name: "test.png".to_owned(),
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Known(100),

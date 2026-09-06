@@ -24,7 +24,7 @@ use crate::{
 };
 
 const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,access::can-trash,access::can-delete";
-const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,time::modified,unix::mode,access::can-trash,access::can-delete";
+const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,standard::target-uri,time::modified,unix::mode,access::can-trash,access::can-delete";
 const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified,unix::mode";
 const MAX_PENDING_MONITOR_CHANGES: usize = 256;
 const MAX_HIDDEN_FILE_BYTES: u64 = 1024 * 1024;
@@ -160,6 +160,7 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         MetadataValue::Unknown
     };
     FileEntry {
+        thumbnail_path: trash_thumbnail_path(&location, &info),
         location,
         native_name,
         display_name: info.display_name().to_string(),
@@ -169,6 +170,20 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         mode: info_mode(&info),
         is_hidden: info_is_hidden(&info),
     }
+}
+
+fn trash_thumbnail_path(location: &Location, info: &gio::FileInfo) -> Option<PathBuf> {
+    if !location
+        .uri_value()
+        .is_some_and(|uri| uri.starts_with("trash:"))
+    {
+        return None;
+    }
+    let target = info.attribute_string(gio::FILE_ATTRIBUTE_STANDARD_TARGET_URI)?;
+    let (path, hostname) = glib::filename_from_uri(&target).ok()?;
+    hostname
+        .is_none_or(|host| host.eq_ignore_ascii_case("localhost"))
+        .then_some(path)
 }
 
 fn native_kind(file_type: fs::FileType, path: &Path) -> EntryKind {
@@ -305,6 +320,7 @@ fn scan_native_directory(
         entries.push(FileEntry {
             location: Location::local(path),
             display_name: native_name.to_string_lossy().into_owned(),
+            thumbnail_path: None,
             native_name,
             kind,
             size: MetadataValue::Unknown,

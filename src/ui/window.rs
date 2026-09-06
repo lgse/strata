@@ -294,6 +294,7 @@ fn present_target(
             search_preview.show(FileEntry {
                 location,
                 native_name: item.path.file_name().unwrap_or_default().to_os_string(),
+                thumbnail_path: None,
                 display_name: item.name,
                 kind: EntryKind::File,
                 size: MetadataValue::Unknown,

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod trash;
+
 use std::{
     error::Error,
     ffi::OsString,

@@ -29,6 +29,7 @@ fn recursive_search_activation_accepts_enter_and_right_arrow() {
 #[test]
 fn terminal_shortcut_prefers_one_selected_directory() {
     let entry = |name: &str, kind| FileEntry {
+        thumbnail_path: None,
         location: Location::local(format!("/fixture/{name}")),
         native_name: name.into(),
         display_name: name.into(),
@@ -55,6 +56,7 @@ fn duplicate_transfer_uses_the_selected_entries_parent() {
     let entry = |path: &str| FileEntry {
         location: Location::local(path),
         native_name: Path::new(path).file_name().unwrap_or_default().to_owned(),
+        thumbnail_path: None,
         display_name: path.to_owned(),
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Unknown,
@@ -282,6 +284,7 @@ fn delete_confirmation_labels_distinguish_files_and_folders() {
     let file = FileEntry {
         location: Location::local("/fixture/file.txt"),
         native_name: "file.txt".into(),
+        thumbnail_path: None,
         display_name: "file.txt".into(),
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Known(10),
@@ -452,6 +455,7 @@ fn only_the_trash_root_uses_the_aggregate_properties_size() {
 #[test]
 fn quick_preview_is_offered_only_for_supported_files() {
     let entry = |name: &str, kind| FileEntry {
+        thumbnail_path: None,
         location: Location::local(format!("/fixture/{name}")),
         native_name: name.into(),
         display_name: name.into(),
@@ -493,6 +497,7 @@ fn quick_preview_is_offered_only_for_supported_files() {
 #[test]
 fn printing_is_offered_for_text_code_images_and_pdfs() {
     let entry = |name: &str, kind| FileEntry {
+        thumbnail_path: None,
         location: Location::local(format!("/fixture/{name}")),
         native_name: name.into(),
         display_name: name.into(),
@@ -592,6 +597,7 @@ fn local_file_drops_prefer_move_while_external_drops_prefer_copy() {
 #[test]
 fn multi_selection_summary_lists_at_most_three_names() {
     let entry = |name: &str| FileEntry {
+        thumbnail_path: None,
         location: Location::local(format!("/fixture/{name}")),
         native_name: name.into(),
         display_name: name.into(),
@@ -1399,6 +1405,7 @@ fn trash_summary_does_not_stop_enumerating_siblings_after_one_branch_is_depth_tr
 fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
     let visible = FileEntry {
         location: Location::local("/fixture/photo"),
+        thumbnail_path: None,
         native_name: "photo".into(),
         display_name: "photo".into(),
         kind: crate::model::EntryKind::File,
@@ -1410,6 +1417,7 @@ fn entry_model_value_encodes_hidden_state_and_preserves_display_name() {
     let hidden = FileEntry {
         location: Location::local("/fixture/.config"),
         native_name: ".config".into(),
+        thumbnail_path: None,
         display_name: ".config".into(),
         kind: crate::model::EntryKind::Directory,
         size: crate::model::MetadataValue::Unknown,
@@ -1479,6 +1487,7 @@ fn pinning_requires_an_available_non_trash_directory() {
     let entry = |location, kind| FileEntry {
         location,
         native_name: "item".into(),
+        thumbnail_path: None,
         display_name: "item".into(),
         kind,
         size: crate::model::MetadataValue::Unknown,
@@ -1540,6 +1549,7 @@ fn repeated_lookups_of_one_suffix_agree() {
 #[test]
 fn retryable_delete_entries_keeps_only_the_named_locations() {
     let entry = |name: &str| FileEntry {
+        thumbnail_path: None,
         location: Location::local(format!("/fixture/{name}")),
         native_name: name.into(),
         display_name: name.into(),
@@ -1562,6 +1572,7 @@ fn retryable_delete_entries_keeps_only_the_named_locations() {
 fn retryable_delete_entries_is_empty_when_nothing_matches() {
     let entry = FileEntry {
         location: Location::local("/fixture/photo"),
+        thumbnail_path: None,
         native_name: "photo".into(),
         display_name: "photo".into(),
         kind: crate::model::EntryKind::File,

@@ -323,13 +323,18 @@ pub(super) fn set_thumbnail_or_icon(
     icon_size: i32,
     thumbnail_size: i32,
 ) {
-    let Some(path) = entry.location.native_path() else {
+    let Some(path) = entry.local_thumbnail_path() else {
         show_fallback_icon(image, fallback_icon, icon_size);
         return;
     };
     set_thumbnail_for_path(ThumbnailRequest {
         image,
         path,
+        kind: if entry.is_directory() {
+            None
+        } else {
+            thumbnail_kind(Path::new(&entry.display_name))
+        },
         modified: known_metadata(&entry.modified_unix_seconds),
         file_size: known_metadata(&entry.size),
         fallback_icon,
@@ -349,6 +354,7 @@ pub(super) fn set_thumbnail_or_icon_for_path(
     set_thumbnail_for_path(ThumbnailRequest {
         image,
         path,
+        kind: thumbnail_kind(path),
         modified: None,
         file_size: None,
         fallback_icon,
@@ -362,6 +368,7 @@ pub(super) fn set_thumbnail_or_icon_for_path(
 struct ThumbnailRequest<'a> {
     image: &'a gtk::Image,
     path: &'a Path,
+    kind: Option<ThumbnailKind>,
     modified: Option<i64>,
     file_size: Option<u64>,
     fallback_icon: &'a str,
@@ -385,7 +392,7 @@ fn set_thumbnail_for_path(request: ThumbnailRequest<'_>) {
     }
     let path = request.path.to_path_buf();
     let thumbnail_size = request.thumbnail_size.clamp(16, 256);
-    let Some(kind) = thumbnail_kind(&path) else {
+    let Some(kind) = request.kind else {
         set_fallback_icon(
             request.image,
             Some(request.path),
@@ -847,7 +854,7 @@ pub(super) fn note_metadata(path: &Path, modified: Option<i64>, file_size: Optio
     }
 }
 pub(super) fn note_metadata_entry(entry: &FileEntry) {
-    let Some(path) = entry.location.native_path() else {
+    let Some(path) = entry.local_thumbnail_path() else {
         return;
     };
     note_metadata(
