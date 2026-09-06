@@ -41,8 +41,6 @@ enum PendingMonitorChange {
     Rescan,
 }
 
-/// Key for the pending-change map. `None` is the rescan sentinel, which supersedes
-/// every per-entry change already queued.
 type PendingMonitorKey = Option<Location>;
 
 enum NativeEnumeration {
@@ -1063,9 +1061,7 @@ fn log_directory_load_started(request_id: RequestId, location: &Location) {
     );
 }
 
-/// GVfs backends (trash, in particular) report content changes against the watched directory
-/// itself. Listing that directory as one of its own children would splice a phantom entry into
-/// the pane, so only its departure is worth reporting.
+// GVfs can report content changes against the watched directory itself; keep only departures.
 fn monitored_change_target(
     watched: &Location,
     changed: Option<Location>,

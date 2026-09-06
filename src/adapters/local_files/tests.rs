@@ -362,8 +362,6 @@ fn a_directory_reporting_changes_against_itself_is_not_its_own_child() {
     );
 }
 
-/// Non-native locations (`trash:///`, GVfs mounts, ...) have no native path, so monitoring has to
-/// go through the URI. A `file://` URI exercises that path without needing a GVfs daemon.
 #[test]
 fn watching_a_uri_location_reports_created_entries() {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
