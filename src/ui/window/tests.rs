@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod type_to_search;
+
 use std::{cell::Cell, path::Path};
 
 use crate::{
@@ -274,9 +276,19 @@ fn type_to_search_accepts_printable_keys_without_command_modifiers() {
         Some('A')
     );
     assert_eq!(
-        type_to_search_query(gtk::gdk::Key::space, gtk::gdk::ModifierType::empty()),
-        Some(' ')
+        type_to_search_query(gtk::gdk::Key::period, gtk::gdk::ModifierType::empty()),
+        Some('.')
     );
+}
+
+#[test]
+fn type_to_search_leaves_space_for_quick_preview() {
+    for modifiers in [
+        gtk::gdk::ModifierType::empty(),
+        gtk::gdk::ModifierType::SHIFT_MASK,
+    ] {
+        assert_eq!(type_to_search_query(gtk::gdk::Key::space, modifiers), None);
+    }
 }
 
 #[test]

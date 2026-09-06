@@ -1175,11 +1175,14 @@ fn is_undo_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bo
 }
 
 fn type_to_search_query(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> Option<char> {
-    if modifiers.intersects(
-        gtk::gdk::ModifierType::CONTROL_MASK
-            | gtk::gdk::ModifierType::ALT_MASK
-            | gtk::gdk::ModifierType::SUPER_MASK,
-    ) {
+    // Space belongs to quick preview; focused text fields handle their own spaces.
+    if key == gtk::gdk::Key::space
+        || modifiers.intersects(
+            gtk::gdk::ModifierType::CONTROL_MASK
+                | gtk::gdk::ModifierType::ALT_MASK
+                | gtk::gdk::ModifierType::SUPER_MASK,
+        )
+    {
         return None;
     }
     key.to_unicode().filter(|character| !character.is_control())
