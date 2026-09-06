@@ -33,7 +33,7 @@ def binary_path() -> Path:
             f"{path} does not exist. Build it with `cargo build` or set "
             "STRATA_BINARY."
         )
-    return path
+    return path.resolve()
 
 
 def _entry_container(frame: "tree.Node") -> "tree.Node | None":

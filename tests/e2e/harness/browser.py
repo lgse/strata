@@ -319,7 +319,8 @@ class Strata:
 
         container = self.entry_container(directory)
         if container is None:
-            return self.empty_point(directory)
+            # The bottom edge can be Columns' paste-target footer, not its content.
+            return self.pane(directory).screen_bounds().center
         bounds = container.screen_bounds()
         entries = self.entries(directory)
         lowest = max(

@@ -10,10 +10,19 @@ import pytest
 from PIL import Image
 
 from harness import screenshots
-from harness.application import Application
+from harness.application import Application, binary_path
+from harness.browser import Strata
+from harness.tree import Bounds
 from harness.environment import process_environment
 from harness.fixtures import FixtureTree
 from harness.process import ManagedProcess, terminate
+
+
+def test_empty_pane_context_target_avoids_the_paste_footer():
+    page = Mock(spec=Strata)
+    page.entry_container.return_value = None
+    page.pane.return_value.screen_bounds.return_value = Bounds(10, 20, 300, 600)
+    assert Strata.background_point(page, "empty") == (160, 320)
 
 
 def test_fixed_fixture_refuses_existing_directory(tmp_path):
@@ -74,6 +83,14 @@ def test_session_overrides_do_not_leak(monkeypatch):
     for name in ("GTK_MODULES", "FONTCONFIG_FILE", "DBUS_SESSION_BUS_ADDRESS", "AT_SPI_BUS_ADDRESS", "WAYLAND_DISPLAY", "LD_PRELOAD"):
         monkeypatch.setenv(name, "private-session")
     assert process_environment() == {"PATH": os.environ["PATH"]}
+
+
+def test_relative_binary_override_survives_the_fixture_working_directory(monkeypatch, tmp_path):
+    binary = tmp_path / "strata"
+    binary.touch()
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("STRATA_BINARY", "strata")
+    assert binary_path() == binary
 
 
 def test_application_start_failure_stops_process(monkeypatch, tmp_path):
