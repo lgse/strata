@@ -558,6 +558,81 @@ fn transfer_failure_reports_moves_completed_before_the_error() {
     )));
 }
 
+#[test]
+fn a_completed_copy_selects_the_created_destination_names() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    browser.transfer(
+        Location::local("/fixture"),
+        vec![PasteItem {
+            source: Location::local("/elsewhere/report.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        false,
+    );
+
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::TransferCompleted { select_names }
+            if select_names.as_slice() == ["report.txt"]
+    )));
+}
+
+#[test]
+fn a_completed_move_selects_nothing() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    browser.transfer(
+        Location::local("/fixture/archive"),
+        vec![PasteItem {
+            source: Location::local("/fixture/report.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        true,
+    );
+
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::TransferCompleted { select_names }
+            if select_names.is_empty()
+    )));
+}
+
+#[test]
+fn a_failed_copy_selects_nothing() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(false));
+    browser
+        .transfer_destination
+        .replace(Some(Location::local("/fixture")));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::TransferFailed {
+        request_id,
+        completed_locations: Vec::new(),
+        message: "injected failure".to_owned(),
+    });
+
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::TransferCompleted { .. }))
+    );
+}
+
 thread_local! {
     static UNDO_MOVE_REQUESTS: RefCell<Vec<Vec<MoveRecord>>> = const { RefCell::new(Vec::new()) };
 }
@@ -597,7 +672,16 @@ impl OperationProvider for ImmediateOperationProvider {
     fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         emit(OperationEvent::Pasted {
             request_id: request.id,
-            locations: request.items.into_iter().map(|item| item.source).collect(),
+            locations: request
+                .items
+                .iter()
+                .map(|item| item.source.clone())
+                .collect(),
+            destinations: request
+                .items
+                .into_iter()
+                .filter_map(|item| item.source.transfer_target(&request.destination))
+                .collect(),
         });
         LoadHandle::new(|| {})
     }
@@ -616,9 +700,10 @@ impl OperationProvider for ImmediateOperationProvider {
             request_id: request.id,
             locations: request
                 .items
-                .into_iter()
-                .map(|item| item.record.current)
+                .iter()
+                .map(|item| item.record.current.clone())
                 .collect(),
+            destinations: Vec::new(),
         });
         LoadHandle::new(|| {})
     }
@@ -1033,6 +1118,7 @@ fn undoing_a_move_leaves_a_pending_cut_untouched() {
     emit(OperationEvent::Pasted {
         request_id,
         locations: vec![record.current.clone()],
+        destinations: Vec::new(),
     });
 
     assert!(events.borrow().iter().any(|event| matches!(

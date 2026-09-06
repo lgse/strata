@@ -556,15 +556,14 @@ impl ViewState {
                 if !select_name.is_empty() {
                     self.pending_select.borrow_mut().push(select_name.clone());
                 }
-                if let Some(dest) = self.pending_navigate.take() {
-                    self.browser.navigate(dest);
-                } else {
-                    self.browser.reload_active();
-                }
+                self.select_after_transfer();
             }
-            BrowserEvent::TransferCompleted => {
-                if let Some(dest) = self.pending_navigate.take() {
-                    self.browser.navigate(dest);
+            BrowserEvent::TransferCompleted { select_names } => {
+                if !select_names.is_empty() {
+                    self.pending_select
+                        .borrow_mut()
+                        .extend(select_names.iter().cloned());
+                    self.select_after_transfer();
                 }
             }
         }
@@ -572,6 +571,17 @@ impl ViewState {
             self.refresh_active_path_rows();
         }
         self.mode_views.borrow_mut().handle(event);
+    }
+
+    /// Queues the pending selection, then reloads so `LoadFinished` applies
+    /// it once the created items exist. A pending navigation takes precedence:
+    /// it lands on the destination, and `LoadFinished` selects there.
+    fn select_after_transfer(&self) {
+        if let Some(dest) = self.pending_navigate.take() {
+            self.browser.navigate(dest);
+        } else {
+            self.browser.reload_active();
+        }
     }
 
     fn event_refreshes_active_path(event: &BrowserEvent) -> bool {

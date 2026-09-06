@@ -678,7 +678,9 @@ fn sidebar_sync_runs_only_for_location_changes() {
         }
     ));
     assert!(!SidebarState::event_changes_active_place(
-        &BrowserEvent::TransferCompleted
+        &BrowserEvent::TransferCompleted {
+            select_names: Vec::new(),
+        }
     ));
 }
 

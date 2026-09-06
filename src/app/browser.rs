@@ -198,7 +198,11 @@ pub enum BrowserEvent {
     ArchiveCompleted {
         select_name: String,
     },
-    TransferCompleted,
+    TransferCompleted {
+        /// Display names of the items the transfer created, so the view can
+        /// select and reveal them.
+        select_names: Vec<String>,
+    },
 }
 
 /// Events dispatch by reference: payloads move once into authoritative state,
@@ -1786,8 +1790,18 @@ impl Browser {
                         select_name: first_name.unwrap_or_default(),
                     });
                 }
-                OperationEvent::Pasted { .. } => {
-                    browser.emit(BrowserEvent::TransferCompleted);
+                OperationEvent::Pasted { destinations, .. } => {
+                    // Only a copy leaves new items to select; a move's
+                    // destination already carries the source's name.
+                    let select_names = if moving == Some(false) {
+                        destinations
+                            .iter()
+                            .map(|location| location.display_name())
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+                    browser.emit(BrowserEvent::TransferCompleted { select_names });
                     for location in &refresh_locations {
                         if location.native_path().is_none() {
                             browser.refresh_columns_at(location);
