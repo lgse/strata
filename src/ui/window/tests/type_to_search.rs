@@ -26,12 +26,12 @@ impl PreviewProvider for TextPreview {
 }
 
 #[test]
-fn space_toggles_preview_without_starting_type_to_search() {
+fn type_to_search_shortcuts_work_in_all_view_modes() {
     const CHILD: &str = "STRATA_SPACE_PREVIEW_TEST_CHILD";
     if env::var_os(CHILD).is_none() {
         let sandbox = tempfile::tempdir().expect("isolated preferences");
         let status = std::process::Command::new(env::current_exe().expect("test executable"))
-            .args(["--exact", "ui::window::tests::type_to_search::space_toggles_preview_without_starting_type_to_search", "--nocapture"])
+            .args(["--exact", "ui::window::tests::type_to_search::type_to_search_shortcuts_work_in_all_view_modes", "--nocapture"])
             .env(CHILD, "1")
             .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
             .env("XDG_CACHE_HOME", sandbox.path().join("cache"))
@@ -124,6 +124,22 @@ fn space_toggles_preview_without_starting_type_to_search() {
     }
 
     preferences.set_type_to_search(true);
+    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+        view.set_view_mode(mode);
+        browser.focus_active();
+        wait_until(|| view.item_view_has_focus());
+        assert!(press(&keys, gtk::gdk::Key::slash));
+        assert!(view.filter_has_focus(), "slash opens filter: {mode:?}");
+        let focused = gtk::prelude::RootExt::focus(&window)
+            .expect("filter focus")
+            .downcast::<gtk::Text>()
+            .expect("entry text");
+        assert_eq!(focused.text(), "", "slash does not seed query: {mode:?}");
+        assert!(press(&keys, gtk::gdk::Key::Escape));
+    }
+
+    browser.focus_active();
+    wait_until(|| view.item_view_has_focus());
     press(&keys, gtk::gdk::Key::n);
     assert!(
         view.filter_has_focus(),

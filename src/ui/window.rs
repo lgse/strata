@@ -51,9 +51,21 @@ struct TypeToSearch {
     preferences: Rc<ThemeManager>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TypeToSearchQuery {
+    Empty,
+    Character(char),
+}
+
 impl TypeToSearch {
-    fn show(&self, query: char) -> bool {
-        self.preferences.type_to_search() && self.view.show_filter_with_query(&query.to_string())
+    fn show(&self, query: TypeToSearchQuery) -> bool {
+        self.preferences.type_to_search()
+            && match query {
+                TypeToSearchQuery::Empty => self.view.show_filter(),
+                TypeToSearchQuery::Character(character) => {
+                    self.view.show_filter_with_query(&character.to_string())
+                }
+            }
     }
 }
 
@@ -1174,7 +1186,10 @@ fn is_undo_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bo
         && matches!(key, gtk::gdk::Key::z | gtk::gdk::Key::Z)
 }
 
-fn type_to_search_query(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> Option<char> {
+fn type_to_search_query(
+    key: gtk::gdk::Key,
+    modifiers: gtk::gdk::ModifierType,
+) -> Option<TypeToSearchQuery> {
     // Space belongs to quick preview; focused text fields handle their own spaces.
     if key == gtk::gdk::Key::space
         || modifiers.intersects(
@@ -1185,7 +1200,12 @@ fn type_to_search_query(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -
     {
         return None;
     }
-    key.to_unicode().filter(|character| !character.is_control())
+    if key == gtk::gdk::Key::slash {
+        return Some(TypeToSearchQuery::Empty);
+    }
+    key.to_unicode()
+        .filter(|character| !character.is_control())
+        .map(TypeToSearchQuery::Character)
 }
 
 fn is_open_terminal_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
