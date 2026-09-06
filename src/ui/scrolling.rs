@@ -8,7 +8,6 @@ use std::rc::Rc;
 use std::time::Duration;
 
 use gtk::glib;
-use gtk::graphene;
 use gtk::prelude::*;
 
 /// Pointer travel from the anchor that is treated as "not moving yet".
@@ -246,15 +245,21 @@ pub(super) struct Page {
     distance: f64,
 }
 
-/// Brings the item a page move selected back into sight. A grouped view renders
-/// through several collection views inside one scrolling area, none of which drives
-/// the scrolling itself, so it scrolls by the distance the focus travelled instead.
+/// Brings the item a page move selected back into sight.
+///
+/// GridView's `scroll_to` uses estimated cell sizes, which lag behind a thumbnail
+/// resize or a preview split changing the column count. Pixel-scroll the viewport
+/// instead. List views and grouped stacks still scroll by item or by distance.
 pub(super) fn reveal_selection(
     view: &gtk::Widget,
     scroll: &gtk::ScrolledWindow,
     direction: i32,
     page: &Page,
 ) {
+    if view.is::<gtk::GridView>() {
+        advance(&scroll.vadjustment(), f64::from(direction) * page.distance);
+        return;
+    }
     if scroll.child().is_some_and(|child| &child == view)
         && let Some(position) = selected_position(view)
     {
@@ -314,35 +319,88 @@ pub(super) fn page(view: &gtk::Widget, scroll: &gtk::ScrolledWindow) -> Page {
     }
 }
 
-/// Height of a realized item and the number of items per row, measured from the
-/// widgets the view currently has bound.
 fn item_geometry(view: &gtk::Widget) -> Option<(f64, usize)> {
+    if view.is::<gtk::GridView>() {
+        return grid_geometry(view);
+    }
+    list_row_geometry(view)
+}
+
+/// Grid columns follow the live allocation, so opening the preview pane or
+/// dragging the thumbnail slider changes the page immediately. Cell size comes
+/// from the card's size request / measure, not recycled allocated bounds.
+fn grid_geometry(view: &gtk::Widget) -> Option<(f64, usize)> {
+    let (col_pitch, row_pitch) = grid_cell_pitch(view)?;
+    let width = f64::from(view.width().max(0));
+    let (min_columns, max_columns) = view
+        .downcast_ref::<gtk::GridView>()
+        .map(|grid| (grid.min_columns(), grid.max_columns()))
+        .unwrap_or((1, 20));
+    let columns = grid_page_columns(width, col_pitch, min_columns, max_columns);
+    Some((row_pitch, columns))
+}
+
+fn grid_cell_pitch(view: &gtk::Widget) -> Option<(f64, f64)> {
     let mut child = view.first_child();
-    let mut first: Option<graphene::Rect> = None;
-    let mut columns = 0;
     while let Some(widget) = child {
         child = widget.next_sibling();
         if !widget.is_visible() {
             continue;
         }
-        let Some(bounds) = widget.compute_bounds(view) else {
-            continue;
-        };
-        match first {
-            None => {
-                first = Some(bounds);
-                columns = 1;
-            }
-            Some(first) => {
-                if (bounds.y() - first.y()).abs() > f32::EPSILON {
-                    break;
-                }
-                columns += 1;
-            }
+        if let Some(pitch) = cell_pitch_from_widget(&widget) {
+            return Some(pitch);
         }
     }
-    let height = f64::from(first?.height());
-    (height > 0.0).then_some((height, columns.max(1)))
+    None
+}
+
+fn cell_pitch_from_widget(widget: &gtk::Widget) -> Option<(f64, f64)> {
+    let (_, nat_w, _, _) = widget.measure(gtk::Orientation::Horizontal, -1);
+    let (_, nat_h, _, _) = widget.measure(gtk::Orientation::Vertical, -1);
+    if nat_w > 0 && nat_h > 0 {
+        return Some((f64::from(nat_w), f64::from(nat_h)));
+    }
+    let mut inner = widget.first_child();
+    while let Some(child) = inner {
+        if child.has_css_class("grid-card") {
+            let width = child.width_request();
+            let height = child.height_request();
+            if width > 0 && height > 0 {
+                return Some((f64::from(width), f64::from(height)));
+            }
+        }
+        inner = child.next_sibling();
+    }
+    None
+}
+
+fn grid_page_columns(width: f64, col_pitch: f64, min_columns: u32, max_columns: u32) -> usize {
+    let min = min_columns.max(1);
+    let max = max_columns.max(min);
+    if col_pitch <= 0.0 || width <= 0.0 {
+        return min as usize;
+    }
+    ((width / col_pitch).floor() as u32).clamp(min, max) as usize
+}
+
+fn list_row_geometry(view: &gtk::Widget) -> Option<(f64, usize)> {
+    let mut child = view.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        if !widget.is_visible() {
+            continue;
+        }
+        let (_, nat_h, _, _) = widget.measure(gtk::Orientation::Vertical, -1);
+        if nat_h > 0 {
+            return Some((f64::from(nat_h), 1));
+        }
+        if let Some(bounds) = widget.compute_bounds(view)
+            && bounds.height() > 0.0
+        {
+            return Some((f64::from(bounds.height()), 1));
+        }
+    }
+    None
 }
 
 /// Rows to move for one page, keeping a row of overlap so the reader retains

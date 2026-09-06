@@ -7,19 +7,34 @@ use std::{cell::Cell, path::Path};
 use crate::{
     model::Location,
     services::{BuildKind, ReleaseMetadata},
+    test_support::gtk_test,
+    ui::theme::ThemeManager,
 };
 
 use super::{
     MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, TypeToSearchQuery,
-    accepts_sidebar_reorder_payload, begin_media_release, is_open_terminal_shortcut,
-    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location,
-    is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction, media_release_label,
-    mount_release_action, mouse_history_action, page_direction, parse_pinned_drag_source,
-    parse_pinned_places, pin_status, remove_pinned_place, reorder_pinned_places, reorder_places,
-    resolve_place_order, serialize_pinned_places, should_show_standard_place,
-    sidebar_accepts_file_drop, sidebar_update_label, standard_place, type_to_search_query,
-    vim_focus_direction, volume_release_action,
+    accepts_sidebar_reorder_payload, begin_media_release, browser_for_window,
+    browser_mode_for_digit, is_open_terminal_shortcut, is_sidebar_focus_shortcut, is_smb_location,
+    is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction,
+    media_release_label, mount_release_action, mouse_history_action, page_direction,
+    parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
+    reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
+    should_show_standard_place, sidebar_accepts_file_drop, sidebar_update_label, standard_place,
+    type_to_search_query, vim_focus_direction, volume_release_action,
 };
+
+#[test]
+fn startup_applies_disabled_single_click_previews_before_the_first_click() {
+    gtk_test(
+        "ui::window::tests::startup_applies_disabled_single_click_previews_before_the_first_click",
+        || {
+            let manager = ThemeManager::shared();
+            manager.set_single_click_previews(false);
+            let browser = browser_for_window(&manager);
+            assert!(!browser.single_click_previews_enabled());
+        },
+    );
+}
 
 fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
     ReleaseMetadata {
@@ -762,4 +777,28 @@ fn sidebar_file_drops_accept_local_places_but_not_virtual_locations() {
     assert!(!sidebar_accepts_file_drop(&Location::uri(
         "smb://host.example/share"
     )));
+}
+
+#[test]
+fn control_digits_select_each_browser_presentation() {
+    use super::BrowserMode;
+
+    assert_eq!(
+        browser_mode_for_digit(gtk::gdk::Key::_1),
+        Some(BrowserMode::Columns)
+    );
+    assert_eq!(
+        browser_mode_for_digit(gtk::gdk::Key::_2),
+        Some(BrowserMode::Icons)
+    );
+    assert_eq!(
+        browser_mode_for_digit(gtk::gdk::Key::_3),
+        Some(BrowserMode::List)
+    );
+    assert_eq!(
+        browser_mode_for_digit(gtk::gdk::Key::KP_3),
+        Some(BrowserMode::List)
+    );
+    assert_eq!(browser_mode_for_digit(gtk::gdk::Key::_4), None);
+    assert_eq!(browser_mode_for_digit(gtk::gdk::Key::a), None);
 }

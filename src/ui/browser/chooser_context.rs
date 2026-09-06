@@ -26,7 +26,7 @@ fn menu(
     options: &[(Action, &str, &str, &str, bool)],
     run: impl Fn(Action) + 'static,
 ) -> (gtk::Popover, gtk::ScrolledWindow) {
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let content = super::super::accessibility::menu_box();
     content.add_css_class("folder-context-menu");
     content.add_css_class("chooser-context-menu");
     let (popover, scroll) = context_menu_popover(&content);

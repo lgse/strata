@@ -1,0 +1,13 @@
+diff --git a/src/ui/browser/clipboard.rs b/src/ui/browser/clipboard.rs
+--- a/src/ui/browser/clipboard.rs
++++ b/src/ui/browser/clipboard.rs
+@@ -8387,6 +8387,9 @@ fn preferred_file_drop_action(actions: gtk::gdk::DragAction, local: bool) -> gtk
+ }
+ 
+ pub(crate) fn locations_from_file_list_value(value: &glib::Value) -> Option<Vec<Location>> {
++    if true {
++        return None;
++    }
+     let files = value.get::<gtk::gdk::FileList>().ok()?;
+     let locations = files
+         .files()
