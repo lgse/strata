@@ -63,6 +63,57 @@ fn icon_card_bounds(root: &gtk::Widget) -> Vec<(i32, i32, i32, i32)> {
 }
 
 #[test]
+fn columns_rename_hides_and_restores_the_size_badge() {
+    gtk_test(
+        "ui::browser::inline_edit::tests::columns_rename_hides_and_restores_the_size_badge",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            let name = "synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt";
+            std::fs::write(fixture.path().join(name), b"body").expect("fixture file");
+
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            view.set_view_mode(BrowserMode::Columns);
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(420)
+                .default_height(300)
+                .build();
+            window.present();
+            let browser = view.browser();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|snapshot| !snapshot.loading && snapshot.count == 1)
+            });
+            browser.select(0, 0);
+            wait_until(|| view.state.begin_rename());
+            let size = view
+                .state
+                .active_rename
+                .borrow()
+                .as_ref()
+                .map(|rename| rename.size.clone())
+                .expect("a Columns rename is open");
+
+            wait_until(|| !size.label().is_empty());
+            assert!(
+                !size.is_visible(),
+                "the badge must stay hidden while renaming"
+            );
+            assert!(view.state.cancel_rename());
+            assert!(size.is_visible(), "cancelling must restore the size badge");
+
+            browser.clear_observer();
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn submitting_an_invalid_rename_flags_the_field_in_every_view_mode() {
     gtk_test(
         "ui::browser::inline_edit::tests::submitting_an_invalid_rename_flags_the_field_in_every_view_mode",

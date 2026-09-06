@@ -153,8 +153,13 @@ impl ViewState {
                                     .and_downcast::<gtk::Label>()
                             {
                                 let text = column_size_text(Some(entry));
+                                let actively_renaming = self
+                                    .active_rename
+                                    .borrow()
+                                    .as_ref()
+                                    .is_some_and(|rename| rename.size == size);
                                 size.set_label(&text);
-                                size.set_visible(!text.is_empty());
+                                size.set_visible(!text.is_empty() && !actively_renaming);
                             }
                             true
                         });

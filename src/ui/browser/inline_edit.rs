@@ -196,8 +196,6 @@ impl ViewState {
         field.set_text(&entry.display_name);
         label.set_visible(false);
         spacer.set_visible(false);
-        // The size badge floats above the row's trailing edge; hide it while
-        // renaming so it can't cover the end of a long name or its extension.
         size.set_visible(false);
         field.set_visible(true);
         field.grab_focus();
@@ -225,7 +223,7 @@ impl ViewState {
         rename.field.set_sensitive(true);
         rename.label.set_visible(true);
         rename.spacer.set_visible(true);
-        rename.size.set_visible(true);
+        rename.size.set_visible(!rename.size.label().is_empty());
         true
     }
 
