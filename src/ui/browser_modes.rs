@@ -554,6 +554,14 @@ impl ModeViews {
         self.active_rename.borrow().is_some()
     }
 
+    #[cfg(test)]
+    pub(in crate::ui) fn active_rename_field(&self) -> Option<gtk::Entry> {
+        self.active_rename
+            .borrow()
+            .as_ref()
+            .map(|rename| rename.field.clone())
+    }
+
     pub fn new_entry_is_active(&self) -> bool {
         self.active_new_entry.borrow().is_some()
     }
