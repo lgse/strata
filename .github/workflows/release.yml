@@ -367,6 +367,101 @@ jobs:
             gh release create "v$VERSION" dist/* --verify-tag --generate-notes --title "Strata v$VERSION"
           fi
 
+  announce:
+    name: Announce release on Discord
+    needs: [prepare, release]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+
+    steps:
+      - name: Publish Discord announcement
+        env:
+          ANNOUNCEMENTS_WEBHOOK: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK }}
+          GENERAL_WEBHOOK: ${{ secrets.DISCORD_GENERAL_WEBHOOK }}
+          GH_TOKEN: ${{ github.token }}
+          MODE: ${{ inputs.mode }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import urllib.request
+
+          repository = os.environ["GITHUB_REPOSITORY"]
+          version = os.environ["VERSION"]
+          mode = os.environ["MODE"]
+          tag = f"v{version}"
+          release_api = f"https://api.github.com/repos/{repository}/releases/tags/{tag}"
+          request = urllib.request.Request(
+              release_api,
+              headers={
+                  "Accept": "application/vnd.github+json",
+                  "Authorization": f"Bearer {os.environ['GH_TOKEN']}",
+                  "User-Agent": "strata-release-workflow",
+                  "X-GitHub-Api-Version": "2022-11-28",
+              },
+          )
+          with urllib.request.urlopen(request) as response:
+              release = json.load(response)
+
+          if mode == "stable":
+              channel = "Stable"
+              color = 0x9ECE6A
+          elif mode == "rc":
+              channel = "Release Candidate"
+              color = 0xE0AF68
+          else:
+              channel = f"Preview · {mode.title()}"
+              color = 0x7AA2F7
+
+          notes = (release.get("body") or "See GitHub for release notes.").strip()
+          if len(notes) > 3000:
+              notes = notes[:2997].rstrip() + "..."
+          announcement = {
+              "allowed_mentions": {"parse": []},
+              "embeds": [
+                  {
+                      "title": f"Strata {tag} is available",
+                      "url": release["html_url"],
+                      "description": notes,
+                      "color": color,
+                      "fields": [
+                          {"name": "Channel", "value": channel, "inline": True},
+                          {"name": "Version", "value": tag, "inline": True},
+                      ],
+                      "footer": {"text": "Strata · Navigate every layer."},
+                  }
+              ],
+          }
+
+          def post(webhook, payload, wait=False):
+              separator = "&" if "?" in webhook else "?"
+              url = webhook + (f"{separator}wait=true" if wait else "")
+              request = urllib.request.Request(
+                  url,
+                  data=json.dumps(payload).encode(),
+                  headers={"Content-Type": "application/json", "User-Agent": "strata-release-workflow"},
+                  method="POST",
+              )
+              with urllib.request.urlopen(request) as response:
+                  body = response.read()
+                  return json.loads(body) if body else None
+
+          message = post(os.environ["ANNOUNCEMENTS_WEBHOOK"], announcement, wait=True)
+          announcement_url = (
+              "https://discord.com/channels/1546233919609774181/"
+              f"1546247479870226472/{message['id']}"
+          )
+          post(
+              os.environ["GENERAL_WEBHOOK"],
+              {
+                  "content": f"**Strata {tag}** ({channel}) is available. Read the announcement: {announcement_url}",
+                  "allowed_mentions": {"parse": []},
+              },
+          )
+          PY
+
   package:
     name: Prepare AUR package update
     needs: [prepare, release]
