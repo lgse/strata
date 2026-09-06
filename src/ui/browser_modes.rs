@@ -825,6 +825,11 @@ impl ModeViews {
         self.single_click_previews.set(enabled);
     }
 
+    #[cfg(test)]
+    pub(in crate::ui) fn single_click_previews_enabled(&self) -> bool {
+        self.single_click_previews.get()
+    }
+
     pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {
         match mode {
             BrowserMode::Columns => {}
