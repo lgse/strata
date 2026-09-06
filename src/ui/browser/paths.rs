@@ -9,6 +9,38 @@ pub(super) fn can_pin_entry(entry: &FileEntry, status: PinStatus) -> bool {
     entry.is_directory() && !is_trash_location(&entry.location) && status == PinStatus::Available
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum PinAction {
+    Pin,
+    Unpin,
+}
+
+impl PinAction {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Pin => "Pin",
+            Self::Unpin => "Unpin",
+        }
+    }
+}
+
+/// `None` means the location can never be pinned, so the control is hidden
+/// rather than shown in an insensitive state some themes render unreadably.
+pub(super) fn pin_action_for(
+    location: &Location,
+    is_directory: bool,
+    status: PinStatus,
+) -> Option<PinAction> {
+    if !is_directory || is_trash_location(location) {
+        return None;
+    }
+    match status {
+        PinStatus::Available => Some(PinAction::Pin),
+        PinStatus::Pinned => Some(PinAction::Unpin),
+        PinStatus::Unavailable => None,
+    }
+}
+
 pub(in crate::ui) fn is_trash_root(location: &Location) -> bool {
     location.uri_value() == Some("trash:///")
 }

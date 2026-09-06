@@ -159,7 +159,7 @@ pub(super) fn modal_layout_with_tone(
     confirm_label: &str,
     tone: ModalTone,
 ) -> ModalLayout {
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let content = super::accessibility::dialog_box(title);
     content.add_css_class("action-dialog");
     content.set_halign(gtk::Align::Center);
     content.set_valign(gtk::Align::Center);

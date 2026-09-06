@@ -75,6 +75,7 @@ pub(super) use crate::ui::modal::{
 };
 
 type PinHandler = Rc<dyn Fn(Location, String)>;
+type UnpinHandler = Rc<dyn Fn(&Location)>;
 type PinStatusHandler = Rc<dyn Fn(&Location) -> PinStatus>;
 type PrintHandler = Rc<dyn Fn(FileEntry)>;
 
@@ -153,6 +154,7 @@ pub(super) struct ViewState {
     file_operation_progress: Cell<(usize, usize)>,
     transfer_progress: Cell<Option<(usize, u64, Option<u64>)>>,
     pin_handler: RefCell<Option<PinHandler>>,
+    unpin_handler: RefCell<Option<UnpinHandler>>,
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     print_handler: RefCell<Option<PrintHandler>>,
     pending_select: RefCell<Vec<String>>,
@@ -334,6 +336,7 @@ impl BrowserView {
             file_operation_progress: Cell::new((0, 0)),
             transfer_progress: Cell::new(None),
             pin_handler: RefCell::new(None),
+            unpin_handler: RefCell::new(None),
             pin_status_handler: RefCell::new(None),
             print_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
@@ -457,8 +460,14 @@ impl BrowserView {
         self.state.browser.clone()
     }
 
-    pub(super) fn set_pin_handlers(&self, handler: PinHandler, status_handler: PinStatusHandler) {
+    pub(super) fn set_pin_handlers(
+        &self,
+        handler: PinHandler,
+        unpin_handler: UnpinHandler,
+        status_handler: PinStatusHandler,
+    ) {
         self.state.pin_handler.replace(Some(handler));
+        self.state.unpin_handler.replace(Some(unpin_handler));
         self.state.pin_status_handler.replace(Some(status_handler));
     }
 
@@ -574,7 +583,8 @@ impl BrowserView {
         });
     }
 
-    /// Groups List and Icons entries under file-type headings. The Columns mode is unaffected.
+    /// Groups List entries under file-type headings. Icons and Columns keep the
+    /// preference but do not apply it.
     pub fn set_group_by_type(&self, enabled: bool) {
         self.state
             .mode_views
@@ -823,6 +833,16 @@ impl BrowserView {
             .set_single_click_previews(enabled);
     }
 
+    #[cfg(test)]
+    pub(in crate::ui) fn single_click_previews_enabled(&self) -> bool {
+        self.state.single_click_previews.get()
+            && self
+                .state
+                .mode_views
+                .borrow()
+                .single_click_previews_enabled()
+    }
+
     pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {
         if mode == BrowserMode::Columns {
             self.state.columns_click_activation.set(activation);
@@ -871,8 +891,13 @@ impl BrowserView {
     }
 
     pub fn paste(&self) {
-        let depth = self.state.destination_depth();
-        if let Some(location) = depth.and_then(|depth| self.state.browser.location_at(depth)) {
+        self.state.sync_mode_selection();
+        let selected = self.state.browser.selected_entries();
+        let column = self
+            .state
+            .destination_depth()
+            .and_then(|depth| self.state.browser.location_at(depth));
+        if let Some(location) = paste_destination(&selected, column) {
             self.state.paste_into(location);
         }
     }
@@ -1093,6 +1118,7 @@ impl BrowserView {
             return false;
         };
         let page = super::scrolling::page(&view, &scroll);
+        self.state.mode_views.borrow().suppress_focus_scroll();
         self.state.browser.page_selection(direction, page.items);
         super::scrolling::reveal_selection(&view, &scroll, direction, &page);
         true
@@ -1242,14 +1268,7 @@ impl ViewState {
             if !state.input_ownership.borrow_mut().pointer_motion(position) {
                 return;
             }
-            let picked = state.overlay.pick(x, y, gtk::PickFlags::DEFAULT);
-            let depth = picked.and_then(|picked| {
-                state.columns.borrow().iter().position(|column| {
-                    picked == column.shell.upcast_ref::<gtk::Widget>().clone()
-                        || picked.is_ancestor(&column.shell)
-                })
-            });
-            state.hovered_column.set(depth);
+            state.hovered_column.set(state.column_depth_at(x, y));
             state.overlay.remove_css_class("keyboard-navigation");
             state.refresh_destination_style();
         });
@@ -1258,8 +1277,9 @@ impl ViewState {
         click.set_button(0);
         click.set_propagation_phase(gtk::PropagationPhase::Capture);
         let weak = Rc::downgrade(self);
-        click.connect_pressed(move |_, _, _, _| {
+        click.connect_pressed(move |_, _, x, y| {
             if let Some(state) = weak.upgrade() {
+                state.hovered_column.set(state.column_depth_at(x, y));
                 state.pointer_navigation();
             }
         });
@@ -1274,6 +1294,14 @@ impl ViewState {
             glib::Propagation::Proceed
         });
         self.overlay.add_controller(scroll);
+    }
+
+    fn column_depth_at(&self, x: f64, y: f64) -> Option<usize> {
+        let picked = self.overlay.pick(x, y, gtk::PickFlags::DEFAULT)?;
+        self.columns.borrow().iter().position(|column| {
+            picked == column.shell.upcast_ref::<gtk::Widget>().clone()
+                || picked.is_ancestor(&column.shell)
+        })
     }
 
     fn pointer_navigation(&self) {
@@ -1349,6 +1377,13 @@ impl ViewState {
             column.selection.select_all();
             column.list.grab_focus();
         }
+    }
+}
+
+fn paste_destination(selected: &[FileEntry], column: Option<Location>) -> Option<Location> {
+    match selected {
+        [folder] if folder.is_directory() => Some(folder.location.clone()),
+        _ => column,
     }
 }
 
