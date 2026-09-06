@@ -29,7 +29,8 @@ complete Rust test suite on the same private Xvfb/D-Bus infrastructure with:
 
 This requires Xvfb and AT-SPI but not the Python E2E packages. It isolates
 application preferences while retaining access to the installed Cargo/Rust
-toolchains. A startup failure aborts; it never falls back to the real display.
+toolchains, and disables accessibility bridging for Rust tests. A startup failure
+aborts; it never falls back to the real display.
 The E2E runner likewise clears inherited display variables before startup.
 
 ### Dependencies
