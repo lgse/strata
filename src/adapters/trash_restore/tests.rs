@@ -255,6 +255,80 @@ fn lexical_normalize_collapses_dot_and_dotdot() {
 }
 
 #[test]
+fn relative_trashinfo_path_matches_the_topdir_resolved_orig_path() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let trash = volume_trash(fixture.path(), 1000);
+    fs::write(trash.join("files/report.txt"), b"ok").expect("source");
+    fs::write(
+        trash.join("info/report.txt.trashinfo"),
+        "[Trash Info]\nPath=Documents/report.txt\nDeletionDate=2026-01-01T00:00:00\n",
+    )
+    .expect("info");
+
+    let found = find_trash_item_by_orig_path(&trash, &fixture.path().join("Documents/report.txt"))
+        .expect("relative Path= resolves against the topdir");
+
+    assert_eq!(found.source_path, trash.join("files/report.txt"));
+    assert_eq!(found.trash_root, trash);
+    assert!(
+        find_trash_item_by_orig_path(&trash, Path::new("/elsewhere/Documents/report.txt"))
+            .is_none()
+    );
+}
+
+#[test]
+fn gvfs_named_volume_item_is_discovered_from_its_relative_trashinfo() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let uid = 1000;
+    let trash = volume_trash(fixture.path(), uid);
+    fs::write(trash.join("files/report.txt"), b"ok").expect("source");
+    fs::write(
+        trash.join("info/report.txt.trashinfo"),
+        "[Trash Info]\nPath=Documents/report.txt\nDeletionDate=2026-01-01T00:00:00\n",
+    )
+    .expect("info");
+    let context = context_for(&fixture.path().join("home-trash"), uid, fixture.path());
+    let escaped = format!(
+        "trash:///{}",
+        glib::Uri::escape_string(
+            &format!("{}/.Trash-{uid}/files/report.txt", fixture.path().display())
+                .replace('/', "\\"),
+            None,
+            false,
+        )
+    );
+
+    let discovered = discover_trash_item(
+        &Location::uri(escaped),
+        None,
+        Some(&fixture.path().join("Documents/report.txt")),
+        &context,
+    )
+    .expect("volume item found through its orig path");
+
+    assert_eq!(discovered.source_path, trash.join("files/report.txt"));
+    assert_eq!(
+        discovered.trash_info.as_deref(),
+        Some(trash.join("info/report.txt.trashinfo").as_path())
+    );
+}
+
+#[test]
+fn trash_item_from_files_path_requires_a_files_entry() {
+    let item = trash_item_from_files_path(Path::new("/media/usb/.Trash-1000/files/report.txt"))
+        .expect("files entry");
+    assert_eq!(item.trash_root, Path::new("/media/usb/.Trash-1000"));
+    assert_eq!(
+        item.trash_info.as_deref(),
+        Some(Path::new(
+            "/media/usb/.Trash-1000/info/report.txt.trashinfo"
+        ))
+    );
+    assert!(trash_item_from_files_path(Path::new("/media/usb/Documents/report.txt")).is_none());
+    assert!(trash_item_from_files_path(Path::new("/media/usb/.Trash-1000/info/x")).is_none());
+}
+
+#[test]
 fn trash_root_is_derived_from_the_files_entry() {
     let path = Path::new("/media/usb/.Trash-1000/files/report.txt");
     assert_eq!(

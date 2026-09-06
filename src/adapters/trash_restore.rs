@@ -137,12 +137,29 @@ pub(crate) async fn plan_restore_for_location(
     trash_info: Option<&Path>,
     context: &RestoreContext,
 ) -> Result<RestorePlan, RestoreTargetError> {
+    // GVfs names volume items after their escaped physical path and resolves
+    // relative `Path=` values itself, so ask it for the physical entry rather
+    // than guessing from the `trash:///` basename.
+    let gio_item = if source.native_path().is_none() && trash_info.is_none() {
+        Some(query_gio_trash_item(source).await?)
+    } else {
+        None
+    };
     let orig_path = if let Some(path) = original_target.and_then(Location::native_path) {
         path.to_path_buf()
+    } else if let Some(item) = &gio_item {
+        item.orig_path.clone()
     } else {
         orig_path_for_location(source, trash_info).await?
     };
-    let discovered = discover_trash_item(source, trash_info, Some(&orig_path), context)?;
+    let discovered = match gio_item
+        .as_ref()
+        .and_then(|item| item.target_path.as_deref())
+        .and_then(trash_item_from_files_path)
+    {
+        Some(discovered) => discovered,
+        None => discover_trash_item(source, trash_info, Some(&orig_path), context)?,
+    };
     plan_restore_from_known_paths(
         &discovered.source_path,
         &orig_path,
@@ -223,14 +240,8 @@ fn discover_trash_item(
             trash_info: Some(info.to_path_buf()),
         });
     }
-    if let Some(path) = source.native_path()
-        && let Some(trash_root) = trash_root_from_files_path(path)
-    {
-        return Ok(DiscoveredTrashItem {
-            trash_info: info_path_for_files_path(path),
-            trash_root,
-            source_path: path.to_path_buf(),
-        });
+    if let Some(discovered) = source.native_path().and_then(trash_item_from_files_path) {
+        return Ok(discovered);
     }
 
     let name = source.file_name().ok_or_else(|| {
@@ -283,14 +294,19 @@ async fn orig_path_for_location(
     {
         return Ok(orig);
     }
-    query_gio_orig_path(location).await
+    Ok(query_gio_trash_item(location).await?.orig_path)
 }
 
-async fn query_gio_orig_path(location: &Location) -> Result<PathBuf, RestoreTargetError> {
+struct GioTrashItem {
+    orig_path: PathBuf,
+    target_path: Option<PathBuf>,
+}
+
+async fn query_gio_trash_item(location: &Location) -> Result<GioTrashItem, RestoreTargetError> {
     let file = gio_file_for_location(location);
     let info = file
         .query_info_future(
-            "trash::orig-path",
+            "trash::orig-path,standard::target-uri",
             gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
             glib::Priority::DEFAULT,
         )
@@ -301,13 +317,35 @@ async fn query_gio_orig_path(location: &Location) -> Result<PathBuf, RestoreTarg
             "The original location is unavailable",
         ));
     };
-    let path = PathBuf::from(original.as_str());
-    if path.as_os_str().is_empty() {
+    let orig_path = PathBuf::from(original.as_str());
+    if orig_path.as_os_str().is_empty() {
         return Err(RestoreTargetError::new(
             "The original location is unavailable",
         ));
     }
-    Ok(path)
+    let target_path = info
+        .attribute_string(gio::FILE_ATTRIBUTE_STANDARD_TARGET_URI)
+        .and_then(|target| glib::filename_from_uri(&target).ok())
+        .and_then(|(path, hostname)| {
+            hostname
+                .is_none_or(|host| host.eq_ignore_ascii_case("localhost"))
+                .then_some(path)
+        });
+    Ok(GioTrashItem {
+        orig_path,
+        target_path,
+    })
+}
+
+/// Accepts only a `<trash root>/files/<name>` entry so a reported target that
+/// is not shaped like a trash item never becomes the restore source.
+fn trash_item_from_files_path(path: &Path) -> Option<DiscoveredTrashItem> {
+    let trash_root = trash_root_from_files_path(path)?;
+    Some(DiscoveredTrashItem {
+        trash_info: info_path_for_files_path(path),
+        trash_root,
+        source_path: path.to_path_buf(),
+    })
 }
 
 fn orig_path_from_trashinfo(info_path: &Path) -> Option<PathBuf> {
@@ -324,6 +362,9 @@ fn find_trash_item_by_orig_path(
 ) -> Option<DiscoveredTrashItem> {
     let info_root = trash_root.join("info");
     let files_root = trash_root.join("files");
+    // A relative `Path=` is relative to the directory holding the trash
+    // directory, which is how GVfs reports `trash::orig-path`.
+    let topdir = trash_root.parent()?;
     let infos = std::fs::read_dir(info_root).ok()?;
     for info in infos.flatten() {
         let info_path = info.path();
@@ -335,6 +376,11 @@ fn find_trash_item_by_orig_path(
         };
         let Some(path) = orig_path_from_trashinfo(&info_path) else {
             continue;
+        };
+        let path = if path.is_absolute() {
+            path
+        } else {
+            topdir.join(path)
         };
         if path != orig_path {
             continue;
