@@ -377,8 +377,7 @@ jobs:
     steps:
       - name: Publish Discord announcement
         env:
-          ANNOUNCEMENTS_WEBHOOK: ${{ secrets.DISCORD_ANNOUNCEMENTS_WEBHOOK }}
-          GENERAL_WEBHOOK: ${{ secrets.DISCORD_GENERAL_WEBHOOK }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_TRIAGE_BOT_TOKEN }}
           GH_TOKEN: ${{ github.token }}
           MODE: ${{ inputs.mode }}
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -435,26 +434,28 @@ jobs:
               ],
           }
 
-          def post(webhook, payload, wait=False):
-              separator = "&" if "?" in webhook else "?"
-              url = webhook + (f"{separator}wait=true" if wait else "")
+          def post(channel_id, payload):
               request = urllib.request.Request(
-                  url,
+                  f"https://discord.com/api/v10/channels/{channel_id}/messages",
                   data=json.dumps(payload).encode(),
-                  headers={"Content-Type": "application/json", "User-Agent": "strata-release-workflow"},
+                  headers={
+                      "Authorization": f"Bot {os.environ['DISCORD_BOT_TOKEN']}",
+                      "Content-Type": "application/json",
+                      "User-Agent": "strata-release-workflow",
+                  },
                   method="POST",
               )
               with urllib.request.urlopen(request) as response:
-                  body = response.read()
-                  return json.loads(body) if body else None
+                  return json.load(response)
 
-          message = post(os.environ["ANNOUNCEMENTS_WEBHOOK"], announcement, wait=True)
+          announcements_channel = "1546247479870226472"
+          message = post(announcements_channel, announcement)
           announcement_url = (
               "https://discord.com/channels/1546233919609774181/"
-              f"1546247479870226472/{message['id']}"
+              f"{announcements_channel}/{message['id']}"
           )
           post(
-              os.environ["GENERAL_WEBHOOK"],
+              "1546233920926916630",
               {
                   "content": f"**Strata {tag}** ({channel}) is available. Read the announcement: {announcement_url}",
                   "allowed_mentions": {"parse": []},

@@ -5,8 +5,9 @@ use std::{cell::RefCell, collections::HashSet};
 use super::{
     Preferences, TextSize, Theme, azure_tokens, blend, browser_mode_from_stored, builtins,
     configured_hardware_acceleration, configured_video_preview_backend, is_omarchy_theme_event,
-    merge_builtin_and_custom_themes, notify_live, slugify, sort_preferences, stored_browser_mode,
-    title_case_slug, tokens_from_quattro, validate_tokens,
+    merge_builtin_and_custom_themes, notify_live, slugify, snapped_root_font_px, sort_preferences,
+    stored_browser_mode, text_scale_factor_from_xft_dpi, title_case_slug, tokens_from_quattro,
+    validate_tokens,
 };
 use crate::{
     model::{SortDirection, SortKey, ViewPreferences},
@@ -427,6 +428,39 @@ fn text_sizes_map_to_a_strictly_increasing_root_font_size() {
     assert!(small < medium);
     assert!(medium < large);
     assert_eq!(medium, 13, "medium should match the unscaled base size");
+}
+
+#[test]
+fn root_font_size_snaps_to_a_whole_effective_pixel() {
+    let scale_factor = 13.0 / 11.0;
+    let root_font_px = snapped_root_font_px(TextSize::Large.root_font_px(), scale_factor);
+
+    assert!((root_font_px - 15.230_769).abs() < 0.000_001);
+    assert!((root_font_px * scale_factor - 18.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn root_font_size_is_unchanged_without_desktop_scaling() {
+    for size in [TextSize::Small, TextSize::Medium, TextSize::Large] {
+        assert_eq!(
+            snapped_root_font_px(size.root_font_px(), 1.0),
+            f64::from(size.root_font_px())
+        );
+    }
+}
+
+#[test]
+fn invalid_scaling_values_leave_the_root_font_size_unchanged() {
+    for scale_factor in [0.0, -1.0, f64::NAN] {
+        assert_eq!(snapped_root_font_px(15, scale_factor), 15.0);
+    }
+}
+
+#[test]
+fn xft_dpi_converts_to_desktop_text_scale() {
+    assert_eq!(text_scale_factor_from_xft_dpi(-1), 1.0);
+    assert_eq!(text_scale_factor_from_xft_dpi(96 * 1024), 1.0);
+    assert!((text_scale_factor_from_xft_dpi(115_200) - 1.171_875).abs() < f64::EPSILON);
 }
 
 #[test]

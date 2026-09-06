@@ -36,7 +36,9 @@ pub(crate) use preview::{
 // business calling it. Widening this re-export would make that bypass
 // reachable from UI code.
 pub(crate) use release_channel::{BuildKind, Channel, Version};
-pub(crate) use search::{SearchEvent, SearchHandle, SearchItem, index_tree};
+pub(crate) use search::{
+    SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_tree, index_trees,
+};
 pub(crate) use update_check::{
     ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes, UpdateCheck, check_for_updates,
     fetch_release_notes,

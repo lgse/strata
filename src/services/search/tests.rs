@@ -1,36 +1,39 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod multi_root;
+
 use std::{
     fs,
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
 };
 
-use super::{SearchEvent, SearchItem, fuzzy_score, index_tree, index_tree_with_budget};
+use super::{
+    SearchEvent, SearchItem, fuzzy_score_normalized, index_tree, index_trees,
+    index_trees_with_budget,
+};
 
-fn item(path: &str) -> SearchItem {
-    let name = Path::new(path)
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned();
-    SearchItem {
-        path: PathBuf::from(path),
-        search_name: name.to_lowercase(),
-        search_path: path.to_lowercase(),
-        name,
-        is_directory: false,
-    }
+fn score_path(path: &str, query: &str, root: &Path) -> Option<i64> {
+    fuzzy_score_normalized(&SearchItem::new(PathBuf::from(path), root, false), query)
+}
+
+fn index_tree_with_budget(
+    root: PathBuf,
+    show_hidden: bool,
+    max_entries: usize,
+    max_depth: usize,
+    time_budget: Duration,
+) -> (super::SearchHandle, std::sync::mpsc::Receiver<SearchEvent>) {
+    index_trees_with_budget(vec![root], show_hidden, max_entries, max_depth, time_budget)
 }
 
 #[test]
 fn exact_names_rank_above_substrings_and_fuzzy_matches() {
     let root = Path::new("/home/me");
-    let exact =
-        fuzzy_score(&item("/home/me/notes"), "notes", root).expect("an exact name should match");
-    let substring = fuzzy_score(&item("/home/me/my-notes.txt"), "notes", root)
-        .expect("a name substring should match");
-    let fuzzy = fuzzy_score(&item("/home/me/nested-object-types.rs"), "notes", root)
+    let exact = score_path("/home/me/notes", "notes", root).expect("an exact name should match");
+    let substring =
+        score_path("/home/me/my-notes.txt", "notes", root).expect("a name substring should match");
+    let fuzzy = score_path("/home/me/nested-object-types.rs", "notes", root)
         .expect("an ordered fuzzy subsequence should match");
     assert!(exact > substring);
     assert!(substring > fuzzy);
@@ -39,7 +42,7 @@ fn exact_names_rank_above_substrings_and_fuzzy_matches() {
 #[test]
 fn nearby_duplicate_names_rank_first_without_overriding_match_quality() {
     let root = Path::new("/fixture/Videos");
-    let score = |path, query| fuzzy_score(&item(path), query, root).expect("fixture should match");
+    let score = |path, query| score_path(path, query, root).expect("fixture should match");
     assert!(
         score("/fixture/Videos/recording.mp4", "recording")
             > score("/fixture/Videos/archive/recording.mp4", "recording")
@@ -84,9 +87,9 @@ fn recursive_results_stay_in_the_root_and_rank_nearby_duplicates_first() {
 
 #[test]
 fn searches_relative_path_fragments_and_rejects_non_matches() {
-    let candidate = item("/home/me/themes/azure/colors.toml");
-    assert!(fuzzy_score(&candidate, "themes/azure", Path::new("/home/me")).is_some());
-    assert!(fuzzy_score(&candidate, "definitely-missing", Path::new("/home/me")).is_none());
+    let candidate = "/home/me/themes/azure/colors.toml";
+    assert!(score_path(candidate, "themes/azure", Path::new("/home/me")).is_some());
+    assert!(score_path(candidate, "definitely-missing", Path::new("/home/me")).is_none());
 }
 
 #[test]
@@ -209,12 +212,18 @@ fn index_reports_truncated_once_the_entry_budget_is_exceeded() {
     fs::remove_dir_all(&root).expect("the search fixture should be removed");
 
     let Some(SearchEvent::Results {
-        truncated, items, ..
+        coverage, items, ..
     }) = event
     else {
         panic!("the worker should publish a result for a non-empty query");
     };
-    assert!(truncated, "exceeding the entry budget should be reported");
+    assert_eq!(
+        coverage,
+        super::SearchCoverage {
+            entry_limit: true,
+            ..Default::default()
+        }
+    );
     assert!(
         items.len() <= 2,
         "the index should stop growing once the entry budget is reached"
@@ -238,12 +247,15 @@ fn index_reports_truncated_once_the_time_budget_is_exceeded() {
     drop(search);
     fs::remove_dir_all(&root).expect("the search fixture should be removed");
 
-    let Some(SearchEvent::Results { truncated, .. }) = event else {
+    let Some(SearchEvent::Results { coverage, .. }) = event else {
         panic!("the worker should publish a result for a non-empty query");
     };
-    assert!(
-        truncated,
-        "an exhausted time budget should stop the walk and report truncation"
+    assert_eq!(
+        coverage,
+        super::SearchCoverage {
+            time_limit: true,
+            ..Default::default()
+        }
     );
 }
 
@@ -265,7 +277,7 @@ fn index_does_not_descend_past_the_depth_budget() {
     fs::remove_dir_all(&root).expect("the search fixture should be removed");
 
     let Some(SearchEvent::Results {
-        items, truncated, ..
+        items, coverage, ..
     }) = event
     else {
         panic!("the worker should publish a result for a non-empty query");
@@ -278,9 +290,12 @@ fn index_does_not_descend_past_the_depth_budget() {
         items.iter().all(|item| item.name != "deep-needle.txt"),
         "entries past the depth budget should not be indexed"
     );
-    assert!(
-        truncated,
-        "omitting entries past the depth budget should be reported, not silently look complete"
+    assert_eq!(
+        coverage,
+        super::SearchCoverage {
+            depth_limit: true,
+            ..Default::default()
+        }
     );
 }
 
@@ -307,7 +322,7 @@ fn index_reports_truncated_when_the_walker_discards_an_inaccessible_directory() 
     fs::remove_dir_all(&root).expect("the search fixture should be removed");
 
     let Some(SearchEvent::Results {
-        items, truncated, ..
+        items, coverage, ..
     }) = event
     else {
         panic!("the worker should publish a result for a non-empty query");
@@ -317,9 +332,16 @@ fn index_reports_truncated_when_the_walker_discards_an_inaccessible_directory() 
         "entries outside the inaccessible directory should still be indexed"
     );
     if !running_as_root {
-        assert!(
-            truncated,
-            "an inaccessible directory discarded by the walker should be reported as truncated"
+        assert_eq!(
+            coverage,
+            super::SearchCoverage {
+                unreadable: true,
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            coverage.message(),
+            "Partial search — some folders could not be read"
         );
     }
 }
