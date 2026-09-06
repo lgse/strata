@@ -2122,7 +2122,8 @@ fn build_icons_view(
         configure_icons_card_label(&label);
         let field = gtk::Entry::new();
         field.add_css_class("inline-rename");
-        field.set_width_chars(ICONS_CARD_LABEL_CHARS);
+        field.set_width_chars(1);
+        field.set_hexpand(true);
         field.set_visible(false);
         field.connect_changed(|field| {
             super::browser::update_basename_validation(field);
@@ -2152,9 +2153,13 @@ fn build_icons_view(
             );
         });
         field.add_controller(focus);
+        let name = gtk::Overlay::new();
+        name.set_hexpand(true);
+        name.set_height_request(ICONS_CARD_LABEL_LINE_PX * ICONS_CARD_LABEL_LINES);
+        name.set_child(Some(&label));
+        name.add_overlay(&field);
         card.append(&icon);
-        card.append(&label);
-        card.append(&field);
+        card.append(&name);
         install_preview_click(
             &card,
             item,
@@ -2594,8 +2599,9 @@ fn configure_icons_card_label(label: &gtk::Inscription) {
 
 fn icons_card_parts(card: &gtk::Box) -> Option<(gtk::Image, gtk::Inscription, gtk::Entry)> {
     let icon = card.first_child()?.downcast::<gtk::Image>().ok()?;
-    let label = icon.next_sibling()?.downcast::<gtk::Inscription>().ok()?;
-    let field = label.next_sibling()?.downcast::<gtk::Entry>().ok()?;
+    let name = icon.next_sibling()?.downcast::<gtk::Overlay>().ok()?;
+    let label = name.child()?.downcast::<gtk::Inscription>().ok()?;
+    let field = name.last_child()?.downcast::<gtk::Entry>().ok()?;
     Some((icon, label, field))
 }
 

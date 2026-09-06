@@ -36,6 +36,32 @@ fn wait_until(condition: impl Fn() -> bool) {
     }
 }
 
+fn icon_card_bounds(root: &gtk::Widget) -> Vec<(i32, i32, i32, i32)> {
+    fn visit(widget: &gtk::Widget, root: &gtk::Widget, bounds: &mut Vec<(i32, i32, i32, i32)>) {
+        if widget.has_css_class("icons-card")
+            && widget.is_mapped()
+            && let Some(rect) = widget.compute_bounds(root)
+        {
+            bounds.push((
+                rect.x().round() as i32,
+                rect.y().round() as i32,
+                rect.width().round() as i32,
+                rect.height().round() as i32,
+            ));
+        }
+        let mut child = widget.first_child();
+        while let Some(current) = child {
+            child = current.next_sibling();
+            visit(&current, root, bounds);
+        }
+    }
+
+    let mut bounds = Vec::new();
+    visit(root, root, &mut bounds);
+    bounds.sort_unstable();
+    bounds
+}
+
 #[test]
 fn submitting_an_invalid_rename_flags_the_field_in_every_view_mode() {
     gtk_test(
@@ -44,6 +70,10 @@ fn submitting_an_invalid_rename_flags_the_field_in_every_view_mode() {
             let fixture = tempfile::tempdir().expect("directory fixture");
             let file = fixture.path().join("notes.txt");
             std::fs::write(&file, b"body").expect("fixture file");
+            for index in 0..5 {
+                std::fs::write(fixture.path().join(format!("sample-{index}.txt")), b"body")
+                    .expect("fixture file");
+            }
 
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
                 let view = BrowserView::new(
@@ -62,7 +92,18 @@ fn submitting_an_invalid_rename_flags_the_field_in_every_view_mode() {
                 wait_until(|| {
                     browser
                         .column_snapshot(0)
-                        .is_some_and(|snapshot| !snapshot.loading && snapshot.count == 1)
+                        .is_some_and(|snapshot| !snapshot.loading && snapshot.count == 6)
+                });
+                let widget = view.widget();
+                let bounds_before = (mode == BrowserMode::Icons).then(|| {
+                    wait_until(|| {
+                        let bounds = icon_card_bounds(&widget);
+                        bounds.len() == 6
+                            && bounds
+                                .iter()
+                                .all(|(_, _, width, height)| *width > 0 && *height > 0)
+                    });
+                    icon_card_bounds(&widget)
                 });
                 browser.select(0, 0);
                 wait_until(|| view.state.begin_rename());
@@ -74,6 +115,20 @@ fn submitting_an_invalid_rename_flags_the_field_in_every_view_mode() {
                     .map(|rename| rename.field.clone())
                     .or_else(|| view.state.mode_views.borrow().active_rename_field())
                     .expect("an inline rename field is open");
+
+                if let Some(bounds_before) = bounds_before {
+                    wait_until(|| field.is_mapped());
+                    let deadline = Instant::now() + Duration::from_millis(100);
+                    while Instant::now() < deadline {
+                        glib::MainContext::default().iteration(false);
+                        std::thread::sleep(Duration::from_millis(2));
+                    }
+                    assert_eq!(
+                        icon_card_bounds(&widget),
+                        bounds_before,
+                        "opening the Icons rename field must not reflow the grid"
+                    );
+                }
 
                 for (name, message) in [
                     ("", "Enter a name"),
