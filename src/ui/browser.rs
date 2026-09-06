@@ -6535,12 +6535,12 @@ pub(crate) fn scroll_collection_when_allocated(view: &gtk::Widget, position: u32
     scroll_collection_when_allocated_with(view, position, gtk::ListScrollFlags::FOCUS);
 }
 
+/// Moves the keyboard cursor to an item without touching the selection.
+///
+/// `ListScrollFlags::SELECT` would replace the whole selection with this one
+/// item, which collapses a multi-selection the caller has just applied.
 pub(crate) fn focus_collection_item_when_allocated(view: &gtk::Widget, position: u32) {
-    scroll_collection_when_allocated_with(
-        view,
-        position,
-        gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
-    );
+    scroll_collection_when_allocated_with(view, position, gtk::ListScrollFlags::FOCUS);
 }
 
 fn scroll_collection_when_allocated_with(
