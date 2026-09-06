@@ -106,6 +106,7 @@ fn browser_for_window(theme_manager: &ThemeManager) -> BrowserView {
     browser.set_view_mode(theme_manager.browser_mode());
     browser.set_density(theme_manager.browser_density());
     browser.set_group_by_type(theme_manager.group_by_type());
+    apply_click_activation(&browser, theme_manager);
     browser.set_operation_provider(Rc::new(LocalOperationProvider));
     browser.set_auto_refresh_interval(theme_manager.auto_refresh_interval());
     browser.set_single_click_previews(theme_manager.single_click_previews());
@@ -671,6 +672,13 @@ fn animate_sidebar(
     });
 }
 
+/// Apply saved activation before Settings is opened, including in the file chooser.
+pub(super) fn apply_click_activation(view: &BrowserView, preferences: &super::theme::ThemeManager) {
+    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+        view.set_click_activation(mode, preferences.click_activation(mode));
+    }
+}
+
 fn install_keyboard_navigation(
     window: &gtk::ApplicationWindow,
     view: &BrowserView,
@@ -722,6 +730,14 @@ fn install_keyboard_navigation(
         let sidebar_has_focus = focused.as_ref().is_some_and(|focused| {
             focused == &sidebar_widget || focused.is_ancestor(&sidebar_widget)
         });
+        if control
+            && !shift
+            && !alt
+            && let Some(mode) = browser_mode_for_digit(key)
+        {
+            apply_browser_mode(&view, &super::theme::ThemeManager::shared(), mode);
+            return glib::Propagation::Stop;
+        }
         if control && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::K) {
             if let Err(error) =
                 gtk::prelude::WidgetExt::activate_action(&dialog_parent, "win.search", None)
@@ -1061,6 +1077,7 @@ fn install_keyboard_navigation(
             return glib::Propagation::Stop;
         }
         if !shift
+            && !alt
             && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::Up)
             && view.focus_header_from_top_item()
         {
@@ -1294,6 +1311,24 @@ pub(super) fn install_modal_focus_trap(window: &impl IsA<gtk::Window>) {
     });
 }
 
+pub(super) fn apply_browser_mode(
+    view: &BrowserView,
+    preferences: &super::theme::ThemeManager,
+    mode: BrowserMode,
+) {
+    view.set_view_mode(mode);
+    preferences.set_browser_mode(mode);
+}
+
+pub(super) fn browser_mode_for_digit(key: gtk::gdk::Key) -> Option<BrowserMode> {
+    match key {
+        gtk::gdk::Key::_1 | gtk::gdk::Key::KP_1 => Some(BrowserMode::Columns),
+        gtk::gdk::Key::_2 | gtk::gdk::Key::KP_2 => Some(BrowserMode::Icons),
+        gtk::gdk::Key::_3 | gtk::gdk::Key::KP_3 => Some(BrowserMode::List),
+        _ => None,
+    }
+}
+
 pub(super) fn build_appearance_menu(
     view: &BrowserView,
     controller: &Rc<Browser>,
@@ -1311,6 +1346,9 @@ pub(super) fn build_appearance_menu(
         .tooltip_text("Appearance")
         .popover(&popover)
         .build();
+    // Without an explicit name GTK builds one from the whole open popover, so
+    // a screen reader reads the entire menu back as the button's label.
+    super::accessibility::set_label(&button, "Appearance");
     let popover_weak = popover.downgrade();
     append_menu_heading(&content, "VIEW");
     let current_mode = view.view_mode();
@@ -1362,22 +1400,27 @@ pub(super) fn build_appearance_menu(
         (&list, BrowserMode::List),
     ] {
         let view = view.clone();
+        let preferences = preferences.clone();
+        let popover_weak = popover_weak.clone();
+        button.connect_clicked(move |_| {
+            apply_browser_mode(&view, &preferences, mode);
+            if let Some(popover) = popover_weak.upgrade() {
+                popover.popdown();
+            }
+        });
+    }
+    {
+        // The mode also changes from the keyboard, so track the view rather
+        // than only the buttons in this menu.
         let columns_check = columns_check.clone();
         let icons_check = icons_check.clone();
         let list_check = list_check.clone();
         let group_by_type = group_by_type.clone();
-        let preferences = preferences.clone();
-        let popover_weak = popover_weak.clone();
-        button.connect_clicked(move |_| {
-            view.set_view_mode(mode);
-            preferences.set_browser_mode(mode);
+        view.connect_view_mode_changed(move |mode| {
             columns_check.set_visible(mode == BrowserMode::Columns);
             icons_check.set_visible(mode == BrowserMode::Icons);
             list_check.set_visible(mode == BrowserMode::List);
             group_by_type.set_sensitive(mode.supports_type_grouping());
-            if let Some(popover) = popover_weak.upgrade() {
-                popover.popdown();
-            }
         });
     }
     content.append(&columns);
@@ -1759,7 +1802,7 @@ impl SidebarState {
             }
         });
 
-        let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let menu = super::accessibility::menu_box();
         menu.add_css_class("folder-context-menu");
         let properties = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
         let empty = sidebar_context_option(crate::assets::icons::TRASH, "Empty Trash…", true);
@@ -2021,7 +2064,7 @@ impl SidebarState {
     fn append_smb_mount(self: &Rc<Self>, name: &str, location: Location, mount: gio::Mount) {
         let properties_location = location.clone();
         let row = self.append_place(crate::assets::icons::NETWORK, name, location);
-        let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let menu = super::accessibility::menu_box();
         menu.add_css_class("folder-context-menu");
         let properties = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
         let disconnect = sidebar_context_option(crate::assets::icons::UNPLUG, "Disconnect", true);
@@ -2089,7 +2132,7 @@ impl SidebarState {
     fn append_pinned_place(self: &Rc<Self>, index: usize, name: &str, location: Location) {
         let row = self.append_place(crate::assets::icons::FOLDER, name, location.clone());
         self.make_pinned_row_reorderable(&row, index);
-        let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let menu = super::accessibility::menu_box();
         menu.add_css_class("folder-context-menu");
         let unpin = sidebar_context_option(crate::assets::icons::PIN, "Unpin", false);
         let properties = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
@@ -2636,7 +2679,7 @@ fn sidebar_device_row(row: &gtk::Button, eject: &gtk::Button) -> gtk::Box {
 }
 
 fn attach_device_release_menu(row: &gtk::Button, action: MediaRelease, on_release: Rc<dyn Fn()>) {
-    let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let menu = super::accessibility::menu_box();
     menu.add_css_class("folder-context-menu");
     let release = sidebar_context_option(
         crate::assets::icons::EJECT,

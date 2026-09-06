@@ -18,12 +18,9 @@ pub(crate) fn scroll_collection_when_allocated(view: &gtk::Widget, position: u32
     scroll_collection_when_allocated_with(view, position, gtk::ListScrollFlags::FOCUS);
 }
 
+/// SELECT would collapse the multi-selection already applied by the caller.
 pub(crate) fn focus_collection_item_when_allocated(view: &gtk::Widget, position: u32) {
-    scroll_collection_when_allocated_with(
-        view,
-        position,
-        gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
-    );
+    scroll_collection_when_allocated_with(view, position, gtk::ListScrollFlags::FOCUS);
 }
 
 fn scroll_collection_when_allocated_with(
@@ -175,9 +172,8 @@ pub(crate) fn apply_filter_query(
     let previous = query.borrow().clone();
     let change = filter_change_for(&previous, &settled);
     *query.borrow_mut() = settled;
-    if query.borrow().is_empty() {
-        model.set_filter(None::<&gtk::Filter>);
-    } else if previous.is_empty() {
+    // The filter also hides dotfiles, even when the search query is empty.
+    if model.filter().is_none() {
         model.set_filter(Some(filter));
     } else {
         filter.changed(change);

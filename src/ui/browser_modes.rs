@@ -1853,6 +1853,7 @@ fn build_icons_pane(
     }
     let (shell, header, content, model, stack, status, spinner, truncated_hint) = pane_base(
         title,
+        BrowserMode::Icons,
         "icons-pane",
         &icons_loading_skeleton(options.thumbnail_size.get(), options.density),
         Some(controls.leading.clone().upcast()),
@@ -2073,6 +2074,13 @@ fn build_icons_group(
     }
 }
 
+fn pane_directory_name(browser: &Rc<Browser>, depth: usize) -> String {
+    browser
+        .location_at(depth)
+        .map(|location| location.display_name())
+        .unwrap_or_default()
+}
+
 fn build_icons_view(
     context: &Rc<IconsContext>,
     model: &impl IsA<gio::ListModel>,
@@ -2127,6 +2135,7 @@ fn build_icons_view(
         configure_icons_card_label(&label);
         let field = gtk::Entry::new();
         field.add_css_class("inline-rename");
+        super::accessibility::set_label(&field, "Rename");
         field.set_width_chars(1);
         field.set_hexpand(true);
         field.set_visible(false);
@@ -2233,6 +2242,7 @@ fn build_icons_view(
             if label.text().as_deref() != Some(entry.display_name.as_str()) {
                 label.set_text(Some(&entry.display_name));
             }
+            super::accessibility::describe_entry(item, &entry.display_name, Some(&entry));
             if !scrolling_for_bind.get() {
                 set_mode_cut_style(&card, cuts_for_bind.borrow().contains(&entry.location));
                 label.set_tooltip_text(Some(&entry.display_name));
@@ -2271,6 +2281,10 @@ fn build_icons_view(
     view.set_enable_rubberband(false);
     view.set_single_click_activate(false);
     configure_icons_view_density(&view, context.density.get());
+    super::accessibility::describe_entry_container(
+        &view,
+        &pane_directory_name(&context.browser, depth),
+    );
 
     let weak_browser = Rc::downgrade(&context.browser);
     let source_index_for_activation = context.source_index.clone();
@@ -2902,6 +2916,7 @@ fn build_list_pane(
     let columns = ListColumnLayout::new();
     let (shell, header, content, model, stack, status, spinner, truncated_hint) = pane_base(
         title,
+        BrowserMode::List,
         "list-pane",
         &list_loading_skeleton(&columns),
         Some(navigation.upcast()),
@@ -3075,6 +3090,7 @@ fn build_list_pane(
             set_label_if_changed(&mode, &entry_mode(&entry));
             set_label_if_changed(&size, &entry_size(&entry));
             set_label_if_changed(&kind, entry_type(&entry));
+            super::accessibility::describe_entry(item, &entry.display_name, Some(&entry));
             if scrolling_for_bind.get() {
                 set_label_if_changed(&modified, &crate::util::modified_date(&entry));
             } else {
@@ -3112,6 +3128,7 @@ fn build_list_pane(
     factory.connect_unbind(|_, item| super::thumbnail::cancel_list_item_thumbnails(item));
     let view = gtk::ListView::new(Some(selection.clone()), Some(factory));
     view.add_css_class("file-list-mode");
+    super::accessibility::describe_entry_container(&view, &pane_directory_name(&browser, depth));
     if options.group_by_type {
         view.set_header_factory(Some(&type_group_header_factory()));
     }
@@ -3323,6 +3340,7 @@ fn list_loading_skeleton(columns: &ListColumnLayout) -> gtk::Box {
 
 fn pane_base(
     title: &str,
+    mode: BrowserMode,
     class: &str,
     loading: &gtk::Box,
     header_leading: Option<gtk::Widget>,
@@ -3337,10 +3355,11 @@ fn pane_base(
     gtk::Spinner,
     gtk::Image,
 ) {
-    let shell = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let shell = super::accessibility::pane_box();
     shell.add_css_class(class);
     shell.set_hexpand(true);
     shell.set_vexpand(true);
+    super::accessibility::describe_pane(&shell, title, mode);
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     header.add_css_class("mode-pane-header");
     let heading_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
@@ -4130,6 +4149,7 @@ fn assemble_list_row() -> gtk::Box {
     name.set_max_width_chars(1);
     let field = gtk::Entry::new();
     field.add_css_class("inline-rename");
+    super::accessibility::set_label(&field, "Rename");
     field.set_hexpand(true);
     field.set_visible(false);
     name_cell.append(&icon);
