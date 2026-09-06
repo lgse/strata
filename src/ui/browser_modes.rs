@@ -528,67 +528,6 @@ impl ModeViews {
             .unwrap_or(true)
     }
 
-    /// GTK handles spatial movement within an icon grid; separate type groups need a handoff.
-    pub fn move_icons_group(&self, direction: gtk::DirectionType) -> bool {
-        if self.mode != BrowserMode::Icons {
-            return false;
-        }
-        let Some(pane) = self.icons_panes.first() else {
-            return false;
-        };
-        let sections = pane.item_sections();
-        if sections.len() < 2 {
-            return false;
-        }
-        let Some(focused) = self.stack.root().and_then(|root| root.focus()) else {
-            return false;
-        };
-        let Some((index, position)) = sections.iter().enumerate().find_map(|(index, section)| {
-            focused_section_item(section, &focused).map(|(position, _)| (index, position))
-        }) else {
-            return false;
-        };
-        let Some(icons) = sections[index].view.downcast_ref::<gtk::GridView>() else {
-            return false;
-        };
-        let columns = icons.max_columns().max(1);
-        let row = position / columns;
-        let last_row = sections[index].view_model.n_items().saturating_sub(1) / columns;
-        let next = match direction {
-            gtk::DirectionType::Up if row == 0 => index.checked_sub(1),
-            gtk::DirectionType::Down if row == last_row => Some(index + 1),
-            _ => None,
-        };
-        let Some(target) = next.and_then(|index| sections.get(index)) else {
-            return false;
-        };
-        let Some(last) = target.view_model.n_items().checked_sub(1) else {
-            return false;
-        };
-        let Some(target_icons) = target.view.downcast_ref::<gtk::GridView>() else {
-            return false;
-        };
-        let target_columns = target_icons.max_columns().max(1);
-        let column = (position % columns).min(target_columns - 1);
-        let target_position = if direction == gtk::DirectionType::Up {
-            (last / target_columns * target_columns + column).min(last)
-        } else {
-            column.min(last)
-        };
-        let Some(source) = pane
-            .source_index
-            .of_view_position(&target.view_model, target_position)
-        else {
-            return false;
-        };
-        set_selections(pane, &[source]);
-        self.browser
-            .set_selection(pane.depth, &[source], Some(source));
-        target_icons.scroll_to(target_position, gtk::ListScrollFlags::FOCUS, None);
-        target_icons.grab_focus();
-        true
-    }
-
     pub fn selected_positions(&self) -> Option<(usize, Vec<usize>)> {
         let pane = match self.mode {
             BrowserMode::Columns => return None,
@@ -1260,12 +1199,16 @@ impl ModeViews {
             gtk::DirectionType::Right if position == last => false,
             _ => return None,
         };
-        let adjacent = if previous {
-            index.checked_sub(1)?
+        let target = if previous {
+            sections[..index]
+                .iter()
+                .rev()
+                .find(|section| section.view_model.n_items() > 0)?
         } else {
-            index + 1
+            sections[index + 1..]
+                .iter()
+                .find(|section| section.view_model.n_items() > 0)?
         };
-        let target = sections.get(adjacent)?;
         let edge = if previous {
             target.view_model.n_items().checked_sub(1)?
         } else {

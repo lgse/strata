@@ -16,6 +16,7 @@ fn entry(name: &str, kind: EntryKind) -> FileEntry {
     FileEntry {
         location: Location::local(Path::new("/tmp").join(name)),
         native_name: OsString::from(name),
+        thumbnail_path: None,
         display_name: name.to_owned(),
         kind,
         is_hidden: false,
@@ -220,4 +221,49 @@ fn folder_accept_shortcut_requires_control_and_enter() {
         gtk::gdk::Key::Return,
         control | alt
     ));
+}
+
+#[test]
+fn chooser_dimensions_leave_margins_on_scaled_screens() {
+    let (width, height) = chooser_default_dimensions_for_monitor(1152, 720);
+
+    assert_eq!((width, height), (921, 561));
+    assert!(1152 - width >= 120);
+    assert!(720 - height >= 100);
+}
+
+#[test]
+fn chooser_dimensions_have_maximums_on_large_screens() {
+    assert_eq!(
+        chooser_default_dimensions_for_monitor(1920, 1080),
+        (MAX_CHOOSER_WIDTH, MAX_CHOOSER_HEIGHT)
+    );
+    assert_eq!(
+        chooser_default_dimensions_for_monitor(2560, 1440),
+        (MAX_CHOOSER_WIDTH, MAX_CHOOSER_HEIGHT)
+    );
+    assert_eq!(
+        chooser_default_dimensions_for_monitor(i32::MAX, i32::MAX),
+        (MAX_CHOOSER_WIDTH, MAX_CHOOSER_HEIGHT)
+    );
+}
+
+#[test]
+fn chooser_dimensions_adapt_to_compact_screens() {
+    assert_eq!(
+        chooser_default_dimensions_for_monitor(1024, 768),
+        (819, 599)
+    );
+    assert_eq!(chooser_default_dimensions_for_monitor(800, 600), (640, 468));
+    assert_eq!(chooser_default_dimensions_for_monitor(600, 400), (600, 400));
+}
+
+#[test]
+fn chooser_dimensions_fall_back_for_invalid_geometry() {
+    for geometry in [(0, 0), (-10, -20), (1920, 0), (0, 1080)] {
+        assert_eq!(
+            chooser_default_dimensions_for_monitor(geometry.0, geometry.1),
+            (FALLBACK_CHOOSER_WIDTH, FALLBACK_CHOOSER_HEIGHT)
+        );
+    }
 }

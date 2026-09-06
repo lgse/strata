@@ -43,6 +43,7 @@ fn file_entry(path: &std::path::Path) -> FileEntry {
     FileEntry {
         location: Location::local(path),
         native_name: path.file_name().unwrap_or_default().to_owned(),
+        thumbnail_path: None,
         display_name: path
             .file_name()
             .unwrap_or_default()
@@ -1035,6 +1036,7 @@ fn test_file_entry(path: &Path) -> FileEntry {
     FileEntry {
         location: Location::local(path),
         native_name: name.clone(),
+        thumbnail_path: None,
         display_name: name.to_string_lossy().into_owned(),
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
@@ -1355,6 +1357,98 @@ fn write_7z(path: &Path, name: &str, contents: &[u8]) -> Result<(), Box<dyn Erro
         Some(Cursor::new(contents)),
     )?;
     writer.finish()?;
+    Ok(())
+}
+
+#[test]
+fn seven_z_extraction_preserves_all_file_contents() -> Result<(), Box<dyn Error>> {
+    let entries = [
+        ("folder/one.txt", b"first contents".as_slice()),
+        ("folder/two.txt", b"second contents".as_slice()),
+        ("folder/nested/three.txt", b"third contents".as_slice()),
+    ];
+    for solid in [true, false] {
+        let root = tempfile::tempdir()?;
+        let archive_path = root.path().join("files.7z");
+        let destination = root.path().join("extracted");
+        fs::create_dir(&destination)?;
+        let mut writer = sevenz_rust2::ArchiveWriter::create(&archive_path)?;
+        if solid {
+            writer.push_archive_entries(
+                entries
+                    .iter()
+                    .map(|(name, _)| sevenz_rust2::ArchiveEntry::new_file(name))
+                    .collect(),
+                entries
+                    .iter()
+                    .map(|(_, contents)| Cursor::new(*contents).into())
+                    .collect(),
+            )?;
+        } else {
+            for (name, contents) in &entries {
+                writer.push_archive_entry(
+                    sevenz_rust2::ArchiveEntry::new_file(name),
+                    Some(Cursor::new(*contents)),
+                )?;
+            }
+        }
+        writer.finish()?;
+        let reader = sevenz_rust2::ArchiveReader::new(
+            fs::File::open(&archive_path)?,
+            sevenz_rust2::Password::empty(),
+        )?;
+        assert_eq!(reader.archive().is_solid, solid);
+        let progress = Arc::new(AtomicUsize::new(0));
+
+        assert_eq!(
+            extract_7z_from_reader(
+                fs::File::open(&archive_path)?,
+                &destination,
+                sevenz_rust2::Password::empty(),
+                &progress,
+            )?,
+            Some("folder".to_owned())
+        );
+        for (name, contents) in &entries {
+            assert_eq!(fs::read(destination.join(name))?, *contents);
+        }
+        assert_eq!(progress.load(Ordering::Relaxed), entries.len());
+    }
+    Ok(())
+}
+
+#[test]
+fn seven_z_extraction_preserves_all_empty_files_and_directories() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive_path = root.path().join("empty-entries.7z");
+    let destination = root.path().join("extracted");
+    fs::create_dir(&destination)?;
+    let mut writer = sevenz_rust2::ArchiveWriter::create(&archive_path)?;
+    for entry in [
+        sevenz_rust2::ArchiveEntry::new_directory("folder"),
+        sevenz_rust2::ArchiveEntry::new_file("folder/one.txt"),
+        sevenz_rust2::ArchiveEntry::new_directory("folder/empty"),
+        sevenz_rust2::ArchiveEntry::new_file("folder/two.txt"),
+    ] {
+        writer.push_archive_entry::<Cursor<&[u8]>>(entry, None)?;
+    }
+    writer.finish()?;
+    let progress = Arc::new(AtomicUsize::new(0));
+
+    assert_eq!(
+        extract_7z_from_reader(
+            fs::File::open(&archive_path)?,
+            &destination,
+            sevenz_rust2::Password::empty(),
+            &progress,
+        )?,
+        Some("folder".to_owned())
+    );
+    assert!(destination.join("folder/empty").is_dir());
+    for name in ["folder/one.txt", "folder/two.txt"] {
+        assert!(fs::read(destination.join(name))?.is_empty());
+    }
+    assert_eq!(progress.load(Ordering::Relaxed), 4);
     Ok(())
 }
 

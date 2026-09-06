@@ -5,7 +5,7 @@ use std::rc::Rc;
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
-    model::Location,
+    adapters::gio_file_for_location,
     sandbox::{Cancellation, MediaPreviewBackend, ParseOperation},
     services::{
         LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
@@ -33,7 +33,7 @@ impl PreviewProvider for LocalPreviewProvider {
         let cancellation = Cancellation::default();
         let cancellation_for_task = cancellation.clone();
         let task = glib::MainContext::default().spawn_local(async move {
-            let file = file_for_location(&entry.location);
+            let file = gio_file_for_location(&entry.location);
             let info = match file
                 .query_info_future(
                     "standard::content-type,unix::mode",
@@ -150,13 +150,6 @@ impl PreviewProvider for LocalPreviewProvider {
             task.abort();
         })
     }
-}
-
-fn file_for_location(location: &Location) -> gio::File {
-    location
-        .native_path()
-        .map(gio::File::for_path)
-        .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()))
 }
 
 async fn read_text(file: &gio::File, byte_limit: usize) -> Result<(String, bool), glib::Error> {

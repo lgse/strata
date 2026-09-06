@@ -56,6 +56,10 @@ fn sidebar_boundary_tracks_icons_layout_and_empty_views() {
     crate::assets::register_icon_theme();
     let fixture = tempfile::tempdir().expect("fixture");
     std::fs::create_dir(fixture.path().join("Child")).expect("folder group");
+    for index in 0..9 {
+        std::fs::create_dir(fixture.path().join(format!("folder-{index:02}")))
+            .expect("folder fixture");
+    }
     for index in 0..12 {
         std::fs::write(
             fixture.path().join(format!("file-{index:02}.txt")),
@@ -63,6 +67,7 @@ fn sidebar_boundary_tracks_icons_layout_and_empty_views() {
         )
         .expect("fixture file");
     }
+    std::fs::write(fixture.path().join(".hidden.md"), "fixture").expect("hidden group fixture");
     let view = BrowserView::new(
         Rc::new(crate::adapters::LocalFileSource),
         PeekBehavior::default(),
@@ -137,15 +142,18 @@ fn sidebar_boundary_tracks_icons_layout_and_empty_views() {
     view.set_group_by_type(true);
     settle();
     let group = find_grid(&view.widget()).expect("folder group");
+    group.set_max_columns(3);
+    group.set_min_columns(3);
+    settle();
     group.scroll_to(
-        0,
+        9,
         gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
         None,
     );
     settle();
     assert!(view.at_left_edge());
     group.grab_focus();
-    assert!(view.move_icons_group(gtk::DirectionType::Down));
+    assert!(view.cross_type_group(gtk::DirectionType::Down, false));
     settle();
     assert_eq!(
         browser
@@ -155,14 +163,14 @@ fn sidebar_boundary_tracks_icons_layout_and_empty_views() {
         "file-00.txt"
     );
     assert!(view.at_left_edge());
-    assert!(view.move_icons_group(gtk::DirectionType::Up));
+    assert!(view.cross_type_group(gtk::DirectionType::Up, false));
     settle();
     assert_eq!(
         browser
             .focused_entry()
             .expect("folder group cursor")
             .display_name,
-        "Child"
+        "folder-08"
     );
 
     view.set_group_by_type(false);

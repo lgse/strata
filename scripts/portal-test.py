@@ -18,6 +18,8 @@ import time
 import uuid
 import zlib
 
+from portal_test_environment import isolated_process_environment
+
 from gi.repository import Gio, GLib
 
 BACKEND = "org.freedesktop.impl.portal.desktop.strata"
@@ -120,9 +122,7 @@ def main():
         bus = backend = None
         try:
             if args.binary:
-                env = os.environ.copy()
-                for key, directory in [("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"), ("XDG_CACHE_HOME", "cache")]:
-                    env[key] = str(root / directory)
+                env = isolated_process_environment(root)
                 settings = root / "config/strata/settings.toml"
                 settings.parent.mkdir(parents=True)
                 settings.write_text(
@@ -135,11 +135,14 @@ def main():
                         for key, name in (("DOCUMENTS", "Documents"), ("DOWNLOAD", "Downloads"),
                                           ("PICTURES", "Pictures"), ("VIDEOS", "Videos"))
                     ), encoding="utf-8")
-                bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--print-address=1"],
-                                       stdout=subprocess.PIPE, text=True)
+                bus = subprocess.Popen(
+                    ["dbus-daemon", "--session", "--nofork", "--print-address=1"],
+                    stdout=subprocess.PIPE,
+                    text=True,
+                    env=env,
+                )
                 address = bus.stdout.readline().strip()
                 env["DBUS_SESSION_BUS_ADDRESS"] = address
-                env["GIO_USE_VFS"] = "local"
                 backend = subprocess.Popen([str(args.binary.resolve()), "--portal"], env=env)
             else:
                 address = os.environ["DBUS_SESSION_BUS_ADDRESS"]

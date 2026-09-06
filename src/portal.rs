@@ -162,6 +162,9 @@ impl FileChooserBackend {
 }
 
 pub(crate) fn run() -> glib::ExitCode {
+    glib::set_prgname(Some("strata"));
+    glib::set_application_name("Strata");
+
     // Keep worker-thread invocations queued until GTK is ready on this thread.
     let context = glib::MainContext::default();
     let _owner = context.acquire().expect("portal main context is available");

@@ -15,16 +15,17 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
+    adapters::{gio_file_for_location, location_for_file},
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
-        backend_unavailable_message, sanitize_uri_credentials,
+        backend_unavailable_message,
     },
 };
 
 const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,access::can-trash,access::can-delete";
-const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,time::modified,unix::mode,access::can-trash,access::can-delete";
+const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,standard::target-uri,time::modified,unix::mode,access::can-trash,access::can-delete";
 const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified,unix::mode";
 const MAX_PENDING_MONITOR_CHANGES: usize = 256;
 const MAX_HIDDEN_FILE_BYTES: u64 = 1024 * 1024;
@@ -58,23 +59,6 @@ fn map_validation_error(error: std::io::Error) -> LocationValidationError {
         ErrorKind::PermissionDenied => LocationValidationError::Inaccessible,
         _ => LocationValidationError::Unavailable(error.to_string()),
     }
-}
-
-/// Builds a `Location` for a `gio::File`, preferring a native path only when
-/// the file is genuinely on a local filesystem. A mounted GVfs backend (SMB,
-/// SFTP, ...) can still return a `.path()` via its FUSE mirror even though the
-/// file isn't native; using that path would leak the mirror's opaque
-/// `/run/user/$UID/gvfs/...` location instead of the clean URI (lgse/strata#5).
-/// Returns `None` when GIO provides a malformed URI.
-pub(crate) fn location_for_file(file: &gio::File) -> Option<Location> {
-    if file.is_native()
-        && let Some(path) = file.path()
-    {
-        return Some(Location::local(path));
-    }
-    let uri = file.uri();
-    let (sanitized, _) = sanitize_uri_credentials(&uri).ok()?;
-    Some(Location::uri(sanitized))
 }
 
 fn uri_validation_result(
@@ -160,6 +144,7 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         MetadataValue::Unknown
     };
     FileEntry {
+        thumbnail_path: trash_thumbnail_path(&location, &info),
         location,
         native_name,
         display_name: info.display_name().to_string(),
@@ -169,6 +154,20 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         mode: info_mode(&info),
         is_hidden: info_is_hidden(&info),
     }
+}
+
+fn trash_thumbnail_path(location: &Location, info: &gio::FileInfo) -> Option<PathBuf> {
+    if !location
+        .uri_value()
+        .is_some_and(|uri| uri.starts_with("trash:"))
+    {
+        return None;
+    }
+    let target = info.attribute_string(gio::FILE_ATTRIBUTE_STANDARD_TARGET_URI)?;
+    let (path, hostname) = glib::filename_from_uri(&target).ok()?;
+    hostname
+        .is_none_or(|host| host.eq_ignore_ascii_case("localhost"))
+        .then_some(path)
 }
 
 fn native_kind(file_type: fs::FileType, path: &Path) -> EntryKind {
@@ -305,6 +304,7 @@ fn scan_native_directory(
         entries.push(FileEntry {
             location: Location::local(path),
             display_name: native_name.to_string_lossy().into_owned(),
+            thumbnail_path: None,
             native_name,
             kind,
             size: MetadataValue::Unknown,
@@ -518,10 +518,7 @@ impl FileSource for LocalFileSource {
         }
 
         let task = glib::MainContext::default().spawn_local(async move {
-            let directory = location
-                .native_path()
-                .map(gio::File::for_path)
-                .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()));
+            let directory = gio_file_for_location(&location);
             let deadline = started + request.time_budget;
             let finish_truncated = |entries: usize,
                                     reason: &'static str,

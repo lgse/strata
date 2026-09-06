@@ -9,6 +9,7 @@ fn entry(kind: EntryKind) -> FileEntry {
     FileEntry {
         location: Location::local("/tmp/entry"),
         native_name: OsString::from("entry"),
+        thumbnail_path: None,
         display_name: "entry".to_owned(),
         kind,
         size: MetadataValue::Unknown,

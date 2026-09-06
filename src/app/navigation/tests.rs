@@ -18,6 +18,7 @@ fn entry(path: &str) -> FileEntry {
 
 fn named_entry(path: &str, name: &str) -> FileEntry {
     FileEntry {
+        thumbnail_path: None,
         location: location(path),
         native_name: OsString::from(name),
         display_name: name.into(),
@@ -500,6 +501,7 @@ fn parent_removes_the_deepest_committed_column() {
 
 fn hidden_entry(path: &str, name: &str) -> FileEntry {
     FileEntry {
+        thumbnail_path: None,
         location: location(path),
         native_name: OsString::from(name),
         display_name: name.into(),
@@ -849,6 +851,7 @@ fn file_entry(path: &str, name: &str) -> FileEntry {
     FileEntry {
         location: location(path),
         native_name: OsString::from(name),
+        thumbnail_path: None,
         display_name: name.into(),
         kind: EntryKind::File,
         size: MetadataValue::Unknown,

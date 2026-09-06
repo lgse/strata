@@ -28,7 +28,7 @@ use super::{
     },
     browser_modes::{BrowserDensity, BrowserMode},
     motion::{animations_enabled, emphasized_deceleration},
-    preview::PreviewDrawer,
+    preview::{PreviewDrawer, preview_target},
     search::SearchDialog,
     theme::ThemeManager,
 };
@@ -51,9 +51,21 @@ struct TypeToSearch {
     preferences: Rc<ThemeManager>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TypeToSearchQuery {
+    Empty,
+    Character(char),
+}
+
 impl TypeToSearch {
-    fn show(&self, query: char) -> bool {
-        self.preferences.type_to_search() && self.view.show_filter_with_query(&query.to_string())
+    fn show(&self, query: TypeToSearchQuery) -> bool {
+        self.preferences.type_to_search()
+            && match query {
+                TypeToSearchQuery::Empty => self.view.show_filter(),
+                TypeToSearchQuery::Character(character) => {
+                    self.view.show_filter_with_query(&character.to_string())
+                }
+            }
     }
 }
 
@@ -295,6 +307,7 @@ fn present_target(
             search_preview.show(FileEntry {
                 location,
                 native_name: item.path.file_name().unwrap_or_default().to_os_string(),
+                thumbnail_path: None,
                 display_name: item.name,
                 kind: EntryKind::File,
                 size: MetadataValue::Unknown,
@@ -1012,7 +1025,7 @@ fn install_keyboard_navigation(
                     if !control
                         && !shift
                         && let Some(direction) = sidebar_focus_direction(key)
-                        && view.move_icons_group(direction)
+                        && view.cross_type_group(direction, false)
                     {
                         glib::Propagation::Stop
                     } else {
@@ -1043,7 +1056,7 @@ fn install_keyboard_navigation(
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::space && !alt && !control {
-            preview.toggle(browser.focused_entry());
+            preview.toggle(preview_target(browser.focused_entry()));
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::Escape && preview.is_open() {
@@ -1198,15 +1211,26 @@ fn is_undo_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bo
         && matches!(key, gtk::gdk::Key::z | gtk::gdk::Key::Z)
 }
 
-fn type_to_search_query(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> Option<char> {
-    if modifiers.intersects(
-        gtk::gdk::ModifierType::CONTROL_MASK
-            | gtk::gdk::ModifierType::ALT_MASK
-            | gtk::gdk::ModifierType::SUPER_MASK,
-    ) {
+fn type_to_search_query(
+    key: gtk::gdk::Key,
+    modifiers: gtk::gdk::ModifierType,
+) -> Option<TypeToSearchQuery> {
+    // Space belongs to quick preview; focused text fields handle their own spaces.
+    if key == gtk::gdk::Key::space
+        || modifiers.intersects(
+            gtk::gdk::ModifierType::CONTROL_MASK
+                | gtk::gdk::ModifierType::ALT_MASK
+                | gtk::gdk::ModifierType::SUPER_MASK,
+        )
+    {
         return None;
     }
-    key.to_unicode().filter(|character| !character.is_control())
+    if key == gtk::gdk::Key::slash {
+        return Some(TypeToSearchQuery::Empty);
+    }
+    key.to_unicode()
+        .filter(|character| !character.is_control())
+        .map(TypeToSearchQuery::Character)
 }
 
 fn is_open_terminal_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {

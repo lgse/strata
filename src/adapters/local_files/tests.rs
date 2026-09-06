@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod trash;
+
 use std::{
     error::Error,
     ffi::OsString,
@@ -205,40 +207,6 @@ fn unmounted_network_shares_are_treated_as_directories() {
 
     assert_eq!(entry.kind, EntryKind::Directory);
     assert!(entry.is_directory());
-}
-
-#[test]
-fn native_files_are_located_by_their_real_path() {
-    let file = gio::File::for_path("/tmp");
-    assert_eq!(location_for_file(&file), Some(Location::local("/tmp")));
-}
-
-#[test]
-fn gvfs_backed_files_use_their_uri_even_when_a_fuse_path_exists() {
-    let file = gio::File::for_uri("smb://host/share");
-    assert!(!file.is_native(), "smb:// should never be reported native");
-    assert_eq!(location_for_file(&file), Some(Location::uri(file.uri())));
-}
-
-#[test]
-fn gio_files_with_embedded_credentials_are_sanitized() {
-    for uri in [
-        "smb://user%3Asecret@host/share",
-        "smb://user;password=secret@host/share",
-        "smb://user%3Bpassword=secret@host/share",
-        "smb://user:secret@host/share",
-    ] {
-        let location = location_for_file(&gio::File::for_uri(uri))
-            .expect("credential URI should produce a sanitized location");
-        assert_eq!(
-            location
-                .uri_value()
-                .expect("remote location should have a URI")
-                .trim_end_matches('/'),
-            "smb://user@host/share",
-            "did not sanitize {uri}"
-        );
-    }
 }
 
 #[test]

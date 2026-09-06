@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::*;
+use std::{cell::Cell, rc::Rc};
+
+use gtk::{glib, prelude::*};
+
+use crate::model::Location;
+
+use super::{
+    ViewState,
+    context_menu::{
+        ContextPickPosition, ContextSourcePosition, context_menu_option, context_menu_popover,
+        show_context_popover,
+    },
+};
 
 #[derive(Clone, Copy)]
 enum Action {

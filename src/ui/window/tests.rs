@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod type_to_search;
+
 use std::{cell::Cell, path::Path};
 
 use crate::{
@@ -8,7 +10,7 @@ use crate::{
 };
 
 use super::{
-    MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS,
+    MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, TypeToSearchQuery,
     accepts_sidebar_reorder_payload, begin_media_release, browser_mode_for_digit,
     is_open_terminal_shortcut, is_sidebar_focus_shortcut, is_smb_location,
     is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction,
@@ -267,16 +269,34 @@ fn sidebar_focus_shortcut_requires_control_and_shift() {
 fn type_to_search_accepts_printable_keys_without_command_modifiers() {
     assert_eq!(
         type_to_search_query(gtk::gdk::Key::a, gtk::gdk::ModifierType::empty()),
-        Some('a')
+        Some(TypeToSearchQuery::Character('a'))
     );
     assert_eq!(
         type_to_search_query(gtk::gdk::Key::A, gtk::gdk::ModifierType::SHIFT_MASK),
-        Some('A')
+        Some(TypeToSearchQuery::Character('A'))
     );
     assert_eq!(
-        type_to_search_query(gtk::gdk::Key::space, gtk::gdk::ModifierType::empty()),
-        Some(' ')
+        type_to_search_query(gtk::gdk::Key::period, gtk::gdk::ModifierType::empty()),
+        Some(TypeToSearchQuery::Character('.'))
     );
+}
+
+#[test]
+fn type_to_search_uses_slash_to_open_an_empty_filter() {
+    assert_eq!(
+        type_to_search_query(gtk::gdk::Key::slash, gtk::gdk::ModifierType::empty()),
+        Some(TypeToSearchQuery::Empty)
+    );
+}
+
+#[test]
+fn type_to_search_leaves_space_for_quick_preview() {
+    for modifiers in [
+        gtk::gdk::ModifierType::empty(),
+        gtk::gdk::ModifierType::SHIFT_MASK,
+    ] {
+        assert_eq!(type_to_search_query(gtk::gdk::Key::space, modifiers), None);
+    }
 }
 
 #[test]
