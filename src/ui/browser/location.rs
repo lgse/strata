@@ -97,7 +97,7 @@ fn show_authentication_dialog(
     let layout = modal_layout(
         crate::assets::icons::KEY,
         "Authentication required",
-        "Sign in to access this network location",
+        "Authenticate to access this volume or location",
         "Connect",
     );
     layout.content.add_css_class("wide");
@@ -409,19 +409,91 @@ fn mount_error_is_authentication_failure(location: &Location, error: &glib::Erro
 /// per lgse/strata#20's "cancelling authentication returns to the prior
 /// committed location" requirement.
 fn mount_failure_message(location: &Location, error: &glib::Error) -> Option<String> {
-    if error.matches(gio::IOErrorEnum::Cancelled) || error.matches(gio::IOErrorEnum::FailedHandled)
-    {
+    if mount_error_is_cancelled(error) {
         return None;
     }
-    if error.matches(gio::IOErrorEnum::NotSupported) {
-        return Some(backend_unavailable_message(
-            location.uri_value().unwrap_or_default(),
-        ));
+    if error.matches(gio::IOErrorEnum::NotSupported)
+        && let Some(uri) = location.uri_value()
+    {
+        return Some(backend_unavailable_message(uri));
     }
     Some(error.to_string())
 }
 
+fn mount_error_is_cancelled(error: &glib::Error) -> bool {
+    error.matches(gio::IOErrorEnum::Cancelled) || error.matches(gio::IOErrorEnum::FailedHandled)
+}
+
+enum MountTarget {
+    Location(Location, MountStrategy),
+    Volume(gio::Volume),
+}
+
+fn volume_error_is_authentication_failure(error: &glib::Error) -> bool {
+    let message = error.message().to_ascii_lowercase();
+    [
+        "incorrect passphrase",
+        "invalid passphrase",
+        "no key available with this passphrase",
+        "authentication failed",
+    ]
+    .iter()
+    .any(|reason| message.contains(reason))
+}
+
+impl BrowserView {
+    pub(crate) fn mount_volume(&self, volume: gio::Volume) {
+        self.state.mount_device_volume(volume, None);
+    }
+}
+
 impl ViewState {
+    fn mount_device_volume(
+        self: &Rc<Self>,
+        volume: gio::Volume,
+        credentials: Option<MountCredentials>,
+    ) {
+        self.mount_target(
+            MountTarget::Volume(volume.clone()),
+            credentials,
+            move |state, result, attempted, details| {
+                if mount_result_is_ok(&result) {
+                    if let Some(mount) = volume.get_mount()
+                        && let Some(location) = crate::adapters::location_for_file(&mount.root())
+                    {
+                        state.browser.navigate(location);
+                    }
+                } else if let Err(error) = result {
+                    if volume_error_is_authentication_failure(&error)
+                        && let Some(details) = details
+                    {
+                        let weak = Rc::downgrade(state);
+                        let retry_volume = volume.clone();
+                        state.show_mount_retry_prompt(
+                            attempted,
+                            details,
+                            move |credentials| {
+                                if let Some(state) = weak.upgrade() {
+                                    state.mount_device_volume(
+                                        retry_volume.clone(),
+                                        Some(credentials),
+                                    );
+                                }
+                            },
+                            || {},
+                        );
+                    } else if !mount_error_is_cancelled(&error) {
+                        show_error_dialog(
+                            &state.overlay,
+                            "Unable to mount volume",
+                            &error.to_string(),
+                        );
+                    }
+                }
+            },
+        );
+    }
+
     pub(super) fn begin_location_edit(&self) {
         self.location_stack.set_visible_child_name("entry");
         self.location_entry.grab_focus();
@@ -587,9 +659,8 @@ impl ViewState {
         let cancel_weak = weak.clone();
         let prompt_location = location.clone();
         self.show_mount_retry_prompt(
-            &prompt_location,
             previous_credentials,
-            prompt_details,
+            prompt_details.unwrap_or_else(|| MountPromptDetails::fallback(&prompt_location)),
             move |credentials| {
                 if let Some(state) = weak.upgrade() {
                     state.mount_then_navigate_with_credentials(
@@ -620,9 +691,8 @@ impl ViewState {
         let weak = Rc::downgrade(self);
         let prompt_location = location.clone();
         self.show_mount_retry_prompt(
-            &prompt_location,
             previous_credentials,
-            prompt_details,
+            prompt_details.unwrap_or_else(|| MountPromptDetails::fallback(&prompt_location)),
             move |credentials| {
                 if let Some(state) = weak.upgrade() {
                     state.mount_then_descend_with_credentials(
@@ -639,14 +709,12 @@ impl ViewState {
 
     fn show_mount_retry_prompt(
         &self,
-        location: &Location,
         previous_credentials: Option<MountCredentials>,
-        prompt_details: Option<MountPromptDetails>,
+        details: MountPromptDetails,
         retry: impl Fn(MountCredentials) + 'static,
         cancelled: impl Fn() + 'static,
     ) {
         let authentication_failed = previous_credentials.is_some();
-        let details = prompt_details.unwrap_or_else(|| MountPromptDetails::fallback(location));
         let defaults = previous_credentials.unwrap_or_else(|| {
             let mut defaults = MountCredentials::default_for_prompt();
             if !details.default_user.is_empty() {
@@ -683,6 +751,24 @@ impl ViewState {
             Option<MountPromptDetails>,
         ) + 'static,
     ) {
+        self.mount_target(
+            MountTarget::Location(location, strategy),
+            credentials,
+            on_result,
+        );
+    }
+
+    fn mount_target(
+        self: &Rc<Self>,
+        target: MountTarget,
+        credentials: Option<MountCredentials>,
+        on_result: impl Fn(
+            &Rc<Self>,
+            Result<(), glib::Error>,
+            Option<MountCredentials>,
+            Option<MountPromptDetails>,
+        ) + 'static,
+    ) {
         let Some(window) = self.overlay.root().and_downcast::<gtk::Window>() else {
             return;
         };
@@ -690,7 +776,6 @@ impl ViewState {
             state: self.clone(),
         }
         .begin_global_activity("Connecting…");
-        let file = gio_file_for_location(&location);
         // A native gtk::MountOperation (rather than a bare gio::MountOperation)
         // is required so GTK's own "ask-question" dialog handles host-key and
         // certificate trust decisions for us; we only override "ask-password"
@@ -754,15 +839,28 @@ impl ViewState {
         let result_overlay = self.overlay.clone();
         glib::MainContext::default().spawn_local(async move {
             let _activity = activity;
-            let result = match strategy {
-                MountStrategy::EnclosingVolume => {
-                    file.mount_enclosing_volume_future(gio::MountMountFlags::NONE, Some(&operation))
+            let result = match target {
+                MountTarget::Volume(volume) => {
+                    volume
+                        .mount_future(gio::MountMountFlags::NONE, Some(&operation))
                         .await
                 }
-                MountStrategy::Mountable => file
-                    .mount_mountable_future(gio::MountMountFlags::NONE, Some(&operation))
-                    .await
-                    .map(|_| ()),
+                MountTarget::Location(location, strategy) => {
+                    let file = gio_file_for_location(&location);
+                    match strategy {
+                        MountStrategy::EnclosingVolume => {
+                            file.mount_enclosing_volume_future(
+                                gio::MountMountFlags::NONE,
+                                Some(&operation),
+                            )
+                            .await
+                        }
+                        MountStrategy::Mountable => file
+                            .mount_mountable_future(gio::MountMountFlags::NONE, Some(&operation))
+                            .await
+                            .map(|_| ()),
+                    }
+                }
             };
             if let Some(prompt) = active_prompt.borrow_mut().take() {
                 dismiss_authentication_prompt(&result_overlay, &prompt);
