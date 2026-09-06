@@ -1,10 +1,15 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::{fs, os::unix::fs::PermissionsExt as _, path::PathBuf};
+use std::{
+    cell::Cell,
+    fs,
+    os::unix::{ffi::OsStrExt as _, fs::PermissionsExt as _},
+    path::{Path, PathBuf},
+};
 
 use super::{
-    SetupContext, disable_config, enable_config, install_at, secure_executable, trusted_owner,
-    uninstall_at,
+    SetupContext, disable_config, enable_config, install_at, refresh_configured_portal_at,
+    refresh_stale_portal_at, secure_executable, trusted_owner, uninstall_at,
 };
 
 const FILE_CHOOSER: &str = "org.freedesktop.impl.portal.FileChooser";
@@ -26,6 +31,106 @@ fn chooser_preference_preserves_explicit_fallbacks() {
 
     assert!(enabled.contains(&format!("{FILE_CHOOSER}=strata;kde;gtk;")));
     assert_eq!(disable_config(&enabled).expect("disable Strata"), original);
+}
+
+#[test]
+fn update_refreshes_an_opted_in_portal() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    install_at(&context, &executable(fixture.path())).expect("install portal");
+    let refreshed = Cell::new(false);
+
+    refresh_configured_portal_at(&context, || {
+        refreshed.set(true);
+        ""
+    })
+    .expect("refresh configured portal");
+
+    assert!(refreshed.get());
+}
+
+#[test]
+fn update_leaves_an_unconfigured_portal_alone() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let refreshed = Cell::new(false);
+
+    refresh_configured_portal_at(&context, || {
+        refreshed.set(true);
+        ""
+    })
+    .expect("ignore unconfigured portal");
+
+    assert!(!refreshed.get());
+}
+
+#[test]
+fn update_reports_a_configured_portal_refresh_failure() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    install_at(&context, &executable(fixture.path())).expect("install portal");
+
+    let error = refresh_configured_portal_at(&context, || "\nportal restart failed")
+        .expect_err("report refresh failure");
+
+    assert_eq!(error, "portal restart failed");
+}
+
+#[test]
+fn startup_refreshes_a_configured_portal_running_an_old_executable() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let executable = executable(fixture.path());
+    install_at(&context, &executable).expect("install portal");
+    let proc_root = fixture.path().join("proc");
+    portal_process(
+        &proc_root,
+        123,
+        &executable,
+        &fixture.path().join("old-strata"),
+    );
+    let refreshed = Cell::new(false);
+
+    refresh_stale_portal_at(&context, &executable, &proc_root, || {
+        refreshed.set(true);
+        ""
+    })
+    .expect("refresh stale portal");
+
+    assert!(refreshed.get());
+}
+
+#[test]
+fn startup_keeps_a_current_portal_running() {
+    let fixture = fixture();
+    let context = context(fixture.path());
+    let executable = executable(fixture.path());
+    install_at(&context, &executable).expect("install portal");
+    let proc_root = fixture.path().join("proc");
+    portal_process(&proc_root, 123, &executable, &executable);
+    let refreshed = Cell::new(false);
+
+    refresh_stale_portal_at(&context, &executable, &proc_root, || {
+        refreshed.set(true);
+        ""
+    })
+    .expect("keep current portal");
+
+    assert!(!refreshed.get());
+}
+
+fn portal_process(proc_root: &Path, pid: u32, command: &Path, running: &Path) {
+    use std::os::unix::fs::symlink;
+
+    if !running.exists() {
+        fs::write(running, b"old binary").expect("write running executable");
+    }
+    let process = proc_root.join(pid.to_string());
+    fs::create_dir_all(&process).expect("create fake process");
+    let mut cmdline = command.as_os_str().as_bytes().to_vec();
+    cmdline.extend_from_slice(b"\0--portal\0");
+    fs::write(process.join("cmdline"), cmdline).expect("write fake command line");
+    symlink(running, process.join("exe")).expect("link running executable");
 }
 
 #[test]
