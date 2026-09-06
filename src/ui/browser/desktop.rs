@@ -4,11 +4,11 @@ use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::paths::is_trash_location;
 use crate::ui::modal::show_error_dialog;
+use crate::ui::terminal;
 use gtk::gio;
 use gtk::prelude::*;
 use std::ffi::OsString;
 use std::path::Path;
-use std::process::{Command, Stdio};
 
 pub(in crate::ui) fn open_location(location: &Location, parent: &impl IsA<gtk::Widget>) {
     let file = gio_file_for_location(location);
@@ -67,15 +67,16 @@ pub(in crate::ui) fn launch_terminal(location: &Location, parent: &impl IsA<gtk:
         location = %location.diagnostic_path(),
         "opening terminal"
     );
-    let result = Command::new("xdg-terminal-exec")
+    let result = terminal::command()
         .arg(terminal_directory_argument(&path))
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
         .spawn();
     if let Err(error) = result {
-        tracing::warn!(%error, "unable to launch terminal");
-        show_error_dialog(parent, "Unable to open terminal", &error.to_string());
+        tracing::warn!(%error, launcher = terminal::LAUNCHER, "unable to launch terminal");
+        show_error_dialog(
+            parent,
+            "Unable to open terminal",
+            &terminal::launch_failure(&error),
+        );
     }
 }
 
