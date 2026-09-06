@@ -249,8 +249,14 @@ impl ViewState {
         let cancel_layer = layer.clone();
         let cancel_overlay = window_overlay.clone();
         let cancel_root = blurred_root.clone();
+        let dismiss_layer = cancel_layer.clone();
+        let dismiss_overlay = cancel_overlay.clone();
+        let dismiss_root = cancel_root.clone();
         cancel.connect_clicked(move |_| {
             dismiss_modal_layer(&cancel_layer, &cancel_overlay, cancel_root.as_ref());
+        });
+        layout.close.connect_clicked(move |_| {
+            dismiss_modal_layer(&dismiss_layer, &dismiss_overlay, dismiss_root.as_ref());
         });
 
         for (button, choice) in [

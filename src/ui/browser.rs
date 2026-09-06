@@ -574,7 +574,8 @@ impl BrowserView {
         });
     }
 
-    /// Groups List and Icons entries under file-type headings. The Columns mode is unaffected.
+    /// Groups List entries under file-type headings. Icons and Columns keep the
+    /// preference but do not apply it.
     pub fn set_group_by_type(&self, enabled: bool) {
         self.state
             .mode_views
@@ -1090,6 +1091,7 @@ impl BrowserView {
             return false;
         };
         let page = super::scrolling::page(&view, &scroll);
+        self.state.mode_views.borrow().suppress_focus_scroll();
         self.state.browser.page_selection(direction, page.items);
         super::scrolling::reveal_selection(&view, &scroll, direction, &page);
         true
