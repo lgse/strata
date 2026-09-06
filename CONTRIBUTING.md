@@ -86,6 +86,22 @@ cargo install --locked cargo-deny
 cargo install --locked typos-cli
 ```
 
+## End-to-end GUI tests
+
+`./scripts/check.sh` never starts a window. The end-to-end suite drives the
+real application on a headless X display and checks both the window and the
+resulting files:
+
+```bash
+./scripts/e2e.sh
+```
+
+It needs Xvfb, `at-spi2-core`, the Python AT-SPI bindings, D-Bus, and
+ImageMagick; the script names the packages when one is missing. See
+[end-to-end GUI testing](docs/e2e-testing.md) for how scenarios are written,
+how failure artifacts are collected, and how to regenerate the visual
+baselines.
+
 ## Performance fixtures
 
 Generate and profile deterministic large directories with:
