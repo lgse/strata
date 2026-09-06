@@ -12,6 +12,7 @@ pub(super) struct ActiveRename {
     pub(super) field: gtk::Entry,
     pub(super) label: gtk::Label,
     pub(super) spacer: gtk::Box,
+    pub(super) size: gtk::Label,
 }
 
 pub(super) struct ActiveNewEntry {
@@ -186,12 +187,18 @@ impl ViewState {
         let Some(spacer) = field.next_sibling().and_downcast::<gtk::Box>() else {
             return false;
         };
+        let Some(size) = middle.last_child().and_downcast::<gtk::Label>() else {
+            return false;
+        };
         field.remove_css_class("error");
         field.set_tooltip_text(None);
         field.set_sensitive(true);
         field.set_text(&entry.display_name);
         label.set_visible(false);
         spacer.set_visible(false);
+        // The size badge floats above the row's trailing edge; hide it while
+        // renaming so it can't cover the end of a long name or its extension.
+        size.set_visible(false);
         field.set_visible(true);
         field.grab_focus();
         field.select_region(0, rename_stem_end(&entry.display_name));
@@ -200,6 +207,7 @@ impl ViewState {
             field,
             label,
             spacer,
+            size,
         }));
         true
     }
@@ -217,6 +225,7 @@ impl ViewState {
         rename.field.set_sensitive(true);
         rename.label.set_visible(true);
         rename.spacer.set_visible(true);
+        rename.size.set_visible(true);
         true
     }
 
