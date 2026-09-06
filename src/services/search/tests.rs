@@ -6,7 +6,14 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use super::{SearchEvent, SearchItem, fuzzy_score, index_tree, index_tree_with_budget};
+use super::{SearchEvent, SearchItem, fuzzy_score_normalized, index_tree, index_tree_with_budget};
+
+fn score(item: &SearchItem, query: &str, root: &Path) -> Option<i64> {
+    let depth = item.path.strip_prefix(root).ok().map_or(0, |relative| {
+        relative.components().count().saturating_sub(1)
+    });
+    fuzzy_score_normalized(item, &query.trim().to_lowercase(), depth)
+}
 
 fn item(path: &str) -> SearchItem {
     let name = Path::new(path)
@@ -14,23 +21,29 @@ fn item(path: &str) -> SearchItem {
         .unwrap_or_default()
         .to_string_lossy()
         .into_owned();
+    let search_path = path.to_lowercase();
+    let search_name_start = search_path
+        .rfind(std::path::MAIN_SEPARATOR)
+        .map_or(0, |position| {
+            position + std::path::MAIN_SEPARATOR.len_utf8()
+        });
     SearchItem {
         path: PathBuf::from(path),
-        search_name: name.to_lowercase(),
-        search_path: path.to_lowercase(),
+        search_path,
+        search_name_start,
         name,
         is_directory: false,
+        depth: 0,
     }
 }
 
 #[test]
 fn exact_names_rank_above_substrings_and_fuzzy_matches() {
     let root = Path::new("/home/me");
-    let exact =
-        fuzzy_score(&item("/home/me/notes"), "notes", root).expect("an exact name should match");
-    let substring = fuzzy_score(&item("/home/me/my-notes.txt"), "notes", root)
+    let exact = score(&item("/home/me/notes"), "notes", root).expect("an exact name should match");
+    let substring = score(&item("/home/me/my-notes.txt"), "notes", root)
         .expect("a name substring should match");
-    let fuzzy = fuzzy_score(&item("/home/me/nested-object-types.rs"), "notes", root)
+    let fuzzy = score(&item("/home/me/nested-object-types.rs"), "notes", root)
         .expect("an ordered fuzzy subsequence should match");
     assert!(exact > substring);
     assert!(substring > fuzzy);
@@ -39,7 +52,7 @@ fn exact_names_rank_above_substrings_and_fuzzy_matches() {
 #[test]
 fn nearby_duplicate_names_rank_first_without_overriding_match_quality() {
     let root = Path::new("/fixture/Videos");
-    let score = |path, query| fuzzy_score(&item(path), query, root).expect("fixture should match");
+    let score = |path, query| score(&item(path), query, root).expect("fixture should match");
     assert!(
         score("/fixture/Videos/recording.mp4", "recording")
             > score("/fixture/Videos/archive/recording.mp4", "recording")
@@ -83,10 +96,34 @@ fn recursive_results_stay_in_the_root_and_rank_nearby_duplicates_first() {
 }
 
 #[test]
+fn completed_index_returns_only_the_best_bounded_matches() {
+    let root = unique_fixture_root("bounded-best-matches");
+    fs::create_dir_all(&root).expect("create fixture");
+    fs::write(root.join("needle"), b"best match").expect("write exact match");
+    for position in 0..120 {
+        fs::write(root.join(format!("needle-{position:03}")), b"candidate")
+            .expect("write candidate");
+    }
+
+    let (search, events) = index_tree(root.clone(), false);
+    search.query("needle");
+    let event = wait_for_results(&events);
+
+    drop(search);
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let Some(SearchEvent::Results { items, .. }) = event else {
+        panic!("the worker should publish bounded results");
+    };
+    assert_eq!(items.len(), 100);
+    assert_eq!(items.first().map(|item| item.name.as_str()), Some("needle"));
+}
+
+#[test]
 fn searches_relative_path_fragments_and_rejects_non_matches() {
     let candidate = item("/home/me/themes/azure/colors.toml");
-    assert!(fuzzy_score(&candidate, "themes/azure", Path::new("/home/me")).is_some());
-    assert!(fuzzy_score(&candidate, "definitely-missing", Path::new("/home/me")).is_none());
+    assert!(score(&candidate, "themes/azure", Path::new("/home/me")).is_some());
+    assert!(score(&candidate, "definitely-missing", Path::new("/home/me")).is_none());
 }
 
 #[test]
@@ -146,6 +183,40 @@ fn hidden_files_are_indexed_only_when_show_hidden_is_enabled() {
         items.iter().any(|item| item.name == ".dotfile-needle"),
         "a visible hidden file should match once hidden files are shown"
     );
+}
+
+#[test]
+fn generated_tool_content_is_pruned_without_hiding_tool_configuration() {
+    let root = unique_fixture_root("tool-content");
+    fs::create_dir_all(root.join(".cargo/registry")).expect("create Cargo registry fixture");
+    fs::create_dir_all(root.join(".m2/repository")).expect("create Maven repository fixture");
+    fs::write(root.join(".cargo/config-needle.toml"), b"[build]")
+        .expect("write Cargo configuration fixture");
+    fs::write(root.join(".m2/settings-needle.xml"), b"<settings />")
+        .expect("write Maven configuration fixture");
+    fs::write(root.join(".cargo/registry/registry-needle"), b"generated")
+        .expect("write generated Cargo fixture");
+    fs::write(root.join(".m2/repository/artifact-needle"), b"generated")
+        .expect("write generated Maven fixture");
+
+    let (search, events) = index_tree(root.clone(), true);
+    search.query("needle");
+    let event = wait_for_results(&events);
+
+    drop(search);
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let Some(SearchEvent::Results { items, .. }) = event else {
+        panic!("the worker should publish tool configuration results");
+    };
+    let names = items
+        .iter()
+        .map(|item| item.name.as_str())
+        .collect::<Vec<_>>();
+    assert!(names.contains(&"config-needle.toml"));
+    assert!(names.contains(&"settings-needle.xml"));
+    assert!(!names.contains(&"registry-needle"));
+    assert!(!names.contains(&"artifact-needle"));
 }
 
 #[test]

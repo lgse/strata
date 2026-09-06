@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::{
-    path::{Path, PathBuf},
+    cmp::Reverse,
+    collections::BinaryHeap,
+    path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -12,6 +14,23 @@ use std::{
 
 const RESULT_LIMIT: usize = 100;
 const PUBLISH_INTERVAL: Duration = Duration::from_millis(50);
+
+/// High-volume generated trees pruned before they consume the index budget. Configuration files
+/// in the parent tool directories remain searchable when hidden files are shown.
+const GENERATED_TREE_GLOBS: [&str; 12] = [
+    "!**/.cache",
+    "!**/.cargo/registry",
+    "!**/.cargo/git",
+    "!**/.rustup/downloads",
+    "!**/.gradle/caches",
+    "!**/.gradle/wrapper/dists",
+    "!**/.m2/repository",
+    "!**/.npm/_cacache",
+    "!**/.bun/install/cache",
+    "!**/node_modules",
+    "!**/target",
+    "!**/.venv",
+];
 
 /// Bounds worst-case index memory on an adversarially large tree. Each retained `SearchItem`
 /// stores full path strings, so cost scales with path length, not just entry count: roughly
@@ -25,8 +44,15 @@ pub struct SearchItem {
     pub path: PathBuf,
     pub name: String,
     pub is_directory: bool,
-    search_name: String,
     search_path: String,
+    search_name_start: usize,
+    depth: u8,
+}
+
+impl SearchItem {
+    fn search_name(&self) -> &str {
+        &self.search_path[self.search_name_start..]
+    }
 }
 
 pub enum SearchEvent {
@@ -47,6 +73,7 @@ enum SearchCommand {
 #[derive(Default)]
 struct WalkProgress {
     query: String,
+    normalized_query: String,
     matches: Vec<(i64, SearchItem)>,
     truncated: bool,
 }
@@ -105,12 +132,30 @@ fn index_tree_with_budget(
             // yields at least one entry beyond it, letting depth truncation be detected below.
             // `hidden` must come after `standard_filters`: that bundle enables its own
             // `hidden(true)` internally, which would otherwise override this call back on.
+            let mut overrides = ignore::overrides::OverrideBuilder::new(&root);
+            for generated_tree in GENERATED_TREE_GLOBS {
+                if let Err(error) = overrides.add(generated_tree) {
+                    tracing::warn!(
+                        %error,
+                        pattern = generated_tree,
+                        "invalid generated-tree prune glob"
+                    );
+                }
+            }
+            let overrides = match overrides.build() {
+                Ok(overrides) => overrides,
+                Err(error) => {
+                    tracing::warn!(%error, "generated-tree prune globs failed; walking unpruned");
+                    ignore::overrides::Override::empty()
+                }
+            };
             let walker = ignore::WalkBuilder::new(&root)
                 .follow_links(false)
                 .standard_filters(true)
                 .hidden(!show_hidden)
                 .require_git(false)
                 .max_depth(Some(max_depth + 1))
+                .overrides(overrides)
                 .build();
 
             for result in walker {
@@ -138,11 +183,11 @@ fn index_tree_with_budget(
                     &command_receiver,
                     &event_sender,
                     &index,
-                    &root,
                     &mut progress,
                     true,
                 );
                 let is_directory = entry.file_type().is_some_and(|kind| kind.is_dir());
+                let depth = entry.depth().saturating_sub(1).min(MAX_INDEX_DEPTH) as u8;
                 let path = entry.into_path();
                 let name = path
                     .file_name()
@@ -154,15 +199,21 @@ fn index_tree_with_budget(
                     .unwrap_or(&path)
                     .to_string_lossy()
                     .to_lowercase();
+                let search_name_start = search_path
+                    .rfind(std::path::MAIN_SEPARATOR)
+                    .map_or(0, |position| {
+                        position + std::path::MAIN_SEPARATOR.len_utf8()
+                    });
                 let item = SearchItem {
-                    search_name: name.to_lowercase(),
                     name,
                     is_directory,
                     path,
                     search_path,
+                    search_name_start,
+                    depth,
                 };
-                if let Some(score) = fuzzy_score(&item, &progress.query, &root) {
-                    insert_match(&mut progress.matches, score, item.clone());
+                if let Some(score) = fuzzy_score_indexed(&item, &progress.normalized_query) {
+                    insert_match(&mut progress.matches, score, &item);
                 }
                 index.push(item);
 
@@ -189,12 +240,13 @@ fn index_tree_with_budget(
             while !worker_cancelled.load(Ordering::Relaxed) {
                 match command_receiver.recv_timeout(Duration::from_millis(50)) {
                     Ok(SearchCommand::Query(next)) => {
-                        progress.query = command_receiver
+                        let query = command_receiver
                             .try_iter()
                             .map(|SearchCommand::Query(query)| query)
                             .last()
                             .unwrap_or(next);
-                        progress.matches = score_index(&index, &progress.query, &root);
+                        set_query(&mut progress, query);
+                        progress.matches = score_index(&index, &progress.normalized_query);
                         publish(&event_sender, &progress, false);
                     }
                     Err(RecvTimeoutError::Timeout) => {}
@@ -215,7 +267,6 @@ fn apply_pending_queries(
     receiver: &Receiver<SearchCommand>,
     sender: &Sender<SearchEvent>,
     index: &[SearchItem],
-    root: &Path,
     progress: &mut WalkProgress,
     indexing: bool,
 ) {
@@ -226,28 +277,47 @@ fn apply_pending_queries(
     else {
         return;
     };
-    progress.query = next;
-    progress.matches = score_index(index, &progress.query, root);
+    set_query(progress, next);
+    progress.matches = score_index(index, &progress.normalized_query);
     publish(sender, progress, indexing);
 }
 
-fn score_index(index: &[SearchItem], query: &str, root: &Path) -> Vec<(i64, SearchItem)> {
-    let mut matches = Vec::with_capacity(RESULT_LIMIT);
-    let normalized_query = query.trim().to_lowercase();
-    for item in index {
-        if let Some(score) = fuzzy_score_normalized(item, &normalized_query, root) {
-            insert_match(&mut matches, score, item.clone());
-        }
-    }
-    matches
+fn set_query(progress: &mut WalkProgress, query: String) {
+    progress.normalized_query = query.to_lowercase();
+    progress.query = query;
 }
 
-fn insert_match(matches: &mut Vec<(i64, SearchItem)>, score: i64, item: SearchItem) {
+fn score_index(index: &[SearchItem], normalized_query: &str) -> Vec<(i64, SearchItem)> {
+    let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
+    for (position, item) in index.iter().enumerate() {
+        let Some(score) = fuzzy_score_indexed(item, normalized_query) else {
+            continue;
+        };
+        let candidate = (score, Reverse(position));
+        if best.len() < RESULT_LIMIT {
+            best.push(Reverse(candidate));
+        } else if best.peek().is_some_and(|Reverse(worst)| candidate > *worst) {
+            best.pop();
+            best.push(Reverse(candidate));
+        }
+    }
+    let mut ranked = best
+        .into_iter()
+        .map(|Reverse((score, Reverse(position)))| (score, position))
+        .collect::<Vec<_>>();
+    ranked.sort_unstable_by(|left, right| right.0.cmp(&left.0).then_with(|| left.1.cmp(&right.1)));
+    ranked
+        .into_iter()
+        .map(|(score, position)| (score, index[position].clone()))
+        .collect()
+}
+
+fn insert_match(matches: &mut Vec<(i64, SearchItem)>, score: i64, item: &SearchItem) {
     let position = matches
         .binary_search_by(|candidate| candidate.0.cmp(&score).reverse())
         .unwrap_or_else(|position| position);
     if position < RESULT_LIMIT {
-        matches.insert(position, (score, item));
+        matches.insert(position, (score, item.clone()));
         matches.truncate(RESULT_LIMIT);
     }
 }
@@ -265,33 +335,28 @@ fn publish(sender: &Sender<SearchEvent>, progress: &WalkProgress, indexing: bool
     });
 }
 
-/// Scores ordered character matches, strongly preferring names, contiguous runs and word/path
-/// boundaries. Exact substrings rank ahead of looser fuzzy matches.
-pub fn fuzzy_score(item: &SearchItem, query: &str, root: &Path) -> Option<i64> {
-    fuzzy_score_normalized(item, &query.trim().to_lowercase(), root)
+fn fuzzy_score_indexed(item: &SearchItem, normalized_query: &str) -> Option<i64> {
+    fuzzy_score_normalized(item, normalized_query, item.depth.into())
 }
 
-fn fuzzy_score_normalized(item: &SearchItem, query: &str, root: &Path) -> Option<i64> {
+fn fuzzy_score_normalized(item: &SearchItem, query: &str, depth: usize) -> Option<i64> {
     if query.is_empty() {
         return None;
     }
-    let mut score = if let Some(position) = item.search_name.find(query) {
-        10_000 - position as i64 * 12 - item.search_name.len() as i64
+    let search_name = item.search_name();
+    let mut score = if let Some(position) = search_name.find(query) {
+        10_000 - position as i64 * 12 - search_name.len() as i64
     } else if let Some(position) = item.search_path.find(query) {
         7_000 - position as i64 * 4 - item.search_path.len() as i64
     } else {
         fuzzy_subsequence_score(&item.search_path, query)?
     };
-    if item.search_name == query {
+    if search_name == query {
         score += 20_000;
     }
     if item.is_directory {
         score += 20;
     }
-    // Prefer nearby matches without allowing proximity to outweigh match quality.
-    let depth = item.path.strip_prefix(root).ok().map_or(0, |relative| {
-        relative.components().count().saturating_sub(1)
-    });
     score -= depth.min(MAX_INDEX_DEPTH) as i64 * 32;
     Some(score)
 }
