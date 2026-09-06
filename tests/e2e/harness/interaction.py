@@ -8,7 +8,7 @@ passes a literal screen position.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Sequence
 
 from .tree import Bounds, Node
@@ -118,6 +118,7 @@ class Pointer:
     """Synthetic pointer input, aimed by accessible bounds."""
 
     connection: XTestConnection
+    _last_release: float = field(default=float("-inf"), init=False)
 
     def move_to(self, x: int, y: int) -> None:
         # Approach in two steps so GTK sees enter and motion rather than a
@@ -242,6 +243,7 @@ class Pointer:
         self.connection.button(button, True)
         time.sleep(EVENT_GAP)
         self.connection.button(button, False)
+        self._last_release = time.monotonic()
         time.sleep(EVENT_GAP)
 
     def _drag(
@@ -253,6 +255,11 @@ class Pointer:
         release: bool,
     ) -> None:
         self.move_to(*start)
+        # A drag immediately after selecting must not become a double-click
+        # activation before its first motion event reaches GTK.
+        remaining = SEPARATE_CLICK_GAP - (time.monotonic() - self._last_release)
+        if remaining > 0:
+            time.sleep(remaining)
         self.connection.button(1, True)
         time.sleep(POINTER_GAP)
         # GTK starts a drag only once the pointer passes the drag threshold,

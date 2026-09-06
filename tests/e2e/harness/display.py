@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .environment import TestEnvironment, process_environment
 from .process import ManagedProcess, terminate
 
 # `sockaddr_un.sun_path` holds 107 usable bytes. `at-spi-bus-launcher` binds
@@ -24,20 +25,6 @@ MAX_RUNTIME_DIR_LENGTH = 60
 FIRST_DISPLAY_NUMBER = 90
 DISPLAY_TRIES = 30
 XVFB_START_TIMEOUT = 15.0
-
-# Variables from the developer's own desktop session that must not reach the
-# processes under test.
-HIDDEN_SESSION_VARIABLES = frozenset(
-    {
-        "WAYLAND_DISPLAY",
-        "XDG_SESSION_DESKTOP",
-        "DESKTOP_SESSION",
-        "HYPRLAND_INSTANCE_SIGNATURE",
-        "GNOME_SETUP_DISPLAY",
-        "DBUS_STARTER_ADDRESS",
-        "DBUS_STARTER_BUS_TYPE",
-    }
-)
 
 BUS_LAUNCHER_CANDIDATES = (
     "/usr/libexec/at-spi-bus-launcher",
@@ -102,10 +89,13 @@ class HeadlessDisplay:
     session_bus_address: str = field(init=False)
     accessibility_bus_address: str = field(init=False)
     _processes: list[ManagedProcess] = field(init=False, default_factory=list)
+    _home: TestEnvironment | None = field(init=False, default=None)
 
     def start(self) -> None:
-        self.runtime_dir = Path(tempfile.mkdtemp(prefix="strata-e2e-"))
+        self.runtime_dir = Path(tempfile.mkdtemp(prefix="strata-e2e-", dir="/tmp"))
+        self._home = TestEnvironment()
         if len(str(self.runtime_dir)) > MAX_RUNTIME_DIR_LENGTH:
+            self.stop()
             raise DisplayError(
                 f"runtime directory {self.runtime_dir} is too long; the "
                 "accessibility bus socket would exceed the 107-byte limit"
@@ -116,8 +106,11 @@ class HeadlessDisplay:
             self._start_session_bus()
             self._start_accessibility_bus()
             self._start_registry()
-        except Exception:
+        except BaseException as error:
+            logs = self.logs()
             self.stop()
+            if isinstance(error, Exception):
+                raise DisplayError(f"{error}\nSession logs: {logs}") from error
             raise
 
     @property
@@ -130,6 +123,8 @@ class HeadlessDisplay:
         }
 
     def _spawn(self, name: str, command: list[str], **kwargs) -> ManagedProcess:
+        if "env" not in kwargs:
+            kwargs["env"] = {**process_environment(), **self._home.variables()}
         managed = ManagedProcess.spawn(name, command, log_dir=self.runtime_dir, **kwargs)
         self._processes.append(managed)
         return managed
@@ -202,7 +197,7 @@ class HeadlessDisplay:
         self._spawn(
             "at-spi-bus-launcher",
             [launcher, "--launch-immediately"],
-            env={**os.environ, **self._bus_environment()},
+            env=self._bus_environment(),
         )
         address = ""
 
@@ -230,9 +225,10 @@ class HeadlessDisplay:
                 "/org/a11y/bus",
                 "org.a11y.Bus.GetAddress",
             ],
-            env={**os.environ, **self._bus_environment()},
+            env=self._bus_environment(),
             capture_output=True,
             text=True,
+            timeout=5,
         )
         if reply.returncode != 0:
             return ""
@@ -245,18 +241,11 @@ class HeadlessDisplay:
         self._spawn(
             "at-spi2-registryd",
             [registry],
-            env={**os.environ, **self._bus_environment()},
+            env=self._bus_environment(),
         )
 
     def _bus_environment(self) -> dict[str, str]:
-        # `at-spi2-registryd` only injects pointer events through XTEST when it
-        # believes it is on an X11 session, so the outer Wayland session must
-        # not leak into it.
-        environment = {
-            key: value
-            for key, value in os.environ.items()
-            if key not in HIDDEN_SESSION_VARIABLES
-        }
+        environment = {**process_environment(), **self._home.variables()}
         environment.update(
             {
                 "DISPLAY": self.display,
@@ -295,3 +284,6 @@ class HeadlessDisplay:
         runtime_dir = getattr(self, "runtime_dir", None)
         if runtime_dir is not None:
             shutil.rmtree(runtime_dir, ignore_errors=True)
+        if self._home is not None:
+            self._home.cleanup()
+            self._home = None

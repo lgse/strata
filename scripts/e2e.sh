@@ -6,6 +6,9 @@
 #   STRATA_E2E_UPDATE_BASELINES=1 ./scripts/e2e.sh -k baseline
 set -euo pipefail
 
+# Never let dependency checks or a failed harness startup reach the desktop.
+unset DISPLAY WAYLAND_DISPLAY
+
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 suite="$repository/tests/e2e"
 venv="${STRATA_E2E_VENV:-$repository/target/e2e-venv}"
@@ -34,4 +37,5 @@ if [[ -z "${STRATA_BINARY:-}" ]]; then
   cargo build --manifest-path "$repository/Cargo.toml" --bin strata
 fi
 
-exec "$venv/bin/python" -m pytest -c "$suite/pytest.ini" --rootdir "$suite" "$@" "$suite/scenarios"
+cd "$repository"
+exec "$venv/bin/python" -m pytest -c "$suite/pytest.ini" --rootdir "$repository" "$@"

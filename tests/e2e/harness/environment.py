@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 from dataclasses import dataclass, field
@@ -18,6 +19,7 @@ gtk-theme-name=Adwaita
 gtk-icon-theme-name=Adwaita
 gtk-font-name=Cantarell 11
 gtk-cursor-blink=false
+gtk-double-click-time=400
 gtk-cursor-theme-name=Adwaita
 gtk-cursor-theme-size=24
 gtk-xft-antialias=1
@@ -64,6 +66,11 @@ DEFAULT_PREFERENCES: dict[str, object] = {
 }
 
 
+def process_environment() -> dict[str, str]:
+    # Do not inherit desktop endpoints, GTK modules, or user configuration overrides.
+    return {"PATH": os.environ.get("PATH", os.defpath)}
+
+
 def _render_toml(values: dict[str, object]) -> str:
     lines = []
     for key, value in values.items():
@@ -88,7 +95,7 @@ class TestEnvironment:
     root: Path = field(init=False)
 
     def __post_init__(self) -> None:
-        self.root = Path(tempfile.mkdtemp(prefix="strata-e2e-home-"))
+        self.root = Path(tempfile.mkdtemp(prefix="strata-e2e-home-", dir="/tmp"))
         for name in ("home", "config", "data", "cache", "state"):
             (self.root / name).mkdir()
         gtk = self.config_home / "gtk-4.0"

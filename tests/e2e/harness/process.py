@@ -68,16 +68,14 @@ class ManagedProcess:
 def terminate(popen: subprocess.Popen | None) -> None:
     """Stop a process group, escalating to SIGKILL when it does not exit."""
 
-    if popen is None or popen.poll() is not None:
+    if popen is None:
         return
-    try:
-        group = os.getpgid(popen.pid)
-    except (ProcessLookupError, PermissionError):
-        group = None
+    # Every managed process starts a new session. Its group can outlive the
+    # leader (notably the accessibility bus launched by at-spi-bus-launcher).
+    group = popen.pid
     _signal(popen, group, signal.SIGTERM)
     try:
         popen.wait(timeout=TERMINATE_GRACE_SECONDS)
-        return
     except subprocess.TimeoutExpired:
         pass
     _signal(popen, group, signal.SIGKILL)

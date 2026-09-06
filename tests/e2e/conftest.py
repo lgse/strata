@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import sys
 from pathlib import Path
 
@@ -21,8 +22,7 @@ from harness.fixtures import FixtureTree  # noqa: E402
 from harness.interaction import Keyboard, Pointer  # noqa: E402
 from harness.xtest import XTestConnection  # noqa: E402
 
-# One infrastructure retry, as the issue requires: a display or bus that fails
-# to come up is retried once, while a failed interaction assertion never is.
+# Retry infrastructure startup only, never interaction assertions.
 DISPLAY_START_ATTEMPTS = 2
 
 
@@ -48,12 +48,13 @@ def headless_display() -> HeadlessDisplay:
             display.start()
         except Exception as error:
             last_error = error
+            ArtifactCollector(test_name="infrastructure").write("startup-error.txt", str(error))
             display.stop()
             continue
-        # libatspi reads these once, on the first `Atspi.init()`.
-        os.environ.update(display.environment)
-        tree.connect()
         try:
+            # libatspi reads these once, on the first `Atspi.init()`.
+            os.environ.update(display.environment)
+            tree.connect()
             yield display
         finally:
             display.stop()
@@ -138,17 +139,21 @@ def strata(
         environment=test_environment,
         display=headless_display,
     )
-    application.start()
+    failed = False
     try:
+        application.start()
         yield window
+    except BaseException:
+        failed = True
+        raise
     finally:
-        # Collect evidence while the window is still up: the accessibility
-        # tree and the screenshot are both gone once the process exits.
-        if request.node.stash.get(_REPORT_KEY, False) or request.config.getoption(
-            "--keep-artifacts"
-        ):
-            _collect_artifacts(request, window)
-        application.stop()
+        try:
+            if failed or request.node.stash.get(_REPORT_KEY, False) or request.config.getoption(
+                "--keep-artifacts"
+            ):
+                _collect_artifacts(request, window)
+        finally:
+            application.stop()
 
 
 _REPORT_KEY = pytest.StashKey[bool]()
@@ -166,7 +171,21 @@ def _collect_artifacts(request: pytest.FixtureRequest, window: Strata) -> None:
     print(f"\nfailure artifacts: {collector.directory}")
 
 
+_TERMINATION_HANDLER_KEY = pytest.StashKey[object]()
+
+
+def _terminate_session(_number, _frame):
+    raise KeyboardInterrupt("headless test session terminated")
+
+
+def pytest_unconfigure(config: pytest.Config) -> None:
+    previous = config.stash.get(_TERMINATION_HANDLER_KEY, None)
+    if previous is not None:
+        signal.signal(signal.SIGTERM, previous)
+
+
 def pytest_configure(config: pytest.Config) -> None:
+    config.stash[_TERMINATION_HANDLER_KEY] = signal.signal(signal.SIGTERM, _terminate_session)
     config.addinivalue_line(
         "markers", "preferences(**values): seed Strata preferences for a scenario"
     )
@@ -187,23 +206,15 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
 def baseline(request: pytest.FixtureRequest):
     """Compare a capture with its committed golden image."""
 
-    comparisons: list[screenshots.Comparison] = []
-
     def compare(window: Strata, name: str) -> screenshots.Comparison:
         collector = ArtifactCollector(test_name=request.node.name)
         actual = window.screenshot(collector.directory / f"{name}.capture.png")
         comparison = screenshots.compare_to_baseline(name, actual, collector.directory)
-        comparisons.append(comparison)
+        assert comparison.matched, (
+            comparison.summary
+            + f"\nExpected, actual, and diff images are in {collector.directory}"
+            + "\nRegenerate deliberately with STRATA_E2E_UPDATE_BASELINES=1."
+        )
         return comparison
 
-    yield compare
-    failures = [item.summary for item in comparisons if not item.matched]
-    if failures:
-        raise AssertionError(
-            "golden screenshots did not match:\n"
-            + "\n".join(failures)
-            + "\n\nExpected, actual, and diff images are in "
-            + str(ArtifactCollector(test_name=request.node.name).directory)
-            + "\nRegenerate them deliberately with "
-            "STRATA_E2E_UPDATE_BASELINES=1 and commit the new images."
-        )
+    return compare

@@ -12,7 +12,6 @@ set -euo pipefail
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 mutations="$repository/tests/e2e/mutations"
 
-# Which scenarios each mutation must break.
 declare -A SCENARIOS=(
   [drag-and-drop]="tests/e2e/scenarios/test_drag_and_drop.py"
   [clipboard]="tests/e2e/scenarios/test_clipboard.py"
@@ -31,10 +30,21 @@ if [[ -n "$(git -C "$repository" status --porcelain -- src)" ]]; then
   exit 1
 fi
 
+if [[ -n "${STRATA_BINARY:-}" ]]; then
+  echo "STRATA_BINARY must be unset so mutations exercise the rebuilt binary" >&2
+  exit 1
+fi
+
+cd "$repository"
+reports="$repository/target/e2e-mutations"
+mkdir -p "$reports"
+
 restore() {
-  git -C "$repository" checkout -- src
+  git restore --worktree -- src
 }
 trap restore EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 failures=0
 for name in "${selected[@]}"; do
@@ -45,6 +55,12 @@ for name in "${selected[@]}"; do
     exit 2
   fi
 
+  echo "== $name: checking the unmodified scenario"
+  "$repository/scripts/e2e.sh" -q "$repository/$scenario" >"$reports/$name-baseline.log" 2>&1 || {
+    echo "   baseline failed; see $reports/$name-baseline.log" >&2
+    exit 1
+  }
+
   echo "== $name: applying $patch"
   git -C "$repository" apply -p1 "$patch"
   if ! cargo build --manifest-path "$repository/Cargo.toml" --bin strata >/dev/null; then
@@ -54,11 +70,16 @@ for name in "${selected[@]}"; do
   fi
 
   echo "== $name: expecting $scenario to fail"
-  if "$repository/scripts/e2e.sh" -q -x "$repository/$scenario" >/dev/null 2>&1; then
-    echo "   NOT DETECTED: $scenario still passes with $name broken" >&2
-    failures=$((failures + 1))
-  else
+  report="$reports/$name.xml"
+  rm -f "$report"
+  result=0
+  "$repository/scripts/e2e.sh" -q -x --junitxml="$report" "$repository/$scenario" \
+    >"$reports/$name.log" 2>&1 || result=$?
+  if python3 "$repository/scripts/e2e_mutation_result.py" "$report" "$result"; then
     echo "   detected"
+  else
+    echo "   NOT DETECTED or infrastructure failure; see $reports/$name.log" >&2
+    failures=$((failures + 1))
   fi
   restore
 done

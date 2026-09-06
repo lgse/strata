@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import tree
-from .display import HIDDEN_SESSION_VARIABLES, HeadlessDisplay
-from .environment import TestEnvironment
+from .display import HeadlessDisplay
+from .environment import TestEnvironment, process_environment
 from .process import ManagedProcess, terminate
 
 APPLICATION_NAME = "strata"
@@ -71,11 +71,7 @@ class Application:
     process: ManagedProcess | None = None
 
     def start(self) -> "Application":
-        variables = {
-            key: value
-            for key, value in os.environ.items()
-            if key not in HIDDEN_SESSION_VARIABLES
-        }
+        variables = process_environment()
         variables.update(self.environment.variables())
         variables.update(self.display.environment)
         self.process = ManagedProcess.spawn(
@@ -85,7 +81,11 @@ class Application:
             env=variables,
             cwd=self.location,
         )
-        self._await_window()
+        try:
+            self._await_window()
+        except BaseException:
+            self.stop()
+            raise
         return self
 
     def _await_window(self) -> None:
@@ -131,7 +131,10 @@ class Application:
         return application
 
     def log(self) -> str:
-        return self.process.read_log() if self.process else ""
+        if self.process:
+            return self.process.read_log()
+        path = self.environment.root / "strata.log"
+        return path.read_text(errors="replace") if path.exists() else ""
 
     def diagnostics(self) -> str:
         application = tree.find_application(APPLICATION_NAME)

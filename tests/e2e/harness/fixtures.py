@@ -43,7 +43,7 @@ class FixtureTree:
 
     @classmethod
     def create(cls, layout: dict[str, object] | None = None) -> "FixtureTree":
-        root = Path(tempfile.mkdtemp(prefix="strata-e2e-fixture-"))
+        root = Path(tempfile.mkdtemp(prefix="strata-e2e-fixture-", dir="/tmp"))
         return cls._build(root, layout)
 
     @classmethod
@@ -56,8 +56,8 @@ class FixtureTree:
         scenarios behind them cannot use a randomized temporary directory.
         """
 
-        shutil.rmtree(root, ignore_errors=True)
-        root.mkdir(parents=True)
+        # Never remove another run's fixture or pre-existing user data.
+        root.mkdir(mode=0o700, parents=True)
         return cls._build(root, layout)
 
     @classmethod
@@ -74,9 +74,11 @@ class FixtureTree:
             path = base / name
             if isinstance(value, dict):
                 path.mkdir(parents=True, exist_ok=True)
+                path.chmod(0o755)
                 self.populate(value, path)
             else:
                 path.write_text(str(value))
+                path.chmod(0o644)
         self._pin_times(base)
 
     def _pin_times(self, base: Path) -> None:

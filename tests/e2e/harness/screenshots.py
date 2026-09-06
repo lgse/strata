@@ -42,6 +42,7 @@ def capture(display: str, destination: Path) -> Path:
         env={**os.environ, "DISPLAY": display},
         capture_output=True,
         text=True,
+        timeout=15,
     )
     if result.returncode != 0 or not destination.exists():
         raise CaptureError(f"screen capture failed: {result.stderr.strip()}")
@@ -118,7 +119,8 @@ def compare_to_baseline(name: str, actual: Path, artifacts: Path) -> Comparison:
                 None,
             )
         difference = ImageChops.difference(baseline, candidate)
-        mask = difference.convert("L").point(
+        red, green, blue = difference.split()
+        mask = ImageChops.lighter(ImageChops.lighter(red, green), blue).point(
             lambda value: 255 if value > CHANNEL_TOLERANCE else 0
         )
         different = sum(mask.histogram()[1:])

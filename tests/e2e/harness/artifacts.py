@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -72,6 +73,6 @@ class ArtifactCollector:
                 written.append(
                     screenshots.capture(display, self.directory / "screenshot.png")
                 )
-            except screenshots.CaptureError as error:
+            except (screenshots.CaptureError, subprocess.TimeoutExpired, OSError) as error:
                 written.append(self.write("screenshot-error.txt", str(error)))
         return written

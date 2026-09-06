@@ -1,7 +1,7 @@
 # End-to-end GUI testing
 
-The Rust suite covers state transitions and filesystem edge cases, but it never
-starts a window. The end-to-end suite in `tests/e2e` drives the real GTK
+The Rust suite covers state transitions, filesystem edge cases, and individual
+widgets. The end-to-end suite in `tests/e2e` drives the real GTK
 application on a headless X display, sends real keyboard and pointer input, and
 checks both what the window reports and what happened on disk.
 
@@ -17,6 +17,21 @@ The script builds the debug binary, creates a virtual environment under
 `target/e2e-venv` on first use, and runs the same command CI runs. Set
 `STRATA_BINARY` to test a binary you built yourself.
 
+### Keep Rust test windows off the local desktop
+
+Some Rust tests also create GTK windows when a display is available. Run the
+complete Rust test suite on the same private Xvfb/D-Bus infrastructure with:
+
+```bash
+./scripts/test-headless.py
+./scripts/test-headless.py -- --nocapture
+```
+
+This requires Xvfb and AT-SPI but not the Python E2E packages. It isolates
+application preferences while retaining access to the installed Cargo/Rust
+toolchains. A startup failure aborts; it never falls back to the real display.
+The E2E runner likewise clears inherited display variables before startup.
+
 ### Dependencies
 
 | Purpose | Arch | Debian / Ubuntu |
@@ -26,6 +41,7 @@ The script builds the debug binary, creates a virtual environment under
 | Python AT-SPI bindings | `python-gobject` | `python3-gi`, `gir1.2-atspi-2.0` |
 | Private session bus | `dbus` | `dbus-daemon`, `dbus-bin` |
 | Screen capture | `imagemagick` | `imagemagick` |
+| Font | `cantarell-fonts` | `fonts-cantarell` |
 
 `pytest` and Pillow are installed into the virtual environment from
 `tests/e2e/requirements.txt`. The environment is created with
@@ -50,7 +66,10 @@ Rendering is pinned: Xvfb at 1440x900x24 and 96 DPI, `GSK_RENDERER=cairo`,
 software GL, `GDK_SCALE=1`, the Adwaita theme and icon theme, Cantarell 11,
 `C.UTF-8`, `UTC`, animations off, and `reduce_motion` on.
 
-Nothing outside the scenario's own temporary directories is read or written.
+Application preferences and file operations use only the scenario's temporary
+HOME/XDG directories and fixtures. Both are created under `/tmp` so trash
+capabilities do not vary when the caller's `TMPDIR` is on another filesystem. System libraries, fonts, and icon assets are
+shared; desktop endpoints and user configuration overrides are not inherited.
 
 ## Writing a scenario
 
@@ -127,8 +146,10 @@ in the test output, and CI uploads the whole directory. Pass
 `tests/e2e/scenarios/test_visual_baselines.py` compares a small set of stable
 states with the images in `tests/e2e/baselines`: one canonical fixture in each
 view, a selection with focus, an open context menu, and a confirmation dialog.
-These scenarios use a fixed fixture path, because the breadcrumb and the
-context menu render it.
+These scenarios exclusively claim `/tmp/strata-e2e-baseline`, because the
+breadcrumb and context menu render the full path. An existing directory or
+symlink is a setup error, never deleted or reused; concurrent baseline runs
+must use separate containers.
 
 A capture matches when no more than 0.5% of pixels differ by more than 24 in
 any channel, which absorbs the subpixel antialiasing that software rendering
@@ -156,9 +177,12 @@ workflow fail:
 ```
 
 Each patch breaks a single critical workflow — drag and drop, clipboard,
-keyboard navigation, click modes, view switching — and the script restores the
-tree afterwards. Run it after changing the harness, and when adding a scenario
-for a workflow that does not have a mutation yet.
+keyboard navigation, click modes, view switching. The unmodified scenarios
+must pass first; only a failed scenario assertion in the mutated run counts as
+detection, not a startup/collection error or killed process. Logs and JUnit
+reports are saved in `target/e2e-mutations`. The script restores source changes
+afterwards. Run it after changing the harness, and when adding a scenario for
+a workflow that does not have a mutation yet.
 
 ## In CI
 
