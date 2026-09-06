@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod accessibility;
 mod blur;
 mod browser;
 mod browser_modes;

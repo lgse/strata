@@ -4892,8 +4892,13 @@ impl ViewState {
     }
 
     fn append_column(self: &Rc<Self>, depth: usize, location: &Location) {
-        let column = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let column = super::accessibility::pane_box();
         column.add_css_class("directory-column");
+        super::accessibility::describe_pane(
+            &column,
+            &location.display_name(),
+            BrowserMode::Columns,
+        );
         column.set_hexpand(true);
         column.set_vexpand(true);
         let pane_motion = gtk::EventControllerMotion::new();
@@ -5228,6 +5233,7 @@ impl ViewState {
                 .build();
             let rename = gtk::Entry::new();
             rename.add_css_class("inline-rename");
+            super::accessibility::set_label(&rename, "Rename");
             rename.set_hexpand(true);
             rename.set_visible(false);
             rename.connect_changed(|field| {
@@ -5700,6 +5706,7 @@ impl ViewState {
             let size_text = column_size_text(entry.as_ref());
             size.set_label(&size_text);
             size.set_visible(!size_text.is_empty());
+            super::accessibility::describe_entry(item, &label.label(), entry.as_ref());
         });
         factory.connect_unbind(|_, item| super::thumbnail::cancel_list_item_thumbnails(item));
 
@@ -5708,6 +5715,7 @@ impl ViewState {
         list.set_enable_rubberband(false);
         list.set_single_click_activate(false);
         list.set_vexpand(true);
+        super::accessibility::describe_entry_container(&list, &location.display_name());
 
         let search_navigation = gtk::EventControllerKey::new();
         search_navigation.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -5846,6 +5854,7 @@ impl ViewState {
         new_entry_icon.add_css_class("file-icon");
         let new_entry_entry = gtk::Entry::new();
         new_entry_entry.add_css_class("inline-rename");
+        super::accessibility::set_label(&new_entry_entry, "New item name");
         new_entry_entry.set_hexpand(true);
         new_entry_entry.connect_changed(|field| {
             update_basename_validation(field);
@@ -7021,7 +7030,7 @@ pub(super) fn install_folder_context_menu(
         chooser_context::install_folder(state, parent, is_item_target, depth, location);
         return;
     }
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let content = super::accessibility::menu_box();
     content.add_css_class("folder-context-menu");
     let (popover, scroll) = context_menu_popover(&content);
     popover.add_css_class("folder-context-popover");
@@ -7233,7 +7242,7 @@ pub(super) fn install_item_context_menu(
         .location_at(depth)
         .as_ref()
         .is_some_and(is_trash_location);
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let content = super::accessibility::menu_box();
     content.add_css_class("item-context-menu");
     let header = gtk::Box::new(gtk::Orientation::Vertical, 2);
     header.add_css_class("item-context-header");
@@ -8678,7 +8687,7 @@ fn item_context_danger_option(icon: &str, label: &str, accelerator: &str) -> gtk
 }
 
 fn item_context_option_with_icon(icon: gtk::Image, label: &str, accelerator: &str) -> gtk::Button {
-    let button = gtk::Button::new();
+    let button = super::accessibility::menu_item_button();
     button.add_css_class("item-context-option");
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     icon.add_css_class("item-context-icon");
@@ -8693,6 +8702,7 @@ fn item_context_option_with_icon(icon: gtk::Image, label: &str, accelerator: &st
         row.append(&shortcut);
     }
     button.set_child(Some(&row));
+    super::accessibility::describe_menu_item(&button, label, accelerator);
     button
 }
 
@@ -8719,9 +8729,10 @@ fn context_menu_row(
 
 fn context_menu_option(icon: &str, label: &str, accelerator: &str) -> gtk::Button {
     let (row, _, _) = context_menu_row(icon, label, accelerator);
-    let button = gtk::Button::new();
+    let button = super::accessibility::menu_item_button();
     button.add_css_class("folder-context-option");
     button.set_child(Some(&row));
+    super::accessibility::describe_menu_item(&button, label, accelerator);
     button
 }
 
@@ -8731,9 +8742,10 @@ fn context_menu_toggle_option(
     accelerator: &str,
 ) -> (gtk::Button, gtk::Image, gtk::Label) {
     let (row, icon, title) = context_menu_row(icon, label, accelerator);
-    let button = gtk::Button::new();
+    let button = super::accessibility::menu_item_button();
     button.add_css_class("folder-context-option");
     button.set_child(Some(&row));
+    super::accessibility::describe_menu_item(&button, label, accelerator);
     (button, icon, title)
 }
 
