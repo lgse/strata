@@ -221,13 +221,18 @@ impl ViewState {
     }
 
     pub(super) fn submit_rename(self: &Rc<Self>, field: &gtk::Entry) {
-        let mut active = self.active_rename.borrow_mut();
-        let Some(rename) = active.as_mut().filter(|rename| rename.field == *field) else {
-            return;
+        // `Browser::rename` rejects an invalid basename by emitting `RenameFailed` before it
+        // returns, and that handler reads `active_rename` to flag the field, so the borrow
+        // taken to read the entry must be released first.
+        let entry = {
+            let active = self.active_rename.borrow();
+            let Some(rename) = active.as_ref().filter(|rename| rename.field == *field) else {
+                return;
+            };
+            rename.entry.clone()
         };
         let new_name = field.text().to_string();
-        if new_name == rename.entry.display_name {
-            drop(active);
+        if new_name == entry.display_name {
             self.cancel_rename();
             self.browser.focus_active();
             return;
@@ -235,7 +240,7 @@ impl ViewState {
         field.remove_css_class("error");
         field.set_tooltip_text(None);
         field.set_sensitive(false);
-        self.browser.rename(rename.entry.clone(), new_name);
+        self.browser.rename(entry, new_name);
     }
 }
 

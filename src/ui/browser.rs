@@ -824,6 +824,16 @@ impl BrowserView {
             .set_single_click_previews(enabled);
     }
 
+    #[cfg(test)]
+    pub(in crate::ui) fn single_click_previews_enabled(&self) -> bool {
+        self.state.single_click_previews.get()
+            && self
+                .state
+                .mode_views
+                .borrow()
+                .single_click_previews_enabled()
+    }
+
     pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {
         if mode == BrowserMode::Columns {
             self.state.columns_click_activation.set(activation);
