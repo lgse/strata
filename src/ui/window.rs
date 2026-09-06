@@ -666,12 +666,7 @@ fn animate_sidebar(
     });
 }
 
-/// Pushes the saved click-activation choice for every presentation into a
-/// browser.
-///
-/// Without this a saved single-click preference only took effect once the
-/// Settings page had been opened, because that page was the only place that
-/// applied it.
+/// Apply saved activation before Settings is opened, including in the file chooser.
 pub(super) fn apply_click_activation(view: &BrowserView, preferences: &super::theme::ThemeManager) {
     for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
         view.set_click_activation(mode, preferences.click_activation(mode));
@@ -1075,8 +1070,6 @@ fn install_keyboard_navigation(
             browser.extend_selection(1);
             return glib::Propagation::Stop;
         }
-        // Plain Up on the first row focuses the header; Alt+Up is the parent
-        // shortcut and must not be swallowed by that rule.
         if !shift
             && !alt
             && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::Up)
@@ -1312,7 +1305,6 @@ pub(super) fn install_modal_focus_trap(window: &impl IsA<gtk::Window>) {
     });
 }
 
-/// Switches presentation and remembers the choice.
 pub(super) fn apply_browser_mode(
     view: &BrowserView,
     preferences: &super::theme::ThemeManager,
@@ -1322,7 +1314,6 @@ pub(super) fn apply_browser_mode(
     preferences.set_browser_mode(mode);
 }
 
-/// The presentation each `Ctrl+<digit>` shortcut selects.
 pub(super) fn browser_mode_for_digit(key: gtk::gdk::Key) -> Option<BrowserMode> {
     match key {
         gtk::gdk::Key::_1 | gtk::gdk::Key::KP_1 => Some(BrowserMode::Columns),

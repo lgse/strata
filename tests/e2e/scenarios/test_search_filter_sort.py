@@ -122,7 +122,6 @@ def test_sorting_by_size_reorders_the_files(strata, root):
         )
     )
 
-    # readme.md holds 10 bytes and todo.txt 5, so ascending puts todo first.
     strata.wait(
         lambda: strata.entry_names(root)[-2:] == ["todo.txt", "readme.md"],
         "the files to be ordered by size",

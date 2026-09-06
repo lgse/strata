@@ -1,12 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Accessible names and descriptions for browser widgets.
-//!
-//! Entry rows, icon cards, and pane containers are built from nested boxes, so
-//! GTK cannot derive a useful name for them on its own. Naming them here is
-//! what lets a screen reader announce "documents, Folder" instead of silence,
-//! and it is also how the end-to-end suite identifies a control without
-//! resorting to screen coordinates.
+//! Accessible semantics for browser widgets whose nested content has no useful derived name.
 
 use gtk::prelude::*;
 
@@ -18,8 +12,6 @@ pub(super) fn set_label(widget: &impl IsA<gtk::Accessible>, label: &str) {
     widget.update_property(&[gtk::accessible::Property::Label(label)]);
 }
 
-/// Names an entry row after the entry it shows and describes its kind.
-///
 /// The name belongs on the list item rather than on the row content: the item
 /// is the widget carrying the `list item` / `table cell` accessible role and
 /// the selected and focused states.
@@ -28,8 +20,6 @@ pub(super) fn describe_entry(item: &gtk::ListItem, display_name: &str, entry: Op
     item.set_accessible_description(entry.map_or("Entry", entry_kind_name));
 }
 
-/// A vertical container that assistive technology can name.
-///
 /// A plain `GtkBox` has the `generic` accessible role, and ARIA forbids naming
 /// those, so GTK silently drops any label set on one.
 pub(super) fn pane_box() -> gtk::Box {
@@ -39,7 +29,6 @@ pub(super) fn pane_box() -> gtk::Box {
         .build()
 }
 
-/// A modal dialog container that assistive technology announces as a dialog.
 pub(super) fn dialog_box(title: &str) -> gtk::Box {
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -50,9 +39,6 @@ pub(super) fn dialog_box(title: &str) -> gtk::Box {
     content
 }
 
-/// Names a browser pane after the directory it shows and describes which
-/// presentation drew it.
-///
 /// The pane, not the entry list, carries this: an empty directory replaces its
 /// list with a placeholder, and the pane has to stay identifiable either way.
 pub(super) fn describe_pane(pane: &impl IsA<gtk::Accessible>, directory: &str, mode: BrowserMode) {
@@ -62,10 +48,8 @@ pub(super) fn describe_pane(pane: &impl IsA<gtk::Accessible>, directory: &str, m
     ]);
 }
 
-/// The description shared by every widget that lists a directory's entries.
 pub(super) const ENTRY_CONTAINER_DESCRIPTION: &str = "Files";
 
-/// Names the container that holds a directory's entries.
 pub(super) fn describe_entry_container(container: &impl IsA<gtk::Accessible>, directory: &str) {
     container.update_property(&[
         gtk::accessible::Property::Label(directory),
@@ -73,14 +57,12 @@ pub(super) fn describe_entry_container(container: &impl IsA<gtk::Accessible>, di
     ]);
 }
 
-/// A button that presents as a menu item to assistive technology.
 pub(super) fn menu_item_button() -> gtk::Button {
     gtk::Button::builder()
         .accessible_role(gtk::AccessibleRole::MenuItem)
         .build()
 }
 
-/// A container that presents as a menu to assistive technology.
 pub(super) fn menu_box() -> gtk::Box {
     gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -101,7 +83,6 @@ pub(super) fn describe_menu_item(
     ]);
 }
 
-/// The presentation name announced for a browser view.
 pub(super) fn view_name(mode: BrowserMode) -> &'static str {
     match mode {
         BrowserMode::Columns => "Columns view",

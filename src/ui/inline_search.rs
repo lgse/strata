@@ -14,7 +14,6 @@ use crate::{
     services::{SearchEvent, SearchHandle, SearchItem, index_tree},
 };
 
-/// Names the recursive-search result list for assistive technology.
 pub(super) const SEARCH_RESULTS_LABEL: &str = "Search results";
 
 struct State {

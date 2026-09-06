@@ -94,7 +94,6 @@ struct PreviewState {
     animation_generation: Rc<Cell<u64>>,
 }
 
-/// Names the quick preview for assistive technology.
 pub(super) const PREVIEW_LABEL: &str = "Preview";
 
 #[derive(Clone)]

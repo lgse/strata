@@ -96,8 +96,6 @@ def test_focus_stays_usable_after_changing_views(strata):
     strata.keyboard.press("ctrl+3")
     strata.wait_for_view("List")
 
-    # Focus must survive into the new view, and the arrow keys must still move
-    # it without the pointer being involved.
     strata.wait_for_focused_entry("readme.md")
     strata.keyboard.press("Down")
     strata.wait_for_focused_entry("todo.txt")
