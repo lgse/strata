@@ -4,18 +4,40 @@ import os
 import signal
 import sys
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, call
 
 import pytest
 from PIL import Image
 
-from harness import screenshots
+from harness import screenshots, tree
 from harness.application import Application, binary_path
 from harness.browser import Strata
-from harness.tree import Bounds
+from harness.tree import Bounds, Node
 from harness.environment import process_environment
 from harness.fixtures import FixtureTree
 from harness.process import ManagedProcess, terminate
+
+
+@pytest.mark.parametrize("reported", ["button", "push button"])
+def test_button_role_is_stable_across_atspi_versions(reported):
+    node = Node(Mock(get_role_name=lambda: reported))
+    assert node.role == "button"
+
+
+@pytest.mark.parametrize("anchor", [(0, 0), (1074, 6), (500, 200)])
+def test_popup_bounds_account_for_native_surface_origins(monkeypatch, anchor):
+    frame = Mock(spec=Node)
+    frame._bounds.return_value = Bounds(0, 0, 1200, 760)
+    surface = Mock(spec=Node)
+    surface.window_bounds.return_value = Bounds(*anchor, 258, 475)
+    node = Mock(spec=Node)
+    node.toplevel.return_value = frame
+    node.ancestors.return_value = iter([surface, frame])
+    node.window_bounds.return_value = Bounds(anchor[0] + 30, anchor[1] + 60, 200, 28)
+    origin = Mock(side_effect=lambda w, h: (500, 200) if (w, h) == (258, 475) else None)
+    monkeypatch.setattr(tree, "_surface_origin", origin)
+    assert Node.screen_bounds(node) == Bounds(530, 260, 200, 28)
+    assert origin.call_args_list == [call(200, 28), call(258, 475)]
 
 
 def test_empty_pane_context_target_avoids_the_paste_footer():

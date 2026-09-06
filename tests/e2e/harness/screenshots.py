@@ -10,8 +10,15 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PIL import Image, ImageChops
+import gi
 
-BASELINE_DIRECTORY = Path(__file__).resolve().parents[1] / "baselines"
+gi.require_version("Gtk", "4.0")
+from gi.repository import Gtk  # noqa: E402
+
+# GTK minors differ in icon sizing, text metrics, and popup layout even with
+# the same theme and renderer. Each supported rendering profile is reviewed.
+RENDERING_PROFILE = f"gtk-{Gtk.get_major_version()}.{Gtk.get_minor_version()}"
+BASELINE_DIRECTORY = Path(__file__).resolve().parents[1] / "baselines" / RENDERING_PROFILE
 
 # Software rendering in the pinned environment is stable but not bit-exact:
 # text antialiasing shifts a handful of subpixels between runs. A pixel counts

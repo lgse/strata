@@ -46,6 +46,9 @@ class Strata:
     environment: TestEnvironment
     display: HeadlessDisplay
 
+    def __post_init__(self) -> None:
+        tree.set_surface_origin_provider(self.pointer.connection.surface_origin)
+
     # ------------------------------------------------------------------ tree
 
     @property

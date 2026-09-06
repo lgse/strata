@@ -131,7 +131,12 @@ to name it in the application, not to reach around the accessibility layer.
 Keyboard and pointer events go through XTEST (`harness/xtest.py`). AT-SPI's own
 `GenerateMouseEvent` never replies on a headless server, so the harness talks to
 the same X extension `at-spi2-registryd` would have used. Discovery and state
-inspection still go through AT-SPI.
+inspection still go through AT-SPI. GTK 4.14 reports popup-relative rather than
+application-relative bounds; the harness resolves that native surface's origin
+through X11 using its accessible dimensions. Controls are still located only
+by accessibility semantics. AT-SPI's older `push button` spelling is normalized
+to `button`, and selection tests assert actual selected-state transitions
+rather than relying on GTK 4.14 to export `SELECTABLE` for unselected rows.
 
 ## Failure artifacts
 
@@ -144,8 +149,12 @@ in the test output, and CI uploads the whole directory. Pass
 ## Visual baselines
 
 `tests/e2e/scenarios/test_visual_baselines.py` compares a small set of stable
-states with the images in `tests/e2e/baselines`: one canonical fixture in each
-view, a selection with focus, an open context menu, and a confirmation dialog.
+states with the images in `tests/e2e/baselines/gtk-<major>.<minor>`: one canonical
+fixture in each view, a selection with focus, an open context menu, and a
+confirmation dialog. GTK 4.14 (Ubuntu 24.04 CI) and GTK 4.22 have separately
+reviewed baselines because icon sizing, text metrics, and popup layout differ
+between toolkit versions. The harness selects the installed GTK profile; a
+missing profile fails rather than silently accepting a different renderer.
 These scenarios exclusively claim `/tmp/strata-e2e-baseline`, because the
 breadcrumb and context menu render the full path. An existing directory or
 symlink is a setup error, never deleted or reused; concurrent baseline runs

@@ -3,8 +3,8 @@
 
 AT-SPI's own `GenerateMouseEvent` never replies on a headless server, so input
 goes straight to XTEST — the same mechanism `at-spi2-registryd` would have
-used. AT-SPI still does all of the finding and inspecting; this module only
-delivers the events, and always at coordinates derived from accessible bounds.
+used. AT-SPI still locates and inspects controls; this module resolves native
+surface origins and delivers input at coordinates derived from accessible bounds.
 """
 
 from __future__ import annotations
@@ -18,6 +18,34 @@ Display = ctypes.c_void_p
 
 CURRENT_SCREEN = -1
 NO_DELAY = 0
+IS_VIEWABLE = 2
+BAD_WINDOW = 3
+
+
+class WindowAttributes(ctypes.Structure):
+    _fields_ = [
+        ("x", ctypes.c_int), ("y", ctypes.c_int),
+        ("width", ctypes.c_int), ("height", ctypes.c_int),
+        ("border_width", ctypes.c_int), ("depth", ctypes.c_int),
+        ("visual", ctypes.c_void_p), ("root", ctypes.c_ulong),
+        ("window_class", ctypes.c_int), ("bit_gravity", ctypes.c_int),
+        ("win_gravity", ctypes.c_int), ("backing_store", ctypes.c_int),
+        ("backing_planes", ctypes.c_ulong), ("backing_pixel", ctypes.c_ulong),
+        ("save_under", ctypes.c_int), ("colormap", ctypes.c_ulong),
+        ("map_installed", ctypes.c_int), ("map_state", ctypes.c_int),
+        ("all_event_masks", ctypes.c_long), ("your_event_mask", ctypes.c_long),
+        ("do_not_propagate_mask", ctypes.c_long), ("override_redirect", ctypes.c_int),
+        ("screen", ctypes.c_void_p),
+    ]
+
+
+class XErrorEvent(ctypes.Structure):
+    _fields_ = [
+        ("type", ctypes.c_int), ("display", ctypes.c_void_p),
+        ("resourceid", ctypes.c_ulong), ("serial", ctypes.c_ulong),
+        ("error_code", ctypes.c_ubyte), ("request_code", ctypes.c_ubyte),
+        ("minor_code", ctypes.c_ubyte),
+    ]
 
 
 class XTestError(RuntimeError):
@@ -33,7 +61,7 @@ def _load(name: str) -> ctypes.CDLL:
 
 @dataclass
 class XTestConnection:
-    """A private X connection used only for input injection."""
+    """A private X connection for input injection and native surface geometry."""
 
     display_name: str
     _x11: ctypes.CDLL = field(init=False)
@@ -78,6 +106,16 @@ class XTestConnection:
         self._x11.XFree.argtypes = [ctypes.c_void_p]
         self._x11.XDefaultRootWindow.restype = ctypes.c_ulong
         self._x11.XDefaultRootWindow.argtypes = [Display]
+        self._x11.XSetErrorHandler.argtypes = [ctypes.c_void_p]
+        self._x11.XSetErrorHandler.restype = ctypes.c_void_p
+        self._x11.XQueryTree.argtypes = [
+            Display, ctypes.c_ulong, ctypes.POINTER(ctypes.c_ulong),
+            ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.POINTER(ctypes.c_ulong)),
+            ctypes.POINTER(ctypes.c_uint),
+        ]
+        self._x11.XGetWindowAttributes.argtypes = [
+            Display, ctypes.c_ulong, ctypes.POINTER(WindowAttributes),
+        ]
         self._x11.XQueryPointer.argtypes = [
             Display,
             ctypes.c_ulong,
@@ -188,6 +226,56 @@ class XTestConnection:
             ctypes.byref(mask),
         )
         return root_x.value, root_y.value
+
+    def surface_origin(self, width: int, height: int) -> tuple[int, int] | None:
+        """Resolve a native popup's origin from its accessible surface dimensions."""
+
+        if not self._display:
+            raise XTestError("the X connection is closed")
+        root, parent = ctypes.c_ulong(), ctypes.c_ulong()
+        children = ctypes.POINTER(ctypes.c_ulong)()
+        count = ctypes.c_uint()
+        errors = []
+
+        @ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_void_p, ctypes.POINTER(XErrorEvent))
+        def collect_error(_display, event):
+            errors.append(event.contents.error_code)
+            return 0
+
+        self.flush()
+        previous = self._x11.XSetErrorHandler(collect_error)
+        origins = set()
+        try:
+            if not self._x11.XQueryTree(
+                self._display, self._root, ctypes.byref(root), ctypes.byref(parent),
+                ctypes.byref(children), ctypes.byref(count),
+            ):
+                raise XTestError("cannot enumerate native X surfaces")
+            for index in range(count.value):
+                attributes = WindowAttributes()
+                if not self._x11.XGetWindowAttributes(
+                    self._display, children[index], ctypes.byref(attributes)
+                ):
+                    continue
+                if (
+                    attributes.map_state == IS_VIEWABLE
+                    and (attributes.width, attributes.height) == (width, height)
+                ):
+                    origins.add((
+                        attributes.x + attributes.border_width,
+                        attributes.y + attributes.border_width,
+                    ))
+        finally:
+            if children:
+                self._x11.XFree(children)
+            self.flush()
+            self._x11.XSetErrorHandler(previous)
+        # A tooltip can disappear between enumeration and attribute lookup.
+        if any(code != BAD_WINDOW for code in errors):
+            raise XTestError(f"cannot inspect native X surfaces: {errors}")
+        if len(origins) > 1:
+            raise XTestError(f"ambiguous native surfaces for {width}x{height}: {origins}")
+        return next(iter(origins), None)
 
     def button(self, number: int, pressed: bool) -> None:
         self._xtst.XTestFakeButtonEvent(

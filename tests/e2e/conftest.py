@@ -68,6 +68,7 @@ def xtest(headless_display: HeadlessDisplay) -> XTestConnection:
     try:
         yield connection
     finally:
+        tree.set_surface_origin_provider(None)
         connection.close()
 
 

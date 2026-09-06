@@ -25,6 +25,13 @@ POLL_INTERVAL = 0.05
 MAX_DEPTH = 60
 
 TOPLEVEL_ROLES = frozenset({"frame", "window", "dialog", "alert", "file chooser"})
+SurfaceOriginProvider = Callable[[int, int], tuple[int, int] | None]
+_surface_origin: SurfaceOriginProvider | None = None
+
+
+def set_surface_origin_provider(provider: SurfaceOriginProvider | None) -> None:
+    global _surface_origin
+    _surface_origin = provider
 
 
 class TreeTimeout(AssertionError):
@@ -75,7 +82,8 @@ class Node:
     @property
     def role(self) -> str:
         try:
-            return self._accessible.get_role_name()
+            name = self._accessible.get_role_name()
+            return "button" if name == "push button" else name
         except Exception:
             return "<gone>"
 
@@ -183,6 +191,24 @@ class Node:
         if toplevel == self:
             return origin
         local = self.window_bounds()
+        if _surface_origin is not None:
+            for ancestor in (self, *self.ancestors()):
+                if ancestor == toplevel:
+                    break
+                bounds = ancestor.window_bounds()
+                # GTK 4.14 locates popups relative to their anchor widget, not
+                # their native surface. Newer GTK already reports the real origin.
+                if (
+                    bounds.width > 0 and bounds.height > 0
+                    and (bounds.width, bounds.height) != (origin.width, origin.height)
+                ):
+                    position = _surface_origin(bounds.width, bounds.height)
+                    if position is not None:
+                        return Bounds(
+                            position[0] + local.x - bounds.x,
+                            position[1] + local.y - bounds.y,
+                            local.width, local.height,
+                        )
         return Bounds(origin.x + local.x, origin.y + local.y, local.width, local.height)
 
     def _bounds(self, coordinate_type: Atspi.CoordType) -> Bounds:

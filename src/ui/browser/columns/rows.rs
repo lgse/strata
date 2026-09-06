@@ -374,7 +374,7 @@ pub(super) fn column_rows(
             }
         });
         let weak_state_for_release = weak_state.clone();
-        selection_click.connect_released(move |gesture, _, _, _| {
+        selection_click.connect_released(move |_, _, _, _| {
             let Some(pending) = pending_activation_for_release.take() else {
                 return;
             };
@@ -388,7 +388,7 @@ pub(super) fn column_rows(
             {
                 return;
             }
-            gesture.set_state(gtk::EventSequenceState::Claimed);
+            // GTK 4.14's DragSource needs the release to reset before the next press.
             state.browser.activate(depth, pending.position);
         });
         selection_click.connect_cancel(move |_, _| {
