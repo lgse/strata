@@ -239,10 +239,6 @@ fn untrusted_request_inputs_are_bounded() {
     );
     assert!(validate_choices(&[choice]).is_err());
 
-    let filters = (0..=MAX_FILTERS)
-        .map(|index| FileFilter::new(&format!("Filter {index}")))
-        .collect::<Vec<_>>();
-    assert!(validate_filters(&filters, None).is_err());
     let bulky = (0..=FILTER_RULE_WARNING_THRESHOLD)
         .fold(FileFilter::new("GitHub accepted types"), |filter, index| {
             filter.mimetype(&format!("application/x-attachment-{index}"))
@@ -306,4 +302,23 @@ fn run_async<T>(future: impl Future<Output = T>) -> T {
     context
         .with_thread_default(|| context.block_on(future))
         .expect("test main context")
+}
+
+#[test]
+fn long_filter_lists_are_accepted() {
+    let filters = (0..256)
+        .map(|index| {
+            FileFilter::new(&format!("Filter {index}"))
+                .mimetype(&format!("application/x-upload-{index}"))
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        validate_filters(&filters, None).is_ok(),
+        "a large well-formed filter list must open the chooser"
+    );
+    let current = FileFilter::new("Selected").mimetype("application/x-selected");
+    assert!(
+        validate_filters(&filters, Some(&current)).is_ok(),
+        "a current filter outside a large list must be accepted"
+    );
 }
