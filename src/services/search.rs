@@ -37,6 +37,7 @@ const GENERATED_TREE_GLOBS: [&str; 12] = [
 /// 60-140 MB at this cap for typical paths, but up to ~1.5-2 GB for paths near `PATH_MAX`.
 const MAX_INDEX_ENTRIES: usize = 200_000;
 const MAX_INDEX_DEPTH: usize = 64;
+const PRIORITY_INDEX_DEPTH: usize = 2;
 const INDEX_TIME_BUDGET: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -149,16 +150,21 @@ fn index_tree_with_budget(
                     ignore::overrides::Override::empty()
                 }
             };
-            let walker = ignore::WalkBuilder::new(&root)
+            let mut walker = ignore::WalkBuilder::new(&root);
+            walker
                 .follow_links(false)
                 .standard_filters(true)
                 .hidden(!show_hidden)
                 .require_git(false)
-                .max_depth(Some(max_depth + 1))
-                .overrides(overrides)
-                .build();
+                .overrides(overrides);
+            let priority_depth = PRIORITY_INDEX_DEPTH.min(max_depth);
+            let priority_walker = walker.max_depth(Some(priority_depth)).build();
+            let remaining_walker = walker.max_depth(Some(max_depth + 1)).build();
 
-            for result in walker {
+            let entries = priority_walker
+                .map(|result| (true, result))
+                .chain(remaining_walker.map(|result| (false, result)));
+            for (priority_pass, result) in entries {
                 if worker_cancelled.load(Ordering::Relaxed) {
                     return;
                 }
@@ -171,6 +177,9 @@ fn index_tree_with_budget(
                         continue;
                     }
                 };
+                if !priority_pass && entry.depth() <= priority_depth {
+                    continue;
+                }
                 if entry.depth() > max_depth {
                     progress.truncated = true;
                     continue;
@@ -287,20 +296,39 @@ fn set_query(progress: &mut WalkProgress, query: String) {
     progress.query = query;
 }
 
+type RankedPosition = Reverse<(i64, Reverse<usize>)>;
+
 fn score_index(index: &[SearchItem], normalized_query: &str) -> Vec<(i64, SearchItem)> {
-    let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
-    for (position, item) in index.iter().enumerate() {
-        let Some(score) = fuzzy_score_indexed(item, normalized_query) else {
-            continue;
-        };
-        let candidate = (score, Reverse(position));
-        if best.len() < RESULT_LIMIT {
-            best.push(Reverse(candidate));
-        } else if best.peek().is_some_and(|Reverse(worst)| candidate > *worst) {
-            best.pop();
-            best.push(Reverse(candidate));
-        }
-    }
+    let worker_count = std::thread::available_parallelism()
+        .map_or(1, usize::from)
+        .min(4);
+    let best = if index.len() < 50_000 || worker_count == 1 {
+        score_range(index, normalized_query, 0)
+    } else {
+        let chunk_size = index.len().div_ceil(worker_count);
+        std::thread::scope(|scope| {
+            let workers = index
+                .chunks(chunk_size)
+                .enumerate()
+                .map(|(chunk, items)| {
+                    scope.spawn(move || {
+                        score_range(items, normalized_query, chunk.saturating_mul(chunk_size))
+                    })
+                })
+                .collect::<Vec<_>>();
+            let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
+            for worker in workers {
+                let candidates = match worker.join() {
+                    Ok(candidates) => candidates,
+                    Err(payload) => std::panic::resume_unwind(payload),
+                };
+                for Reverse(candidate) in candidates {
+                    retain_candidate(&mut best, candidate);
+                }
+            }
+            best
+        })
+    };
     let mut ranked = best
         .into_iter()
         .map(|Reverse((score, Reverse(position)))| (score, position))
@@ -310,6 +338,33 @@ fn score_index(index: &[SearchItem], normalized_query: &str) -> Vec<(i64, Search
         .into_iter()
         .map(|(score, position)| (score, index[position].clone()))
         .collect()
+}
+
+fn score_range(
+    index: &[SearchItem],
+    normalized_query: &str,
+    position_offset: usize,
+) -> BinaryHeap<RankedPosition> {
+    let mut best = BinaryHeap::with_capacity(RESULT_LIMIT + 1);
+    for (position, item) in index.iter().enumerate() {
+        let Some(score) = fuzzy_score_indexed(item, normalized_query) else {
+            continue;
+        };
+        retain_candidate(
+            &mut best,
+            (score, Reverse(position_offset.saturating_add(position))),
+        );
+    }
+    best
+}
+
+fn retain_candidate(best: &mut BinaryHeap<RankedPosition>, candidate: (i64, Reverse<usize>)) {
+    if best.len() < RESULT_LIMIT {
+        best.push(Reverse(candidate));
+    } else if best.peek().is_some_and(|Reverse(worst)| candidate > *worst) {
+        best.pop();
+        best.push(Reverse(candidate));
+    }
 }
 
 fn insert_match(matches: &mut Vec<(i64, SearchItem)>, score: i64, item: &SearchItem) {
@@ -362,6 +417,10 @@ fn fuzzy_score_normalized(item: &SearchItem, query: &str, depth: usize) -> Optio
 }
 
 fn fuzzy_subsequence_score(haystack: &str, needle: &str) -> Option<i64> {
+    if needle.is_ascii() {
+        return fuzzy_ascii_subsequence_score(haystack.as_bytes(), needle.as_bytes());
+    }
+
     let mut chars = haystack.char_indices();
     let mut previous = None;
     let mut score = 1_000i64;
@@ -380,6 +439,32 @@ fn fuzzy_subsequence_score(haystack: &str, needle: &str) -> Option<i64> {
             score += 45;
         }
         previous = Some(position);
+    }
+    Some(score)
+}
+
+fn fuzzy_ascii_subsequence_score(haystack: &[u8], needle: &[u8]) -> Option<i64> {
+    let mut offset = 0;
+    let mut previous = None;
+    let mut score = 1_000i64;
+    for wanted in needle {
+        let relative = haystack[offset..]
+            .iter()
+            .position(|candidate| candidate == wanted)?;
+        let position = offset + relative;
+        score -= position as i64;
+        if previous.is_some_and(|previous| previous + 1 == position) {
+            score += 80;
+        }
+        if position == 0
+            || haystack
+                .get(position - 1)
+                .is_some_and(|character| matches!(character, b'/' | b'-' | b'_' | b' ' | b'.'))
+        {
+            score += 45;
+        }
+        previous = Some(position);
+        offset = position + 1;
     }
     Some(score)
 }
