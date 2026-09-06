@@ -14,8 +14,9 @@ use crate::{
     assets::icons,
     sandbox::MediaPreviewBackend,
     services::{
-        self, BuildKind, Channel, InstallRequest, InstallSource, ManagedInstall, ReleaseMetadata,
-        ReleaseNoteBlock, ReleaseNotes, UpdateCheck, UpdateInstall, UpdateMethod, Version,
+        self, BuildKind, Channel, InstallCancel, InstallRequest, InstallSource, ManagedInstall,
+        ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes, UpdateCheck, UpdateInstall, UpdateMethod,
+        Version,
     },
 };
 
@@ -32,7 +33,8 @@ use super::{
 };
 
 type ThemeCards = Rc<RefCell<Vec<(String, gtk::Button, gtk::Image)>>>;
-pub(super) type UpdateNoticeHandler = Rc<dyn Fn(Option<(ReleaseMetadata, String, UpdateMethod)>)>;
+pub(super) type UpdateNoticeHandler =
+    Rc<dyn Fn(Option<(ReleaseMetadata, InstallRequest, UpdateMethod)>)>;
 
 struct UpdateCheckRow {
     row: gtk::Box,
@@ -58,6 +60,35 @@ pub struct ResponsiveActivationRow {
 /// process-wide guard, separate windows could replace the executable at the
 /// same time. See [`start_install`].
 pub(super) type InstallGuard = Rc<Cell<bool>>;
+
+/// How long after a restart a non-zero exit is still treated as the update
+/// failing to run, rather than as a crash of a version that did start.
+const RESTART_GRACE_SECONDS: u64 = 20;
+/// How long a replaced executable is kept for recovery once the new one is
+/// running. Long enough for the restart waiter to act, short enough that a
+/// copy of the binary does not linger beside the install.
+const ROLLBACK_RETENTION: Duration = Duration::from_secs(60);
+
+/// Drops the preserved previous executable once this instance has run long
+/// enough to be considered good. Called on startup: by the time it fires, an
+/// update that could not run would already have been rolled back by the
+/// restart waiter.
+pub(crate) fn schedule_rollback_cleanup() {
+    let Ok(current_exe) = std::env::current_exe() else {
+        return;
+    };
+    let Some(rollback) = current_exe.parent().map(services::rollback_path) else {
+        return;
+    };
+    if !rollback.is_file() {
+        return;
+    }
+    glib::timeout_add_local_once(ROLLBACK_RETENTION, move || {
+        if let Err(error) = std::fs::remove_file(&rollback) {
+            tracing::warn!(%error, "could not remove the preserved previous version");
+        }
+    });
+}
 
 thread_local! {
     static INSTALL_GUARD: InstallGuard = Rc::new(Cell::new(false));
@@ -166,16 +197,13 @@ pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &Up
                     CHECK_IN_FLIGHT.set(false);
                     glib::ControlFlow::Break
                 }
-                Ok(UpdateCheck::Available {
-                    release,
-                    download_url,
-                }) => {
+                Ok(UpdateCheck::Available { release, install }) => {
                     CHECK_IN_FLIGHT.set(false);
                     LAST_COMPLETED_CHECK.set(Some(Instant::now()));
                     if weak_manager.upgrade().is_some_and(|manager| {
                         manager.checks_for_updates() && manager.release_channel() == channel
                     }) {
-                        notice(Some((release, download_url, method)));
+                        notice(Some((release, install, method)));
                     }
                     glib::ControlFlow::Break
                 }
@@ -1213,8 +1241,8 @@ fn is_stale_check(result_generation: u64, current_generation: u64) -> bool {
 /// The kind is what lets the click re-test the offer against the channel
 /// preference in force *then* rather than when the check ran -- see
 /// [`offer_still_eligible`]. It is kept here, beside the request, rather
-/// than on [`InstallRequest`], which deliberately carries nothing but the
-/// URL the installer actually uses.
+/// than on [`InstallRequest`], which deliberately carries nothing but what
+/// the installer needs to name and verify the release.
 struct PendingInstall {
     kind: BuildKind,
     returns_to_stable: bool,
@@ -1298,6 +1326,8 @@ fn update_check_row(
     // Set once an install finishes, so the next click restarts instead of re-checking.
     let installed = Rc::new(Cell::new(false));
     let installing = Rc::new(Cell::new(false));
+    // Held while an install runs, so the button's next click cancels it.
+    let cancel_handle = Rc::new(RefCell::new(None::<InstallCancel>));
     let install_underway: Rc<dyn Fn() -> bool> = Rc::new({
         let installed = installed.clone();
         let installing = installing.clone();
@@ -1408,21 +1438,15 @@ fn update_check_row(
                             .container
                             .set_visible(shows_available_release_notes(&result));
                         match &result {
-                            UpdateCheck::Available {
-                                release,
-                                download_url,
-                            } => update_notice(Some((
+                            UpdateCheck::Available { release, install } => update_notice(Some((
                                 release.clone(),
-                                download_url.clone(),
+                                install.clone(),
                                 update_method,
                             ))),
                             UpdateCheck::UpToDate | UpdateCheck::Failed(_) => update_notice(None),
                         }
                         match &result {
-                            UpdateCheck::Available {
-                                release,
-                                download_url,
-                            } => {
+                            UpdateCheck::Available { release, install } => {
                                 show_release_notes(&available_notes, release);
                                 if update_method.is_package_managed() {
                                     managed_update_available.set(true);
@@ -1436,9 +1460,7 @@ fn update_check_row(
                                     *pending_download.borrow_mut() = Some(PendingInstall {
                                         kind: release.kind,
                                         returns_to_stable,
-                                        request: InstallRequest {
-                                            download_url: download_url.clone(),
-                                        },
+                                        request: install.clone(),
                                     });
                                     button.set_label(if returns_to_stable {
                                         "Return to stable"
@@ -1488,6 +1510,12 @@ fn update_check_row(
             restart_application(button);
             return;
         }
+        if let Some(cancel) = cancel_handle.borrow_mut().take() {
+            cancel.cancel();
+            status.set_text("Cancelling…");
+            button.set_sensitive(false);
+            return;
+        }
         if let Some(pending) = pending_download.borrow_mut().take() {
             if !offer_still_eligible(manager.release_channel(), pending.kind) {
                 // The channel was switched back to Stable -- possibly from
@@ -1516,7 +1544,7 @@ fn update_check_row(
             progress.set_fraction(0.0);
             progress.set_visible(true);
             progress.remove_css_class("error");
-            button.set_sensitive(false);
+            button.set_label("Cancel");
             let progress_for_progress = progress.clone();
             let status_for_progress = status.clone();
             let checking_for_installed = checking.clone();
@@ -1528,6 +1556,14 @@ fn update_check_row(
             let status_for_failed = status.clone();
             let button_for_failed = button.clone();
             let progress_for_failed = progress.clone();
+            let cancel_for_installed = cancel_handle.clone();
+            let cancel_for_cancelled = cancel_handle.clone();
+            let cancel_for_failed = cancel_handle.clone();
+            let checking_for_cancelled = checking.clone();
+            let installing_for_cancelled = installing.clone();
+            let status_for_cancelled = status.clone();
+            let button_for_cancelled = button.clone();
+            let progress_for_cancelled = progress.clone();
             let started = start_install(
                 &install_guard,
                 request,
@@ -1535,6 +1571,7 @@ fn update_check_row(
                     apply_install_progress(&status_for_progress, &progress_for_progress, event)
                 },
                 move || {
+                    let _taken = cancel_for_installed.borrow_mut().take();
                     status_for_installed.set_text(if returns_to_stable {
                         "Stable release installed — restart to apply"
                     } else {
@@ -1545,7 +1582,17 @@ fn update_check_row(
                     installed_for_installed.set(true);
                     checking_for_installed.set(false);
                 },
+                move || {
+                    let _taken = cancel_for_cancelled.borrow_mut().take();
+                    status_for_cancelled.set_text("Update cancelled");
+                    progress_for_cancelled.set_visible(false);
+                    button_for_cancelled.set_label("Check now");
+                    button_for_cancelled.set_sensitive(true);
+                    checking_for_cancelled.set(false);
+                    installing_for_cancelled.set(false);
+                },
                 move |message| {
+                    let _taken = cancel_for_failed.borrow_mut().take();
                     match message {
                         Some(message) => status_for_failed
                             .set_text(&format!("Couldn't install update: {message}")),
@@ -1558,6 +1605,13 @@ fn update_check_row(
                     installing_for_failed.set(false);
                 },
             );
+            let started = match started {
+                Ok(cancel) => {
+                    *cancel_handle.borrow_mut() = Some(cancel);
+                    Ok(())
+                }
+                Err(request) => Err(request),
+            };
             if let Err(request) = started {
                 // An install from an update dialog or another window is
                 // already running. Leave this row
@@ -1618,6 +1672,7 @@ fn drive_install(
     receiver: std::sync::mpsc::Receiver<UpdateInstall>,
     on_progress: impl Fn(InstallProgress) + 'static,
     on_installed: impl Fn() + 'static,
+    on_cancelled: impl Fn() + 'static,
     on_failed: impl Fn(Option<String>) + 'static,
 ) {
     glib::timeout_add_local(Duration::from_millis(100), move || {
@@ -1630,6 +1685,10 @@ fn drive_install(
                 Ok(UpdateInstall::Installing) => on_progress(InstallProgress::Installing),
                 Ok(UpdateInstall::Installed) => {
                     on_installed();
+                    return glib::ControlFlow::Break;
+                }
+                Ok(UpdateInstall::Cancelled) => {
+                    on_cancelled();
                     return glib::ControlFlow::Break;
                 }
                 Ok(UpdateInstall::Failed(message)) => {
@@ -1664,13 +1723,16 @@ fn start_install(
     request: InstallRequest,
     on_progress: impl Fn(InstallProgress) + 'static,
     on_installed: impl Fn() + 'static,
+    on_cancelled: impl Fn() + 'static,
     on_failed: impl Fn(Option<String>) + 'static,
-) -> Result<(), InstallRequest> {
+) -> Result<InstallCancel, InstallRequest> {
     if guard.replace(true) {
         return Err(request);
     }
-    let receiver = services::install_update(request);
+    let cancel = InstallCancel::new();
+    let receiver = services::install_update(request, cancel.clone());
     let guard_for_installed = guard.clone();
+    let guard_for_cancelled = guard.clone();
     let guard_for_failed = guard.clone();
     drive_install(
         receiver,
@@ -1679,12 +1741,16 @@ fn start_install(
             guard_for_installed.set(false);
             on_installed();
         },
+        move || {
+            guard_for_cancelled.set(false);
+            on_cancelled();
+        },
         move |message| {
             guard_for_failed.set(false);
             on_failed(message);
         },
     );
-    Ok(())
+    Ok(cancel)
 }
 
 /// The update row's compact progress rendering, distinct from the update
@@ -1749,15 +1815,33 @@ fn restart(application: Option<&gtk::Application>) {
     // affected systems. Detach the waiter from inherited terminal streams and
     // put it in its own process group so applying an update cannot disturb the
     // terminal that launched Strata.
+    //
+    // The waiter is also the last line of recovery for an update: if the
+    // replacement exits non-zero within `RESTART_GRACE_SECONDS` of starting --
+    // it will not run here at all -- the preserved previous executable is put
+    // back and launched instead, so a bad update cannot leave the user with
+    // nothing that starts. A later non-zero exit is an ordinary crash of a
+    // version that did run, and is left alone.
     let parent_pid = std::process::id().to_string();
+    let rollback = current_exe
+        .parent()
+        .map(services::rollback_path)
+        .unwrap_or_default();
     if std::process::Command::new("sh")
         .args([
             "-c",
-            "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; sleep 0.5; exec \"$2\"",
+            "while kill -0 \"$1\" 2>/dev/null; do sleep 0.1; done; sleep 0.5; \
+             started=$(date +%s); \"$2\" && exit 0; status=$?; \
+             [ $(($(date +%s) - started)) -lt $4 ] || exit \"$status\"; \
+             [ -f \"$3\" ] || exit \"$status\"; \
+             cp -f \"$3\" \"$2\" && chmod 755 \"$2\" && rm -f \"$3\" && exec \"$2\"; \
+             exit \"$status\"",
             "strata-restart",
         ])
         .arg(parent_pid)
         .arg(current_exe)
+        .arg(rollback)
+        .arg(RESTART_GRACE_SECONDS.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -1776,7 +1860,7 @@ fn restart(application: Option<&gtk::Application>) {
 pub(super) fn show_update_dialog(
     parent: &gtk::Window,
     release: &ReleaseMetadata,
-    download_url: String,
+    install: InstallRequest,
     install_guard: InstallGuard,
     update_method: UpdateMethod,
 ) {
@@ -1882,11 +1966,19 @@ pub(super) fn show_update_dialog(
     action.grab_focus();
 
     let started = Rc::new(Cell::new(false));
+    // Held while an install runs, so Cancel stops it instead of dismissing.
+    let cancel_handle = Rc::new(RefCell::new(None::<InstallCancel>));
     let cancel_layer = layer.clone();
     let cancel_overlay = window_overlay.clone();
     let cancel_root = blurred_root.clone();
     let cancel_started = started.clone();
-    cancel.connect_clicked(move |_| {
+    let cancel_for_click = cancel_handle.clone();
+    cancel.connect_clicked(move |cancel| {
+        if let Some(handle) = cancel_for_click.borrow_mut().take() {
+            handle.cancel();
+            cancel.set_sensitive(false);
+            return;
+        }
         if !cancel_started.get() {
             dismiss_modal_layer(&cancel_layer, &cancel_overlay, cancel_root.as_ref());
         }
@@ -2010,7 +2102,7 @@ pub(super) fn show_update_dialog(
         }
 
         button.set_sensitive(false);
-        cancel.set_sensitive(false);
+        cancel.set_label("Cancel");
         action_close.set_sensitive(false);
         progress.set_visible(true);
         status.set_text("Starting download…");
@@ -2028,12 +2120,17 @@ pub(super) fn show_update_dialog(
         let action_for_guard = button.clone();
         let started_for_guard = started.clone();
         let install_guard = install_guard.clone();
-        let request = InstallRequest {
-            download_url: download_url.clone(),
-        };
+        let cancel_for_installed = cancel_handle.clone();
+        let cancel_for_cancelled = cancel_handle.clone();
+        let cancel_for_failed = cancel_handle.clone();
+        let cancel_button_for_cancelled = cancel.clone();
+        let status_for_cancelled = status.clone();
+        let progress_for_cancelled = progress.clone();
+        let action_for_cancelled = button.clone();
+        let started_for_cancelled = started.clone();
         let outcome = start_install(
             &install_guard,
-            request,
+            install.clone(),
             move |event| match event {
                 InstallProgress::Downloading { downloaded, total } => {
                     if let Some(total) = total.filter(|total| *total > 0) {
@@ -2060,6 +2157,7 @@ pub(super) fn show_update_dialog(
                 }
             },
             move || {
+                let _taken = cancel_for_installed.borrow_mut().take();
                 progress_for_installed.set_fraction(1.0);
                 status_for_installed.set_text("Update installed — restart to apply");
                 action_for_installed.set_label("Restart now");
@@ -2067,7 +2165,17 @@ pub(super) fn show_update_dialog(
                 action_for_installed.set_sensitive(true);
                 installed_for_installed.set(true);
             },
+            move || {
+                let _taken = cancel_for_cancelled.borrow_mut().take();
+                progress_for_cancelled.set_visible(false);
+                status_for_cancelled.set_text("Update cancelled");
+                cancel_button_for_cancelled.set_sensitive(true);
+                action_for_cancelled.set_label("Install update");
+                action_for_cancelled.set_sensitive(true);
+                started_for_cancelled.set(false);
+            },
             move |message| {
+                let _taken = cancel_for_failed.borrow_mut().take();
                 match message {
                     Some(message) => {
                         status_for_failed.set_text(&format!("Couldn’t install update: {message}"));
@@ -2079,6 +2187,10 @@ pub(super) fn show_update_dialog(
                 action_for_failed.set_sensitive(true);
             },
         );
+        match &outcome {
+            Ok(cancel) => *cancel_handle.borrow_mut() = Some(cancel.clone()),
+            Err(_request) => {}
+        }
         if outcome.is_err() {
             // An install from the update row or another window is already
             // running. Reset `started` too, so the next

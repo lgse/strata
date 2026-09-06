@@ -3,8 +3,8 @@
 use std::rc::Rc;
 
 use crate::services::{
-    BuildKind, Channel, InstallSource, ManagedInstall, ReleaseMetadata, UpdateCheck, UpdateMethod,
-    Version,
+    BuildKind, Channel, InstallRequest, InstallSource, ManagedInstall, ReleaseMetadata,
+    UpdateCheck, UpdateMethod, Version,
 };
 
 use super::{
@@ -61,7 +61,22 @@ fn available_release() -> UpdateCheck {
             published_at: None,
             commit: None,
         },
-        download_url: "https://example.invalid/strata.tar.gz".to_owned(),
+        install: install_request("v0.8.0"),
+    }
+}
+
+fn install_request(tag: &str) -> InstallRequest {
+    let asset_name = format!(
+        "strata-{}-{}-unknown-linux-gnu.tar.gz",
+        tag.trim_start_matches('v'),
+        std::env::consts::ARCH
+    );
+    InstallRequest {
+        advertised_url: format!(
+            "https://github.com/lgse/strata/releases/download/{tag}/{asset_name}"
+        ),
+        tag: tag.to_owned(),
+        asset_name,
     }
 }
 
@@ -127,7 +142,7 @@ fn available_notes_are_shown_only_for_a_newer_release() {
             published_at: None,
             commit: None,
         },
-        download_url: "https://example.test/download".to_owned(),
+        install: install_request("v1.0.0"),
     }));
 }
 
@@ -327,7 +342,7 @@ fn package_managed_update_directs_users_to_omarchy_update() {
                 published_at: None,
                 commit: None,
             },
-            download_url: "https://example.test/download".to_owned(),
+            install: install_request("v0.9.0"),
         },
         UpdateMethod::Omarchy,
     );

@@ -14,7 +14,8 @@ use super::release_channel::{
     BuildKind, Channel, ReleaseSummary, Version, best_update, rollback_target,
 };
 use super::update_install::{
-    UpdateMethod, aur_repository_version, omarchy_repository_version, package_repository_version,
+    InstallRequest, UpdateMethod, aur_repository_version, omarchy_repository_version,
+    package_repository_version,
 };
 
 const API_ROOT: &str = "https://api.github.com/repos/lgse/strata/releases";
@@ -63,11 +64,15 @@ pub struct ReleaseMetadata {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+#[expect(
+    clippy::large_enum_variant,
+    reason = "one value per update check, moved once through a channel; boxing would cost a heap allocation to save nothing"
+)]
 pub enum UpdateCheck {
     UpToDate,
     Available {
         release: ReleaseMetadata,
-        download_url: String,
+        install: InstallRequest,
     },
     Failed(String),
 }
@@ -231,7 +236,7 @@ fn fetch_preview(etag: Option<&str>) -> ChannelFetch {
 /// `None` on any failure -- the dialog's identity block falls back to
 /// "Unknown", since an offered update must not hinge on a lookup that only
 /// feeds one display row.
-fn fetch_commit(tag: &str) -> Option<String> {
+pub(super) fn fetch_commit(tag: &str) -> Option<String> {
     request_json::<CommitResponse>(&format!("{COMMITS_ROOT}/{tag}"))
         .ok()
         .map(|commit| commit.sha)
@@ -384,7 +389,11 @@ fn available_check(release: &ReleaseSummary) -> UpdateCheck {
     match &release.download_url {
         Some(download_url) => UpdateCheck::Available {
             release: release_metadata(release),
-            download_url: download_url.clone(),
+            install: InstallRequest {
+                tag: release.tag.clone(),
+                asset_name: archive_name(&release.version.to_string()),
+                advertised_url: download_url.clone(),
+            },
         },
         None => UpdateCheck::UpToDate,
     }
@@ -559,13 +568,10 @@ fn fetch_package_update(
         Ok(response) => match package_update_from_response(&available, &response) {
             UpdateCheck::Available {
                 mut release,
-                download_url,
+                install,
             } => {
                 resolve_commit(&mut release);
-                UpdateCheck::Available {
-                    release,
-                    download_url,
-                }
+                UpdateCheck::Available { release, install }
             }
             check => check,
         },
