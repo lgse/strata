@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod multi_root;
+mod performance;
 
 use std::{
     fs,
@@ -96,6 +97,10 @@ fn completed_index_returns_only_the_best_bounded_matches() {
     }
 
     let (search, events) = index_tree(root.clone(), false);
+    let SearchEvent::Results { indexing, .. } = events
+        .recv_timeout(Duration::from_secs(2))
+        .expect("index completion");
+    assert!(!indexing);
     search.query("needle");
     let event = wait_for_results(&events);
 
