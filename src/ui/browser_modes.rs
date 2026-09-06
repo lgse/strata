@@ -566,6 +566,14 @@ impl ModeViews {
         self.active_rename.borrow().is_some()
     }
 
+    #[cfg(test)]
+    pub(in crate::ui) fn active_rename_field(&self) -> Option<gtk::Entry> {
+        self.active_rename
+            .borrow()
+            .as_ref()
+            .map(|rename| rename.field.clone())
+    }
+
     pub fn new_entry_is_active(&self) -> bool {
         self.active_new_entry.borrow().is_some()
     }
@@ -815,6 +823,11 @@ impl ModeViews {
 
     pub fn set_single_click_previews(&self, enabled: bool) {
         self.single_click_previews.set(enabled);
+    }
+
+    #[cfg(test)]
+    pub(in crate::ui) fn single_click_previews_enabled(&self) -> bool {
+        self.single_click_previews.get()
     }
 
     pub fn set_click_activation(&self, mode: BrowserMode, activation: ClickActivation) {
@@ -2123,7 +2136,8 @@ fn build_icons_view(
         let field = gtk::Entry::new();
         field.add_css_class("inline-rename");
         super::accessibility::set_label(&field, "Rename");
-        field.set_width_chars(ICONS_CARD_LABEL_CHARS);
+        field.set_width_chars(1);
+        field.set_hexpand(true);
         field.set_visible(false);
         field.connect_changed(|field| {
             super::browser::update_basename_validation(field);
@@ -2153,9 +2167,13 @@ fn build_icons_view(
             );
         });
         field.add_controller(focus);
+        let name = gtk::Overlay::new();
+        name.set_hexpand(true);
+        name.set_height_request(ICONS_CARD_LABEL_LINE_PX * ICONS_CARD_LABEL_LINES);
+        name.set_child(Some(&label));
+        name.add_overlay(&field);
         card.append(&icon);
-        card.append(&label);
-        card.append(&field);
+        card.append(&name);
         install_preview_click(
             &card,
             item,
@@ -2600,8 +2618,9 @@ fn configure_icons_card_label(label: &gtk::Inscription) {
 
 fn icons_card_parts(card: &gtk::Box) -> Option<(gtk::Image, gtk::Inscription, gtk::Entry)> {
     let icon = card.first_child()?.downcast::<gtk::Image>().ok()?;
-    let label = icon.next_sibling()?.downcast::<gtk::Inscription>().ok()?;
-    let field = label.next_sibling()?.downcast::<gtk::Entry>().ok()?;
+    let name = icon.next_sibling()?.downcast::<gtk::Overlay>().ok()?;
+    let label = name.child()?.downcast::<gtk::Inscription>().ok()?;
+    let field = name.last_child()?.downcast::<gtk::Entry>().ok()?;
     Some((icon, label, field))
 }
 

@@ -2934,7 +2934,8 @@ colorchooser colorswatch overlay {
   box-shadow: inset 0 0 0 1px alpha(@theme_accent, 0.72);
 }
 
-.file-list row:hover:not(:selected) {
+.file-list row:hover:not(:selected),
+.file-list row:hover .file-row.active-path {
   background: alpha(@theme_accent, 0.15);
   color: @theme_text;
 }
@@ -3028,10 +3029,6 @@ colorchooser colorswatch overlay {
   background: alpha(@theme_accent, 0.22);
   color: @theme_text;
   outline: none;
-}
-
-.peek-open .file-list row:selected {
-  background: transparent;
 }
 
 .peek-open .file-list .file-row.peek-anchor {
