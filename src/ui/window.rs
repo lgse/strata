@@ -1049,7 +1049,10 @@ fn install_keyboard_navigation(
             browser.extend_selection(1);
             return glib::Propagation::Stop;
         }
+        // Plain Up on the first row focuses the header; Alt+Up is the parent
+        // shortcut and must not be swallowed by that rule.
         if !shift
+            && !alt
             && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::Up)
             && view.focus_header_from_top_item()
         {
