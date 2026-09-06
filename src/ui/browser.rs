@@ -871,6 +871,16 @@ impl BrowserView {
     }
 
     pub fn paste(&self) {
+        // A single selected directory receives the paste itself; otherwise
+        // the paste targets the destination column.
+        self.state.sync_mode_selection();
+        let selected = self.state.browser.selected_entries();
+        if let [folder] = selected.as_slice()
+            && folder.is_directory()
+        {
+            self.state.paste_into(folder.location.clone());
+            return;
+        }
         let depth = self.state.destination_depth();
         if let Some(location) = depth.and_then(|depth| self.state.browser.location_at(depth)) {
             self.state.paste_into(location);
