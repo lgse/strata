@@ -585,6 +585,53 @@ headerbar menubutton.header-action > button:focus-visible {
   padding: 2px 11px;
 }
 
+.open-with-dialog {
+  min-width: 460px;
+}
+
+.open-with-list {
+  background: alpha(@theme_bg, 0.42);
+  border: 1px solid alpha(@theme_border, 0.28);
+  border-radius: 6px;
+  color: @theme_text;
+  margin-top: 2px;
+  padding: 4px;
+}
+
+.open-with-row {
+  border-radius: 5px;
+  min-height: 44px;
+  padding: 7px 9px;
+}
+
+.open-with-row:hover {
+  background: alpha(@theme_accent, 0.12);
+}
+
+.open-with-row:selected,
+.open-with-row:selected:focus {
+  background: alpha(@theme_accent, 0.2);
+  color: @theme_text;
+}
+
+.open-with-icon {
+  color: @theme_text;
+}
+
+.open-with-name {
+  color: @theme_text;
+  font-weight: 700;
+}
+
+.open-with-description,
+.open-with-empty {
+  color: @theme_dim_text;
+}
+
+.open-with-empty {
+  padding: 8px 2px 0;
+}
+
 .action-dialog-cancel {
   background: transparent;
   border: 1px solid alpha(@theme_border, 0.54);

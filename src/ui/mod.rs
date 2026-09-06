@@ -13,6 +13,7 @@ mod loading_skeleton;
 mod marquee;
 mod modal;
 mod motion;
+mod open_with;
 mod portal_preferences;
 mod preview;
 mod scrolling;
