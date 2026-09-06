@@ -151,3 +151,87 @@ def test_the_shortcut_reference_opens_and_closes(strata):
         lambda: strata.window.find(role="label", name="Keyboard shortcuts") is None,
         "Escape to close the shortcut reference",
     )
+
+
+def compress_from_the_context_menu(strata, entry_name, archive_name):
+    strata.open_context_menu(entry_name)
+    strata.choose_menu_item("Compress…")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(archive_name)
+    strata.wait(
+        lambda: field.text == archive_name, f"{archive_name!r} to reach the name field"
+    )
+    return field
+
+
+def test_enter_submits_the_compress_dialog(strata):
+    compress_from_the_context_menu(strata, "readme.md", "bundle")
+
+    strata.keyboard.press("Return")
+
+    strata.wait(lambda: strata.dialog() is None, "the dialog to close")
+    strata.wait(
+        lambda: strata.fixture.path("bundle.zip").exists(),
+        "Enter to create the archive",
+    )
+
+
+def test_an_invalid_archive_name_keeps_the_compress_dialog_open(strata):
+    compress_from_the_context_menu(strata, "readme.md", "../escape")
+
+    strata.keyboard.press("Return")
+
+    dialog = strata.wait_for_dialog()
+    assert dialog.name == "Compress 1 item", (
+        f"an invalid name must keep the dialog open, got {dialog.name!r}"
+    )
+    assert not strata.fixture.path("escape.zip").exists(), (
+        "an invalid name must not produce an archive"
+    )
+    strata.keyboard.press("Escape")
+
+
+def test_enter_submits_the_extract_to_dialog(strata):
+    compress_from_the_context_menu(strata, "readme.md", "bundle")
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: strata.fixture.path("bundle.zip").exists(), "the archive to be created"
+    )
+
+    destination = strata.fixture.path("unpacked")
+    strata.open_context_menu("bundle.zip")
+    strata.choose_menu_item("Extract to…")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(str(destination))
+    strata.wait(
+        lambda: field.text == str(destination), "the destination to reach the field"
+    )
+
+    strata.keyboard.press("Return")
+
+    strata.wait(
+        lambda: (destination / "readme.md").exists(),
+        "Enter to extract into the destination",
+    )
+
+
+def test_enter_submits_the_copy_to_dialog(strata):
+    destination = strata.fixture.path("documents")
+
+    strata.open_context_menu("todo.txt")
+    strata.choose_menu_item("Copy to…")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(str(destination))
+    strata.wait(
+        lambda: field.text == str(destination), "the destination to reach the field"
+    )
+
+    strata.keyboard.press("Return")
+
+    strata.wait(
+        lambda: (destination / "todo.txt").exists(),
+        "Enter to copy into the destination",
+    )

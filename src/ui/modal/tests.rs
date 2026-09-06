@@ -47,6 +47,38 @@ fn modal_hosts_preserve_nested_blur_and_support_plain_overlays() {
     );
 }
 
+#[test]
+fn enter_in_a_single_line_field_invokes_the_primary_action() {
+    crate::test_support::gtk_test(
+        "ui::modal::tests::enter_in_a_single_line_field_invokes_the_primary_action",
+        || {
+            let body = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let nested = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let name = gtk::Entry::new();
+            let password = gtk::PasswordEntry::new();
+            nested.append(&password);
+            nested.append(&gtk::TextView::new());
+            body.append(&name);
+            body.append(&nested);
+
+            let confirm = gtk::Button::with_label("Compress");
+            let clicks = Rc::new(Cell::new(0_usize));
+            let counted = clicks.clone();
+            confirm.connect_clicked(move |_| counted.set(counted.get() + 1));
+            submit_on_enter(&body, &confirm);
+
+            name.emit_by_name::<()>("activate", &[]);
+            assert_eq!(clicks.get(), 1, "a text field should submit the form");
+            password.emit_by_name::<()>("activate", &[]);
+            assert_eq!(clicks.get(), 2, "a nested password field should submit too");
+
+            confirm.set_sensitive(false);
+            name.emit_by_name::<()>("activate", &[]);
+            assert_eq!(clicks.get(), 2, "a disabled primary action stays inert");
+        },
+    );
+}
+
 fn wait_until(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {

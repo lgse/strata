@@ -11,7 +11,9 @@ use crate::ui::browser::{BrowserView, ViewState};
 use crate::ui::controls::{
     form_entry, form_label, form_password_entry, modal_layout, segmented_control, wrap_dialog_text,
 };
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
+use crate::ui::modal::{
+    ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
+};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
@@ -254,12 +256,7 @@ fn show_authentication_dialog(
         }
     });
 
-    for entry in [&username, &domain] {
-        let submit = connect.clone();
-        entry.connect_activate(move |_| submit.emit_clicked());
-    }
-    let submit = connect.clone();
-    password.connect_activate(move |_| submit.emit_clicked());
+    submit_on_enter(&layout.body, &connect);
 
     let escape = gtk::EventControllerKey::new();
     let escape_operation = operation.cloned();
