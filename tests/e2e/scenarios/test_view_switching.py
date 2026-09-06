@@ -84,22 +84,21 @@ def test_the_chosen_view_is_remembered(strata):
     )
 
 
-def test_appearance_menu_marks_a_view_chosen_by_shortcut(strata):
-    strata.keyboard.press(MODE_SHORTCUTS["Icons"])
-    strata.wait_for_view("Icons")
+@pytest.mark.parametrize("mode", MODES)
+def test_appearance_menu_marks_a_view_chosen_by_shortcut(strata, mode):
+    strata.keyboard.press(MODE_SHORTCUTS[mode])
+    strata.wait_for_view(mode)
 
     strata.open_appearance_menu()
 
-    icons = strata.window.find(role="button", name="Icons")
-    columns = strata.window.find(role="button", name="Columns")
-    assert icons is not None and columns is not None
-    marks = {
-        "Icons": _has_check_mark(icons),
-        "Columns": _has_check_mark(columns),
-    }
-    assert marks == {"Icons": True, "Columns": False}, (
-        "the menu should follow the view even when the keyboard changed it"
-    )
+    for candidate in MODES:
+        option = strata.window.find(role="button", name=candidate)
+        assert option is not None
+        assert _has_check_mark(option) == (candidate == mode)
+
+    grouping = strata.window.find(role="button", name="Group by file type")
+    assert grouping is not None
+    assert ("sensitive" in grouping.states) == (mode == "List")
 
 
 def _has_check_mark(option) -> bool:
