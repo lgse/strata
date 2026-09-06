@@ -5,16 +5,23 @@ from __future__ import annotations
 
 import pytest
 
+from harness.modes import ALL_MODES
+
 SINGLE_CLICK = pytest.mark.preferences(
-    browser_mode="list", explorer_folder_clicks=1, explorer_file_clicks=1
+    list_folder_clicks=1, list_file_clicks=1,
+    grid_folder_clicks=1, grid_file_clicks=1,
+    explorer_folder_clicks=1, explorer_file_clicks=1,
 )
 DOUBLE_CLICK = pytest.mark.preferences(
-    browser_mode="list", explorer_folder_clicks=2, explorer_file_clicks=2
+    list_folder_clicks=2, list_file_clicks=2,
+    grid_folder_clicks=2, grid_file_clicks=2,
+    explorer_folder_clicks=2, explorer_file_clicks=2,
 )
 
 
 @SINGLE_CLICK
-def test_single_click_opens_a_directory(strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_single_click_opens_a_directory(strata, mode):
     strata.pointer.click(strata.entry("documents"))
 
     strata.wait(
@@ -25,7 +32,8 @@ def test_single_click_opens_a_directory(strata):
 
 
 @SINGLE_CLICK
-def test_keyboard_selection_still_works_in_single_click_mode(strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_keyboard_selection_still_works_in_single_click_mode(strata, mode):
     strata.keyboard.press("Down")
     strata.wait(lambda: strata.focused_name() is not None, "keyboard focus")
     focused = strata.focused_name()
@@ -40,7 +48,8 @@ def test_keyboard_selection_still_works_in_single_click_mode(strata):
 
 
 @DOUBLE_CLICK
-def test_one_click_only_selects_in_double_click_mode(strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_one_click_only_selects_in_double_click_mode(strata, mode):
     root = strata.fixture.root.name
 
     strata.pointer.click(strata.entry("documents"))
@@ -53,7 +62,8 @@ def test_one_click_only_selects_in_double_click_mode(strata):
 
 
 @DOUBLE_CLICK
-def test_two_clicks_open_in_double_click_mode(strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_two_clicks_open_in_double_click_mode(strata, mode):
     strata.pointer.double_click(strata.entry("documents"))
 
     strata.wait(
@@ -63,7 +73,8 @@ def test_two_clicks_open_in_double_click_mode(strata):
 
 
 @DOUBLE_CLICK
-def test_two_slow_clicks_do_not_open(strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_two_slow_clicks_do_not_open(strata, mode):
     """Two clicks outside the double-click interval are two single clicks."""
 
     root = strata.fixture.root.name
@@ -78,6 +89,7 @@ def test_two_slow_clicks_do_not_open(strata):
 
 
 @DOUBLE_CLICK
+@pytest.mark.preferences(browser_mode="list")
 def test_changing_the_preference_takes_effect_without_restarting(strata):
     root = strata.fixture.root.name
     strata.pointer.click(strata.entry("documents"))

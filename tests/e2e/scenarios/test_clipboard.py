@@ -27,7 +27,8 @@ def test_copy_leaves_the_source_in_place(strata, mode):
     strata.entry("todo.txt", directory="archive")
 
 
-def test_cut_moves_only_after_paste(strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_cut_moves_only_after_paste(strata, mode):
     fixture = strata.fixture
 
     strata.select_entry("todo.txt")
@@ -50,7 +51,8 @@ def test_cut_moves_only_after_paste(strata):
     )
 
 
-def test_context_menu_copy_and_paste(strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_context_menu_copy_and_paste(strata, mode):
     fixture = strata.fixture
 
     strata.open_context_menu("readme.md")
@@ -58,7 +60,7 @@ def test_context_menu_copy_and_paste(strata):
     strata.choose_menu_item("Copy")
 
     strata.open_directory("archive")
-    strata.paste_into("archive")
+    _paste_from_context_menu(strata)
 
     strata.wait(
         lambda: fixture.path("archive/readme.md").exists(),
@@ -67,19 +69,26 @@ def test_context_menu_copy_and_paste(strata):
     assert fixture.path("readme.md").exists()
 
 
-def test_context_menu_cut_and_paste(strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_context_menu_cut_and_paste(strata, mode):
     fixture = strata.fixture
 
     strata.open_context_menu("readme.md")
     strata.choose_menu_item("Cut")
     strata.open_directory("archive")
-    strata.paste_into("archive")
+    _paste_from_context_menu(strata)
 
     strata.wait(
         lambda: fixture.path("archive/readme.md").exists()
         and not fixture.path("readme.md").exists(),
         "the context-menu cut to complete",
     )
+
+
+def _paste_from_context_menu(strata):
+    strata.pointer.right_click(strata.pane("archive"), at=strata.background_point("archive"))
+    strata.wait(strata.context_menu, "the destination context menu")
+    strata.choose_menu_item("Paste")
 
 
 def test_pasting_a_duplicate_name_asks_before_replacing(strata):

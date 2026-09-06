@@ -2,6 +2,8 @@
 
 import importlib.util
 import os
+import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -14,6 +16,31 @@ SPEC.loader.exec_module(RUNNER)
 
 
 class HeadlessRunnerTests(unittest.TestCase):
+    def test_check_script_disables_both_desktop_backends(self):
+        with tempfile.TemporaryDirectory() as directory:
+            tools = Path(directory)
+            cargo = tools / "cargo"
+            cargo.write_text(
+                '#!/bin/sh\n'
+                'if [ "$1" = test ]; then\n'
+                '  [ -z "${DISPLAY+x}" ] && [ -z "${WAYLAND_DISPLAY+x}" ] '
+                '&& [ "$GDK_BACKEND" = x11 ] || exit 1\n'
+                'fi\n'
+            )
+            cargo.chmod(0o755)
+            for name in ("cargo-deny", "typos"):
+                tool = tools / name
+                tool.write_text('#!/bin/sh\nexit 0\n')
+                tool.chmod(0o755)
+            result = subprocess.run(
+                ["bash", str(Path(__file__).with_name("check.sh"))],
+                cwd=directory,
+                env={**os.environ, "PATH": f"{directory}:/usr/bin:/bin", "DISPLAY": ":0",
+                     "WAYLAND_DISPLAY": "wayland-1", "GDK_BACKEND": "wayland"},
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_cargo_uses_only_the_private_display_and_preferences(self):
         display = Mock(environment={"DISPLAY": ":99", "XDG_RUNTIME_DIR": "/private/runtime"})
         home = Mock(variables=lambda: {"HOME": "/private/home"})
