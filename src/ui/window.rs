@@ -1331,11 +1331,9 @@ pub(super) fn build_appearance_menu(
         crate::assets::icons::LIST_CHECKS,
         "Group by file type",
         grouped,
-        current_mode != BrowserMode::Columns,
+        current_mode.supports_type_grouping(),
     );
-    group_by_type.set_tooltip_text(Some(
-        "Group List and Icons entries under file-type headings",
-    ));
+    group_by_type.set_tooltip_text(Some("Group List entries under file-type headings"));
     {
         let view = view.clone();
         let preferences = preferences.clone();
@@ -1370,7 +1368,7 @@ pub(super) fn build_appearance_menu(
             columns_check.set_visible(mode == BrowserMode::Columns);
             icons_check.set_visible(mode == BrowserMode::Icons);
             list_check.set_visible(mode == BrowserMode::List);
-            group_by_type.set_sensitive(mode != BrowserMode::Columns);
+            group_by_type.set_sensitive(mode.supports_type_grouping());
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }

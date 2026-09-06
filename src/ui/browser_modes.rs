@@ -61,6 +61,14 @@ pub enum BrowserMode {
     List,
 }
 
+impl BrowserMode {
+    /// File-type headings are List-only for now. Icons grouping is disabled
+    /// until a follow-up can restore per-type separators.
+    pub fn supports_type_grouping(self) -> bool {
+        matches!(self, Self::List)
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum BrowserDensity {
     #[default]
@@ -312,6 +320,9 @@ pub struct ModeViews {
     group_by_type: bool,
     icons_thumbnail_size: Rc<Cell<i32>>,
     focus_before_header: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
+    /// Page Up/Down scrolls the viewport itself; skip the follow-up `scroll_to`
+    /// that `FocusChanged` would otherwise schedule from stale GridView estimates.
+    suppress_focus_scroll: Cell<bool>,
 }
 
 impl ModeViews {
@@ -384,6 +395,7 @@ impl ModeViews {
             group_by_type: false,
             icons_thumbnail_size: Rc::new(Cell::new(DEFAULT_ICONS_THUMBNAIL_SIZE)),
             focus_before_header: RefCell::new(None),
+            suppress_focus_scroll: Cell::new(false),
         }
     }
 
@@ -855,10 +867,8 @@ impl ModeViews {
         self.cancel_new_entry();
         self.cancel_rename();
         self.group_by_type = enabled;
-        match self.mode {
-            BrowserMode::Columns => {}
-            BrowserMode::Icons => self.rebuild_icons(),
-            BrowserMode::List => self.rebuild_list(),
+        if self.mode.supports_type_grouping() {
+            self.rebuild_list();
         }
     }
 
@@ -1240,6 +1250,10 @@ impl ModeViews {
         .map(|position| (depth, position))
     }
 
+    pub fn suppress_focus_scroll(&self) {
+        self.suppress_focus_scroll.set(true);
+    }
+
     pub fn focus_visible_pane(&self, depth: usize) {
         if self.rename_is_active() || self.new_entry_is_active() {
             return;
@@ -1269,6 +1283,18 @@ impl ModeViews {
         if !view.grab_focus() {
             for pane in self.panes_at(depth) {
                 pane.stack.grab_focus();
+            }
+            return;
+        }
+        if self.suppress_focus_scroll.replace(false) {
+            if let Some(position) = position
+                && let Some(items) = pane
+                    .item_sections()
+                    .into_iter()
+                    .find(|section| section.view == view)
+                    .map(|section| section.bound_items.clone())
+            {
+                focus_collection_cursor_when_bound(view.downgrade(), items, position);
             }
             return;
         }
@@ -1395,7 +1421,7 @@ impl ModeViews {
                 new_folder_state: self.new_folder_state.borrow().clone(),
                 thumbnail_size: self.icons_thumbnail_size.clone(),
                 active_new_entry: self.active_new_entry.clone(),
-                group_by_type: self.group_by_type,
+                group_by_type: false,
                 density: self.density,
             },
             depth,
@@ -3902,6 +3928,64 @@ fn scroll_collection_to(view: &gtk::Widget, position: u32) {
 
 fn focus_collection_item(view: &gtk::Widget, position: u32) {
     super::browser::focus_collection_item_when_allocated(view, position);
+}
+
+fn focus_collection_cursor_when_bound(
+    view: glib::object::WeakRef<gtk::Widget>,
+    items: Rc<RefCell<Vec<BoundModeItem>>>,
+    position: u32,
+) {
+    glib::idle_add_local_once(move || {
+        let Some(view) = view.upgrade() else {
+            return;
+        };
+        if !collection_keeps_cursor(&view) {
+            return;
+        }
+        if focus_bound_cursor(&items, position) {
+            return;
+        }
+        let frames = Cell::new(0u8);
+        let items = items.clone();
+        view.add_tick_callback(move |view, _| {
+            if !collection_keeps_cursor(view)
+                || focus_bound_cursor(&items, position)
+                || frames.get() >= 8
+            {
+                return glib::ControlFlow::Break;
+            }
+            frames.set(frames.get().saturating_add(1));
+            glib::ControlFlow::Continue
+        });
+    });
+}
+
+fn collection_keeps_cursor(view: &gtk::Widget) -> bool {
+    let focused = view.root().and_then(|root| root.focus());
+    if focused.as_ref().is_some_and(|focused| {
+        super::focus_navigation::editable(focused) || super::focus_navigation::in_popover(focused)
+    }) {
+        return false;
+    }
+    focused.as_ref().is_none_or(|focused| {
+        focused == view || view.is_ancestor(focused) || focused.is_ancestor(view)
+    })
+}
+
+fn focus_bound_cursor(items: &RefCell<Vec<BoundModeItem>>, position: u32) -> bool {
+    let Some(widget) = items.borrow().iter().find_map(|bound| {
+        let item = bound.item.upgrade()?;
+        (item.position() == position)
+            .then(|| bound.widget.upgrade())
+            .flatten()
+            .filter(|widget| widget.is_mapped())
+    }) else {
+        return false;
+    };
+    widget
+        .parent()
+        .map(|parent| parent.grab_focus())
+        .unwrap_or_else(|| widget.grab_focus())
 }
 
 fn set_mode_cut_style(widget: &impl IsA<gtk::Widget>, cut: bool) {

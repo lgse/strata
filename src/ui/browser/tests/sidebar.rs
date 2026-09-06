@@ -153,25 +153,8 @@ fn sidebar_boundary_tracks_icons_layout_and_empty_views() {
     settle();
     assert!(view.at_left_edge());
     group.grab_focus();
-    assert!(view.cross_type_group(gtk::DirectionType::Down, false));
-    settle();
-    assert_eq!(
-        browser
-            .focused_entry()
-            .expect("file group cursor")
-            .display_name,
-        "file-00.txt"
-    );
-    assert!(view.at_left_edge());
-    assert!(view.cross_type_group(gtk::DirectionType::Up, false));
-    settle();
-    assert_eq!(
-        browser
-            .focused_entry()
-            .expect("folder group cursor")
-            .display_name,
-        "folder-08"
-    );
+    assert!(!view.cross_type_group(gtk::DirectionType::Down, false));
+    assert!(!view.cross_type_group(gtk::DirectionType::Up, false));
 
     view.set_group_by_type(false);
     view.set_view_mode(BrowserMode::List);
