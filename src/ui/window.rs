@@ -28,7 +28,7 @@ use super::{
     },
     browser_modes::{BrowserDensity, BrowserMode},
     motion::{animations_enabled, emphasized_deceleration},
-    preview::PreviewDrawer,
+    preview::{PreviewDrawer, preview_target},
     search::SearchDialog,
     theme::ThemeManager,
 };
@@ -1022,7 +1022,7 @@ fn install_keyboard_navigation(
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::space && !alt && !control {
-            preview.toggle(browser.focused_entry());
+            preview.toggle(preview_target(browser.focused_entry()));
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::Escape && preview.is_open() {

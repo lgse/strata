@@ -49,6 +49,9 @@ fn space_toggles_preview_without_starting_type_to_search() {
     let preferences = ThemeManager::shared();
     let fixture = tempfile::tempdir().expect("fixture");
     std::fs::write(fixture.path().join("notes.txt"), b"preview fixture").expect("fixture file");
+    std::fs::create_dir(fixture.path().join("folder")).expect("fixture directory");
+    std::fs::write(fixture.path().join("archive.zip"), b"unsupported fixture")
+        .expect("unsupported file");
     let view = BrowserView::new(Rc::new(LocalFileSource), PeekBehavior::default());
     view.set_single_click_previews(false);
     let browser = view.browser();
@@ -95,7 +98,7 @@ fn space_toggles_preview_without_starting_type_to_search() {
         preferences.set_type_to_search(enabled);
         for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
             view.set_view_mode(mode);
-            browser.select(0, 0);
+            select_entry(&browser, "notes.txt");
             browser.focus_active();
             wait_until(|| view.item_view_has_focus());
             press(&keys, gtk::gdk::Key::space);
@@ -106,6 +109,17 @@ fn space_toggles_preview_without_starting_type_to_search() {
             assert!(!view.filter_has_focus());
             press(&keys, gtk::gdk::Key::space);
             assert!(!preview.is_open(), "Space closes preview: {mode:?}");
+            for name in ["folder", "archive.zip"] {
+                select_entry(&browser, name);
+                browser.focus_active();
+                wait_until(|| view.item_view_has_focus());
+                press(&keys, gtk::gdk::Key::space);
+                assert!(
+                    !preview.is_open(),
+                    "Space must not preview {name}: {mode:?}, type-to-search={enabled}"
+                );
+                assert!(!view.filter_has_focus());
+            }
         }
     }
 
@@ -129,6 +143,17 @@ fn space_toggles_preview_without_starting_type_to_search() {
     browser.clear_observer();
     sidebar.disconnect();
     window.destroy();
+}
+
+fn select_entry(browser: &Browser, name: &str) {
+    let count = browser.column_snapshot(0).expect("loaded column").count;
+    let position = browser
+        .with_entries(0, 0..count, |entries| {
+            entries.iter().position(|entry| entry.display_name == name)
+        })
+        .flatten()
+        .expect("fixture entry");
+    browser.select(0, position);
 }
 
 fn press(keys: &gtk::EventControllerKey, key: gtk::gdk::Key) -> bool {
