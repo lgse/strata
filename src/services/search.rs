@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::{
+    cell::Cell,
     cmp::Reverse,
     collections::{BinaryHeap, HashMap},
     path::PathBuf,
@@ -364,6 +365,7 @@ fn build_index(
     time_budget: Duration,
 ) {
     let mut indexed_entries = 0;
+    let mut pending_items = Vec::with_capacity(256);
     let mut truncated = false;
     let mut last_publish = Instant::now();
     let walk_start = Instant::now();
@@ -399,9 +401,22 @@ fn build_index(
     let priority_walker = walker.max_depth(Some(priority_depth)).build();
     let remaining_walker = walker.max_depth(Some(max_depth + 1)).build();
 
-    let entries = priority_walker
-        .map(|result| (true, result))
-        .chain(remaining_walker.map(|result| (false, result)));
+    let has_deeper_entries = Cell::new(false);
+    let priority_entries = priority_walker.map(|result| {
+        if result.as_ref().is_ok_and(|entry| {
+            entry.depth() == priority_depth
+                && entry
+                    .file_type()
+                    .is_some_and(|file_type| file_type.is_dir())
+        }) {
+            has_deeper_entries.set(true);
+        }
+        (true, result)
+    });
+    let remaining_entries = remaining_walker
+        .take_while(|_| has_deeper_entries.get())
+        .map(|result| (false, result));
+    let entries = priority_entries.chain(remaining_entries);
     for (priority_pass, result) in entries {
         if index.is_retired() {
             return;
@@ -443,26 +458,27 @@ fn build_index(
             .map_or(0, |position| {
                 position + std::path::MAIN_SEPARATOR.len_utf8()
             });
-        index
-            .items
-            .write()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .push(SearchItem {
-                name,
-                is_directory,
-                path,
-                search_path,
-                search_name_start,
-                depth,
-            });
+        pending_items.push(SearchItem {
+            name,
+            is_directory,
+            path,
+            search_path,
+            search_name_start,
+            depth,
+        });
         indexed_entries += 1;
 
+        if pending_items.len() >= 256 {
+            append_index_items(index, &mut pending_items);
+        }
         if last_publish.elapsed() >= PUBLISH_INTERVAL {
+            append_index_items(index, &mut pending_items);
             index.broadcast_change();
             last_publish = Instant::now();
         }
     }
 
+    append_index_items(index, &mut pending_items);
     index.truncated.store(truncated, Ordering::Release);
     index.indexing.store(false, Ordering::Release);
     if truncated {
@@ -479,6 +495,17 @@ fn build_index(
         );
     }
     index.broadcast_change();
+}
+
+fn append_index_items(index: &SharedIndex, items: &mut Vec<SearchItem>) {
+    if items.is_empty() {
+        return;
+    }
+    index
+        .items
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .append(items);
 }
 
 fn set_query(progress: &mut WalkProgress, query: String) {
