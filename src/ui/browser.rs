@@ -638,10 +638,6 @@ impl BrowserView {
         }
     }
 
-    pub fn move_icons_group(&self, direction: gtk::DirectionType) -> bool {
-        self.state.mode_views.borrow().move_icons_group(direction)
-    }
-
     pub fn at_left_edge(&self) -> bool {
         self.state.mode_views.borrow().at_left_edge()
     }

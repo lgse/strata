@@ -1004,7 +1004,7 @@ fn install_keyboard_navigation(
                     if !control
                         && !shift
                         && let Some(direction) = sidebar_focus_direction(key)
-                        && view.move_icons_group(direction)
+                        && view.cross_type_group(direction, false)
                     {
                         glib::Propagation::Stop
                     } else {
