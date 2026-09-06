@@ -3,11 +3,20 @@
 
 from __future__ import annotations
 
+import shutil
+
 import pytest
 
 from harness.modes import ALL_MODES
 
 ENTRY_MENU_ITEMS = {"Open", "Cut", "Copy", "Rename", "Move to Trash", "Properties"}
+
+
+@pytest.fixture
+def executable_file(fixture_tree):
+    program = fixture_tree.path("run-me")
+    shutil.copy2(shutil.which("true"), program)
+    return program
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -64,6 +73,23 @@ def test_properties_opens_and_closes(strata):
 
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.dialog() is None, "Escape to close the dialog")
+
+
+def test_executable_without_handler_requires_confirmation(executable_file, strata):
+    strata.double_click_entry(executable_file.name)
+
+    dialog = strata.wait_for_dialog()
+    assert "Run this program?" in dialog.dump()
+    strata.wait(
+        lambda: "focused" in strata.dialog_button("Cancel").states,
+        "Cancel to receive initial focus",
+    )
+    assert strata.dialog_button("Close dialog").activate()
+    strata.wait(lambda: strata.dialog() is None, "the close button to dismiss the dialog")
+
+    strata.double_click_entry(executable_file.name)
+    strata.pointer.click(strata.dialog_button("Run"))
+    strata.wait(lambda: strata.dialog() is None, "the confirmed program to launch")
 
 
 def test_properties_pins_a_folder_and_offers_unpin_afterwards(strata):
@@ -150,4 +176,88 @@ def test_the_shortcut_reference_opens_and_closes(strata):
     strata.wait(
         lambda: strata.window.find(role="label", name="Keyboard shortcuts") is None,
         "Escape to close the shortcut reference",
+    )
+
+
+def compress_from_the_context_menu(strata, entry_name, archive_name):
+    strata.open_context_menu(entry_name)
+    strata.choose_menu_item("Compress…")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(archive_name)
+    strata.wait(
+        lambda: field.text == archive_name, f"{archive_name!r} to reach the name field"
+    )
+    return field
+
+
+def test_enter_submits_the_compress_dialog(strata):
+    compress_from_the_context_menu(strata, "readme.md", "bundle")
+
+    strata.keyboard.press("Return")
+
+    strata.wait(lambda: strata.dialog() is None, "the dialog to close")
+    strata.wait(
+        lambda: strata.fixture.path("bundle.zip").exists(),
+        "Enter to create the archive",
+    )
+
+
+def test_an_invalid_archive_name_keeps_the_compress_dialog_open(strata):
+    compress_from_the_context_menu(strata, "readme.md", "../escape")
+
+    strata.keyboard.press("Return")
+
+    dialog = strata.wait_for_dialog()
+    assert dialog.name == "Compress 1 item", (
+        f"an invalid name must keep the dialog open, got {dialog.name!r}"
+    )
+    assert not strata.fixture.path("escape.zip").exists(), (
+        "an invalid name must not produce an archive"
+    )
+    strata.keyboard.press("Escape")
+
+
+def test_enter_submits_the_extract_to_dialog(strata):
+    compress_from_the_context_menu(strata, "readme.md", "bundle")
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: strata.fixture.path("bundle.zip").exists(), "the archive to be created"
+    )
+
+    destination = strata.fixture.path("unpacked")
+    strata.open_context_menu("bundle.zip")
+    strata.choose_menu_item("Extract to…")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(str(destination))
+    strata.wait(
+        lambda: field.text == str(destination), "the destination to reach the field"
+    )
+
+    strata.keyboard.press("Return")
+
+    strata.wait(
+        lambda: (destination / "readme.md").exists(),
+        "Enter to extract into the destination",
+    )
+
+
+def test_enter_submits_the_copy_to_dialog(strata):
+    destination = strata.fixture.path("documents")
+
+    strata.open_context_menu("todo.txt")
+    strata.choose_menu_item("Copy to…")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(str(destination))
+    strata.wait(
+        lambda: field.text == str(destination), "the destination to reach the field"
+    )
+
+    strata.keyboard.press("Return")
+
+    strata.wait(
+        lambda: (destination / "todo.txt").exists(),
+        "Enter to copy into the destination",
     )
