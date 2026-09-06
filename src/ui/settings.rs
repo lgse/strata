@@ -3011,7 +3011,10 @@ fn click_activation_option(
     let (folder_control, folder_buttons) =
         segmented_control(&["1 click", "2 clicks"], selected(activation.folders));
     let mut options = Vec::new();
-    for (label, control) in [("Files", &file_control), ("Folders", &folder_control)] {
+    for (label, control, buttons) in [
+        ("Files", &file_control, &file_buttons),
+        ("Folders", &folder_control, &folder_buttons),
+    ] {
         let option = gtk::Box::new(gtk::Orientation::Horizontal, 6);
         option.set_hexpand(true);
         let label = gtk::Label::new(Some(label));
@@ -3020,6 +3023,16 @@ fn click_activation_option(
         label.add_css_class("settings-option-description");
         control.set_hexpand(true);
         control.add_css_class("click-activation-control");
+        // Twelve buttons on this page read "1 click" or "2 clicks". Naming each
+        // one after its row and its column turns them into distinguishable
+        // choices such as "List Folders 1 click".
+        for button in buttons {
+            button.update_relation(&[gtk::accessible::Relation::LabelledBy(&[
+                title.upcast_ref(),
+                label.upcast_ref(),
+                button.upcast_ref(),
+            ])]);
+        }
         option.append(&label);
         option.append(control);
         row.append(&option);

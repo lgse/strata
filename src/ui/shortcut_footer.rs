@@ -35,6 +35,7 @@ const TOOLS: &[Shortcut] = &[
     ("Ctrl+T", "Open a terminal"),
     ("F5 / Ctrl+R", "Refresh"),
     ("Ctrl+H / Ctrl+.", "Show or hide hidden files"),
+    ("Ctrl+1 / 2 / 3", "Switch to Columns, Icons, or List"),
     ("Ctrl+B", "Show or hide the sidebar"),
     ("Ctrl+Shift+B", "Switch focus between sidebar and browser"),
     ("Ctrl+,", "Open Settings"),

@@ -98,7 +98,7 @@ pub(in crate::ui) fn install_folder_context_menu(
         chooser_context::install_folder(state, parent, is_item_target, depth, location);
         return;
     }
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let content = crate::ui::accessibility::menu_box();
     content.add_css_class("folder-context-menu");
     let (popover, scroll) = context_menu_popover(&content);
     popover.add_css_class("folder-context-popover");
@@ -311,7 +311,7 @@ pub(in crate::ui) fn install_item_context_menu(
         .location_at(depth)
         .as_ref()
         .is_some_and(is_trash_location);
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let content = crate::ui::accessibility::menu_box();
     content.add_css_class("item-context-menu");
     let header = gtk::Box::new(gtk::Orientation::Vertical, 2);
     header.add_css_class("item-context-header");
@@ -812,7 +812,8 @@ fn item_context_danger_option(icon: &str, label: &str, accelerator: &str) -> gtk
 }
 
 fn item_context_option_with_icon(icon: gtk::Image, label: &str, accelerator: &str) -> gtk::Button {
-    let button = gtk::Button::new();
+    let button = crate::ui::accessibility::menu_item_button();
+    crate::ui::accessibility::describe_menu_item(&button, label, accelerator);
     button.add_css_class("item-context-option");
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     icon.add_css_class("item-context-icon");
@@ -853,7 +854,8 @@ fn context_menu_row(
 
 pub(super) fn context_menu_option(icon: &str, label: &str, accelerator: &str) -> gtk::Button {
     let (row, _, _) = context_menu_row(icon, label, accelerator);
-    let button = gtk::Button::new();
+    let button = crate::ui::accessibility::menu_item_button();
+    crate::ui::accessibility::describe_menu_item(&button, label, accelerator);
     button.add_css_class("folder-context-option");
     button.set_child(Some(&row));
     button
@@ -865,7 +867,8 @@ fn context_menu_toggle_option(
     accelerator: &str,
 ) -> (gtk::Button, gtk::Image, gtk::Label) {
     let (row, icon, title) = context_menu_row(icon, label, accelerator);
-    let button = gtk::Button::new();
+    let button = crate::ui::accessibility::menu_item_button();
+    crate::ui::accessibility::describe_menu_item(&button, label, accelerator);
     button.add_css_class("folder-context-option");
     button.set_child(Some(&row));
     (button, icon, title)
