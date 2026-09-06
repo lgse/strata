@@ -14,34 +14,38 @@ use std::process::{Command, Stdio};
 pub(in crate::ui) fn open_location(location: &Location, parent: &impl IsA<gtk::Widget>) {
     let file = gio_file_for_location(location);
     let uri = file.uri();
-    if gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>).is_err() {
-        // No registered handler: an executable file is meant to be run, not
-        // opened. Offer that, matching Nautilus, instead of a dead end.
-        let path = location.native_path();
-        if path.is_some_and(|path| path.is_file() && is_executable(path)) {
+    if let Err(error) = gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>) {
+        if executable_without_handler(location.native_path(), &error) {
             confirm_run_program(location, parent);
             return;
         }
         tracing::warn!(
             backend = %location.backend_name(),
+            error_domain = ?error.domain(),
+            error_code = error.code(),
             "unable to open file"
         );
         tracing::debug!(
             location = %location.diagnostic_path(),
             "file open location"
         );
-        show_error_dialog(
-            parent,
-            "Unable to open file",
-            "No application is registered for this file",
-        );
+        let detail = if error.matches(gio::IOErrorEnum::NotSupported) {
+            "No application is registered for this file"
+        } else {
+            error.message()
+        };
+        show_error_dialog(parent, "Unable to open file", detail);
     }
 }
 
-fn is_executable(path: &Path) -> bool {
+fn executable_without_handler(path: Option<&Path>, error: &glib::Error) -> bool {
+    error.matches(gio::IOErrorEnum::NotSupported) && path.is_some_and(is_regular_executable)
+}
+
+fn is_regular_executable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
     std::fs::metadata(path)
-        .map(|meta| meta.permissions().mode() & 0o111 != 0)
+        .map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
         .unwrap_or(false)
 }
 
@@ -65,50 +69,64 @@ fn confirm_run_program(location: &Location, parent: &impl IsA<gtk::Widget>) {
         "\u{201c}{name}\u{201d} is an executable file. Only run programs you trust."
     )));
     let content = layout.content;
+    let close = layout.close;
     let cancel = layout.cancel;
     let run = layout.confirm;
 
     let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
     window_overlay.add_overlay(&layer);
-    let cancel_layer = layer.clone();
-    let cancel_overlay = window_overlay.clone();
-    let cancel_root = blurred_root.clone();
-    cancel.connect_clicked(move |_| {
-        dismiss_modal_layer(&cancel_layer, &cancel_overlay, cancel_root.as_ref());
+    let weak_cancel = cancel.downgrade();
+    gtk::glib::idle_add_local_once(move || {
+        if let Some(cancel) = weak_cancel.upgrade() {
+            cancel.grab_focus();
+        }
     });
+    for button in [close, cancel] {
+        let dismiss_layer = layer.clone();
+        let dismiss_overlay = window_overlay.clone();
+        let dismiss_root = blurred_root.clone();
+        button.connect_clicked(move |_| {
+            dismiss_modal_layer(&dismiss_layer, &dismiss_overlay, dismiss_root.as_ref());
+        });
+    }
     let run_layer = layer.clone();
     let run_overlay = window_overlay;
     let run_root = blurred_root;
     let run_location = location.clone();
+    let error_parent = parent.as_ref().clone();
     run.connect_clicked(move |_| {
         dismiss_modal_layer(&run_layer, &run_overlay, run_root.as_ref());
-        launch_program(&run_location);
+        if let Err(error) = launch_program(&run_location) {
+            tracing::warn!(%error, "unable to run program");
+            show_error_dialog(&error_parent, "Unable to run program", &error.to_string());
+        }
     });
-    run.grab_focus();
 }
 
-fn launch_program(location: &Location) {
-    let Some(path) = location.native_path().map(Path::to_path_buf) else {
-        return;
-    };
-    let parent = path.parent().map(Path::to_path_buf).unwrap_or_default();
-    let program = path.clone();
-    // The child outlives the GTK callback; spawn must not block the main loop
-    // if the program's startup stalls, so the spawn itself runs off-thread.
-    let result = std::thread::spawn(move || {
-        Command::new(&program)
-            .current_dir(&parent)
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-    })
-    .join();
-    match result {
-        Ok(Ok(_)) => {}
-        Ok(Err(error)) => tracing::warn!(%error, "unable to run program"),
-        Err(_) => tracing::warn!("run thread panicked"),
-    }
+fn launch_program(location: &Location) -> std::io::Result<()> {
+    let path = location.native_path().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "program is not a local file",
+        )
+    })?;
+    let mut child = program_command(path).spawn()?;
+    std::thread::spawn(move || {
+        if let Err(error) = child.wait() {
+            tracing::warn!(%error, "unable to reap program");
+        }
+    });
+    Ok(())
+}
+
+fn program_command(path: &Path) -> Command {
+    let mut command = Command::new(path);
+    command
+        .current_dir(path.parent().unwrap_or_else(|| Path::new(".")))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    command
 }
 
 pub(super) fn can_open_terminal(location: &Location) -> bool {

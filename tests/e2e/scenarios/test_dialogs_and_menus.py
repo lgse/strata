@@ -3,11 +3,20 @@
 
 from __future__ import annotations
 
+import shutil
+
 import pytest
 
 from harness.modes import ALL_MODES
 
 ENTRY_MENU_ITEMS = {"Open", "Cut", "Copy", "Rename", "Move to Trash", "Properties"}
+
+
+@pytest.fixture
+def executable_file(fixture_tree):
+    program = fixture_tree.path("run-me")
+    shutil.copy2(shutil.which("true"), program)
+    return program
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -64,6 +73,23 @@ def test_properties_opens_and_closes(strata):
 
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.dialog() is None, "Escape to close the dialog")
+
+
+def test_executable_without_handler_requires_confirmation(executable_file, strata):
+    strata.double_click_entry(executable_file.name)
+
+    dialog = strata.wait_for_dialog()
+    assert "Run this program?" in dialog.dump()
+    strata.wait(
+        lambda: "focused" in strata.dialog_button("Cancel").states,
+        "Cancel to receive initial focus",
+    )
+    assert strata.dialog_button("Close dialog").activate()
+    strata.wait(lambda: strata.dialog() is None, "the close button to dismiss the dialog")
+
+    strata.double_click_entry(executable_file.name)
+    strata.pointer.click(strata.dialog_button("Run"))
+    strata.wait(lambda: strata.dialog() is None, "the confirmed program to launch")
 
 
 def test_properties_pins_a_folder_and_offers_unpin_afterwards(strata):
