@@ -109,10 +109,6 @@ pub(super) fn modal_layer(
     layer
 }
 
-/// The modal equivalent of a window's default widget: Enter in any single-line field under
-/// `fields` invokes `confirm`, matching a click on it. Multi-line inputs are left alone so they
-/// keep their newline, and an insensitive primary action stays inert. Call this once the form's
-/// fields are in place, since it wires the fields present at that moment.
 pub(super) fn submit_on_enter(fields: &impl IsA<gtk::Widget>, confirm: &gtk::Button) {
     let mut child = fields.as_ref().first_child();
     while let Some(widget) = child {
