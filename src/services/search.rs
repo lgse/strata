@@ -2,11 +2,11 @@
 
 use std::{
     cmp::Reverse,
-    collections::BinaryHeap,
+    collections::{BinaryHeap, HashMap},
     path::PathBuf,
     sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
+        Arc, Mutex, OnceLock, RwLock, Weak,
+        atomic::{AtomicBool, AtomicUsize, Ordering},
         mpsc::{self, Receiver, RecvTimeoutError, Sender},
     },
     time::{Duration, Instant},
@@ -69,6 +69,7 @@ pub enum SearchEvent {
 
 enum SearchCommand {
     Query(String),
+    IndexChanged,
 }
 
 #[derive(Default)]
@@ -76,12 +77,99 @@ struct WalkProgress {
     query: String,
     normalized_query: String,
     matches: Vec<(i64, SearchItem)>,
-    truncated: bool,
 }
+
+struct IndexLifecycle {
+    active_sessions: usize,
+    retired: bool,
+}
+
+struct SharedIndex {
+    items: RwLock<Vec<SearchItem>>,
+    subscribers: Mutex<Vec<(usize, Sender<SearchCommand>)>>,
+    next_subscriber: AtomicUsize,
+    lifecycle: Mutex<IndexLifecycle>,
+    indexing: AtomicBool,
+    truncated: AtomicBool,
+}
+
+impl SharedIndex {
+    fn new() -> Self {
+        Self {
+            items: RwLock::new(Vec::new()),
+            subscribers: Mutex::new(Vec::new()),
+            next_subscriber: AtomicUsize::new(1),
+            lifecycle: Mutex::new(IndexLifecycle {
+                active_sessions: 1,
+                retired: false,
+            }),
+            indexing: AtomicBool::new(true),
+            truncated: AtomicBool::new(false),
+        }
+    }
+
+    fn subscribe(&self, sender: Sender<SearchCommand>) -> usize {
+        let id = self.next_subscriber.fetch_add(1, Ordering::Relaxed);
+        self.subscribers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push((id, sender));
+        id
+    }
+
+    fn unsubscribe(&self, id: usize) {
+        self.subscribers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .retain(|(subscriber_id, _)| *subscriber_id != id);
+    }
+
+    fn broadcast_change(&self) {
+        self.subscribers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .retain(|(_, subscriber)| subscriber.send(SearchCommand::IndexChanged).is_ok());
+    }
+
+    fn try_acquire(&self) -> bool {
+        let mut lifecycle = self
+            .lifecycle
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if lifecycle.retired {
+            return false;
+        }
+        lifecycle.active_sessions += 1;
+        true
+    }
+
+    fn release(&self) {
+        let mut lifecycle = self
+            .lifecycle
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        lifecycle.active_sessions = lifecycle.active_sessions.saturating_sub(1);
+        if lifecycle.active_sessions == 0 {
+            lifecycle.retired = true;
+        }
+    }
+
+    fn is_retired(&self) -> bool {
+        self.lifecycle
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .retired
+    }
+}
+
+type IndexRegistry = HashMap<(PathBuf, bool), Weak<SharedIndex>>;
+static SHARED_INDEXES: OnceLock<Mutex<IndexRegistry>> = OnceLock::new();
 
 pub struct SearchHandle {
     cancelled: Arc<AtomicBool>,
     commands: Sender<SearchCommand>,
+    index: Arc<SharedIndex>,
+    subscriber_id: usize,
 }
 
 impl SearchHandle {
@@ -94,23 +182,46 @@ impl SearchHandle {
 
 impl Drop for SearchHandle {
     fn drop(&mut self) {
-        tracing::debug!("search index cancelled");
-        self.cancelled.store(true, Ordering::Relaxed);
+        tracing::debug!("search session cancelled");
+        self.cancelled.store(true, Ordering::Release);
+        self.index.unsubscribe(self.subscriber_id);
+        self.index.release();
     }
 }
 
-/// Builds and searches the index entirely off the GTK thread. The UI receives only the best
-/// bounded result set, so typing remains responsive even while very large trees are being walked.
+/// Builds and searches the index entirely off the GTK thread. Searches with the same root and
+/// hidden-file policy share indexed paths while keeping independent queries and result streams.
 pub fn index_tree(root: PathBuf, show_hidden: bool) -> (SearchHandle, Receiver<SearchEvent>) {
-    index_tree_with_budget(
-        root,
-        show_hidden,
-        MAX_INDEX_ENTRIES,
-        MAX_INDEX_DEPTH,
-        INDEX_TIME_BUDGET,
-    )
+    let key = (root.clone(), show_hidden);
+    let registry = SHARED_INDEXES.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut registry = registry
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    registry.retain(|_, index| index.strong_count() > 0);
+    let shared = registry
+        .get(&key)
+        .and_then(Weak::upgrade)
+        .filter(|index| index.try_acquire());
+    let index = if let Some(index) = shared {
+        index
+    } else {
+        let index = Arc::new(SharedIndex::new());
+        registry.insert(key, Arc::downgrade(&index));
+        start_indexer(
+            index.clone(),
+            root,
+            show_hidden,
+            MAX_INDEX_ENTRIES,
+            MAX_INDEX_DEPTH,
+            INDEX_TIME_BUDGET,
+        );
+        index
+    };
+    drop(registry);
+    start_search_session(index)
 }
 
+#[cfg(test)]
 fn index_tree_with_budget(
     root: PathBuf,
     show_hidden: bool,
@@ -118,177 +229,256 @@ fn index_tree_with_budget(
     max_depth: usize,
     time_budget: Duration,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
+    let index = Arc::new(SharedIndex::new());
+    start_indexer(
+        index.clone(),
+        root,
+        show_hidden,
+        max_entries,
+        max_depth,
+        time_budget,
+    );
+    start_search_session(index)
+}
+
+fn start_search_session(index: Arc<SharedIndex>) -> (SearchHandle, Receiver<SearchEvent>) {
     let (command_sender, command_receiver) = mpsc::channel();
     let (event_sender, event_receiver) = mpsc::channel();
     let cancelled = Arc::new(AtomicBool::new(false));
+    let subscriber_id = index.subscribe(command_sender.clone());
     let worker_cancelled = cancelled.clone();
+    let worker_index = index.clone();
     let _worker = std::thread::Builder::new()
-        .name("strata-search-index".into())
+        .name("strata-search-query".into())
         .spawn(move || {
-            let mut index = Vec::new();
-            let mut progress = WalkProgress::default();
-            let mut last_publish = Instant::now();
-            let walk_start = Instant::now();
-            // Walk one level past `max_depth` so a directory at the cap with real children
-            // yields at least one entry beyond it, letting depth truncation be detected below.
-            // `hidden` must come after `standard_filters`: that bundle enables its own
-            // `hidden(true)` internally, which would otherwise override this call back on.
-            let mut overrides = ignore::overrides::OverrideBuilder::new(&root);
-            for generated_tree in GENERATED_TREE_GLOBS {
-                if let Err(error) = overrides.add(generated_tree) {
-                    tracing::warn!(
-                        %error,
-                        pattern = generated_tree,
-                        "invalid generated-tree prune glob"
-                    );
-                }
-            }
-            let overrides = match overrides.build() {
-                Ok(overrides) => overrides,
-                Err(error) => {
-                    tracing::warn!(%error, "generated-tree prune globs failed; walking unpruned");
-                    ignore::overrides::Override::empty()
-                }
-            };
-            let mut walker = ignore::WalkBuilder::new(&root);
-            walker
-                .follow_links(false)
-                .standard_filters(true)
-                .hidden(!show_hidden)
-                .require_git(false)
-                .overrides(overrides);
-            let priority_depth = PRIORITY_INDEX_DEPTH.min(max_depth);
-            let priority_walker = walker.max_depth(Some(priority_depth)).build();
-            let remaining_walker = walker.max_depth(Some(max_depth + 1)).build();
-
-            let entries = priority_walker
-                .map(|result| (true, result))
-                .chain(remaining_walker.map(|result| (false, result)));
-            for (priority_pass, result) in entries {
-                if worker_cancelled.load(Ordering::Relaxed) {
-                    return;
-                }
-                let entry = match result {
-                    Ok(entry) if entry.depth() == 0 => continue,
-                    Ok(entry) => entry,
-                    Err(_) => {
-                        // An unreadable directory also omits part of the tree from the index.
-                        progress.truncated = true;
-                        continue;
-                    }
-                };
-                if !priority_pass && entry.depth() <= priority_depth {
-                    continue;
-                }
-                if entry.depth() > max_depth {
-                    progress.truncated = true;
-                    continue;
-                }
-                if index.len() >= max_entries || walk_start.elapsed() >= time_budget {
-                    progress.truncated = true;
-                    break;
-                }
-                apply_pending_queries(
-                    &command_receiver,
-                    &event_sender,
-                    &index,
-                    &mut progress,
-                    true,
-                );
-                let is_directory = entry.file_type().is_some_and(|kind| kind.is_dir());
-                let depth = entry.depth().saturating_sub(1).min(MAX_INDEX_DEPTH) as u8;
-                let path = entry.into_path();
-                let name = path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned();
-                let search_path = path
-                    .strip_prefix(&root)
-                    .unwrap_or(&path)
-                    .to_string_lossy()
-                    .to_lowercase();
-                let search_name_start = search_path
-                    .rfind(std::path::MAIN_SEPARATOR)
-                    .map_or(0, |position| {
-                        position + std::path::MAIN_SEPARATOR.len_utf8()
-                    });
-                let item = SearchItem {
-                    name,
-                    is_directory,
-                    path,
-                    search_path,
-                    search_name_start,
-                    depth,
-                };
-                if let Some(score) = fuzzy_score_indexed(&item, &progress.normalized_query) {
-                    insert_match(&mut progress.matches, score, &item);
-                }
-                index.push(item);
-
-                if !progress.query.is_empty() && last_publish.elapsed() >= PUBLISH_INTERVAL {
-                    publish(&event_sender, &progress, true);
-                    last_publish = Instant::now();
-                }
-            }
-
-            if progress.truncated {
-                tracing::warn!(
-                    entries = index.len(),
-                    elapsed_ms = walk_start.elapsed().as_millis() as u64,
-                    "search index truncated"
-                );
-            } else {
-                tracing::info!(
-                    entries = index.len(),
-                    elapsed_ms = walk_start.elapsed().as_millis() as u64,
-                    "search index built"
-                );
-            }
-            publish(&event_sender, &progress, false);
-            while !worker_cancelled.load(Ordering::Relaxed) {
-                match command_receiver.recv_timeout(Duration::from_millis(50)) {
-                    Ok(SearchCommand::Query(next)) => {
-                        let query = command_receiver
-                            .try_iter()
-                            .map(|SearchCommand::Query(query)| query)
-                            .last()
-                            .unwrap_or(next);
-                        set_query(&mut progress, query);
-                        progress.matches = score_index(&index, &progress.normalized_query);
-                        publish(&event_sender, &progress, false);
-                    }
-                    Err(RecvTimeoutError::Timeout) => {}
-                    Err(RecvTimeoutError::Disconnected) => return,
-                }
-            }
+            run_search_session(
+                &worker_index,
+                &worker_cancelled,
+                &command_receiver,
+                &event_sender,
+            );
         });
+    let _initial = command_sender.send(SearchCommand::IndexChanged);
     (
         SearchHandle {
             cancelled,
             commands: command_sender,
+            index,
+            subscriber_id,
         },
         event_receiver,
     )
 }
 
-fn apply_pending_queries(
-    receiver: &Receiver<SearchCommand>,
-    sender: &Sender<SearchEvent>,
-    index: &[SearchItem],
-    progress: &mut WalkProgress,
-    indexing: bool,
+fn run_search_session(
+    index: &SharedIndex,
+    cancelled: &AtomicBool,
+    commands: &Receiver<SearchCommand>,
+    events: &Sender<SearchEvent>,
 ) {
-    let Some(next) = receiver
-        .try_iter()
-        .map(|SearchCommand::Query(query)| query)
-        .last()
-    else {
-        return;
+    let mut progress = WalkProgress::default();
+    let mut indexed_items = 0;
+    while !cancelled.load(Ordering::Acquire) {
+        let first = match commands.recv_timeout(Duration::from_millis(50)) {
+            Ok(command) => command,
+            Err(RecvTimeoutError::Timeout) => continue,
+            Err(RecvTimeoutError::Disconnected) => return,
+        };
+        let mut next_query = None;
+        let mut index_changed = false;
+        for command in std::iter::once(first).chain(commands.try_iter()) {
+            match command {
+                SearchCommand::Query(query) => next_query = Some(query),
+                SearchCommand::IndexChanged => index_changed = true,
+            }
+        }
+        let query_changed = next_query.is_some();
+        let items = index
+            .items
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some(query) = next_query {
+            set_query(&mut progress, query);
+            progress.matches = if progress.normalized_query.is_empty() {
+                Vec::new()
+            } else {
+                score_index(&items, &progress.normalized_query)
+            };
+        } else if index_changed && !progress.normalized_query.is_empty() {
+            for item in &items[indexed_items.min(items.len())..] {
+                if let Some(score) = fuzzy_score_indexed(item, &progress.normalized_query) {
+                    insert_match(&mut progress.matches, score, item);
+                }
+            }
+        }
+        indexed_items = items.len();
+        drop(items);
+
+        let indexing = index.indexing.load(Ordering::Acquire);
+        if query_changed || (index_changed && (!progress.query.is_empty() || !indexing)) {
+            publish(
+                events,
+                &progress,
+                indexing,
+                index.truncated.load(Ordering::Acquire),
+            );
+        }
+    }
+}
+
+fn start_indexer(
+    index: Arc<SharedIndex>,
+    root: PathBuf,
+    show_hidden: bool,
+    max_entries: usize,
+    max_depth: usize,
+    time_budget: Duration,
+) {
+    let worker_index = index.clone();
+    let worker = std::thread::Builder::new()
+        .name("strata-search-index".into())
+        .spawn(move || {
+            build_index(
+                &worker_index,
+                root,
+                show_hidden,
+                max_entries,
+                max_depth,
+                time_budget,
+            );
+        });
+    if let Err(error) = worker {
+        tracing::error!(%error, "search index worker failed to start");
+        index.truncated.store(true, Ordering::Release);
+        index.indexing.store(false, Ordering::Release);
+        index.broadcast_change();
+    }
+}
+
+fn build_index(
+    index: &SharedIndex,
+    root: PathBuf,
+    show_hidden: bool,
+    max_entries: usize,
+    max_depth: usize,
+    time_budget: Duration,
+) {
+    let mut indexed_entries = 0;
+    let mut truncated = false;
+    let mut last_publish = Instant::now();
+    let walk_start = Instant::now();
+    // Walk one level past `max_depth` so a directory at the cap with real children
+    // yields at least one entry beyond it, letting depth truncation be detected below.
+    // `hidden` must come after `standard_filters`: that bundle enables its own
+    // `hidden(true)` internally, which would otherwise override this call back on.
+    let mut overrides = ignore::overrides::OverrideBuilder::new(&root);
+    for generated_tree in GENERATED_TREE_GLOBS {
+        if let Err(error) = overrides.add(generated_tree) {
+            tracing::warn!(
+                %error,
+                pattern = generated_tree,
+                "invalid generated-tree prune glob"
+            );
+        }
+    }
+    let overrides = match overrides.build() {
+        Ok(overrides) => overrides,
+        Err(error) => {
+            tracing::warn!(%error, "generated-tree prune globs failed; walking unpruned");
+            ignore::overrides::Override::empty()
+        }
     };
-    set_query(progress, next);
-    progress.matches = score_index(index, &progress.normalized_query);
-    publish(sender, progress, indexing);
+    let mut walker = ignore::WalkBuilder::new(&root);
+    walker
+        .follow_links(false)
+        .standard_filters(true)
+        .hidden(!show_hidden)
+        .require_git(false)
+        .overrides(overrides);
+    let priority_depth = PRIORITY_INDEX_DEPTH.min(max_depth);
+    let priority_walker = walker.max_depth(Some(priority_depth)).build();
+    let remaining_walker = walker.max_depth(Some(max_depth + 1)).build();
+
+    let entries = priority_walker
+        .map(|result| (true, result))
+        .chain(remaining_walker.map(|result| (false, result)));
+    for (priority_pass, result) in entries {
+        if index.is_retired() {
+            return;
+        }
+        let entry = match result {
+            Ok(entry) if entry.depth() == 0 => continue,
+            Ok(entry) => entry,
+            Err(_) => {
+                truncated = true;
+                continue;
+            }
+        };
+        if !priority_pass && entry.depth() <= priority_depth {
+            continue;
+        }
+        if entry.depth() > max_depth {
+            truncated = true;
+            continue;
+        }
+        if indexed_entries >= max_entries || walk_start.elapsed() >= time_budget {
+            truncated = true;
+            break;
+        }
+        let is_directory = entry.file_type().is_some_and(|kind| kind.is_dir());
+        let depth = entry.depth().saturating_sub(1).min(MAX_INDEX_DEPTH) as u8;
+        let path = entry.into_path();
+        let name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        let search_path = path
+            .strip_prefix(&root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .to_lowercase();
+        let search_name_start = search_path
+            .rfind(std::path::MAIN_SEPARATOR)
+            .map_or(0, |position| {
+                position + std::path::MAIN_SEPARATOR.len_utf8()
+            });
+        index
+            .items
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(SearchItem {
+                name,
+                is_directory,
+                path,
+                search_path,
+                search_name_start,
+                depth,
+            });
+        indexed_entries += 1;
+
+        if last_publish.elapsed() >= PUBLISH_INTERVAL {
+            index.broadcast_change();
+            last_publish = Instant::now();
+        }
+    }
+
+    index.truncated.store(truncated, Ordering::Release);
+    index.indexing.store(false, Ordering::Release);
+    if truncated {
+        tracing::warn!(
+            entries = indexed_entries,
+            elapsed_ms = walk_start.elapsed().as_millis() as u64,
+            "search index truncated"
+        );
+    } else {
+        tracing::info!(
+            entries = indexed_entries,
+            elapsed_ms = walk_start.elapsed().as_millis() as u64,
+            "search index built"
+        );
+    }
+    index.broadcast_change();
 }
 
 fn set_query(progress: &mut WalkProgress, query: String) {
@@ -377,7 +567,7 @@ fn insert_match(matches: &mut Vec<(i64, SearchItem)>, score: i64, item: &SearchI
     }
 }
 
-fn publish(sender: &Sender<SearchEvent>, progress: &WalkProgress, indexing: bool) {
+fn publish(sender: &Sender<SearchEvent>, progress: &WalkProgress, indexing: bool, truncated: bool) {
     let _sent = sender.send(SearchEvent::Results {
         query: progress.query.clone(),
         items: progress
@@ -386,7 +576,7 @@ fn publish(sender: &Sender<SearchEvent>, progress: &WalkProgress, indexing: bool
             .map(|(_, item)| item.clone())
             .collect(),
         indexing,
-        truncated: progress.truncated,
+        truncated,
     });
 }
 

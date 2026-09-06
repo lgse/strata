@@ -120,6 +120,49 @@ fn completed_index_returns_only_the_best_bounded_matches() {
 }
 
 #[test]
+fn searches_of_the_same_tree_share_an_index_but_keep_independent_queries() {
+    let root = unique_fixture_root("shared-index");
+    fs::create_dir_all(&root).expect("create fixture");
+    fs::write(root.join("alpha-only"), b"alpha").expect("write alpha fixture");
+    fs::write(root.join("beta-only"), b"beta").expect("write beta fixture");
+
+    let (alpha_search, alpha_events) = index_tree(root.clone(), false);
+    let (beta_search, beta_events) = index_tree(root.clone(), false);
+    assert!(std::sync::Arc::ptr_eq(
+        &alpha_search.index,
+        &beta_search.index
+    ));
+    alpha_search.query("alpha-only");
+    beta_search.query("beta-only");
+    let alpha_event = wait_for_results(&alpha_events);
+    let beta_event = wait_for_results(&beta_events);
+
+    drop((alpha_search, beta_search));
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let Some(SearchEvent::Results {
+        items: alpha_items, ..
+    }) = alpha_event
+    else {
+        panic!("the alpha session should publish results");
+    };
+    let Some(SearchEvent::Results {
+        items: beta_items, ..
+    }) = beta_event
+    else {
+        panic!("the beta session should publish results");
+    };
+    assert_eq!(
+        alpha_items.first().map(|item| item.name.as_str()),
+        Some("alpha-only")
+    );
+    assert_eq!(
+        beta_items.first().map(|item| item.name.as_str()),
+        Some("beta-only")
+    );
+}
+
+#[test]
 fn searches_relative_path_fragments_and_rejects_non_matches() {
     let candidate = item("/home/me/themes/azure/colors.toml");
     assert!(score(&candidate, "themes/azure", Path::new("/home/me")).is_some());
