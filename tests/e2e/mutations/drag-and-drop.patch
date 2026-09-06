@@ -1,0 +1,14 @@
+diff --git a/src/ui/browser.rs b/src/ui/browser.rs
+index 11f9f7b..5198da4 100644
+--- a/src/ui/browser.rs
++++ b/src/ui/browser.rs
+@@ -8387,6 +8387,9 @@ fn preferred_file_drop_action(actions: gtk::gdk::DragAction, local: bool) -> gtk
+ }
+ 
+ pub(crate) fn locations_from_file_list_value(value: &glib::Value) -> Option<Vec<Location>> {
++    if true {
++        return None;
++    }
+     let files = value.get::<gtk::gdk::FileList>().ok()?;
+     let locations = files
+         .files()

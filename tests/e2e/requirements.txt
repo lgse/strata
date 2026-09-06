@@ -1,0 +1,6 @@
+# Python packages for the end-to-end suite. PyGObject and its AT-SPI
+# introspection data come from the system (python3-gi, gir1.2-atspi-2.0), so
+# the virtual environment must be created with --system-site-packages.
+pytest==9.1.1
+pytest-timeout==2.5.0
+pillow==12.3.0
