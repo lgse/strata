@@ -6,7 +6,7 @@ use crate::model::{FileEntry, Location};
 use crate::ui::browser::clipboard::copy_path_text;
 use crate::ui::browser::desktop::open_location;
 use crate::ui::browser::entry::{entry_icon, format_file_size, item_count_label};
-use crate::ui::browser::paths::{compact_display_path, is_trash_location, is_trash_root};
+use crate::ui::browser::paths::{PinAction, compact_display_path, is_trash_root, pin_action_for};
 use crate::ui::browser::{PinStatus, ViewState};
 use crate::ui::controls::{form_check_button, modal_layout};
 use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
@@ -317,15 +317,15 @@ impl ViewState {
             entry.is_some() && (self.interactive || self.browser.selected_entries().len() == 1),
         );
         open.set_visible(self.interactive);
-        let pin = properties_action(crate::assets::icons::PIN, "Pin");
-        pin.set_visible(self.interactive);
         let pin_handler = self.pin_handler.borrow().clone();
-        pin.set_sensitive(
-            is_directory
-                && !is_trash_location(&location)
-                && pin_handler.is_some()
-                && pin_status == PinStatus::Available,
+        let unpin_handler = self.unpin_handler.borrow().clone();
+        let pin_action = pin_action_for(&location, is_directory, pin_status)
+            .filter(|_| pin_handler.is_some() && unpin_handler.is_some());
+        let pin = properties_action(
+            crate::assets::icons::PIN,
+            pin_action.unwrap_or(PinAction::Pin).label(),
         );
+        pin.set_visible(self.interactive && pin_action.is_some());
         let copy_path = properties_action(crate::assets::icons::COPY, "Copy path");
         layout.actions.prepend(&copy_path);
         layout.actions.prepend(&pin);
@@ -419,8 +419,18 @@ impl ViewState {
         let pinning_location = location.clone();
         let pinning_name = name.clone();
         pin.connect_clicked(move |_| {
-            if let Some(handler) = pin_handler.as_ref() {
-                handler(pinning_location.clone(), pinning_name.clone());
+            match pin_action {
+                Some(PinAction::Pin) => {
+                    if let Some(handler) = pin_handler.as_ref() {
+                        handler(pinning_location.clone(), pinning_name.clone());
+                    }
+                }
+                Some(PinAction::Unpin) => {
+                    if let Some(handler) = unpin_handler.as_ref() {
+                        handler(&pinning_location);
+                    }
+                }
+                None => {}
             }
             dismiss_modal_layer(&pinning_layer, &pinning_overlay, pinning_root.as_ref());
         });

@@ -13,3 +13,6 @@ packaging/aur/*/src/
 packaging/aur/*/pkg/
 packaging/aur/*/*.tar.gz
 packaging/aur/*/*.pkg.tar.zst
+
+/.pytest_cache/
+/tests/e2e/.pytest_cache/

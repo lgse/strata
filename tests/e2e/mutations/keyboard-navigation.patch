@@ -1,0 +1,14 @@
+diff --git a/src/app/browser.rs b/src/app/browser.rs
+index e9dc9aa..d85b346 100644
+--- a/src/app/browser.rs
++++ b/src/app/browser.rs
+@@ -1880,6 +1880,9 @@ impl Browser {
+     }
+ 
+     pub fn move_selection(&self, direction: i32) {
++        if true {
++            return;
++        }
+         let moved = self.state.borrow_mut().move_selection(direction);
+         if let Some((depth, position)) = moved {
+             self.emit(BrowserEvent::FocusChanged {
