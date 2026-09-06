@@ -181,6 +181,9 @@ pub enum OperationEvent {
     Pasted {
         request_id: OperationRequestId,
         locations: Vec<Location>,
+        /// Where each completed item actually landed, which can differ from
+        /// `locations` for same-folder duplicates and conflict renames.
+        destinations: Vec<Location>,
     },
     TransferFailed {
         request_id: OperationRequestId,

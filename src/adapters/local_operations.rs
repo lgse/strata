@@ -2269,6 +2269,7 @@ impl OperationProvider for LocalOperationProvider {
             let progress = TransferProgressTracker::new(request.id, total_bytes, emit.clone());
             progress.emit();
             let mut completed = Vec::new();
+            let mut created = Vec::new();
             for (index, item) in request.items.iter().enumerate() {
                 if operation_cancellable.is_cancelled() {
                     emit(cancelled_event(
@@ -2374,6 +2375,7 @@ impl OperationProvider for LocalOperationProvider {
                 if let Some(target) = location_for_file(&target) {
                     affected_locations.insert(target);
                 }
+                let created_location = location_for_file(&target);
                 let result = if is_duplicate {
                     copy_new_recursively_with_progress(
                         source,
@@ -2431,11 +2433,15 @@ impl OperationProvider for LocalOperationProvider {
                     return;
                 }
                 completed.push(item.source.clone());
+                if let Some(target) = created_location {
+                    created.push(target);
+                }
                 progress.finish_item(item_started_at, item_sizes[index]);
             }
             emit(OperationEvent::Pasted {
                 request_id: request.id,
                 locations: completed,
+                destinations: created,
             });
         });
         cancellation_handle(cancellable)
@@ -2554,6 +2560,7 @@ impl OperationProvider for LocalOperationProvider {
             emit(OperationEvent::Pasted {
                 request_id: request.id,
                 locations: completed,
+                destinations: Vec::new(),
             });
         });
         cancellation_handle(cancellable)

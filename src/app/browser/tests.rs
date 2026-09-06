@@ -597,7 +597,17 @@ impl OperationProvider for ImmediateOperationProvider {
     fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         emit(OperationEvent::Pasted {
             request_id: request.id,
-            locations: request.items.into_iter().map(|item| item.source).collect(),
+            locations: request
+                .items
+                .iter()
+                .map(|item| item.source.clone())
+                .collect(),
+            destinations: request
+                .items
+                .iter()
+                .map(|item| item.source.transfer_target(&request.destination))
+                .collect::<Option<Vec<_>>>()
+                .unwrap_or_default(),
         });
         LoadHandle::new(|| {})
     }
@@ -616,8 +626,13 @@ impl OperationProvider for ImmediateOperationProvider {
             request_id: request.id,
             locations: request
                 .items
+                .iter()
+                .map(|item| item.record.current.clone())
+                .collect(),
+            destinations: request
+                .items
                 .into_iter()
-                .map(|item| item.record.current)
+                .map(|item| item.record.original)
                 .collect(),
         });
         LoadHandle::new(|| {})
@@ -814,6 +829,59 @@ fn a_completed_trash_operation_can_be_undone_once() {
 }
 
 #[test]
+fn undo_walks_back_through_copy_then_trash() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let entry = FileEntry {
+        location: Location::local("/fixture/deleted.txt"),
+        thumbnail_path: None,
+        native_name: OsString::from("deleted.txt"),
+        display_name: "deleted.txt".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+    };
+
+    browser.delete(vec![entry], false);
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Trash(vec![Location::local(
+            "/fixture/deleted.txt"
+        )]))
+    );
+
+    browser.transfer(
+        Location::local("/fixture"),
+        vec![PasteItem {
+            source: Location::local("/fixture/deleted.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        false,
+    );
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Copy(vec![Location::local(
+            "/fixture/deleted.txt"
+        )]))
+    );
+
+    let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
+    assert!(browser.undo_copy(generation, locations));
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Trash(vec![Location::local(
+            "/fixture/deleted.txt"
+        )]))
+    );
+
+    assert!(browser.undo_last_trash());
+    assert_eq!(pending_undo_entry(), None);
+    assert!(!browser.undo_last_trash());
+}
+
+#[test]
 fn another_browser_can_undo_the_latest_trash_operation() {
     let deleting_browser = Browser::new(Rc::new(FakeFileSource));
     deleting_browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
@@ -861,9 +929,12 @@ fn a_completed_move_records_where_each_item_landed() {
 }
 
 #[test]
-fn a_copy_records_no_undo() {
+fn a_completed_copy_becomes_the_latest_undo_and_displaces_an_older_trash_undo() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    replace_pending_undo(UndoEntry::Trash(vec![Location::local(
+        "/fixture/deleted.txt",
+    )]));
 
     browser.transfer(
         Location::local("/fixture/archive"),
@@ -874,7 +945,43 @@ fn a_copy_records_no_undo() {
         false,
     );
 
-    assert_eq!(pending_undo_entry(), None);
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Copy(vec![Location::local(
+            "/fixture/archive/report.txt"
+        )]))
+    );
+}
+
+#[test]
+fn undoing_a_copy_removes_only_the_created_copies_and_restores_the_previous_undo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    replace_pending_undo(UndoEntry::Trash(vec![Location::local(
+        "/fixture/deleted.txt",
+    )]));
+    browser.transfer(
+        Location::local("/fixture/archive"),
+        vec![PasteItem {
+            source: Location::local("/fixture/report.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        false,
+    );
+
+    let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
+    assert_eq!(
+        locations,
+        vec![Location::local("/fixture/archive/report.txt")]
+    );
+    assert!(browser.undo_copy(generation, locations));
+
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Trash(vec![Location::local(
+            "/fixture/deleted.txt"
+        )]))
+    );
 }
 
 #[test]
@@ -1033,6 +1140,7 @@ fn undoing_a_move_leaves_a_pending_cut_untouched() {
     emit(OperationEvent::Pasted {
         request_id,
         locations: vec![record.current.clone()],
+        destinations: vec![record.original.clone()],
     });
 
     assert!(events.borrow().iter().any(|event| matches!(

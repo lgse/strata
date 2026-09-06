@@ -10,7 +10,9 @@ use std::{
 
 use crate::{
     app::navigation::{EntryInsertion, EntrySplice, NavigationPath, NavigationState, sort_entries},
-    model::{FileEntry, Location, SortDirection, SortKey, ViewPreferences},
+    model::{
+        EntryKind, FileEntry, Location, MetadataValue, SortDirection, SortKey, ViewPreferences,
+    },
     services::{
         ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
         DirectoryChange, DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
@@ -210,17 +212,19 @@ type PreferencesObserver = Rc<dyn Fn(ViewPreferences)>;
 const MAX_INCREMENTAL_OPERATION_UPDATES: usize = 64;
 
 /// The latest reversible operation. Trash entries restore from Trash; moved
-/// entries transfer back to the location they started from.
+/// entries transfer back to the location they started from; copy entries
+/// remove the copies a paste created, leaving the originals untouched.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UndoEntry {
     Trash(Vec<Location>),
     Move(Vec<MoveRecord>),
+    Copy(Vec<Location>),
 }
 
 impl UndoEntry {
     fn is_empty(&self) -> bool {
         match self {
-            Self::Trash(locations) => locations.is_empty(),
+            Self::Trash(locations) | Self::Copy(locations) => locations.is_empty(),
             Self::Move(records) => records.is_empty(),
         }
     }
@@ -230,6 +234,9 @@ impl UndoEntry {
 struct UndoState {
     generation: u64,
     entry: Option<UndoEntry>,
+    /// The entry displaced when the current one was recorded, restored after
+    /// the current one is undone so Ctrl+Z walks back through operations.
+    previous: Option<UndoEntry>,
     claimed: bool,
 }
 
@@ -244,9 +251,11 @@ fn replace_pending_undo(entry: UndoEntry) {
     }
     PENDING_UNDO.with(|pending| {
         let generation = pending.borrow().generation.saturating_add(1);
+        let previous = pending.borrow_mut().entry.take();
         pending.replace(UndoState {
             generation,
             entry: Some(entry),
+            previous,
             claimed: false,
         });
     });
@@ -285,7 +294,7 @@ fn mark_undo_item_completed(generation: u64, location: &Location) {
             return;
         }
         match pending.entry.as_mut() {
-            Some(UndoEntry::Trash(locations)) => {
+            Some(UndoEntry::Trash(locations)) | Some(UndoEntry::Copy(locations)) => {
                 locations.retain(|candidate| candidate != location);
             }
             Some(UndoEntry::Move(records)) => {
@@ -301,7 +310,7 @@ fn finish_undo(generation: u64, completed: bool) {
         let mut pending = pending.borrow_mut();
         if pending.generation == generation {
             if completed {
-                pending.entry = None;
+                pending.entry = pending.previous.take();
             }
             pending.claimed = false;
         }
@@ -1342,7 +1351,7 @@ impl Browser {
         }
         match peek_pending_undo()? {
             (generation, UndoEntry::Move(records)) => Some((generation, records)),
-            (_, UndoEntry::Trash(_)) => None,
+            _ => None,
         }
     }
 
@@ -1427,6 +1436,83 @@ impl Browser {
             UndoMoveRequest {
                 id: request_id,
                 items,
+            },
+            self.operation_callback(request_id, false, refresh_locations),
+        );
+        self.operation_load.replace(Some(load));
+        true
+    }
+
+    /// The pending copy undo, if the latest reversible operation was a copy.
+    pub fn pending_undo_copy(&self) -> Option<(u64, Vec<Location>)> {
+        if self.current_operation.get().is_some() {
+            return None;
+        }
+        match peek_pending_undo()? {
+            (generation, UndoEntry::Copy(locations)) => Some((generation, locations)),
+            _ => None,
+        }
+    }
+
+    /// Removes the copies a completed paste created, leaving the originals.
+    /// The copies are Strata's own generated duplicates, so they go straight
+    /// to permanent deletion rather than through the Trash.
+    pub fn undo_copy(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
+        if locations.is_empty() || self.current_operation.get().is_some() {
+            return false;
+        }
+        let Some((generation, entry)) = claim_pending_undo(Some(generation)) else {
+            return false;
+        };
+        let UndoEntry::Copy(pending_locations) = entry else {
+            finish_undo(generation, false);
+            return false;
+        };
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            finish_undo(generation, false);
+            return false;
+        };
+        // Keep only the copies this undo will actually delete, so a partial
+        // failure leaves the rest for the next Ctrl+Z.
+        for location in &locations {
+            mark_undo_item_completed(generation, location);
+        }
+        let entries: Vec<_> = locations
+            .iter()
+            .map(|location| FileEntry {
+                kind: if location.native_path().is_some_and(|path| path.is_dir()) {
+                    EntryKind::Directory
+                } else {
+                    EntryKind::File
+                },
+                location: location.clone(),
+                native_name: location.file_name().unwrap_or_default(),
+                thumbnail_path: None,
+                display_name: location.display_name(),
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
+                mode: MetadataValue::Unknown,
+            })
+            .collect();
+        let total = entries.len();
+        let mut refresh_locations = HashSet::new();
+        for location in &locations {
+            if let Some(parent) = location.parent() {
+                refresh_locations.insert(parent);
+            }
+        }
+        let request_id = self.begin_operation();
+        self.deletion_operation.set(true);
+        self.deletion_permanent.set(true);
+        self.undo_claim
+            .replace(Some((generation, UndoEntry::Copy(pending_locations))));
+        self.emit(BrowserEvent::DeletionStarted { total });
+        let load = provider.delete(
+            DeleteRequest {
+                id: request_id,
+                entries,
+                permanent: true,
             },
             self.operation_callback(request_id, false, refresh_locations),
         );
@@ -1647,6 +1733,10 @@ impl Browser {
                     (UndoEntry::Move(_), OperationEvent::Cancelled { result, .. }) => {
                         result.completed.clone()
                     }
+                    (UndoEntry::Copy(_), OperationEvent::Deleted { locations, .. }) => {
+                        locations.clone()
+                    }
+                    (UndoEntry::Copy(_), _) => Vec::new(),
                     (UndoEntry::Move(_), _) => Vec::new(),
                 };
                 for location in &completed {
@@ -1659,6 +1749,7 @@ impl Browser {
                             matches!(&event, OperationEvent::Restored { .. })
                         }
                         UndoEntry::Move(_) => matches!(&event, OperationEvent::Pasted { .. }),
+                        UndoEntry::Copy(_) => matches!(&event, OperationEvent::Deleted { .. }),
                     },
                 );
             }
@@ -1690,10 +1781,14 @@ impl Browser {
                 if undoing.is_none()
                     && let Some(destination) = destination.as_ref()
                 {
-                    replace_pending_undo(UndoEntry::Move(move_records(
-                        &moved_locations,
-                        destination,
-                    )));
+                    if moving == Some(true) {
+                        replace_pending_undo(UndoEntry::Move(move_records(
+                            &moved_locations,
+                            destination,
+                        )));
+                    } else if let OperationEvent::Pasted { destinations, .. } = &event {
+                        replace_pending_undo(UndoEntry::Copy(destinations.clone()));
+                    }
                 }
                 browser.emit(BrowserEvent::TransferFinished {
                     moved_locations: if undoing.is_some() {

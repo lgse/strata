@@ -1027,6 +1027,9 @@ impl BrowserView {
         if let Some((generation, records)) = self.state.browser.pending_undo_move() {
             return self.state.undo_move(generation, records);
         }
+        if let Some((generation, locations)) = self.state.browser.pending_undo_copy() {
+            return self.state.browser.undo_copy(generation, locations);
+        }
         self.state.browser.undo_last_trash()
     }
 
