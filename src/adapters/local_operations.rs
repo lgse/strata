@@ -2860,7 +2860,7 @@ impl OperationProvider for LocalOperationProvider {
             let work_total = total.clone();
             let result =
                 write_staged_archive(&dest_dir, &archive_path, request.conflict, move |file| {
-                    let count = count_files(&entries);
+                    let count = count_archive_files(&entries)?;
                     work_total.store(count, Ordering::Relaxed);
                     match format {
                         ArchiveFormat::Zip => {
@@ -2976,6 +2976,82 @@ impl OperationProvider for LocalOperationProvider {
     }
 }
 
+enum ArchiveSource {
+    File(std::fs::File),
+    Directory(std::fs::File),
+    Symlink(PathBuf),
+}
+
+fn open_archive_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<ArchiveSource, String> {
+    let stat = rustix::fs::statat(parent, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
+        .map_err(|error| error.to_string())?;
+    match rustix::fs::FileType::from_raw_mode(stat.st_mode) {
+        rustix::fs::FileType::Symlink => {
+            let target = rustix::fs::readlinkat(parent, name, Vec::new())
+                .map_err(|error| error.to_string())?;
+            Ok(ArchiveSource::Symlink(PathBuf::from(OsString::from_vec(
+                target.into_bytes(),
+            ))))
+        }
+        rustix::fs::FileType::Directory => open_local_child_directory(parent, name)
+            .map(std::fs::File::from)
+            .map(ArchiveSource::Directory),
+        rustix::fs::FileType::RegularFile => {
+            let file = rustix::fs::openat2(
+                parent,
+                name,
+                rustix::fs::OFlags::RDONLY
+                    | rustix::fs::OFlags::NONBLOCK
+                    | rustix::fs::OFlags::CLOEXEC,
+                rustix::fs::Mode::empty(),
+                rustix::fs::ResolveFlags::BENEATH
+                    | rustix::fs::ResolveFlags::NO_SYMLINKS
+                    | rustix::fs::ResolveFlags::NO_MAGICLINKS,
+            )
+            .map(std::fs::File::from)
+            .map_err(|error| error.to_string())?;
+            if !file
+                .metadata()
+                .map_err(|error| error.to_string())?
+                .is_file()
+            {
+                return Err("The file type changed during compression".to_owned());
+            }
+            Ok(ArchiveSource::File(file))
+        }
+        _ => Err("Compression supports only regular files, folders, and symbolic links".to_owned()),
+    }
+}
+
+fn visit_archive_entries(
+    entries: &[PathBuf],
+    visit: &mut impl FnMut(&Path, &ArchiveSource) -> Result<(), String>,
+) -> Result<(), String> {
+    for entry in entries {
+        let name = entry.file_name().ok_or("Entry has no file name")?;
+        let parent = open_local_parent_directory(entry.parent().ok_or("Entry has no parent")?)?;
+        visit_archive_entry(&parent, name, Path::new(name), visit)?;
+    }
+    Ok(())
+}
+
+fn visit_archive_entry<Fd: AsFd>(
+    parent: &Fd,
+    name: &OsStr,
+    archive_path: &Path,
+    visit: &mut impl FnMut(&Path, &ArchiveSource) -> Result<(), String>,
+) -> Result<(), String> {
+    let source = open_archive_source(parent, name)
+        .map_err(|error| format!("Could not compress {}: {error}", archive_path.display()))?;
+    visit(archive_path, &source)?;
+    if let ArchiveSource::Directory(directory) = source {
+        for child in local_directory_children(&directory)? {
+            visit_archive_entry(&directory, &child, &archive_path.join(&child), visit)?;
+        }
+    }
+    Ok(())
+}
+
 fn compress_zip(
     file: std::fs::File,
     entries: &[std::path::PathBuf],
@@ -2999,64 +3075,49 @@ fn compress_zip(
     } else {
         stored
     };
-    for entry in entries {
-        let name = entry
-            .file_name()
-            .ok_or("Entry has no file name")?
-            .to_string_lossy()
-            .to_string();
-        if entry.is_dir() {
-            add_dir_to_zip(&mut writer, entry, &name, &deflated, &stored, progress)?;
-        } else {
-            let opts = if is_incompressible(entry) {
-                &stored
-            } else {
-                &deflated
-            };
-            writer.start_file(&name, *opts).map_err(|e| e.to_string())?;
-            let f = std::fs::File::open(entry).map_err(|e| e.to_string())?;
-            let f = std::io::BufReader::with_capacity(COPY_BUF, f);
-            copy_with_big_buf(f, &mut writer).map_err(|e| e.to_string())?;
-            progress.fetch_add(1, Ordering::Relaxed);
+    visit_archive_entries(entries, &mut |path, source| {
+        let name = path.to_string_lossy();
+        match source {
+            ArchiveSource::Directory(_) => {
+                return writer
+                    .add_directory(name, stored)
+                    .map_err(|error| error.to_string());
+            }
+            ArchiveSource::Symlink(target) => {
+                let target = target.to_str().ok_or_else(|| {
+                    format!(
+                        "ZIP cannot preserve the non-UTF-8 link target of {}. Use TAR instead.",
+                        path.display()
+                    )
+                })?;
+                writer
+                    .add_symlink(name, target, stored)
+                    .map_err(|error| error.to_string())?;
+            }
+            ArchiveSource::File(file) => {
+                let options = if is_incompressible(path) {
+                    stored
+                } else {
+                    deflated
+                };
+                writer
+                    .start_file(name, options)
+                    .map_err(|error| error.to_string())?;
+                copy_with_big_buf(
+                    std::io::BufReader::with_capacity(COPY_BUF, file),
+                    &mut writer,
+                )
+                .map_err(|error| error.to_string())?;
+            }
         }
-    }
+        progress.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    })?;
     writer
         .finish()
         .map_err(|error| error.to_string())?
         .into_inner()
         .map_err(|error| error.to_string())?;
-    Ok(())
-}
-
-fn add_dir_to_zip<W: std::io::Write + std::io::Seek>(
-    writer: &mut zip::ZipWriter<W>,
-    dir: &Path,
-    prefix: &str,
-    deflated: &zip::write::FileOptions<'_, ()>,
-    stored: &zip::write::FileOptions<'_, ()>,
-    progress: &Arc<AtomicUsize>,
-) -> Result<(), String> {
-    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let path = entry.path();
-        let rel_name = format!("{}/{}", prefix, entry.file_name().to_string_lossy());
-        if path.is_dir() {
-            add_dir_to_zip(writer, &path, &rel_name, deflated, stored, progress)?;
-        } else {
-            let opts = if is_incompressible(&path) {
-                stored
-            } else {
-                deflated
-            };
-            writer
-                .start_file(&rel_name, *opts)
-                .map_err(|e| e.to_string())?;
-            let f = std::fs::File::open(&path).map_err(|e| e.to_string())?;
-            let f = std::io::BufReader::with_capacity(COPY_BUF, f);
-            copy_with_big_buf(f, writer).map_err(|e| e.to_string())?;
-            progress.fetch_add(1, Ordering::Relaxed);
-        }
-    }
     Ok(())
 }
 
@@ -3089,23 +3150,35 @@ fn append_tar_entries(
     progress: &Arc<AtomicUsize>,
 ) -> Result<(), String> {
     let mut builder = tar::Builder::new(writer);
-    for entry in entries {
-        let name = entry
-            .file_name()
-            .ok_or("Entry has no file name")?
-            .to_string_lossy()
-            .to_string();
-        if entry.is_dir() {
-            builder
-                .append_dir_all(&name, entry)
-                .map_err(|e| e.to_string())?;
-        } else {
-            builder
-                .append_path_with_name(entry, &name)
-                .map_err(|e| e.to_string())?;
+    visit_archive_entries(entries, &mut |path, source| {
+        let mut header = tar::Header::new_gnu();
+        match source {
+            ArchiveSource::Symlink(target) => {
+                header.set_entry_type(tar::EntryType::Symlink);
+                header.set_size(0);
+                header.set_mode(0o777);
+                header.set_uid(0);
+                header.set_gid(0);
+                builder
+                    .append_link(&mut header, path, target)
+                    .map_err(|error| error.to_string())?;
+            }
+            ArchiveSource::Directory(directory) => {
+                header.set_metadata(&directory.metadata().map_err(|error| error.to_string())?);
+                return builder
+                    .append_data(&mut header, path, std::io::empty())
+                    .map_err(|error| error.to_string());
+            }
+            ArchiveSource::File(file) => {
+                let mut file = file.try_clone().map_err(|error| error.to_string())?;
+                builder
+                    .append_file(path, &mut file)
+                    .map_err(|error| error.to_string())?;
+            }
         }
         progress.fetch_add(1, Ordering::Relaxed);
-    }
+        Ok(())
+    })?;
     builder.finish().map_err(|e| e.to_string())?;
     Ok(())
 }
@@ -3239,21 +3312,15 @@ impl ExtractionDestination {
     }
 }
 
-/// Counts all files (not directories) under the given paths recursively.
-fn count_files(entries: &[std::path::PathBuf]) -> usize {
+fn count_archive_files(entries: &[PathBuf]) -> Result<usize, String> {
     let mut count = 0;
-    for entry in entries {
-        if entry.is_dir() {
-            if let Ok(rd) = std::fs::read_dir(entry) {
-                for child in rd.flatten() {
-                    count += count_files(&[child.path()]);
-                }
-            }
-        } else {
+    visit_archive_entries(entries, &mut |_, source| {
+        if !matches!(source, ArchiveSource::Directory(_)) {
             count += 1;
         }
-    }
-    count
+        Ok(())
+    })?;
+    Ok(count)
 }
 
 const COPY_BUF: usize = 1 << 20; // 1 MiB
@@ -3456,37 +3523,53 @@ fn compress_7z(
     } else {
         writer.set_content_methods(vec![lzma2]);
     }
-    for entry in entries {
-        add_path_to_7z(&mut writer, entry, entry, progress)?;
-    }
-    writer.finish().map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-fn add_path_to_7z(
-    writer: &mut sevenz_rust2::ArchiveWriter<std::fs::File>,
-    base: &Path,
-    path: &Path,
-    progress: &Arc<AtomicUsize>,
-) -> Result<(), String> {
-    if path.is_dir() {
-        for child in std::fs::read_dir(path).map_err(|e| e.to_string())? {
-            let child = child.map_err(|e| e.to_string())?;
-            add_path_to_7z(writer, base, &child.path(), progress)?;
+    visit_archive_entries(entries, &mut |path, source| {
+        let name = path.to_string_lossy();
+        let (mut entry, file) = match source {
+            ArchiveSource::Symlink(_) => {
+                return Err(format!(
+                    "7z compression does not support symbolic links: {}. Use ZIP or TAR instead.",
+                    path.display()
+                ));
+            }
+            ArchiveSource::Directory(file) => {
+                (sevenz_rust2::ArchiveEntry::new_directory(&name), file)
+            }
+            ArchiveSource::File(file) => (sevenz_rust2::ArchiveEntry::new_file(&name), file),
+        };
+        let metadata = file.metadata().map_err(|error| error.to_string())?;
+        if let Ok(modified) = metadata.modified()
+            && let Ok(date) = sevenz_rust2::NtTime::try_from(modified)
+        {
+            entry.last_modified_date = date;
+            entry.has_last_modified_date = u64::from(date) > 0;
         }
-    } else {
-        let name = path
-            .strip_prefix(base.parent().unwrap_or(base))
-            .unwrap_or(path)
-            .to_string_lossy()
-            .to_string();
-        let entry = sevenz_rust2::ArchiveEntry::from_path(path, name);
-        let reader = std::fs::File::open(path).map_err(|e| e.to_string())?;
+        if let Ok(created) = metadata.created()
+            && let Ok(date) = sevenz_rust2::NtTime::try_from(created)
+        {
+            entry.creation_date = date;
+            entry.has_creation_date = u64::from(date) > 0;
+        }
+        if let Ok(accessed) = metadata.accessed()
+            && let Ok(date) = sevenz_rust2::NtTime::try_from(accessed)
+        {
+            entry.access_date = date;
+            entry.has_access_date = u64::from(date) > 0;
+        }
+        let reader = if matches!(source, ArchiveSource::Directory(_)) {
+            None
+        } else {
+            Some(file)
+        };
         writer
-            .push_archive_entry(entry, Some(reader))
-            .map_err(|e| e.to_string())?;
-        progress.fetch_add(1, Ordering::Relaxed);
-    }
+            .push_archive_entry(entry, reader)
+            .map_err(|error| error.to_string())?;
+        if reader.is_some() {
+            progress.fetch_add(1, Ordering::Relaxed);
+        }
+        Ok(())
+    })?;
+    writer.finish().map_err(|e| e.to_string())?;
     Ok(())
 }
 

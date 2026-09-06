@@ -2,13 +2,13 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     error::Error,
     ffi::{OsStr, OsString},
     fs,
-    io::{Cursor, Write},
+    io::{Cursor, Read, Write},
     os::unix::{ffi::OsStringExt, fs::PermissionsExt},
-    path::Path,
+    path::{Path, PathBuf},
     rc::Rc,
     sync::{
         Arc,
@@ -22,13 +22,13 @@ use gtk::{gio, glib, prelude::*};
 use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 
 use super::{
-    LocalOperationProvider, TransferProgressTracker, await_cancellable, copy_failure_after_cleanup,
-    copy_new_recursively, copy_new_remote_file_with, copy_recursively, deletion_error_message,
-    deletion_error_summary, duplicate_candidate_name, extract_7z_from_reader, extract_tar,
-    extract_zip_from_archive, home_trash_entries_at, io_error, is_trash_unsupported_failure,
-    move_local, move_local_with, operation_error_summary, parse_copy_suffix, replace_local,
-    replace_local_with, transfer_is_noop, validated_archive_path, validated_child,
-    write_staged_archive,
+    LocalOperationProvider, TransferProgressTracker, await_cancellable, compress_7z, compress_tar,
+    compress_zip, copy_failure_after_cleanup, copy_new_recursively, copy_new_remote_file_with,
+    copy_recursively, count_archive_files, deletion_error_message, deletion_error_summary,
+    duplicate_candidate_name, extract_7z_from_reader, extract_tar, extract_zip_from_archive,
+    home_trash_entries_at, io_error, is_trash_unsupported_failure, move_local, move_local_with,
+    operation_error_summary, parse_copy_suffix, replace_local, replace_local_with,
+    transfer_is_noop, validated_archive_path, validated_child, write_staged_archive,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
@@ -1246,6 +1246,279 @@ fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn E
         );
     }
     assert!(compression_stages(&destination)?.is_empty());
+    Ok(())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum CompressedEntry {
+    Directory,
+    File(Vec<u8>),
+    Symlink(PathBuf),
+}
+
+fn read_compressed_entries(
+    path: &Path,
+    format: ArchiveFormat,
+    password: Option<&str>,
+) -> Result<BTreeMap<PathBuf, CompressedEntry>, Box<dyn Error>> {
+    let file = fs::File::open(path)?;
+    let mut result = BTreeMap::new();
+    match format {
+        ArchiveFormat::Zip => {
+            let mut archive = zip::ZipArchive::new(file)?;
+            for index in 0..archive.len() {
+                let options =
+                    zip::read::ZipReadOptions::new().password(password.map(str::as_bytes));
+                let mut entry = archive.by_index_with_options(index, options)?;
+                let mut bytes = Vec::new();
+                entry.read_to_end(&mut bytes)?;
+                let value = if entry.is_dir() {
+                    CompressedEntry::Directory
+                } else if entry.is_symlink() {
+                    CompressedEntry::Symlink(PathBuf::from(OsString::from_vec(bytes)))
+                } else {
+                    CompressedEntry::File(bytes)
+                };
+                assert!(result.insert(PathBuf::from(entry.name()), value).is_none());
+            }
+        }
+        ArchiveFormat::Tar | ArchiveFormat::TarGz => {
+            let reader: Box<dyn Read> = if format == ArchiveFormat::TarGz {
+                Box::new(flate2::read::GzDecoder::new(file))
+            } else {
+                Box::new(file)
+            };
+            for entry in tar::Archive::new(reader).entries()? {
+                let mut entry = entry?;
+                let value = if entry.header().entry_type().is_dir() {
+                    CompressedEntry::Directory
+                } else if entry.header().entry_type().is_symlink() {
+                    CompressedEntry::Symlink(
+                        entry
+                            .link_name()?
+                            .ok_or("Missing link target")?
+                            .into_owned(),
+                    )
+                } else {
+                    assert!(entry.header().entry_type().is_file());
+                    let mut bytes = Vec::new();
+                    entry.read_to_end(&mut bytes)?;
+                    CompressedEntry::File(bytes)
+                };
+                assert!(result.insert(entry.path()?.into_owned(), value).is_none());
+            }
+        }
+        ArchiveFormat::SevenZ => {
+            let mut archive = sevenz_rust2::ArchiveReader::new(
+                file,
+                password
+                    .map(sevenz_rust2::Password::from)
+                    .unwrap_or_default(),
+            )?;
+            archive.for_each_entries(|entry, reader| {
+                let value = if entry.is_directory() {
+                    CompressedEntry::Directory
+                } else {
+                    let mut bytes = Vec::new();
+                    reader.read_to_end(&mut bytes)?;
+                    CompressedEntry::File(bytes)
+                };
+                assert!(result.insert(PathBuf::from(entry.name()), value).is_none());
+                Ok(true)
+            })?;
+        }
+    }
+    Ok(result)
+}
+
+fn write_compression_fixture(
+    path: &Path,
+    entries: &[PathBuf],
+    format: ArchiveFormat,
+    password: Option<&str>,
+) -> Result<usize, String> {
+    let file = fs::File::create(path).map_err(|error| error.to_string())?;
+    let progress = Arc::new(AtomicUsize::new(0));
+    match format {
+        ArchiveFormat::Zip => compress_zip(file, entries, password, &progress)?,
+        ArchiveFormat::SevenZ => compress_7z(file, entries, password, &progress)?,
+        ArchiveFormat::Tar => compress_tar(file, entries, false, &progress)?,
+        ArchiveFormat::TarGz => compress_tar(file, entries, true, &progress)?,
+    }
+    Ok(progress.load(Ordering::Relaxed))
+}
+
+#[test]
+fn compression_preserves_links_in_zip_and_tar() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    fs::create_dir_all(source.join("nested"))?;
+    fs::create_dir(source.join("empty"))?;
+    fs::write(source.join("file.txt"), b"file contents")?;
+    fs::write(source.join("nested/child.txt"), b"child contents")?;
+    let mut expected = BTreeMap::from([
+        (PathBuf::from("source"), CompressedEntry::Directory),
+        (PathBuf::from("source/nested"), CompressedEntry::Directory),
+        (PathBuf::from("source/empty"), CompressedEntry::Directory),
+        (
+            PathBuf::from("source/file.txt"),
+            CompressedEntry::File(b"file contents".to_vec()),
+        ),
+        (
+            PathBuf::from("source/nested/child.txt"),
+            CompressedEntry::File(b"child contents".to_vec()),
+        ),
+    ]);
+    for (name, target) in [
+        ("file-link", "file.txt"),
+        ("directory-link", "nested"),
+        ("broken-link", "missing.txt"),
+        ("current-directory-link", "."),
+    ] {
+        std::os::unix::fs::symlink(target, source.join(name))?;
+        expected.insert(
+            PathBuf::from("source").join(name),
+            CompressedEntry::Symlink(PathBuf::from(target)),
+        );
+    }
+    let selected_link = root.path().join("selected-link");
+    std::os::unix::fs::symlink("source/nested", &selected_link)?;
+    expected.insert(
+        PathBuf::from("selected-link"),
+        CompressedEntry::Symlink(PathBuf::from("source/nested")),
+    );
+    let entries = [source, selected_link];
+    assert_eq!(count_archive_files(&entries)?, 7);
+    for (format, password) in [
+        (ArchiveFormat::Zip, None),
+        (ArchiveFormat::Zip, Some("test-password")),
+        (ArchiveFormat::Tar, None),
+        (ArchiveFormat::TarGz, None),
+    ] {
+        let archive = root.path().join("archive");
+        assert_eq!(
+            write_compression_fixture(&archive, &entries, format, password)?,
+            7
+        );
+        assert_eq!(
+            read_compressed_entries(&archive, format, password)?,
+            expected,
+            "{format:?}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn seven_z_compression_preserves_files_and_empty_directories() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    fs::create_dir_all(source.join("empty"))?;
+    fs::write(source.join("one.txt"), b"one")?;
+    fs::write(source.join("two.png"), b"two")?;
+    let expected = BTreeMap::from([
+        (PathBuf::from("source"), CompressedEntry::Directory),
+        (PathBuf::from("source/empty"), CompressedEntry::Directory),
+        (
+            PathBuf::from("source/one.txt"),
+            CompressedEntry::File(b"one".to_vec()),
+        ),
+        (
+            PathBuf::from("source/two.png"),
+            CompressedEntry::File(b"two".to_vec()),
+        ),
+    ]);
+    for password in [None, Some("test-password")] {
+        let archive = root.path().join("archive");
+        assert_eq!(
+            write_compression_fixture(
+                &archive,
+                std::slice::from_ref(&source),
+                ArchiveFormat::SevenZ,
+                password
+            )?,
+            2
+        );
+        assert_eq!(
+            read_compressed_entries(&archive, ArchiveFormat::SevenZ, password)?,
+            expected,
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn compression_reports_unsupported_7z_links_without_committing() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    fs::create_dir(&source)?;
+    fs::write(source.join("file.txt"), b"contents")?;
+    let link = source.join("link");
+    std::os::unix::fs::symlink("file.txt", &link)?;
+    for entry in [&source, &link] {
+        for conflict in [
+            TransferConflict::FailIfExists,
+            TransferConflict::ReplaceExisting,
+        ] {
+            let destination = tempfile::tempdir()?;
+            let archive = destination.path().join("archive.7z");
+            if conflict == TransferConflict::ReplaceExisting {
+                fs::write(&archive, b"original archive")?;
+            }
+            let events = run_compression(CompressRequest {
+                id: OperationRequestId(1),
+                entries: vec![file_entry(entry)],
+                destination: Location::local(destination.path()),
+                archive_name: "archive".to_owned(),
+                conflict,
+                format: ArchiveFormat::SevenZ,
+                password: None,
+            });
+            assert!(events.iter().any(|event| matches!(event, OperationEvent::Failed { message, .. } if message.contains("does not support symbolic links") && message.contains("Use ZIP or TAR instead"))));
+            assert!(
+                !events
+                    .iter()
+                    .any(|event| matches!(event, OperationEvent::Compressed { .. }))
+            );
+            if conflict == TransferConflict::ReplaceExisting {
+                assert_eq!(fs::read(&archive)?, b"original archive");
+            } else {
+                assert!(!archive.exists());
+            }
+            assert!(compression_stages(destination.path())?.is_empty());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn compression_handles_non_utf8_link_targets_without_loss() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let link = root.path().join("link");
+    let target = PathBuf::from(OsString::from_vec(b"target-\xff".to_vec()));
+    std::os::unix::fs::symlink(&target, &link)?;
+    for format in [ArchiveFormat::Tar, ArchiveFormat::TarGz] {
+        let archive = root.path().join("archive");
+        write_compression_fixture(&archive, std::slice::from_ref(&link), format, None)?;
+        assert_eq!(
+            read_compressed_entries(&archive, format, None)?,
+            BTreeMap::from([(
+                PathBuf::from("link"),
+                CompressedEntry::Symlink(target.clone())
+            )])
+        );
+    }
+    let error = write_compression_fixture(
+        &root.path().join("archive.zip"),
+        &[link],
+        ArchiveFormat::Zip,
+        None,
+    )
+    .expect_err("ZIP must reject a link target it cannot encode");
+    assert!(error.contains("non-UTF-8 link target"));
     Ok(())
 }
 
