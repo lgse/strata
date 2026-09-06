@@ -2934,7 +2934,8 @@ colorchooser colorswatch overlay {
   box-shadow: inset 0 0 0 1px alpha(@theme_accent, 0.72);
 }
 
-.file-list row:hover:not(:selected) {
+.file-list row:hover:not(:selected),
+.file-list row:hover .file-row.active-path {
   background: alpha(@theme_accent, 0.15);
   color: @theme_text;
 }
