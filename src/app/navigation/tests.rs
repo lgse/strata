@@ -1148,3 +1148,28 @@ fn selected_count_reports_without_cloning_entries() {
     assert!(state.set_selection(0, &[0, 2], Some(2)));
     assert_eq!(state.selected_count(), 2);
 }
+
+#[test]
+fn the_range_anchor_is_readable_and_replaceable_by_position() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.select_first_on_load(0);
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/a", "a"),
+            named_entry("/fixture/b", "b"),
+            named_entry("/fixture/c", "c"),
+        ],
+    );
+    assert_eq!(state.selection_anchor_position(0), Some(0));
+    assert!(state.set_selection_anchor(0, 2));
+    assert_eq!(state.selection_anchor_position(0), Some(2));
+    assert!(!state.set_selection_anchor(0, 9));
+    assert!(!state.set_selection_anchor(1, 0));
+    assert_eq!(state.selection_anchor_position(0), Some(2));
+    assert_eq!(
+        state.extend_visual_selection(0, 1, &[0, 1, 2]),
+        Some(vec![1, 2])
+    );
+}

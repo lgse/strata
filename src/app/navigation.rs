@@ -839,6 +839,26 @@ impl NavigationState {
         Some(positions)
     }
 
+    pub fn selection_anchor_position(&self, depth: usize) -> Option<usize> {
+        let column = self.columns.get(depth)?;
+        let anchor = column.selection_anchor.as_ref()?;
+        column
+            .entries
+            .iter()
+            .position(|entry| &entry.location == anchor)
+    }
+
+    pub fn set_selection_anchor(&mut self, depth: usize, position: usize) -> bool {
+        let Some(column) = self.columns.get_mut(depth) else {
+            return false;
+        };
+        let Some(entry) = column.entries.get(position) else {
+            return false;
+        };
+        column.selection_anchor = Some(entry.location.clone());
+        true
+    }
+
     pub fn selected_positions(&self, depth: usize) -> Vec<usize> {
         let Some(column) = self.columns.get(depth) else {
             return Vec::new();

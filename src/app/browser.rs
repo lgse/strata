@@ -694,6 +694,17 @@ impl Browser {
         self.state.borrow_mut().select_first_on_load(depth);
     }
 
+    pub fn selection_anchor_position(&self, depth: usize) -> Option<usize> {
+        self.state.borrow().selection_anchor_position(depth)
+    }
+
+    /// Moves the range anchor pointer clicks and keyboard extension share.
+    pub fn set_selection_anchor(&self, depth: usize, position: usize) {
+        self.state
+            .borrow_mut()
+            .set_selection_anchor(depth, position);
+    }
+
     pub fn focus_active(&self) {
         let focus = self.state.borrow().active_focus();
         if let Some((depth, position)) = focus {

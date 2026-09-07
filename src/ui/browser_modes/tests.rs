@@ -461,6 +461,35 @@ fn run_source_index_map_checks() {
         Some(1)
     );
 
+    let positions = |view: &gio::ListModel| super::PanePositions {
+        index: map.clone(),
+        view: view.clone(),
+    };
+    let unfiltered = positions(source.upcast_ref());
+    assert_eq!(unfiltered.view_position(4), Some(4));
+    assert_eq!(unfiltered.source_position(4), Some(4));
+    assert_eq!(
+        positions(flattened.upcast_ref()).view_position(0),
+        Some(1),
+        "a leading placeholder shifts every row by one"
+    );
+    assert_eq!(positions(visible.upcast_ref()).view_position(3), Some(2));
+    assert_eq!(
+        positions(visible.upcast_ref()).view_position(2),
+        None,
+        "an anchor the filter hides has no row to range from"
+    );
+    let reverse_sorted = positions(sorted.upcast_ref());
+    let anchor_row = reverse_sorted
+        .view_position(0)
+        .expect("the first source entry has a sorted row");
+    assert_ne!(anchor_row, 0, "reverse sort moves that entry off row 0");
+    assert_eq!(
+        reverse_sorted.source_position(anchor_row),
+        Some(0),
+        "the range anchor follows its entry through a re-sort"
+    );
+
     let source = gtk::StringList::new(&["fv\talpha"]);
     let weak = source.downgrade();
     let map = SourceIndexMap::watch(&source);

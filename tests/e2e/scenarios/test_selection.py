@@ -87,3 +87,31 @@ def test_selecting_a_second_entry_replaces_the_first(strata, mode, root):
         lambda: strata.selected_names(root) == ["todo.txt"],
         "a plain click to replace the selection",
     )
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_shift_click_ranges_from_the_entry_a_fresh_listing_selected(strata, mode, root):
+    """Navigating auto-selects the first entry; it must anchor the first range."""
+
+    strata.open_directory("documents", directory=root)
+
+    strata.click_entry_with("spreadsheet.csv", ["shift"], directory="documents")
+
+    strata.wait(
+        lambda: strata.selected_names("documents")
+        == ["notes.txt", "report.md", "spreadsheet.csv"],
+        "a shift-click to range from the entry the listing selected on load",
+    )
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_a_click_after_navigating_re_anchors_the_range(strata, mode, root):
+    strata.open_directory("documents", directory=root)
+    strata.select_entry("report.md", directory="documents")
+
+    strata.click_entry_with("spreadsheet.csv", ["shift"], directory="documents")
+
+    strata.wait(
+        lambda: strata.selected_names("documents") == ["report.md", "spreadsheet.csv"],
+        "the range to start at the clicked entry rather than the loaded one",
+    )
