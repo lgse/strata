@@ -1012,6 +1012,21 @@ fn install_keyboard_navigation(
         if key == gtk::gdk::Key::Delete && !view.filter_has_focus() && view.confirm_delete(shift) {
             return glib::Propagation::Stop;
         }
+        if key == gtk::gdk::Key::Escape
+            && !control
+            && !alt
+            && !modifiers.contains(gtk::gdk::ModifierType::SUPER_MASK)
+            && !text_has_focus
+        {
+            if preview.is_open() {
+                preview.close();
+                return glib::Propagation::Stop;
+            }
+            // Transient surfaces may return focus to pane chrome rather than an item.
+            if browser.close_peek() || browser.clear_active_selection() {
+                return glib::Propagation::Stop;
+            }
+        }
         if !control && !alt && !view.item_view_has_focus() && !header_left_boundary {
             return glib::Propagation::Proceed;
         }
@@ -1081,10 +1096,6 @@ fn install_keyboard_navigation(
         }
         if key == gtk::gdk::Key::space && !alt && !control {
             preview.toggle(preview_target(browser.focused_entry()));
-            return glib::Propagation::Stop;
-        }
-        if key == gtk::gdk::Key::Escape && preview.is_open() {
-            preview.close();
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::BackSpace && !control && !alt {

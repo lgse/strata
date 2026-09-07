@@ -891,8 +891,22 @@ impl Browser {
         closed
     }
 
+    pub fn clear_active_selection(&self) -> bool {
+        let cleared = self.state.borrow_mut().clear_active_selection();
+        if let Some((depth, focused)) = cleared {
+            self.emit(BrowserEvent::SelectionSetChanged {
+                depth,
+                positions: Vec::new(),
+                focused,
+                take_focus: false,
+            });
+            return true;
+        }
+        false
+    }
+
     pub fn escape(self: &Rc<Self>) {
-        if self.close_peek() {
+        if self.close_peek() || self.clear_active_selection() {
             return;
         }
 
