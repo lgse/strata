@@ -181,16 +181,25 @@ class HeadlessDisplay:
             pass_fds=(write_fd,),
         )
         deadline = time.monotonic() + XVFB_START_TIMEOUT
+        advertised = b""
         while time.monotonic() < deadline:
             if server.exited():
                 self._processes.remove(server)
                 return False
             ready, _, _ = select.select([read_fd], [], [], 0.05)
             if ready:
-                advertised = os.read(read_fd, 64).strip()
-                if advertised == str(number).encode():
-                    return True
-                break
+                chunk = os.read(read_fd, 64)
+                if not chunk:
+                    break
+                advertised += chunk
+                # Xvfb writes the number and newline separately. Keep the pipe
+                # open until both writes finish, or its newline can hit EPIPE.
+                if b"\n" in advertised:
+                    if advertised == f"{number}\n".encode():
+                        return True
+                    break
+                if len(advertised) >= 64:
+                    break
         terminate(server.popen)
         self._processes.remove(server)
         return False

@@ -43,6 +43,39 @@ def test_display_does_not_accept_another_workers_socket(monkeypatch):
     assert not display._processes
 
 
+@pytest.mark.parametrize("chunks", [[b"1999\n"], [b"1999", b"\n"], [b"19", b"99", b"\n"]])
+def test_display_waits_for_complete_readiness_line(monkeypatch, chunks):
+    display = HeadlessDisplay()
+    server = Mock(exited=lambda: False)
+    display._processes.append(server)
+    pending = iter(chunks)
+    read = Mock(side_effect=lambda *_: next(pending))
+    monkeypatch.setattr(display, "_spawn", lambda *args, **kwargs: server)
+    monkeypatch.setattr("harness.display.select.select", lambda *args: ([0], [], []))
+    monkeypatch.setattr("harness.display.os.read", read)
+
+    assert display._try_display(1999)
+    assert read.call_count == len(chunks)
+    assert display._processes == [server]
+
+
+@pytest.mark.parametrize("chunks", [[b"1998\n"], [b"1999", b""], [b"9" * 64]])
+def test_display_rejects_invalid_or_incomplete_readiness_line(monkeypatch, chunks):
+    display = HeadlessDisplay()
+    server = Mock(exited=lambda: False)
+    display._processes.append(server)
+    pending = iter(chunks)
+    terminate = Mock()
+    monkeypatch.setattr(display, "_spawn", lambda *args, **kwargs: server)
+    monkeypatch.setattr("harness.display.select.select", lambda *args: ([0], [], []))
+    monkeypatch.setattr("harness.display.os.read", lambda *_: next(pending))
+    monkeypatch.setattr("harness.display.terminate", terminate)
+
+    assert not display._try_display(1999)
+    terminate.assert_called_once_with(server.popen)
+    assert not display._processes
+
+
 def test_baselines_are_grouped_before_xdist_scheduling():
     from conftest import pytest_collection_modifyitems
 
