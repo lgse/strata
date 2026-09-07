@@ -4,6 +4,7 @@ use super::*;
 
 mod focus;
 mod navigate;
+mod paste;
 mod recursive_search;
 mod sidebar;
 

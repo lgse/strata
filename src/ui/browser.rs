@@ -158,6 +158,7 @@ pub(super) struct ViewState {
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     print_handler: RefCell<Option<PrintHandler>>,
     pending_select: RefCell<Vec<String>>,
+    pending_transfer_selection: RefCell<Option<(Location, Vec<Location>)>>,
     /// Set when the pending selection came from a properties request, so the
     /// dialog opens once the entry it describes is actually loaded.
     pending_select_properties: Cell<bool>,
@@ -340,6 +341,7 @@ impl BrowserView {
             pin_status_handler: RefCell::new(None),
             print_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
+            pending_transfer_selection: RefCell::new(None),
             pending_select_properties: Cell::new(false),
             pending_extract_retry: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
