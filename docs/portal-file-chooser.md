@@ -6,6 +6,23 @@ The chooser is deliberately limited to local files and folders. It uses the main
 
 Wayland applications can provide an exported parent handle. X11 parent handles are not attached; these requests appear as standalone windows.
 
+### Initial size in split-window layouts
+
+On Hyprland, requests with a Wayland parent and an application ID can use the
+requesting application's window size as an initial sizing hint. Strata queries
+Hyprland's local IPC socket before loading the requested directory, and uses the
+hint only when exactly one window's current or initial class matches the app ID
+(case-insensitively). The query is read-only, limited to 100 ms and a 1 MiB reply,
+and does not depend on which window has keyboard focus. Monitor dimensions still
+cap the result. Moving the chooser between monitors no longer reapplies its
+initial default size over a manual resize.
+
+The exported Wayland handle does not expose parent geometry. Other compositors,
+X11 requests, missing or differently named app IDs, multiple matching windows,
+and unavailable IPC retain monitor-based sizing. This is a best-effort improvement,
+not guaranteed parent-relative sizing on every desktop. GTK's compositor bounds
+and the controls' minimum usable size continue to apply.
+
 ## Opt in through the app or installer
 
 On the first normal launch after updating to a version with this feature, Strata

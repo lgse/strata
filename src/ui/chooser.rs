@@ -691,6 +691,22 @@ fn chooser_default_dimensions_for_monitor(monitor_width: i32, monitor_height: i3
     (target_width, target_height)
 }
 
+fn chooser_initial_dimensions(
+    monitor: Option<(i32, i32)>,
+    parent_size_hint: Option<(i32, i32)>,
+) -> (i32, i32) {
+    let monitor = monitor.filter(|(width, height)| *width > 0 && *height > 0);
+    let parent = parent_size_hint.filter(|(width, height)| *width > 0 && *height > 0);
+    let bounds = match (monitor, parent) {
+        (Some((mw, mh)), Some((pw, ph))) => Some((mw.min(pw), mh.min(ph))),
+        (monitor, parent) => parent.or(monitor),
+    };
+    bounds.map_or(
+        (FALLBACK_CHOOSER_WIDTH, FALLBACK_CHOOSER_HEIGHT),
+        |(width, height)| chooser_default_dimensions_for_monitor(width, height),
+    )
+}
+
 fn detect_monitor_geometry(
     display: Option<&gtk::gdk::Display>,
     window: Option<&gtk::Window>,
@@ -767,9 +783,9 @@ fn build_chooser(
         false,
     );
 
-    let (initial_width, initial_height) = detect_monitor_geometry(None, None).map_or(
-        (FALLBACK_CHOOSER_WIDTH, FALLBACK_CHOOSER_HEIGHT),
-        |(w, h)| chooser_default_dimensions_for_monitor(w, h),
+    let (initial_width, initial_height) = chooser_initial_dimensions(
+        detect_monitor_geometry(None, None),
+        request.parent_size_hint,
     );
 
     let window = gtk::Window::builder()
@@ -1063,22 +1079,11 @@ fn build_chooser(
 
     gtk::prelude::WidgetExt::realize(&window);
     apply_external_parent(&window, state.request.parent.as_ref());
-    if let Some(surface) = window.surface() {
-        let weak_window = window.downgrade();
-        surface.connect_enter_monitor(move |_, monitor| {
-            let Some(window) = weak_window.upgrade() else {
-                return;
-            };
-            let geometry = monitor.geometry();
-            let dimensions =
-                chooser_default_dimensions_for_monitor(geometry.width(), geometry.height());
-            window.set_default_size(dimensions.0, dimensions.1);
-        });
-    }
-    if let Some((width, height)) = detect_monitor_geometry(None, Some(&window)) {
-        let dimensions = chooser_default_dimensions_for_monitor(width, height);
-        window.set_default_size(dimensions.0, dimensions.1);
-    }
+    let dimensions = chooser_initial_dimensions(
+        detect_monitor_geometry(None, Some(&window)),
+        state.request.parent_size_hint,
+    );
+    window.set_default_size(dimensions.0, dimensions.1);
     browser.navigate(Location::local(&state.request.initial_directory));
     window.present();
     if let Some(filename) = state.filename.as_ref() {

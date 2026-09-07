@@ -122,6 +122,7 @@ fn save_modal(mode: BrowserMode, root: &Path) {
         accept_label: "Save".into(),
         modal: false,
         parent: None,
+        parent_size_hint: None,
         initial_directory: root.into(),
         kind: ChooserKind::SaveFile {
             current_name: Some("00.txt".into()),
@@ -207,6 +208,7 @@ fn keyboard_only_controls_and_file_navigation_work_in_every_chooser_view() {
                 accept_label: "Open".into(),
                 modal: false,
                 parent: None,
+                parent_size_hint: None,
                 initial_directory: root.path().into(),
                 kind: ChooserKind::Open {
                     directory: false,

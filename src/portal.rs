@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod dbus;
+mod window_geometry;
 
 #[cfg(test)]
 mod tests;
@@ -58,6 +59,7 @@ pub(crate) struct ChooserRequest {
     pub accept_label: String,
     pub modal: bool,
     pub parent: Option<WindowIdentifierType>,
+    pub parent_size_hint: Option<(i32, i32)>,
     pub initial_directory: PathBuf,
     pub kind: ChooserKind,
     pub filters: Vec<FileFilter>,
@@ -249,6 +251,7 @@ async fn open_request(
     .await?;
     Ok(ChooserRequest {
         token,
+        parent_size_hint: None,
         title: request_title(title, "Open Files"),
         accept_label: options.accept_label().unwrap_or("Open").to_owned(),
         modal: options.modal().unwrap_or(true),
@@ -297,6 +300,7 @@ async fn save_file_request(
     .await?;
     Ok(ChooserRequest {
         token,
+        parent_size_hint: None,
         title: request_title(title, "Save File"),
         accept_label: options.accept_label().unwrap_or("Save").to_owned(),
         modal: options.modal().unwrap_or(true),
@@ -339,6 +343,7 @@ async fn save_files_request(
     .await?;
     Ok(ChooserRequest {
         token,
+        parent_size_hint: None,
         title: request_title(title, "Save Files"),
         accept_label: options.accept_label().unwrap_or("Save").to_owned(),
         modal: options.modal().unwrap_or(true),
