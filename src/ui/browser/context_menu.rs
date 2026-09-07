@@ -1141,27 +1141,15 @@ fn prepare_open_with(
         if generation.get() != expected_generation {
             return;
         }
-        let default =
-            gio::AppInfo::default_for_type(&content_type, false).filter(|app| app.should_show());
-        let mut apps = gio::AppInfo::all_for_type(&content_type)
-            .into_iter()
-            .filter(|app| app.should_show())
-            .collect::<Vec<_>>();
-        apps.sort_by_cached_key(|app| app.display_name().to_lowercase());
-        let mut unique = Vec::with_capacity(apps.len());
-        for app in apps {
-            if !unique
-                .iter()
-                .any(|existing: &gio::AppInfo| existing.equal(&app))
-            {
-                unique.push(app);
-            }
-        }
-        let mut apps = unique;
-        if let Some(default) = default {
-            apps.retain(|app| !app.equal(&default));
-            apps.insert(0, default);
-        }
+        // Without a FUSE mirror GIO drops non-native files from `%f`/`%F` apps,
+        // launching them empty; only URI-capable apps can open such locations.
+        let requires_uris = files.iter().any(|file| !file.is_native());
+        let default = gio::AppInfo::default_for_type(&content_type, requires_uris);
+        let apps = order_open_with_apps(
+            default,
+            gio::AppInfo::all_for_type(&content_type),
+            requires_uris,
+        );
         result.replace(Some(OpenWithSelection {
             locations,
             files,
@@ -1170,6 +1158,32 @@ fn prepare_open_with(
         single_button.set_sensitive(true);
         multiple_button.set_sensitive(true);
     });
+}
+
+/// The default application first, then the remaining handlers by name.
+fn order_open_with_apps(
+    default: Option<gio::AppInfo>,
+    apps: Vec<gio::AppInfo>,
+    requires_uris: bool,
+) -> Vec<gio::AppInfo> {
+    let usable = |app: &gio::AppInfo| app.should_show() && (!requires_uris || app.supports_uris());
+    let mut apps = apps.into_iter().filter(usable).collect::<Vec<_>>();
+    apps.sort_by_cached_key(|app| app.display_name().to_lowercase());
+    let mut unique = Vec::with_capacity(apps.len());
+    for app in apps {
+        if !unique
+            .iter()
+            .any(|existing: &gio::AppInfo| existing.equal(&app))
+        {
+            unique.push(app);
+        }
+    }
+    let mut apps = unique;
+    if let Some(default) = default.filter(usable) {
+        apps.retain(|app| !app.equal(&default));
+        apps.insert(0, default);
+    }
+    apps
 }
 
 #[cfg(test)]

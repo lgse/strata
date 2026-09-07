@@ -17,6 +17,40 @@ fn entry(location: Location) -> FileEntry {
     }
 }
 
+fn app(name: &str, exec: &str) -> gio::AppInfo {
+    let key_file = glib::KeyFile::new();
+    key_file.set_string("Desktop Entry", "Type", "Application");
+    key_file.set_string("Desktop Entry", "Name", name);
+    key_file.set_string("Desktop Entry", "Exec", exec);
+    gio_unix::DesktopAppInfo::from_keyfile(&key_file)
+        .expect("desktop entry")
+        .upcast()
+}
+
+fn names(apps: &[gio::AppInfo]) -> Vec<String> {
+    apps.iter()
+        .map(|app| app.display_name().to_string())
+        .collect()
+}
+
+#[test]
+fn ordering_puts_the_default_first_and_drops_path_only_apps_for_uris() {
+    // GIO rejects entries whose executable is not on PATH.
+    let native_only = app("Path Viewer", "true %f");
+    let uri_capable = app("Zeta Editor", "true %U");
+    let other = app("Alpha Editor", "true %u");
+    let apps = vec![native_only.clone(), uri_capable.clone(), other.clone()];
+
+    let native = order_open_with_apps(Some(uri_capable.clone()), apps.clone(), false);
+    assert_eq!(
+        names(&native),
+        ["Zeta Editor", "Alpha Editor", "Path Viewer"]
+    );
+
+    let remote = order_open_with_apps(Some(native_only), apps, true);
+    assert_eq!(names(&remote), ["Alpha Editor", "Zeta Editor"]);
+}
+
 #[test]
 fn prepared_selection_rejects_changed_targets() {
     let location = Location::local("/fixture/alpha.txt");
