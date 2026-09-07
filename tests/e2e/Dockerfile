@@ -25,7 +25,8 @@ RUN rustup toolchain install 1.98.1 --no-self-update --profile minimal --compone
 
 COPY requirements.txt /opt/e2e-requirements.txt
 RUN python3 -m venv --system-site-packages /opt/e2e-venv \
-    && /opt/e2e-venv/bin/pip install --no-cache-dir -r /opt/e2e-requirements.txt
+    && /opt/e2e-venv/bin/pip install --no-cache-dir -r /opt/e2e-requirements.txt \
+    && cp /opt/e2e-requirements.txt /opt/e2e-venv/strata-requirements.txt
 
 # D-Bus requires an account entry even when the runtime accepts a numeric UID.
 ARG E2E_UID=1000
