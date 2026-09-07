@@ -7,11 +7,10 @@ use std::{
 
 use super::{
     APPLICATION_ICON, DESKTOP_ENTRY, InstallCancel, InstallRequest, InstallStop, UpdateMethod,
-    aur_repository_version_from_response, commits_match, desktop_entry_with_exec,
-    download_to_file_bounded, first_hash_token, package_repository_version_for,
-    parse_aur_package_version, parse_package_version, refresh_desktop_metadata,
-    repository_database_version, restore_rollback, stage_binary_path, stage_rollback,
-    stage_workdir, update_method_for, verified_download_url, verify_staged_binary,
+    aur_repository_version_from_response, desktop_entry_with_exec, download_to_file_bounded,
+    package_repository_version_for, parse_aur_package_version, parse_package_version,
+    refresh_desktop_metadata, repository_database_version, restore_rollback, stage_binary_path,
+    stage_rollback, stage_workdir, update_method_for, verified_download_url, verify_staged_binary,
 };
 
 const PACKAGED_ENTRY: &str =
@@ -218,19 +217,6 @@ fn stage_binary_path_is_unique_per_call() {
 }
 
 #[test]
-fn first_hash_token_lowercases_and_ignores_trailing_filename() {
-    assert_eq!(
-        first_hash_token("ABCDEF  strata-0.2.0-x86_64-unknown-linux-gnu.tar.gz\n"),
-        Some("abcdef".to_owned())
-    );
-}
-
-#[test]
-fn first_hash_token_rejects_empty_input() {
-    assert_eq!(first_hash_token("   \n"), None);
-}
-
-#[test]
 fn desktop_entry_exec_points_at_the_install_path_and_keeps_field_codes() {
     let entry = desktop_entry_with_exec(PACKAGED_ENTRY, Path::new("/home/user/.local/bin/strata"));
 
@@ -403,22 +389,6 @@ fn download_url_rejects_an_asset_name_containing_a_path_segment() {
     assert!(verified_download_url(&request(TAG, asset, &advertised)).is_err());
 }
 
-#[test]
-fn source_commit_matches_ignoring_case_and_surrounding_whitespace() {
-    assert!(commits_match("  ABC123\n", "abc123").is_ok());
-}
-
-#[test]
-fn source_commit_mismatch_is_rejected() {
-    assert!(commits_match("abc123", "def456").is_err());
-}
-
-#[test]
-fn source_commit_rejects_an_empty_value() {
-    assert!(commits_match("   \n", "abc123").is_err());
-    assert!(commits_match("abc123", "").is_err());
-}
-
 struct StubServer {
     url: String,
     handle: Option<std::thread::JoinHandle<()>>,
@@ -436,7 +406,20 @@ impl StubServer {
             let Ok((mut stream, _peer)) = listener.accept() else {
                 return;
             };
-            use std::io::Write;
+            use std::io::{Read, Write};
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .expect("request timeout");
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 1024];
+            while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                let count = stream.read(&mut buffer).expect("read request");
+                assert!(
+                    count > 0 && request.len() + count <= 8192,
+                    "complete bounded HTTP request"
+                );
+                request.extend_from_slice(&buffer[..count]);
+            }
             let _written = stream.write_all(headers.as_bytes());
             let _written = stream.write_all(&body);
             let _flushed = stream.flush();
@@ -485,6 +468,29 @@ fn download(
         Err(InstallStop::Cancelled) => Err("cancelled".to_owned()),
         Err(InstallStop::Failed(message)) => Err(message),
     }
+}
+
+#[test]
+fn missing_signed_metadata_offers_manual_installation() {
+    let server = StubServer::serving(
+        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned(),
+        Vec::new(),
+    );
+    let result = super::fetch_update_metadata(&server.url, 8192, &InstallCancel::new());
+    assert!(
+        matches!(result, Err(InstallStop::Failed(message)) if message.contains("no signed update manifest") && message.contains("manually"))
+    );
+}
+
+#[test]
+fn signed_metadata_download_keeps_the_exact_published_bytes() {
+    let body = b"{ \"schema\": 1 }\n";
+    let server = StubServer::with_body(body.to_vec());
+    assert_eq!(
+        super::fetch_update_metadata(&server.url, body.len() as u64, &InstallCancel::new())
+            .expect("metadata download"),
+        body
+    );
 }
 
 #[test]

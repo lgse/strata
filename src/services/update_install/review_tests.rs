@@ -50,19 +50,6 @@ fn rollback_replaces_the_inode_without_truncating_other_links() {
 }
 
 #[test]
-fn stable_source_precedes_the_version_bump_but_preview_source_is_tagged() {
-    assert_eq!(
-        release_source_ref("v0.11.2").expect("stable ref"),
-        "v0.11.2~1"
-    );
-    assert_eq!(
-        release_source_ref("v0.12.0-rc.1").expect("preview ref"),
-        "v0.12.0-rc.1"
-    );
-    assert!(release_source_ref("../main").is_err());
-}
-
-#[test]
 fn download_rejects_self_consistent_but_wrong_assets_and_dot_segments() {
     for (tag, asset) in [
         ("v0.11.2", "other.tar.gz"),
@@ -93,59 +80,33 @@ fn authenticated_package_must_match_the_selected_asset() {
 }
 
 #[test]
-fn provenance_verification_does_not_use_accounts_or_desktop_credentials() {
-    use std::{collections::HashMap, ffi::OsStr};
-
-    let directory = tempfile::tempdir().expect("private configuration");
-    let command = provenance_command(Path::new("archive.tar.gz"), directory.path());
-    let environment: HashMap<_, _> = command.get_envs().collect();
-    for name in [
-        "GH_TOKEN",
-        "GITHUB_TOKEN",
-        "GH_ENTERPRISE_TOKEN",
-        "GITHUB_ENTERPRISE_TOKEN",
-    ] {
-        assert_eq!(environment.get(OsStr::new(name)), Some(&None));
+fn metadata_rejects_both_advertised_and_streamed_overflow() {
+    for limit in [manifest::MAX_MANIFEST_BYTES, manifest::MAX_SIGNATURES_BYTES] {
+        for advertised in [false, true] {
+            let mut builder = ureq::http::Response::builder();
+            if advertised {
+                builder = builder.header("content-length", limit + 1);
+            }
+            let data = if advertised {
+                Vec::new()
+            } else {
+                vec![b'a'; limit as usize + 1]
+            };
+            let mut response = builder
+                .body(ureq::Body::builder().data(data))
+                .expect("metadata response");
+            assert!(read_metadata_body(&mut response, limit, &InstallCancel::new()).is_err());
+        }
     }
-    for (name, value) in [
-        ("GH_CONFIG_DIR", directory.path().as_os_str()),
-        ("GH_HOST", OsStr::new("github.com")),
-        ("GH_PROMPT_DISABLED", OsStr::new("1")),
-        (
-            "DBUS_SESSION_BUS_ADDRESS",
-            OsStr::new("unix:path=/dev/null"),
-        ),
-    ] {
-        assert_eq!(environment.get(OsStr::new(name)), Some(&Some(value)));
-    }
-    let arguments: Vec<_> = command.get_args().collect();
-    assert!(
-        arguments
-            .windows(2)
-            .any(|pair| pair == ["--repo", "lgse/strata"])
-    );
-    assert!(arguments.windows(2).any(|pair| pair
-        == [
-            "--signer-workflow",
-            "lgse/strata/.github/workflows/release.yml"
-        ]));
 }
 
 #[test]
-fn checksum_rejects_both_advertised_and_streamed_overflow() {
-    for advertised in [false, true] {
-        let mut builder = ureq::http::Response::builder();
-        if advertised {
-            builder = builder.header("content-length", MAX_CHECKSUM_BYTES + 1);
-        }
-        let data = if advertised {
-            Vec::new()
-        } else {
-            vec![b'a'; MAX_CHECKSUM_BYTES as usize + 1]
-        };
-        let mut response = builder
-            .body(ureq::Body::builder().data(data))
-            .expect("checksum response");
-        assert!(read_checksum_body(&mut response).is_err());
-    }
+fn metadata_cancellation_does_not_report_a_signature_error() {
+    let mut response = ureq::http::Response::new(ureq::Body::builder().data(b"metadata".to_vec()));
+    let cancel = InstallCancel::new();
+    cancel.cancel();
+    assert!(matches!(
+        read_metadata_body(&mut response, 32, &cancel),
+        Err(InstallStop::Cancelled)
+    ));
 }

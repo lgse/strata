@@ -22,12 +22,12 @@ use super::release_channel::Version;
 
 mod archive;
 mod command;
+mod manifest;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 const RELEASE_DOWNLOAD_ROOT: &str = "https://github.com/lgse/strata/releases/download";
 const REPOSITORY: &str = "lgse/strata";
 const MAX_UPDATE_ARCHIVE_BYTES: u64 = 128 * 1024 * 1024;
-const MAX_CHECKSUM_BYTES: u64 = 8 * 1024;
 const DESKTOP_ENTRY: &str = "io.github.lgse.Strata.desktop";
 const APPLICATION_ICON: &str = "io.github.lgse.Strata.svg";
 const AUR_RPC: &str = "https://aur.archlinux.org/rpc/v5/info";
@@ -109,7 +109,8 @@ fn verified_download_url(request: &InstallRequest) -> Result<String, String> {
     let version = request.tag.strip_prefix('v').and_then(Version::parse);
     if !is_release_token(&request.tag)
         || version.as_ref().is_none_or(|version| {
-            request.asset_name != super::update_check::archive_name(&version.to_string())
+            request.tag != format!("v{version}")
+                || request.asset_name != super::update_check::archive_name(&version.to_string())
         })
     {
         return Err("The release names an unexpected update artifact.".to_owned());
@@ -490,27 +491,22 @@ fn try_install(
     current_exe: &Path,
     progress: &Sender<UpdateInstall>,
 ) -> Result<(), InstallStop> {
+    let _sent = progress.send(UpdateInstall::Verifying);
+    let release = fetch_signed_release(request, cancel)?;
     let archive_path = workdir.join("strata.tar.gz");
-    download_to_file(download_url, &archive_path, cancel, progress)?;
+    download_to_file_bounded(
+        download_url,
+        &archive_path,
+        release.archive_size(),
+        cancel,
+        progress,
+    )?;
 
     let _sent = progress.send(UpdateInstall::Verifying);
-    cancel.check()?;
-    verify_checksum(download_url, &archive_path)?;
-    cancel.check()?;
-    verify_provenance(&archive_path, cancel)?;
-    cancel.check()?;
+    let (package_dir, staged) =
+        prepare_release_binary(request, &release, &archive_path, workdir, cancel)?;
 
     let _sent = progress.send(UpdateInstall::Installing);
-    let extract_dir = workdir.join("extracted");
-    fs::create_dir_all(&extract_dir).map_err(|error| error.to_string())?;
-    let package_dir = archive::extract_release_archive(&archive_path, &extract_dir)?;
-    verify_package_name(&package_dir, request)?;
-    verify_source_commit(&package_dir, &request.tag)?;
-    cancel.check()?;
-
-    let binary_path = package_dir.join("strata");
-    let staged = stage_verified_binary(&binary_path, exe_dir)?;
-
     cancel.check()?;
     let rollback = stage_rollback(current_exe, exe_dir)?;
     if let Err(stop) = cancel.check() {
@@ -535,6 +531,25 @@ fn try_install(
     }
 
     Ok(())
+}
+
+fn prepare_release_binary(
+    request: &InstallRequest,
+    release: &manifest::VerifiedRelease,
+    archive_path: &Path,
+    workdir: &Path,
+    cancel: &InstallCancel,
+) -> Result<(PathBuf, tempfile::TempPath), InstallStop> {
+    release.verify_archive(archive_path, cancel)?;
+    cancel.check()?;
+    let extract_dir = workdir.join("extracted");
+    fs::create_dir_all(&extract_dir).map_err(|error| error.to_string())?;
+    let package = archive::extract_release_archive(archive_path, &extract_dir)?;
+    verify_package_name(&package, request)?;
+    release.verify_source_commit(&package)?;
+    cancel.check()?;
+    let staged = stage_verified_binary(&package.join("strata"), workdir)?;
+    Ok((package, staged))
 }
 
 pub(crate) fn rollback_path(exe_dir: &Path) -> PathBuf {
@@ -633,95 +648,80 @@ fn confirm_replacement(current_exe: &Path) -> Result<(), String> {
     verify_staged_binary(current_exe)
 }
 
-fn verify_source_commit(package_dir: &Path, tag: &str) -> Result<(), String> {
-    let packaged = fs::read_to_string(package_dir.join("SOURCE_COMMIT"))
-        .map_err(|error| format!("Could not read the update's source commit: {error}"))?;
-    let source_ref = release_source_ref(tag)?;
-    let expected = super::update_check::fetch_commit(&source_ref)
-        .ok_or_else(|| "Could not confirm which commit this release was built from".to_owned())?;
-    commits_match(&packaged, &expected)
-}
-
-fn release_source_ref(tag: &str) -> Result<String, String> {
-    let version = tag
-        .strip_prefix('v')
-        .and_then(Version::parse)
-        .ok_or_else(|| "The release tag is invalid".to_owned())?;
-    // Stable tags mark the version-bump commit; release.yml builds its parent.
-    Ok(if version.to_string().contains('-') {
-        tag.to_owned()
-    } else {
-        format!("{tag}~1")
-    })
-}
-
-fn commits_match(packaged: &str, expected: &str) -> Result<(), String> {
-    let packaged = packaged.trim().to_ascii_lowercase();
-    let expected = expected.trim().to_ascii_lowercase();
-    if packaged.is_empty() || expected.is_empty() {
-        return Err("This release does not identify the commit it was built from".to_owned());
-    }
-    if packaged == expected {
-        return Ok(());
-    }
-    Err("The update was not built from this release's commit".to_owned())
-}
-
-fn provenance_command(archive: &Path, config: &Path) -> Command {
-    let mut command = Command::new("gh");
-    command
-        .args(["attestation", "verify"])
-        .arg(archive)
-        .args([
-            "--repo",
-            REPOSITORY,
-            "--signer-workflow",
-            "lgse/strata/.github/workflows/release.yml",
-            "--hostname",
-            "github.com",
-        ])
-        .env_remove("GH_TOKEN")
-        .env_remove("GITHUB_TOKEN")
-        .env_remove("GH_ENTERPRISE_TOKEN")
-        .env_remove("GITHUB_ENTERPRISE_TOKEN")
-        .env("GH_CONFIG_DIR", config)
-        .env("GH_HOST", "github.com")
-        .env("GH_PROMPT_DISABLED", "1")
-        // gh probes Secret Service even with empty config; public verification must not open a keyring.
-        .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/dev/null");
-    command
-}
-
-fn verify_provenance(archive: &Path, cancel: &InstallCancel) -> Result<(), InstallStop> {
-    cancel.check()?;
-    let directory = archive
-        .parent()
-        .ok_or_else(|| "Could not locate the update staging directory".to_owned())?;
-    let config = tempfile::Builder::new()
-        .prefix("gh-config-")
-        .tempdir_in(directory)
-        .map_err(|error| format!("Could not isolate update verification: {error}"))?;
-    let output = command::run(
-        &mut provenance_command(archive, config.path()),
+fn fetch_signed_release(
+    request: &InstallRequest,
+    cancel: &InstallCancel,
+) -> Result<manifest::VerifiedRelease, InstallStop> {
+    verified_download_url(request)?;
+    let root = format!("{RELEASE_DOWNLOAD_ROOT}/{}", request.tag);
+    let bytes = fetch_update_metadata(
+        &format!("{root}/{}", manifest::MANIFEST_NAME),
+        manifest::MAX_MANIFEST_BYTES,
         cancel,
-        REQUEST_TIMEOUT,
-    );
-    match output {
-        Ok(output) if output.status.success() => Ok(()),
-        Ok(output) => {
-            tracing::warn!(
-                stderr = %String::from_utf8_lossy(&output.stderr).trim(),
-                "update provenance verification failed"
-            );
-            Err(InstallStop::Failed(
-                "The downloaded update failed build provenance verification".to_owned(),
-            ))
-        }
-        Err(InstallStop::Cancelled) => Err(InstallStop::Cancelled),
-        Err(InstallStop::Failed(message)) => Err(InstallStop::Failed(format!(
-            "Could not verify the update with GitHub CLI (gh): {message}. Install gh or download the release manually."
-        ))),
+    )?;
+    let signatures = fetch_update_metadata(
+        &format!("{root}/{}", manifest::SIGNATURES_NAME),
+        manifest::MAX_SIGNATURES_BYTES,
+        cancel,
+    )?;
+    cancel.check()?;
+    manifest::authenticate(&bytes, &signatures, request).map_err(InstallStop::Failed)
+}
+
+fn fetch_update_metadata(
+    url: &str,
+    limit: u64,
+    cancel: &InstallCancel,
+) -> Result<Vec<u8>, InstallStop> {
+    cancel.check()?;
+    let config = ureq::Agent::config_builder()
+        .timeout_global(Some(REQUEST_TIMEOUT))
+        .build();
+    let agent: ureq::Agent = config.into();
+    let response = agent
+        .get(url)
+        .header("User-Agent", "strata-file-manager")
+        .call();
+    cancel.check()?;
+    let mut response = response.map_err(|error| match error {
+        ureq::Error::StatusCode(404) => "This release has no signed update manifest. Choose a newer release or download it manually.".to_owned(),
+        error => format!("Could not download signed update metadata: {error}"),
+    })?;
+    read_metadata_body(&mut response, limit, cancel)
+}
+
+fn read_metadata_body(
+    response: &mut ureq::http::Response<ureq::Body>,
+    limit: u64,
+    cancel: &InstallCancel,
+) -> Result<Vec<u8>, InstallStop> {
+    cancel.check()?;
+    if response
+        .headers()
+        .get("content-length")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .is_some_and(|length| length > limit)
+    {
+        return Err("The signed update metadata is too large".to_owned().into());
     }
+    let mut reader = response.body_mut().as_reader();
+    let mut bytes = Vec::new();
+    let mut buffer = [0_u8; 4096];
+    loop {
+        cancel.check()?;
+        let read = reader.read(&mut buffer);
+        cancel.check()?;
+        let count = read.map_err(|error| error.to_string())?;
+        if count == 0 {
+            break;
+        }
+        if bytes.len() as u64 + count as u64 > limit {
+            return Err("The signed update metadata is too large".to_owned().into());
+        }
+        bytes.extend_from_slice(&buffer[..count]);
+    }
+    Ok(bytes)
 }
 
 /// Rewrites an already installed desktop entry and application icon from the
@@ -809,15 +809,6 @@ fn desktop_entry_with_exec(template: &str, executable: &Path) -> String {
     entry
 }
 
-fn download_to_file(
-    url: &str,
-    destination: &Path,
-    cancel: &InstallCancel,
-    progress: &Sender<UpdateInstall>,
-) -> Result<(), InstallStop> {
-    download_to_file_bounded(url, destination, MAX_UPDATE_ARCHIVE_BYTES, cancel, progress)
-}
-
 fn download_to_file_bounded(
     url: &str,
     destination: &Path,
@@ -870,59 +861,6 @@ fn download_to_file_bounded(
 
 fn oversized_update() -> InstallStop {
     InstallStop::Failed("The update is larger than expected and was not installed".to_owned())
-}
-
-fn verify_checksum(download_url: &str, archive_path: &Path) -> Result<(), String> {
-    let config = ureq::Agent::config_builder()
-        .timeout_global(Some(REQUEST_TIMEOUT))
-        .build();
-    let agent: ureq::Agent = config.into();
-    let checksum_url = format!("{download_url}.sha256");
-    let mut response = agent
-        .get(&checksum_url)
-        .header("User-Agent", "strata-file-manager")
-        .call()
-        .map_err(|error| format!("Could not verify the update: {error}"))?;
-    let expected = read_checksum_body(&mut response)?;
-    let expected_hash =
-        first_hash_token(&expected).ok_or_else(|| "The published checksum was empty".to_owned())?;
-
-    let output = run(Command::new("sha256sum").arg(archive_path))?;
-    let actual_hash =
-        first_hash_token(&output).ok_or_else(|| "sha256sum produced no output".to_owned())?;
-
-    if actual_hash == expected_hash {
-        Ok(())
-    } else {
-        Err("Downloaded update failed checksum verification".to_owned())
-    }
-}
-
-fn read_checksum_body(response: &mut ureq::http::Response<ureq::Body>) -> Result<String, String> {
-    if response
-        .headers()
-        .get("content-length")
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.parse::<u64>().ok())
-        .is_some_and(|length| length > MAX_CHECKSUM_BYTES)
-    {
-        return Err("The published checksum is too large".to_owned());
-    }
-    let mut body = String::new();
-    response
-        .body_mut()
-        .as_reader()
-        .take(MAX_CHECKSUM_BYTES + 1)
-        .read_to_string(&mut body)
-        .map_err(|error| error.to_string())?;
-    if body.len() as u64 > MAX_CHECKSUM_BYTES {
-        return Err("The published checksum is too large".to_owned());
-    }
-    Ok(body)
-}
-
-fn first_hash_token(text: &str) -> Option<String> {
-    text.split_whitespace().next().map(str::to_ascii_lowercase)
 }
 
 fn set_executable(path: &Path) -> Result<(), String> {

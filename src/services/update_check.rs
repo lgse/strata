@@ -226,7 +226,7 @@ fn fetch_preview(etag: Option<&str>) -> ChannelFetch {
 }
 
 // Release target_commitish can be a branch name; the commits API dereferences annotated tags.
-pub(super) fn fetch_commit(tag: &str) -> Option<String> {
+fn fetch_commit(tag: &str) -> Option<String> {
     request_json::<CommitResponse>(&format!("{COMMITS_ROOT}/{tag}"))
         .ok()
         .map(|commit| commit.sha)
