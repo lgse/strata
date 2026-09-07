@@ -68,9 +68,8 @@ pub(super) fn column_rows(
                 row.remove_css_class("file-appear");
             }
         });
-        let icon = gtk::Image::new();
+        let icon = crate::ui::thumbnail::ThumbnailSlot::new(17);
         icon.add_css_class("file-icon");
-        icon.set_pixel_size(17);
         let label = gtk::Label::builder()
             .halign(gtk::Align::Fill)
             .xalign(0.0)
@@ -421,7 +420,10 @@ pub(super) fn column_rows(
         let Some(row) = item.child().and_downcast::<gtk::Box>() else {
             return;
         };
-        let Some(icon) = row.first_child().and_downcast::<gtk::Image>() else {
+        let Some(icon) = row
+            .first_child()
+            .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
+        else {
             return;
         };
         let Some(middle) = icon.next_sibling().and_downcast::<gtk::Overlay>() else {
@@ -530,7 +532,7 @@ pub(super) fn column_rows(
                     17,
                 );
             } else {
-                crate::assets::set_primary_icon(&icon, entry_icon(entry));
+                crate::ui::thumbnail::show_fallback_icon(&icon, entry_icon(entry), 17);
             }
             icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
             chevron.set_visible(entry.is_directory());

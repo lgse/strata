@@ -16,9 +16,8 @@ pub(in crate::ui) fn pane_new_folder_button(
     let button = gtk::Button::builder()
         .tooltip_text("New Folder (Ctrl+Shift+N)")
         .build();
-    button.set_child(Some(&crate::assets::primary_icon(
+    button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::FOLDER_PLUS,
-        16,
     )));
     button.add_css_class("column-header-action");
     button.add_css_class("chooser-new-folder");
@@ -35,9 +34,8 @@ pub(in crate::ui) fn pane_new_folder_button(
 
 pub(in crate::ui) fn pane_refresh_button(browser: &Rc<Browser>, depth: usize) -> gtk::Button {
     let button = gtk::Button::builder().tooltip_text("Refresh (F5)").build();
-    button.set_child(Some(&crate::assets::primary_icon(
+    button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::REFRESH,
-        16,
     )));
     button.add_css_class("column-header-action");
     let weak_browser = Rc::downgrade(browser);
@@ -160,9 +158,8 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
         .tooltip_text("Choose sort field")
         .popover(&popover)
         .build();
-    button.set_child(Some(&crate::assets::primary_icon(
+    button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::SETTINGS_2,
-        16,
     )));
     button.add_css_class("column-header-action");
     button
@@ -177,7 +174,7 @@ pub(in crate::ui) fn column_sort_direction_toggle(
         .unwrap_or_default()
         .sort_direction;
     let button = gtk::Button::new();
-    let icon = crate::assets::primary_icon(crate::assets::icons::ARROW_UP_NARROW_WIDE, 16);
+    let icon = crate::assets::chrome_icon(crate::assets::icons::ARROW_UP_NARROW_WIDE);
     button.set_child(Some(&icon));
     button.add_css_class("column-header-action");
     sync_sort_direction_toggle(&button, &icon, direction);
@@ -234,9 +231,8 @@ pub(in crate::ui) fn empty_trash_button(browser: &Rc<Browser>) -> gtk::Button {
         .tooltip_text("Empty Trash")
         .visible(false)
         .build();
-    button.set_child(Some(&crate::assets::primary_icon(
+    button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::TRASH,
-        16,
     )));
     button.add_css_class("column-header-action");
     let weak_browser = Rc::downgrade(browser);

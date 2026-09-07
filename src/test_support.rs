@@ -51,9 +51,13 @@ pub(crate) fn gtk_test(name: &str, run: impl FnOnce()) {
     static DISPLAY: TestMutex = TestMutex::new();
     let _display = DISPLAY.lock().expect("GTK display lock");
     let sandbox = tempfile::tempdir().expect("isolated preferences");
+    let home = sandbox.path().join("home");
+    std::fs::create_dir_all(&home).expect("isolated home");
     let status = std::process::Command::new(std::env::current_exe().expect("test executable"))
         .args(["--exact", name, "--nocapture"])
         .env(CHILD, name)
+        .env("HOME", home)
+        .env("XDG_STATE_HOME", sandbox.path().join("state"))
         .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
         .env("XDG_CACHE_HOME", sandbox.path().join("cache"))
         .env("XDG_DATA_HOME", sandbox.path().join("data"))

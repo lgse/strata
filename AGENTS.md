@@ -32,6 +32,9 @@ under `.agents/`.
   ```
 
   If `xvfb-run` is unavailable, use a non-root portable extraction of the distribution's Xvfb package or another isolated display server. Do not fall back to the active desktop display, and do not use a backend that causes GTK tests to skip because initialization failed.
+- Run `./scripts/e2e.sh` before pushing. It uses the same pinned container as CI;
+  use `STRATA_CONTAINER_ENGINE=podman` for rootless Podman. Native-host E2E results
+  do not substitute for this gate. See `docs/e2e-testing.md`.
 - Fix failures before pushing rather than relying on CI for feedback. Keep tests portable across supported environments and avoid assertions that depend on platform-specific URI normalization or other incidental system behavior.
 
 ## Issues and pull requests
@@ -48,6 +51,13 @@ under `.agents/`.
 - Do not place test implementations inline with production code.
 - Put module unit tests in an adjacent test module, such as `src/app/navigation/tests.rs`, and declare it from the implementation with `#[cfg(test)] mod tests;`.
 - Use the top-level `tests/` directory for integration tests that exercise the crate through its public API.
+
+## Saved preferences
+
+- Follow `docs/preferences.md` when adding or changing application-wide settings.
+- Use `ThemeManager::bind_preference` for immediate initialization and live updates, or read the manager at action dispatch. Settings pages must only edit preferences, never initialize browser behavior.
+- Use shared control bindings rather than window-local copies or one-off broadcasts. Preserve documented chooser and window-local exceptions.
+- Extend the exhaustive saved-preferences fixture and behavioral coverage for startup before Settings opens, changes across two windows, and relevant view rebuilds. Serialization-only tests are not sufficient.
 
 ## Comments
 

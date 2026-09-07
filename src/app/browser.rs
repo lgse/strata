@@ -948,6 +948,23 @@ impl Browser {
         });
     }
 
+    pub fn apply_default_preferences(&self, preferences: ViewPreferences) {
+        let previous = self.preferences.replace(preferences);
+        self.state.borrow_mut().set_default_preferences(preferences);
+        if previous.show_hidden != preferences.show_hidden {
+            self.close_peek();
+            self.state
+                .borrow_mut()
+                .set_show_hidden(preferences.show_hidden);
+            self.emit(BrowserEvent::HiddenToggled {
+                show_hidden: preferences.show_hidden,
+            });
+        }
+        if previous != preferences {
+            self.notify_preferences_observers();
+        }
+    }
+
     pub fn toggle_hidden(self: &Rc<Self>) {
         let mut preferences = self.preferences.get();
         preferences.show_hidden = !preferences.show_hidden;
@@ -2026,8 +2043,8 @@ impl Browser {
     }
 
     /// Moves the focus by `page` visible entries, for `Page Up` and `Page Down`.
-    pub fn page_selection(&self, direction: i32, page: usize) {
-        let moved = self.state.borrow_mut().page_selection(direction, page);
+    pub fn page_along(&self, direction: i32, page: usize, order: Option<&[usize]>) {
+        let moved = self.state.borrow_mut().page_along(direction, page, order);
         if let Some((depth, position)) = moved {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
@@ -2829,8 +2846,10 @@ impl Browser {
         self: &Rc<Self>,
         depth: usize,
         generation: u64,
-        preferences: ViewPreferences,
+        mut preferences: ViewPreferences,
     ) {
+        // Metadata can arrive after another window changes the application-wide visibility.
+        preferences.show_hidden = self.preferences.get().show_hidden;
         self.sort_awaiting_fill.borrow_mut().take();
         self.sort_loads.borrow_mut().remove(&depth);
         let outcome = {

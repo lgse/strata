@@ -83,7 +83,6 @@ struct PreviewState {
     media_signals: RefCell<Vec<glib::SignalHandlerId>>,
     media_volume_slider: RefCell<Option<gtk::Scale>>,
     media_volume_icon: RefCell<Option<gtk::Image>>,
-    media_volume_save: Rc<RefCell<Option<glib::SourceId>>>,
     media_toggle_mute: RefCell<Option<Rc<dyn Fn()>>>,
     split: RefCell<Option<gtk::Paned>>,
     occupied_width: RefCell<Option<Rc<dyn Fn() -> i32>>>,
@@ -129,9 +128,8 @@ impl PreviewDrawer {
             .tooltip_text("Open in default application")
             .valign(gtk::Align::Center)
             .build();
-        open.set_child(Some(&crate::assets::primary_icon(
+        open.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::EXTERNAL_LINK,
-            16,
         )));
         open.add_css_class("preview-header-action");
         open.set_visible(allow_external_open);
@@ -139,9 +137,8 @@ impl PreviewDrawer {
             .tooltip_text("Print")
             .valign(gtk::Align::Center)
             .build();
-        print.set_child(Some(&crate::assets::primary_icon(
+        print.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::PRINTER,
-            16,
         )));
         print.add_css_class("preview-header-action");
         print.set_visible(false);
@@ -149,10 +146,7 @@ impl PreviewDrawer {
             .tooltip_text("Close preview (Space)")
             .valign(gtk::Align::Center)
             .build();
-        close.set_child(Some(&crate::assets::primary_icon(
-            crate::assets::icons::X,
-            16,
-        )));
+        close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
         close.add_css_class("preview-close");
         close.add_css_class("preview-header-action");
         let header_handle = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -205,7 +199,6 @@ impl PreviewDrawer {
             media_signals: RefCell::new(Vec::new()),
             media_volume_slider: RefCell::new(None),
             media_volume_icon: RefCell::new(None),
-            media_volume_save: Rc::new(RefCell::new(None)),
             media_toggle_mute: RefCell::new(None),
             split: RefCell::new(None),
             occupied_width: RefCell::new(None),
@@ -1376,33 +1369,41 @@ impl PreviewState {
         });
         seek.add_controller(drag);
 
-        let last_volume = Rc::new(Cell::new(preferences.preview_volume().max(0.1)));
         let updating_slider = Rc::new(Cell::new(false));
+        let updating = updating_slider.clone();
+        let weak_media = media.downgrade();
+        let weak_icon = volume_icon.downgrade();
+        preferences.bind_preference(
+            &volume_slider,
+            |preferences| (preferences.preview_volume(), preferences.preview_muted()),
+            move |widget, (volume, muted)| {
+                let Some(slider) = widget.downcast_ref::<gtk::Scale>() else {
+                    return;
+                };
+                let previous = updating.replace(true);
+                slider.set_value(if muted { 0.0 } else { volume });
+                if let Some(media) = weak_media.upgrade() {
+                    media.set_volume(volume);
+                    media.set_muted(muted);
+                }
+                if let Some(icon) = weak_icon.upgrade() {
+                    crate::assets::set_primary_icon(
+                        &icon,
+                        if muted {
+                            crate::assets::icons::VOLUME_X
+                        } else {
+                            crate::assets::icons::VOLUME_2
+                        },
+                    );
+                }
+                updating.set(previous);
+            },
+        );
 
         let toggle_volume = Rc::new({
-            let media = media.clone();
-            let icon = volume_icon.clone();
             let preferences = preferences.clone();
-            let slider = volume_slider.clone();
-            let last_volume = last_volume.clone();
-            let updating = updating_slider.clone();
             move || {
-                let muted = !preferences.preview_muted();
-                updating.set(true);
-                if muted {
-                    if slider.value() > 0.0 {
-                        last_volume.set(slider.value());
-                    }
-                    media.set_volume(0.0);
-                    slider.set_value(0.0);
-                    set_preview_mute(&media, &icon, &preferences, true);
-                } else {
-                    let restored = last_volume.get().max(0.1);
-                    media.set_volume(restored);
-                    slider.set_value(restored);
-                    set_preview_mute(&media, &icon, &preferences, false);
-                }
-                updating.set(false);
+                preferences.set_preview_muted(!preferences.preview_muted());
             }
         });
         let toggle_volume_for_click = toggle_volume.clone();
@@ -1411,43 +1412,10 @@ impl PreviewState {
             toggle_volume_for_click();
         });
 
-        let media_for_volume = media.clone();
-        let icon_for_volume = volume_icon.clone();
-        let preferences_for_volume = preferences.clone();
-        let last_volume_for_volume = last_volume.clone();
-        let updating_for_volume = updating_slider.clone();
-        let save_slot = self.media_volume_save.clone();
-        let preferences_for_save = preferences.clone();
+        let preferences = preferences.clone();
         volume_slider.connect_value_changed(move |scale| {
-            if updating_for_volume.get() {
-                return;
-            }
-            let volume = scale.value();
-            media_for_volume.set_volume(volume);
-            let muted = volume == 0.0;
-            if preferences_for_volume.preview_muted() != muted {
-                set_preview_mute(
-                    &media_for_volume,
-                    &icon_for_volume,
-                    &preferences_for_volume,
-                    muted,
-                );
-            }
-            if let Some(prev) = save_slot.borrow_mut().take() {
-                prev.remove();
-            }
-            if volume > 0.0 {
-                last_volume_for_volume.set(volume);
-                let save_slot_for_timeout = save_slot.clone();
-                let prefs = preferences_for_save.clone();
-                let id = glib::timeout_add_local_once(
-                    std::time::Duration::from_millis(400),
-                    move || {
-                        save_slot_for_timeout.borrow_mut().take();
-                        prefs.set_preview_volume(volume);
-                    },
-                );
-                save_slot.borrow_mut().replace(id);
+            if !updating_slider.get() {
+                preferences.set_preview_audio(scale.value(), scale.value() == 0.0);
             }
         });
     }
@@ -1458,9 +1426,6 @@ impl PreviewState {
                 stream.disconnect(handler);
             }
             stream.set_playing(false);
-        }
-        if let Some(id) = self.media_volume_save.borrow_mut().take() {
-            id.remove();
         }
         self.media_toggle_mute.replace(None);
         self.media_volume_slider.replace(None);
@@ -1936,9 +1901,7 @@ fn set_preview_volume(
     volume: f64,
 ) {
     media.set_volume(volume);
-    if volume > 0.0 {
-        preferences.set_preview_volume(volume);
-    }
+    preferences.set_preview_audio(volume, volume == 0.0);
     if let Some(slider) = slider {
         slider.set_value(volume);
     }

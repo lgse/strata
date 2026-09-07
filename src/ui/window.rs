@@ -103,15 +103,29 @@ pub fn present_reveal(application: &gtk::Application, request: RevealRequest) {
     );
 }
 
-fn browser_for_window(theme_manager: &ThemeManager) -> BrowserView {
+fn bind_update_notice_preferences(
+    anchor: &impl IsA<gtk::Widget>,
+    manager: &ThemeManager,
+    notice: &super::settings::UpdateNoticeHandler,
+) {
+    let initial = Cell::new(true);
+    let notice = Rc::downgrade(notice);
+    manager.bind_preference(
+        anchor,
+        |manager| (manager.checks_for_updates(), manager.release_channel()),
+        move |_, _| {
+            if !initial.replace(false)
+                && let Some(notice) = notice.upgrade()
+            {
+                notice(None);
+            }
+        },
+    );
+}
+
+fn browser_for_window() -> BrowserView {
     let browser = BrowserView::new(Rc::new(LocalFileSource), PeekBehavior::default());
-    browser.set_view_mode(theme_manager.browser_mode());
-    browser.set_density(theme_manager.browser_density());
-    browser.set_group_by_type(theme_manager.group_by_type());
-    apply_click_activation(&browser, theme_manager);
     browser.set_operation_provider(Rc::new(LocalOperationProvider));
-    browser.set_auto_refresh_interval(theme_manager.auto_refresh_interval());
-    browser.set_single_click_previews(theme_manager.single_click_previews());
     browser
 }
 
@@ -137,7 +151,7 @@ fn present_target(
         .default_height(760)
         .build();
 
-    let browser = browser_for_window(&theme_manager);
+    let browser = browser_for_window();
     let controller = browser.browser();
 
     let preview_preferences = theme_manager.clone();
@@ -155,9 +169,8 @@ fn present_target(
         .active(true)
         .tooltip_text("Toggle sidebar (Ctrl+B)")
         .build();
-    sidebar_toggle.set_child(Some(&crate::assets::primary_icon(
+    sidebar_toggle.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::PANEL_LEFT,
-        20,
     )));
     sidebar_toggle.add_css_class("sidebar-toggle");
     let location_widget = browser.location_widget();
@@ -165,23 +178,18 @@ fn present_target(
     let search_button = gtk::Button::builder()
         .tooltip_text("Search (Ctrl+K)")
         .build();
-    search_button.set_child(Some(&crate::assets::primary_icon(
+    search_button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::SEARCH,
-        20,
     )));
     search_button.add_css_class("header-action");
     let appearance = build_appearance_menu(&browser, &controller, theme_manager.clone());
     let settings = gtk::Button::builder().tooltip_text("Settings").build();
-    settings.set_child(Some(&crate::assets::primary_icon(
+    settings.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::SETTINGS,
-        20,
     )));
     settings.add_css_class("header-action");
     let close_window = gtk::Button::builder().tooltip_text("Close window").build();
-    close_window.set_child(Some(&crate::assets::primary_icon(
-        crate::assets::icons::X,
-        20,
-    )));
+    close_window.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
     close_window.add_css_class("header-action");
     let closing_window = window.clone();
     close_window.connect_clicked(move |_| closing_window.close());
@@ -193,6 +201,7 @@ fn present_target(
     header_actions.append(&close_window);
     let header_content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     header_content.set_hexpand(true);
+    header_content.set_valign(gtk::Align::Center);
     header_content.append(&sidebar_toggle);
     header_content.append(&location_widget);
     header_content.append(&header_actions);
@@ -456,9 +465,9 @@ fn present_target(
             update_area.set_visible(false);
         }
     });
+    bind_update_notice_preferences(&window, &theme_manager, &update_notice);
     let settings_layer: Rc<RefCell<Option<gtk::Box>>> = Rc::new(RefCell::new(None));
     let ensure_settings_layer = {
-        let browser = browser.clone();
         let settings_button = settings.clone();
         let blurred = blurred_root.clone();
         let themes = theme_manager.clone();
@@ -471,7 +480,6 @@ fn present_target(
                 return layer;
             }
             let layer = super::settings::build_layer(
-                &browser,
                 &settings_button,
                 &blurred,
                 themes.clone(),
@@ -681,12 +689,6 @@ fn animate_sidebar(
 }
 
 /// Apply saved activation before Settings is opened, including in the file chooser.
-pub(super) fn apply_click_activation(view: &BrowserView, preferences: &super::theme::ThemeManager) {
-    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
-        view.set_click_activation(mode, preferences.click_activation(mode));
-    }
-}
-
 fn install_keyboard_navigation(
     window: &gtk::ApplicationWindow,
     view: &BrowserView,
@@ -1418,17 +1420,16 @@ pub(super) fn build_appearance_menu(
         current_mode.supports_type_grouping(),
     );
     group_by_type.set_tooltip_text(Some("Group List entries under file-type headings"));
+    preferences.bind_preference(
+        &group_check,
+        ThemeManager::group_by_type,
+        |widget, enabled| widget.set_visible(enabled),
+    );
     {
-        let view = view.clone();
         let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
-        let grouped = Cell::new(grouped);
         group_by_type.connect_clicked(move |_| {
-            let enabled = !grouped.get();
-            grouped.set(enabled);
-            view.set_group_by_type(enabled);
-            preferences.set_group_by_type(enabled);
-            group_check.set_visible(enabled);
+            preferences.set_group_by_type(!preferences.group_by_type());
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
@@ -1483,30 +1484,31 @@ pub(super) fn build_appearance_menu(
         current_density == BrowserDensity::Airy,
         true,
     );
+    preferences.bind_preference(
+        &compact_check,
+        ThemeManager::browser_density,
+        |widget, density| widget.set_visible(density == BrowserDensity::Compact),
+    );
+    preferences.bind_preference(
+        &airy_check,
+        ThemeManager::browser_density,
+        |widget, density| widget.set_visible(density == BrowserDensity::Airy),
+    );
     {
-        let view = view.clone();
-        let compact_check = compact_check.clone();
-        let airy_check = airy_check.clone();
         let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
         compact.connect_clicked(move |_| {
-            view.set_density(BrowserDensity::Compact);
             preferences.set_browser_density(BrowserDensity::Compact);
-            compact_check.set_visible(true);
-            airy_check.set_visible(false);
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
         });
     }
     {
-        let view = view.clone();
+        let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
         airy.connect_clicked(move |_| {
-            view.set_density(BrowserDensity::Airy);
             preferences.set_browser_density(BrowserDensity::Airy);
-            compact_check.set_visible(false);
-            airy_check.set_visible(true);
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
@@ -1554,7 +1556,7 @@ pub(super) fn build_appearance_menu(
     content.append(&hidden);
 
     popover.set_child(Some(&content));
-    let icon = crate::assets::primary_icon(crate::assets::icons::LIST, 20);
+    let icon = crate::assets::chrome_icon(crate::assets::icons::LIST);
     button.set_child(Some(&icon));
     button.add_css_class("header-action");
     button.connect_active_notify(move |button| {
@@ -3004,6 +3006,21 @@ pub(super) fn build_sidebar(
         trash_probe_pending: Cell::new(false),
         local_only,
     });
+
+    let weak = Rc::downgrade(&state);
+    state.theme_manager.bind_preference(
+        &state.widget,
+        ThemeManager::sidebar_order,
+        move |_, order| {
+            if let Some(state) = weak.upgrade() {
+                let order = resolve_place_order(&order);
+                if *state.place_order.borrow() != order {
+                    state.place_order.replace(order);
+                    state.rebuild();
+                }
+            }
+        },
+    );
 
     let weak = Rc::downgrade(&state);
     state.browser.observe(move |event| {

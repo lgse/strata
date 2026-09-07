@@ -231,7 +231,7 @@ impl ViewState {
             "Close",
         );
         if let Some(path) = location.native_path() {
-            crate::ui::thumbnail::show_customized_icon(&layout.icon, path, icon_name, 21);
+            crate::ui::thumbnail::show_customized_icon_image(&layout.icon, path, icon_name, 21);
         }
         layout.content.add_css_class("properties-content");
         layout.title.set_max_width_chars(44);

@@ -524,7 +524,7 @@ impl ViewState {
             .hexpand(true)
             .build();
         filter_entry.add_css_class("column-filter-entry");
-        let filter_icon = crate::assets::primary_icon(crate::assets::icons::FUNNEL, 16);
+        let filter_icon = crate::assets::chrome_icon(crate::assets::icons::FUNNEL);
         let filter_control = gtk::Box::new(gtk::Orientation::Horizontal, 7);
         filter_control.add_css_class("column-filter");
         filter_control.append(&filter_icon);
@@ -536,9 +536,8 @@ impl ViewState {
         let filter_button = gtk::ToggleButton::builder()
             .tooltip_text("Filter this pane (Ctrl+F)")
             .build();
-        filter_button.set_child(Some(&crate::assets::primary_icon(
+        filter_button.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::FUNNEL,
-            16,
         )));
         filter_button.add_css_class("column-header-action");
         let shown_filter = filter_revealer.clone();
@@ -556,10 +555,7 @@ impl ViewState {
             let close = gtk::Button::builder()
                 .tooltip_text("Close this pane")
                 .build();
-            close.set_child(Some(&crate::assets::primary_icon(
-                crate::assets::icons::X,
-                16,
-            )));
+            close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
             close.add_css_class("column-header-action");
             let weak_browser = Rc::downgrade(&self.browser);
             close.connect_clicked(move |_| {

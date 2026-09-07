@@ -61,9 +61,8 @@ fn peek_label_factory(entries: Rc<RefCell<Vec<FileEntry>>>) -> gtk::SignalListIt
         };
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.add_css_class("file-row");
-        let icon = gtk::Image::new();
+        let icon = crate::ui::thumbnail::ThumbnailSlot::new(17);
         icon.add_css_class("file-icon");
-        icon.set_pixel_size(17);
         let label = gtk::Label::builder()
             .halign(gtk::Align::Start)
             .hexpand(true)
@@ -86,7 +85,10 @@ fn peek_label_factory(entries: Rc<RefCell<Vec<FileEntry>>>) -> gtk::SignalListIt
         let Some(row) = item.child().and_downcast::<gtk::Box>() else {
             return;
         };
-        let Some(icon) = row.first_child().and_downcast::<gtk::Image>() else {
+        let Some(icon) = row
+            .first_child()
+            .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
+        else {
             return;
         };
         let Some(label) = icon.next_sibling().and_downcast::<gtk::Label>() else {

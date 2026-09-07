@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod preferences;
 mod type_to_search;
 
 use std::{cell::Cell, path::Path};
@@ -35,7 +36,7 @@ fn startup_applies_disabled_single_click_previews_before_the_first_click() {
         || {
             let manager = ThemeManager::shared();
             manager.set_single_click_previews(false);
-            let browser = browser_for_window(&manager);
+            let browser = browser_for_window();
             assert!(!browser.single_click_previews_enabled());
         },
     );
@@ -908,6 +909,19 @@ fn the_bundled_stylesheet_only_uses_at_rules_gtk_parses() {
     assert!(
         unsupported.is_empty(),
         "the stylesheet uses at-rules GTK 4.12 cannot parse: {unsupported:?}"
+    );
+}
+
+#[test]
+fn chrome_stylesheet_requests_header_bar_icon_size() {
+    let css = include_str!("../../style.css");
+    assert!(
+        css.contains("headerbar image {\n  -gtk-icon-size: 16px;"),
+        "header-bar icons must use GTK's compact 16px size, not large/app sizes"
+    );
+    assert!(
+        !css.contains("-gtk-icon-size: 20px;"),
+        "20px chrome icon size regresses XFCE toolbar density"
     );
 }
 

@@ -13,11 +13,24 @@ checks both what the window reports and what happened on disk.
 ./scripts/e2e.sh -k "clipboard and columns"
 ```
 
-The script builds the debug binary, creates a virtual environment under
-`target/e2e-venv` on first use, and runs the same command CI runs. CI sets
-`STRATA_E2E_VENV` under the runner's temporary directory so Rust artifact-cache
-cleanup cannot strip Python dependencies. Set `STRATA_BINARY` to test a binary
-you built yourself.
+Docker is required by default. For rootless Podman, set
+`STRATA_CONTAINER_ENGINE=podman`. The script builds and runs the same image
+locally and in CI, using `tests/e2e/Dockerfile`: a digest-pinned Ubuntu 24.04
+base, a dated Ubuntu package snapshot (GTK 4.14 and fonts), Rust 1.98.1, and
+pinned Python dependencies. No host GTK libraries, fonts, desktop sockets, or
+Rust binaries are mounted into the container.
+
+The checkout is mounted at `/workspace`; pass test paths relative to the
+repository. Build and Cargo caches live in `target/e2e-container`, separately
+from native builds. Artifacts remain in `target/e2e-artifacts` and are owned by
+the invoking user. The image adds an account for the invoking UID/GID because
+D-Bus requires an account entry; this does not change the rendering packages.
+Updating the image inputs is an intentional rendering
+environment change and requires reviewing the visual baselines.
+
+For explicit host-toolkit debugging only, `./scripts/e2e-native.sh` accepts
+`STRATA_BINARY` and `STRATA_E2E_VENV`. It is not the pre-push E2E gate; a native
+pass does not replace `./scripts/e2e.sh`.
 
 ### Keep Rust test windows off the local desktop
 
@@ -35,7 +48,10 @@ toolchains, and disables accessibility bridging for Rust tests. A startup failur
 aborts; it never falls back to the real display.
 The E2E runner likewise clears inherited display variables before startup.
 
-### Dependencies
+### Native debugging dependencies
+
+These are installed inside the canonical image; only native debugging needs
+them on the host.
 
 | Purpose | Arch | Debian / Ubuntu |
 | --- | --- | --- |
@@ -72,7 +88,8 @@ software GL, `GDK_SCALE=1`, the Adwaita theme and icon theme, Cantarell 11,
 Application preferences and file operations use only the scenario's temporary
 HOME/XDG directories and fixtures. Both are created under `/tmp` so trash
 capabilities do not vary when the caller's `TMPDIR` is on another filesystem. System libraries, fonts, and icon assets are
-shared; desktop endpoints and user configuration overrides are not inherited.
+provided by the container; desktop endpoints and user configuration overrides
+are not inherited.
 
 ## Writing a scenario
 
@@ -152,12 +169,11 @@ in the test output, and CI uploads the whole directory. Pass
 ## Visual baselines
 
 `tests/e2e/scenarios/test_visual_baselines.py` compares a small set of stable
-states with the images in `tests/e2e/baselines/gtk-<major>.<minor>`: one canonical
-fixture in each view, a selection with focus, an open context menu, and a
-confirmation dialog. GTK 4.14 (Ubuntu 24.04 CI) and GTK 4.22 have separately
-reviewed baselines because icon sizing, text metrics, and popup layout differ
-between toolkit versions. The harness selects the installed GTK profile; a
-missing profile fails rather than silently accepting a different renderer.
+states with the images in `tests/e2e/baselines/gtk-4.14`: one canonical fixture
+in each view, a selection with focus, an open context menu, and a confirmation
+dialog. Local and CI runs use this one rendering profile. Other host GTK
+versions do not have separate baselines; native baseline runs fail rather than
+silently accepting a different renderer.
 These scenarios exclusively claim `/tmp/strata-e2e-baseline`, because the
 breadcrumb and context menu render the full path. An existing directory or
 symlink is a setup error, never deleted or reused; concurrent baseline runs
@@ -198,7 +214,7 @@ a workflow that does not have a mutation yet.
 
 ## In CI
 
-The `e2e` job in `.github/workflows/ci.yml` installs the packages above, builds
-the debug binary with the shared Rust cache, and runs the suite serially with a
-per-test and a whole-job timeout. The infrastructure start-up is retried once;
+The `e2e` job in `.github/workflows/ci.yml` invokes `./scripts/e2e.sh`, just
+like a local run. It does not separately install GTK or build a host binary.
+The suite runs serially with a per-test and a whole-job timeout. The infrastructure start-up is retried once;
 a failed interaction assertion never is. Artifacts are uploaded on failure.

@@ -249,7 +249,7 @@ pub(super) struct Page {
 ///
 /// GridView's `scroll_to` uses estimated cell sizes, which lag behind a thumbnail
 /// resize or a preview split changing the column count. Pixel-scroll the viewport
-/// instead. List views and grouped stacks still scroll by item or by distance.
+/// instead. List views still scroll by item or by distance.
 pub(super) fn reveal_selection(
     view: &gtk::Widget,
     scroll: &gtk::ScrolledWindow,

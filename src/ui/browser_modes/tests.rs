@@ -1,14 +1,37 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::{
-    BrowserMode, ClickActivation, ClickCount, LIST_COLUMN_MIN_WIDTHS, LIST_COLUMN_WIDTHS,
-    MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, SourceIndexMap, compare_type_groups,
-    icons_card_extent, icons_card_icon_slot, list_column_width, metadata_fill_position,
-    scroll_delta_for_unit, should_activate_pointer_click, type_groups_of, value_type_group,
+    BrowserDensity, BrowserMode, ClickActivation, ClickCount, LIST_COLUMN_MIN_WIDTHS,
+    LIST_COLUMN_WIDTHS, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, SourceIndexMap,
+    compare_type_groups, icons_card_extent, icons_card_icon_slot, list_column_width,
+    metadata_fill_position, scroll_delta_for_unit, should_activate_pointer_click,
+    type_group_sorter, type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
+use crate::test_support::gtk_test;
 use gtk::{gio, prelude::*};
+use std::collections::HashSet;
+use std::path::PathBuf;
 use std::process::Command;
+
+impl super::ModeViews {
+    pub(in crate::ui) fn assert_saved_preferences(&self, manager: &crate::ui::theme::ThemeManager) {
+        assert_eq!(self.density, manager.browser_density());
+        assert_eq!(self.group_by_type, manager.group_by_type());
+        assert_eq!(
+            self.single_click_previews.get(),
+            manager.single_click_previews()
+        );
+        assert_eq!(
+            self.icons_click_activation.get(),
+            manager.click_activation(BrowserMode::Icons)
+        );
+        assert_eq!(
+            self.list_click_activation.get(),
+            manager.click_activation(BrowserMode::List)
+        );
+    }
+}
 
 /// Model values as the panes store them: kind, hidden flag, then the display name.
 fn value(kind: char, name: &str) -> String {
@@ -116,6 +139,148 @@ fn icons_cards_keep_a_uniform_icon_slot_and_two_line_label() {
 }
 
 #[test]
+fn icons_columns_follow_viewport_width() {
+    assert_eq!(
+        super::icons_columns_for_width(800, 160, BrowserDensity::Compact),
+        5
+    );
+    assert_eq!(
+        super::icons_columns_for_width(160, 160, BrowserDensity::Compact),
+        1
+    );
+    assert_eq!(
+        super::icons_columns_for_width(80, 160, BrowserDensity::Compact),
+        1
+    );
+    assert_eq!(
+        super::icons_columns_for_width(8000, 160, BrowserDensity::Compact),
+        20
+    );
+    assert_eq!(
+        super::icons_columns_for_width(8000, 160, BrowserDensity::Airy),
+        16
+    );
+}
+
+#[test]
+fn pinning_icons_columns_leaves_min_at_one() {
+    gtk_test(
+        "ui::browser_modes::tests::pinning_icons_columns_leaves_min_at_one",
+        || {
+            let grid = gtk::GridView::new(
+                Some(gtk::NoSelection::new(Some(gtk::StringList::new(&["a"])))),
+                Some(gtk::SignalListItemFactory::new()),
+            );
+            grid.set_min_columns(1);
+            grid.set_max_columns(12);
+            super::pin_ungrouped_grid_columns(&grid, 4);
+            assert_eq!(grid.min_columns(), 1);
+            assert_eq!(grid.max_columns(), 4);
+        },
+    );
+}
+
+#[test]
+fn ungrouped_icons_reflow_when_the_preview_split_closes() {
+    gtk_test(
+        "ui::browser_modes::tests::ungrouped_icons_reflow_when_the_preview_split_closes",
+        || {
+            let names: Vec<String> = (0..24).map(|index| format!("item-{index}")).collect();
+            let labels: Vec<&str> = names.iter().map(String::as_str).collect();
+            let factory = gtk::SignalListItemFactory::new();
+            factory.connect_setup(|_, item| {
+                let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
+                    return;
+                };
+                let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                card.set_size_request(80, 80);
+                item.set_child(Some(&card));
+            });
+            let grid = gtk::GridView::new(
+                Some(gtk::NoSelection::new(Some(gtk::StringList::new(&labels)))),
+                Some(factory),
+            );
+            grid.set_min_columns(1);
+            grid.set_max_columns(20);
+            grid.set_hexpand(true);
+            grid.set_vexpand(true);
+            let scroll = gtk::ScrolledWindow::builder()
+                .child(&grid)
+                .hscrollbar_policy(gtk::PolicyType::Automatic)
+                .hexpand(true)
+                .vexpand(true)
+                .build();
+            let grid_for_pin = grid.clone();
+            super::after_icons_viewport_width_changes(&scroll, move |width| {
+                super::pin_ungrouped_grid_columns(
+                    &grid_for_pin,
+                    super::icons_columns_for_width(width, 80, BrowserDensity::Compact),
+                );
+            });
+            let preview = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            preview.set_size_request(360, -1);
+            let split = gtk::Paned::new(gtk::Orientation::Horizontal);
+            split.set_resize_start_child(true);
+            split.set_resize_end_child(false);
+            split.set_shrink_start_child(false);
+            split.set_shrink_end_child(true);
+            split.set_start_child(Some(&scroll));
+            let window = gtk::Window::builder()
+                .default_width(900)
+                .default_height(400)
+                .child(&split)
+                .build();
+            window.present();
+            drain_gtk();
+            let open = first_row_columns(&grid);
+            split.set_end_child(Some(&preview));
+            drain_gtk();
+            let with_preview = first_row_columns(&grid);
+            split.set_end_child(None::<&gtk::Widget>);
+            drain_gtk();
+            let closed = first_row_columns(&grid);
+            window.close();
+            assert!(
+                with_preview < open,
+                "opening the preview pane should drop columns ({with_preview} with preview, {open} open)"
+            );
+            assert_eq!(
+                closed, open,
+                "closing the preview pane should restore the grid ({closed} after close, {open} before preview)"
+            );
+        },
+    );
+}
+
+fn drain_gtk() {
+    let context = gtk::glib::MainContext::default();
+    for _ in 0..64 {
+        while context.iteration(false) {}
+        std::thread::sleep(std::time::Duration::from_millis(4));
+    }
+}
+
+fn first_row_columns(view: &impl IsA<gtk::Widget>) -> usize {
+    let view = view.as_ref();
+    let mut tops = Vec::new();
+    let mut child = view.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        let Some(bounds) = widget.compute_bounds(view) else {
+            continue;
+        };
+        if bounds.height() <= 0.0 {
+            continue;
+        }
+        tops.push(bounds.y().round() as i32);
+    }
+    let Some(min_y) = tops.iter().copied().min() else {
+        return 0;
+    };
+    tops.iter().filter(|y| (*y - min_y).abs() <= 1).count()
+}
+
+#[test]
 fn icons_scroll_maps_a_wheel_notch_from_page_size() {
     let wheel = scroll_delta_for_unit(1.0, 1000.0, gtk::gdk::ScrollUnit::Wheel);
     assert!((wheel - 100.0).abs() < 1e-9);
@@ -170,6 +335,45 @@ fn entries_of_one_type_share_a_group() {
     assert_ne!(
         value_type_group(&value('f', "notes.md")),
         value_type_group(&value('f', "notes.json"))
+    );
+}
+
+#[test]
+fn type_group_sorter_clusters_mime_types_and_keeps_source_order_inside_a_group() {
+    gtk_test(
+        "ui::browser_modes::tests::type_group_sorter_clusters_mime_types_and_keeps_source_order_inside_a_group",
+        || {
+            let source = gtk::StringList::new(&[
+                &value('f', "notes.json"),
+                &value('d', "projects"),
+                &value('f', "data.json"),
+                &value('f', "readme.md"),
+            ]);
+            let sorted = gtk::SortListModel::new(Some(source), Some(type_group_sorter()));
+            let names: Vec<String> = (0..sorted.n_items())
+                .filter_map(|index| {
+                    let value = sorted.item(index)?.downcast::<gtk::StringObject>().ok()?;
+                    Some(
+                        value
+                            .string()
+                            .split_once('\t')
+                            .map(|(_, name)| name.to_string())
+                            .unwrap_or_default(),
+                    )
+                })
+                .collect();
+            assert_eq!(names.first().map(String::as_str), Some("projects"));
+            let json: Vec<_> = names
+                .iter()
+                .enumerate()
+                .filter(|(_, name)| name.ends_with(".json"))
+                .collect();
+            assert_eq!(json.len(), 2);
+            assert_eq!(json[1].0, json[0].0 + 1, "same type stays together");
+            assert_eq!(json[0].1.as_str(), "notes.json");
+            assert_eq!(json[1].1.as_str(), "data.json");
+            assert!(names.iter().any(|name| name == "readme.md"));
+        },
     );
 }
 
@@ -308,6 +512,66 @@ fn source_index_map_tracks_filter_sort_and_placeholder() {
         .status()
         .expect("isolated GTK mapping test should start");
     assert!(status.success(), "isolated GTK mapping test failed");
+}
+
+#[test]
+fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
+    gtk_test(
+        "ui::browser_modes::tests::icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome",
+        || {
+            crate::ui::theme::ThemeManager::shared();
+            crate::ui::thumbnail::hold_thumbnail_workers();
+            let path = PathBuf::from("/fixture/icons-scroll.png");
+            let entry = FileEntry {
+                location: Location::local(&path),
+                thumbnail_path: None,
+                native_name: "icons-scroll.png".into(),
+                display_name: "icons-scroll.png".into(),
+                kind: EntryKind::File,
+                size: MetadataValue::Known(1),
+                modified_unix_seconds: MetadataValue::Known(1),
+                mode: MetadataValue::Known(0o100644),
+                is_hidden: false,
+            };
+            let card = crate::ui::icons_cell::new_card(64);
+            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, true);
+            assert!(crate::ui::icons_cell::rename_field(&card).is_none());
+            let (icon, label) = crate::ui::icons_cell::parts(&card).expect("icons card");
+            assert!(label.tooltip_text().is_none());
+            assert!(!card.has_css_class("cut"));
+            let context = gtk::glib::MainContext::default();
+            for _ in 0..64 {
+                if !context.iteration(false) {
+                    break;
+                }
+            }
+            assert!(
+                !crate::ui::thumbnail::has_pending_thumbnail(&path),
+                "scrolling bind must not enqueue thumbnail work"
+            );
+            crate::ui::thumbnail::set_thumbnail_or_icon(
+                &icon,
+                &entry,
+                crate::assets::icons::PICTURES,
+                64,
+                64,
+            );
+            for _ in 0..64 {
+                if !context.iteration(false) {
+                    break;
+                }
+            }
+            assert!(crate::ui::thumbnail::has_pending_thumbnail(&path));
+            let job = crate::ui::thumbnail::pending_thumbnail_id(&path);
+            let mut cuts = HashSet::new();
+            cuts.insert(entry.location.clone());
+            super::refresh_icons_card_chrome(None, &card, &icon, &label, &entry, &cuts);
+            assert_eq!(label.tooltip_text().as_deref(), Some("icons-scroll.png"));
+            assert!(card.has_css_class("cut"));
+            assert_eq!(crate::ui::thumbnail::pending_thumbnail_id(&path), job);
+            crate::ui::thumbnail::clear_thumbnail_runtime();
+        },
+    );
 }
 
 mod column_widths;
