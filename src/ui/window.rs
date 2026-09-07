@@ -2009,6 +2009,7 @@ impl SidebarState {
         self.apply_trash_menu_visibility();
         self.watch_trash();
         self.refresh_trash_contents();
+        self.view.set_trash_button(row.clone());
         let popover = gtk::Popover::builder()
             .child(&menu)
             .autohide(true)

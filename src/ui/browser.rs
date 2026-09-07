@@ -34,6 +34,7 @@ mod desktop;
 mod destination;
 mod entry;
 mod events;
+mod fly_to_trash;
 mod inline_edit;
 mod location;
 mod pane_header;
@@ -175,6 +176,7 @@ pub(super) struct ViewState {
     pending_empty_trash: RefCell<Option<LoadHandle>>,
     trash_loading: RefCell<Option<TrashLoadingView>>,
     auto_refresh: RefCell<Option<glib::SourceId>>,
+    trash_button: RefCell<Option<gtk::Button>>,
     browser: Rc<Browser>,
 }
 
@@ -352,6 +354,7 @@ impl BrowserView {
             pending_empty_trash: RefCell::new(None),
             trash_loading: RefCell::new(None),
             auto_refresh: RefCell::new(None),
+            trash_button: RefCell::new(None),
             browser,
         });
 
@@ -482,6 +485,10 @@ impl BrowserView {
 
     pub fn set_operation_provider(&self, provider: Rc<dyn OperationProvider>) {
         self.state.browser.set_operation_provider(provider);
+    }
+
+    pub fn set_trash_button(&self, button: gtk::Button) {
+        self.state.trash_button.replace(Some(button));
     }
 
     pub fn begin_rename(&self) -> bool {

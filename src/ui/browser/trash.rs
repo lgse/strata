@@ -378,8 +378,24 @@ impl ViewState {
             self.show_delete_confirmation(entries);
         } else {
             self.pending_delete_entries.replace(entries.clone());
-            self.browser.delete(entries, false);
-            self.browser.focus_active();
+            let weak = Rc::downgrade(self);
+            let entries_for_anim = Rc::new(entries.clone());
+            let run_delete = move || {
+                if let Some(state) = weak.upgrade() {
+                    state.browser.delete((*entries_for_anim).clone(), false);
+                    state.browser.focus_active();
+                }
+            };
+            if let Some(trash_button) = self.trash_button.borrow().as_ref() {
+                super::fly_to_trash::fly_to_trash(
+                    self.overlay.upcast_ref(),
+                    &entries,
+                    trash_button,
+                    run_delete,
+                );
+            } else {
+                run_delete();
+            }
         }
     }
 
