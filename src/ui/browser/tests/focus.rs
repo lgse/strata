@@ -14,6 +14,127 @@ fn wait_until(condition: impl Fn() -> bool) {
     }
 }
 
+fn assert_column_header_actions(view: &BrowserView, active_depth: usize) {
+    for (depth, column) in view.state.columns.borrow().iter().enumerate() {
+        assert_eq!(
+            column.header_actions.is_child_visible(),
+            depth == active_depth
+        );
+    }
+}
+
+#[test]
+fn filter_follows_latest_pointer_or_keyboard_target() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::filter_follows_latest_pointer_or_keyboard_target",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            std::fs::create_dir(fixture.path().join("Child")).expect("child folder");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(900)
+                .default_height(500)
+                .build();
+            window.present();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            browser.select(0, 0);
+            view.state.hovered_column.set(Some(0));
+            view.state.pointer_navigation();
+            browser.enter_focused_directory();
+            assert_eq!(view.state.hovered_column.get(), Some(0));
+            assert_column_header_actions(&view, 0);
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+            browser.focus_active();
+            assert_eq!(view.state.focused_column_depth(), Some(1));
+            assert_eq!(view.state.hovered_column.get(), Some(0));
+            assert_column_header_actions(&view, 0);
+
+            assert!(view.show_filter());
+            assert_eq!(view.state.focused_column_depth(), Some(0));
+            assert!(view.filter_has_focus());
+            assert!(view.state.columns.borrow()[0].filter_button.is_active());
+            assert!(!view.state.columns.borrow()[1].filter_button.is_active());
+            assert_column_header_actions(&view, 0);
+            assert!(view.dismiss_focused_filter());
+
+            browser.set_active_column(1);
+            browser.focus_active();
+            view.keyboard_navigation();
+            assert_eq!(view.state.hovered_column.get(), Some(0));
+            assert!(view.show_filter());
+            assert_eq!(view.state.focused_column_depth(), Some(1));
+            assert!(view.filter_has_focus());
+            assert!(!view.state.columns.borrow()[0].filter_button.is_active());
+            assert!(view.state.columns.borrow()[1].filter_button.is_active());
+            assert_column_header_actions(&view, 1);
+            window.close();
+        },
+    );
+}
+
+#[test]
+fn hovering_another_column_preserves_keyboard_navigation_from_header() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::hovering_another_column_preserves_keyboard_navigation_from_header",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            std::fs::create_dir(fixture.path().join("Child")).expect("child folder");
+            std::fs::write(fixture.path().join("Child/item.txt"), "item").expect("file");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(900)
+                .default_height(500)
+                .build();
+            window.present();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            browser.select(0, 0);
+            browser.enter_focused_directory();
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+            browser.select(1, 0);
+            browser.focus_active();
+            view.keyboard_navigation();
+            assert!(view.focus_header_from_top_item());
+            assert!(view.header_actions_have_focus());
+            assert!(view.move_header_focus(gtk::DirectionType::Left));
+            assert_eq!(view.state.focused_column_depth(), Some(0));
+            assert_column_header_actions(&view, 0);
+            for _ in 0..12 {
+                if view.state.focused_column_depth() == Some(1) {
+                    break;
+                }
+                assert!(view.move_header_focus(gtk::DirectionType::Right));
+            }
+            assert_eq!(view.state.focused_column_depth(), Some(1));
+            assert_column_header_actions(&view, 1);
+
+            view.state.hovered_column.set(Some(0));
+            view.state.pointer_navigation();
+            assert_column_header_actions(&view, 0);
+            assert!(
+                view.item_view_has_focus(),
+                "hiding focused actions must return focus to the file list"
+            );
+            assert!(!view.filter_has_focus());
+            view.keyboard_navigation();
+            assert_column_header_actions(&view, 1);
+            assert!(view.item_view_has_focus());
+            window.close();
+        },
+    );
+}
+
 fn press_column_background(view: &BrowserView, depth: usize) {
     let surface = view.state.columns.borrow()[depth]
         .presentation
@@ -72,13 +193,36 @@ fn background_and_header_clicks_focus_and_reveal_without_changing_selection() {
                         .is_some_and(|s| !s.loading)
                 });
             }
+            assert_column_header_actions(&view, 2);
+            let widths = || {
+                view.state
+                    .columns
+                    .borrow()
+                    .iter()
+                    .map(|column| column.shell.measure(gtk::Orientation::Horizontal, -1))
+                    .collect::<Vec<_>>()
+            };
+            let initial_widths = widths();
+            for hovered in [Some(0), Some(1), None] {
+                view.state.hovered_column.set(hovered);
+                view.state.pointer_navigation();
+                assert_column_header_actions(&view, hovered.unwrap_or(2));
+                assert_eq!(widths(), initial_widths);
+                assert_eq!(browser.active_depth(), Some(2));
+                view.keyboard_navigation();
+                assert_column_header_actions(&view, 2);
+                view.state.pointer_navigation();
+                assert_column_header_actions(&view, hovered.unwrap_or(2));
+            }
+            view.state.rebuild_columns();
+            assert_column_header_actions(&view, 2);
             let adjustment = view.state.scroller.hadjustment();
             wait_until(|| adjustment.value() > 100.0);
             for header in [false, true] {
                 for depth in [0, 2, 1] {
                     if header {
                         let surface = view.state.columns.borrow()[depth]
-                            .header_actions
+                            .header_actions_stack
                             .parent()
                             .expect("column header");
                         let gesture = background_gesture(&surface);
@@ -91,6 +235,7 @@ fn background_and_header_clicks_focus_and_reveal_without_changing_selection() {
                     }
                     assert_eq!(browser.active_depth(), Some(depth));
                     assert_eq!(view.state.focused_column_depth(), Some(depth));
+                    assert_column_header_actions(&view, depth);
                     assert_eq!(browser.selected_positions(0), [0]);
                     assert_eq!(browser.selected_positions(1), [0]);
                     assert!(browser.selected_positions(2).is_empty());
@@ -313,6 +458,7 @@ fn pane_ownership_routes_commands_and_preserves_selection() {
     );
 
     browser.focus_parent();
+    assert_column_header_actions(&view, 0);
     view.select_all();
     assert_eq!(browser.selected_positions(0), [0, 1, 2]);
     press_column_background(&view, 1);
@@ -340,11 +486,13 @@ fn pane_ownership_routes_commands_and_preserves_selection() {
     view.state.hovered_column.set(Some(0));
     view.state.refresh_destination_style();
     assert_eq!(view.state.destination_depth(), Some(0));
+    assert_column_header_actions(&view, 0);
     assert_eq!(
         view.state.columns.borrow()[0].destination_hint.text(),
         "Pointer · Paste here"
     );
     view.keyboard_navigation();
+    assert_column_header_actions(&view, 1);
     wait_until(|| {
         browser
             .column_snapshot(1)
