@@ -1394,6 +1394,7 @@ pub(super) fn build_appearance_menu(
     let popover_weak = popover.downgrade();
     append_menu_heading(&content, "VIEW");
     let current_mode = view.view_mode();
+    let button_icon = crate::assets::chrome_icon(browser_mode_icon(current_mode));
     let (columns, columns_check, _) = appearance_option(
         crate::assets::icons::COLUMNS,
         "Columns",
@@ -1457,11 +1458,13 @@ pub(super) fn build_appearance_menu(
         let icons_check = icons_check.clone();
         let list_check = list_check.clone();
         let group_by_type = group_by_type.clone();
+        let button_icon = button_icon.clone();
         view.connect_view_mode_changed(move |mode| {
             columns_check.set_visible(mode == BrowserMode::Columns);
             icons_check.set_visible(mode == BrowserMode::Icons);
             list_check.set_visible(mode == BrowserMode::List);
             group_by_type.set_sensitive(mode.supports_type_grouping());
+            crate::assets::set_primary_icon(&button_icon, browser_mode_icon(mode));
         });
     }
     content.append(&columns);
@@ -1556,20 +1559,17 @@ pub(super) fn build_appearance_menu(
     content.append(&hidden);
 
     popover.set_child(Some(&content));
-    let icon = crate::assets::chrome_icon(crate::assets::icons::LIST);
-    button.set_child(Some(&icon));
+    button.set_child(Some(&button_icon));
     button.add_css_class("header-action");
-    button.connect_active_notify(move |button| {
-        crate::assets::set_primary_icon(
-            &icon,
-            if button.is_active() {
-                crate::assets::icons::LIST_ACTIVE
-            } else {
-                crate::assets::icons::LIST
-            },
-        );
-    });
     button
+}
+
+fn browser_mode_icon(mode: BrowserMode) -> &'static str {
+    match mode {
+        BrowserMode::Columns => crate::assets::icons::COLUMNS,
+        BrowserMode::Icons => crate::assets::icons::ICONS,
+        BrowserMode::List => crate::assets::icons::LIST,
+    }
 }
 
 fn appearance_option(
