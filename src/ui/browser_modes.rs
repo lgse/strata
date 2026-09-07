@@ -1518,19 +1518,15 @@ fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButt
     entry.add_css_class("column-filter-entry");
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
     row.add_css_class("column-filter");
-    row.append(&crate::assets::primary_icon(
-        crate::assets::icons::FUNNEL,
-        16,
-    ));
+    row.append(&crate::assets::chrome_icon(crate::assets::icons::FUNNEL));
     row.append(&entry);
     let revealer = gtk::Revealer::builder()
         .transition_type(gtk::RevealerTransitionType::SlideDown)
         .child(&row)
         .build();
     let button = gtk::ToggleButton::builder().tooltip_text(tooltip).build();
-    button.set_child(Some(&crate::assets::primary_icon(
+    button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::FUNNEL,
-        16,
     )));
     button.add_css_class("column-header-action");
     let shown_filter = revealer.clone();
@@ -1595,9 +1591,8 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
         .build();
     thumbnail_menu.add_css_class("column-header-action");
     thumbnail_menu.add_css_class("icons-thumbnail-menu");
-    thumbnail_menu.set_child(Some(&crate::assets::primary_icon(
+    thumbnail_menu.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::PICTURES,
-        16,
     )));
     let empty_trash = super::browser::empty_trash_button(browser);
     let is_trash = browser
@@ -2522,7 +2517,7 @@ fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
             .tooltip_text(tooltip)
             .sensitive(available)
             .build();
-        button.set_child(Some(&crate::assets::primary_icon(icon, 16)));
+        button.set_child(Some(&crate::assets::chrome_icon(icon)));
         button.add_css_class("list-navigation-button");
         let weak_browser = Rc::downgrade(browser);
         button.connect_clicked(move |_| {

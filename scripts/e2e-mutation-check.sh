@@ -36,7 +36,7 @@ if [[ -n "${STRATA_BINARY:-}" ]]; then
 fi
 
 cd "$repository"
-reports="$repository/target/e2e-mutations"
+reports="target/e2e-mutations"
 mkdir -p "$reports"
 
 restore() {
@@ -56,24 +56,18 @@ for name in "${selected[@]}"; do
   fi
 
   echo "== $name: checking the unmodified scenario"
-  "$repository/scripts/e2e.sh" -q "$repository/$scenario" >"$reports/$name-baseline.log" 2>&1 || {
+  "$repository/scripts/e2e.sh" -q "$scenario" >"$reports/$name-baseline.log" 2>&1 || {
     echo "   baseline failed; see $reports/$name-baseline.log" >&2
     exit 1
   }
 
   echo "== $name: applying $patch"
   git -C "$repository" apply -p1 "$patch"
-  if ! cargo build --manifest-path "$repository/Cargo.toml" --bin strata >/dev/null; then
-    echo "   the mutated tree does not build" >&2
-    restore
-    exit 1
-  fi
-
   echo "== $name: expecting $scenario to fail"
   report="$reports/$name.xml"
   rm -f "$report"
   result=0
-  "$repository/scripts/e2e.sh" -q -x --junitxml="$report" "$repository/$scenario" \
+  "$repository/scripts/e2e.sh" -q -x --junitxml="$report" "$scenario" \
     >"$reports/$name.log" 2>&1 || result=$?
   if python3 "$repository/scripts/e2e_mutation_result.py" "$report" "$result"; then
     echo "   detected"
@@ -83,8 +77,6 @@ for name in "${selected[@]}"; do
   fi
   restore
 done
-
-cargo build --manifest-path "$repository/Cargo.toml" --bin strata >/dev/null
 
 if ((failures)); then
   echo "$failures mutation(s) went undetected" >&2

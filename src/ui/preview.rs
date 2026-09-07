@@ -129,9 +129,8 @@ impl PreviewDrawer {
             .tooltip_text("Open in default application")
             .valign(gtk::Align::Center)
             .build();
-        open.set_child(Some(&crate::assets::primary_icon(
+        open.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::EXTERNAL_LINK,
-            16,
         )));
         open.add_css_class("preview-header-action");
         open.set_visible(allow_external_open);
@@ -139,9 +138,8 @@ impl PreviewDrawer {
             .tooltip_text("Print")
             .valign(gtk::Align::Center)
             .build();
-        print.set_child(Some(&crate::assets::primary_icon(
+        print.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::PRINTER,
-            16,
         )));
         print.add_css_class("preview-header-action");
         print.set_visible(false);
@@ -149,10 +147,7 @@ impl PreviewDrawer {
             .tooltip_text("Close preview (Space)")
             .valign(gtk::Align::Center)
             .build();
-        close.set_child(Some(&crate::assets::primary_icon(
-            crate::assets::icons::X,
-            16,
-        )));
+        close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
         close.add_css_class("preview-close");
         close.add_css_class("preview-header-action");
         let header_handle = gtk::Box::new(gtk::Orientation::Horizontal, 8);
