@@ -2339,6 +2339,10 @@ menubutton.column-header-action > button:active {
   color: @theme_text;
 }
 
+.properties-size-value {
+  font-variant-numeric: tabular-nums;
+}
+
 .properties-size-spinner {
   color: @theme_accent;
   min-width: 12px;

@@ -14,6 +14,28 @@ use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::Cell;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
+
+const SIZE_PROGRESS_INTERVAL: Duration = Duration::from_millis(150);
+
+#[derive(Default)]
+struct SizeProgressThrottle {
+    last_update: Cell<Option<Instant>>,
+}
+
+impl SizeProgressThrottle {
+    fn should_update(&self, now: Instant) -> bool {
+        if self
+            .last_update
+            .get()
+            .is_some_and(|last| now.duration_since(last) < SIZE_PROGRESS_INTERVAL)
+        {
+            return false;
+        }
+        self.last_update.set(Some(now));
+        true
+    }
+}
 
 fn properties_row(parent: &gtk::Box, label: &str, value: &str) -> gtk::Label {
     properties_row_with_suffix(parent, label, value, None)
@@ -34,7 +56,7 @@ fn properties_row_with_suffix(
     value.add_css_class("properties-row-value");
     value.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     value.set_max_width_chars(48);
-    value.set_hexpand(suffix.is_none());
+    value.set_hexpand(true);
     value.set_xalign(0.0);
     row.append(&label);
     row.append(&value);
@@ -43,6 +65,15 @@ fn properties_row_with_suffix(
     }
     parent.append(&row);
     value
+}
+
+fn properties_size_row(parent: &gtk::Box, value: &str, spinner: &gtk::Spinner) -> gtk::Label {
+    spinner.set_halign(gtk::Align::End);
+    let size = properties_row_with_suffix(parent, "SIZE", value, Some(spinner.upcast_ref()));
+    size.add_css_class("properties-size-value");
+    size.set_width_chars(16);
+    size.set_max_width_chars(16);
+    size
 }
 
 #[derive(Clone)]
@@ -283,12 +314,7 @@ impl ViewState {
         crate::ui::accessibility::set_label(&size_spinner, "Calculating folder size");
         size_spinner.set_spinning(measuring_directory);
         size_spinner.set_visible(measuring_directory);
-        let size = properties_row_with_suffix(
-            &details,
-            "SIZE",
-            &initial_size,
-            Some(size_spinner.upcast_ref()),
-        );
+        let size = properties_size_row(&details, &initial_size, &size_spinner);
         let modified = properties_row(&details, "MODIFIED", "—");
         crate::util::set_modified_date(&modified, entry.as_ref(), "—");
         let opens_with = properties_row(&details, "OPENS WITH", "—");
@@ -490,8 +516,12 @@ impl ViewState {
             let directory = gio_file_for_location(&location);
             let task = glib::MainContext::default().spawn_local(async move {
                 let progress_size = weak_size.clone();
+                let progress_throttle = SizeProgressThrottle::default();
                 let summary = summarize_directory_with_progress(&directory, move |total| {
-                    if let Some(size) = progress_size.upgrade() {
+                    if total > 0
+                        && progress_throttle.should_update(Instant::now())
+                        && let Some(size) = progress_size.upgrade()
+                    {
                         size.set_text(&format_file_size(total));
                     }
                 })
