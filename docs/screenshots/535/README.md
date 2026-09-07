@@ -30,6 +30,37 @@ xvfb-run -a env -u WAYLAND_DISPLAY -u DBUS_SESSION_BUS_ADDRESS \
   ui::chooser::tests::sizing::application_size_hint_survives_presentation_in_every_view
 ```
 
+## Monitor-centering follow-up
+
+`center-before.png` and `center-after.png` are actual Wayland captures from an
+isolated Hyprland 0.56.2 instance, not simulated positions. The before binary is
+from `4ad1ef9` (the sizing-only fix); the after binary includes the centering
+follow-up. Both ran against the same host GTK 4.22 toolkit.
+
+The 1920 × 1080 virtual monitor contained a 900 × 520 calling application at
+(20, 30). The fixture exported a real Wayland parent handle and made portal
+OpenFile, SaveFile, and SaveFiles requests on a private D-Bus session.
+
+- Before: the 720 × 460 chooser opened at (110, 60), centered on the caller.
+- After: it opened at (600, 310), centered on the monitor at (960, 540).
+- Size and transiency were preserved. OpenFile also passed after a compositor
+  config reload, and the normal file manager retained its separate identity and
+  tiled behavior.
+
+`centering-lua-results.json` and `centering-legacy-results.json` record the
+asserted geometry for both configuration parsers. To exercise this manually,
+invoke a portal Open or Save dialog from an off-center application window, then
+compare its center with the monitor's center. Repeat after reloading Hyprland's
+configuration, and check that regular Strata windows retain their placement.
+
+The compositor ran inside Bubblewrap with private HOME/XDG directories, no
+access to desktop sockets or DRM card devices, and only a GPU render node. Cage
+with a headless wlroots backend supplied a nested Wayland renderer; Hyprland's
+own virtual output supplied the test monitor. A test-only preload workaround
+clamped Aquamarine 0.14's nested `wl_compositor`/`xdg_wm_base` bindings to version
+5 because it otherwise requests version 6 from a version-5 server. The shim was
+loaded only by the nested compositor, never by Strata, and is not shipped.
+
 ## Implementation scope
 
 GTK already clamps its default dimensions to compositor-provided bounds, subject

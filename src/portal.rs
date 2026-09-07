@@ -31,6 +31,7 @@ use gio::prelude::*;
 use crate::model::{FileEntry, Location};
 
 const BACKEND_NAME: &str = "org.freedesktop.impl.portal.desktop.strata";
+pub(crate) const CHOOSER_APPLICATION_ID: &str = "io.github.lgse.Strata.FileChooser";
 pub(crate) const FILE_CHOOSER_VERSION: u32 = 4;
 const MAX_ACTIVE_REQUESTS: usize = 16;
 const MAX_CHOICES: usize = 16;
@@ -146,6 +147,9 @@ impl FileChooserBackend {
         tracked: &TrackedRequest,
         request: ChooserRequest,
     ) -> ashpd::backend::Result<SelectedFiles> {
+        if !tracked.cancelled.load(Ordering::SeqCst) {
+            window_geometry::prepare_chooser_placement().await;
+        }
         let token = request.token.clone();
         let cancelled = tracked.cancelled.clone();
         let (send, receive) = oneshot::channel();
@@ -163,7 +167,7 @@ impl FileChooserBackend {
 }
 
 pub(crate) fn run() -> glib::ExitCode {
-    glib::set_prgname(Some("strata"));
+    glib::set_prgname(Some(CHOOSER_APPLICATION_ID));
     glib::set_application_name("Strata");
 
     // Keep worker-thread invocations queued until GTK is ready on this thread.

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod centering;
+
 use super::*;
 use std::os::unix::net::UnixListener;
 
