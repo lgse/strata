@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod preferences;
+
 use std::{cell::RefCell, collections::HashSet};
 
 use super::{

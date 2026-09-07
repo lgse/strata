@@ -39,6 +39,7 @@ mod location;
 mod pane_header;
 pub(in crate::ui) mod paths;
 mod peek;
+mod preferences;
 mod presentation;
 mod progress;
 mod properties;
@@ -430,7 +431,9 @@ impl BrowserView {
         });
         breadcrumb_scroller.add_controller(edit_location);
 
-        Self { state }
+        let view = Self { state };
+        view.bind_preferences(&preferences);
+        view
     }
 
     pub fn widget(&self) -> gtk::Widget {

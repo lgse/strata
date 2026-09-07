@@ -709,13 +709,6 @@ fn build_chooser(
     let multiple = matches!(&request.kind, ChooserKind::Open { multiple: true, .. });
     let view = BrowserView::new_chooser(source.clone(), multiple);
     let theme = ThemeManager::shared();
-    view.set_view_mode(theme.browser_mode());
-    view.set_density(theme.browser_density());
-    view.set_group_by_type(theme.group_by_type());
-    super::window::apply_click_activation(&view, &theme);
-    view.set_auto_refresh_interval(theme.auto_refresh_interval());
-    view.set_peek_enabled(false);
-    view.set_single_click_previews(theme.single_click_previews());
     view.set_operation_provider(Rc::new(LocalOperationProvider));
     let browser = view.browser();
     let preview_preferences = theme.clone();

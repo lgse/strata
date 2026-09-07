@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod preferences;
+
 use std::rc::Rc;
 
 use crate::services::{

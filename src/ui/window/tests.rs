@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod preferences;
 mod type_to_search;
 
 use std::{cell::Cell, path::Path};
@@ -35,7 +36,7 @@ fn startup_applies_disabled_single_click_previews_before_the_first_click() {
         || {
             let manager = ThemeManager::shared();
             manager.set_single_click_previews(false);
-            let browser = browser_for_window(&manager);
+            let browser = browser_for_window();
             assert!(!browser.single_click_previews_enabled());
         },
     );

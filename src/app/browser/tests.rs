@@ -61,6 +61,29 @@ fn assert_invalid_creation_is_rejected(create: impl FnOnce(&Rc<Browser>)) {
     ));
 }
 
+#[test]
+fn delayed_sort_cannot_restore_stale_hidden_file_preferences() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser
+        .state
+        .borrow_mut()
+        .navigate(Location::local("/fixture"), RequestId(1));
+    let pending = browser.preferences();
+    browser.pending_sort.set(Some((1, 0)));
+    browser.apply_default_preferences(ViewPreferences {
+        show_hidden: true,
+        ..pending
+    });
+    browser.finish_awaited_sort(0, 1, pending);
+    assert!(browser.preferences().show_hidden);
+    assert!(
+        browser
+            .column_preferences(0)
+            .expect("existing column")
+            .show_hidden
+    );
+}
+
 struct FakeFileSource;
 
 struct RestoredSortingSource;

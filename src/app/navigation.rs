@@ -536,6 +536,11 @@ impl NavigationState {
         }
     }
 
+    /// Existing columns retain their local sort; new columns inherit the shared defaults.
+    pub fn set_default_preferences(&mut self, preferences: ViewPreferences) {
+        self.preferences = preferences;
+    }
+
     pub fn column_preferences(&self, depth: usize) -> Option<ViewPreferences> {
         self.columns.get(depth).map(|column| column.preferences)
     }

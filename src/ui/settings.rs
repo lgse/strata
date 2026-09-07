@@ -19,19 +19,21 @@ use crate::{
     },
 };
 
+mod bindings;
+use bindings::{bind_choice, bind_switch};
+
 #[cfg(test)]
 mod tests;
 
 use super::{
     blur::BlurBin,
-    browser::{BrowserView, dismiss_modal_layer, modal_layer},
+    browser::{dismiss_modal_layer, modal_layer},
     browser_modes::{BrowserMode, ClickActivation, ClickCount},
     controls::{form_entry, menu_option, modal_layout, segmented_control},
     terminal,
     theme::{TextSize, Theme, ThemeManager, ThemeTokens},
 };
 
-type ThemeCards = Rc<RefCell<Vec<(String, gtk::Button, gtk::Image)>>>;
 pub(super) type UpdateNoticeHandler = Rc<dyn Fn(Option<(ReleaseMetadata, String, UpdateMethod)>)>;
 
 struct UpdateCheckRow {
@@ -380,7 +382,6 @@ fn uses_compact_navigation(dialog_width: i32) -> bool {
     reason = "GTK 4.12 deprecated translate_coordinates and allocation without a replacement for click-in-bounds checks"
 )]
 pub fn build_layer(
-    browser: &BrowserView,
     settings_button: &gtk::Button,
     root: &BlurBin,
     themes: Rc<ThemeManager>,
@@ -433,7 +434,7 @@ pub fn build_layer(
         .vexpand(true)
         .build();
     let (general, responsive_setting_rows, responsive_activation_rows) =
-        general_page(browser, themes.clone());
+        general_page(themes.clone());
     stack.add_named(&general, Some("general"));
     stack.add_named(&keybindings_page(themes.clone()), Some("keybindings"));
     stack.add_named(&about_page(), Some("about"));
@@ -624,41 +625,36 @@ fn hide(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin) {
 }
 
 fn general_page(
-    browser: &BrowserView,
     manager: Rc<ThemeManager>,
 ) -> (gtk::Widget, Vec<gtk::Box>, Vec<ResponsiveActivationRow>) {
     let preferences = page_content();
     append_heading(&preferences, "BROWSING");
     let peeking_enabled = manager.folder_peeking();
-    browser.set_peek_enabled(peeking_enabled);
     let (peeking_row, peeking) = settings_option(
         "Folder peeking",
         "Preview folders automatically while moving through a pane.",
         peeking_enabled,
     );
-    let browser_for_peeking = browser.clone();
-    let manager_for_peeking = manager.clone();
-    peeking.connect_active_notify(move |toggle| {
-        let enabled = toggle.is_active();
-        browser_for_peeking.set_peek_enabled(enabled);
-        manager_for_peeking.set_folder_peeking(enabled);
-    });
+    bind_switch(
+        &manager,
+        &peeking,
+        ThemeManager::folder_peeking,
+        ThemeManager::set_folder_peeking,
+    );
     preferences.append(&peeking_row);
 
     let single_click_enabled = manager.single_click_previews();
-    browser.set_single_click_previews(single_click_enabled);
     let (preview_row, single_click_previews) = settings_option(
         "Single-click file previews",
         "Show a quick preview when selecting a supported file.",
         single_click_enabled,
     );
-    let browser_for_previews = browser.clone();
-    let manager_for_previews = manager.clone();
-    single_click_previews.connect_active_notify(move |toggle| {
-        let enabled = toggle.is_active();
-        browser_for_previews.set_single_click_previews(enabled);
-        manager_for_previews.set_single_click_previews(enabled);
-    });
+    bind_switch(
+        &manager,
+        &single_click_previews,
+        ThemeManager::single_click_previews,
+        ThemeManager::set_single_click_previews,
+    );
     preferences.append(&preview_row);
 
     let direct_open_enabled = manager.search_open_files_directly();
@@ -667,10 +663,12 @@ fn general_page(
         "Launch files from search instead of opening Strata's quick preview.",
         direct_open_enabled,
     );
-    let manager_for_search_open = manager.clone();
-    search_open_files.connect_active_notify(move |toggle| {
-        manager_for_search_open.set_search_open_files_directly(toggle.is_active());
-    });
+    bind_switch(
+        &manager,
+        &search_open_files,
+        ThemeManager::search_open_files_directly,
+        ThemeManager::set_search_open_files_directly,
+    );
     preferences.append(&search_open_row);
 
     let type_to_search_enabled = manager.type_to_search();
@@ -679,10 +677,12 @@ fn general_page(
         "Start filtering the active pane when you type in the file browser.",
         type_to_search_enabled,
     );
-    let manager_for_type_to_search = manager.clone();
-    type_to_search.connect_active_notify(move |toggle| {
-        manager_for_type_to_search.set_type_to_search(toggle.is_active());
-    });
+    bind_switch(
+        &manager,
+        &type_to_search,
+        ThemeManager::type_to_search,
+        ThemeManager::set_type_to_search,
+    );
     preferences.append(&type_to_search_row);
 
     append_heading(&preferences, "REFRESH");
@@ -710,15 +710,13 @@ fn general_page(
     refresh_row.append(&control);
     preferences.append(&refresh_row);
     for (idx, button) in buttons.iter().enumerate() {
-        let manager = manager.clone();
-        let browser = browser.clone();
-        let secs = secs[idx];
-        button.connect_toggled(move |toggled| {
-            if toggled.is_active() {
-                manager.set_auto_refresh_interval(secs);
-                browser.set_auto_refresh_interval(secs);
-            }
-        });
+        bind_choice(
+            &manager,
+            button,
+            secs[idx],
+            ThemeManager::auto_refresh_interval,
+            ThemeManager::set_auto_refresh_interval,
+        );
     }
 
     append_heading(&preferences, "VIDEO PREVIEWS");
@@ -726,22 +724,25 @@ fn general_page(
         video_preview_control_state(manager.hardware_accelerated_video_previews());
     let description = "Choose a hardware backend.";
     let selected_backend = manager.video_preview_backend();
-    let manager_for_backend = manager.clone();
     let (video_row, acceleration, backend) = video_preview_option(
         description,
         acceleration_active,
         acceleration_sensitive,
         backend_sensitive,
         selected_backend,
-        Rc::new(move |backend| manager_for_backend.set_video_preview_backend(backend)),
+        &manager,
     );
-    let manager_for_acceleration = manager.clone();
-    let backend_for_acceleration = backend.clone();
-    acceleration.connect_active_notify(move |toggle| {
-        let enabled = toggle.is_active();
-        backend_for_acceleration.set_sensitive(enabled);
-        manager_for_acceleration.set_hardware_accelerated_video_previews(enabled);
-    });
+    bind_switch(
+        &manager,
+        &acceleration,
+        ThemeManager::hardware_accelerated_video_previews,
+        ThemeManager::set_hardware_accelerated_video_previews,
+    );
+    manager.bind_preference(
+        &backend,
+        ThemeManager::hardware_accelerated_video_previews,
+        |widget, enabled| widget.set_sensitive(video_preview_control_state(enabled).2),
+    );
     preferences.append(&video_row);
 
     append_heading(&preferences, "MOTION");
@@ -750,10 +751,12 @@ fn general_page(
         "Disable nonessential interface animations.",
         manager.reduce_motion(),
     );
-    let manager_for_motion = manager.clone();
-    reduce_motion.connect_active_notify(move |toggle| {
-        manager_for_motion.set_reduce_motion(toggle.is_active());
-    });
+    bind_switch(
+        &manager,
+        &reduce_motion,
+        ThemeManager::reduce_motion,
+        ThemeManager::set_reduce_motion,
+    );
     preferences.append(&motion_row);
 
     append_heading(&preferences, "CLICK ACTIVATION");
@@ -767,26 +770,34 @@ fn general_page(
         ("List", BrowserMode::List),
     ] {
         let activation = manager.click_activation(mode);
-        browser.set_click_activation(mode, activation);
         let (row, options, file_buttons, folder_buttons) =
             click_activation_option(label, activation);
-        let update = Rc::new({
-            let browser = browser.clone();
-            let manager = manager.clone();
-            move |files, folders| {
-                let activation = ClickActivation { files, folders };
-                browser.set_click_activation(mode, activation);
-                manager.set_click_activation(mode, activation);
+        for (buttons, files) in [(&file_buttons, true), (&folder_buttons, false)] {
+            for (button, count) in buttons.iter().zip([ClickCount::One, ClickCount::Two]) {
+                bind_choice(
+                    &manager,
+                    button,
+                    count,
+                    move |manager| {
+                        let activation = manager.click_activation(mode);
+                        if files {
+                            activation.files
+                        } else {
+                            activation.folders
+                        }
+                    },
+                    move |manager, count| {
+                        let mut activation = manager.click_activation(mode);
+                        if files {
+                            activation.files = count;
+                        } else {
+                            activation.folders = count;
+                        }
+                        manager.set_click_activation(mode, activation);
+                    },
+                );
             }
-        });
-        connect_click_activation_buttons(&file_buttons, &folder_buttons, update.clone());
-        connect_click_activation_buttons(
-            &folder_buttons,
-            &file_buttons,
-            Rc::new(move |folders, files| {
-                update(files, folders);
-            }),
-        );
+        }
         activation_options.append(&row);
         responsive_activation_rows.push(ResponsiveActivationRow { row, options });
     }
@@ -834,20 +845,7 @@ fn updates_page(
     );
 
     let auto_check_enabled = manager.checks_for_updates();
-    let (auto_check_row, auto_check) = settings_option(
-        "Automatically check for updates",
-        match update_method {
-            UpdateMethod::InPlace => "Check GitHub for a newer release when Strata starts.",
-            UpdateMethod::Aur => "Check the AUR for a newer packaged release when Strata starts.",
-            UpdateMethod::Omarchy => {
-                "Check the Omarchy package repository for a newer release when Strata starts."
-            }
-            UpdateMethod::Pacman => {
-                "Check the configured package repositories for a newer release when Strata starts."
-            }
-        },
-        auto_check_enabled,
-    );
+    let auto_check_row = automatic_updates_option(&manager, update_method);
     preferences.append(&auto_check_row);
 
     let (channel_row, sync_channel_selection) = channel_option(manager.clone(), managed);
@@ -867,18 +865,27 @@ fn updates_page(
     preferences.append(&current_notes.container);
     load_current_release_notes(&current_notes);
 
-    let manager_for_updates = manager.clone();
+    manager.bind_preference(
+        &channel_row,
+        ThemeManager::checks_for_updates,
+        |widget, enabled| widget.set_sensitive(enabled),
+    );
     let toggled_check = run_check.clone();
-    auto_check.connect_active_notify(move |toggle| {
-        let enabled = toggle.is_active();
-        manager_for_updates.set_checks_for_updates(enabled);
-        channel_row.set_sensitive(enabled);
-        if enabled {
-            toggled_check(false);
-        } else {
-            update_notice(None);
-        }
-    });
+    let initial = Cell::new(true);
+    manager.bind_preference(
+        &preferences,
+        ThemeManager::checks_for_updates,
+        move |_, enabled| {
+            if initial.replace(false) {
+                return;
+            }
+            if enabled {
+                toggled_check(false);
+            } else {
+                update_notice(None);
+            }
+        },
+    );
     // No automatic check here: the due scheduler owns background checks process-wide.
 
     let page = scrollable_page(&preferences, None);
@@ -895,6 +902,30 @@ fn updates_page(
     (page, vec![responsive_action])
 }
 
+fn automatic_updates_option(manager: &Rc<ThemeManager>, method: UpdateMethod) -> gtk::Box {
+    let (row, toggle) = settings_option(
+        "Automatically check for updates",
+        match method {
+            UpdateMethod::InPlace => "Check GitHub for a newer release when Strata starts.",
+            UpdateMethod::Aur => "Check the AUR for a newer packaged release when Strata starts.",
+            UpdateMethod::Omarchy => {
+                "Check the Omarchy package repository for a newer release when Strata starts."
+            }
+            UpdateMethod::Pacman => {
+                "Check the configured package repositories for a newer release when Strata starts."
+            }
+        },
+        manager.checks_for_updates(),
+    );
+    bind_switch(
+        manager,
+        &toggle,
+        ThemeManager::checks_for_updates,
+        ThemeManager::set_checks_for_updates,
+    );
+    row
+}
+
 const RELEASE_CHANNEL_TITLE: &str = "Release channel";
 const RELEASE_CHANNEL_DESCRIPTION: &str = "Preview receives alpha, beta, and release-candidate builds. Nightly also receives daily development builds.";
 
@@ -909,10 +940,6 @@ fn channel_option(
     let title = gtk::Label::new(Some(RELEASE_CHANNEL_TITLE));
     title.set_xalign(0.0);
     title.add_css_class("settings-option-title");
-    let locked_channel = managed.and_then(ManagedInstall::tracked_channel);
-    if let Some(channel) = locked_channel {
-        manager.set_release_channel(channel);
-    }
     let description = gtk::Label::new(Some(&match managed {
         Some(managed) => managed_channel_description(managed),
         None => RELEASE_CHANNEL_DESCRIPTION.to_owned(),
@@ -931,12 +958,13 @@ fn channel_option(
     let weak_buttons: Vec<glib::WeakRef<gtk::ToggleButton>> =
         buttons.iter().map(|button| button.downgrade()).collect();
     for (button, channel) in buttons.into_iter().zip(CHANNEL_ORDER) {
-        let manager = manager.clone();
-        button.connect_active_notify(move |button| {
-            if button.is_active() {
-                manager.set_release_channel(channel);
-            }
-        });
+        bind_choice(
+            &manager,
+            &button,
+            channel,
+            ThemeManager::release_channel,
+            ThemeManager::set_release_channel,
+        );
     }
     control.set_sensitive(managed.is_none());
     row.append(&control);
@@ -2270,14 +2298,12 @@ fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
         "Show navigation hints and paste availability at the bottom of every view. F1 opens the full reference even when hints are hidden.",
         manager.show_keybinding_hints(),
     );
-    manager.on_keybinding_hints_changed(&toggle, |widget, enabled| {
-        if let Some(toggle) = widget.downcast_ref::<gtk::Switch>() {
-            toggle.set_active(enabled);
-        }
-    });
-    toggle.connect_active_notify(move |toggle| {
-        manager.set_show_keybinding_hints(toggle.is_active());
-    });
+    bind_switch(
+        &manager,
+        &toggle,
+        ThemeManager::show_keybinding_hints,
+        ThemeManager::set_show_keybinding_hints,
+    );
     content.append(&row);
     append_heading(&content, "NAVIGATION");
     for (label, keys) in [
@@ -2470,12 +2496,13 @@ fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<(gtk::FlowBox, u32
     text_size_row.append(&text_size_control);
     content.append(&text_size_row);
     for (button, size) in text_size_buttons.into_iter().zip(text_sizes) {
-        let manager = manager.clone();
-        button.connect_toggled(move |toggled| {
-            if toggled.is_active() {
-                manager.set_text_size(size);
-            }
-        });
+        bind_choice(
+            &manager,
+            &button,
+            size,
+            ThemeManager::text_size,
+            ThemeManager::set_text_size,
+        );
     }
 
     append_heading(&content, "THEMES");
@@ -2554,14 +2581,13 @@ fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<(gtk::FlowBox, u32
     custom.add_css_class("theme-grid");
     content.append(&custom);
 
-    let cards: ThemeCards = Rc::new(RefCell::new(Vec::new()));
     let mut catalog_cards = Vec::new();
     for theme in manager.themes() {
         let custom_theme = theme.custom;
         let name = theme.tokens.name.clone();
         let light = theme_is_light(&theme.tokens);
         let flow = if custom_theme { &custom } else { &packaged };
-        let child = append_theme_card(flow, theme, &manager, &follow, &cards);
+        let child = append_theme_card(flow, theme, &manager);
         if !custom_theme {
             catalog_cards.push((child, name, light));
         }
@@ -2616,33 +2642,51 @@ fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<(gtk::FlowBox, u32
     add.set_child(Some(&add_content));
     custom.insert(&add, -1);
 
-    let (editor, editor_fields) = theme_editor(
-        manager.clone(),
-        custom.clone(),
-        follow.clone(),
-        cards.clone(),
+    let known_custom = RefCell::new(
+        manager
+            .themes()
+            .into_iter()
+            .filter(|theme| theme.custom)
+            .map(|theme| theme.id)
+            .collect::<std::collections::HashSet<_>>(),
     );
+    let weak_manager = Rc::downgrade(&manager);
+    manager.bind_preference(
+        &custom,
+        |manager| {
+            manager
+                .themes()
+                .into_iter()
+                .filter(|theme| theme.custom)
+                .map(|theme| theme.id)
+                .collect::<Vec<_>>()
+        },
+        move |widget, _| {
+            let Some(flow) = widget.downcast_ref::<gtk::FlowBox>() else {
+                return;
+            };
+            if let Some(manager) = weak_manager.upgrade() {
+                for theme in manager.themes().into_iter().filter(|theme| theme.custom) {
+                    if known_custom.borrow_mut().insert(theme.id.clone()) {
+                        append_theme_card(flow, theme, &manager);
+                    }
+                }
+            }
+        },
+    );
+    let (editor, editor_fields) = theme_editor(manager.clone());
     editor.set_reveal_child(false);
     content.append(&editor);
     let shown_editor = editor.clone();
     add.connect_clicked(move |_| shown_editor.set_reveal_child(true));
 
     let scroller = scrollable_page(&content, None);
-    let manager_for_follow = manager;
-    follow.connect_active_notify(move |toggle| {
-        let active = toggle.is_active();
-        manager_for_follow.set_follow_omarchy(active);
-        let selected_id = manager_for_follow.selected_id();
-        for (id, card, check) in cards.borrow().iter() {
-            let selected = !active && id == &selected_id;
-            if selected {
-                card.add_css_class("selected");
-            } else {
-                card.remove_css_class("selected");
-            }
-            check.set_visible(selected);
-        }
-    });
+    bind_switch(
+        &manager,
+        &follow,
+        ThemeManager::follows_omarchy,
+        ThemeManager::set_follow_omarchy,
+    );
     (
         scroller,
         vec![(packaged, 3), (custom, 3), (editor_fields, 4)],
@@ -2686,8 +2730,6 @@ fn append_theme_card(
     flow: &gtk::FlowBox,
     theme: Theme,
     manager: &Rc<ThemeManager>,
-    follow: &gtk::Switch,
-    cards: &ThemeCards,
 ) -> gtk::FlowBoxChild {
     let card = gtk::Button::new();
     card.add_css_class("theme-card");
@@ -2717,26 +2759,26 @@ fn append_theme_card(
     label_row.append(&label);
     content.append(&label_row);
     card.set_child(Some(&content));
-    cards
-        .borrow_mut()
-        .push((theme.id.clone(), card.clone(), check));
-
     let theme_id = theme.id;
+    let selected_theme = theme_id.clone();
+    let check = check.downgrade();
+    manager.bind_preference(
+        &card,
+        move |manager| !manager.follows_omarchy() && manager.selected_id() == selected_theme,
+        move |card, selected| {
+            if selected {
+                card.add_css_class("selected");
+            } else {
+                card.remove_css_class("selected");
+            }
+            if let Some(check) = check.upgrade() {
+                check.set_visible(selected);
+            }
+        },
+    );
     let manager = manager.clone();
-    let follow = follow.clone();
-    let cards = cards.clone();
     card.connect_clicked(move |_| {
         manager.select_theme(&theme_id);
-        follow.set_active(false);
-        for (id, candidate, check) in cards.borrow().iter() {
-            let selected = id == &theme_id;
-            if selected {
-                candidate.add_css_class("selected");
-            } else {
-                candidate.remove_css_class("selected");
-            }
-            check.set_visible(selected);
-        }
     });
     flow.insert(&card, -1);
     card.parent()
@@ -2785,12 +2827,7 @@ fn theme_preview(tokens: &ThemeTokens) -> gtk::DrawingArea {
     area
 }
 
-fn theme_editor(
-    manager: Rc<ThemeManager>,
-    custom: gtk::FlowBox,
-    follow: gtk::Switch,
-    cards: ThemeCards,
-) -> (gtk::Revealer, gtk::FlowBox) {
+fn theme_editor(manager: Rc<ThemeManager>) -> (gtk::Revealer, gtk::FlowBox) {
     let panel = gtk::Box::new(gtk::Orientation::Vertical, 12);
     panel.add_css_class("theme-editor");
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -2879,20 +2916,9 @@ fn theme_editor(
     save.connect_clicked(move |_| {
         let mut tokens = values.borrow().clone();
         tokens.name = name.text().trim().to_owned();
-        match manager.save_custom_theme(tokens.clone()) {
-            Ok(id) => {
+        match manager.save_custom_theme(tokens) {
+            Ok(_) => {
                 error.set_visible(false);
-                append_theme_card(
-                    &custom,
-                    Theme {
-                        id,
-                        tokens,
-                        custom: true,
-                    },
-                    &manager,
-                    &follow,
-                    &cards,
-                );
                 hidden.set_reveal_child(false);
             }
             Err(message) => {
@@ -3035,31 +3061,6 @@ fn click_activation_option(
     (row, options, file_buttons, folder_buttons)
 }
 
-fn connect_click_activation_buttons(
-    buttons: &[gtk::ToggleButton],
-    other_buttons: &[gtk::ToggleButton],
-    update: Rc<dyn Fn(ClickCount, ClickCount)>,
-) {
-    for button in buttons {
-        let buttons = buttons.to_vec();
-        let other_buttons = other_buttons.to_vec();
-        let update = update.clone();
-        button.connect_toggled(move |button| {
-            if !button.is_active() {
-                return;
-            }
-            let selected = |buttons: &[gtk::ToggleButton]| {
-                if buttons.get(1).is_some_and(gtk::ToggleButton::is_active) {
-                    ClickCount::Two
-                } else {
-                    ClickCount::One
-                }
-            };
-            update(selected(&buttons), selected(&other_buttons));
-        });
-    }
-}
-
 fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, gtk::Switch) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     row.add_css_class("settings-option");
@@ -3096,7 +3097,7 @@ fn video_preview_option(
     toggle_sensitive: bool,
     backend_sensitive: bool,
     selected_backend: MediaPreviewBackend,
-    on_backend_selected: Rc<dyn Fn(MediaPreviewBackend)>,
+    manager: &Rc<ThemeManager>,
 ) -> (gtk::Box, gtk::Switch, gtk::MenuButton) {
     let (row, toggle) = settings_option(
         "Use hardware acceleration for video previews.",
@@ -3136,23 +3137,28 @@ fn video_preview_option(
         gtk::accessible::Property::Label("Video preview hardware backend"),
         gtk::accessible::Property::Description(description),
     ]);
-    let checks = Rc::new(
-        options
-            .iter()
-            .map(|(_, value, _, check)| (*value, check.clone()))
-            .collect::<Vec<_>>(),
-    );
-    for (label, value, option, _) in options {
-        let backend = backend.clone();
-        let checks = checks.clone();
-        let on_backend_selected = on_backend_selected.clone();
-        option.connect_clicked(move |_| {
-            backend.set_label(label);
-            for (candidate, check) in checks.iter() {
-                check.set_visible(*candidate == value);
+    manager.bind_preference(
+        &backend,
+        ThemeManager::video_preview_backend,
+        |widget, selected| {
+            if let Some(button) = widget.downcast_ref::<gtk::MenuButton>() {
+                button.set_label(video_preview_backend_label(selected));
             }
-            backend.popdown();
-            on_backend_selected(value);
+        },
+    );
+    for (_, value, option, check) in options {
+        manager.bind_preference(
+            &check,
+            ThemeManager::video_preview_backend,
+            move |widget, selected| widget.set_visible(selected == value),
+        );
+        let backend = backend.downgrade();
+        let manager = manager.clone();
+        option.connect_clicked(move |_| {
+            manager.set_video_preview_backend(value);
+            if let Some(backend) = backend.upgrade() {
+                backend.popdown();
+            }
         });
     }
     toggle.set_sensitive(toggle_sensitive);

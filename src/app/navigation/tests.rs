@@ -31,6 +31,27 @@ fn named_entry(path: &str, name: &str) -> FileEntry {
 }
 
 #[test]
+fn shared_defaults_do_not_replace_existing_column_sort_selection_or_location() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(RequestId(1), vec![entry("/fixture/child")]);
+    state.set_selection(0, &[0], Some(0));
+    let local = state.column_preferences(0).expect("existing column");
+    let path = state.current_path();
+    let defaults = ViewPreferences {
+        sort_key: SortKey::Size,
+        sort_direction: SortDirection::Descending,
+        ..local
+    };
+    state.set_default_preferences(defaults);
+    assert_eq!(state.column_preferences(0), Some(local));
+    assert_eq!(state.current_path(), path);
+    assert_eq!(state.selected_positions(0), [0]);
+    state.descend(0, location("/fixture/child"), RequestId(2));
+    assert_eq!(state.column_preferences(1), Some(defaults));
+}
+
+#[test]
 fn focusing_a_column_preserves_selection_and_descendants() {
     let mut state = NavigationState::default();
     state.navigate(location("/fixture"), RequestId(1));

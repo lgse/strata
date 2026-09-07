@@ -10,6 +10,25 @@ use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use gtk::{gio, prelude::*};
 use std::process::Command;
 
+impl super::ModeViews {
+    pub(in crate::ui) fn assert_saved_preferences(&self, manager: &crate::ui::theme::ThemeManager) {
+        assert_eq!(self.density, manager.browser_density());
+        assert_eq!(self.group_by_type, manager.group_by_type());
+        assert_eq!(
+            self.single_click_previews.get(),
+            manager.single_click_previews()
+        );
+        assert_eq!(
+            self.icons_click_activation.get(),
+            manager.click_activation(BrowserMode::Icons)
+        );
+        assert_eq!(
+            self.list_click_activation.get(),
+            manager.click_activation(BrowserMode::List)
+        );
+    }
+}
+
 /// Model values as the panes store them: kind, hidden flag, then the display name.
 fn value(kind: char, name: &str) -> String {
     format!("{kind}v\t{name}")
