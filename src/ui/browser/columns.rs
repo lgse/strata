@@ -208,6 +208,7 @@ pub(super) fn is_column_background(surface: &gtk::Widget, picked: &gtk::Widget) 
             return true;
         }
         if widget.is::<gtk::Button>()
+            || widget.is::<gtk::MenuButton>()
             || widget.is::<gtk::Editable>()
             || widget.is::<gtk::Range>()
             || widget.is::<gtk::Scrollbar>()
@@ -954,26 +955,11 @@ impl ViewState {
             }
         });
         column.add_controller(focus);
-        let background = gtk::GestureClick::new();
-        background.set_button(1);
-        background.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let weak = Rc::downgrade(self);
-        background.connect_pressed(move |gesture, _, x, y| {
-            let Some(surface) = gesture.widget() else {
-                return;
-            };
-            let Some(picked) = surface.pick(x, y, gtk::PickFlags::DEFAULT) else {
-                return;
-            };
-            if is_file_row_target(picked.clone()) || !is_column_background(&surface, &picked) {
-                return;
-            }
-            if let Some(state) = weak.upgrade() {
-                state.browser.set_active_column(depth);
-                state.browser.focus_active();
-            }
-        });
-        presentation.stack.add_controller(background);
+        self.install_column_background_focus(presentation.stack.upcast_ref(), depth);
+        for surface in [list.upcast_ref::<gtk::Widget>(), header.upcast_ref()] {
+            let click = self.install_column_background_focus(surface, depth);
+            marquee.group_background_click(&click);
+        }
         if self.interactive {
             install_directory_drop_target(self, &presentation.stack, location.clone());
         }
@@ -1142,6 +1128,57 @@ impl ViewState {
         self.refresh_active_path_rows();
         animate_column_entry(&shell, &column, &animation_generation);
         self.reveal_column(shell);
+    }
+
+    fn install_column_background_focus(
+        self: &Rc<Self>,
+        surface: &gtk::Widget,
+        depth: usize,
+    ) -> gtk::GestureClick {
+        let click = gtk::GestureClick::new();
+        click.set_button(1);
+        click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let origin = Rc::new(Cell::new(None));
+        let pressed_origin = origin.clone();
+        click.connect_pressed(move |gesture, _, x, y| {
+            pressed_origin.set(None);
+            let Some(surface) = gesture.widget() else {
+                return;
+            };
+            let Some(picked) = surface.pick(x, y, gtk::PickFlags::DEFAULT) else {
+                return;
+            };
+            if !is_file_row_target(picked.clone()) && is_column_background(&surface, &picked) {
+                pressed_origin.set(Some((x, y)));
+            }
+        });
+        let stopped_origin = origin.clone();
+        click.connect_stopped(move |_| stopped_origin.set(None));
+        let weak = Rc::downgrade(self);
+        click.connect_released(move |gesture, _, x, y| {
+            let (Some((start_x, start_y)), Some(surface)) = (origin.take(), gesture.widget())
+            else {
+                return;
+            };
+            if surface.drag_check_threshold(start_x as i32, start_y as i32, x as i32, y as i32) {
+                return;
+            }
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.browser.set_active_column(depth);
+            state.browser.focus_active();
+            let shell = state
+                .columns
+                .borrow()
+                .get(depth)
+                .map(|column| column.shell.clone());
+            if let Some(shell) = shell {
+                state.reveal_column(shell);
+            }
+        });
+        surface.add_controller(click.clone());
+        click
     }
 
     fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {

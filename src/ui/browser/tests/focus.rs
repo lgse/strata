@@ -20,14 +20,104 @@ fn press_column_background(view: &BrowserView, depth: usize) {
         .stack
         .clone();
     wait_until(|| surface.height() > 100);
+    let x = 30.0;
+    let y = f64::from(surface.height()) - 40.0;
+    let gesture = background_gesture(surface.upcast_ref());
+    gesture.emit_by_name::<()>("pressed", &[&1i32, &x, &y]);
+    gesture.emit_by_name::<()>("released", &[&1i32, &x, &y]);
+}
+
+fn background_gesture(surface: &gtk::Widget) -> gtk::GestureClick {
     let controllers = surface.observe_controllers();
-    let gesture = (0..controllers.n_items())
+    (0..controllers.n_items())
         .filter_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
         .find(|gesture| gesture.button() == 1)
-        .expect("background focus gesture");
-    gesture.emit_by_name::<()>(
-        "pressed",
-        &[&1i32, &30.0f64, &(f64::from(surface.height()) - 40.0)],
+        .expect("background focus gesture")
+}
+
+#[test]
+fn background_and_header_clicks_focus_and_reveal_without_changing_selection() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::background_and_header_clicks_focus_and_reveal_without_changing_selection",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            std::fs::create_dir_all(fixture.path().join("Child/Grandchild"))
+                .expect("nested folders");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(640)
+                .default_height(500)
+                .build();
+            window.present();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            for depth in 0..2 {
+                browser.select(depth, 0);
+                browser.enter_focused_directory();
+                wait_until(|| {
+                    browser
+                        .column_snapshot(depth + 1)
+                        .is_some_and(|s| !s.loading)
+                });
+            }
+            let adjustment = view.state.scroller.hadjustment();
+            wait_until(|| adjustment.value() > 100.0);
+            for header in [false, true] {
+                for depth in [0, 2, 1] {
+                    if header {
+                        let surface = view.state.columns.borrow()[depth]
+                            .header_actions
+                            .parent()
+                            .expect("column header");
+                        let gesture = background_gesture(&surface);
+                        let x = 20.0f64;
+                        let y = f64::from(surface.height()) / 2.0;
+                        gesture.emit_by_name::<()>("pressed", &[&1i32, &x, &y]);
+                        gesture.emit_by_name::<()>("released", &[&1i32, &x, &y]);
+                    } else {
+                        press_column_background(&view, depth);
+                    }
+                    assert_eq!(browser.active_depth(), Some(depth));
+                    assert_eq!(view.state.focused_column_depth(), Some(depth));
+                    assert_eq!(browser.selected_positions(0), [0]);
+                    assert_eq!(browser.selected_positions(1), [0]);
+                    assert!(browser.selected_positions(2).is_empty());
+                    assert_eq!(view.state.columns.borrow().len(), 3);
+                    wait_until(|| {
+                        let columns = view.state.columns.borrow();
+                        let bounds = columns[depth]
+                            .shell
+                            .compute_bounds(&view.state.columns_widget)
+                            .expect("column bounds");
+                        f64::from(bounds.x()) >= adjustment.value() - 1.0
+                            && f64::from(bounds.x() + bounds.width())
+                                <= adjustment.value() + adjustment.page_size() + 1.0
+                    });
+                }
+            }
+            let surface = view.state.columns.borrow()[0].presentation.stack.clone();
+            let gesture = background_gesture(surface.upcast_ref());
+            let y = f64::from(surface.height()) - 40.0;
+            gesture.emit_by_name::<()>("pressed", &[&1i32, &30.0f64, &y]);
+            assert_eq!(
+                browser.active_depth(),
+                Some(1),
+                "press must not interrupt a drag"
+            );
+            gesture.emit_by_name::<()>("released", &[&1i32, &130.0f64, &y]);
+            assert_eq!(browser.active_depth(), Some(1));
+            gesture.emit_by_name::<()>("pressed", &[&1i32, &30.0f64, &y]);
+            gesture.emit_by_name::<()>("stopped", &[]);
+            gesture.emit_by_name::<()>("released", &[&1i32, &30.0f64, &y]);
+            assert_eq!(browser.active_depth(), Some(1));
+            window.destroy();
+            browser.clear_observer();
+        },
     );
 }
 
