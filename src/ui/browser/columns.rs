@@ -994,7 +994,12 @@ impl ViewState {
         let focus = gtk::EventControllerFocus::new();
         let weak = Rc::downgrade(self);
         focus.connect_enter(move |_| {
-            if let Some(state) = weak.upgrade() {
+            if let Some(state) = weak.upgrade()
+                && state
+                    .context_menu_column
+                    .get()
+                    .is_none_or(|owner| owner == depth)
+            {
                 state.browser.set_active_column(depth);
                 state.refresh_destination_style();
             }
@@ -1284,6 +1289,13 @@ impl ViewState {
         self.close_peek_visual();
         if self.hovered_column.get().is_some_and(|depth| depth >= len) {
             self.hovered_column.set(None);
+        }
+        if self
+            .context_menu_column
+            .get()
+            .is_some_and(|depth| depth >= len)
+        {
+            self.context_menu_column.set(None);
         }
         self.cancel_rename();
         self.cancel_new_entry();

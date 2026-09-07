@@ -135,6 +135,8 @@ pub(super) struct ViewState {
     mode_views: RefCell<ModeViews>,
     columns: RefCell<Vec<ColumnView>>,
     hovered_column: Cell<Option<usize>>,
+    context_menu_column: Cell<Option<usize>>,
+    context_menu_generation: Cell<u64>,
     input_ownership: RefCell<super::input_ownership::InputOwnership>,
     horizontal_scroll_generation: Rc<Cell<u64>>,
     source_generation: Rc<Cell<u64>>,
@@ -318,6 +320,8 @@ impl BrowserView {
             mode_views: RefCell::new(mode_views),
             columns: RefCell::new(Vec::new()),
             hovered_column: Cell::new(None),
+            context_menu_column: Cell::new(None),
+            context_menu_generation: Cell::new(0),
             input_ownership: RefCell::new(super::input_ownership::InputOwnership::default()),
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
             source_generation,
@@ -1343,6 +1347,11 @@ impl ViewState {
         if self.mode_views.borrow().mode() != BrowserMode::Columns {
             return self.browser.active_depth();
         }
+        if let Some(depth) = self.context_menu_column.get()
+            && depth < self.columns.borrow().len()
+        {
+            return Some(depth);
+        }
         self.input_ownership.borrow().destination(
             self.hovered_column.get(),
             self.focused_column_depth(),
@@ -1355,7 +1364,8 @@ impl ViewState {
         let destination = self.destination_depth();
         let pointer = self.input_ownership.borrow().last_navigation
             == super::input_ownership::NavigationInput::Pointer
-            && self.hovered_column.get() == destination;
+            && (self.hovered_column.get() == destination
+                || self.context_menu_column.get().is_some());
         let focused_column = self.focused_column_depth();
         let focused_item = self
             .browser

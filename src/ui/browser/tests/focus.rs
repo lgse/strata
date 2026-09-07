@@ -135,6 +135,114 @@ fn hovering_another_column_preserves_keyboard_navigation_from_header() {
     );
 }
 
+#[test]
+fn context_menu_keeps_its_column_target_through_focus_and_hover_changes() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::context_menu_keeps_its_column_target_through_focus_and_hover_changes",
+        || {
+            for chooser in [false, true] {
+                let fixture = tempfile::tempdir().expect("directory fixture");
+                std::fs::create_dir_all(fixture.path().join("Child/Grandchild"))
+                    .expect("nested folders");
+                let view = if chooser {
+                    BrowserView::new_chooser(Rc::new(crate::adapters::LocalFileSource), true)
+                } else {
+                    BrowserView::new(
+                        Rc::new(crate::adapters::LocalFileSource),
+                        PeekBehavior::default(),
+                    )
+                };
+                let browser = view.browser();
+                let window = gtk::Window::builder()
+                    .child(&view.widget())
+                    .default_width(1200)
+                    .default_height(500)
+                    .build();
+                window.present();
+                browser.navigate(Location::local(fixture.path()));
+                wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+                for depth in 0..2 {
+                    browser.select(depth, 0);
+                    browser.enter_focused_directory();
+                    wait_until(|| {
+                        browser
+                            .column_snapshot(depth + 1)
+                            .is_some_and(|s| !s.loading)
+                    });
+                }
+                let column = view.state.columns.borrow()[1].clone();
+                wait_until(|| column.list.width() > 0 && !column.bound_rows.borrow().is_empty());
+                for previous in [0, 2] {
+                    for item in [false, true] {
+                        browser.set_active_column(previous);
+                        browser.focus_active();
+                        view.state.hovered_column.set(Some(1));
+                        view.state.pointer_navigation();
+                        let (surface, x, y): (gtk::Widget, f64, f64) = if item {
+                            let bounds = column
+                                .bound_rows
+                                .borrow()
+                                .iter()
+                                .find_map(|bound| bound.row.upgrade()?.compute_bounds(&column.list))
+                                .expect("mapped row");
+                            (
+                                column.list.clone().upcast(),
+                                f64::from(bounds.x() + 10.0),
+                                f64::from(bounds.center().y()),
+                            )
+                        } else {
+                            (
+                                column.presentation.stack.clone().upcast(),
+                                20.0,
+                                f64::from(column.presentation.stack.height() - 30),
+                            )
+                        };
+                        let controllers = surface.observe_controllers();
+                        let gesture = (0..controllers.n_items())
+                            .filter_map(|index| {
+                                controllers.item(index).and_downcast::<gtk::GestureClick>()
+                            })
+                            .find(|gesture| gesture.button() == 3)
+                            .expect("context gesture");
+                        gesture.emit_by_name::<()>("pressed", &[&1i32, &x, &y]);
+                        let popover = {
+                            let mut child = view.state.overlay.first_child();
+                            loop {
+                                let widget = child.expect("open context menu");
+                                child = widget.next_sibling();
+                                if let Ok(popover) = widget.downcast::<gtk::Popover>() {
+                                    break popover;
+                                }
+                            }
+                        };
+                        wait_until(|| popover.is_mapped());
+                        for hovered in [None, Some(previous)] {
+                            view.state.hovered_column.set(hovered);
+                            view.state.refresh_destination_style();
+                            assert_eq!(view.state.destination_depth(), Some(1));
+                            assert_eq!(browser.active_depth(), Some(1));
+                            assert_column_header_actions(&view, 1);
+                        }
+                        popover.popdown();
+                        wait_until(|| {
+                            popover.parent().is_none()
+                                && view.state.context_menu_column.get().is_none()
+                        });
+                        wait_until(|| view.item_view_has_focus());
+                        view.keyboard_navigation();
+                        assert_eq!(view.state.destination_depth(), Some(1));
+                        assert!(view.item_view_has_focus());
+                        view.state.hovered_column.set(Some(previous));
+                        view.state.pointer_navigation();
+                        assert_eq!(view.state.destination_depth(), Some(previous));
+                    }
+                }
+                window.close();
+            }
+        },
+    );
+}
+
 fn press_column_background(view: &BrowserView, depth: usize) {
     let surface = view.state.columns.borrow()[depth]
         .presentation

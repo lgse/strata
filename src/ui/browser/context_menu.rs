@@ -58,6 +58,57 @@ pub(super) fn context_menu_popover(
     )
 }
 
+pub(super) fn bind_column_context_owner(
+    state: &Rc<ViewState>,
+    popover: &gtk::Popover,
+    depth: usize,
+) {
+    let weak = Rc::downgrade(state);
+    popover.connect_closed(move |_| {
+        if let Some(state) = weak.upgrade()
+            && state.context_menu_column.get() == Some(depth)
+        {
+            let generation = state.context_menu_generation.get();
+            let weak = Rc::downgrade(&state);
+            glib::idle_add_local_once(move || {
+                if let Some(state) = weak.upgrade()
+                    && state.context_menu_generation.get() == generation
+                    && state.context_menu_column.get() == Some(depth)
+                {
+                    state.context_menu_column.set(None);
+                    let restore_focus = state.focused_column_depth().is_some()
+                        || state
+                            .overlay
+                            .root()
+                            .and_then(|root| root.focus())
+                            .is_none_or(|focus| {
+                                !focus.is_mapped()
+                                    || focus == *state.overlay.upcast_ref::<gtk::Widget>()
+                            });
+                    if state.browser.active_depth() == Some(depth) && restore_focus {
+                        state.browser.focus_active();
+                    }
+                    state.refresh_destination_style();
+                }
+            });
+        }
+    });
+}
+
+pub(super) fn focus_context_column(state: &Rc<ViewState>, depth: usize) {
+    if state.mode_views.borrow().mode() != crate::ui::browser_modes::BrowserMode::Columns {
+        return;
+    }
+    state
+        .context_menu_generation
+        .set(state.context_menu_generation.get().wrapping_add(1));
+    state.context_menu_column.set(Some(depth));
+    state.browser.set_active_column(depth);
+    // GTK restores pre-popup focus on dismissal; make that the menu's own column.
+    state.browser.focus_active();
+    state.pointer_navigation();
+}
+
 pub(super) fn show_context_popover(
     popover: &gtk::Popover,
     scroll: &gtk::ScrolledWindow,
@@ -104,6 +155,7 @@ pub(in crate::ui) fn install_folder_context_menu(
     content.add_css_class("folder-context-menu");
     let (popover, scroll) = context_menu_popover(&content);
     popover.add_css_class("folder-context-popover");
+    bind_column_context_owner(state, &popover, depth);
 
     let new_folder = context_menu_option(
         crate::assets::icons::FOLDER_PLUS,
@@ -250,6 +302,7 @@ pub(in crate::ui) fn install_folder_context_menu(
     let popover_for_click = popover.clone();
     let browser_for_click = state.browser.clone();
     let scroll_for_click = scroll.clone();
+    let weak_state = Rc::downgrade(state);
     menu_click.connect_pressed(move |gesture, _, x, y| {
         let over_item = gesture
             .widget()
@@ -281,7 +334,10 @@ pub(in crate::ui) fn install_folder_context_menu(
                 crate::assets::icons::EYE_OFF
             },
         );
-        if let Some(anchor) = gesture.widget() {
+        if let Some(anchor) = gesture.widget()
+            && let Some(state) = weak_state.upgrade()
+        {
+            focus_context_column(&state, depth);
             show_context_popover(&popover_for_click, &scroll_for_click, &anchor, x, y);
         }
     });
@@ -448,6 +504,7 @@ pub(in crate::ui) fn install_item_context_menu(
 
     let (popover, scroll) = context_menu_popover(&content);
     popover.add_css_class("folder-context-popover");
+    bind_column_context_owner(state, &popover, depth);
     popover.connect_closed(|popover| popover.unparent());
 
     let target = Rc::new(RefCell::new(None::<(usize, FileEntry)>));
@@ -749,6 +806,7 @@ pub(in crate::ui) fn install_item_context_menu(
         let Some(anchor) = gesture.widget() else {
             return;
         };
+        focus_context_column(&state, depth);
         show_context_popover(&popover_for_reveal, &scroll_for_reveal, &anchor, x, y);
     });
     widget.add_controller(click);
