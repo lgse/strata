@@ -116,15 +116,16 @@ pub(crate) fn plan_restore_from_known_paths(
     if !destination.starts_with(&allowed_root) {
         return Err(escaped_restore_error());
     }
-    if path_is_within(&destination, trash_root) {
+    let trash_tree = trash_tree_root(trash_root);
+    if path_is_within(&destination, &trash_tree) {
         return Err(RestoreTargetError::new(
             "The original location must not be inside the trash directory",
         ));
     }
-    let trash_root = trash_root
+    let trash_tree = trash_tree
         .canonicalize()
-        .unwrap_or_else(|_| trash_root.to_path_buf());
-    if path_is_within(&destination, &trash_root) {
+        .unwrap_or_else(|_| trash_tree.clone());
+    if path_is_within(&destination, &trash_tree) {
         return Err(RestoreTargetError::new(
             "The original location must not be inside the trash directory",
         ));
@@ -252,8 +253,7 @@ fn resolve_restore_destination(
     let absolute = if orig_path.is_absolute() {
         orig_path.to_path_buf()
     } else {
-        trash_root
-            .parent()
+        trash_topdir(trash_root)
             .ok_or_else(|| RestoreTargetError::new("The original location is invalid"))?
             .join(orig_path)
     };
@@ -425,9 +425,7 @@ fn find_trash_item_by_orig_path(
 ) -> Option<DiscoveredTrashItem> {
     let info_root = trash_root.join("info");
     let files_root = trash_root.join("files");
-    // A relative `Path=` is relative to the directory holding the trash
-    // directory, which is how GVfs reports `trash::orig-path`.
-    let topdir = trash_root.parent()?;
+    let topdir = trash_topdir(trash_root)?;
     let infos = std::fs::read_dir(info_root).ok()?;
     for info in infos.flatten() {
         let info_path = info.path();
@@ -489,6 +487,42 @@ fn valid_shared_trash_dir(mount: &Path, uid: u32) -> Option<PathBuf> {
         return None;
     }
     Some(trash.join(uid.to_string()))
+}
+
+/// The shared layout nests the per-user directory one level deeper than
+/// `$topdir/.Trash-$uid`, so its trash root is `$topdir/.Trash/$uid`.
+fn is_shared_trash_root(trash_root: &Path) -> bool {
+    trash_root
+        .file_name()
+        .and_then(OsStr::to_str)
+        .is_some_and(|name| name.parse::<u32>().is_ok())
+        && trash_root
+            .parent()
+            .and_then(Path::file_name)
+            .is_some_and(|name| name == ".Trash")
+}
+
+/// Directory a relative `Path=` is resolved against: the mount point for
+/// volume trash directories and `$XDG_DATA_HOME` for the home trash, matching
+/// how GVfs reports `trash::orig-path`.
+fn trash_topdir(trash_root: &Path) -> Option<&Path> {
+    let parent = trash_root.parent()?;
+    if is_shared_trash_root(trash_root) {
+        parent.parent()
+    } else {
+        Some(parent)
+    }
+}
+
+/// Outermost directory that belongs to the trash: the shared `.Trash` dir for
+/// the shared layout, otherwise the trash root itself.
+fn trash_tree_root(trash_root: &Path) -> PathBuf {
+    if is_shared_trash_root(trash_root)
+        && let Some(shared) = trash_root.parent()
+    {
+        return shared.to_path_buf();
+    }
+    trash_root.to_path_buf()
 }
 
 pub(crate) fn trash_root_from_files_path(path: &Path) -> Option<PathBuf> {

@@ -25,6 +25,16 @@ fn volume_trash(root: &Path, uid: u32) -> PathBuf {
     trash
 }
 
+fn shared_volume_trash(root: &Path, uid: u32) -> PathBuf {
+    let shared = root.join(".Trash");
+    fs::create_dir(&shared).expect("shared trash");
+    fs::set_permissions(&shared, PermissionsExt::from_mode(0o1777)).expect("sticky");
+    let trash = shared.join(uid.to_string());
+    fs::create_dir_all(trash.join("files")).expect("files");
+    fs::create_dir_all(trash.join("info")).expect("info");
+    trash
+}
+
 fn distinct_device_dirs() -> Option<(tempfile::TempDir, tempfile::TempDir)> {
     let first = tempfile::tempdir().ok()?;
     let shm = Path::new("/dev/shm");
@@ -101,6 +111,99 @@ fn relative_orig_path_in_home_trash_is_joined_to_xdg_data_home() {
             .canonicalize()
             .expect("canonical mount")
             .join("Documents/report.txt")
+    );
+}
+
+#[test]
+fn relative_orig_path_in_shared_trash_is_joined_to_the_mount_point() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let uid = 1000;
+    let trash = shared_volume_trash(fixture.path(), uid);
+    let source = trash.join("files/report.txt");
+    fs::write(&source, b"ok").expect("source");
+    fs::create_dir_all(fixture.path().join("Documents")).expect("documents");
+    let context = context_for(&fixture.path().join("home-trash"), uid, fixture.path());
+
+    let plan = plan_restore_from_known_paths(
+        &source,
+        Path::new("Documents/report.txt"),
+        &trash,
+        None,
+        &context,
+    )
+    .expect("shared-trash relative path");
+
+    let mount = fixture.path().canonicalize().expect("canonical mount");
+    assert_eq!(plan.destination, mount.join("Documents/report.txt"));
+    assert_eq!(plan.allowed_root, mount);
+}
+
+#[test]
+fn shared_trash_item_is_found_by_its_relative_orig_path() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let trash = shared_volume_trash(fixture.path(), 1000);
+    fs::write(trash.join("files/report.txt"), b"ok").expect("source");
+    fs::write(
+        trash.join("info/report.txt.trashinfo"),
+        "[Trash Info]\nPath=Documents/report.txt\n",
+    )
+    .expect("info");
+
+    let found = find_trash_item_by_orig_path(&trash, &fixture.path().join("Documents/report.txt"))
+        .expect("resolved against the mount point, not .Trash");
+
+    assert_eq!(found.source_path, trash.join("files/report.txt"));
+    assert!(
+        find_trash_item_by_orig_path(&trash, &fixture.path().join(".Trash/Documents/report.txt"))
+            .is_none()
+    );
+}
+
+#[test]
+fn destination_inside_the_shared_trash_directory_is_rejected() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let uid = 1000;
+    let trash = shared_volume_trash(fixture.path(), uid);
+    let source = trash.join("files/report.txt");
+    fs::write(&source, b"ok").expect("source");
+    let context = context_for(&fixture.path().join("home-trash"), uid, fixture.path());
+
+    for orig in [
+        fixture.path().join(".Trash/Documents/report.txt"),
+        fixture.path().join(".Trash/1000/files/report.txt"),
+        fixture.path().join(".Trash/2000/files/report.txt"),
+    ] {
+        let error = plan_restore_from_known_paths(&source, &orig, &trash, None, &context)
+            .expect_err("inside the shared trash tree");
+        assert!(
+            error.message().contains("inside the trash directory"),
+            "{orig:?}: {}",
+            error.message()
+        );
+    }
+}
+
+#[test]
+fn trash_topdir_matches_the_freedesktop_layouts() {
+    assert_eq!(
+        trash_topdir(Path::new("/media/usb/.Trash-1000")),
+        Some(Path::new("/media/usb"))
+    );
+    assert_eq!(
+        trash_topdir(Path::new("/media/usb/.Trash/1000")),
+        Some(Path::new("/media/usb"))
+    );
+    assert_eq!(
+        trash_topdir(Path::new("/home/user/.local/share/Trash")),
+        Some(Path::new("/home/user/.local/share"))
+    );
+    assert_eq!(
+        trash_tree_root(Path::new("/media/usb/.Trash/1000")),
+        Path::new("/media/usb/.Trash")
+    );
+    assert_eq!(
+        trash_tree_root(Path::new("/media/usb/.Trash-1000")),
+        Path::new("/media/usb/.Trash-1000")
     );
 }
 
