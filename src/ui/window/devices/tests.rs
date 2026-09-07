@@ -66,24 +66,6 @@ fn a_non_system_drive_containing_home_is_still_included() {
 }
 
 #[test]
-fn mount_table_fallback_deduplicates_gio_and_repeated_mount_roots() {
-    let device = |root| MountedDevice {
-        name: "USB".into(),
-        root: PathBuf::from(root),
-    };
-    let devices = unrepresented_devices(
-        vec![
-            device("/mnt/known"),
-            device("/mnt/missing"),
-            device("/mnt/missing"),
-        ],
-        [PathBuf::from("/mnt/known")],
-    );
-    assert_eq!(devices.len(), 1);
-    assert_eq!(devices[0].root, Path::new("/mnt/missing"));
-}
-
-#[test]
 fn mount_table_fallback_keeps_storage_but_not_system_mounts() {
     let devices = mounted_devices_from_table(
         br"25 1 8:1 / / rw - ext4 /dev/sda1 rw
@@ -97,16 +79,12 @@ malformed
 ",
     );
     assert_eq!(
-        devices
-            .iter()
-            .map(|device| device.root.clone())
-            .collect::<Vec<_>>(),
+        devices,
         vec![
             PathBuf::from("/run/media/me/USB Backup"),
             PathBuf::from("/mnt/Archive")
         ]
     );
-    assert_eq!(devices[0].name, "USB Backup");
 }
 
 #[test]

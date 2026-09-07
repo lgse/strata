@@ -1786,14 +1786,6 @@ impl SidebarState {
 
     fn append_devices(self: &Rc<Self>) {
         let volumes = self.volume_monitor.volumes();
-        let represented = self
-            .volume_monitor
-            .mounts()
-            .into_iter()
-            .chain(volumes.iter().filter_map(|volume| volume.get_mount()))
-            .filter_map(|mount| mount.root().path());
-        let fallback =
-            devices::unrepresented_devices(devices::system_mounted_devices(), represented);
         let mounts: Vec<_> = self
             .volume_monitor
             .mounts()
@@ -1813,19 +1805,11 @@ impl SidebarState {
                 Some((name, location, mount))
             })
             .collect();
-        if !volumes.is_empty() || !mounts.is_empty() || !fallback.is_empty() {
+        if !volumes.is_empty() || !mounts.is_empty() {
             self.append_separator();
             self.append_heading("DEVICES");
             for volume in volumes {
                 self.append_volume(volume);
-            }
-            for device in fallback {
-                self.append_device_place(
-                    crate::assets::icons::HARD_DRIVE,
-                    &device.name,
-                    Location::local(device.root),
-                    None,
-                );
             }
             for (name, location, mount) in mounts {
                 if is_smb_location(&location) {
