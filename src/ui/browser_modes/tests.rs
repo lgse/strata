@@ -144,6 +144,24 @@ fn icons_columns_follow_viewport_width() {
 }
 
 #[test]
+fn pinning_icons_columns_leaves_min_at_one() {
+    gtk_test(
+        "ui::browser_modes::tests::pinning_icons_columns_leaves_min_at_one",
+        || {
+            let grid = gtk::GridView::new(
+                Some(gtk::NoSelection::new(Some(gtk::StringList::new(&["a"])))),
+                Some(gtk::SignalListItemFactory::new()),
+            );
+            grid.set_min_columns(1);
+            grid.set_max_columns(12);
+            super::pin_ungrouped_grid_columns(&grid, 4);
+            assert_eq!(grid.min_columns(), 1);
+            assert_eq!(grid.max_columns(), 4);
+        },
+    );
+}
+
+#[test]
 fn ungrouped_icons_reflow_when_the_preview_split_closes() {
     gtk_test(
         "ui::browser_modes::tests::ungrouped_icons_reflow_when_the_preview_split_closes",
