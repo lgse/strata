@@ -27,4 +27,11 @@ COPY requirements.txt /opt/e2e-requirements.txt
 RUN python3 -m venv --system-site-packages /opt/e2e-venv \
     && /opt/e2e-venv/bin/pip install --no-cache-dir -r /opt/e2e-requirements.txt
 
+# D-Bus requires an account entry even when the runtime accepts a numeric UID.
+ARG E2E_UID=1000
+ARG E2E_GID=1000
+RUN (getent group "$E2E_GID" || groupadd --gid "$E2E_GID" strata-e2e) \
+    && (getent passwd "$E2E_UID" || useradd --no-log-init --uid "$E2E_UID" \
+        --gid "$E2E_GID" --home-dir /tmp/strata-build-home --no-create-home strata-e2e)
+
 ENV STRATA_E2E_VENV=/opt/e2e-venv

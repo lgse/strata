@@ -13,12 +13,16 @@ if [[ -n "${STRATA_BINARY:-}" ]]; then
   exit 1
 fi
 
-image="strata-e2e:$(sha256sum "$repository/tests/e2e/Dockerfile" "$repository/tests/e2e/requirements.txt" | cut -d' ' -f1 | sha256sum | cut -c1-16)"
-"$engine" build --platform=linux/amd64 --tag "$image" --file "$repository/tests/e2e/Dockerfile" "$repository/tests/e2e"
+user_id="$(id -u)"
+group_id="$(id -g)"
+image="strata-e2e:$(sha256sum "$repository/tests/e2e/Dockerfile" "$repository/tests/e2e/requirements.txt" | cut -d' ' -f1 | sha256sum | cut -c1-16)-$user_id-$group_id"
+"$engine" build --platform=linux/amd64 --tag "$image" \
+  --build-arg "E2E_UID=$user_id" --build-arg "E2E_GID=$group_id" \
+  --file "$repository/tests/e2e/Dockerfile" "$repository/tests/e2e"
 
-options=(--rm --platform=linux/amd64 --user "$(id -u):$(id -g)" --shm-size=512m)
+options=(--rm --platform=linux/amd64 --user "$user_id:$group_id" --shm-size=512m)
 if [[ "$(basename "$engine")" == podman ]]; then
-  options+=(--userns=keep-id)
+  options+=(--userns=keep-id --passwd=false)
 fi
 exec "$engine" run "${options[@]}" \
   --mount "type=bind,source=$repository,target=/workspace" \

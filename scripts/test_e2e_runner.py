@@ -11,7 +11,7 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 
 
 class ContainerRunnerTests(unittest.TestCase):
-    def run_runner(self, engine_name="docker", binary=None):
+    def run_runner(self, engine_name="docker", binary=None, uid=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             engine = root / engine_name
@@ -35,6 +35,11 @@ class ContainerRunnerTests(unittest.TestCase):
                 "NOTIFY_SOCKET": "/run/user/1000/systemd/notify",
                 "STRATA_E2E_UPDATE_BASELINES": "1",
             }
+            if uid is not None:
+                identity = root / "id"
+                identity.write_text(f"#!/bin/sh\necho {uid}\n")
+                identity.chmod(0o755)
+                environment["PATH"] = f"{root}:{os.environ.get('PATH', os.defpath)}"
             environment.pop("STRATA_BINARY", None)
             if binary:
                 environment["STRATA_BINARY"] = binary
@@ -70,6 +75,16 @@ class ContainerRunnerTests(unittest.TestCase):
         result, calls = self.run_runner("podman")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("--userns=keep-id", calls[1]["args"])
+        self.assertIn("--passwd=false", calls[1]["args"])
+
+    def test_non_default_uid_has_a_matching_image_account(self):
+        result, calls = self.run_runner(uid=1001)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        build, run = [call["args"] for call in calls]
+        self.assertIn("E2E_UID=1001", build)
+        self.assertIn("E2E_GID=1001", build)
+        self.assertTrue(build[build.index("--tag") + 1].endswith("-1001-1001"))
+        self.assertEqual(run[run.index("--user") + 1], "1001:1001")
 
     def test_failed_container_build_cannot_run_stale_binary(self):
         _, calls = self.run_runner()

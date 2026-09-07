@@ -23,7 +23,9 @@ Rust binaries are mounted into the container.
 The checkout is mounted at `/workspace`; pass test paths relative to the
 repository. Build and Cargo caches live in `target/e2e-container`, separately
 from native builds. Artifacts remain in `target/e2e-artifacts` and are owned by
-the invoking user. Updating the image inputs is an intentional rendering
+the invoking user. The image adds an account for the invoking UID/GID because
+D-Bus requires an account entry; this does not change the rendering packages.
+Updating the image inputs is an intentional rendering
 environment change and requires reviewing the visual baselines.
 
 For explicit host-toolkit debugging only, `./scripts/e2e-native.sh` accepts
