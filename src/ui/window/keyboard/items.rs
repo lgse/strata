@@ -109,6 +109,9 @@ impl Dispatcher {
             && self.view.cross_type_group(direction, false)
         {
             Propagation::Stop
+        } else if event.vim_navigation {
+            crate::ui::focus_navigation::activate_native_arrow(&self.window, event.key);
+            Propagation::Stop
         } else {
             Propagation::Proceed
         }

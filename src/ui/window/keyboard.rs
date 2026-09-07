@@ -73,6 +73,7 @@ struct KeyEvent {
     key: Key,
     modifiers: Modifiers,
     focused: Option<gtk::Widget>,
+    vim_navigation: bool,
     header_left_boundary: bool,
 }
 
@@ -105,10 +106,18 @@ impl Dispatcher {
         if let Some(result) = self.input_owner(key, modifiers) {
             return result;
         }
-        let mut event = KeyEvent {
+        let focused = gtk::prelude::RootExt::focus(&self.window);
+        let navigation_key = crate::ui::focus_navigation::navigation_key(
             key,
             modifiers,
-            focused: gtk::prelude::RootExt::focus(&self.window),
+            self.type_to_search.preferences.type_to_search(),
+            focused.as_ref(),
+        );
+        let mut event = KeyEvent {
+            key: navigation_key,
+            modifiers,
+            focused,
+            vim_navigation: navigation_key != key,
             header_left_boundary: false,
         };
         self.window_commands(&event)

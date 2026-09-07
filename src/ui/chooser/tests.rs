@@ -4,6 +4,7 @@ mod context_menu;
 mod keyboard;
 mod layout;
 mod selection;
+mod sizing;
 
 use std::{ffi::OsString, path::Path};
 
@@ -264,6 +265,50 @@ fn chooser_dimensions_fall_back_for_invalid_geometry() {
         assert_eq!(
             chooser_default_dimensions_for_monitor(geometry.0, geometry.1),
             (FALLBACK_CHOOSER_WIDTH, FALLBACK_CHOOSER_HEIGHT)
+        );
+    }
+}
+
+#[test]
+fn chooser_dimensions_follow_split_application_geometry() {
+    let monitor = Some((1920, 1080));
+    assert_eq!(
+        chooser_initial_dimensions(monitor, Some((960, 1080))),
+        (768, 680)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(monitor, Some((960, 540))),
+        (768, 460)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(monitor, Some((1920, 1080))),
+        (1000, 680)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(monitor, Some((i32::MAX, i32::MAX))),
+        (1000, 680)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(Some((800, 600)), Some((1920, 1080))),
+        (640, 468)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(None, Some((960, 1080))),
+        (768, 680)
+    );
+}
+
+#[test]
+fn missing_or_invalid_application_geometry_preserves_monitor_fallback() {
+    for parent in [None, Some((0, 600)), Some((800, -1))] {
+        assert_eq!(
+            chooser_initial_dimensions(Some((1920, 1080)), parent),
+            (1000, 680)
+        );
+        assert_eq!(chooser_initial_dimensions(None, parent), (920, 580));
+        assert_eq!(
+            chooser_initial_dimensions(Some((0, 1080)), parent),
+            (920, 580)
         );
     }
 }

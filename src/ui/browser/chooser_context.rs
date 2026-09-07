@@ -9,8 +9,8 @@ use crate::model::Location;
 use super::{
     ViewState,
     context_menu::{
-        ContextPickPosition, ContextSourcePosition, context_menu_option, context_menu_popover,
-        show_context_popover,
+        ContextPickPosition, ContextSourcePosition, bind_column_context_owner, context_menu_option,
+        context_menu_popover, focus_context_column, show_context_popover,
     },
 };
 
@@ -77,6 +77,9 @@ pub(super) fn install_folder(
             return;
         }
         gesture.set_state(gtk::EventSequenceState::Claimed);
+        let Some(state) = weak.upgrade() else {
+            return;
+        };
         let weak = weak.clone();
         let location = location.clone();
         let (popover, scroll) = menu(
@@ -93,6 +96,8 @@ pub(super) fn install_folder(
                 }
             },
         );
+        bind_column_context_owner(&state, &popover, depth);
+        focus_context_column(&state, depth);
         show_context_popover(&popover, &scroll, &anchor, x, y);
     });
     parent.add_controller(click);
@@ -180,6 +185,8 @@ pub(super) fn install_item(
                 Action::NewFolder => unreachable!(),
             }
         });
+        bind_column_context_owner(&state, &popover, depth);
+        focus_context_column(&state, depth);
         show_context_popover(&popover, &scroll, &anchor, x, y);
     });
     widget.add_controller(click);

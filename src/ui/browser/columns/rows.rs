@@ -568,7 +568,16 @@ pub(super) fn column_rows(
             let mode_active = state
                 .as_ref()
                 .is_some_and(|state| state.mode_views.borrow().mode() == BrowserMode::Columns);
-            if entry.is_directory() || mode_active {
+            if searching && mode_active && !entry.is_directory() {
+                // Search results have no directory metadata-fill producer.
+                crate::ui::thumbnail::set_thumbnail_or_icon_for_path(
+                    &icon,
+                    entry.local_thumbnail_path().expect("local search result"),
+                    entry_icon(entry),
+                    17,
+                    17,
+                );
+            } else if entry.is_directory() || mode_active {
                 crate::ui::thumbnail::set_thumbnail_or_icon(
                     &icon,
                     entry,

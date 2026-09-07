@@ -6,6 +6,42 @@ The chooser is deliberately limited to local files and folders. It uses the main
 
 Wayland applications can provide an exported parent handle. X11 parent handles are not attached; these requests appear as standalone windows.
 
+### Initial size in split-window layouts
+
+On Hyprland, requests with a Wayland parent and an application ID can use the
+requesting application's window size as an initial sizing hint. Strata queries
+Hyprland's local IPC socket before loading the requested directory, and uses the
+hint only when exactly one window's current or initial class matches the app ID
+(case-insensitively). The query is read-only, limited to 100 ms and a 1 MiB reply,
+and does not depend on which window has keyboard focus. Monitor dimensions still
+cap the result. Moving the chooser between monitors no longer reapplies its
+initial default size over a manual resize.
+
+The exported Wayland handle does not expose parent geometry. Other compositors,
+X11 requests, missing or differently named app IDs, multiple matching windows,
+and unavailable IPC retain monitor-based sizing. This is a best-effort improvement,
+not guaranteed parent-relative sizing on every desktop. GTK's compositor bounds
+and the controls' minimum usable size continue to apply.
+
+### Initial placement on Hyprland
+
+On native Wayland under Hyprland, floating choosers open at the center of their
+monitor by default, rather than at the center of the calling application. The portal process identifies its
+windows as `io.github.lgse.Strata.FileChooser`, separate from the normal file
+manager's `io.github.lgse.Strata` identity.
+
+Before showing a chooser, Strata registers the named runtime rule
+`strata-file-chooser-center` through Hyprland's IPC socket. The rule matches only
+the chooser identity and sets `center`; it does not force floating, resize the
+window, or remove its parent/modal relationship. No Hyprland configuration files
+are edited. The same rule is refreshed before each chooser, so it also works
+after a compositor configuration reload without accumulating rules.
+
+Both Lua and legacy configurations with named window-rule support are handled.
+The entire placement request has a 100 ms deadline; unsupported rules, unavailable
+IPC, and other compositors retain compositor-default placement. Centering does
+not require identifying the calling application's size.
+
 ## Opt in through the app or installer
 
 On the first normal launch after updating to a version with this feature, Strata

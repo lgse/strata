@@ -126,6 +126,54 @@ fn exercise_type_to_search() {
         }
     }
 
+    preferences.set_type_to_search(false);
+    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+        view.set_view_mode(mode);
+        for (letter, arrow) in [
+            (gtk::gdk::Key::h, gtk::gdk::Key::Left),
+            (gtk::gdk::Key::j, gtk::gdk::Key::Down),
+            (gtk::gdk::Key::k, gtk::gdk::Key::Up),
+            (gtk::gdk::Key::l, gtk::gdk::Key::Right),
+        ] {
+            let mut results = Vec::new();
+            for key in [arrow, letter] {
+                browser.navigate(Location::local(fixture.path()));
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+                select_entry(&browser, "folder");
+                browser.focus_active();
+                wait_until(|| view.item_view_has_focus());
+                if !press(&keys, key) {
+                    assert_eq!(key, arrow, "letter must be consumed: {mode:?}");
+                    assert!(crate::ui::focus_navigation::activate_native_arrow(
+                        &window, arrow
+                    ));
+                }
+                while glib::MainContext::default().pending() {
+                    glib::MainContext::default().iteration(false);
+                }
+                results.push((
+                    browser.active_location(),
+                    browser.focused_entry().map(|entry| entry.location),
+                    view.header_actions_have_focus(),
+                ));
+                assert!(!view.filter_has_focus());
+            }
+            assert_eq!(
+                results[0], results[1],
+                "{letter:?} must mirror {arrow:?}: {mode:?}"
+            );
+        }
+    }
+    browser.navigate(Location::local(fixture.path()));
+    wait_until(|| {
+        browser
+            .column_snapshot(0)
+            .is_some_and(|column| !column.loading)
+    });
     preferences.set_type_to_search(true);
     for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
         view.set_view_mode(mode);
