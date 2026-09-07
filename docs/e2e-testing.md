@@ -32,6 +32,41 @@ For explicit host-toolkit debugging only, `./scripts/e2e-native.sh` accepts
 `STRATA_BINARY` and `STRATA_E2E_VENV`. It is not the pre-push E2E gate; a native
 pass does not replace `./scripts/e2e.sh`.
 
+### Hardware-aware parallelism
+
+The canonical container and native debugging runner default to isolated
+`pytest-xdist` workers. Each worker owns its Xvfb server, private session and
+accessibility buses, and input connection; scenarios within a worker run
+serially. The application is built once before workers start.
+
+Auto mode chooses the smallest of:
+
+- half the available logical CPUs (rounded down), respecting CPU affinity and
+  cgroup v1/v2 quotas, including visible ancestor limits;
+- one worker per 2 GiB of available memory after reserving 1 GiB, respecting
+  host `MemAvailable` and remaining cgroup memory;
+- 16 workers.
+
+At least one worker runs, including when memory availability is unknown. The
+budget is detected **inside the container, after compilation**, and printed at
+startup. It is a conservative resource budget, not a promise of linear speedup.
+
+```bash
+STRATA_E2E_WORKERS=auto ./scripts/e2e.sh  # default, locally and in CI
+STRATA_E2E_WORKERS=8 ./scripts/e2e.sh     # explicit budget
+STRATA_E2E_WORKERS=1 ./scripts/e2e.sh     # serial scenarios
+./scripts/e2e.sh -n 0                   # no worker subprocess, for debugging
+```
+
+A positive override bypasses the automatic resource caps. Explicit numeric
+pytest `-n` options take precedence over the environment variable. Parallel runs require
+`--dist=loadgroup`: all visual-baseline scenarios share one scheduling group so
+their fixed fixture directory is never claimed concurrently. Other scenarios
+are distributed individually. Worker crashes fail the run without automatic
+replacement or assertion retries. Baseline updates use the same grouping.
+Compare worker budgets with a warm build cache; xdist does not speed up image
+setup or Rust compilation.
+
 ### Keep Rust test windows off the local desktop
 
 Some Rust tests also create GTK windows when a display is available. Run the
@@ -62,7 +97,7 @@ them on the host.
 | Screen capture | `imagemagick` | `imagemagick` |
 | Font | `cantarell-fonts` | `fonts-cantarell` |
 
-`pytest` and Pillow are installed into the virtual environment from
+`pytest`, `pytest-xdist`, and Pillow are installed into the virtual environment from
 `tests/e2e/requirements.txt`. The environment is created with
 `--system-site-packages` because PyGObject is a system package.
 
@@ -160,7 +195,8 @@ rather than relying on GTK 4.14 to export `SELECTABLE` for unselected rows.
 
 ## Failure artifacts
 
-A failing scenario writes a directory under `target/e2e-artifacts/<test name>`
+A failing scenario writes a directory under `target/e2e-artifacts/<worker>/<test name>`
+(the worker component is omitted with `-n 0`)
 containing a screenshot, the accessibility tree, the application log, the
 fixture tree listing, and the Xvfb, D-Bus, and AT-SPI logs. The path is printed
 in the test output, and CI uploads the whole directory. Pass
@@ -176,8 +212,9 @@ versions do not have separate baselines; native baseline runs fail rather than
 silently accepting a different renderer.
 These scenarios exclusively claim `/tmp/strata-e2e-baseline`, because the
 breadcrumb and context menu render the full path. An existing directory or
-symlink is a setup error, never deleted or reused; concurrent baseline runs
-must use separate containers.
+symlink is a setup error, never deleted or reused. Within a run, baseline
+scenarios stay on one worker; independent concurrent runs must use separate
+containers.
 
 A capture matches when no more than 0.5% of pixels differ by more than 24 in
 any channel, which absorbs the subpixel antialiasing that software rendering
@@ -216,5 +253,7 @@ a workflow that does not have a mutation yet.
 
 The `e2e` job in `.github/workflows/ci.yml` invokes `./scripts/e2e.sh`, just
 like a local run. It does not separately install GTK or build a host binary.
-The suite runs serially with a per-test and a whole-job timeout. The infrastructure start-up is retried once;
+The suite uses the same hardware-aware worker budget as local runs (normally
+2 workers on the 4-vCPU runner), with a per-test and a whole-job timeout.
+The infrastructure start-up is retried once;
 a failed interaction assertion never is. Artifacts are uploaded on failure.

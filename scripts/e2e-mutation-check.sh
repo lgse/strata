@@ -67,7 +67,9 @@ for name in "${selected[@]}"; do
   report="$reports/$name.xml"
   rm -f "$report"
   result=0
-  "$repository/scripts/e2e.sh" -q -x --junitxml="$report" "$scenario" \
+  # xdist's fail-fast shutdown exits as an interruption, not a test failure.
+  # Finish the selected scenarios so detection still requires exit status 1.
+  "$repository/scripts/e2e.sh" -q --maxfail=0 --junitxml="$report" "$scenario" \
     >"$reports/$name.log" 2>&1 || result=$?
   if python3 "$repository/scripts/e2e_mutation_result.py" "$report" "$result"; then
     echo "   detected"
