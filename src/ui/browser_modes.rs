@@ -3432,10 +3432,12 @@ fn install_modified_selection_click(
             anchor_at(&browser, depth, &positions, position);
             return;
         }
-        if gesture
-            .widget()
-            .is_some_and(|widget| super::pointer::hits_item_content(&widget, x, y))
+        if let Some(widget) = gesture.widget()
+            && super::pointer::hits_item_content(&widget, x, y)
         {
+            if let Some(item_widget) = widget.parent() {
+                item_widget.grab_focus();
+            }
             gesture.set_state(gtk::EventSequenceState::Claimed);
         }
     });

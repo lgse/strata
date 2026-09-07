@@ -345,10 +345,12 @@ pub(super) fn column_rows(
                 }
             }
             if (control || shift)
-                && gesture
-                    .widget()
-                    .is_some_and(|widget| crate::ui::pointer::hits_item_content(&widget, x, y))
+                && let Some(widget) = gesture.widget()
+                && crate::ui::pointer::hits_item_content(&widget, x, y)
             {
+                if let Some(item_widget) = widget.parent() {
+                    item_widget.grab_focus();
+                }
                 gesture.set_state(gtk::EventSequenceState::Claimed);
             }
             modified_for_click.set(false);

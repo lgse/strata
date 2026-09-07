@@ -38,6 +38,46 @@ def test_sidebar_navigation_initializes_the_range_anchor(strata, mode):
     strata.wait_for_selection(names, home.name)
 
 
+@pytest.mark.preferences(
+    browser_mode="columns", single_click_previews=False,
+    sort_key="modified", sort_direction="descending",
+)
+@pytest.mark.parametrize("target", ["name", "row-space"])
+def test_shift_click_revisits_a_file_after_opening_a_folder(strata, root, target):
+    def click(name, modifiers=()):
+        entry = strata.entry(name, root)
+        label = entry.find(role="label", name=name)
+        assert label is not None
+        bounds = label.screen_bounds()
+        x = bounds.x + 4 if target == "name" else bounds.x + bounds.width - 2
+        strata.pointer.click(entry, at=(x, bounds.center[1]), modifiers=modifiers)
+
+    click("todo.txt")
+    strata.wait_for_selection(["todo.txt"], root)
+    click("documents")
+    strata.wait_for_directory("documents")
+    strata.wait_for_selection(["notes.txt"], "documents")
+    strata.wait_for_focused_entry("notes.txt")
+    click("todo.txt", ("shift",))
+    strata.wait_for_focused_entry("todo.txt")
+    names = [entry.name for entry in strata.entries(root)]
+    strata.wait_for_selection(names[names.index("documents"):names.index("todo.txt") + 1], root)
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("modifier", ["ctrl", "shift"])
+def test_modifier_click_on_a_filename_focuses_the_target(strata, mode, modifier, root):
+    strata.select_entry("readme.md", root)
+    strata.wait_for_focused_entry("readme.md")
+    entry = strata.entry("todo.txt", root)
+    label = entry.find(role="label", name="todo.txt")
+    assert label is not None
+    bounds = label.screen_bounds()
+    strata.pointer.click(entry, at=(bounds.x + 4, bounds.center[1]), modifiers=(modifier,))
+    strata.wait_for_focused_entry("todo.txt")
+    strata.wait_for_selection(["readme.md", "todo.txt"], root)
+
+
 @pytest.mark.preferences(browser_mode="columns")
 def test_returning_to_a_parent_pane_anchors_its_first_entry(strata, root):
     strata.open_directory("documents", directory=root)
@@ -119,10 +159,24 @@ def test_selecting_a_second_entry_replaces_the_first(strata, mode, root):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_shift_click_ranges_from_the_entry_a_fresh_listing_selected(strata, mode, root):
+@pytest.mark.parametrize("target", ["content", "row-space"])
+def test_shift_click_ranges_from_the_entry_a_fresh_listing_selected(strata, mode, root, target):
     strata.open_directory("documents", directory=root)
 
-    strata.click_entry_with("spreadsheet.csv", ["shift"], directory="documents")
+    entry = strata.entry("spreadsheet.csv", "documents")
+    point = None
+    if target == "row-space":
+        if mode == "Icons":
+            icon = entry.find(role="image")
+            assert icon is not None
+            bounds = icon.screen_bounds()
+            point = (bounds.x - 6, bounds.center[1])
+        else:
+            label = entry.find(role="label", name="spreadsheet.csv")
+            assert label is not None
+            bounds = label.screen_bounds()
+            point = (bounds.x + bounds.width - 2, bounds.center[1])
+    strata.pointer.click(entry, at=point, modifiers=("shift",))
 
     strata.wait(
         lambda: strata.selected_names("documents")
