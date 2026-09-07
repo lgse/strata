@@ -912,6 +912,9 @@ impl ViewState {
         let presentation = LoadPresentation::new(&scroll, Some(retry));
         let rows_for_marquee = bound_rows.clone();
         let weak_for_clear = Rc::downgrade(self);
+        let returning_to_column = Rc::new(Cell::new(false));
+        let returning_for_clear = returning_to_column.clone();
+        let search_active_for_clear = recursive_search_active.clone();
         let marquee = crate::ui::marquee::install(crate::ui::marquee::MarqueeSetup {
             view: list.clone().upcast(),
             surface: presentation.stack.clone().upcast(),
@@ -934,6 +937,15 @@ impl ViewState {
             clear_selection: Rc::new(move || {
                 if let Some(state) = weak_for_clear.upgrade() {
                     state.clear_column_selections();
+                    if returning_for_clear.replace(false) && !search_active_for_clear.get() {
+                        let first = state.columns.borrow().get(depth).and_then(|column| {
+                            (0..column.selection.n_items())
+                                .find_map(|position| column.map.source_position(position))
+                        });
+                        if let Some(position) = first {
+                            state.browser.select(depth, position);
+                        }
+                    }
                 }
             }),
         });
@@ -984,7 +996,8 @@ impl ViewState {
             presentation.stack.upcast_ref::<gtk::Widget>(),
             header.upcast_ref(),
         ] {
-            let click = self.install_column_background_focus(surface, depth);
+            let click =
+                self.install_column_background_focus(surface, depth, returning_to_column.clone());
             marquee.group_background_click(&click);
         }
         if self.interactive {
@@ -1161,13 +1174,20 @@ impl ViewState {
         self: &Rc<Self>,
         surface: &gtk::Widget,
         depth: usize,
+        returning_to_column: Rc<Cell<bool>>,
     ) -> gtk::GestureClick {
         let click = gtk::GestureClick::new();
         click.set_button(1);
         click.set_propagation_phase(gtk::PropagationPhase::Capture);
         let origin = Rc::new(Cell::new(None));
         let pressed_origin = origin.clone();
+        let weak_for_press = Rc::downgrade(self);
         click.connect_pressed(move |gesture, _, x, y| {
+            returning_to_column.set(
+                weak_for_press
+                    .upgrade()
+                    .is_some_and(|state| state.browser.active_depth() != Some(depth)),
+            );
             pressed_origin.set(None);
             let Some(surface) = gesture.widget() else {
                 return;

@@ -70,7 +70,7 @@ thumbnail slots, rendered row text/metadata, and Icons' caption region are item 
 unused label allocation and the gutters beside thumbnails are marquee origins. Both paths use
 GTK's configured drag threshold. Within collection viewports, marquees claim the sequence only
 after that threshold, leaving simple clicks and modifier-clicks intact. A completed plain click
-on background clears selections; presses and marquee releases do not. Click activation and automatic preview wait for release
+on background clears selections; returning to an inactive column then selects its first visible entry. Presses and marquee releases do not clear selections. Click activation and automatic preview wait for release
 and reject cancelled gestures, drag motion, and recycled items. Marquees anchor and cache mapped
 item geometry in scroll-content coordinates, independent of native GtkScrollable or GtkViewport
 layout. Edge and wheel scrolling refresh selection after layout/paint, even without pointer motion;

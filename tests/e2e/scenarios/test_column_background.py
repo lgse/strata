@@ -20,7 +20,9 @@ def test_column_background_click_focuses_parent(strata, surface):
         strata.pointer.click(heading)
     strata.wait_for_directory(root)
     if surface == "content":
-        strata.wait(lambda: not strata.all_selected_names(), "background click to clear selection")
+        strata.wait_for_selection(["archive"], root)
+        strata.pointer.click(strata.pane(root), at=strata.background_point(root))
+        strata.wait(lambda: not strata.all_selected_names(), "active background click to clear selection")
     else:
         assert strata.selected_names(directory=root) == selected
     assert "documents" in strata.pane_names()

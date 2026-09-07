@@ -698,7 +698,6 @@ impl Browser {
         self.state.borrow().selection_anchor_position(depth)
     }
 
-    /// Moves the range anchor pointer clicks and keyboard extension share.
     pub fn set_selection_anchor(&self, depth: usize, position: usize) {
         self.state
             .borrow_mut()

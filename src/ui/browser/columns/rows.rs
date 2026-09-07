@@ -33,7 +33,6 @@ use std::{
     time::Duration,
 };
 
-/// The row the shared range anchor currently points at, if it has one on screen.
 fn anchored_row(state: &std::rc::Weak<ViewState>, depth: usize, map: &ViewMap) -> Option<u32> {
     let state = state.upgrade()?;
     let anchor = state.browser.selection_anchor_position(depth)?;
@@ -327,8 +326,6 @@ pub(super) fn column_rows(
                 );
             modified_for_click.set(control || shift);
             if shift {
-                // The anchor a load or the keyboard left behind counts; a rebuilt
-                // column has no click of its own to range from.
                 let anchor =
                     anchored_row(&weak_state_for_click, depth, &map_for_click).unwrap_or(position);
                 let start = anchor.min(position);

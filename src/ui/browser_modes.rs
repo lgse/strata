@@ -878,14 +878,13 @@ impl ModeViews {
             BrowserEvent::ColumnAdded { depth, .. }
                 if self.browser.active_depth() == Some(*depth) =>
             {
+                self.browser.select_first_on_load(*depth);
                 match self.mode {
                     BrowserMode::Columns => {}
                     BrowserMode::Icons => {
-                        self.browser.select_first_on_load(*depth);
                         self.rebuild_icons();
                     }
                     BrowserMode::List => {
-                        self.browser.select_first_on_load(*depth);
                         self.rebuild_list();
                     }
                 }
@@ -3364,7 +3363,6 @@ fn install_list_drag_drop(
     row.add_controller(drop);
 }
 
-/// Both directions of a pane's source-to-view position mapping.
 #[derive(Clone)]
 struct PanePositions {
     index: SourceIndexMap,
@@ -3416,8 +3414,6 @@ fn install_modified_selection_click(
         let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
         if shift {
-            // The anchor a load or the keyboard left behind counts; a rebuilt
-            // pane has no click of its own to range from.
             let anchor = browser
                 .selection_anchor_position(depth)
                 .and_then(|anchor| positions.view_position(anchor))
