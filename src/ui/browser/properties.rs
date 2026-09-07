@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::adapters::directory_summary::summarize_directory;
 use crate::adapters::gio_file_for_location;
-use crate::adapters::trash::summarize_trash;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::clipboard::copy_path_text;
 use crate::ui::browser::desktop::open_location;
@@ -251,7 +251,7 @@ impl ViewState {
         let location_value = properties_row(&details, "LOCATION", &compact_display_path(&location));
         location_value.set_tooltip_text(Some(&location.display_path()));
         let trash_root = is_trash_root(&location);
-        let initial_size = if trash_root {
+        let initial_size = if is_directory || trash_root {
             "Calculating…".to_owned()
         } else {
             entry
@@ -459,10 +459,11 @@ impl ViewState {
         layer.add_controller(escape);
         layer.grab_focus();
 
-        if trash_root {
+        if is_directory || trash_root {
             let weak_size = size.downgrade();
-            glib::MainContext::default().spawn_local(async move {
-                let summary = summarize_trash(&gio::File::for_uri("trash:///")).await;
+            let directory = gio_file_for_location(&location);
+            let task = glib::MainContext::default().spawn_local(async move {
+                let summary = summarize_directory(&directory).await;
                 let Some(size) = weak_size.upgrade() else {
                     return;
                 };
@@ -478,6 +479,7 @@ impl ViewState {
                     Err(_) => size.set_text("Unavailable"),
                 }
             });
+            layer.connect_unrealize(move |_| task.abort());
         }
 
         let file = gio_file_for_location(&location);

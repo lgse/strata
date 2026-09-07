@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+pub(crate) mod directory_summary;
 mod file_manager1;
 mod gio_location;
 mod local_files;
