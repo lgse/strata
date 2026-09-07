@@ -303,12 +303,11 @@ fn preview_offers_final_release_over_an_installed_release_candidate() {
     let installed = version("0.5.0-rc.2");
     let result = select_update(Channel::Preview, &installed, &summaries);
     match result {
-        UpdateCheck::Available {
-            release,
-            download_url,
-        } => {
+        UpdateCheck::Available { release, install } => {
             assert_eq!(release.tag, "v0.5.0");
-            assert!(!download_url.is_empty());
+            assert_eq!(install.tag, "v0.5.0");
+            assert_eq!(install.asset_name, archive_name("0.5.0"));
+            assert!(install.advertised_url.ends_with(&install.asset_name));
         }
         other => panic!("expected final 0.5.0 to be offered, got {other:?}"),
     }

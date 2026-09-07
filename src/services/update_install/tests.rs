@@ -6,10 +6,11 @@ use std::{
 };
 
 use super::{
-    APPLICATION_ICON, DESKTOP_ENTRY, UpdateMethod, aur_repository_version_from_response,
-    desktop_entry_with_exec, find_binaries, first_hash_token, package_repository_version_for,
-    parse_aur_package_version, parse_package_version, refresh_desktop_metadata,
-    repository_database_version, stage_binary_path, stage_workdir, update_method_for,
+    APPLICATION_ICON, DESKTOP_ENTRY, InstallCancel, InstallRequest, InstallStop, UpdateMethod,
+    aur_repository_version_from_response, desktop_entry_with_exec, download_to_file_bounded,
+    package_repository_version_for, parse_aur_package_version, parse_package_version,
+    refresh_desktop_metadata, repository_database_version, restore_rollback, stage_binary_path,
+    stage_rollback, stage_workdir, update_method_for, verified_download_url, verify_staged_binary,
 };
 
 const PACKAGED_ENTRY: &str =
@@ -216,75 +217,6 @@ fn stage_binary_path_is_unique_per_call() {
 }
 
 #[test]
-fn first_hash_token_lowercases_and_ignores_trailing_filename() {
-    assert_eq!(
-        first_hash_token("ABCDEF  strata-0.2.0-x86_64-unknown-linux-gnu.tar.gz\n"),
-        Some("abcdef".to_owned())
-    );
-}
-
-#[test]
-fn first_hash_token_rejects_empty_input() {
-    assert_eq!(first_hash_token("   \n"), None);
-}
-
-#[test]
-fn find_binaries_locates_a_single_nested_binary() {
-    let dir = std::env::temp_dir().join(format!(
-        "strata-update-install-test-{}-{}",
-        std::process::id(),
-        line!()
-    ));
-    let package_dir = dir.join("strata-0.2.0-x86_64-unknown-linux-gnu");
-    fs::create_dir_all(&package_dir).expect("create package dir");
-    fs::write(package_dir.join("strata"), b"binary").expect("write binary");
-
-    let found = find_binaries(&dir, &["strata"]).expect("binary should be found");
-    assert_eq!(found, vec![package_dir.join("strata")]);
-
-    fs::remove_dir_all(&dir).expect("cleanup");
-}
-
-#[test]
-fn find_binaries_errors_when_a_requested_name_is_missing() {
-    let dir = std::env::temp_dir().join(format!(
-        "strata-update-install-test-empty-{}-{}",
-        std::process::id(),
-        line!()
-    ));
-    fs::create_dir_all(&dir).expect("create empty dir");
-
-    assert!(find_binaries(&dir, &["strata"]).is_err());
-
-    fs::remove_dir_all(&dir).expect("cleanup");
-}
-
-#[test]
-fn find_binaries_returns_all_requested_names_when_several_are_present() {
-    let dir = std::env::temp_dir().join(format!(
-        "strata-update-install-test-multi-{}-{}",
-        std::process::id(),
-        line!()
-    ));
-    let package_dir = dir.join("strata-0.2.0-x86_64-unknown-linux-gnu");
-    fs::create_dir_all(&package_dir).expect("create package dir");
-    fs::write(package_dir.join("strata"), b"binary").expect("write strata binary");
-    fs::write(package_dir.join("strata-helper"), b"binary").expect("write helper binary");
-
-    let found =
-        find_binaries(&dir, &["strata", "strata-helper"]).expect("both binaries should be found");
-    assert_eq!(
-        found,
-        vec![
-            package_dir.join("strata"),
-            package_dir.join("strata-helper"),
-        ]
-    );
-
-    fs::remove_dir_all(&dir).expect("cleanup");
-}
-
-#[test]
 fn desktop_entry_exec_points_at_the_install_path_and_keeps_field_codes() {
     let entry = desktop_entry_with_exec(PACKAGED_ENTRY, Path::new("/home/user/.local/bin/strata"));
 
@@ -372,4 +304,297 @@ fn refresh_keeps_an_installed_entry_when_the_archive_omits_metadata() {
     );
 
     fs::remove_dir_all(&dir).expect("cleanup");
+}
+
+fn request(tag: &str, asset: &str, advertised: &str) -> InstallRequest {
+    InstallRequest {
+        tag: tag.to_owned(),
+        asset_name: asset.to_owned(),
+        advertised_url: advertised.to_owned(),
+    }
+}
+
+const TAG: &str = "v0.11.2";
+const ASSET: &str = "strata-0.11.2-x86_64-unknown-linux-gnu.tar.gz";
+
+fn release_url(tag: &str, asset: &str) -> String {
+    format!("https://github.com/lgse/strata/releases/download/{tag}/{asset}")
+}
+
+#[test]
+fn download_url_is_derived_from_the_release_tag_and_asset() {
+    let asset = super::super::update_check::archive_name("0.11.2");
+    let expected = release_url(TAG, &asset);
+
+    let url = verified_download_url(&request(TAG, &asset, &expected)).expect("url should verify");
+
+    assert_eq!(url, expected);
+}
+
+#[test]
+fn download_url_rejects_another_host() {
+    let advertised = format!("https://example.invalid/lgse/strata/releases/download/{TAG}/{ASSET}");
+
+    assert!(verified_download_url(&request(TAG, ASSET, &advertised)).is_err());
+}
+
+#[test]
+fn download_url_rejects_another_repository() {
+    let advertised = format!("https://github.com/attacker/strata/releases/download/{TAG}/{ASSET}");
+
+    assert!(verified_download_url(&request(TAG, ASSET, &advertised)).is_err());
+}
+
+#[test]
+fn download_url_rejects_a_plaintext_scheme() {
+    let advertised = release_url(TAG, ASSET).replace("https://", "http://");
+
+    assert!(verified_download_url(&request(TAG, ASSET, &advertised)).is_err());
+}
+
+#[test]
+fn download_url_rejects_an_asset_from_another_tag() {
+    let advertised = release_url("v0.11.1", ASSET);
+
+    assert!(verified_download_url(&request(TAG, ASSET, &advertised)).is_err());
+}
+
+#[test]
+fn download_url_rejects_an_unexpected_asset_name() {
+    let advertised = release_url(TAG, "strata-0.11.2-x86_64-unknown-linux-gnu.debug");
+
+    assert!(verified_download_url(&request(TAG, ASSET, &advertised)).is_err());
+}
+
+#[test]
+fn download_url_rejects_embedded_credentials() {
+    let advertised = release_url(TAG, ASSET).replace("https://", "https://user:token@");
+
+    assert!(verified_download_url(&request(TAG, ASSET, &advertised)).is_err());
+}
+
+#[test]
+fn download_url_rejects_a_tag_that_escapes_the_release_path() {
+    let tag = "v0.11.2/../../../attacker/strata/releases/download/v1";
+    let advertised = release_url(tag, ASSET);
+
+    assert!(verified_download_url(&request(tag, ASSET, &advertised)).is_err());
+}
+
+#[test]
+fn download_url_rejects_an_asset_name_containing_a_path_segment() {
+    let asset = "../../../attacker.tar.gz";
+    let advertised = release_url(TAG, asset);
+
+    assert!(verified_download_url(&request(TAG, asset, &advertised)).is_err());
+}
+
+struct StubServer {
+    url: String,
+    handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl StubServer {
+    fn serving(headers: String, body: Vec<u8>) -> Self {
+        let listener =
+            std::net::TcpListener::bind("127.0.0.1:0").expect("bind loopback stub server");
+        let url = format!(
+            "http://{}/strata.tar.gz",
+            listener.local_addr().expect("stub server address")
+        );
+        let handle = std::thread::spawn(move || {
+            let Ok((mut stream, _peer)) = listener.accept() else {
+                return;
+            };
+            use std::io::{Read, Write};
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .expect("request timeout");
+            let mut request = Vec::new();
+            let mut buffer = [0_u8; 1024];
+            while !request.windows(4).any(|bytes| bytes == b"\r\n\r\n") {
+                let count = stream.read(&mut buffer).expect("read request");
+                assert!(
+                    count > 0 && request.len() + count <= 8192,
+                    "complete bounded HTTP request"
+                );
+                request.extend_from_slice(&buffer[..count]);
+            }
+            let _written = stream.write_all(headers.as_bytes());
+            let _written = stream.write_all(&body);
+            let _flushed = stream.flush();
+        });
+        Self {
+            url,
+            handle: Some(handle),
+        }
+    }
+
+    fn with_body(body: Vec<u8>) -> Self {
+        let headers = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        Self::serving(headers, body)
+    }
+
+    fn claiming(length: u64) -> Self {
+        let headers =
+            format!("HTTP/1.1 200 OK\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n");
+        Self::serving(headers, Vec::new())
+    }
+}
+
+impl Drop for StubServer {
+    fn drop(&mut self) {
+        if let Some(handle) = self.handle.take() {
+            let _joined = handle.join();
+        }
+    }
+}
+
+fn download(
+    server: &StubServer,
+    destination: &Path,
+    limit: u64,
+    cancel: &InstallCancel,
+) -> Result<(), String> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let outcome = download_to_file_bounded(&server.url, destination, limit, cancel, &sender);
+    drop(sender);
+    let _drained: Vec<_> = receiver.into_iter().collect();
+    match outcome {
+        Ok(()) => Ok(()),
+        Err(InstallStop::Cancelled) => Err("cancelled".to_owned()),
+        Err(InstallStop::Failed(message)) => Err(message),
+    }
+}
+
+#[test]
+fn missing_signed_metadata_offers_manual_installation() {
+    let server = StubServer::serving(
+        "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_owned(),
+        Vec::new(),
+    );
+    let result = super::fetch_update_metadata(&server.url, 8192, &InstallCancel::new());
+    assert!(
+        matches!(result, Err(InstallStop::Failed(message)) if message.contains("no signed update manifest") && message.contains("manually"))
+    );
+}
+
+#[test]
+fn signed_metadata_download_keeps_the_exact_published_bytes() {
+    let body = b"{ \"schema\": 1 }\n";
+    let server = StubServer::with_body(body.to_vec());
+    assert_eq!(
+        super::fetch_update_metadata(&server.url, body.len() as u64, &InstallCancel::new())
+            .expect("metadata download"),
+        body
+    );
+}
+
+#[test]
+fn a_download_within_the_ceiling_is_written_to_disk() {
+    let dir = scratch_dir("download-ok", line!());
+    let destination = dir.join("strata.tar.gz");
+    let server = StubServer::with_body(vec![b'x'; 2048]);
+
+    download(&server, &destination, 4096, &InstallCancel::new()).expect("download should succeed");
+
+    assert_eq!(
+        fs::metadata(&destination).expect("downloaded file").len(),
+        2048
+    );
+}
+
+#[test]
+fn a_download_advertising_more_than_the_ceiling_is_refused() {
+    let dir = scratch_dir("download-claimed", line!());
+    let destination = dir.join("strata.tar.gz");
+    let server = StubServer::claiming(64 * 1024);
+
+    let error = download(&server, &destination, 4096, &InstallCancel::new())
+        .expect_err("an oversized content-length must be refused");
+
+    assert!(
+        error.contains("larger than expected"),
+        "unexpected: {error}"
+    );
+    assert!(!destination.exists());
+}
+
+#[test]
+fn a_download_that_streams_past_the_ceiling_is_stopped() {
+    let dir = scratch_dir("download-streamed", line!());
+    let destination = dir.join("strata.tar.gz");
+    let server = StubServer::serving(
+        "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_owned(),
+        vec![b'x'; 64 * 1024],
+    );
+
+    let error = download(&server, &destination, 4096, &InstallCancel::new())
+        .expect_err("an oversized stream must be stopped");
+
+    assert!(
+        error.contains("larger than expected"),
+        "unexpected: {error}"
+    );
+    assert!(
+        fs::metadata(&destination).expect("partial file").len() <= 4096 + 64 * 1024,
+        "the partial download should not have been allowed to run away"
+    );
+}
+
+#[test]
+fn a_cancelled_download_stops_without_reporting_a_failure() {
+    let dir = scratch_dir("download-cancelled", line!());
+    let destination = dir.join("strata.tar.gz");
+    let server = StubServer::with_body(vec![b'x'; 2048]);
+    let cancel = InstallCancel::new();
+    cancel.cancel();
+
+    let error = download(&server, &destination, 4096, &cancel).expect_err("cancel must stop");
+
+    assert_eq!(error, "cancelled");
+}
+
+#[test]
+fn a_preserved_executable_is_restored_after_a_failed_replacement() {
+    let dir = scratch_dir("rollback", line!());
+    let installed = dir.join("strata");
+    fs::write(&installed, b"previous version").expect("write installed binary");
+
+    let rollback = stage_rollback(&installed, &dir).expect("stage rollback");
+    fs::write(&installed, b"broken replacement").expect("replace installed binary");
+    restore_rollback(&rollback, &installed).expect("restore rollback");
+
+    assert_eq!(
+        fs::read(&installed).expect("read restored binary"),
+        b"previous version"
+    );
+    assert!(!rollback.exists(), "the rollback copy should be consumed");
+}
+
+#[test]
+fn a_staged_binary_that_cannot_run_is_rejected_before_installation() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = scratch_dir("staged-binary", line!());
+    let staged = dir.join("strata");
+    fs::write(&staged, "#!/bin/sh\nexit 1\n").expect("write staged binary");
+    fs::set_permissions(&staged, fs::Permissions::from_mode(0o755)).expect("make executable");
+
+    assert!(verify_staged_binary(&staged).is_err());
+}
+
+#[test]
+fn a_staged_binary_that_runs_is_accepted() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let dir = scratch_dir("staged-binary-ok", line!());
+    let staged = dir.join("strata");
+    fs::write(&staged, "#!/bin/sh\nexit 0\n").expect("write staged binary");
+    fs::set_permissions(&staged, fs::Permissions::from_mode(0o755)).expect("make executable");
+
+    assert!(verify_staged_binary(&staged).is_ok());
 }

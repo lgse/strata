@@ -103,6 +103,7 @@ fn main() -> gtk::glib::ExitCode {
         .build();
 
     application.connect_startup(export_file_manager_interface);
+    application.connect_startup(|_application| ui::schedule_rollback_cleanup());
     application.connect_activate(ui::present);
     application.connect_open(|application, files, _| {
         let location = files.first().and_then(gio::File::path);

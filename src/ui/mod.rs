@@ -30,6 +30,7 @@ mod top_bar_navigation;
 mod window;
 
 pub(crate) use chooser::{cancel_chooser, present_chooser};
+pub(crate) use settings::schedule_rollback_cleanup;
 pub(crate) use window::home_directory;
 pub use window::{present, present_location, present_reveal};
 
