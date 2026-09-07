@@ -32,6 +32,13 @@ fn duplicate_transfer_uses_the_selected_entries_parent() {
         None
     );
     assert_eq!(duplicate_transfer(&[]), None);
+    for uri in ["trash:///file.txt", "trash:///folder/file.txt"] {
+        let trashed = FileEntry {
+            location: Location::uri(uri),
+            ..entry("file.txt")
+        };
+        assert_eq!(duplicate_transfer(&[trashed]), None);
+    }
 }
 
 #[test]

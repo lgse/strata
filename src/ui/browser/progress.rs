@@ -152,7 +152,12 @@ impl ViewState {
         });
         pulse_source.replace(Some(source));
 
-        let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        let layer = modal_layer(
+            &content,
+            &window_overlay,
+            blurred_root.clone(),
+            Some(Rc::new(|| true)),
+        );
         window_overlay.add_overlay(&layer);
         self.file_progress_view.replace(Some(FileProgressView {
             layer,

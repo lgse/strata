@@ -3,6 +3,7 @@
 use crate::model::{FileEntry, Location};
 use crate::services::validate_basename;
 use crate::ui::browser::ViewState;
+use crate::ui::browser::paths::is_trash_location;
 use crate::ui::browser_modes::BrowserMode;
 use gtk::prelude::*;
 use std::rc::Rc;
@@ -69,6 +70,9 @@ impl ViewState {
         location: Location,
         is_directory: bool,
     ) {
+        if is_trash_location(&location) {
+            return;
+        }
         if self.mode_views.borrow().mode() != BrowserMode::Columns {
             self.cancel_new_entry();
             self.mode_views
@@ -144,6 +148,9 @@ impl ViewState {
         let Some((depth, source_position, entry)) = self.browser.rename_item() else {
             return false;
         };
+        if is_trash_location(&entry.location) {
+            return false;
+        }
         if self.mode_views.borrow().mode() != BrowserMode::Columns {
             return self
                 .mode_views

@@ -44,10 +44,17 @@ pub(crate) fn entry_supports_quick_preview(entry: &FileEntry) -> bool {
 
     let (content_type, _) =
         gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
-    !matches!(
-        crate::services::content_family(&content_type),
-        PreviewContent::Unsupported
-    ) || gio::content_type_is_a(&content_type, "text/plain")
+    let content = crate::services::content_family(&content_type);
+    if entry.location.native_path().is_none()
+        && matches!(
+            content,
+            PreviewContent::Image | PreviewContent::Pdf { .. } | PreviewContent::Media
+        )
+    {
+        return false;
+    }
+    !matches!(content, PreviewContent::Unsupported)
+        || gio::content_type_is_a(&content_type, "text/plain")
         || crate::services::has_plain_text_extension(&entry.native_name)
         || crate::services::is_extensionless_dotfile(&entry.native_name)
 }

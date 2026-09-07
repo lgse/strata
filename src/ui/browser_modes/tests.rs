@@ -309,3 +309,5 @@ fn source_index_map_tracks_filter_sort_and_placeholder() {
         .expect("isolated GTK mapping test should start");
     assert!(status.success(), "isolated GTK mapping test failed");
 }
+
+mod column_widths;

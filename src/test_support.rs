@@ -47,6 +47,9 @@ pub(crate) fn gtk_test(name: &str, run: impl FnOnce()) {
         run();
         return;
     }
+    // Child processes still share the display's clipboard and pointer grabs.
+    static DISPLAY: TestMutex = TestMutex::new();
+    let _display = DISPLAY.lock().expect("GTK display lock");
     let sandbox = tempfile::tempdir().expect("isolated preferences");
     let status = std::process::Command::new(std::env::current_exe().expect("test executable"))
         .args(["--exact", name, "--nocapture"])

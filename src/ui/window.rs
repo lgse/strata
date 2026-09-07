@@ -1030,6 +1030,7 @@ fn install_keyboard_navigation(
                     {
                         return glib::Propagation::Stop;
                     }
+                    view.commit_selection();
                     if !control
                         && !shift
                         && let Some(direction) = sidebar_focus_direction(key)
@@ -1047,6 +1048,13 @@ fn install_keyboard_navigation(
                     glib::Propagation::Stop
                 }
             };
+        }
+        if view.item_view_has_focus()
+            && !control
+            && !alt
+            && matches!(key, gtk::gdk::Key::Home | gtk::gdk::Key::End)
+        {
+            view.commit_selection();
         }
         if !control
             && !alt

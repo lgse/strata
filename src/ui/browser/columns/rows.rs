@@ -17,6 +17,7 @@ use crate::ui::{
             entry_icon, entry_responds_to_preview_click, metadata_needs_fill, model_display_name,
         },
         inline_edit::update_basename_validation,
+        paths::is_trash_location,
     },
     browser_modes::BrowserMode,
     modal::{slide_in_down, slide_out},
@@ -236,6 +237,7 @@ pub(super) fn column_rows(
                     .and_then(|position| state.browser.entry_at(depth, position));
                 entry.is_some_and(|entry| {
                     entry.is_directory()
+                        && !is_trash_location(&entry.location)
                         && offered
                             .formats()
                             .contains_type(gtk::gdk::FileList::static_type())
