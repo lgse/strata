@@ -14,6 +14,247 @@ fn wait_until(condition: impl Fn() -> bool) {
     }
 }
 
+fn assert_column_header_actions(view: &BrowserView, active_depth: usize) {
+    for (depth, column) in view.state.columns.borrow().iter().enumerate() {
+        assert_eq!(
+            column.header_actions.is_child_visible(),
+            depth == active_depth
+        );
+    }
+}
+
+#[test]
+fn filter_follows_latest_pointer_or_keyboard_target() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::filter_follows_latest_pointer_or_keyboard_target",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            std::fs::create_dir(fixture.path().join("Child")).expect("child folder");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(900)
+                .default_height(500)
+                .build();
+            window.present();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            browser.select(0, 0);
+            view.state.hovered_column.set(Some(0));
+            view.state.pointer_navigation();
+            browser.enter_focused_directory();
+            assert_eq!(view.state.hovered_column.get(), Some(0));
+            assert_column_header_actions(&view, 0);
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+            browser.focus_active();
+            assert_eq!(view.state.focused_column_depth(), Some(1));
+            assert_eq!(view.state.hovered_column.get(), Some(0));
+            assert_column_header_actions(&view, 0);
+
+            assert!(view.show_filter());
+            assert_eq!(view.state.focused_column_depth(), Some(0));
+            assert!(view.filter_has_focus());
+            assert!(view.state.columns.borrow()[0].filter_button.is_active());
+            assert!(!view.state.columns.borrow()[1].filter_button.is_active());
+            assert_column_header_actions(&view, 0);
+            assert!(view.dismiss_focused_filter());
+
+            browser.set_active_column(1);
+            browser.focus_active();
+            view.keyboard_navigation();
+            assert_eq!(view.state.hovered_column.get(), Some(0));
+            assert!(view.show_filter());
+            assert_eq!(view.state.focused_column_depth(), Some(1));
+            assert!(view.filter_has_focus());
+            assert!(!view.state.columns.borrow()[0].filter_button.is_active());
+            assert!(view.state.columns.borrow()[1].filter_button.is_active());
+            assert_column_header_actions(&view, 1);
+            window.close();
+        },
+    );
+}
+
+#[test]
+fn hovering_another_column_preserves_keyboard_navigation_from_header() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::hovering_another_column_preserves_keyboard_navigation_from_header",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            std::fs::create_dir(fixture.path().join("Child")).expect("child folder");
+            std::fs::write(fixture.path().join("Child/item.txt"), "item").expect("file");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(900)
+                .default_height(500)
+                .build();
+            window.present();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            browser.select(0, 0);
+            browser.enter_focused_directory();
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+            browser.select(1, 0);
+            browser.focus_active();
+            view.keyboard_navigation();
+            assert!(view.focus_header_from_top_item());
+            assert!(view.header_actions_have_focus());
+            assert!(view.move_header_focus(gtk::DirectionType::Left));
+            assert_eq!(view.state.focused_column_depth(), Some(0));
+            assert_column_header_actions(&view, 0);
+            for _ in 0..12 {
+                if view.state.focused_column_depth() == Some(1) {
+                    break;
+                }
+                assert!(view.move_header_focus(gtk::DirectionType::Right));
+            }
+            assert_eq!(view.state.focused_column_depth(), Some(1));
+            assert_column_header_actions(&view, 1);
+
+            view.state.hovered_column.set(Some(0));
+            view.state.pointer_navigation();
+            assert_column_header_actions(&view, 0);
+            assert!(
+                view.item_view_has_focus(),
+                "hiding focused actions must return focus to the file list"
+            );
+            assert!(!view.filter_has_focus());
+            view.keyboard_navigation();
+            assert_column_header_actions(&view, 1);
+            assert!(view.item_view_has_focus());
+            window.close();
+        },
+    );
+}
+
+#[test]
+fn context_menu_keeps_its_column_target_through_focus_and_hover_changes() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::context_menu_keeps_its_column_target_through_focus_and_hover_changes",
+        || {
+            for chooser in [false, true] {
+                let fixture = tempfile::tempdir().expect("directory fixture");
+                std::fs::create_dir_all(fixture.path().join("Child/Grandchild"))
+                    .expect("nested folders");
+                let view = if chooser {
+                    BrowserView::new_chooser(Rc::new(crate::adapters::LocalFileSource), true)
+                } else {
+                    BrowserView::new(
+                        Rc::new(crate::adapters::LocalFileSource),
+                        PeekBehavior::default(),
+                    )
+                };
+                let browser = view.browser();
+                let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                let home = gtk::Button::with_label("Home");
+                content.append(&home);
+                content.append(&view.widget());
+                let overlay = gtk::Overlay::builder().child(&content).build();
+                let window = gtk::Window::builder()
+                    .child(&overlay)
+                    .default_width(1200)
+                    .default_height(500)
+                    .build();
+                window.present();
+                browser.navigate(Location::local(fixture.path()));
+                wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+                for depth in 0..2 {
+                    browser.select(depth, 0);
+                    browser.enter_focused_directory();
+                    wait_until(|| {
+                        browser
+                            .column_snapshot(depth + 1)
+                            .is_some_and(|s| !s.loading)
+                    });
+                }
+                let column = view.state.columns.borrow()[1].clone();
+                wait_until(|| column.list.width() > 0 && !column.bound_rows.borrow().is_empty());
+                for previous in [0, 2] {
+                    for item in [false, true] {
+                        browser.set_active_column(previous);
+                        browser.focus_active();
+                        view.state.hovered_column.set(Some(1));
+                        view.state.pointer_navigation();
+                        let (surface, x, y): (gtk::Widget, f64, f64) = if item {
+                            let bounds = column
+                                .bound_rows
+                                .borrow()
+                                .iter()
+                                .find_map(|bound| bound.row.upgrade()?.compute_bounds(&column.list))
+                                .expect("mapped row");
+                            (
+                                column.list.clone().upcast(),
+                                f64::from(bounds.x() + 10.0),
+                                f64::from(bounds.center().y()),
+                            )
+                        } else {
+                            (
+                                column.presentation.stack.clone().upcast(),
+                                20.0,
+                                f64::from(column.presentation.stack.height() - 30),
+                            )
+                        };
+                        let controllers = surface.observe_controllers();
+                        let gesture = (0..controllers.n_items())
+                            .filter_map(|index| {
+                                controllers.item(index).and_downcast::<gtk::GestureClick>()
+                            })
+                            .find(|gesture| gesture.button() == 3)
+                            .expect("context gesture");
+                        gesture.emit_by_name::<()>("pressed", &[&1i32, &x, &y]);
+                        let popover = {
+                            let mut child = overlay.first_child();
+                            loop {
+                                let widget = child.unwrap_or_else(|| panic!("open context menu: chooser={chooser}, previous={previous}, item={item}"));
+                                child = widget.next_sibling();
+                                if let Ok(popover) = widget.downcast::<gtk::Popover>() {
+                                    break popover;
+                                }
+                            }
+                        };
+                        wait_until(|| popover.is_mapped());
+                        for hovered in [None, Some(previous)] {
+                            view.state.hovered_column.set(hovered);
+                            view.state.refresh_destination_style();
+                            assert_eq!(view.state.destination_depth(), Some(1));
+                            assert_eq!(browser.active_depth(), Some(1));
+                            assert_column_header_actions(&view, 1);
+                        }
+                        home.grab_focus();
+                        assert!(home.has_focus());
+                        popover.popdown();
+                        assert!(
+                            view.item_view_has_focus(),
+                            "restore focus before the next key event"
+                        );
+                        assert_eq!(view.state.focused_column_depth(), Some(1));
+                        wait_until(|| {
+                            popover.parent().is_none()
+                                && view.state.context_menu_column.get().is_none()
+                        });
+                        wait_until(|| view.item_view_has_focus());
+                        view.keyboard_navigation();
+                        assert_eq!(view.state.destination_depth(), Some(1));
+                        assert!(view.item_view_has_focus());
+                        view.state.hovered_column.set(Some(previous));
+                        view.state.pointer_navigation();
+                        assert_eq!(view.state.destination_depth(), Some(previous));
+                    }
+                }
+                window.close();
+            }
+        },
+    );
+}
+
 fn press_column_background(view: &BrowserView, depth: usize) {
     let surface = view.state.columns.borrow()[depth]
         .presentation
@@ -72,13 +313,36 @@ fn background_and_header_clicks_focus_and_reveal_without_changing_selection() {
                         .is_some_and(|s| !s.loading)
                 });
             }
+            assert_column_header_actions(&view, 2);
+            let widths = || {
+                view.state
+                    .columns
+                    .borrow()
+                    .iter()
+                    .map(|column| column.shell.measure(gtk::Orientation::Horizontal, -1))
+                    .collect::<Vec<_>>()
+            };
+            let initial_widths = widths();
+            for hovered in [Some(0), Some(1), None] {
+                view.state.hovered_column.set(hovered);
+                view.state.pointer_navigation();
+                assert_column_header_actions(&view, hovered.unwrap_or(2));
+                assert_eq!(widths(), initial_widths);
+                assert_eq!(browser.active_depth(), Some(2));
+                view.keyboard_navigation();
+                assert_column_header_actions(&view, 2);
+                view.state.pointer_navigation();
+                assert_column_header_actions(&view, hovered.unwrap_or(2));
+            }
+            view.state.rebuild_columns();
+            assert_column_header_actions(&view, 2);
             let adjustment = view.state.scroller.hadjustment();
             wait_until(|| adjustment.value() > 100.0);
             for header in [false, true] {
                 for depth in [0, 2, 1] {
                     if header {
                         let surface = view.state.columns.borrow()[depth]
-                            .header_actions
+                            .header_actions_stack
                             .parent()
                             .expect("column header");
                         let gesture = background_gesture(&surface);
@@ -91,6 +355,7 @@ fn background_and_header_clicks_focus_and_reveal_without_changing_selection() {
                     }
                     assert_eq!(browser.active_depth(), Some(depth));
                     assert_eq!(view.state.focused_column_depth(), Some(depth));
+                    assert_column_header_actions(&view, depth);
                     assert_eq!(browser.selected_positions(0), [0]);
                     assert_eq!(browser.selected_positions(1), [0]);
                     assert!(browser.selected_positions(2).is_empty());
@@ -313,6 +578,7 @@ fn pane_ownership_routes_commands_and_preserves_selection() {
     );
 
     browser.focus_parent();
+    assert_column_header_actions(&view, 0);
     view.select_all();
     assert_eq!(browser.selected_positions(0), [0, 1, 2]);
     press_column_background(&view, 1);
@@ -340,11 +606,13 @@ fn pane_ownership_routes_commands_and_preserves_selection() {
     view.state.hovered_column.set(Some(0));
     view.state.refresh_destination_style();
     assert_eq!(view.state.destination_depth(), Some(0));
+    assert_column_header_actions(&view, 0);
     assert_eq!(
         view.state.columns.borrow()[0].destination_hint.text(),
         "Pointer · Paste here"
     );
     view.keyboard_navigation();
+    assert_column_header_actions(&view, 1);
     wait_until(|| {
         browser
             .column_snapshot(1)

@@ -5,6 +5,70 @@ use gtk::{gdk, glib, prelude::*};
 #[cfg(test)]
 mod tests;
 
+pub(super) fn navigation_key(
+    key: gdk::Key,
+    modifiers: gdk::ModifierType,
+    type_to_search: bool,
+    focused: Option<&gtk::Widget>,
+) -> gdk::Key {
+    if type_to_search
+        || modifiers.intersects(
+            gdk::ModifierType::CONTROL_MASK
+                | gdk::ModifierType::ALT_MASK
+                | gdk::ModifierType::SUPER_MASK
+                | gdk::ModifierType::SHIFT_MASK,
+        )
+        || focused.is_some_and(|widget| editable(widget) || in_popover(widget))
+    {
+        return key;
+    }
+    match key {
+        gdk::Key::h => gdk::Key::Left,
+        gdk::Key::j => gdk::Key::Down,
+        gdk::Key::k => gdk::Key::Up,
+        gdk::Key::l => gdk::Key::Right,
+        _ => key,
+    }
+}
+
+pub(super) fn activate_native_arrow(scope: &impl IsA<gtk::Widget>, key: gdk::Key) -> bool {
+    let Some(focused) = scope.root().and_then(|root| root.focus()) else {
+        return false;
+    };
+    let Some((collection, _)) = super::scrolling::focused_collection(&focused) else {
+        return false;
+    };
+    // Invoke GTK's own binding: returning Proceed would deliver the original letter.
+    let controllers = collection.observe_controllers();
+    for index in 0..controllers.n_items() {
+        let Some(controller) = controllers
+            .item(index)
+            .and_downcast::<gtk::ShortcutController>()
+        else {
+            continue;
+        };
+        for index in 0..controller.n_items() {
+            let Some(shortcut) = controller.item(index).and_downcast::<gtk::Shortcut>() else {
+                continue;
+            };
+            let Some(trigger) = shortcut.trigger().and_downcast::<gtk::KeyvalTrigger>() else {
+                continue;
+            };
+            if trigger.keyval() == key
+                && trigger.modifiers().is_empty()
+                && let Some(action) = shortcut.action()
+            {
+                return action.activate(
+                    gtk::ShortcutActionFlags::EXCLUSIVE,
+                    &collection,
+                    shortcut.arguments().as_ref(),
+                );
+            }
+        }
+    }
+    false
+}
+
 pub(super) fn arrow_direction(key: gdk::Key) -> Option<gtk::DirectionType> {
     match key {
         gdk::Key::Left => Some(gtk::DirectionType::Left),
