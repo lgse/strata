@@ -39,9 +39,19 @@ struct MeasurementBudget {
     deadline: Instant,
     max_entries: usize,
     max_depth: usize,
+    total_size: Cell<u64>,
+    reported_size: Cell<u64>,
+    on_progress: Box<dyn Fn(u64)>,
 }
 
 impl MeasurementBudget {
+    fn report_progress(&self) {
+        let total = self.total_size.get();
+        if self.reported_size.replace(total) != total {
+            (self.on_progress)(total);
+        }
+    }
+
     fn exhausted(&self) -> bool {
         self.visited.get() >= self.max_entries || Instant::now() >= self.deadline
     }
@@ -57,7 +67,14 @@ async fn enumerate_children(file: &gio::File) -> Result<gio::FileEnumerator, gli
 }
 
 pub(crate) async fn summarize_directory(root: &gio::File) -> Result<DirectorySummary, glib::Error> {
-    summarize_directory_with_budget(root, MAX_ENTRIES, MAX_DEPTH, TIME_BUDGET).await
+    summarize_directory_with_progress(root, |_| {}).await
+}
+
+pub(crate) async fn summarize_directory_with_progress(
+    root: &gio::File,
+    on_progress: impl Fn(u64) + 'static,
+) -> Result<DirectorySummary, glib::Error> {
+    summarize_directory_with_budget(root, MAX_ENTRIES, MAX_DEPTH, TIME_BUDGET, on_progress).await
 }
 
 async fn summarize_directory_with_budget(
@@ -65,13 +82,18 @@ async fn summarize_directory_with_budget(
     max_entries: usize,
     max_depth: usize,
     time_budget: Duration,
+    on_progress: impl Fn(u64) + 'static,
 ) -> Result<DirectorySummary, glib::Error> {
+    on_progress(0);
     let enumerator = enumerate_children(root).await?;
     let budget = Rc::new(MeasurementBudget {
         visited: Cell::new(0),
         deadline: Instant::now() + time_budget,
         max_entries,
         max_depth,
+        total_size: Cell::new(0),
+        reported_size: Cell::new(0),
+        on_progress: Box::new(on_progress),
     });
     measure_children(root, enumerator, 0, budget).await
 }
@@ -84,9 +106,18 @@ async fn measure_children(
 ) -> Result<DirectorySummary, glib::Error> {
     let mut summary = DirectorySummary::default();
     'directory: loop {
-        let children = enumerator
+        let children = match enumerator
             .next_files_future(64, glib::Priority::DEFAULT)
-            .await?;
+            .await
+        {
+            Ok(children) => children,
+            Err(error) if summary.item_count == 0 => return Err(error),
+            Err(_) => {
+                // Keep bytes already reported to the UI if a later batch becomes unreadable.
+                summary.truncated = true;
+                break;
+            }
+        };
         if children.is_empty() {
             break;
         }
@@ -106,12 +137,14 @@ async fn measure_children(
                 .await?,
             );
         }
+        budget.report_progress();
         // Branch-local truncation (depth or an unreadable child) must not skip siblings.
         if budget.exhausted() {
             summary.truncated = true;
             break;
         }
     }
+    budget.report_progress();
     Ok(summary)
 }
 
@@ -134,6 +167,9 @@ fn measure_entry(
             },
             truncated: false,
         };
+        budget
+            .total_size
+            .set(budget.total_size.get().saturating_add(summary.total_size));
         if info.file_type() == gio::FileType::Directory && !info.is_symlink() {
             if depth >= budget.max_depth || budget.exhausted() {
                 summary.truncated = true;

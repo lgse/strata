@@ -1,12 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod bounds;
+mod progress;
 
 use super::*;
 use gtk::{gio, glib};
 use std::cell::Cell;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
+
+async fn summarize_directory_with_budget(
+    root: &gio::File,
+    max_entries: usize,
+    max_depth: usize,
+    time_budget: Duration,
+) -> Result<DirectorySummary, glib::Error> {
+    super::summarize_directory_with_budget(root, max_entries, max_depth, time_budget, |_| {}).await
+}
 
 fn unique_fixture_root(label: &str) -> std::path::PathBuf {
     let unique = std::time::SystemTime::now()
@@ -164,6 +174,9 @@ fn directory_summary_treats_a_directory_removed_before_measurement_as_truncated_
             deadline: Instant::now() + TIME_BUDGET,
             max_entries: MAX_ENTRIES,
             max_depth: MAX_DEPTH,
+            total_size: Cell::new(0),
+            reported_size: Cell::new(0),
+            on_progress: Box::new(|_| {}),
         }),
     ));
     std::fs::remove_dir_all(&root).expect("the directory fixture root should be removed");
@@ -207,6 +220,9 @@ fn aborting_a_directory_measurement_stops_it_mid_flight() {
                 deadline: Instant::now() + TIME_BUDGET,
                 max_entries: MAX_ENTRIES,
                 max_depth: MAX_DEPTH,
+                total_size: Cell::new(0),
+                reported_size: Cell::new(0),
+                on_progress: Box::new(|_| {}),
             });
             let task = context.spawn_local(measure_entry(
                 gio::File::for_path(&root),

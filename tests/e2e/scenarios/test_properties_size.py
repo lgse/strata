@@ -6,6 +6,11 @@ import pytest
 from harness.modes import ALL_MODES
 
 
+def _measurement_finished(dialog):
+    spinner = dialog.find(name="Calculating folder size")
+    return spinner is None or not spinner.is_rendered()
+
+
 @pytest.fixture
 def sized_folder(fixture_tree):
     fixture_tree.populate(
@@ -40,6 +45,7 @@ def test_properties_calculates_nested_and_hidden_file_sizes(
         lambda: dialog.find(role="label", name="15 B"),
         "Properties to show the recursive size without following symlinks",
     )
+    strata.wait(lambda: _measurement_finished(dialog), "the size spinner to disappear")
 
 
 @pytest.mark.parametrize("name, expected", [("archive", "0 B"), ("readme.md", "10 B")])
@@ -54,3 +60,4 @@ def test_properties_shows_zero_for_empty_folders_and_preserves_file_sizes(
         lambda: dialog.find(role="label", name=expected),
         f"Properties to show {expected}",
     )
+    strata.wait(lambda: _measurement_finished(dialog), "no spinner after measurement")

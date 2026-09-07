@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::adapters::directory_summary::summarize_directory;
+use crate::adapters::directory_summary::summarize_directory_with_progress;
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::clipboard::copy_path_text;
@@ -16,6 +16,15 @@ use std::cell::Cell;
 use std::rc::Rc;
 
 fn properties_row(parent: &gtk::Box, label: &str, value: &str) -> gtk::Label {
+    properties_row_with_suffix(parent, label, value, None)
+}
+
+fn properties_row_with_suffix(
+    parent: &gtk::Box,
+    label: &str,
+    value: &str,
+    suffix: Option<&gtk::Widget>,
+) -> gtk::Label {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     row.add_css_class("properties-row");
     let label = gtk::Label::new(Some(label));
@@ -25,10 +34,13 @@ fn properties_row(parent: &gtk::Box, label: &str, value: &str) -> gtk::Label {
     value.add_css_class("properties-row-value");
     value.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
     value.set_max_width_chars(48);
-    value.set_hexpand(true);
+    value.set_hexpand(suffix.is_none());
     value.set_xalign(0.0);
     row.append(&label);
     row.append(&value);
+    if let Some(suffix) = suffix {
+        row.append(suffix);
+    }
     parent.append(&row);
     value
 }
@@ -251,8 +263,9 @@ impl ViewState {
         let location_value = properties_row(&details, "LOCATION", &compact_display_path(&location));
         location_value.set_tooltip_text(Some(&location.display_path()));
         let trash_root = is_trash_root(&location);
-        let initial_size = if is_directory || trash_root {
-            "Calculating…".to_owned()
+        let measuring_directory = is_directory || trash_root;
+        let initial_size = if measuring_directory {
+            format_file_size(0)
         } else {
             entry
                 .as_ref()
@@ -263,7 +276,19 @@ impl ViewState {
                 })
                 .unwrap_or_else(|| "—".to_owned())
         };
-        let size = properties_row(&details, "SIZE", &initial_size);
+        let size_spinner = gtk::Spinner::new();
+        size_spinner.add_css_class("properties-size-spinner");
+        size_spinner.set_valign(gtk::Align::Center);
+        size_spinner.set_tooltip_text(Some("Calculating folder size…"));
+        crate::ui::accessibility::set_label(&size_spinner, "Calculating folder size");
+        size_spinner.set_spinning(measuring_directory);
+        size_spinner.set_visible(measuring_directory);
+        let size = properties_row_with_suffix(
+            &details,
+            "SIZE",
+            &initial_size,
+            Some(size_spinner.upcast_ref()),
+        );
         let modified = properties_row(&details, "MODIFIED", "—");
         crate::util::set_modified_date(&modified, entry.as_ref(), "—");
         let opens_with = properties_row(&details, "OPENS WITH", "—");
@@ -459,11 +484,22 @@ impl ViewState {
         layer.add_controller(escape);
         layer.grab_focus();
 
-        if is_directory || trash_root {
+        if measuring_directory {
             let weak_size = size.downgrade();
+            let weak_spinner = size_spinner.downgrade();
             let directory = gio_file_for_location(&location);
             let task = glib::MainContext::default().spawn_local(async move {
-                let summary = summarize_directory(&directory).await;
+                let progress_size = weak_size.clone();
+                let summary = summarize_directory_with_progress(&directory, move |total| {
+                    if let Some(size) = progress_size.upgrade() {
+                        size.set_text(&format_file_size(total));
+                    }
+                })
+                .await;
+                if let Some(spinner) = weak_spinner.upgrade() {
+                    spinner.stop();
+                    spinner.set_visible(false);
+                }
                 let Some(size) = weak_size.upgrade() else {
                     return;
                 };

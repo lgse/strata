@@ -10,7 +10,10 @@ fn size_label(widget: &gtk::Widget) -> Option<gtk::Label> {
             .and_downcast::<gtk::Label>()
             .is_some_and(|label| label.text() == "SIZE")
     {
-        return widget.last_child().and_downcast::<gtk::Label>();
+        return widget
+            .first_child()
+            .and_then(|label| label.next_sibling())
+            .and_downcast::<gtk::Label>();
     }
     let mut child = widget.first_child();
     while let Some(widget) = child {
@@ -31,6 +34,9 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
             std::fs::create_dir(root.path().join("empty")).expect("empty folder");
             std::fs::create_dir(root.path().join("nested")).expect("nested folder");
             std::fs::write(root.path().join("nested/.hidden"), b"12345").expect("hidden file");
+            for index in 0..200 {
+                std::fs::write(root.path().join(format!("file-{index}")), b"x").expect("file");
+            }
             let view = crate::ui::browser::BrowserView::new(
                 Rc::new(crate::adapters::LocalFileSource),
                 crate::ui::browser::PeekBehavior::default(),
@@ -41,18 +47,43 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
             window.present();
 
             for (path, expected) in [
-                (root.path().to_path_buf(), "5 B"),
+                (root.path().to_path_buf(), "205 B"),
                 (root.path().join("empty"), "0 B"),
                 (root.path().join("missing"), "Unavailable"),
             ] {
                 view.state.show_folder_properties(&Location::local(path));
                 let size = size_label(overlay.upcast_ref()).expect("Properties SIZE row");
-                assert_eq!(size.text(), "Calculating…");
+                let spinner = size
+                    .next_sibling()
+                    .and_downcast::<gtk::Spinner>()
+                    .expect("size spinner");
+                assert_eq!(size.text(), "0 B");
+                assert!(spinner.is_visible());
+                assert!(spinner.is_spinning());
+                let saw_partial_size = Rc::new(Cell::new(false));
+                let observed_progress = saw_partial_size.clone();
+                let observed_spinner = spinner.clone();
+                size.connect_label_notify(move |size| {
+                    if observed_spinner.is_spinning()
+                        && size.text() != "0 B"
+                        && size.text() != expected
+                    {
+                        observed_progress.set(true);
+                    }
+                });
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while size.text() != expected {
+                while spinner.is_spinning() {
                     assert!(Instant::now() < deadline, "SIZE stayed at {}", size.text());
                     glib::MainContext::default().iteration(false);
                     std::thread::sleep(Duration::from_millis(1));
+                }
+                assert_eq!(size.text(), expected);
+                assert!(!spinner.is_visible());
+                if expected == "205 B" {
+                    assert!(
+                        saw_partial_size.get(),
+                        "size must update while the spinner is running"
+                    );
                 }
                 let layer = overlay
                     .last_child()
