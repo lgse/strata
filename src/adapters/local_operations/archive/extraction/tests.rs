@@ -96,8 +96,8 @@ fn cancellation_reports_actual_destinations_for_duplicate_members() -> Result<()
 }
 
 #[test]
-fn cancellation_before_enumeration_uses_only_supplied_remaining_locations()
--> Result<(), Box<dyn Error>> {
+fn cancellation_before_enumeration_uses_only_supplied_pending_names() -> Result<(), Box<dyn Error>>
+{
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(true);
@@ -106,7 +106,7 @@ fn cancellation_before_enumeration_uses_only_supplied_remaining_locations()
     let remaining = Location::local(root.path().join("known.txt"));
 
     assert!(matches!(
-        session.finish(result, || vec![remaining.clone()])?,
+        session.finish(result, || vec!["known.txt".to_owned()])?,
         ArchiveOutcome::Cancelled { completed, failed, not_attempted }
             if completed.is_empty() && failed.is_empty() && not_attempted == [remaining]
     ));
@@ -160,7 +160,7 @@ fn mid_copy_cancellation_removes_only_the_partial_file_and_preserves_results()
     assert_eq!(result, Err(ArchiveError::Cancelled));
     let later = Location::local(root.path().join("later.txt"));
     assert!(matches!(
-        session.finish(result, || vec![later.clone()])?,
+        session.finish(result, || vec!["later.txt".to_owned()])?,
         ArchiveOutcome::Cancelled { completed, failed, not_attempted }
             if completed == [Location::local(root.path().join("done.txt"))]
                 && failed.is_empty()
@@ -193,7 +193,7 @@ fn cleanup_failure_marks_the_interrupted_location_failed() -> Result<(), Box<dyn
     assert_eq!(result, Err(ArchiveError::Cancelled));
     let later = Location::local(root.path().join("later.txt"));
     assert!(matches!(
-        session.finish(result, || vec![later.clone()])?,
+        session.finish(result, || vec!["later.txt".to_owned()])?,
         ArchiveOutcome::Cancelled { completed, failed, not_attempted }
             if completed.is_empty() && failed == [Location::local(&path)]
                 && not_attempted == [later]
@@ -243,6 +243,88 @@ fn completed_worker_is_not_reclassified_by_late_cancellation() -> Result<(), Box
         matches!(session.finish(Ok(()), Vec::new)?, ArchiveOutcome::Completed(Some(name)) if name == "empty.txt")
     );
     assert_eq!(progress.load(Ordering::Relaxed), 1);
+    Ok(())
+}
+
+#[test]
+fn pending_names_are_validated_and_only_use_established_renames() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    fs::create_dir(root.path().join("folder"))?;
+    fs::write(root.path().join("unvisited.txt"), b"original")?;
+    std::os::unix::fs::symlink("missing", root.path().join("redirect"))?;
+    let progress = AtomicUsize::new(0);
+    let cancelled = AtomicBool::new(false);
+    let mut session = ExtractionSession::open(root.path(), &progress, &cancelled)?;
+    session.extract_member("folder/first.txt", MemberContent::File(&mut &b"done"[..]))?;
+    cancelled.store(true, Ordering::Relaxed);
+    let result = session.check_cancelled();
+    let outcome = session.finish(result, || {
+        [
+            "folder/./next.txt",
+            r"folder\nested\later.txt",
+            "unvisited.txt",
+            "unvisited.txt",
+            "missing/new.txt",
+            "redirect/child",
+            "../outside",
+            "/outside",
+            "C:drive",
+            "",
+            ".",
+        ]
+        .map(str::to_owned)
+        .to_vec()
+    })?;
+    let ArchiveOutcome::Cancelled {
+        completed,
+        failed,
+        not_attempted,
+    } = outcome
+    else {
+        panic!("expected cancellation after one member");
+    };
+    assert_eq!(
+        completed,
+        [Location::local(root.path().join("folder (2)/first.txt"))]
+    );
+    assert!(failed.is_empty());
+    assert_eq!(
+        not_attempted,
+        [
+            "folder (2)/next.txt",
+            "folder (2)/nested/later.txt",
+            "unvisited.txt",
+            "unvisited.txt",
+            "missing/new.txt",
+            "redirect/child"
+        ]
+        .map(|name| Location::local(root.path().join(name)))
+    );
+    assert_eq!(progress.load(Ordering::Relaxed), 1);
+    assert_eq!(fs::read(root.path().join("unvisited.txt"))?, b"original");
+    assert_eq!(root.path().read_dir()?.count(), 4);
+    assert_eq!(root.path().join("folder (2)").read_dir()?.count(), 1);
+    assert!(root.path().join("folder").read_dir()?.next().is_none());
+    Ok(())
+}
+
+#[test]
+fn member_cancelled_before_creation_uses_the_known_root_rename() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    fs::create_dir(root.path().join("folder"))?;
+    let progress = AtomicUsize::new(0);
+    let cancelled = AtomicBool::new(false);
+    let mut session = ExtractionSession::open(root.path(), &progress, &cancelled)?;
+    session.extract_member("folder/first.txt", MemberContent::File(&mut io::empty()))?;
+    cancelled.store(true, Ordering::Relaxed);
+    let mut reader = TestReader(|_: &mut [u8]| panic!("cancelled member must not be read"));
+    let result = session.extract_member("folder/next.txt", MemberContent::File(&mut reader));
+    assert!(matches!(session.finish(result, Vec::new)?,
+        ArchiveOutcome::Cancelled { not_attempted, .. }
+            if not_attempted == [Location::local(root.path().join("folder (2)/next.txt"))]
+    ));
+    assert_eq!(progress.load(Ordering::Relaxed), 1);
+    assert!(!root.path().join("folder (2)/next.txt").exists());
     Ok(())
 }
 

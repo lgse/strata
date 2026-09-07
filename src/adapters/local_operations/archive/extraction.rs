@@ -2,8 +2,9 @@
 
 //! Per-operation extraction policy, independent of archive decoding libraries.
 //!
-//! Decoders lend member streams to the session and supply already-known remaining
-//! locations only on cancellation. The session never scans ahead in an archive.
+//! Decoders lend member streams to the session and supply already-known pending
+//! names only on cancellation. The session validates and maps destination reports
+//! without scanning ahead, probing the filesystem or reserving pending names.
 
 use std::{
     io::Read,
@@ -21,6 +22,8 @@ use super::{
 #[cfg(test)]
 mod tests;
 
+/// Output classification, not a complete archive entry type. Decoders currently
+/// flatten non-directory entries into file streams; this is a provisional boundary.
 pub(super) enum MemberContent<'a> {
     Directory,
     File(&'a mut dyn Read),
@@ -76,6 +79,7 @@ impl<'a> ExtractionSession<'a> {
     }
 
     /// Processes one member. On error the decoder must stop and call `finish`.
+    /// Names retain the adapters' legacy string conversion until decoder evaluation.
     pub(super) fn extract_member(
         &mut self,
         name: &str,
@@ -85,7 +89,7 @@ impl<'a> ExtractionSession<'a> {
         if let Err(error) = self.check_cancelled() {
             self.interrupted = Some(InterruptedMember::NotAttempted(extract_entry_location(
                 self.destination,
-                &path,
+                &self.resolver.apply_known_rename(&path),
             )));
             return Err(error);
         }
@@ -125,12 +129,13 @@ impl<'a> ExtractionSession<'a> {
         Ok(())
     }
 
-    /// Remaining locations exclude any member already passed to `extract_member`.
-    /// They are best-effort decoder metadata, not a request to read more content.
+    /// Pending names exclude members already passed to `extract_member`.
+    /// Reports apply established top-level renames, but cannot predict final leaf
+    /// conflicts for unattempted members. Invalid names are omitted, not errors.
     pub(super) fn finish(
         self,
         result: Result<(), ArchiveError>,
-        remaining: impl FnOnce() -> Vec<Location>,
+        remaining: impl FnOnce() -> Vec<String>,
     ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
         match result {
             Ok(()) => Ok(ArchiveOutcome::Completed(self.first_name)),
@@ -142,7 +147,13 @@ impl<'a> ExtractionSession<'a> {
                     Some(InterruptedMember::Failed(location)) => failed.push(location),
                     None => {}
                 }
-                not_attempted.extend(remaining());
+                not_attempted.extend(remaining().into_iter().filter_map(|name| {
+                    let path = validated_archive_path(&name).ok()?;
+                    Some(extract_entry_location(
+                        self.destination,
+                        &self.resolver.apply_known_rename(&path),
+                    ))
+                }));
                 Ok(ArchiveOutcome::Cancelled {
                     completed: self.completed,
                     failed,
@@ -154,6 +165,6 @@ impl<'a> ExtractionSession<'a> {
     }
 }
 
-pub(super) fn extract_entry_location(destination: &Path, relative: &Path) -> Location {
+fn extract_entry_location(destination: &Path, relative: &Path) -> Location {
     Location::local(destination.join(relative))
 }

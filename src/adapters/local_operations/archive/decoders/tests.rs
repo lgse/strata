@@ -11,7 +11,7 @@ use crate::{model::Location, services::ArchiveFormat};
 use std::{
     error::Error,
     fs,
-    io::Cursor,
+    io::{self, Cursor, Read, Seek, SeekFrom},
     path::Path,
     sync::{
         Arc,
@@ -562,6 +562,264 @@ fn tar_extraction_stops_without_scanning_remaining_entries() -> Result<(), Box<d
         ArchiveOutcome::Completed(_) => panic!("extraction continued after cancellation"),
     }
     assert!(destination.read_dir()?.next().is_none());
+    Ok(())
+}
+
+struct CancelAfterMembers<'a> {
+    file: fs::File,
+    progress: &'a AtomicUsize,
+    cancelled: &'a AtomicBool,
+    after: usize,
+}
+
+impl Read for CancelAfterMembers<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if self.progress.load(Ordering::Relaxed) >= self.after {
+            self.cancelled.store(true, Ordering::Relaxed);
+        }
+        self.file.read(buffer)
+    }
+}
+
+impl Seek for CancelAfterMembers<'_> {
+    fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
+        self.file.seek(position)
+    }
+}
+
+fn write_mixed_7z(path: &Path, solid: bool) -> Result<(), Box<dyn Error>> {
+    let mut writer = sevenz_rust2::ArchiveWriter::create(path)?;
+    writer.set_content_methods(vec![sevenz_rust2::EncoderConfiguration::new(
+        sevenz_rust2::EncoderMethod::COPY,
+    )]);
+    for entry in [
+        sevenz_rust2::ArchiveEntry::new_directory("folder"),
+        sevenz_rust2::ArchiveEntry::new_file("folder/same.txt"),
+    ] {
+        writer.push_archive_entry::<Cursor<&[u8]>>(entry, None)?;
+    }
+    let entries = [
+        ("folder/same.txt", b"one".as_slice()),
+        ("folder/same.txt", b"two".as_slice()),
+        ("folder/later.txt", b"later".as_slice()),
+    ];
+    if solid {
+        writer.push_archive_entries(
+            entries
+                .iter()
+                .map(|(name, _)| sevenz_rust2::ArchiveEntry::new_file(name))
+                .collect(),
+            entries
+                .iter()
+                .map(|(_, contents)| Cursor::new(*contents).into())
+                .collect(),
+        )?;
+    } else {
+        for (name, contents) in entries {
+            writer.push_archive_entry(
+                sevenz_rust2::ArchiveEntry::new_file(name),
+                Some(Cursor::new(contents)),
+            )?;
+        }
+    }
+    for entry in [
+        sevenz_rust2::ArchiveEntry::new_directory("folder/empty"),
+        sevenz_rust2::ArchiveEntry::new_file("folder/zero.txt"),
+    ] {
+        writer.push_archive_entry::<Cursor<&[u8]>>(entry, None)?;
+    }
+    writer.finish()?;
+    Ok(())
+}
+
+#[test]
+fn sevenz_cancellation_keeps_streamless_and_duplicate_members_pending() -> Result<(), Box<dyn Error>>
+{
+    for solid in [false, true] {
+        let root = tempfile::tempdir()?;
+        let archive = root.path().join("mixed.7z");
+        write_mixed_7z(&archive, solid)?;
+        let destination = tempfile::tempdir()?;
+        let progress = Arc::new(AtomicUsize::new(0));
+        let outcome = extract_7z_from_reader(
+            fs::File::open(&archive)?,
+            destination.path(),
+            sevenz_rust2::Password::empty(),
+            &progress,
+            &always_cancelled(),
+        )?;
+        let ArchiveOutcome::Cancelled {
+            completed,
+            failed,
+            not_attempted,
+        } = outcome
+        else {
+            panic!("expected cancellation before the first callback");
+        };
+        assert!(completed.is_empty());
+        assert!(failed.is_empty());
+        assert_eq!(
+            not_attempted,
+            [
+                "folder",
+                "folder/same.txt",
+                "folder/same.txt",
+                "folder/same.txt",
+                "folder/later.txt",
+                "folder/empty",
+                "folder/zero.txt"
+            ]
+            .map(|name| Location::local(destination.path().join(name))),
+            "solid={solid}"
+        );
+        assert_eq!(progress.load(Ordering::Relaxed), 0);
+        assert!(destination.path().read_dir()?.next().is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn sevenz_mid_copy_cancellation_tracks_header_identity_and_destination_renames()
+-> Result<(), Box<dyn Error>> {
+    for solid in [false, true] {
+        for after in [1, 2] {
+            let root = tempfile::tempdir()?;
+            let archive = root.path().join("mixed.7z");
+            write_mixed_7z(&archive, solid)?;
+            let destination = tempfile::tempdir()?;
+            fs::create_dir(destination.path().join("folder"))?;
+            fs::write(destination.path().join("folder/keep.txt"), b"original")?;
+            let progress = Arc::new(AtomicUsize::new(0));
+            let cancelled = AtomicBool::new(false);
+            let reader = CancelAfterMembers {
+                file: fs::File::open(&archive)?,
+                progress: &progress,
+                cancelled: &cancelled,
+                after,
+            };
+            let outcome = extract_7z_from_reader(
+                reader,
+                destination.path(),
+                sevenz_rust2::Password::empty(),
+                &progress,
+                &cancelled,
+            )?;
+            let ArchiveOutcome::Cancelled {
+                completed,
+                failed,
+                not_attempted,
+            } = outcome
+            else {
+                panic!("expected cancellation after {after} members, solid={solid}");
+            };
+            let location = |name| Location::local(destination.path().join(name));
+            let completed_names = ["folder (2)/same.txt", "folder (2)/same (2).txt"];
+            assert_eq!(
+                completed,
+                completed_names[..after]
+                    .iter()
+                    .map(location)
+                    .collect::<Vec<_>>()
+            );
+            assert!(failed.is_empty());
+            let interrupted = if after == 1 {
+                "folder (2)/same (2).txt"
+            } else {
+                "folder (2)/later.txt"
+            };
+            let mut pending_names = vec![interrupted, "folder (2)", "folder (2)/same.txt"];
+            if after == 1 {
+                pending_names.push("folder (2)/later.txt");
+            }
+            pending_names.extend(["folder (2)/empty", "folder (2)/zero.txt"]);
+            assert_eq!(
+                not_attempted,
+                pending_names.iter().map(location).collect::<Vec<_>>(),
+                "after={after}, solid={solid}"
+            );
+            assert_eq!(completed.len() + not_attempted.len(), 7);
+            assert_eq!(progress.load(Ordering::Relaxed), after);
+            assert_eq!(
+                fs::read(destination.path().join("folder/keep.txt"))?,
+                b"original"
+            );
+            assert_eq!(
+                fs::read(destination.path().join(completed_names[0]))?,
+                b"one"
+            );
+            if after == 2 {
+                assert_eq!(
+                    fs::read(destination.path().join(completed_names[1]))?,
+                    b"two"
+                );
+            }
+            assert_eq!(
+                destination.path().join("folder (2)").read_dir()?.count(),
+                after
+            );
+            assert!(!destination.path().join(interrupted).exists());
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn pending_unsafe_names_are_omitted_by_every_decoder() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("archive");
+    for format in [
+        ArchiveFormat::Zip,
+        ArchiveFormat::SevenZ,
+        ArchiveFormat::Tar,
+        ArchiveFormat::TarGz,
+    ] {
+        match format {
+            ArchiveFormat::Zip => write_zip(&archive, &[("../outside", b"contents")])?,
+            ArchiveFormat::SevenZ => write_7z(&archive, "../outside", b"contents")?,
+            ArchiveFormat::Tar | ArchiveFormat::TarGz => write_tar(
+                &archive,
+                "../outside",
+                b"contents",
+                format == ArchiveFormat::TarGz,
+            )?,
+        }
+        let destination = tempfile::tempdir()?;
+        let cancelled = always_cancelled();
+        let progress = Arc::new(AtomicUsize::new(0));
+        let outcome = match format {
+            ArchiveFormat::Zip => {
+                let mut archive = zip::ZipArchive::new(fs::File::open(&archive)?)?;
+                extract_zip_from_archive(
+                    &mut archive,
+                    destination.path(),
+                    None,
+                    &progress,
+                    &cancelled,
+                )?
+            }
+            ArchiveFormat::SevenZ => extract_7z_from_reader(
+                fs::File::open(&archive)?,
+                destination.path(),
+                sevenz_rust2::Password::empty(),
+                &progress,
+                &cancelled,
+            )?,
+            ArchiveFormat::Tar | ArchiveFormat::TarGz => extract_tar(
+                &archive,
+                destination.path(),
+                format == ArchiveFormat::TarGz,
+                &progress,
+                &cancelled,
+            )?,
+        };
+        assert!(
+            matches!(outcome, ArchiveOutcome::Cancelled { completed, failed, not_attempted }
+            if completed.is_empty() && failed.is_empty() && not_attempted.is_empty()),
+            "{format:?}"
+        );
+        assert_eq!(progress.load(Ordering::Relaxed), 0);
+        assert!(destination.path().read_dir()?.next().is_none());
+    }
     Ok(())
 }
 

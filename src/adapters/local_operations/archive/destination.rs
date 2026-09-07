@@ -273,19 +273,26 @@ impl ExtractNameResolver {
                 _ => None,
             })
             .ok_or_else(|| "Archive entry has no file name".to_owned())?;
-        let resolved_top = if let Some(existing) = self.renames.get(top) {
-            existing.clone()
-        } else {
+        if !self.renames.contains_key(top) {
             let name = destination.available_name(&destination.root, top)?;
-            self.renames.insert(top.to_owned(), name.clone());
-            name
+            self.renames.insert(top.to_owned(), name);
+        }
+        Ok(self.apply_known_rename(path))
+    }
+
+    /// Maps a validated path without filesystem probes or reserving a new name.
+    pub(super) fn apply_known_rename(&self, path: &Path) -> PathBuf {
+        let mut components = path.iter();
+        let Some(top) = components.next() else {
+            return path.to_path_buf();
         };
-        let mut resolved = PathBuf::from(resolved_top);
-        resolved.extend(
-            path.components()
-                .skip(1)
-                .map(|component| component.as_os_str()),
-        );
-        Ok(resolved)
+        let top = self
+            .renames
+            .get(top)
+            .map(OsString::as_os_str)
+            .unwrap_or(top);
+        let mut resolved = PathBuf::from(top);
+        resolved.extend(components);
+        resolved
     }
 }

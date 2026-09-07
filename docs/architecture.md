@@ -125,11 +125,18 @@ Local archive operations live under `adapters/local_operations/archive/`:
 | ZIP, TAR/gzip and 7z member enumeration, passwords and decoder errors | `decoders.rs` |
 
 Every decoder feeds one `ExtractionSession` per operation. The session has no codec or widget
-API dependencies; decoders lend it member streams and provide already-known remaining locations
-on cancellation. Sequential formats do not scan unread content to complete that list. Format
-libraries and compression behavior are unchanged by this boundary. Decoder evaluation can proceed
-independently of extraction policy. Archive unit tests sit in each module's adjacent `tests.rs`;
-provider-level tests remain in `archive/tests.rs`, with shared test-only builders in `fixtures.rs`.
+API dependencies; decoders lend it member streams and provide already-known pending names on
+cancellation. Member identity tracking stays inside each decoder rather than assuming unique names
+or matching header/callback order. The session validates pending names and applies established
+root renames without filesystem probes or name reservations; final leaf conflicts remain unknown
+until a member is attempted. Sequential formats do not scan unread content to complete that list.
+
+The private member boundary currently retains legacy lossy TAR-name conversion and regular-file
+output for non-directory entries, including links. It is not a complete archive-entry model;
+native names and entry-type semantics belong in the decoder compatibility evaluation. Format
+libraries and compression behavior remain unchanged. Archive unit tests sit in each module's
+adjacent `tests.rs`; provider-level tests remain in `archive/tests.rs`, with shared test-only builders
+in `fixtures.rs`.
 
 Feature unit tests sit beside their implementations. Cross-feature browser tests remain in
 `ui/browser/tests/`; GTK tests that need independent initialization can use
