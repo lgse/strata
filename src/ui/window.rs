@@ -1012,6 +1012,21 @@ fn install_keyboard_navigation(
         if key == gtk::gdk::Key::Delete && !view.filter_has_focus() && view.confirm_delete(shift) {
             return glib::Propagation::Stop;
         }
+        if key == gtk::gdk::Key::Escape
+            && !control
+            && !alt
+            && !modifiers.contains(gtk::gdk::ModifierType::SUPER_MASK)
+            && !text_has_focus
+        {
+            if preview.is_open() {
+                preview.close();
+                return glib::Propagation::Stop;
+            }
+            // Transient surfaces may return focus to pane chrome rather than an item.
+            if browser.close_peek() || browser.clear_active_selection() {
+                return glib::Propagation::Stop;
+            }
+        }
         if !control && !alt && !view.item_view_has_focus() && !header_left_boundary {
             return glib::Propagation::Proceed;
         }
@@ -1039,6 +1054,9 @@ fn install_keyboard_navigation(
                         return glib::Propagation::Stop;
                     }
                     view.commit_selection();
+                    if !control {
+                        view.resume_native_selection();
+                    }
                     if !control
                         && !shift
                         && let Some(direction) = sidebar_focus_direction(key)
@@ -1081,10 +1099,6 @@ fn install_keyboard_navigation(
         }
         if key == gtk::gdk::Key::space && !alt && !control {
             preview.toggle(preview_target(browser.focused_entry()));
-            return glib::Propagation::Stop;
-        }
-        if key == gtk::gdk::Key::Escape && preview.is_open() {
-            preview.close();
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::BackSpace && !control && !alt {
@@ -1786,14 +1800,6 @@ impl SidebarState {
 
     fn append_devices(self: &Rc<Self>) {
         let volumes = self.volume_monitor.volumes();
-        let represented = self
-            .volume_monitor
-            .mounts()
-            .into_iter()
-            .chain(volumes.iter().filter_map(|volume| volume.get_mount()))
-            .filter_map(|mount| mount.root().path());
-        let fallback =
-            devices::unrepresented_devices(devices::system_mounted_devices(), represented);
         let mounts: Vec<_> = self
             .volume_monitor
             .mounts()
@@ -1813,19 +1819,11 @@ impl SidebarState {
                 Some((name, location, mount))
             })
             .collect();
-        if !volumes.is_empty() || !mounts.is_empty() || !fallback.is_empty() {
+        if !volumes.is_empty() || !mounts.is_empty() {
             self.append_separator();
             self.append_heading("DEVICES");
             for volume in volumes {
                 self.append_volume(volume);
-            }
-            for device in fallback {
-                self.append_device_place(
-                    crate::assets::icons::HARD_DRIVE,
-                    &device.name,
-                    Location::local(device.root),
-                    None,
-                );
             }
             for (name, location, mount) in mounts {
                 if is_smb_location(&location) {

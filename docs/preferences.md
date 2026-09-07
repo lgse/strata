@@ -4,6 +4,8 @@ Application-wide preferences live in `ui::theme::Preferences`. `ThemeManager`
 loads them once per application process and persists changes atomically to
 `$XDG_CONFIG_HOME/strata/settings.toml` (normally `~/.config/strata/settings.toml`).
 The manager's historical name does not make non-theme settings window-local.
+Fresh installations select Tokyo Night, unless an available Omarchy theme is
+followed automatically. Saved theme choices remain unchanged.
 
 ## One initialization and update path
 

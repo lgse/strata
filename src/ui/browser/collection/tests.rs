@@ -158,6 +158,52 @@ fn seeded_filter_keeps_first_character_when_typing_continues() {
     window.destroy();
 }
 
+#[test]
+fn an_allocated_scroll_supersedes_the_pending_first_row_scroll() {
+    crate::test_support::gtk_test(
+        "ui::browser::collection::tests::an_allocated_scroll_supersedes_the_pending_first_row_scroll",
+        || {
+            let names: Vec<_> = (0..200).map(|index| format!("Item {index}")).collect();
+            let model = gtk::StringList::new(&names.iter().map(String::as_str).collect::<Vec<_>>());
+            let factory = gtk::SignalListItemFactory::new();
+            factory.connect_setup(|_, item| {
+                item.downcast_ref::<gtk::ListItem>()
+                    .expect("list item")
+                    .set_child(Some(&gtk::Label::new(Some("Item"))));
+            });
+            let selection = gtk::NoSelection::new(Some(model));
+            let list = gtk::ListView::new(Some(selection), Some(factory));
+            let scroller = gtk::ScrolledWindow::builder().child(&list).build();
+            let window = gtk::Window::builder()
+                .child(&scroller)
+                .default_width(300)
+                .default_height(200)
+                .build();
+
+            window.present();
+            list.grab_focus();
+            scroll_collection_when_allocated(list.upcast_ref(), 0);
+            list.allocate(300, 200, -1, None);
+            scroll_collection_when_allocated(list.upcast_ref(), 190);
+
+            let frames = Rc::new(Cell::new(0));
+            let seen = frames.clone();
+            window.add_tick_callback(move |_, _| {
+                seen.set(seen.get() + 1);
+                glib::ControlFlow::Continue
+            });
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while frames.get() < 5 {
+                assert!(std::time::Instant::now() < deadline, "layout timed out");
+                glib::MainContext::default().iteration(false);
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            assert!(scroller.vadjustment().value() > 1000.0);
+            window.destroy();
+        },
+    );
+}
+
 const SCROLL_PIN_GTK_CHILD: &str = "STRATA_SCROLL_PIN_GTK_CHILD";
 
 const SCROLL_PIN_TEST: &str =

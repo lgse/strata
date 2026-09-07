@@ -726,7 +726,7 @@ impl NavigationState {
             .collect();
         let commit = std::mem::take(&mut self.selection_commit);
         adopt_selected_locations(column, locations, commit);
-        column.selected = focused.filter(|position| positions.contains(position));
+        column.selected = focused.or(column.selected);
         if column.selection_anchor.is_none() {
             column.selection_anchor = column
                 .selected
@@ -735,6 +735,17 @@ impl NavigationState {
         }
         self.active_column = Some(depth);
         true
+    }
+
+    pub fn clear_active_selection(&mut self) -> Option<(usize, usize)> {
+        let depth = self.active_depth()?;
+        let column = self.columns.get_mut(depth)?;
+        if column.selected_locations.is_empty() {
+            return None;
+        }
+        let focused = column.selected.unwrap_or(0);
+        adopt_selected_locations(column, HashSet::new(), true);
+        Some((depth, focused))
     }
 
     pub fn extend_selection(&mut self, direction: i32) -> Option<(usize, usize, Vec<usize>)> {

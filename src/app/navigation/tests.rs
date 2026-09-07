@@ -77,6 +77,31 @@ fn focusing_a_column_preserves_selection_and_descendants() {
 }
 
 #[test]
+fn empty_selection_sync_preserves_the_keyboard_cursor() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/alpha", "alpha"),
+            named_entry("/fixture/bravo", "bravo"),
+            named_entry("/fixture/charlie", "charlie"),
+        ],
+    );
+    state.select(0, 1);
+    assert_eq!(state.clear_active_selection(), Some((0, 1)));
+    assert!(state.set_selection(0, &[], None));
+    assert!(state.selected_positions(0).is_empty());
+    assert_eq!(state.active_focus(), Some((0, Some(1))));
+    assert_eq!(state.move_selection(1), Some((0, 2)));
+
+    assert!(state.set_selection(0, &[], Some(1)));
+    assert!(state.selected_positions(0).is_empty());
+    assert_eq!(state.active_focus(), Some((0, Some(1))));
+    assert_eq!(state.move_selection(-1), Some((0, 0)));
+}
+
+#[test]
 fn multi_selection_tracks_entries_and_replaces_cleanly() {
     let mut state = NavigationState::default();
     state.navigate(location("/fixture"), RequestId(1));

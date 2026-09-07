@@ -78,6 +78,42 @@ impl ThemeManager {
 }
 
 #[test]
+fn fresh_preferences_select_tokyo_night_before_settings_opens() {
+    gtk_test(
+        "ui::theme::tests::preferences::fresh_preferences_select_tokyo_night_before_settings_opens",
+        || {
+            assert!(!settings_path().exists());
+            let manager = ThemeManager::shared();
+            assert_eq!(manager.selected_id(), "tokyo-night");
+            assert!(!manager.follows_omarchy());
+            assert_eq!(
+                manager.current_tokens().expect("selected theme").name,
+                "Tokyo Night"
+            );
+            assert!(!settings_path().exists());
+        },
+    );
+}
+
+#[test]
+fn fresh_preferences_still_follow_available_omarchy_theme() {
+    gtk_test(
+        "ui::theme::tests::preferences::fresh_preferences_still_follow_available_omarchy_theme",
+        || {
+            ThemeManager::seed_omarchy_for_test();
+            let manager = ThemeManager::shared();
+            assert!(manager.follows_omarchy());
+            assert_eq!(manager.selected_id(), "tokyo-night");
+            manager.set_follow_omarchy(false);
+            assert_eq!(
+                manager.current_tokens().expect("selected theme").name,
+                "Tokyo Night"
+            );
+        },
+    );
+}
+
+#[test]
 fn every_saved_preference_loads_before_any_settings_page_exists() {
     gtk_test(
         "ui::theme::tests::preferences::every_saved_preference_loads_before_any_settings_page_exists",
