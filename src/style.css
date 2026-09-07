@@ -2490,30 +2490,12 @@ popover.folder-context-popover.background {
   box-shadow: none;
 }
 
-.context-menu-scroll scrollbar,
-.context-menu-scroll scrollbar:hover,
-.context-menu-scroll scrollbar range,
-.context-menu-scroll scrollbar trough {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  outline: none;
+.context-menu-scroll scrollbar.vertical {
+  min-width: 6px;
 }
 
-.context-menu-scroll scrollbar slider {
-  background: alpha(@theme_border, 0.62);
-  border: 3px solid transparent;
-  border-radius: 6px;
-  min-width: 8px;
-  min-height: 32px;
-}
-
-.context-menu-scroll scrollbar slider:hover {
-  background: @theme_dim_text;
-}
-
-.context-menu-scroll scrollbar slider:active {
-  background: @theme_accent;
+.context-menu-scroll scrollbar.vertical > range > trough > slider {
+  margin: 0;
 }
 
 .folder-context-menu,
@@ -2893,12 +2875,13 @@ colorchooser colorswatch overlay {
   padding-top: 4px;
 }
 
-.file-list row {
+.file-list row,
+.file-list-mode row {
   background: transparent;
   color: @theme_text;
   border-radius: 6px;
   margin: 1px 8px;
-  padding: 0;
+  padding: 4px 0;
   transition: background 160ms ease-out, color 160ms ease-out;
 }
 
@@ -2970,7 +2953,8 @@ colorchooser colorswatch overlay {
 }
 
 .file-list row:hover:not(:selected),
-.file-list row:hover .file-row.active-path {
+.file-list row:hover .file-row.active-path,
+.file-list-mode row:hover:not(:selected) {
   background: alpha(@theme_accent, 0.15);
   color: @theme_text;
 }
@@ -3060,7 +3044,8 @@ colorchooser colorswatch overlay {
   opacity: 1;
 }
 
-.file-list row:selected {
+.file-list row:selected,
+.file-list-mode row:selected {
   background: alpha(@theme_accent, 0.22);
   color: @theme_text;
   outline: none;
@@ -3080,7 +3065,8 @@ colorchooser colorswatch overlay {
   outline-offset: -2px;
 }
 
-.directory-column:not(:focus-within) .file-list row:selected {
+.directory-column:not(:focus-within) .file-list row:selected,
+.file-list-mode:not(:focus-within) row:selected {
   background: alpha(@theme_highlight, 0.55);
   color: @theme_text;
 }
@@ -3744,23 +3730,6 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 .list-navigation-button:focus-visible {
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
-}
-
-.file-list-mode row {
-  background: transparent;
-  color: @theme_text;
-  outline: none;
-  transition: background 160ms ease-out, color 160ms ease-out;
-  padding: 0;
-}
-
-.file-list-mode row:hover {
-  background: alpha(@theme_accent, 0.15);
-}
-
-.file-list-mode row:selected {
-  background: alpha(@theme_accent, 0.22);
-  color: @theme_text;
 }
 
 .list-row.drop-destination,
