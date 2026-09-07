@@ -19,3 +19,4 @@ packaging/aur/*/*.pkg.tar.zst
 
 # Restored coding-agent skills (see skills-lock.json)
 /.agents/
+/.grok/

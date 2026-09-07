@@ -737,6 +737,14 @@ fn install_keyboard_navigation(
         let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
         let focused = gtk::prelude::RootExt::focus(&dialog_parent);
+        let original_key = key;
+        let key = super::focus_navigation::navigation_key(
+            key,
+            modifiers,
+            type_to_search.preferences.type_to_search(),
+            focused.as_ref(),
+        );
+        let vim_navigation = key != original_key;
         let sidebar_has_focus = focused.as_ref().is_some_and(|focused| {
             focused == &sidebar_widget || focused.is_ancestor(&sidebar_widget)
         });
@@ -1062,6 +1070,9 @@ fn install_keyboard_navigation(
                         && let Some(direction) = sidebar_focus_direction(key)
                         && view.cross_type_group(direction, false)
                     {
+                        glib::Propagation::Stop
+                    } else if vim_navigation {
+                        super::focus_navigation::activate_native_arrow(&dialog_parent, key);
                         glib::Propagation::Stop
                     } else {
                         glib::Propagation::Proceed

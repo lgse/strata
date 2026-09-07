@@ -1,5 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+//! Compress and extract dialogs for the browser view.
+//!
+//! These methods live on [`ViewState`] and start work through the shared
+//! [`crate::app::Browser`] controller; they must not create a separate archive
+//! pipeline. Password-capable extracts record a retry so a later failure can
+//! reopen [`ViewState::show_extract_password_dialog`].
+//!
+//! # Entry points
+//!
+//! - [`ViewState::show_compress_dialog`]
+//! - [`ViewState::extract_entry`]
+//! - [`ViewState::show_extract_to_dialog`]
+//! - [`ViewState::show_extract_password_dialog`]
+
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::services::{ArchiveFormat, TransferConflict, validate_basename};
@@ -23,12 +37,20 @@ use std::cell::Cell;
 use std::path::Path;
 use std::rc::Rc;
 
+/// Basename used when creating the archive, with `format`'s extension removed.
+///
+/// Typing `backup.zip` while [`ArchiveFormat::Zip`] is selected yields `backup`,
+/// so the committed file is `backup.zip` rather than `backup.zip.zip`. Suffixes
+/// that do not match [`ArchiveFormat::extension`] are left intact.
 fn normalized_archive_name(name: &str, format: ArchiveFormat) -> String {
     name.strip_suffix(&format!(".{}", format.extension()))
         .unwrap_or(name)
         .to_owned()
 }
 
+/// Whether `destination` already contains a child named `archive_name`.
+///
+/// Collision checks use the final filename, including the format extension.
 fn archive_has_collision(destination: &Location, archive_name: &str) -> bool {
     gio_file_for_location(destination)
         .child(archive_name)
@@ -36,6 +58,20 @@ fn archive_has_collision(destination: &Location, archive_name: &str) -> bool {
 }
 
 impl ViewState {
+    /// Builds shared chrome for a compress or extract dialog.
+    ///
+    /// Returns the modal body, confirm button, and a dismiss callback. When no
+    /// [`ModalHost`] overlay exists, returns inert widgets so callers can still
+    /// wire handlers without showing a dialog.
+    ///
+    /// # Arguments
+    ///
+    /// * `title` - Dialog heading
+    /// * `subtitle` - Secondary line under the heading
+    /// * `confirm_label` - Confirm button text
+    /// * `block_dismiss` - When `Some` and it returns `true`, backdrop clicks do
+    ///   not close the dialog (used for dirty forms). Escape and cancel/close
+    ///   still dismiss.
     fn build_archive_modal(
         self: &Rc<Self>,
         title: &str,
@@ -89,6 +125,20 @@ impl ViewState {
         (layout.body, layout.confirm, dismiss)
     }
 
+    /// Starts compression, prompting to replace when the target already exists.
+    ///
+    /// Uses [`TransferConflict::FailIfExists`] when the name is free. On a
+    /// collision, shows a replace confirmation instead of overwriting. If that
+    /// prompt cannot be hosted, the operation is not started.
+    ///
+    /// # Arguments
+    ///
+    /// * `entries` - Items to include in the archive
+    /// * `destination` - Directory that will receive the archive
+    /// * `archive_name` - Basename without the format extension
+    /// * `format` - Archive format to write
+    /// * `password` - Optional encryption password for formats that
+    ///   [`ArchiveFormat::supports_password`]
     fn start_compression(
         self: &Rc<Self>,
         entries: Vec<FileEntry>,
@@ -186,6 +236,15 @@ impl ViewState {
         replace.grab_focus();
     }
 
+    /// Opens the compress dialog for the selected `entries`.
+    ///
+    /// Returns immediately when the selection is empty or any entry is not a
+    /// native path; archive creation is a local operation. The destination is
+    /// the first entry's parent, then the active location, then the home
+    /// directory. Password fields are shown only for formats that
+    /// [`ArchiveFormat::supports_password`]. The typed name is normalized with
+    /// [`normalized_archive_name`] and checked with [`validate_basename`] before
+    /// [`Self::start_compression`].
     pub(super) fn show_compress_dialog(self: &Rc<Self>, entries: Vec<FileEntry>) {
         if entries.is_empty()
             || entries
@@ -354,6 +413,13 @@ impl ViewState {
         name_entry.grab_focus();
     }
 
+    /// Extracts `entry` into its parent directory ("Extract here").
+    ///
+    /// Returns immediately when the archive is not a native path. Archives
+    /// without a parent show an error instead of extracting. Password-capable
+    /// formats record a retry so a later password or encryption failure can
+    /// reopen [`Self::show_extract_password_dialog`]. The first attempt is sent
+    /// without a password.
     pub(super) fn extract_entry(self: &Rc<Self>, entry: FileEntry) {
         if entry.location.native_path().is_none() {
             return;
@@ -374,6 +440,12 @@ impl ViewState {
         self.browser.extract(entry, parent, None);
     }
 
+    /// Opens the "Extract to" folder picker for `entry`.
+    ///
+    /// Returns immediately when the archive is not a native path. Confirm
+    /// creates the typed destination if it does not exist, then extracts into
+    /// that folder and navigates there when the operation finishes. Password
+    /// retry is recorded the same way as [`Self::extract_entry`].
     pub(super) fn show_extract_to_dialog(self: &Rc<Self>, entry: FileEntry) {
         if entry.location.native_path().is_none() {
             return;
@@ -477,6 +549,11 @@ impl ViewState {
         field.grab_focus();
     }
 
+    /// Prompts for a password after a password-capable extract failed.
+    ///
+    /// Shown from operation-failure handling when the error mentions a password
+    /// or encryption. An empty field retries `entry` into `destination` with no
+    /// password.
     pub(super) fn show_extract_password_dialog(
         self: &Rc<Self>,
         entry: FileEntry,

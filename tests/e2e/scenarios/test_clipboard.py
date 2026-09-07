@@ -95,18 +95,22 @@ def test_paste_into_explicitly_selected_load_cursor(strata, mode, selection):
     assert not fixture.path("notes.txt").exists()
 
 
-def test_paste_follows_a_child_column_opened_by_pointer(strata):
+def test_opening_a_child_keeps_paste_under_the_pointer(strata):
     fixture = strata.fixture
 
-    strata.select_entry("todo.txt")
+    strata.open_directory("documents")
+    strata.select_entry("notes.txt", directory="documents")
     strata.keyboard.press("ctrl+c")
+    strata.keyboard.press("alt+Up")
+    strata.wait_for_directory(fixture.root.name)
     strata.open_directory("archive")
     strata.keyboard.press("ctrl+v")
 
     strata.wait(
-        lambda: fixture.path("archive/todo.txt").exists(),
-        "the copy to land in the opened child column",
+        lambda: fixture.path("notes.txt").exists(),
+        "the copy to land in the parent column still under the pointer",
     )
+    assert not fixture.path("archive/notes.txt").exists()
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)

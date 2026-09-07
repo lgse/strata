@@ -41,9 +41,13 @@ def test_switching_preserves_directory_selection_and_sort(strata):
     ascending = strata.entry_names("pictures")
     assert ascending == ["diagram.txt", "photo.txt"]
 
-    reverse_sort = strata.window.find_all(
-        role="button", name="Ascending — click to reverse"
-    )[-1]
+    strata.pointer.move_to(*strata.pane("pictures").screen_bounds().center)
+    reverse_sort = strata.wait(
+        lambda: strata.pane("pictures").find(
+            role="button", name="Ascending — click to reverse"
+        ),
+        "the hovered pane's sort action to appear",
+    )
     strata.pointer.click(reverse_sort)
     strata.wait(
         lambda: strata.entry_names("pictures") == list(reversed(ascending)),
