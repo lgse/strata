@@ -1029,7 +1029,7 @@ impl ModeViews {
                 for pane in self.panes_at(*depth) {
                     set_selections(pane, positions);
                 }
-                if *take_focus || view_has_focus {
+                if *take_focus || (view_has_focus && !positions.is_empty()) {
                     self.focus_visible_pane(*depth);
                 }
             }
@@ -1060,6 +1060,21 @@ impl ModeViews {
             BrowserMode::Icons => self.icons_panes.iter().collect(),
             BrowserMode::List => self.list_pane.iter().collect(),
         }
+    }
+
+    pub fn resume_native_selection(&self) {
+        let Some((depth, focused, _)) = self.browser.focused_item() else {
+            return;
+        };
+        if !self.browser.selected_positions(depth).is_empty() {
+            return;
+        }
+        // Seed GTK's empty selection before the arrow moves it, without scheduling
+        // a focus restore that would undo the native move after key dispatch.
+        for pane in self.panes_at(depth) {
+            set_selections(pane, &[focused]);
+        }
+        self.browser.set_selection(depth, &[focused], Some(focused));
     }
 
     pub fn focused_position(&self) -> Option<(usize, usize)> {

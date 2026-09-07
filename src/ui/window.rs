@@ -1054,6 +1054,9 @@ fn install_keyboard_navigation(
                         return glib::Propagation::Stop;
                     }
                     view.commit_selection();
+                    if !control {
+                        view.resume_native_selection();
+                    }
                     if !control
                         && !shift
                         && let Some(direction) = sidebar_focus_direction(key)

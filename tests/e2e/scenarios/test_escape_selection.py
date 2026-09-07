@@ -3,18 +3,21 @@
 
 import pytest
 
-from harness.modes import ALL_MODES, PREVIOUS_ENTRY_KEY
+from harness.modes import ALL_MODES, NEXT_ENTRY_KEY, PREVIOUS_ENTRY_KEY
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("multiple", [False, True])
+@pytest.mark.parametrize("direction", ["previous", "next"])
 @pytest.mark.preferences(single_click_previews=False)
-def test_escape_clears_selection_without_navigation(strata, mode, multiple):
+def test_escape_clears_selection_without_navigation(strata, mode, multiple, direction):
     root = strata.fixture.root.name
-    strata.select_entry("readme.md", root)
     if multiple:
-        strata.click_entry_with("todo.txt", ["ctrl"], root)
-    focused = "todo.txt" if multiple else "readme.md"
+        strata.select_entry("todo.txt", root)
+        strata.click_entry_with("readme.md", ["ctrl"], root)
+    else:
+        strata.select_entry("readme.md", root)
+    focused = "readme.md"
     strata.wait_for_selection(["readme.md", "todo.txt"] if multiple else [focused], root)
     panes = strata.pane_names()
 
@@ -23,8 +26,27 @@ def test_escape_clears_selection_without_navigation(strata, mode, multiple):
     strata.wait_for_selection([], root)
     strata.wait_for_focused_entry(focused)
     assert strata.pane_names() == panes
-    strata.keyboard.press(PREVIOUS_ENTRY_KEY[mode])
-    strata.wait(lambda: bool(strata.selected_names(root)), "keyboard navigation to resume")
+    key = PREVIOUS_ENTRY_KEY[mode] if direction == "previous" else NEXT_ENTRY_KEY[mode]
+    expected = "pictures" if direction == "previous" else "todo.txt"
+    strata.keyboard.press(key)
+    strata.wait_for_selection([expected], root)
+    strata.wait_for_focused_entry(expected)
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.preferences(single_click_previews=False)
+def test_enter_after_escape_opens_the_focused_folder(strata, mode):
+    root = strata.fixture.root.name
+    strata.select_entry_with_keyboard("documents")
+    strata.wait_for_focused_entry("documents")
+    strata.keyboard.press("Escape")
+    strata.wait_for_selection([], root)
+    strata.wait_for_focused_entry("documents")
+
+    strata.keyboard.press("Return")
+
+    strata.wait_for_directory("documents")
+    strata.wait_for_entries(["notes.txt", "report.md", "spreadsheet.csv"], "documents")
 
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)

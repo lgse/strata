@@ -609,6 +609,10 @@ impl BrowserView {
         self.state.browser.commit_selection();
     }
 
+    pub fn resume_native_selection(&self) {
+        self.state.mode_views.borrow().resume_native_selection();
+    }
+
     pub fn navigate_left(&self) {
         if self.view_mode() != BrowserMode::Columns {
             self.state.browser.parent();
@@ -1263,7 +1267,13 @@ impl ViewState {
         let Some((depth, positions)) = self.mode_views.borrow().selected_positions() else {
             return;
         };
-        let focused = positions.last().copied();
+        let focused = self
+            .mode_views
+            .borrow()
+            .focused_position()
+            .filter(|(focused_depth, _)| *focused_depth == depth)
+            .map(|(_, position)| position)
+            .or_else(|| positions.last().copied());
         self.browser.set_selection(depth, &positions, focused);
     }
 

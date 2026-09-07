@@ -726,7 +726,7 @@ impl NavigationState {
             .collect();
         let commit = std::mem::take(&mut self.selection_commit);
         adopt_selected_locations(column, locations, commit);
-        column.selected = focused.filter(|position| positions.contains(position));
+        column.selected = focused.or(column.selected);
         if column.selection_anchor.is_none() {
             column.selection_anchor = column
                 .selected
