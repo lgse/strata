@@ -205,10 +205,7 @@ type SelectionChanged = Box<dyn Fn(usize)>;
 const DROPDOWN_EDGE_MARGIN: i32 = 24;
 const MIN_DROPDOWN_CONTENT_HEIGHT: i32 = 120;
 
-/// A popover is its own surface and grows to its content, so a long option list has to be
-/// bounded before it is shown or its ends become unreachable. The list also opens toward
-/// whichever side of the button has more room, so a dropdown near the bottom of the window
-/// is not squeezed into the last few pixels.
+// Popovers use separate surfaces, so the window does not constrain their content height.
 fn dropdown_placement(
     available_height: i32,
     anchor_top: i32,
