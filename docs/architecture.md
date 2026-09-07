@@ -127,6 +127,17 @@ publication/metadata orchestration, native transfer security and the settings wo
 refactored independently of browser composition. Investigation and scope decisions are recorded in
 [issue #397](https://github.com/lgse/strata/issues/397).
 
+### Window keyboard routing
+
+`ui/window/keyboard.rs` owns the window's capture-phase keyboard dispatcher. Its ordered
+stages preserve shortcut precedence: modal and editing ownership, window/file commands,
+focus traversal, transient dismissal, then item/directory navigation. The private
+`commands.rs`, `focus.rs`, and `items.rs` modules implement those responsibilities without
+introducing another browser controller. A stage returning `None` continues through Strata's
+handlers; `Some(Propagation::Proceed)` ends dispatch and leaves the event to GTK. In
+particular, editable controls and native single-pane selection must not fall through to
+browser commands. The file chooser retains its separate, restricted keyboard policy.
+
 ## Capability boundaries
 
 ### File source

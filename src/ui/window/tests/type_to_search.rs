@@ -6,7 +6,7 @@ use crate::services::{
 };
 use crate::ui::{shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation};
 
-struct TextPreview;
+pub(super) struct TextPreview;
 
 impl PreviewProvider for TextPreview {
     fn load(&self, request: PreviewRequest, emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle {
@@ -62,14 +62,16 @@ fn exercise_type_to_search() {
         view: view.clone(),
         preferences: preferences.clone(),
     };
-    install_keyboard_navigation(
+    keyboard::install(
         &window,
-        &view,
         &sidebar,
-        &top_bar,
-        &preview,
-        &type_to_search,
-        &ShortcutFooter::new(BrowserMode::Columns),
+        keyboard::Bindings {
+            view: view.clone(),
+            top_bar,
+            preview: preview.clone(),
+            type_to_search,
+            shortcuts: ShortcutFooter::new(BrowserMode::Columns),
+        },
     );
     let keys = window
         .observe_controllers()

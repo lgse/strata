@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod keyboard_dispatch;
 mod preferences;
 mod type_to_search;
 
