@@ -35,6 +35,7 @@ const TOOLS: &[Shortcut] = &[
     ("Ctrl+T", "Open a terminal"),
     ("F5", "Refresh"),
     ("Ctrl+H / Ctrl+.", "Show or hide hidden files"),
+    ("Ctrl+1 / 2 / 3", "Switch to Columns, Icons, or List"),
     ("Ctrl+B", "Show or hide the sidebar"),
     ("Ctrl+Shift+B", "Switch focus between sidebar and browser"),
     ("Ctrl+,", "Open Settings"),
@@ -67,9 +68,9 @@ impl ShortcutFooter {
             .build();
         summary.add_css_class("shortcut-footer-summary");
         root.append(&summary);
-        let paste = gtk::Label::new(Some("Ctrl+V  Paste available"));
+        let paste = gtk::Label::new(Some("Files on clipboard"));
         paste.add_css_class("shortcut-footer-paste");
-        paste.set_tooltip_text(Some("Files are on the clipboard. Press Ctrl+V to paste."));
+        paste.set_tooltip_text(Some("Press Ctrl+V to paste into a supported directory."));
         paste.set_visible(false);
         root.append(&paste);
         let show_hints = Rc::new(Cell::new(true));

@@ -442,6 +442,9 @@ fn try_install(
     if let Some(package_dir) = binary_path.parent() {
         refresh_desktop_metadata(package_dir, current_exe, &glib::user_data_dir());
     }
+    if let Err(error) = crate::portal_setup::refresh_after_in_place_update() {
+        tracing::warn!(%error, "could not refresh the configured Strata portal after updating");
+    }
 
     Ok(())
 }

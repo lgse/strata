@@ -1,36 +1,40 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod multi_root;
+mod performance;
+
 use std::{
     fs,
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
 };
 
-use super::{SearchEvent, SearchItem, fuzzy_score, index_tree, index_tree_with_budget};
+use super::{
+    SearchEvent, SearchItem, fuzzy_score_normalized, index_tree, index_trees,
+    index_trees_with_budget,
+};
 
-fn item(path: &str) -> SearchItem {
-    let name = Path::new(path)
-        .file_name()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned();
-    SearchItem {
-        path: PathBuf::from(path),
-        search_name: name.to_lowercase(),
-        search_path: path.to_lowercase(),
-        name,
-        is_directory: false,
-    }
+fn score_path(path: &str, query: &str, root: &Path) -> Option<i64> {
+    fuzzy_score_normalized(&SearchItem::new(PathBuf::from(path), root, false), query)
+}
+
+fn index_tree_with_budget(
+    root: PathBuf,
+    show_hidden: bool,
+    max_entries: usize,
+    max_depth: usize,
+    time_budget: Duration,
+) -> (super::SearchHandle, std::sync::mpsc::Receiver<SearchEvent>) {
+    index_trees_with_budget(vec![root], show_hidden, max_entries, max_depth, time_budget)
 }
 
 #[test]
 fn exact_names_rank_above_substrings_and_fuzzy_matches() {
     let root = Path::new("/home/me");
-    let exact =
-        fuzzy_score(&item("/home/me/notes"), "notes", root).expect("an exact name should match");
-    let substring = fuzzy_score(&item("/home/me/my-notes.txt"), "notes", root)
-        .expect("a name substring should match");
-    let fuzzy = fuzzy_score(&item("/home/me/nested-object-types.rs"), "notes", root)
+    let exact = score_path("/home/me/notes", "notes", root).expect("an exact name should match");
+    let substring =
+        score_path("/home/me/my-notes.txt", "notes", root).expect("a name substring should match");
+    let fuzzy = score_path("/home/me/nested-object-types.rs", "notes", root)
         .expect("an ordered fuzzy subsequence should match");
     assert!(exact > substring);
     assert!(substring > fuzzy);
@@ -39,7 +43,7 @@ fn exact_names_rank_above_substrings_and_fuzzy_matches() {
 #[test]
 fn nearby_duplicate_names_rank_first_without_overriding_match_quality() {
     let root = Path::new("/fixture/Videos");
-    let score = |path, query| fuzzy_score(&item(path), query, root).expect("fixture should match");
+    let score = |path, query| score_path(path, query, root).expect("fixture should match");
     assert!(
         score("/fixture/Videos/recording.mp4", "recording")
             > score("/fixture/Videos/archive/recording.mp4", "recording")
@@ -83,10 +87,81 @@ fn recursive_results_stay_in_the_root_and_rank_nearby_duplicates_first() {
 }
 
 #[test]
+fn completed_index_returns_only_the_best_bounded_matches() {
+    let root = unique_fixture_root("bounded-best-matches");
+    fs::create_dir_all(&root).expect("create fixture");
+    fs::write(root.join("needle"), b"best match").expect("write exact match");
+    for position in 0..120 {
+        fs::write(root.join(format!("needle-{position:03}")), b"candidate")
+            .expect("write candidate");
+    }
+
+    let (search, events) = index_tree(root.clone(), false);
+    let SearchEvent::Results { indexing, .. } = events
+        .recv_timeout(Duration::from_secs(2))
+        .expect("index completion");
+    assert!(!indexing);
+    search.query("needle");
+    let event = wait_for_results(&events);
+
+    drop(search);
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let Some(SearchEvent::Results { items, .. }) = event else {
+        panic!("the worker should publish bounded results");
+    };
+    assert_eq!(items.len(), 100);
+    assert_eq!(items.first().map(|item| item.name.as_str()), Some("needle"));
+}
+
+#[test]
+fn searches_of_the_same_tree_share_an_index_but_keep_independent_queries() {
+    let root = unique_fixture_root("shared-index");
+    fs::create_dir_all(&root).expect("create fixture");
+    fs::write(root.join("alpha-only"), b"alpha").expect("write alpha fixture");
+    fs::write(root.join("beta-only"), b"beta").expect("write beta fixture");
+
+    let (alpha_search, alpha_events) = index_tree(root.clone(), false);
+    let (beta_search, beta_events) = index_tree(root.clone(), false);
+    assert!(std::sync::Arc::ptr_eq(
+        &alpha_search.index,
+        &beta_search.index
+    ));
+    alpha_search.query("alpha-only");
+    beta_search.query("beta-only");
+    let alpha_event = wait_for_results(&alpha_events);
+    let beta_event = wait_for_results(&beta_events);
+
+    drop((alpha_search, beta_search));
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let Some(SearchEvent::Results {
+        items: alpha_items, ..
+    }) = alpha_event
+    else {
+        panic!("the alpha session should publish results");
+    };
+    let Some(SearchEvent::Results {
+        items: beta_items, ..
+    }) = beta_event
+    else {
+        panic!("the beta session should publish results");
+    };
+    assert_eq!(
+        alpha_items.first().map(|item| item.name.as_str()),
+        Some("alpha-only")
+    );
+    assert_eq!(
+        beta_items.first().map(|item| item.name.as_str()),
+        Some("beta-only")
+    );
+}
+
+#[test]
 fn searches_relative_path_fragments_and_rejects_non_matches() {
-    let candidate = item("/home/me/themes/azure/colors.toml");
-    assert!(fuzzy_score(&candidate, "themes/azure", Path::new("/home/me")).is_some());
-    assert!(fuzzy_score(&candidate, "definitely-missing", Path::new("/home/me")).is_none());
+    let candidate = "/home/me/themes/azure/colors.toml";
+    assert!(score_path(candidate, "themes/azure", Path::new("/home/me")).is_some());
+    assert!(score_path(candidate, "definitely-missing", Path::new("/home/me")).is_none());
 }
 
 #[test]
@@ -146,6 +221,40 @@ fn hidden_files_are_indexed_only_when_show_hidden_is_enabled() {
         items.iter().any(|item| item.name == ".dotfile-needle"),
         "a visible hidden file should match once hidden files are shown"
     );
+}
+
+#[test]
+fn generated_tool_content_is_pruned_without_hiding_tool_configuration() {
+    let root = unique_fixture_root("tool-content");
+    fs::create_dir_all(root.join(".cargo/registry")).expect("create Cargo registry fixture");
+    fs::create_dir_all(root.join(".m2/repository")).expect("create Maven repository fixture");
+    fs::write(root.join(".cargo/config-needle.toml"), b"[build]")
+        .expect("write Cargo configuration fixture");
+    fs::write(root.join(".m2/settings-needle.xml"), b"<settings />")
+        .expect("write Maven configuration fixture");
+    fs::write(root.join(".cargo/registry/registry-needle"), b"generated")
+        .expect("write generated Cargo fixture");
+    fs::write(root.join(".m2/repository/artifact-needle"), b"generated")
+        .expect("write generated Maven fixture");
+
+    let (search, events) = index_tree(root.clone(), true);
+    search.query("needle");
+    let event = wait_for_results(&events);
+
+    drop(search);
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let Some(SearchEvent::Results { items, .. }) = event else {
+        panic!("the worker should publish tool configuration results");
+    };
+    let names = items
+        .iter()
+        .map(|item| item.name.as_str())
+        .collect::<Vec<_>>();
+    assert!(names.contains(&"config-needle.toml"));
+    assert!(names.contains(&"settings-needle.xml"));
+    assert!(!names.contains(&"registry-needle"));
+    assert!(!names.contains(&"artifact-needle"));
 }
 
 #[test]
@@ -209,12 +318,18 @@ fn index_reports_truncated_once_the_entry_budget_is_exceeded() {
     fs::remove_dir_all(&root).expect("the search fixture should be removed");
 
     let Some(SearchEvent::Results {
-        truncated, items, ..
+        coverage, items, ..
     }) = event
     else {
         panic!("the worker should publish a result for a non-empty query");
     };
-    assert!(truncated, "exceeding the entry budget should be reported");
+    assert_eq!(
+        coverage,
+        super::SearchCoverage {
+            entry_limit: true,
+            ..Default::default()
+        }
+    );
     assert!(
         items.len() <= 2,
         "the index should stop growing once the entry budget is reached"
@@ -238,12 +353,15 @@ fn index_reports_truncated_once_the_time_budget_is_exceeded() {
     drop(search);
     fs::remove_dir_all(&root).expect("the search fixture should be removed");
 
-    let Some(SearchEvent::Results { truncated, .. }) = event else {
+    let Some(SearchEvent::Results { coverage, .. }) = event else {
         panic!("the worker should publish a result for a non-empty query");
     };
-    assert!(
-        truncated,
-        "an exhausted time budget should stop the walk and report truncation"
+    assert_eq!(
+        coverage,
+        super::SearchCoverage {
+            time_limit: true,
+            ..Default::default()
+        }
     );
 }
 
@@ -265,7 +383,7 @@ fn index_does_not_descend_past_the_depth_budget() {
     fs::remove_dir_all(&root).expect("the search fixture should be removed");
 
     let Some(SearchEvent::Results {
-        items, truncated, ..
+        items, coverage, ..
     }) = event
     else {
         panic!("the worker should publish a result for a non-empty query");
@@ -278,9 +396,12 @@ fn index_does_not_descend_past_the_depth_budget() {
         items.iter().all(|item| item.name != "deep-needle.txt"),
         "entries past the depth budget should not be indexed"
     );
-    assert!(
-        truncated,
-        "omitting entries past the depth budget should be reported, not silently look complete"
+    assert_eq!(
+        coverage,
+        super::SearchCoverage {
+            depth_limit: true,
+            ..Default::default()
+        }
     );
 }
 
@@ -307,7 +428,7 @@ fn index_reports_truncated_when_the_walker_discards_an_inaccessible_directory() 
     fs::remove_dir_all(&root).expect("the search fixture should be removed");
 
     let Some(SearchEvent::Results {
-        items, truncated, ..
+        items, coverage, ..
     }) = event
     else {
         panic!("the worker should publish a result for a non-empty query");
@@ -317,9 +438,16 @@ fn index_reports_truncated_when_the_walker_discards_an_inaccessible_directory() 
         "entries outside the inaccessible directory should still be indexed"
     );
     if !running_as_root {
-        assert!(
-            truncated,
-            "an inaccessible directory discarded by the walker should be reported as truncated"
+        assert_eq!(
+            coverage,
+            super::SearchCoverage {
+                unreadable: true,
+                ..Default::default()
+            }
+        );
+        assert_eq!(
+            coverage.message(),
+            "Partial search — some folders could not be read"
         );
     }
 }

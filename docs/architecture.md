@@ -65,6 +65,55 @@ policy live behind the UI presentation boundary (`ui/browser_modes.rs`); shared 
 the application layer. A future mode should therefore add a renderer rather than add mode checks to
 filesystem, navigation, or operation code.
 
+### Browser implementation map
+
+`ui/browser.rs` is the composition root and stable `BrowserView` command facade. Private feature
+modules under `ui/browser/` implement methods on the same `ViewState`; splitting a feature into a
+file does not give it a second controller or a separate selection model. Imports name the owning
+module explicitly. Re-exports retain the shared entry points used by alternate modes and the chooser.
+
+| Responsibility | Owner |
+| --- | --- |
+| Exhaustive event dispatch and shared effects | `events.rs` |
+| Miller column assembly, publication helpers, sizing | `columns.rs` |
+| Miller row factory, binding, pointer and drag interactions | `columns/rows.rs` |
+| Collection filtering, position mapping, scrolling and selection | `collection.rs` |
+| Entry encoding, matching, labels, icons and metadata presentation | `entry.rs` |
+| Pane actions and loading presentation | `pane_header.rs`, `presentation.rs` |
+| Hover peek lifecycle and placement | `peek.rs` |
+| Inline rename and new-entry workflows | `inline_edit.rs` |
+| Location editing, breadcrumbs and mount authentication | `location.rs` |
+| Selection-aware menus and restricted chooser menus | `context_menu.rs`, `chooser_context.rs` |
+| Clipboard/cut intent and drag data | `clipboard.rs` |
+| Transfers, destination search and archive dialogs | `transfer.rs`, `destination.rs`, `archive.rs` |
+| Progress and Trash confirmation/cancellation | `progress.rs`, `trash.rs` |
+| Properties, permissions and item customization | `properties.rs`, `customization.rs` |
+| Display paths and desktop launching | `paths.rs`, `desktop.rs` |
+
+Generic modal hosting, animation and dismissal live in `ui/modal.rs`, not in a browser feature.
+`ModalHost` discovers the window overlay and enables its optional blur; existing dismissal owns
+unblurring and must leave it enabled while another visible modal remains. Dialog-specific cancel,
+close, backdrop and submission policies remain with the dialog.
+
+Filesystem work for Trash lives in `adapters/trash.rs`. Measurement shares one entry/time budget
+across root and descendant batches; depth truncation and unreadable descendants remain branch-local.
+Deleting Trash streams its own batches, independently of any incomplete measurement. Native path
+and GIO URI conversion lives in `adapters/gio_location.rs`, shared by files, operations, preview and
+browser presentation. It preserves native bytes and sanitizes credentials on inbound GIO locations.
+
+Feature unit tests sit beside their implementations. Cross-feature browser tests remain in
+`ui/browser/tests/`; GTK tests that need independent initialization can use
+`test_support::gtk_test`, which launches a subprocess with disposable XDG directories. Set
+`STRATA_REQUIRE_GTK_TESTS=1` when exercising those tests on a display to make unavailable GTK a
+failure rather than a skip.
+
+This separation is not a redesign of operation policy or a claim that all UI filesystem calls have
+been eliminated. Collision probes, destination creation and permission editing still deserve
+application/adapter boundaries in focused follow-ups. Likewise, alternate renderers, staged
+publication/metadata orchestration, native transfer security and the settings workspace should be
+refactored independently of browser composition. Investigation and scope decisions are recorded in
+[issue #397](https://github.com/lgse/strata/issues/397).
+
 ## Capability boundaries
 
 ### File source

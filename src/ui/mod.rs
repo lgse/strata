@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod accessibility;
 mod blur;
 mod browser;
 mod browser_modes;
@@ -11,6 +12,7 @@ mod inline_search;
 mod input_ownership;
 mod loading_skeleton;
 mod marquee;
+mod modal;
 mod motion;
 mod portal_preferences;
 mod preview;
@@ -18,6 +20,7 @@ mod scrolling;
 mod search;
 mod settings;
 mod shortcut_footer;
+mod terminal;
 mod theme;
 mod thumbnail;
 mod thumbnail_cache;

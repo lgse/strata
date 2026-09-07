@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::*;
+use crate::ui::{
+    browser::collection::deactivate_recursive_search, entry_list_model::EntryListModel,
+};
 
 #[test]
 fn clearing_recursive_search_deactivates_before_rows_rebind() {

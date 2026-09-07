@@ -1,6 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::*;
+use std::{cell::Cell, rc::Rc};
+
+use gtk::{glib, prelude::*};
+
+use crate::model::Location;
+
+use super::{
+    ViewState,
+    context_menu::{
+        ContextPickPosition, ContextSourcePosition, context_menu_option, context_menu_popover,
+        show_context_popover,
+    },
+};
 
 #[derive(Clone, Copy)]
 enum Action {
@@ -14,7 +26,7 @@ fn menu(
     options: &[(Action, &str, &str, &str, bool)],
     run: impl Fn(Action) + 'static,
 ) -> (gtk::Popover, gtk::ScrolledWindow) {
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let content = super::super::accessibility::menu_box();
     content.add_css_class("folder-context-menu");
     content.add_css_class("chooser-context-menu");
     let (popover, scroll) = context_menu_popover(&content);

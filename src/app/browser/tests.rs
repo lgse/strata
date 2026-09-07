@@ -7,7 +7,7 @@ use crate::{
     model::{EntryKind, MetadataValue},
     services::{
         CancelledOperation, CompressRequest, ExtractRequest, LoadHandle, MetadataOutcome,
-        MetadataRequest, MetadataUpdate, UndoMoveRequest,
+        MetadataRequest, MetadataUpdate, UndoCopyRequest, UndoMoveRequest,
     },
 };
 
@@ -16,6 +16,7 @@ fn deleted_trash_entries_refresh_the_trash_root() {
     let entry = FileEntry {
         location: Location::uri("trash:///photo.jpg"),
         native_name: "photo.jpg".into(),
+        thumbnail_path: None,
         display_name: "photo.jpg".into(),
         kind: EntryKind::File,
         size: MetadataValue::Known(10),
@@ -99,6 +100,7 @@ impl FileSource for WatchingFileSource {
         emit(DirectoryEvent::Batch {
             request_id: request.id,
             entries: vec![FileEntry {
+                thumbnail_path: None,
                 location: Location::local("/fixture/child"),
                 native_name: OsString::from("child"),
                 display_name: "child".into(),
@@ -178,6 +180,7 @@ impl FileSource for RetryFileSource {
                 entries: vec![FileEntry {
                     location: Location::local("/fixture/recovered"),
                     native_name: OsString::from("recovered"),
+                    thumbnail_path: None,
                     display_name: "recovered".into(),
                     kind: EntryKind::Directory,
                     size: MetadataValue::Unknown,
@@ -236,6 +239,7 @@ impl FileSource for FilePreviewSource {
             entries: vec![FileEntry {
                 location: Location::local("/fixture/example.conf"),
                 native_name: OsString::from("example.conf"),
+                thumbnail_path: None,
                 display_name: "example.conf".into(),
                 kind: EntryKind::File,
                 size: MetadataValue::Known(12),
@@ -265,6 +269,7 @@ impl FileSource for OpenChildBesideFileSource {
                 FileEntry {
                     location: Location::local("/fixture/child"),
                     native_name: OsString::from("child"),
+                    thumbnail_path: None,
                     display_name: "child".into(),
                     kind: EntryKind::Directory,
                     size: MetadataValue::Unknown,
@@ -275,6 +280,7 @@ impl FileSource for OpenChildBesideFileSource {
                 FileEntry {
                     location: Location::local("/fixture/example.conf"),
                     native_name: OsString::from("example.conf"),
+                    thumbnail_path: None,
                     display_name: "example.conf".into(),
                     kind: EntryKind::File,
                     size: MetadataValue::Known(12),
@@ -309,6 +315,7 @@ impl FileSource for RestoredSortingSource {
         let entry = |name: &str, size| FileEntry {
             location: Location::local(format!("/fixture/{name}")),
             native_name: OsString::from(name),
+            thumbnail_path: None,
             display_name: name.to_owned(),
             kind: EntryKind::File,
             size: MetadataValue::Known(size),
@@ -339,6 +346,7 @@ impl FileSource for FakeFileSource {
         emit(DirectoryEvent::Batch {
             request_id: request.id,
             entries: vec![FileEntry {
+                thumbnail_path: None,
                 location: Location::local("/fixture/child"),
                 native_name: OsString::from("child"),
                 display_name: "child".into(),
@@ -372,6 +380,7 @@ impl FileSource for TrashFileSource {
             entries: vec![FileEntry {
                 location: Location::uri("trash:///item"),
                 native_name: OsString::from("item"),
+                thumbnail_path: None,
                 display_name: "item".into(),
                 kind: EntryKind::File,
                 size: MetadataValue::Unknown,
@@ -551,6 +560,7 @@ fn transfer_failure_reports_moves_completed_before_the_error() {
 
 thread_local! {
     static UNDO_MOVE_REQUESTS: RefCell<Vec<Vec<MoveRecord>>> = const { RefCell::new(Vec::new()) };
+    static UNDO_COPY_REQUESTS: RefCell<Vec<Vec<Location>>> = const { RefCell::new(Vec::new()) };
 }
 
 struct ImmediateOperationProvider;
@@ -586,6 +596,17 @@ impl OperationProvider for ImmediateOperationProvider {
     }
 
     fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        for (index, item) in request.items.iter().enumerate() {
+            emit(OperationEvent::TransferProgress {
+                request_id: request.id,
+                completed_items: index + 1,
+                transferred_bytes: 0,
+                total_bytes: None,
+                created_location: (!request.move_sources)
+                    .then(|| item.source.transfer_target(&request.destination))
+                    .flatten(),
+            });
+        }
         emit(OperationEvent::Pasted {
             request_id: request.id,
             locations: request.items.into_iter().map(|item| item.source).collect(),
@@ -610,6 +631,15 @@ impl OperationProvider for ImmediateOperationProvider {
                 .into_iter()
                 .map(|item| item.record.current)
                 .collect(),
+        });
+        LoadHandle::new(|| {})
+    }
+
+    fn undo_copy(&self, request: UndoCopyRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        UNDO_COPY_REQUESTS.with(|requests| requests.borrow_mut().push(request.locations.clone()));
+        emit(OperationEvent::Deleted {
+            request_id: request.id,
+            locations: request.locations,
         });
         LoadHandle::new(|| {})
     }
@@ -651,6 +681,152 @@ impl OperationProvider for ImmediateOperationProvider {
     }
 }
 
+type OperationEmit = Rc<dyn Fn(OperationEvent)>;
+
+struct HeldExtractProvider {
+    cancelled: Rc<Cell<bool>>,
+    emit: Rc<RefCell<Option<OperationEmit>>>,
+    request_id: Rc<Cell<Option<OperationRequestId>>>,
+}
+
+impl OperationProvider for HeldExtractProvider {
+    fn rename(&self, request: RenameRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.rename(request, emit)
+    }
+
+    fn create_directory(
+        &self,
+        request: CreateDirectoryRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        ImmediateOperationProvider.create_directory(request, emit)
+    }
+
+    fn create_file(
+        &self,
+        request: CreateFileRequest,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> LoadHandle {
+        ImmediateOperationProvider.create_file(request, emit)
+    }
+
+    fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.paste(request, emit)
+    }
+
+    fn undo_move(&self, request: UndoMoveRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.undo_move(request, emit)
+    }
+
+    fn undo_copy(&self, request: UndoCopyRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.undo_copy(request, emit)
+    }
+
+    fn delete(&self, request: DeleteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.delete(request, emit)
+    }
+
+    fn restore(&self, request: RestoreRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.restore(request, emit)
+    }
+
+    fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        ImmediateOperationProvider.compress(request, emit)
+    }
+
+    fn extract(&self, request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        self.request_id.set(Some(request.id));
+        self.emit.replace(Some(emit));
+        let cancelled = self.cancelled.clone();
+        LoadHandle::new(move || cancelled.set(true))
+    }
+}
+
+#[test]
+fn cancelling_extraction_keeps_progress_until_the_worker_reports_cancellation() {
+    let cancelled = Rc::new(Cell::new(false));
+    let emit = Rc::new(RefCell::new(None));
+    let request_id = Rc::new(Cell::new(None));
+    let provider = Rc::new(HeldExtractProvider {
+        cancelled: cancelled.clone(),
+        emit: emit.clone(),
+        request_id: request_id.clone(),
+    });
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(provider);
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    let entry = FileEntry {
+        location: Location::local("/fixture/archive.zip"),
+        thumbnail_path: None,
+        native_name: OsString::from("archive.zip"),
+        display_name: "archive.zip".into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+    };
+    browser.extract(entry, Location::local("/fixture"), None);
+
+    let request_id = request_id.get().expect("extract request");
+    assert_eq!(browser.current_operation.get(), Some(request_id));
+    browser.cancel_file_operation();
+
+    assert!(cancelled.get());
+    assert_eq!(browser.current_operation.get(), Some(request_id));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::ArchiveCompleted { .. }))
+    );
+
+    let callback = emit.borrow().clone().expect("extract callback");
+    callback(OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation {
+            completed: Vec::new(),
+            failed: Vec::new(),
+            not_attempted: vec![Location::local("/fixture/archive.zip")],
+            affected_locations: HashSet::from([Location::local("/fixture")]),
+        },
+    });
+
+    assert_eq!(browser.current_operation.get(), None);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::ArchiveCompleted { select_name } if select_name.is_empty()
+    )));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::OperationCancelled {
+            completed: 0,
+            failed: 0,
+            not_attempted: 1,
+            ..
+        }
+    )));
+}
+
+fn fixture_entry(path: &str) -> FileEntry {
+    let location = Location::local(path);
+    let name = location.display_name();
+    FileEntry {
+        location,
+        thumbnail_path: None,
+        native_name: OsString::from(name.clone()),
+        display_name: name,
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+    }
+}
+
 #[test]
 fn a_completed_trash_operation_can_be_undone_once() {
     let browser = Browser::new(Rc::new(FakeFileSource));
@@ -658,6 +834,7 @@ fn a_completed_trash_operation_can_be_undone_once() {
     let location = Location::local("/fixture/report.txt");
     let entry = FileEntry {
         location: location.clone(),
+        thumbnail_path: None,
         native_name: OsString::from("report.txt"),
         display_name: "report.txt".into(),
         kind: EntryKind::File,
@@ -685,6 +862,7 @@ fn another_browser_can_undo_the_latest_trash_operation() {
     undoing_browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
     let entry = FileEntry {
         location: Location::local("/fixture/report.txt"),
+        thumbnail_path: None,
         native_name: OsString::from("report.txt"),
         display_name: "report.txt".into(),
         kind: EntryKind::File,
@@ -698,6 +876,92 @@ fn another_browser_can_undo_the_latest_trash_operation() {
 
     assert!(undoing_browser.undo_last_trash());
     assert!(!deleting_browser.undo_last_trash());
+}
+
+#[test]
+fn successful_transfers_reveal_actual_destination_names_only_without_navigation() {
+    for moving in [false, true] {
+        for navigate_away in [false, true] {
+            let browser = Browser::new(Rc::new(FakeFileSource));
+            let root = Location::local("/fixture");
+            browser.navigate(root.clone());
+            let events = Rc::new(RefCell::new(Vec::new()));
+            let observed = events.clone();
+            browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+            let request_id = browser.begin_operation();
+            browser.transfer_operation.set(Some(moving));
+            let destination = Location::local("/fixture/archive");
+            browser
+                .transfer_destination
+                .replace(Some(destination.clone()));
+            if !moving {
+                browser
+                    .created_locations
+                    .replace(vec![Location::local("/fixture/archive/report (copy).txt")]);
+            }
+            let emit = browser.operation_callback(request_id, false, HashSet::new());
+            if navigate_away {
+                browser.navigate(Location::local("/elsewhere"));
+                browser.navigate(root);
+            }
+            emit(OperationEvent::Pasted {
+                request_id,
+                locations: vec![Location::local("/fixture/report.txt")],
+            });
+            let events = events.borrow();
+            let reveals: Vec<_> = events
+                .iter()
+                .filter_map(|event| match event {
+                    BrowserEvent::TransferReveal {
+                        destination,
+                        locations,
+                    } => Some((destination, locations)),
+                    _ => None,
+                })
+                .collect();
+            if navigate_away {
+                assert!(reveals.is_empty());
+            } else {
+                let name = if moving {
+                    "report.txt"
+                } else {
+                    "report (copy).txt"
+                };
+                assert_eq!(
+                    reveals,
+                    vec![(
+                        &destination,
+                        &vec![Location::local(format!("/fixture/archive/{name}"))]
+                    )]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn failed_transfers_do_not_request_a_reveal() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(false));
+    browser
+        .transfer_destination
+        .replace(Some(Location::local("/fixture/archive")));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+    emit(OperationEvent::TransferFailed {
+        request_id,
+        completed_locations: Vec::new(),
+        message: "Permission denied".to_owned(),
+    });
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::TransferReveal { .. }))
+    );
 }
 
 #[test]
@@ -724,7 +988,7 @@ fn a_completed_move_records_where_each_item_landed() {
 }
 
 #[test]
-fn a_copy_records_no_undo() {
+fn a_completed_copy_records_the_destinations_it_created() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
 
@@ -737,7 +1001,227 @@ fn a_copy_records_no_undo() {
         false,
     );
 
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Copy(vec![Location::local(
+            "/fixture/archive/report.txt"
+        )]))
+    );
+}
+
+#[test]
+fn a_copy_that_created_nothing_leaves_the_previous_undo_current() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.delete(vec![fixture_entry("/fixture/report.txt")], false);
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(false));
+    browser
+        .transfer_destination
+        .replace(Some(Location::local("/fixture/archive")));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::Pasted {
+        request_id,
+        locations: vec![Location::local("/fixture/note.txt")],
+    });
+
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Trash(vec![Location::local(
+            "/fixture/report.txt"
+        )]))
+    );
+}
+
+#[test]
+fn undoing_a_copy_removes_only_the_destinations_it_created() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    UNDO_COPY_REQUESTS.with(|requests| requests.borrow_mut().clear());
+    browser.transfer(
+        Location::local("/fixture/archive"),
+        vec![PasteItem {
+            source: Location::local("/fixture/report.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        false,
+    );
+    let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
+
+    assert!(browser.undo_copy(generation, locations));
+
+    assert_eq!(
+        UNDO_COPY_REQUESTS.with(|requests| requests.borrow().clone()),
+        vec![vec![Location::local("/fixture/archive/report.txt")]]
+    );
     assert_eq!(pending_undo_entry(), None);
+}
+
+#[test]
+fn undoing_a_copy_removes_the_destination_names_the_paste_reported() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    UNDO_COPY_REQUESTS.with(|requests| requests.borrow_mut().clear());
+    let generated = Location::local("/fixture/report (1).txt");
+    let replaced = Location::local("/fixture/archive/note.txt");
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(false));
+    browser
+        .transfer_destination
+        .replace(Some(Location::local("/fixture")));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+    for created in [&generated, &replaced] {
+        emit(OperationEvent::TransferProgress {
+            request_id,
+            completed_items: 1,
+            transferred_bytes: 0,
+            total_bytes: None,
+            created_location: Some(created.clone()),
+        });
+    }
+    emit(OperationEvent::Pasted {
+        request_id,
+        locations: vec![
+            Location::local("/fixture/report.txt"),
+            Location::local("/fixture/note.txt"),
+        ],
+    });
+    let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
+
+    assert!(browser.undo_copy(generation, locations));
+
+    assert_eq!(
+        UNDO_COPY_REQUESTS.with(|requests| requests.borrow().clone()),
+        vec![vec![generated, replaced]]
+    );
+}
+
+#[test]
+fn undoing_a_copy_leaves_the_previous_trash_undo_available() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.delete(vec![fixture_entry("/fixture/report.txt")], false);
+    browser.transfer(
+        Location::local("/fixture/archive"),
+        vec![PasteItem {
+            source: Location::local("/fixture/note.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        false,
+    );
+    let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
+
+    assert!(browser.undo_copy(generation, locations));
+
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Trash(vec![Location::local(
+            "/fixture/report.txt"
+        )]))
+    );
+    assert!(browser.undo_last_trash());
+}
+
+#[test]
+fn undoing_a_copy_records_no_trash_undo_of_its_own() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.transfer(
+        Location::local("/fixture/archive"),
+        vec![PasteItem {
+            source: Location::local("/fixture/report.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        false,
+    );
+    let (generation, locations) = browser.pending_undo_copy().expect("pending copy undo");
+
+    assert!(browser.undo_copy(generation, locations));
+
+    assert_eq!(pending_undo_entry(), None);
+}
+
+#[test]
+fn a_cancelled_copy_records_the_destinations_it_reached() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let created = Location::local("/fixture/archive/first.txt");
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(false));
+    browser
+        .transfer_destination
+        .replace(Some(Location::local("/fixture/archive")));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+
+    emit(OperationEvent::TransferProgress {
+        request_id,
+        completed_items: 1,
+        transferred_bytes: 0,
+        total_bytes: None,
+        created_location: Some(created.clone()),
+    });
+    emit(OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation {
+            completed: vec![Location::local("/fixture/first.txt")],
+            failed: Vec::new(),
+            not_attempted: vec![Location::local("/fixture/second.txt")],
+            affected_locations: HashSet::new(),
+        },
+    });
+
+    assert_eq!(pending_undo_entry(), Some(UndoEntry::Copy(vec![created])));
+}
+
+#[test]
+fn a_partial_copy_undo_keeps_the_destinations_still_to_remove() {
+    let first = Location::local("/fixture/archive/first.txt");
+    let second = Location::local("/fixture/archive/second.txt");
+    push_pending_undo(UndoEntry::Copy(vec![first.clone(), second.clone()]));
+    let (generation, _) = claim_pending_undo(None).expect("undo claim");
+
+    mark_undo_item_completed(generation, &first);
+    finish_undo(generation, false);
+
+    assert_eq!(pending_undo_entry(), Some(UndoEntry::Copy(vec![second])));
+}
+
+#[test]
+fn the_undo_history_drops_its_oldest_entry_once_full() {
+    for index in 0..MAX_UNDO_HISTORY + 1 {
+        push_pending_undo(UndoEntry::Trash(vec![Location::local(format!(
+            "/fixture/{index}.txt"
+        ))]));
+    }
+
+    let retained = PENDING_UNDO.with(|pending| pending.borrow().history.len());
+
+    assert_eq!(retained, MAX_UNDO_HISTORY);
+    assert_eq!(
+        pending_undo_entry(),
+        Some(UndoEntry::Trash(vec![Location::local(format!(
+            "/fixture/{}.txt",
+            MAX_UNDO_HISTORY
+        ))]))
+    );
+}
+
+#[test]
+fn a_completed_copy_displaces_an_older_trash_undo() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.delete(vec![fixture_entry("/fixture/report.txt")], false);
+
+    browser.transfer(
+        Location::local("/fixture/archive"),
+        vec![PasteItem {
+            source: Location::local("/fixture/note.txt"),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        false,
+    );
+
+    assert!(!browser.undo_last_trash());
 }
 
 #[test]
@@ -803,9 +1287,9 @@ fn an_undo_claim_from_an_earlier_operation_is_rejected() {
         original: Location::local("/fixture/report.txt"),
         current: Location::local("/fixture/archive/report.txt"),
     };
-    replace_pending_undo(UndoEntry::Move(vec![record.clone()]));
+    push_pending_undo(UndoEntry::Move(vec![record.clone()]));
     let (stale_generation, _) = peek_pending_undo().expect("pending undo");
-    replace_pending_undo(UndoEntry::Trash(vec![Location::local("/fixture/note.txt")]));
+    push_pending_undo(UndoEntry::Trash(vec![Location::local("/fixture/note.txt")]));
 
     assert!(!browser.undo_move(
         stale_generation,
@@ -828,7 +1312,7 @@ fn a_partial_move_undo_keeps_the_items_still_to_move_back() {
         original: Location::local("/fixture/second.txt"),
         current: Location::local("/fixture/archive/second.txt"),
     };
-    replace_pending_undo(UndoEntry::Move(vec![first.clone(), second.clone()]));
+    push_pending_undo(UndoEntry::Move(vec![first.clone(), second.clone()]));
     let (generation, entry) = claim_pending_undo(None).expect("undo claim");
     let request_id = browser.begin_operation();
     browser.transfer_operation.set(Some(true));
@@ -858,7 +1342,7 @@ fn a_partial_move_undo_does_not_retry_items_excluded_before_transfer() {
         original: Location::local("/fixture/retryable.txt"),
         current: Location::local("/fixture/archive/retryable.txt"),
     };
-    replace_pending_undo(UndoEntry::Move(vec![
+    push_pending_undo(UndoEntry::Move(vec![
         skipped,
         completed.clone(),
         retryable.clone(),
@@ -886,7 +1370,7 @@ fn undoing_a_move_leaves_a_pending_cut_untouched() {
         original: Location::local("/fixture/report.txt"),
         current: Location::local("/fixture/archive/report.txt"),
     };
-    replace_pending_undo(UndoEntry::Move(vec![record.clone()]));
+    push_pending_undo(UndoEntry::Move(vec![record.clone()]));
     let (generation, entry) = claim_pending_undo(None).expect("undo claim");
     let request_id = browser.begin_operation();
     browser.transfer_operation.set(Some(true));
@@ -910,6 +1394,7 @@ fn permanent_delete_preserves_the_previous_trash_undo() {
     browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
     let trashed = FileEntry {
         location: Location::local("/fixture/report.txt"),
+        thumbnail_path: None,
         native_name: OsString::from("report.txt"),
         display_name: "report.txt".into(),
         kind: EntryKind::File,
@@ -921,6 +1406,7 @@ fn permanent_delete_preserves_the_previous_trash_undo() {
     let permanently_deleted = FileEntry {
         location: Location::local("/fixture/draft.txt"),
         native_name: OsString::from("draft.txt"),
+        thumbnail_path: None,
         display_name: "draft.txt".into(),
         ..trashed.clone()
     };
@@ -935,7 +1421,7 @@ fn permanent_delete_preserves_the_previous_trash_undo() {
 fn failed_and_partial_undo_operations_can_be_retried() {
     let first = Location::local("/fixture/first.txt");
     let second = Location::local("/fixture/second.txt");
-    replace_pending_undo(UndoEntry::Trash(vec![first.clone(), second.clone()]));
+    push_pending_undo(UndoEntry::Trash(vec![first.clone(), second.clone()]));
     let (generation, _) = claim_pending_undo(None).expect("undo claim");
 
     mark_undo_item_completed(generation, &first);
@@ -985,6 +1471,7 @@ fn renaming_on_a_remote_location_refreshes_the_open_column() {
         FileEntry {
             location: Location::uri("smb://host/share/old-name.txt"),
             native_name: "old-name.txt".into(),
+            thumbnail_path: None,
             display_name: "old-name.txt".into(),
             kind: EntryKind::File,
             size: MetadataValue::Known(1),
@@ -1112,6 +1599,7 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
     callback(DirectoryChange::Upsert(FileEntry {
         location: Location::local("/fixture/added"),
         native_name: OsString::from("added"),
+        thumbnail_path: None,
         display_name: "added".into(),
         kind: EntryKind::File,
         size: MetadataValue::Known(4),
@@ -2013,6 +2501,7 @@ fn batch_entry(name: &str) -> FileEntry {
     FileEntry {
         location: Location::local(format!("/fixture/{name}")),
         native_name: OsString::from(name),
+        thumbnail_path: None,
         display_name: name.into(),
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
@@ -2416,6 +2905,7 @@ impl ScriptedSource {
         FileEntry {
             location: self.entry_location(name),
             native_name: std::ffi::OsString::from(name),
+            thumbnail_path: None,
             display_name: name.into(),
             kind: if is_dir {
                 EntryKind::Directory
@@ -3255,6 +3745,7 @@ fn staged_entry(name: &str, kind: EntryKind, size: MetadataValue<u64>, modified:
     FileEntry {
         location: Location::local(format!("/fixture/{name}")),
         native_name: std::ffi::OsString::from(name),
+        thumbnail_path: None,
         display_name: name.into(),
         kind,
         size,
@@ -3744,6 +4235,7 @@ impl FileSource for MixedPeekFileSource {
                 FileEntry {
                     location: Location::local("/fixture/.dotfile"),
                     native_name: OsString::from(".dotfile"),
+                    thumbnail_path: None,
                     display_name: ".dotfile".into(),
                     kind: EntryKind::File,
                     size: MetadataValue::Unknown,
@@ -3754,6 +4246,7 @@ impl FileSource for MixedPeekFileSource {
                 FileEntry {
                     location: Location::local("/fixture/normal.txt"),
                     native_name: OsString::from("normal.txt"),
+                    thumbnail_path: None,
                     display_name: "normal.txt".into(),
                     kind: EntryKind::File,
                     size: MetadataValue::Unknown,

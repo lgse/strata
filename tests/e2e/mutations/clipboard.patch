@@ -1,0 +1,14 @@
+diff --git a/src/ui/browser.rs b/src/ui/browser.rs
+index 11f9f7b..26b2f24 100644
+--- a/src/ui/browser.rs
++++ b/src/ui/browser.rs
+@@ -1055,6 +1055,9 @@ impl BrowserView {
+     }
+ 
+     pub fn paste(&self) {
++        if true {
++            return;
++        }
+         let depth = self.state.destination_depth();
+         if let Some(location) = depth.and_then(|depth| self.state.browser.location_at(depth)) {
+             self.state.paste_into(location);

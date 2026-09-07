@@ -1,7 +1,7 @@
 use gtk::prelude::*;
 
 use super::super::{
-    BrowserDensity, ListColumnLayout, configure_icons_view_density, icons_card_extent,
+    BrowserDensity, BrowserMode, ListColumnLayout, configure_icons_view_density, icons_card_extent,
     icons_loading_skeleton, list_loading_skeleton,
 };
 use crate::ui::loading_skeleton;
@@ -160,6 +160,11 @@ fn gallery(before: bool, density: BrowserDensity, thumbnail_size: i32) -> gtk::B
             };
             let (shell, ..) = super::super::pane_base(
                 ["Home", "Documents", "Projects"][index],
+                if mode == "Icons" {
+                    BrowserMode::Icons
+                } else {
+                    BrowserMode::List
+                },
                 if mode == "Icons" {
                     "icons-pane"
                 } else {
