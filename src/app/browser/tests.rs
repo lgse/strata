@@ -1631,6 +1631,12 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
         mode: MetadataValue::Unknown,
     }));
 
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::FocusChanged { depth: 0, .. }))
+    );
     assert!(events.borrow().iter().any(|event| matches!(
         event,
         BrowserEvent::EntriesSpliced { depth: 0, splices, .. }
@@ -1649,6 +1655,54 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
             .borrow()
             .iter()
             .any(|event| matches!(event, BrowserEvent::ColumnReloaded { .. }))
+    );
+}
+
+#[test]
+fn background_directory_removal_does_not_request_focus() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let parent = Location::local("/fixture");
+    browser.navigate(parent.clone());
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("moved")));
+    browser.preview(0, 0);
+    assert_eq!(browser.active_depth(), Some(1));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    browser.handle_directory_change(
+        0,
+        &parent,
+        DirectoryChange::Remove(Location::local("/fixture/moved")),
+    );
+
+    assert_eq!(browser.active_depth(), Some(1));
+    assert_eq!(
+        browser
+            .column_snapshot(0)
+            .expect("parent column")
+            .selected_positions,
+        [0]
+    );
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::EntriesSpliced { depth: 0, .. }))
+    );
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::SelectionSetChanged {
+            depth: 0,
+            take_focus: false,
+            ..
+        }
+    )));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::FocusChanged { .. }))
     );
 }
 
