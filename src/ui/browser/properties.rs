@@ -313,6 +313,7 @@ impl ViewState {
         layout.actions.add_css_class("properties-actions");
         let open = properties_action(crate::assets::icons::EXTERNAL_LINK, "Open");
         let rename = properties_action(crate::assets::icons::PENCIL, "Rename");
+        rename.set_visible(!super::paths::is_trash_location(&location));
         rename.set_sensitive(
             entry.is_some() && (self.interactive || self.browser.selected_entries().len() == 1),
         );

@@ -3852,6 +3852,9 @@ fn extract_tar(
         }
         let mut entry = entry.map_err(archive_failed)?;
         let name = entry.path().map_err(archive_failed)?;
+        if entry.header().entry_type().is_dir() && name == Path::new(".") {
+            continue;
+        }
         let path = validated_archive_path(&name.to_string_lossy())?;
         let outpath = resolver.resolve(&destination, &path)?;
         if first_name.is_none() {

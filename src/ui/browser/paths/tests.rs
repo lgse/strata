@@ -102,3 +102,20 @@ fn properties_hides_the_pin_control_where_pinning_is_impossible() {
         None
     );
 }
+
+#[test]
+fn only_top_level_trash_items_can_be_removed_or_restored() {
+    for (uri, removable, restorable) in [
+        ("trash:///", false, false),
+        ("trash:///folder", true, true),
+        ("trash:///folder/child.txt", false, false),
+        ("trash:///folder%20name", true, true),
+        ("trash:///folder%20name/child.txt", false, false),
+        ("sftp://host/folder/file.txt", true, false),
+    ] {
+        let location = Location::uri(uri);
+        assert_eq!(can_remove_location(&location), removable, "{uri}");
+        assert_eq!(is_trash_item(&location), restorable, "{uri}");
+    }
+    assert!(can_remove_location(&Location::local("/fixture/file.txt")));
+}

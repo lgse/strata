@@ -5,6 +5,7 @@ use crate::adapters::location_for_file;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::ViewState;
 use crate::ui::browser::columns::set_cut_path_style;
+use crate::ui::browser::paths::{can_remove_location, is_trash_location};
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::RefCell;
@@ -17,6 +18,9 @@ pub(super) fn install_directory_drop_target(
     widget: &impl IsA<gtk::Widget>,
     destination: Location,
 ) {
+    if is_trash_location(&destination) {
+        return;
+    }
     widget.add_css_class("file-drop-zone");
     let drop = gtk::DropTarget::new(
         gtk::gdk::FileList::static_type(),
@@ -295,12 +299,20 @@ impl ViewState {
         }
     }
 
-    pub(super) fn cut_entries(&self, entries: &[FileEntry]) {
+    pub(super) fn cut_entries(&self, entries: &[FileEntry]) -> bool {
+        if entries
+            .iter()
+            .any(|entry| !can_remove_location(&entry.location))
+        {
+            return false;
+        }
         if set_files_clipboard(entries) {
             let locations: Vec<Location> =
                 entries.iter().map(|entry| entry.location.clone()).collect();
             set_shared_cut(&locations);
+            return true;
         }
+        false
     }
 
     fn clear_cut(&self) {
@@ -342,6 +354,9 @@ impl ViewState {
     }
 
     pub(super) fn paste_into(self: &Rc<Self>, destination: Location) {
+        if is_trash_location(&destination) {
+            return;
+        }
         let Some(display) = gtk::gdk::Display::default() else {
             return;
         };

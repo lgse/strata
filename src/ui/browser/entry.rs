@@ -45,10 +45,13 @@ pub(super) fn entry_supports_printing(entry: &FileEntry) -> bool {
 
     let (content_type, _) =
         gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
-    matches!(
-        content_family(&content_type),
-        PreviewContent::Text { .. } | PreviewContent::Image | PreviewContent::Pdf { .. }
-    ) || gio::content_type_is_a(&content_type, "text/plain")
+    matches!(content_family(&content_type), PreviewContent::Text { .. })
+        || (entry.location.native_path().is_some()
+            && matches!(
+                content_family(&content_type),
+                PreviewContent::Image | PreviewContent::Pdf { .. }
+            ))
+        || gio::content_type_is_a(&content_type, "text/plain")
         || has_plain_text_extension(&entry.native_name)
         || is_extensionless_dotfile(&entry.native_name)
 }
