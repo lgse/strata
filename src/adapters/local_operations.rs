@@ -1779,9 +1779,6 @@ fn open_local_parent_beneath(parent_path: &Path, allowed_root: &Path) -> Result<
     let relative = parent_path
         .strip_prefix(allowed_root)
         .map_err(|_| "The restore destination is outside the trash volume".to_owned())?;
-    if relative.as_os_str().is_empty() {
-        return Ok(root);
-    }
     // BENEATH keeps the walk inside allowed_root; NO_XDEV refuses a sub-mount.
     rustix::fs::openat2(
         &root,

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::adapters::trash::{EmptyTrashOutcome, TrashSummary, empty_trash, summarize_trash};
-use crate::adapters::trash_restore::restore_destination_for_location;
+use crate::adapters::trash_restore::restore_destinations_for_locations;
 use crate::model::{FileEntry, Location};
 use crate::services::{LoadHandle, RestoreTrashItem};
 use crate::ui::blur::BlurBin;
@@ -409,15 +409,17 @@ impl ViewState {
         }
         let weak = Rc::downgrade(self);
         glib::MainContext::default().spawn_local(async move {
+            let lookups = entries
+                .iter()
+                .map(|entry| (entry.location.clone(), entry.thumbnail_path.clone()))
+                .collect::<Vec<_>>();
             let mut resolved = Vec::new();
             let mut errors = Vec::new();
-            for entry in entries {
-                match restore_destination_for_location(
-                    &entry.location,
-                    entry.thumbnail_path.as_deref(),
-                )
-                .await
-                {
+            for (entry, destination) in entries
+                .into_iter()
+                .zip(restore_destinations_for_locations(lookups).await)
+            {
+                match destination {
                     Ok(destination) => resolved.push((entry, destination)),
                     Err(error) => errors.push(format!("{}: {error}", entry.display_name)),
                 }
@@ -447,6 +449,11 @@ impl ViewState {
             blurred_root,
         }) = ModalHost::blurred_for(&self.overlay)
         else {
+            show_error_dialog(
+                &self.overlay,
+                "Unable to restore",
+                "The restore destinations could not be confirmed.",
+            );
             return;
         };
 

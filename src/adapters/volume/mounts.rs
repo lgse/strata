@@ -3,7 +3,11 @@
 #[cfg(test)]
 mod tests;
 
-use std::path::{Path, PathBuf};
+use std::{
+    ffi::OsString,
+    os::unix::ffi::OsStringExt,
+    path::{Path, PathBuf},
+};
 
 /// Mount points and filesystem types from `/proc/self/mountinfo`. Reading it
 /// never touches the mounted filesystems, so it is safe to consult for a path
@@ -136,8 +140,11 @@ pub(super) fn is_remote_fs_type(fs_type: &str) -> bool {
     ) || fs_type.starts_with("fuse")
 }
 
-/// mountinfo escapes space, tab, newline, and backslash as octal `\ooo`.
-fn unescape(field: &str) -> String {
+/// mountinfo escapes space, tab, newline, and backslash as octal `\ooo`. Mount
+/// points are arbitrary bytes, so the result stays an `OsString` rather than
+/// passing through a lossy UTF-8 conversion that would stop a non-UTF-8 mount
+/// point from ever matching a path on it.
+fn unescape(field: &str) -> OsString {
     let bytes = field.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut index = 0;
@@ -161,5 +168,5 @@ fn unescape(field: &str) -> String {
             }
         }
     }
-    String::from_utf8_lossy(&out).into_owned()
+    OsString::from_vec(out)
 }
