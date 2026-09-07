@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
@@ -47,6 +47,7 @@ thread_local! {
     static TRACKED_CUSTOMIZED_ICONS: RefCell<Vec<TrackedCustomizedIcon>> =
         const { RefCell::new(Vec::new()) };
     static TRACKED_THUMBNAILS: RefCell<Vec<TrackedThumbnail>> = const { RefCell::new(Vec::new()) };
+    static REFRESHING_CUSTOMIZED_ICONS: Cell<bool> = const { Cell::new(false) };
 }
 
 struct TrackedThumbnail {
@@ -1238,19 +1239,46 @@ pub(super) fn refresh_all_customized_icons() {
 }
 
 fn refresh_tracked_icons(matches: impl Fn(&TrackedCustomizedIcon) -> bool) {
-    TRACKED_CUSTOMIZED_ICONS.with(|icons| {
+    if REFRESHING_CUSTOMIZED_ICONS.with(|busy| busy.replace(true)) {
+        return;
+    }
+    struct Reset;
+    impl Drop for Reset {
+        fn drop(&mut self) {
+            REFRESHING_CUSTOMIZED_ICONS.with(|busy| busy.set(false));
+        }
+    }
+    let _reset = Reset;
+    let pending = TRACKED_CUSTOMIZED_ICONS.with(|icons| {
         let mut icons = icons.borrow_mut();
-        icons.retain_mut(|tracked| {
-            let Some(image) = tracked.image.upgrade() else {
-                return false;
-            };
-            if matches(tracked) && image.texture().is_none() {
-                cancel_thumbnail(image.as_ptr() as usize);
-                tracked.customized = apply_path_customization(&image, &tracked.path, &tracked.icon);
-            }
-            true
-        });
+        icons.retain(|tracked| tracked.image.upgrade().is_some());
+        icons
+            .iter()
+            .filter(|tracked| matches(tracked))
+            .filter_map(|tracked| {
+                let image = tracked.image.upgrade()?;
+                image
+                    .texture()
+                    .is_none()
+                    .then(|| (image, tracked.path.clone(), tracked.icon.clone()))
+            })
+            .collect::<Vec<_>>()
     });
+    for (image, path, icon) in pending {
+        cancel_thumbnail(image.as_ptr() as usize);
+        let customized = apply_path_customization(&image, &path, &icon);
+        TRACKED_CUSTOMIZED_ICONS.with(|icons| {
+            let Ok(mut icons) = icons.try_borrow_mut() else {
+                return;
+            };
+            if let Some(tracked) = icons
+                .iter_mut()
+                .find(|tracked| tracked.image.upgrade().as_ref() == Some(&image))
+            {
+                tracked.customized = customized;
+            }
+        });
+    }
 }
 
 fn cancel_thumbnail(image_id: usize) {

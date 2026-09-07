@@ -16,8 +16,9 @@ use super::{
     SETTLE_VIEWS, SettledPark, THUMBNAIL_CACHE, THUMBNAIL_QUEUE, ThumbnailCache, ThumbnailKey,
     ThumbnailKind, ThumbnailQueue, ViewSettle, cancel_thumbnail, clear_thumbnail_runtime,
     finish_thumbnail_targets, fire_settled_thumbnails, has_pending_thumbnail,
-    hold_thumbnail_workers, note_metadata, retry_deferred_thumbnail, schedule_or_defer,
-    set_thumbnail_or_icon, take_pending_targets, thumbnail_kind,
+    hold_thumbnail_workers, note_metadata, refresh_all_customized_icons, retry_deferred_thumbnail,
+    schedule_or_defer, set_thumbnail_or_icon, show_customized_icon, take_pending_targets,
+    thumbnail_kind,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
@@ -548,6 +549,34 @@ fn cache_hit_applies_texture_on_idle_not_during_bind() {
             let image = super::ThumbnailSlot::new(64);
             bind_thumbnail(&image, &sample_entry(&path));
             assert_eq!(displayed_texture(&image).as_ref(), Some(&texture));
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn theme_refresh_does_not_reenter_tracked_icon_refcell() {
+    gtk_test(
+        "ui::thumbnail::tests::theme_refresh_does_not_reenter_tracked_icon_refcell",
+        || {
+            super::super::theme::ThemeManager::shared();
+            let list = gtk::ListBox::new();
+            let scroll = gtk::ScrolledWindow::builder()
+                .child(&list)
+                .min_content_height(80)
+                .build();
+            let window = gtk::Window::builder().child(&scroll).build();
+            window.present();
+            for name in ["a.txt", "b.txt"] {
+                let slot = super::ThumbnailSlot::new(19);
+                show_customized_icon(&slot, Path::new(name), crate::assets::icons::DOCUMENTS, 19);
+                let row = gtk::ListBoxRow::new();
+                row.set_child(Some(&slot));
+                list.append(&row);
+            }
+            drain_main_loop();
+            refresh_all_customized_icons();
+            drain_main_loop();
             clear_thumbnail_runtime();
         },
     );
