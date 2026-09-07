@@ -1270,7 +1270,6 @@ fn is_toggle_hidden_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierTy
         )
 }
 
-/// Rename owns `<Primary>r`, so refresh keeps only F5; no chord may appear twice.
 const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
     ("win.search", &["<Control>k"]),
     ("win.open-terminal", &["<Primary>t"]),

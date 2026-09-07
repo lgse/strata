@@ -957,20 +957,29 @@ fn refresh_shortcut_keeps_f5_and_releases_control_r() {
 
 #[test]
 fn default_accels_never_bind_one_chord_twice() {
-    let mut seen = std::collections::HashMap::new();
-    for (action, accels) in DEFAULT_ACCELS {
-        for accel in *accels {
-            let lowered = accel.to_lowercase();
-            assert!(
-                seen.insert(lowered, *action).is_none(),
-                "{accel} is bound to more than one action"
-            );
-        }
-    }
-    let refresh = DEFAULT_ACCELS
-        .iter()
-        .find(|(action, _)| *action == "win.refresh")
-        .expect("refresh accels")
-        .1;
-    assert_eq!(refresh, &["F5"]);
+    gtk_test(
+        "ui::window::tests::default_accels_never_bind_one_chord_twice",
+        || {
+            let mut seen = std::collections::HashMap::new();
+            for (action, accels) in DEFAULT_ACCELS {
+                for accel in *accels {
+                    let chord = gtk::accelerator_parse(*accel).expect("valid default accelerator");
+                    assert!(
+                        !is_rename_shortcut(chord.0, chord.1),
+                        "{action} must not claim a rename shortcut"
+                    );
+                    assert!(
+                        seen.insert(chord, *action).is_none(),
+                        "{accel} is bound to more than one action"
+                    );
+                }
+            }
+            let refresh = DEFAULT_ACCELS
+                .iter()
+                .find(|(action, _)| *action == "win.refresh")
+                .expect("refresh accels")
+                .1;
+            assert_eq!(refresh, &["F5"]);
+        },
+    );
 }
