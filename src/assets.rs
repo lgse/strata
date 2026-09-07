@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use gtk::{gdk, gdk::prelude::GdkCairoContextExt, gio, glib};
+use gtk::{gdk, gdk::prelude::GdkCairoContextExt, gio, glib, prelude::WidgetExt};
 
 pub mod icons {
     pub const ARROW_DOWN: &str = "strata-arrow-down";
@@ -113,6 +113,8 @@ const ICON_TEXTURE_PX: i32 = 96;
 const ICON_TEXTURE_CACHE_LIMIT: usize = 256;
 const JETBRAINS_MONO: &[u8] = include_bytes!("../data/fonts/JetBrainsMono[wght].ttf");
 
+pub const CHROME_ICON_PX: i32 = 16;
+
 struct PrimaryIcon {
     image: glib::WeakRef<gtk::Image>,
     name: String,
@@ -123,7 +125,8 @@ thread_local! {
     static PRIMARY_ICONS: RefCell<Vec<PrimaryIcon>> = const { RefCell::new(Vec::new()) };
     static DANGER_ICON_COLOR: RefCell<String> = RefCell::new("#e5484d".to_owned());
     static DANGER_ICONS: RefCell<Vec<PrimaryIcon>> = const { RefCell::new(Vec::new()) };
-    static ICON_TEXTURES: RefCell<HashMap<(String, String), gdk::Texture>> = RefCell::new(HashMap::new());
+    static ICON_TEXTURES: RefCell<HashMap<(String, String, i32), gdk::Texture>> =
+        RefCell::new(HashMap::new());
 }
 
 pub fn prepare() -> Result<(), Box<dyn std::error::Error>> {
@@ -156,6 +159,17 @@ pub fn primary_icon(name: &str, pixel_size: i32) -> gtk::Image {
     let image = gtk::Image::new();
     image.set_pixel_size(pixel_size);
     set_primary_icon(&image, name);
+    image
+}
+
+pub fn chrome_icon(name: &str) -> gtk::Image {
+    let image = gtk::Image::new();
+    image.add_css_class("chrome-icon");
+    image.set_pixel_size(CHROME_ICON_PX);
+    set_primary_icon(&image, name);
+    // Fill stretches paintables when desktop themes allocate extra button space.
+    image.set_halign(gtk::Align::Center);
+    image.set_valign(gtk::Align::Center);
     image
 }
 
@@ -262,14 +276,33 @@ fn recolor_registered_icons(icons: &RefCell<Vec<PrimaryIcon>>, color: &str) {
 }
 
 fn apply_primary_icon(image: &gtk::Image, name: &str, color: &str) {
-    if let Some(texture) = primary_icon_texture(name, color) {
+    let texture_px = if image.has_css_class("chrome-icon") {
+        texture_px_for_pixel_size(image.pixel_size())
+    } else {
+        ICON_TEXTURE_PX
+    };
+    if let Some(texture) = primary_icon_texture_at(name, color, texture_px) {
         image.set_paintable(Some(&texture));
     } else {
         image.set_icon_name(Some(name));
     }
 }
 
+fn texture_px_for_pixel_size(pixel_size: i32) -> i32 {
+    // Avoid excessive downsampling of toolbar strokes while supporting 2× displays.
+    if pixel_size > 0 {
+        pixel_size.saturating_mul(2).clamp(24, ICON_TEXTURE_PX)
+    } else {
+        ICON_TEXTURE_PX
+    }
+}
+
+#[cfg(test)]
 fn primary_icon_texture(name: &str, color: &str) -> Option<gdk::Texture> {
+    primary_icon_texture_at(name, color, ICON_TEXTURE_PX)
+}
+
+fn primary_icon_texture_at(name: &str, color: &str, texture_px: i32) -> Option<gdk::Texture> {
     let path = format!("/io/github/lgse/Strata/icons/scalable/actions/{name}.svg");
     let data = gio::resources_lookup_data(&path, gio::ResourceLookupFlags::NONE).ok()?;
     let source = std::str::from_utf8(data.as_ref()).ok()?;
@@ -281,7 +314,12 @@ fn primary_icon_texture(name: &str, color: &str) -> Option<gdk::Texture> {
             1,
         );
     }
-    texture_from_svg(name, color, svg_at_texture_size(source))
+    texture_from_svg(
+        name,
+        color,
+        texture_px,
+        svg_at_texture_size(source, texture_px),
+    )
 }
 
 fn folder_decoration_texture(decoration: &str, color: &str) -> Option<gdk::Texture> {
@@ -291,11 +329,12 @@ fn folder_decoration_texture(decoration: &str, color: &str) -> Option<gdk::Textu
     )
     .ok()?;
     let folder = std::str::from_utf8(folder_data.as_ref()).ok()?;
-    let mut source = svg_at_texture_size(recolor_icon_source(folder, color)).replacen(
-        "fill=\"none\"",
-        &format!("fill=\"{color}\" fill-opacity=\"0.92\""),
-        1,
-    );
+    let mut source = svg_at_texture_size(recolor_icon_source(folder, color), ICON_TEXTURE_PX)
+        .replacen(
+            "fill=\"none\"",
+            &format!("fill=\"{color}\" fill-opacity=\"0.92\""),
+            1,
+        );
     if let Some(emoji) = icons::custom_emoji(decoration) {
         return folder_emoji_texture(&source, emoji, color);
     }
@@ -309,11 +348,20 @@ fn folder_decoration_texture(decoration: &str, color: &str) -> Option<gdk::Textu
         r#"<g transform="translate(5.5 6.8) scale(.54)" fill="none" stroke="{foreground}" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round">{body}</g>"#,
     );
     source = source.replacen("</svg>", &format!("{overlay}</svg>"), 1);
-    texture_from_svg(&format!("folder-decoration:{decoration}"), color, source)
+    texture_from_svg(
+        &format!("folder-decoration:{decoration}"),
+        color,
+        ICON_TEXTURE_PX,
+        source,
+    )
 }
 
 fn folder_emoji_texture(folder_source: &str, emoji: &str, color: &str) -> Option<gdk::Texture> {
-    let key = (format!("folder-emoji:{emoji}"), color.to_owned());
+    let key = (
+        format!("folder-emoji:{emoji}"),
+        color.to_owned(),
+        ICON_TEXTURE_PX,
+    );
     if let Some(texture) = cached_icon_texture(&key) {
         return Some(texture);
     }
@@ -323,7 +371,11 @@ fn folder_emoji_texture(folder_source: &str, emoji: &str, color: &str) -> Option
 }
 
 fn emoji_texture(emoji: &str) -> Option<gdk::Texture> {
-    let key = (format!("emoji:{emoji}"), "native".to_owned());
+    let key = (
+        format!("emoji:{emoji}"),
+        "native".to_owned(),
+        ICON_TEXTURE_PX,
+    );
     if let Some(texture) = cached_icon_texture(&key) {
         return Some(texture);
     }
@@ -331,7 +383,7 @@ fn emoji_texture(emoji: &str) -> Option<gdk::Texture> {
 }
 
 fn render_emoji_texture(
-    key: (String, String),
+    key: (String, String, i32),
     emoji: &str,
     preferred_size: f64,
     bounds: (f64, f64),
@@ -411,14 +463,19 @@ fn svg_body(source: &str) -> Option<&str> {
     source.get(start..end)
 }
 
-fn svg_at_texture_size(source: String) -> String {
+fn svg_at_texture_size(source: String, texture_px: i32) -> String {
     source
-        .replacen("width=\"24\"", &format!("width=\"{ICON_TEXTURE_PX}\""), 1)
-        .replacen("height=\"24\"", &format!("height=\"{ICON_TEXTURE_PX}\""), 1)
+        .replacen("width=\"24\"", &format!("width=\"{texture_px}\""), 1)
+        .replacen("height=\"24\"", &format!("height=\"{texture_px}\""), 1)
 }
 
-fn texture_from_svg(cache_name: &str, color: &str, source: String) -> Option<gdk::Texture> {
-    let key = (cache_name.to_owned(), color.to_owned());
+fn texture_from_svg(
+    cache_name: &str,
+    color: &str,
+    texture_px: i32,
+    source: String,
+) -> Option<gdk::Texture> {
+    let key = (cache_name.to_owned(), color.to_owned(), texture_px);
     if let Some(texture) = cached_icon_texture(&key) {
         return Some(texture);
     }
@@ -426,11 +483,11 @@ fn texture_from_svg(cache_name: &str, color: &str, source: String) -> Option<gdk
     Some(cache_icon_texture(key, gdk::Texture::for_pixbuf(&pixbuf)))
 }
 
-fn cached_icon_texture(key: &(String, String)) -> Option<gdk::Texture> {
+fn cached_icon_texture(key: &(String, String, i32)) -> Option<gdk::Texture> {
     ICON_TEXTURES.with(|textures| textures.borrow().get(key).cloned())
 }
 
-fn cache_icon_texture(key: (String, String), texture: gdk::Texture) -> gdk::Texture {
+fn cache_icon_texture(key: (String, String, i32), texture: gdk::Texture) -> gdk::Texture {
     ICON_TEXTURES.with(|textures| {
         let mut textures = textures.borrow_mut();
         if textures.len() >= ICON_TEXTURE_CACHE_LIMIT {

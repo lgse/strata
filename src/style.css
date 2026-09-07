@@ -100,9 +100,9 @@ headerbar menubutton.header-action > button {
   border: none;
   border-radius: 5px;
   box-shadow: none;
-  min-height: 30px;
-  min-width: 30px;
-  padding: 5px;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 4px;
   transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
@@ -127,7 +127,15 @@ headerbar menubutton.header-action > button:checked {
 }
 
 headerbar image {
-  -gtk-icon-size: 20px;
+  -gtk-icon-size: 16px;
+}
+
+button.column-header-action image,
+menubutton.column-header-action > button image,
+.list-navigation-button image,
+menubutton.icons-thumbnail-menu > button image,
+.preview-header-action image {
+  -gtk-icon-size: 16px;
 }
 
 headerbar button.header-action,
@@ -1584,7 +1592,7 @@ paned > separator {
   color: @theme_accent;
   min-height: 24px;
   min-width: 24px;
-  padding: 2px;
+  padding: 4px;
   transition: transform 160ms ease-out, background 160ms ease-out, border-color 160ms ease-out, color 160ms ease-out;
 }
 
@@ -2077,7 +2085,7 @@ menubutton.column-header-action > button {
   box-shadow: none;
   min-height: 24px;
   min-width: 24px;
-  padding: 3px;
+  padding: 4px;
   transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
@@ -3493,7 +3501,7 @@ menubutton.icons-thumbnail-menu > button {
   box-shadow: none;
   min-height: 24px;
   min-width: 24px;
-  padding: 3px;
+  padding: 4px;
   transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
@@ -3699,9 +3707,9 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   border-radius: 5px;
   box-shadow: none;
   color: @theme_text;
-  min-height: 26px;
-  min-width: 26px;
-  padding: 3px;
+  min-height: 24px;
+  min-width: 24px;
+  padding: 4px;
   transition: transform 160ms ease-out, background 160ms ease-out, color 160ms ease-out;
 }
 

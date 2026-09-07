@@ -743,9 +743,8 @@ fn build_chooser(
         .active(true)
         .tooltip_text("Toggle sidebar (Ctrl+B)")
         .build();
-    sidebar_toggle.set_child(Some(&crate::assets::primary_icon(
+    sidebar_toggle.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::PANEL_LEFT,
-        20,
     )));
     sidebar_toggle.add_css_class("sidebar-toggle");
     let location = view.location_widget();
@@ -753,15 +752,13 @@ fn build_chooser(
     let appearance = build_appearance_menu(&view, &browser, theme.clone());
     let header_content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     header_content.set_hexpand(true);
+    header_content.set_valign(gtk::Align::Center);
     header_content.append(&sidebar_toggle);
     header_content.append(&location);
     let close = gtk::Button::builder()
         .tooltip_text("Cancel file selection (Esc)")
         .build();
-    close.set_child(Some(&crate::assets::primary_icon(
-        crate::assets::icons::X,
-        20,
-    )));
+    close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
     close.add_css_class("header-action");
     let closing_window = window.downgrade();
     close.connect_clicked(move |_| {
