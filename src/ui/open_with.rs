@@ -106,6 +106,10 @@ pub(super) fn show(
     }
 
     let layer = modal_layer(&layout.content, &window_overlay, blurred_root.clone(), None);
+    layer.connect_unrealize(move |_| {
+        let on_close = on_close.clone();
+        glib::idle_add_local_once(move || on_close());
+    });
     window_overlay.add_overlay(&layer);
     let dismissed = Rc::new(Cell::new(false));
     let dismiss_layer = layer.downgrade();
@@ -121,8 +125,6 @@ pub(super) fn show(
         };
         let root = dismiss_root.as_ref().and_then(|root| root.upgrade());
         dismiss_modal_layer(&layer, &overlay, root.as_ref());
-        let on_close = on_close.clone();
-        glib::timeout_add_local_once(Duration::from_millis(250), move || on_close());
     });
 
     let cancel_dismiss = dismiss.clone();
@@ -146,7 +148,8 @@ pub(super) fn show(
         let Some(app) = open_apps.get(index as usize) else {
             return;
         };
-        if let Err(error) = app.launch(&open_files, Some(&gio::AppLaunchContext::new())) {
+        let context = list.display().app_launch_context();
+        if let Err(error) = app.launch(&open_files, Some(&context)) {
             let detail = error.to_string();
             open_dismiss();
             let open_parent = open_parent.clone();
@@ -180,7 +183,10 @@ pub(super) fn show(
     layer.add_controller(escape);
     if apps_empty {
         layout.cancel.grab_focus();
-    } else {
-        list.grab_focus();
+    } else if let Some(row) = list.selected_row() {
+        row.grab_focus();
     }
 }
+
+#[cfg(test)]
+mod tests;

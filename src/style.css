@@ -635,6 +635,15 @@ headerbar menubutton.header-action > button:focus-visible {
   background: alpha(@theme_accent, 0.12);
 }
 
+.open-with-row:active {
+  background: alpha(@theme_accent, 0.24);
+}
+
+.open-with-row:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
 .open-with-row:selected,
 .open-with-row:selected:focus {
   background: alpha(@theme_accent, 0.2);
