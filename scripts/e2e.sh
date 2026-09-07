@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-unset DISPLAY WAYLAND_DISPLAY
+unset DISPLAY WAYLAND_DISPLAY NOTIFY_SOCKET
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 engine="${STRATA_CONTAINER_ENGINE:-docker}"
 if ! command -v "$engine" >/dev/null 2>&1; then

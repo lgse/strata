@@ -22,7 +22,8 @@ class ContainerRunnerTests(unittest.TestCase):
                 "with open(os.environ['ENGINE_LOG'], 'a') as stream:\n"
                 "    stream.write(json.dumps({'args': sys.argv[1:], "
                 "'display': os.environ.get('DISPLAY'), "
-                "'wayland': os.environ.get('WAYLAND_DISPLAY')}) + '\\n')\n"
+                "'wayland': os.environ.get('WAYLAND_DISPLAY'), "
+                "'notify': os.environ.get('NOTIFY_SOCKET')}) + '\\n')\n"
             )
             engine.chmod(0o755)
             environment = {
@@ -31,6 +32,7 @@ class ContainerRunnerTests(unittest.TestCase):
                 "ENGINE_LOG": str(log),
                 "DISPLAY": ":0",
                 "WAYLAND_DISPLAY": "wayland-0",
+                "NOTIFY_SOCKET": "/run/user/1000/systemd/notify",
                 "STRATA_E2E_UPDATE_BASELINES": "1",
             }
             environment.pop("STRATA_BINARY", None)
@@ -62,6 +64,7 @@ class ContainerRunnerTests(unittest.TestCase):
         for call in calls:
             self.assertIsNone(call["display"])
             self.assertIsNone(call["wayland"])
+            self.assertIsNone(call["notify"])
 
     def test_rootless_podman_preserves_checkout_ownership(self):
         result, calls = self.run_runner("podman")
