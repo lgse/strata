@@ -93,6 +93,45 @@ fn authenticated_package_must_match_the_selected_asset() {
 }
 
 #[test]
+fn provenance_verification_does_not_use_accounts_or_desktop_credentials() {
+    use std::{collections::HashMap, ffi::OsStr};
+
+    let directory = tempfile::tempdir().expect("private configuration");
+    let command = provenance_command(Path::new("archive.tar.gz"), directory.path());
+    let environment: HashMap<_, _> = command.get_envs().collect();
+    for name in [
+        "GH_TOKEN",
+        "GITHUB_TOKEN",
+        "GH_ENTERPRISE_TOKEN",
+        "GITHUB_ENTERPRISE_TOKEN",
+    ] {
+        assert_eq!(environment.get(OsStr::new(name)), Some(&None));
+    }
+    for (name, value) in [
+        ("GH_CONFIG_DIR", directory.path().as_os_str()),
+        ("GH_HOST", OsStr::new("github.com")),
+        ("GH_PROMPT_DISABLED", OsStr::new("1")),
+        (
+            "DBUS_SESSION_BUS_ADDRESS",
+            OsStr::new("unix:path=/dev/null"),
+        ),
+    ] {
+        assert_eq!(environment.get(OsStr::new(name)), Some(&Some(value)));
+    }
+    let arguments: Vec<_> = command.get_args().collect();
+    assert!(
+        arguments
+            .windows(2)
+            .any(|pair| pair == ["--repo", "lgse/strata"])
+    );
+    assert!(arguments.windows(2).any(|pair| pair
+        == [
+            "--signer-workflow",
+            "lgse/strata/.github/workflows/release.yml"
+        ]));
+}
+
+#[test]
 fn checksum_rejects_both_advertised_and_streamed_overflow() {
     for advertised in [false, true] {
         let mut builder = ureq::http::Response::builder();

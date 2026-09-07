@@ -667,18 +667,42 @@ fn commits_match(packaged: &str, expected: &str) -> Result<(), String> {
     Err("The update was not built from this release's commit".to_owned())
 }
 
+fn provenance_command(archive: &Path, config: &Path) -> Command {
+    let mut command = Command::new("gh");
+    command
+        .args(["attestation", "verify"])
+        .arg(archive)
+        .args([
+            "--repo",
+            REPOSITORY,
+            "--signer-workflow",
+            "lgse/strata/.github/workflows/release.yml",
+            "--hostname",
+            "github.com",
+        ])
+        .env_remove("GH_TOKEN")
+        .env_remove("GITHUB_TOKEN")
+        .env_remove("GH_ENTERPRISE_TOKEN")
+        .env_remove("GITHUB_ENTERPRISE_TOKEN")
+        .env("GH_CONFIG_DIR", config)
+        .env("GH_HOST", "github.com")
+        .env("GH_PROMPT_DISABLED", "1")
+        // gh probes Secret Service even with empty config; public verification must not open a keyring.
+        .env("DBUS_SESSION_BUS_ADDRESS", "unix:path=/dev/null");
+    command
+}
+
 fn verify_provenance(archive: &Path, cancel: &InstallCancel) -> Result<(), InstallStop> {
+    cancel.check()?;
+    let directory = archive
+        .parent()
+        .ok_or_else(|| "Could not locate the update staging directory".to_owned())?;
+    let config = tempfile::Builder::new()
+        .prefix("gh-config-")
+        .tempdir_in(directory)
+        .map_err(|error| format!("Could not isolate update verification: {error}"))?;
     let output = command::run(
-        Command::new("gh")
-            .arg("attestation")
-            .arg("verify")
-            .arg(archive)
-            .arg("--repo")
-            .arg(REPOSITORY)
-            .arg("--signer-workflow")
-            .arg("lgse/strata/.github/workflows/release.yml")
-            .arg("--hostname")
-            .arg("github.com"),
+        &mut provenance_command(archive, config.path()),
         cancel,
         REQUEST_TIMEOUT,
     );
