@@ -68,6 +68,11 @@ pub(super) fn bind_column_context_owner(
         if let Some(state) = weak.upgrade()
             && state.context_menu_column.get() == Some(depth)
         {
+            // Unmapping can focus the window's first control (for example Home).
+            // Restore before another key is dispatched, not from a later idle callback.
+            if state.browser.active_depth() == Some(depth) {
+                state.browser.focus_active();
+            }
             let generation = state.context_menu_generation.get();
             let weak = Rc::downgrade(&state);
             glib::idle_add_local_once(move || {
@@ -76,18 +81,6 @@ pub(super) fn bind_column_context_owner(
                     && state.context_menu_column.get() == Some(depth)
                 {
                     state.context_menu_column.set(None);
-                    let restore_focus = state.focused_column_depth().is_some()
-                        || state
-                            .overlay
-                            .root()
-                            .and_then(|root| root.focus())
-                            .is_none_or(|focus| {
-                                !focus.is_mapped()
-                                    || focus == *state.overlay.upcast_ref::<gtk::Widget>()
-                            });
-                    if state.browser.active_depth() == Some(depth) && restore_focus {
-                        state.browser.focus_active();
-                    }
                     state.refresh_destination_style();
                 }
             });

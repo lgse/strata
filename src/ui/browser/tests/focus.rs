@@ -153,8 +153,13 @@ fn context_menu_keeps_its_column_target_through_focus_and_hover_changes() {
                     )
                 };
                 let browser = view.browser();
+                let content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+                let home = gtk::Button::with_label("Home");
+                content.append(&home);
+                content.append(&view.widget());
+                let overlay = gtk::Overlay::builder().child(&content).build();
                 let window = gtk::Window::builder()
-                    .child(&view.widget())
+                    .child(&overlay)
                     .default_width(1200)
                     .default_height(500)
                     .build();
@@ -206,9 +211,9 @@ fn context_menu_keeps_its_column_target_through_focus_and_hover_changes() {
                             .expect("context gesture");
                         gesture.emit_by_name::<()>("pressed", &[&1i32, &x, &y]);
                         let popover = {
-                            let mut child = view.state.overlay.first_child();
+                            let mut child = overlay.first_child();
                             loop {
-                                let widget = child.expect("open context menu");
+                                let widget = child.unwrap_or_else(|| panic!("open context menu: chooser={chooser}, previous={previous}, item={item}"));
                                 child = widget.next_sibling();
                                 if let Ok(popover) = widget.downcast::<gtk::Popover>() {
                                     break popover;
@@ -223,7 +228,14 @@ fn context_menu_keeps_its_column_target_through_focus_and_hover_changes() {
                             assert_eq!(browser.active_depth(), Some(1));
                             assert_column_header_actions(&view, 1);
                         }
+                        home.grab_focus();
+                        assert!(home.has_focus());
                         popover.popdown();
+                        assert!(
+                            view.item_view_has_focus(),
+                            "restore focus before the next key event"
+                        );
+                        assert_eq!(view.state.focused_column_depth(), Some(1));
                         wait_until(|| {
                             popover.parent().is_none()
                                 && view.state.context_menu_column.get().is_none()
