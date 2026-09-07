@@ -3,7 +3,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::HashSet,
-    path::{Path, PathBuf},
+    path::PathBuf,
     rc::Rc,
     sync::mpsc::TryRecvError,
     time::Duration,
@@ -11,7 +11,7 @@ use std::{
 
 use gtk::{gdk, glib, prelude::*};
 
-use crate::services::{SearchEvent, SearchHandle, SearchItem, index_tree};
+use crate::services::{SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_trees};
 
 const MAX_RESULT_UPDATES_PER_FRAME: usize = 8;
 
@@ -29,7 +29,6 @@ struct SearchState {
     results: gtk::Stack,
     status: gtk::Label,
     truncated_hint: gtk::Label,
-    root: RefCell<PathBuf>,
     visible_results: RefCell<Vec<SearchItem>>,
     requested_thumbnails: RefCell<HashSet<usize>>,
     search: RefCell<Option<SearchHandle>>,
@@ -82,7 +81,7 @@ impl SearchDialog {
         search_bar.append(&indexing_spinner);
         panel.append(&search_bar);
 
-        let status = gtk::Label::new(Some("Type to search the whole tree"));
+        let status = gtk::Label::new(Some("Type to search Home and mounted local drives"));
         status.add_css_class("search-status");
         status.set_wrap(true);
 
@@ -119,9 +118,9 @@ impl SearchDialog {
         open.add_css_class("search-hint");
         footer.append(&navigation);
         footer.append(&open);
-        let truncated_hint = gtk::Label::new(Some(
-            "Search limited to the first results — the tree is very large",
-        ));
+        let truncated_hint = gtk::Label::new(None);
+        truncated_hint.set_wrap(true);
+        truncated_hint.set_max_width_chars(58);
         truncated_hint.add_css_class("search-hint");
         truncated_hint.add_css_class("search-hint-warning");
         truncated_hint.set_hexpand(true);
@@ -154,7 +153,6 @@ impl SearchDialog {
             results,
             status,
             truncated_hint,
-            root: RefCell::new(PathBuf::new()),
             visible_results: RefCell::new(Vec::new()),
             requested_thumbnails: RefCell::new(HashSet::new()),
             search: RefCell::new(None),
@@ -249,15 +247,26 @@ impl SearchDialog {
         self.state.layer.clone().upcast()
     }
 
-    pub fn show(&self, root: PathBuf, show_hidden: bool) {
+    pub fn show(&self, roots: Vec<PathBuf>, show_hidden: bool) {
         self.state.generation.set(self.state.generation.get() + 1);
         let generation = self.state.generation.get();
         self.state.search.borrow_mut().take();
-        self.state.root.replace(root.clone());
+        let locations = roots
+            .iter()
+            .map(|root| root.display().to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+        self.state.field.set_tooltip_text(Some(&format!(
+            "Search locations:\n{locations}\nRemote shares are not included."
+        )));
+        self.state.field.set_sensitive(!roots.is_empty());
         clear_results(&self.state);
+        self.state.results.set_visible_child_name("status");
         self.state.field.set_text("");
         self.state.status.set_visible(true);
-        self.state.status.set_text("Type to search the whole tree");
+        self.state
+            .status
+            .set_text("Type to search Home and mounted local drives");
         self.state.truncated_hint.set_visible(false);
         self.state.indexing_spinner.set_visible(true);
         self.state.indexing_spinner.start();
@@ -265,7 +274,16 @@ impl SearchDialog {
         super::browser::animate_in(&self.state.layer);
         self.state.field.grab_focus();
 
-        let (handle, receiver) = index_tree(root, show_hidden);
+        if roots.is_empty() {
+            self.state
+                .status
+                .set_text("No local search locations available.");
+            self.state.indexing_spinner.stop();
+            self.state.indexing_spinner.set_visible(false);
+            self.state.layer.grab_focus();
+            return;
+        }
+        let (handle, receiver) = index_trees(roots, show_hidden);
         self.state.search.replace(Some(handle));
         let weak = Rc::downgrade(&self.state);
         let _poll = glib::timeout_add_local(Duration::from_millis(16), move || {
@@ -287,7 +305,7 @@ impl SearchDialog {
                 query,
                 items,
                 indexing,
-                truncated,
+                coverage,
             }) = latest
             {
                 if indexing {
@@ -297,8 +315,12 @@ impl SearchDialog {
                     state.indexing_spinner.stop();
                     state.indexing_spinner.set_visible(false);
                 }
+                if query == state.field.text().trim() {
+                    state.truncated_hint.set_text(&coverage.message());
+                    state.truncated_hint.set_visible(coverage.is_partial());
+                }
                 if !query.is_empty() && query == state.field.text().trim() {
-                    render_results(&state, items, indexing, truncated);
+                    render_results(&state, items, indexing, coverage);
                 }
             }
             glib::ControlFlow::Continue
@@ -319,7 +341,7 @@ fn begin_query(state: &Rc<SearchState>, query: &str) {
     state.results.set_visible_child_name("status");
     if query.trim().is_empty() {
         state.status.set_text(
-            "Type to search the whole tree\nFuzzy matching · try a name or path fragment",
+            "Type to search Home and mounted local drives\nFuzzy matching · try a name or path fragment",
         );
     } else {
         state.status.set_text("Searching…");
@@ -333,16 +355,16 @@ fn render_results(
     state: &Rc<SearchState>,
     results: Vec<SearchItem>,
     indexing: bool,
-    truncated: bool,
+    coverage: SearchCoverage,
 ) {
     clear_results(state);
-    let root = state.root.borrow();
     for item in &results {
-        state.list.append(&result_row(item, &root));
+        state.list.append(&result_row(item));
     }
     let has_results = !results.is_empty();
     state.visible_results.replace(results);
-    state.truncated_hint.set_visible(truncated);
+    state.truncated_hint.set_text(&coverage.message());
+    state.truncated_hint.set_visible(coverage.is_partial());
     state
         .results
         .set_visible_child_name(if has_results { "results" } else { "status" });
@@ -363,7 +385,7 @@ fn render_results(
     });
 }
 
-fn result_row(item: &SearchItem, root: &Path) -> gtk::ListBoxRow {
+fn result_row(item: &SearchItem) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
     row.add_css_class("search-result");
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 12);
@@ -382,8 +404,9 @@ fn result_row(item: &SearchItem, root: &Path) -> gtk::ListBoxRow {
     name.add_css_class("search-result-name");
     name.set_xalign(0.0);
     name.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    let relative = item.path.strip_prefix(root).unwrap_or(&item.path);
-    let path = gtk::Label::new(Some(&relative.to_string_lossy()));
+    let full_path = item.path.to_string_lossy();
+    row.set_tooltip_text(Some(&full_path));
+    let path = gtk::Label::new(Some(&full_path));
     path.add_css_class("search-result-path");
     path.set_xalign(0.0);
     path.set_ellipsize(gtk::pango::EllipsizeMode::Middle);

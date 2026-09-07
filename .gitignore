@@ -16,3 +16,6 @@ packaging/aur/*/*.pkg.tar.zst
 
 /.pytest_cache/
 /tests/e2e/.pytest_cache/
+
+# Restored coding-agent skills (see skills-lock.json)
+/.agents/

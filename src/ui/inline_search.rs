@@ -163,7 +163,7 @@ pub(super) fn wrap(
                 query: returned,
                 items,
                 indexing,
-                truncated,
+                coverage,
             }) = latest
                 && !returned.is_empty()
                 && returned == entry.text().trim()
@@ -208,13 +208,15 @@ pub(super) fn wrap(
                     row.set_child(Some(&line));
                     state.list.append(&row);
                 }
-                state.status.set_visible(items.is_empty() || truncated);
-                state.status.set_text(if truncated {
-                    "Showing partial search results"
+                state
+                    .status
+                    .set_visible(items.is_empty() || coverage.is_partial());
+                state.status.set_text(&if coverage.is_partial() {
+                    coverage.message()
                 } else if indexing {
-                    "Searching…"
+                    "Searching…".to_owned()
                 } else {
-                    "No matching files"
+                    "No matching files".to_owned()
                 });
                 state.items.replace(items);
             }
