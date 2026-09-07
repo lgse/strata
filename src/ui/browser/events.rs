@@ -271,11 +271,26 @@ impl ViewState {
                 if self.browser.active_depth() == Some(*depth) {
                     let names = self.pending_select.take();
                     let properties = self.pending_select_properties.replace(false);
-                    if !names.is_empty() {
+                    let locations = self
+                        .pending_transfer_selection
+                        .take()
+                        .filter(|(target, _)| {
+                            self.browser.active_location().as_ref() == Some(target)
+                        })
+                        .map(|(_, locations)| locations)
+                        .unwrap_or_default();
+                    if !names.is_empty() || !locations.is_empty() {
                         let weak = Rc::downgrade(self);
+                        let location = self.browser.active_location();
                         glib::idle_add_local_once(move || {
-                            if let Some(state) = weak.upgrade() {
-                                state.browser.select_entries_by_name(&names);
+                            if let Some(state) = weak.upgrade()
+                                && state.browser.active_location() == location
+                            {
+                                if locations.is_empty() {
+                                    state.browser.select_entries_by_name(&names);
+                                } else {
+                                    state.browser.select_entries_by_location(&locations);
+                                }
                                 if properties && let Some(entry) = state.browser.focused_entry() {
                                     state.show_entry_properties(entry);
                                 }
@@ -576,6 +591,35 @@ impl ViewState {
                     self.browser.navigate(dest);
                 } else {
                     self.browser.reload_active();
+                }
+            }
+            BrowserEvent::TransferReveal {
+                destination,
+                locations,
+            } => {
+                self.pending_navigate.take();
+                self.pending_select.take();
+                self.pending_select_properties.set(false);
+                self.pending_transfer_selection
+                    .replace(Some((destination.clone(), locations.clone())));
+                if self.mode_views.borrow().mode() == BrowserMode::Columns {
+                    let open_depth = (0..self.columns.borrow().len()).find(|depth| {
+                        self.browser.location_at(*depth).as_ref() == Some(destination)
+                    });
+                    let parent_depth = (0..self.columns.borrow().len())
+                        .find(|depth| self.browser.location_at(*depth) == destination.parent());
+                    if let Some(depth) = open_depth {
+                        self.browser.set_active_column(depth);
+                        self.browser.reload_active();
+                    } else if let Some(parent_depth) = parent_depth {
+                        self.browser.descend(parent_depth, destination.clone());
+                    } else {
+                        self.browser.navigate(destination.clone());
+                    }
+                } else if self.browser.active_location().as_ref() == Some(destination) {
+                    self.browser.reload_active();
+                } else {
+                    self.browser.navigate(destination.clone());
                 }
             }
             BrowserEvent::TransferCompleted => {

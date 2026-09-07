@@ -554,6 +554,42 @@ fn staged_keyboard_descent_selects_the_first_visible_entry() {
         state.focused_entry().map(|(_, position, _)| position),
         Some(1)
     );
+    assert!(
+        state.selection_is_load_cursor(),
+        "the first visible item after load is a cursor, not a user selection"
+    );
+
+    assert!(state.set_selection(0, &[1], Some(1)));
+    assert!(
+        state.selection_is_load_cursor(),
+        "echoing the load selection must not treat it as a user pick"
+    );
+
+    assert!(state.set_selection(0, &[], None));
+    assert!(
+        state.selection_is_load_cursor(),
+        "an empty GTK echo is not itself a paste-into target"
+    );
+    assert!(state.set_selection(0, &[1], Some(1)));
+    assert!(
+        state.selection_is_load_cursor(),
+        "restoring the load cursor after an empty echo is still a load cursor"
+    );
+
+    assert!(state.set_selection(0, &[0], Some(0)));
+    assert!(
+        state.selection_is_load_cursor(),
+        "GTK focusing another row without a user pick must not arm paste-into"
+    );
+
+    state.commit_selection();
+    assert!(state.set_selection(0, &[0], Some(0)));
+    assert!(
+        !state.selection_is_load_cursor(),
+        "choosing another item is a user selection"
+    );
+    assert!(state.set_selection(0, &[1], Some(1)));
+    assert!(!state.selection_is_load_cursor());
 }
 
 #[test]

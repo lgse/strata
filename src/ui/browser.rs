@@ -158,6 +158,7 @@ pub(super) struct ViewState {
     pin_status_handler: RefCell<Option<PinStatusHandler>>,
     print_handler: RefCell<Option<PrintHandler>>,
     pending_select: RefCell<Vec<String>>,
+    pending_transfer_selection: RefCell<Option<(Location, Vec<Location>)>>,
     /// Set when the pending selection came from a properties request, so the
     /// dialog opens once the entry it describes is actually loaded.
     pending_select_properties: Cell<bool>,
@@ -340,6 +341,7 @@ impl BrowserView {
             pin_status_handler: RefCell::new(None),
             print_handler: RefCell::new(None),
             pending_select: RefCell::new(Vec::new()),
+            pending_transfer_selection: RefCell::new(None),
             pending_select_properties: Cell::new(false),
             pending_extract_retry: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
@@ -598,6 +600,10 @@ impl BrowserView {
         } else {
             self.state.browser.activate_focused();
         }
+    }
+
+    pub fn commit_selection(&self) {
+        self.state.browser.commit_selection();
     }
 
     pub fn navigate_left(&self) {
@@ -887,7 +893,11 @@ impl BrowserView {
             .state
             .destination_depth()
             .and_then(|depth| self.state.browser.location_at(depth));
-        if let Some(location) = paste_destination(&selected, column) {
+        if let Some(location) = paste_destination(
+            &selected,
+            column,
+            self.state.browser.selection_is_load_cursor(),
+        ) {
             self.state.paste_into(location);
         }
     }
@@ -1386,9 +1396,13 @@ impl ViewState {
     }
 }
 
-fn paste_destination(selected: &[FileEntry], column: Option<Location>) -> Option<Location> {
+fn paste_destination(
+    selected: &[FileEntry],
+    column: Option<Location>,
+    load_cursor: bool,
+) -> Option<Location> {
     match selected {
-        [folder] if folder.is_directory() => Some(folder.location.clone()),
+        [folder] if folder.is_directory() && !load_cursor => Some(folder.location.clone()),
         _ => column,
     }
 }

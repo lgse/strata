@@ -199,6 +199,10 @@ pub enum BrowserEvent {
         select_name: String,
     },
     TransferCompleted,
+    TransferReveal {
+        destination: Location,
+        locations: Vec<Location>,
+    },
 }
 
 /// Events dispatch by reference: payloads move once into authoritative state,
@@ -1145,6 +1149,14 @@ impl Browser {
         self.state.borrow().selected_entries()
     }
 
+    pub fn selection_is_load_cursor(&self) -> bool {
+        self.state.borrow().selection_is_load_cursor()
+    }
+
+    pub fn commit_selection(&self) {
+        self.state.borrow_mut().commit_selection();
+    }
+
     pub fn deletion_entries(&self) -> Vec<FileEntry> {
         let state = self.state.borrow();
         let selected = state.selected_entries();
@@ -1184,6 +1196,7 @@ impl Browser {
         }
         let positions: Vec<_> = (0..count).collect();
         let focused = count - 1;
+        self.commit_selection();
         if self
             .state
             .borrow_mut()
@@ -1608,6 +1621,8 @@ impl Browser {
         rename: bool,
         refresh_locations: HashSet<Location>,
     ) -> Rc<dyn Fn(OperationEvent)> {
+        let navigation_generation = self.validation_generation.get();
+        let origin = self.active_location();
         let weak = Rc::downgrade(self);
         Rc::new(move |event| {
             let Some(browser) = weak.upgrade() else {
@@ -1773,8 +1788,19 @@ impl Browser {
                 };
                 push_pending_undo(UndoEntry::Trash(locations));
             }
+            let mut reveal_locations = Vec::new();
             if let Some(moving) = moving {
                 let created_locations = browser.created_locations.take();
+                if let OperationEvent::Pasted { locations, .. } = &event {
+                    reveal_locations = if moving {
+                        locations
+                            .iter()
+                            .filter_map(|source| source.transfer_target(destination.as_ref()?))
+                            .collect()
+                    } else {
+                        created_locations.clone()
+                    };
+                }
                 let moved_locations = match &event {
                     OperationEvent::Pasted { locations, .. } if moving => locations.clone(),
                     OperationEvent::Cancelled { result, .. } if moving => result.completed.clone(),
@@ -1888,12 +1914,23 @@ impl Browser {
                     });
                 }
                 OperationEvent::Pasted { .. } => {
-                    browser.emit(BrowserEvent::TransferCompleted);
                     for location in &refresh_locations {
                         if location.native_path().is_none() {
                             browser.refresh_columns_at(location);
                         }
                     }
+                    if undoing.is_none()
+                        && browser.validation_generation.get() == navigation_generation
+                        && browser.active_location() == origin
+                        && !reveal_locations.is_empty()
+                        && let Some(destination) = destination
+                    {
+                        browser.emit(BrowserEvent::TransferReveal {
+                            destination,
+                            locations: reveal_locations,
+                        });
+                    }
+                    browser.emit(BrowserEvent::TransferCompleted);
                 }
                 OperationEvent::Created { .. } => {
                     for location in &refresh_locations {
@@ -3224,10 +3261,19 @@ impl Browser {
     }
 
     pub fn select_entries_by_name(self: &Rc<Self>, names: &[String]) {
+        let requested: HashSet<&str> = names.iter().map(String::as_str).collect();
+        self.select_entries_matching(|entry| requested.contains(entry.display_name.as_str()));
+    }
+
+    pub fn select_entries_by_location(self: &Rc<Self>, locations: &[Location]) {
+        let requested: HashSet<_> = locations.iter().collect();
+        self.select_entries_matching(|entry| requested.contains(&entry.location));
+    }
+
+    fn select_entries_matching(self: &Rc<Self>, matches: impl Fn(&FileEntry) -> bool) {
         let Some(depth) = self.active_depth() else {
             return;
         };
-        let requested: HashSet<&str> = names.iter().map(String::as_str).collect();
         let state = self.state.borrow();
         let Some(column) = state.columns.get(depth) else {
             return;
@@ -3236,16 +3282,13 @@ impl Browser {
             .entries
             .iter()
             .enumerate()
-            .filter_map(|(position, entry)| {
-                requested
-                    .contains(entry.display_name.as_str())
-                    .then_some(position)
-            })
+            .filter_map(|(position, entry)| matches(entry).then_some(position))
             .collect();
         drop(state);
-        let Some(&focused) = positions.last() else {
+        let Some(&focused) = positions.first() else {
             return;
         };
+        self.commit_selection();
         self.set_selection(depth, &positions, Some(focused));
         self.emit(BrowserEvent::SelectionSetChanged {
             depth,

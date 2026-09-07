@@ -2798,7 +2798,7 @@ fn build_list_pane(
                 position,
             )
         {
-            browser.activate(depth, position);
+            browser.activate_in_place(depth, position);
         }
     });
     let section = PaneSection {
@@ -3541,6 +3541,15 @@ fn connect_selection(
     source_index: SourceIndexMap,
     multiple_selection: Rc<Cell<bool>>,
 ) {
+    let commit = gtk::GestureClick::new();
+    commit.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let browser_for_commit = Rc::downgrade(browser);
+    commit.connect_pressed(move |_, _, _, _| {
+        if let Some(browser) = browser_for_commit.upgrade() {
+            browser.commit_selection();
+        }
+    });
+    section.view.add_controller(commit);
     let syncing = section.syncing.clone();
     let view_model = section.view_model.clone();
     let browser = Rc::downgrade(browser);
