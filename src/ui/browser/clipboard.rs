@@ -6,7 +6,7 @@ use crate::adapters::{
 use crate::model::{FileEntry, Location};
 use crate::services::{
     CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, TransferKind,
-    VolumeRelation, drop_commit, drop_is_noop,
+    VolumeRelation, drop_commit, transferable_drop_sources,
 };
 use crate::ui::browser::ViewState;
 use crate::ui::browser::columns::set_cut_path_style;
@@ -27,7 +27,7 @@ pub(crate) struct PreparedFileDrop {
 /// per (destination, sources) pair and reused by every motion event and by the
 /// final drop, so the transfer performed always matches the cursor that was
 /// shown. URI lookups resolve asynchronously and re-status the drop when they
-/// land; until then the drop is classified as a cross-volume copy.
+/// land; until then the configured cross-volume policy applies (Ask by default).
 pub(crate) struct FileDropState {
     destination: Rc<dyn Fn() -> Option<Location>>,
     last_override: Cell<DropOverride>,
@@ -122,8 +122,9 @@ impl FileDropState {
         {
             return (cached.volumes.relation(), cached.is_noop);
         }
-        let is_noop = drop_is_noop(destination, &sources);
-        let query = DropVolumeQuery::new(destination, &sources);
+        let transferable = transferable_drop_sources(destination, &sources);
+        let is_noop = transferable.is_empty();
+        let query = DropVolumeQuery::new(destination, &transferable);
         let volumes = lookup_drop_volumes(&query, {
             let state = Rc::downgrade(self);
             let target = target.downgrade();
@@ -334,11 +335,7 @@ fn offered_file_actions(
     {
         offered |= gtk::gdk::DragAction::MOVE;
     }
-    if offered.is_empty() {
-        dest_actions & source_actions
-    } else {
-        offered
-    }
+    offered
 }
 
 fn hover_override(target: &gtk::DropTarget, last: &Cell<DropOverride>) -> DropOverride {

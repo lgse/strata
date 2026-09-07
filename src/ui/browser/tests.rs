@@ -2,10 +2,12 @@
 
 use super::*;
 
+mod drops;
 mod focus;
 mod navigate;
 mod paste;
 mod recursive_search;
+mod restore;
 mod sidebar;
 
 #[test]

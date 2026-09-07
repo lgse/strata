@@ -2,7 +2,7 @@
 
 use super::{
     CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, TransferKind,
-    VolumeIdentity, VolumeRelation, drop_commit, drop_is_noop, volume_relation,
+    VolumeIdentity, VolumeRelation, drop_commit, transferable_drop_sources, volume_relation,
 };
 use crate::model::Location;
 
@@ -283,15 +283,37 @@ fn cross_volume_strategy_parses_stored_values() {
 }
 
 #[test]
-fn drop_is_noop_for_self_same_name_and_descendant() {
+fn drop_filters_self_same_name_and_descendant() {
     let source = Location::local("/fixture/source");
     let parent = Location::local("/fixture");
     let nested = Location::local("/fixture/source/nested");
     let elsewhere = Location::local("/elsewhere");
 
-    assert!(drop_is_noop(&parent, std::slice::from_ref(&source)));
-    assert!(drop_is_noop(&source, std::slice::from_ref(&source)));
-    assert!(drop_is_noop(&nested, std::slice::from_ref(&source)));
-    assert!(!drop_is_noop(&elsewhere, std::slice::from_ref(&source)));
-    assert!(!drop_is_noop(&parent, &[]));
+    assert!(transferable_drop_sources(&parent, std::slice::from_ref(&source)).is_empty());
+    assert!(transferable_drop_sources(&source, std::slice::from_ref(&source)).is_empty());
+    assert!(transferable_drop_sources(&nested, std::slice::from_ref(&source)).is_empty());
+    assert_eq!(
+        transferable_drop_sources(&elsewhere, std::slice::from_ref(&source)),
+        vec![source]
+    );
+    assert!(transferable_drop_sources(&parent, &[]).is_empty());
+}
+
+#[test]
+fn mixed_parent_drop_keeps_only_the_transferable_sources_in_order() {
+    let dest = Location::local("/fixture/a/nested");
+    let first = Location::local("/fixture/b/first");
+    let second = Location::local("/fixture/c/second");
+    let sources = [
+        Location::local("/fixture/a/nested/already-here"),
+        Location::local("/fixture/a"),
+        first.clone(),
+        dest.clone(),
+        Location::uri("file:///fixture/a/nested/also-here"),
+        second.clone(),
+    ];
+    assert_eq!(
+        transferable_drop_sources(&dest, &sources),
+        vec![first, second]
+    );
 }

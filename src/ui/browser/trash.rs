@@ -123,7 +123,13 @@ impl ViewState {
         if trash_empty {
             return;
         }
-        self.show_trash_loading_indicator();
+        if !self.show_trash_loading_indicator(
+            "Measuring Trash…",
+            "Empty Trash",
+            "Calculating the number and size of items. This may take a few seconds.",
+        ) {
+            return;
+        }
         let weak = Rc::downgrade(self);
         let started = Instant::now();
         let task = glib::MainContext::default().spawn_local(async move {
@@ -173,7 +179,7 @@ impl ViewState {
                 }
             }
         });
-        self.pending_trash_summary
+        self.pending_trash_lookup
             .replace(Some(LoadHandle::new(move || {
                 tracing::debug!("trash summary cancelled");
                 task.abort();
@@ -181,33 +187,42 @@ impl ViewState {
     }
 
     /// The walk is bounded but can still take a few seconds on a large trash, hence the indicator.
-    fn show_trash_loading_indicator(self: &Rc<Self>) {
-        self.dismiss_trash_loading();
+    fn show_trash_loading_indicator(
+        self: &Rc<Self>,
+        title: &str,
+        action: &str,
+        detail: &str,
+    ) -> bool {
+        self.clear_trash_loading();
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
         }) = ModalHost::blurred_for(&self.overlay)
         else {
-            return;
+            show_error_dialog(
+                &self.overlay,
+                "Unable to continue",
+                "The operation could not be confirmed.",
+            );
+            return false;
         };
 
-        let layout = modal_layout(
-            crate::assets::icons::TRASH,
-            "Measuring Trash…",
-            "",
-            "Empty Trash",
-        );
-        layout.set_loading(true, Some("Measuring Trash…"));
+        let layout = modal_layout(crate::assets::icons::TRASH, title, "", action);
+        layout.set_loading(true, Some(title));
         layout.subtitle.set_visible(false);
         layout.confirm.set_visible(false);
-        let explanation = message_dialog_description(
-            "Calculating the number and size of items. This may take a few seconds.",
-        );
+        let explanation = message_dialog_description(detail);
         layout.body.append(&explanation);
         let content = layout.content;
         let cancel = layout.cancel;
+        let close = layout.close;
 
-        let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        let layer = modal_layer(
+            &content,
+            &window_overlay,
+            blurred_root.clone(),
+            Some(Rc::new(|| true)),
+        );
         window_overlay.add_overlay(&layer);
         self.trash_loading.replace(Some(TrashLoadingView {
             layer,
@@ -215,12 +230,14 @@ impl ViewState {
             blurred_root,
         }));
 
-        let weak = Rc::downgrade(self);
-        cancel.connect_clicked(move |_| {
-            if let Some(state) = weak.upgrade() {
-                state.clear_trash_loading();
-            }
-        });
+        for button in [&cancel, &close] {
+            let weak = Rc::downgrade(self);
+            button.connect_clicked(move |_| {
+                if let Some(state) = weak.upgrade() {
+                    state.clear_trash_loading();
+                }
+            });
+        }
         let escape = gtk::EventControllerKey::new();
         let weak_escape = Rc::downgrade(self);
         escape.connect_key_pressed(move |_, key, _, _| {
@@ -237,6 +254,7 @@ impl ViewState {
             view.layer.add_controller(escape);
         }
         cancel.grab_focus();
+        true
     }
 
     fn dismiss_trash_loading(&self) {
@@ -249,7 +267,7 @@ impl ViewState {
     /// Safe to call more than once: whichever of cancel or completion runs first leaves the
     /// other a no-op.
     fn clear_trash_loading(&self) {
-        self.pending_trash_summary.borrow_mut().take();
+        self.pending_trash_lookup.borrow_mut().take();
         self.dismiss_trash_loading();
     }
 
@@ -407,8 +425,16 @@ impl ViewState {
         if entries.is_empty() {
             return;
         }
+        if !self.show_trash_loading_indicator(
+            "Finding restore destinations…",
+            "Restore",
+            "Checking the original locations before confirmation. You can cancel this lookup.",
+        ) {
+            return;
+        }
         let weak = Rc::downgrade(self);
-        glib::MainContext::default().spawn_local(async move {
+        let task = glib::MainContext::default().spawn_local(async move {
+            glib::timeout_future(Duration::from_millis(16)).await;
             let lookups = entries
                 .iter()
                 .map(|entry| (entry.location.clone(), entry.thumbnail_path.clone()))
@@ -427,6 +453,7 @@ impl ViewState {
             let Some(state) = weak.upgrade() else {
                 return;
             };
+            state.clear_trash_loading();
             if resolved.is_empty() {
                 show_error_dialog(
                     &state.overlay,
@@ -437,6 +464,8 @@ impl ViewState {
             }
             state.show_restore_confirmation(resolved, errors);
         });
+        self.pending_trash_lookup
+            .replace(Some(LoadHandle::new(move || task.abort())));
     }
 
     fn show_restore_confirmation(
@@ -495,11 +524,7 @@ impl ViewState {
         let file_scroller = gtk::ScrolledWindow::builder()
             .child(&files)
             .hscrollbar_policy(gtk::PolicyType::Never)
-            .vscrollbar_policy(if count > 10 {
-                gtk::PolicyType::Automatic
-            } else {
-                gtk::PolicyType::Never
-            })
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
             .max_content_height(256)
             .propagate_natural_height(true)
             .build();

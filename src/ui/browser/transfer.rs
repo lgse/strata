@@ -3,7 +3,8 @@
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::services::{
-    DropCommit, MoveRecord, PasteItem, TransferConflict, TransferKind, UndoMoveItem, VolumeRelation,
+    DropCommit, MoveRecord, PasteItem, TransferConflict, UndoMoveItem, VolumeRelation,
+    transferable_drop_sources,
 };
 use crate::ui::browser::ViewState;
 use crate::ui::browser::destination::{
@@ -17,7 +18,9 @@ use crate::ui::controls::{
     ModalTone, form_check_button, form_entry, form_label, message_dialog_description,
     message_dialog_layout, modal_layout,
 };
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, submit_on_enter};
+use crate::ui::modal::{
+    ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
+};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
@@ -79,11 +82,15 @@ impl ViewState {
         sources: Vec<Location>,
         commit: DropCommit,
     ) {
+        let sources = transferable_drop_sources(&destination, &sources);
+        if sources.is_empty() {
+            return;
+        }
         match commit {
             DropCommit::Copy => self.start_transfer(destination, sources, false),
             DropCommit::Move => self.start_transfer(destination, sources, true),
-            DropCommit::Ask { default, volume } => {
-                self.confirm_cross_volume_drop(destination, sources, default, volume);
+            DropCommit::Ask { volume, .. } => {
+                self.confirm_cross_volume_drop(destination, sources, volume);
             }
             DropCommit::Forbidden => {}
         }
@@ -93,7 +100,6 @@ impl ViewState {
         self: &Rc<Self>,
         destination: Location,
         sources: Vec<Location>,
-        default: TransferKind,
         volume: VolumeRelation,
     ) {
         let Some(ModalHost {
@@ -101,8 +107,11 @@ impl ViewState {
             blurred_root,
         }) = ModalHost::blurred_for(&self.overlay)
         else {
-            let move_sources = default == TransferKind::Move;
-            self.start_transfer(destination, sources, move_sources);
+            show_error_dialog(
+                &self.overlay,
+                "Unable to transfer",
+                "The transfer could not be confirmed.",
+            );
             return;
         };
 
@@ -170,13 +179,9 @@ impl ViewState {
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay;
         let escaped_root = blurred_root;
-        let enter_copy = copy.clone();
         escape.connect_key_pressed(move |_, key, _, _| {
             if key == gtk::gdk::Key::Escape {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
-                glib::Propagation::Stop
-            } else if key == gtk::gdk::Key::Return || key == gtk::gdk::Key::KP_Enter {
-                enter_copy.emit_clicked();
                 glib::Propagation::Stop
             } else {
                 glib::Propagation::Proceed

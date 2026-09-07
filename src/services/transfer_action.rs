@@ -176,16 +176,22 @@ fn cross_volume_commit(input: DropActionInput) -> DropCommit {
     }
 }
 
-pub(crate) fn drop_is_noop(dest: &Location, sources: &[Location]) -> bool {
+pub(crate) fn transferable_drop_sources(dest: &Location, sources: &[Location]) -> Vec<Location> {
     let destination = gio_file(dest);
-    sources.iter().any(|source| {
-        let source = gio_file(source);
-        let Some(name) = source.basename() else {
-            return false;
-        };
-        let target = destination.child(name);
-        source.equal(&target) || source.equal(&destination) || destination.has_prefix(&source)
-    })
+    sources
+        .iter()
+        .filter(|location| {
+            let source = gio_file(location);
+            let Some(name) = source.basename() else {
+                return false;
+            };
+            let target = destination.child(name);
+            !source.equal(&target)
+                && !source.equal(&destination)
+                && !destination.has_prefix(&source)
+        })
+        .cloned()
+        .collect()
 }
 
 fn gio_file(location: &Location) -> gio::File {

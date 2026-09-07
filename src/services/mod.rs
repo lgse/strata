@@ -34,7 +34,7 @@ pub(crate) use preview::{
 };
 pub(crate) use transfer_action::{
     CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, TransferKind,
-    VolumeIdentity, VolumeRelation, drop_commit, drop_is_noop, volume_relation,
+    VolumeIdentity, VolumeRelation, drop_commit, transferable_drop_sources, volume_relation,
 };
 // `best_update`, `rollback_target`, and `ReleaseSummary` are deliberately not
 // re-exported here: `rollback_target` is the never-downgrade bypass, and only
