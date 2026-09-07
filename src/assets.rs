@@ -313,7 +313,6 @@ fn texture_px_for_pixel_size(pixel_size: i32) -> i32 {
     }
 }
 
-#[cfg(test)]
 fn primary_icon_texture(name: &str, color: &str) -> Option<gdk::Texture> {
     primary_icon_texture_at(name, color, ICON_TEXTURE_PX)
 }
