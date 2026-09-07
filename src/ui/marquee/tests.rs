@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod clicks;
 mod virtualization;
 
 use std::{process::Command, rc::Rc};
@@ -81,10 +82,12 @@ fn assert_marquee_releases_the_collection_view() {
     let weak_scroll = scroll.downgrade();
     let marquee = install(MarqueeSetup {
         view: list.clone().upcast(),
+        surface: scroll.clone().upcast(),
         scroll,
         overlay: overlay.clone(),
         targets: Rc::new(RefCell::new(Vec::new())),
         is_item: Rc::new(|_, _, _| false),
+        clear_selection: Rc::new(|| {}),
     });
     marquee.add_origin_surface(&overlay);
     drop(list);

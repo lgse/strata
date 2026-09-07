@@ -369,6 +369,23 @@ fn animate_horizontal_scroll(
 }
 
 impl ViewState {
+    pub(super) fn clear_column_selections(&self) {
+        let active = self.browser.active_depth();
+        let selections: Vec<_> = self
+            .columns
+            .borrow()
+            .iter()
+            .map(|column| column.selection.clone())
+            .collect();
+        for selection in selections {
+            selection.unselect_all();
+        }
+        if let Some(depth) = active {
+            self.browser.set_active_column(depth);
+        }
+        self.refresh_destination_style();
+    }
+
     pub(super) fn rebuild_columns(self: &Rc<Self>) {
         self.truncate(0);
         let snapshots = (0..)
@@ -883,9 +900,20 @@ impl ViewState {
             .build();
         scroll.add_css_class("fixed-scrollbar");
         crate::ui::scrolling::install_autoscroll(&scroll, &self.overlay);
+        let retry = gtk::Button::with_label("Retry");
+        retry.add_css_class("retry-button");
+        let weak_browser = Rc::downgrade(&self.browser);
+        retry.connect_clicked(move |_| {
+            if let Some(browser) = weak_browser.upgrade() {
+                browser.retry_column(depth);
+            }
+        });
+        let presentation = LoadPresentation::new(&scroll, Some(retry));
         let rows_for_marquee = bound_rows.clone();
+        let weak_for_clear = Rc::downgrade(self);
         let marquee = crate::ui::marquee::install(crate::ui::marquee::MarqueeSetup {
             view: list.clone().upcast(),
+            surface: presentation.stack.clone().upcast(),
             scroll: scroll.clone(),
             overlay: self.overlay.clone(),
             targets: Rc::new(RefCell::new(vec![crate::ui::marquee::MarqueeTarget {
@@ -902,17 +930,14 @@ impl ViewState {
                 }),
             }])),
             is_item: Rc::new(crate::ui::pointer::hits_item_content),
+            clear_selection: Rc::new(move || {
+                if let Some(state) = weak_for_clear.upgrade() {
+                    state.clear_column_selections();
+                }
+            }),
         });
         marquee.add_origin_surface(&header);
 
-        let retry = gtk::Button::with_label("Retry");
-        retry.add_css_class("retry-button");
-        let weak_browser = Rc::downgrade(&self.browser);
-        retry.connect_clicked(move |_| {
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.retry_column(depth);
-            }
-        });
         let new_entry_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         new_entry_row.add_css_class("file-row");
         new_entry_row.add_css_class("new-entry-row");
@@ -944,7 +969,6 @@ impl ViewState {
         });
         new_entry_entry.add_controller(new_entry_focus);
 
-        let presentation = LoadPresentation::new(&scroll, Some(retry));
         presentation.stack.set_focusable(true);
         let focus = gtk::EventControllerFocus::new();
         let weak = Rc::downgrade(self);

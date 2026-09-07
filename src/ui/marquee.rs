@@ -33,10 +33,13 @@ pub(super) type MarqueeTargets = Rc<RefCell<Vec<MarqueeTarget>>>;
 
 pub(super) struct MarqueeSetup {
     pub view: gtk::Widget,
+    /// Includes the viewport's unused area and, in Columns, its empty-state surface.
+    pub surface: gtk::Widget,
     pub scroll: gtk::ScrolledWindow,
     pub overlay: gtk::Overlay,
     pub targets: MarqueeTargets,
     pub is_item: ItemPredicate,
+    pub clear_selection: Rc<dyn Fn()>,
 }
 
 #[derive(Clone)]
@@ -45,7 +48,7 @@ pub(super) struct Marquee {
 }
 
 struct MarqueeState {
-    // Weak: the drag gesture lives on the view, and capturing these widgets
+    // Weak: the drag gesture lives on the surface, and capturing these widgets
     // would pin the collection (and its model) after a mode switch.
     view: glib::WeakRef<gtk::Widget>,
     scroll: glib::WeakRef<gtk::ScrolledWindow>,
@@ -55,6 +58,8 @@ struct MarqueeState {
     is_item: ItemPredicate,
     active: Cell<bool>,
     dragging: Cell<bool>,
+    clear_on_click: Cell<bool>,
+    clear_selection: Rc<dyn Fn()>,
     /// Anchor in the view's own coordinates, so it stays glued to the content
     /// while the list scrolls underneath the pointer.
     anchor: Cell<(f64, f64)>,
@@ -70,7 +75,7 @@ struct MarqueeState {
     auto_scroll: RefCell<Option<glib::SourceId>>,
 }
 
-/// Installs marquee selection on `setup.view` and returns a handle that can grant
+/// Installs marquee selection on `setup.surface` and returns a handle that can grant
 /// the same drag to surrounding chrome via [`Marquee::add_origin_surface`].
 pub(super) fn install(setup: MarqueeSetup) -> Marquee {
     let band = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -82,6 +87,7 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
     setup.overlay.add_overlay(&band);
 
     let view = setup.view;
+    let surface = setup.surface;
     let state = Rc::new(MarqueeState {
         view: view.downgrade(),
         scroll: setup.scroll.downgrade(),
@@ -91,6 +97,8 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
         is_item: setup.is_item,
         active: Cell::new(false),
         dragging: Cell::new(false),
+        clear_on_click: Cell::new(false),
+        clear_selection: setup.clear_selection,
         anchor: Cell::new((0.0, 0.0)),
         pointer: Cell::new((0.0, 0.0)),
         initial: RefCell::new(Vec::new()),
@@ -114,10 +122,19 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
             state_for_begin.active.set(false);
             return;
         }
-        state_for_begin.begin((x, y), gesture.current_event_state());
+        let (Some(origin), Some(view)) = (gesture.widget(), state_for_begin.view()) else {
+            return;
+        };
+        let Some(anchor) = translate(&origin, &view, (x, y)) else {
+            return;
+        };
+        state_for_begin.begin(anchor, gesture.current_event_state());
+        state_for_begin
+            .clear_on_click
+            .set(super::pointer::is_background(&origin, x, y));
     });
     connect_drag_progress(&gesture, &state);
-    view.add_controller(gesture);
+    surface.add_controller(gesture);
 
     Marquee { state }
 }
@@ -227,16 +244,35 @@ pub(super) fn install_shared_origin_surface(
         let Some((start_x, start_y)) = gesture.start_point() else {
             return;
         };
-        if let Some(state) = target_for_update.borrow().as_ref() {
+        let state = target_for_update.borrow().clone();
+        if let Some(state) = state {
+            if !state.dragging.get()
+                && !super::pointer::exceeds_drag_threshold(
+                    (0.0, 0.0),
+                    (offset_x, offset_y),
+                    surface_for_update.settings().gtk_dnd_drag_threshold(),
+                )
+            {
+                return;
+            }
+            state.dragging.set(true);
             state.drag_to(
                 &surface_for_update,
                 (start_x + offset_x, start_y + offset_y),
             );
         }
     });
-    gesture.connect_drag_end(move |_, _, _| {
-        if let Some(state) = target.borrow_mut().take() {
+    let target_for_cancel = target.clone();
+    gesture.connect_cancel(move |_, _| {
+        let state = target_for_cancel.borrow_mut().take();
+        if let Some(state) = state {
             state.end();
+        }
+    });
+    gesture.connect_drag_end(move |_, _, _| {
+        let state = target.borrow_mut().take();
+        if let Some(state) = state {
+            state.finish();
         }
     });
     surface.add_controller(gesture);
@@ -270,7 +306,7 @@ fn connect_drag_progress(gesture: &gtk::GestureDrag, state: &Rc<MarqueeState>) {
         state_for_update.drag_to(&origin, (start_x + offset_x, start_y + offset_y));
     });
     let state_for_end = state.clone();
-    gesture.connect_drag_end(move |_, _, _| state_for_end.end());
+    gesture.connect_drag_end(move |_, _, _| state_for_end.finish());
     let state_for_cancel = state.clone();
     gesture.connect_cancel(move |_, _| state_for_cancel.end());
 }
@@ -294,6 +330,7 @@ impl MarqueeState {
         };
         self.active.set(true);
         self.dragging.set(false);
+        self.clear_on_click.set(true);
         self.anchor.set(anchor);
         self.item_bounds.borrow_mut().clear();
         self.pointer
@@ -309,6 +346,17 @@ impl MarqueeState {
             modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK),
             modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK),
         ));
+    }
+
+    fn finish(&self) {
+        let clear = self.active.get()
+            && !self.dragging.get()
+            && self.clear_on_click.get()
+            && self.modifiers.get() == (false, false);
+        self.end();
+        if clear {
+            (self.clear_selection)();
+        }
     }
 
     fn end(&self) {

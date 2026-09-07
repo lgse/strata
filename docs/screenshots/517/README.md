@@ -17,3 +17,13 @@ Dragging from the actual icon/name remains an item drag in every view.
 | Columns (Grid) | ![Before Columns](before-columns.png) | ![After Columns](after-columns.png) |
 | List | ![Before List](before-list.png) | ![After List](after-list.png) |
 | Icons | ![Before Icons](before-icons.png) | ![After Icons](after-icons.png) |
+
+## Empty-background click follow-up
+
+On the updated build, a completed plain click on empty space clears file
+selections. This also works in List and Icons, in an empty column, and beside the
+last column. Holding the press or extending a marquee preserves drag selection.
+
+| Before the click | After the click |
+| --- | --- |
+| ![Two selected files](before-background-click.png) | ![No selected files](after-background-click.png) |

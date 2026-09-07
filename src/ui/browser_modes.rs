@@ -1897,8 +1897,7 @@ fn build_icons_pane(
         pin_ungrouped_icons_columns(&section, width, context.density.get());
     });
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) =
-        collection_with_marquee(&root, scroll, targets.clone(), "icons-card");
+    let (collection, marquee) = collection_with_marquee(&root, scroll, targets.clone());
     content.append(&super::inline_search::wrap(
         &collection,
         &controls.filter_entry,
@@ -2849,8 +2848,7 @@ fn build_list_pane(
     table.set_vexpand(true);
     table.append(&headings);
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) =
-        collection_with_marquee(view.upcast_ref(), scroll, targets.clone(), "list-row");
+    let (collection, marquee) = collection_with_marquee(view.upcast_ref(), scroll, targets.clone());
     table.append(&collection);
     marquee.add_origin_surface(&header);
     marquee.add_origin_surface(&headings);
@@ -3079,7 +3077,6 @@ fn collection_with_marquee(
     view: &gtk::Widget,
     scroll: gtk::ScrolledWindow,
     targets: super::marquee::MarqueeTargets,
-    item_class: &'static str,
 ) -> (gtk::Overlay, super::marquee::Marquee) {
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&scroll));
@@ -3089,32 +3086,22 @@ fn collection_with_marquee(
 
     let marquee = super::marquee::install(super::marquee::MarqueeSetup {
         view: view.clone(),
+        surface: scroll.clone().upcast(),
         scroll,
         overlay: overlay.clone(),
         targets: targets.clone(),
         is_item: Rc::new(super::pointer::hits_item_content),
-    });
-
-    let clear = gtk::GestureClick::new();
-    clear.set_button(1);
-    let press = Rc::new(Cell::new((0.0, 0.0)));
-    let press_for_start = press.clone();
-    clear.connect_pressed(move |_, _, x, y| press_for_start.set((x, y)));
-    clear.connect_released(move |gesture, _, x, y| {
-        let (start_x, start_y) = press.get();
-        if (x - start_x).abs() > 3.0 || (y - start_y).abs() > 3.0 {
-            return;
-        }
-        let target = gesture
-            .widget()
-            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT));
-        if !target.is_some_and(|widget| widget_or_ancestor_has_class(&widget, item_class)) {
-            for target in targets.borrow().iter() {
-                target.selection.unselect_all();
+        clear_selection: Rc::new(move || {
+            let selections: Vec<_> = targets
+                .borrow()
+                .iter()
+                .map(|target| target.selection.clone())
+                .collect();
+            for selection in selections {
+                selection.unselect_all();
             }
-        }
+        }),
     });
-    view.add_controller(clear);
     (overlay, marquee)
 }
 
@@ -3130,17 +3117,6 @@ fn descendant_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widge
         child = widget.next_sibling();
     }
     None
-}
-
-fn widget_or_ancestor_has_class(widget: &gtk::Widget, class: &str) -> bool {
-    let mut current = Some(widget.clone());
-    while let Some(widget) = current {
-        if widget.has_css_class(class) {
-            return true;
-        }
-        current = widget.parent();
-    }
-    false
 }
 
 fn install_icons_peek(

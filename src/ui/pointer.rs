@@ -61,6 +61,27 @@ pub(super) fn hits_item_content(surface: &gtk::Widget, x: f64, y: f64) -> bool {
     false
 }
 
+pub(super) fn is_background(surface: &gtk::Widget, x: f64, y: f64) -> bool {
+    let mut current = surface.pick(x, y, gtk::PickFlags::DEFAULT);
+    while let Some(widget) = current {
+        if widget.has_css_class("file-row")
+            || widget.has_css_class("list-row")
+            || widget.has_css_class("icons-card")
+            || widget.is::<gtk::Editable>()
+            || widget.is::<gtk::Button>()
+            || widget.is::<gtk::Range>()
+            || widget.is::<gtk::Scrollbar>()
+        {
+            return false;
+        }
+        if widget == *surface {
+            return true;
+        }
+        current = widget.parent();
+    }
+    false
+}
+
 struct PendingClick {
     item: glib::Object,
     position: u32,

@@ -68,8 +68,9 @@ filesystem, navigation, or operation code.
 Pointer intent is shared through `ui/pointer.rs` and `ui/marquee.rs`. In all three modes,
 thumbnail slots, rendered row text/metadata, and Icons' caption region are item drag targets;
 unused label allocation and the gutters beside thumbnails are marquee origins. Both paths use
-GTK's configured drag threshold. Marquees claim the sequence only after that threshold, leaving
-simple clicks and modifier-clicks intact. Click activation and automatic preview wait for release
+GTK's configured drag threshold. Within collection viewports, marquees claim the sequence only
+after that threshold, leaving simple clicks and modifier-clicks intact. A completed plain click
+on background clears selections; presses and marquee releases do not. Click activation and automatic preview wait for release
 and reject cancelled gestures, drag motion, and recycled items. Edge-scrolling marquees retain
 visited item geometry so virtualization cannot silently remove earlier selections.
 

@@ -21,6 +21,7 @@ fn scrolling_out_of_bound_rows_preserves_and_retracts_their_selection() {
             let selection = gtk::MultiSelection::new(Some(gtk::StringList::new(&["first"])));
             let marquee = install(MarqueeSetup {
                 view: view.clone().upcast(),
+                surface: scroll.clone().upcast(),
                 scroll,
                 overlay,
                 targets: Rc::new(RefCell::new(vec![MarqueeTarget {
@@ -32,6 +33,7 @@ fn scrolling_out_of_bound_rows_preserves_and_retracts_their_selection() {
                     }),
                 }])),
                 is_item: Rc::new(|_, _, _| false),
+                clear_selection: Rc::new(|| {}),
             });
             let state = &marquee.state;
             state.apply_selection(view.upcast_ref(), 0.0, 0.0, 200.0, 40.0);
