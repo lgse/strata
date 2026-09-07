@@ -65,6 +65,14 @@ policy live behind the UI presentation boundary (`ui/browser_modes.rs`); shared 
 the application layer. A future mode should therefore add a renderer rather than add mode checks to
 filesystem, navigation, or operation code.
 
+Pointer intent is shared through `ui/pointer.rs` and `ui/marquee.rs`. In all three modes,
+thumbnail slots, rendered row text/metadata, and Icons' caption region are item drag targets;
+unused label allocation and the gutters beside thumbnails are marquee origins. Both paths use
+GTK's configured drag threshold. Marquees claim the sequence only after that threshold, leaving
+simple clicks and modifier-clicks intact. Click activation and automatic preview wait for release
+and reject cancelled gestures, drag motion, and recycled items. Edge-scrolling marquees retain
+visited item geometry so virtualization cannot silently remove earlier selections.
+
 ### Browser implementation map
 
 `ui/browser.rs` is the composition root and stable `BrowserView` command facade. Private feature

@@ -3092,7 +3092,7 @@ fn collection_with_marquee(
         scroll,
         overlay: overlay.clone(),
         targets: targets.clone(),
-        is_item: Rc::new(|widget| widget_or_ancestor_has_class(widget, item_class)),
+        is_item: Rc::new(super::pointer::hits_item_content),
     });
 
     let clear = gtk::GestureClick::new();
@@ -3240,6 +3240,9 @@ fn install_list_drag_drop(
     let map_for_drag = position_map.clone();
     let drag_icon = drag_icon.map(gtk::Widget::downgrade);
     drag.connect_prepare(move |source, x, y| {
+        if !super::pointer::hits_item_content(&source.widget()?, x, y) {
+            return None;
+        }
         let browser = browser_for_drag.upgrade()?;
         let dragged_item = dragged_item.upgrade()?;
         let position = dragged_item.position();
@@ -3385,7 +3388,7 @@ fn install_modified_selection_click(
     click.set_button(1);
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
     let item = item.downgrade();
-    click.connect_pressed(move |gesture, _, _, _| {
+    click.connect_pressed(move |gesture, _, x, y| {
         let Some(item) = item.upgrade() else {
             return;
         };
@@ -3412,7 +3415,20 @@ fn install_modified_selection_click(
             anchor.set(Some(position));
             return;
         }
-        gesture.set_state(gtk::EventSequenceState::Claimed);
+        if gesture
+            .widget()
+            .is_some_and(|widget| super::pointer::hits_item_content(&widget, x, y))
+        {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+        }
+    });
+    click.connect_released(|gesture, _, _, _| {
+        if gesture
+            .current_event_state()
+            .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
+        {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+        }
     });
     widget.add_controller(click);
 }
@@ -3472,15 +3488,15 @@ fn install_preview_click(
 ) {
     let click = gtk::GestureClick::new();
     click.set_button(1);
-    let item = item.downgrade();
-    click.connect_released(move |gesture, press_count, _, _| {
+    let clicked_item = item.downgrade();
+    super::pointer::connect_click_release(&click, item, move |gesture, press_count| {
         let modifiers = gesture.current_event_state();
         if modifiers
             .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
         {
             return;
         }
-        let Some(item) = item.upgrade() else {
+        let Some(item) = clicked_item.upgrade() else {
             return;
         };
         let position = item.position();

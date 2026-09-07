@@ -44,12 +44,13 @@ struct PendingPointerActivation {
     pub(super) location: Location,
     pub(super) press: (f64, f64),
     pub(super) moved: bool,
+    pub(super) preview: bool,
 }
 
 impl PendingPointerActivation {
     pub(super) fn update(&mut self, x: f64, y: f64, drag_threshold: i32) {
-        let threshold = f64::from(drag_threshold);
-        self.moved |= (x - self.press.0).abs() > threshold || (y - self.press.1).abs() > threshold;
+        self.moved |=
+            crate::ui::pointer::exceeds_drag_threshold(self.press, (x, y), drag_threshold);
     }
 
     fn can_activate(&self, location: &Location) -> bool {
@@ -900,7 +901,7 @@ impl ViewState {
                     });
                 }),
             }])),
-            is_item: Rc::new(|widget| is_file_row_target(widget.clone())),
+            is_item: Rc::new(crate::ui::pointer::hits_item_content),
         });
         marquee.add_origin_surface(&header);
 

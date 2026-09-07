@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::cell::{Cell, RefCell};
+use std::collections::BTreeMap;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -17,7 +18,7 @@ const AUTO_SCROLL_INTERVAL: Duration = Duration::from_millis(16);
 /// Visits every bound item of a collection view as `(position, widget)`, dropping
 /// entries whose widgets have been recycled.
 pub(super) type ItemVisitor = Rc<dyn Fn(&mut dyn FnMut(u32, &gtk::Widget))>;
-pub(super) type ItemPredicate = Rc<dyn Fn(&gtk::Widget) -> bool>;
+pub(super) type ItemPredicate = Rc<dyn Fn(&gtk::Widget, f64, f64) -> bool>;
 
 /// One collection view a drag can select in. A grouped view contributes one target
 /// per group, since each group renders through its own view and selection model.
@@ -53,6 +54,7 @@ struct MarqueeState {
     targets: MarqueeTargets,
     is_item: ItemPredicate,
     active: Cell<bool>,
+    dragging: Cell<bool>,
     /// Anchor in the view's own coordinates, so it stays glued to the content
     /// while the list scrolls underneath the pointer.
     anchor: Cell<(f64, f64)>,
@@ -61,6 +63,9 @@ struct MarqueeState {
     pointer: Cell<(f64, f64)>,
     /// Selection of every target as the drag began, one entry per target.
     initial: RefCell<Vec<gtk::Bitset>>,
+    /// Keep geometry after virtualization unbinds a row so extending or retracting
+    /// the band still resolves against items scrolled out of the viewport.
+    item_bounds: RefCell<Vec<BTreeMap<u32, graphene::Rect>>>,
     modifiers: Cell<(bool, bool)>,
     auto_scroll: RefCell<Option<glib::SourceId>>,
 }
@@ -85,9 +90,11 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
         targets: setup.targets,
         is_item: setup.is_item,
         active: Cell::new(false),
+        dragging: Cell::new(false),
         anchor: Cell::new((0.0, 0.0)),
         pointer: Cell::new((0.0, 0.0)),
         initial: RefCell::new(Vec::new()),
+        item_bounds: RefCell::new(Vec::new()),
         modifiers: Cell::new((false, false)),
         auto_scroll: RefCell::new(None),
     });
@@ -99,8 +106,7 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
     gesture.connect_drag_begin(move |gesture, x, y| {
         let starts_on_item = gesture
             .widget()
-            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
-            .is_some_and(|widget| (state_for_begin.is_item)(&widget));
+            .is_some_and(|widget| (state_for_begin.is_item)(&widget, x, y));
         let force = gesture
             .current_event_state()
             .contains(gtk::gdk::ModifierType::ALT_MASK);
@@ -108,7 +114,6 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
             state_for_begin.active.set(false);
             return;
         }
-        gesture.set_state(gtk::EventSequenceState::Claimed);
         state_for_begin.begin((x, y), gesture.current_event_state());
     });
     connect_drag_progress(&gesture, &state);
@@ -248,10 +253,26 @@ fn connect_drag_progress(gesture: &gtk::GestureDrag, state: &Rc<MarqueeState>) {
         let Some(origin) = gesture.widget() else {
             return;
         };
+        if !state_for_update.active.get() {
+            return;
+        }
+        if !state_for_update.dragging.get() {
+            if !super::pointer::exceeds_drag_threshold(
+                (0.0, 0.0),
+                (offset_x, offset_y),
+                origin.settings().gtk_dnd_drag_threshold(),
+            ) {
+                return;
+            }
+            state_for_update.dragging.set(true);
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+        }
         state_for_update.drag_to(&origin, (start_x + offset_x, start_y + offset_y));
     });
     let state_for_end = state.clone();
     gesture.connect_drag_end(move |_, _, _| state_for_end.end());
+    let state_for_cancel = state.clone();
+    gesture.connect_cancel(move |_, _| state_for_cancel.end());
 }
 
 impl MarqueeState {
@@ -272,7 +293,9 @@ impl MarqueeState {
             return;
         };
         self.active.set(true);
+        self.dragging.set(false);
         self.anchor.set(anchor);
+        self.item_bounds.borrow_mut().clear();
         self.pointer
             .set(translate(&view, &scroll, anchor).unwrap_or_default());
         self.initial.replace(
@@ -292,6 +315,8 @@ impl MarqueeState {
         self.active.set(false);
         self.stop_auto_scroll();
         self.band.set_visible(false);
+        self.item_bounds.borrow_mut().clear();
+        self.initial.borrow_mut().clear();
     }
 
     fn refresh(&self) {
@@ -339,31 +364,45 @@ impl MarqueeState {
         let initials = self.initial.borrow();
         let (control, shift) = self.modifiers.get();
         let empty = gtk::Bitset::new_empty();
-        for (index, target) in self.targets.borrow().iter().enumerate() {
+        let targets = self.targets.borrow();
+        let mut all_bounds = self.item_bounds.borrow_mut();
+        all_bounds.resize_with(targets.len(), BTreeMap::new);
+        let mut changes = Vec::with_capacity(targets.len());
+        for (index, target) in targets.iter().enumerate() {
+            let bounds = &mut all_bounds[index];
+            (target.visit_items)(&mut |position, widget| {
+                if position < target.selection.n_items()
+                    && let Some(rect) = widget.compute_bounds(view)
+                {
+                    bounds.insert(position, rect);
+                }
+            });
             let initial = initials.get(index).unwrap_or(&empty);
             let selected = if control || shift {
                 initial.copy()
             } else {
                 gtk::Bitset::new_empty()
             };
-            (target.visit_items)(&mut |position, widget| {
-                if position == gtk::INVALID_LIST_POSITION {
-                    return;
-                }
-                let Some(bounds) = widget.compute_bounds(view) else {
-                    return;
-                };
-                if !intersects(&bounds, left, top, right, bottom) {
-                    return;
+            for (&position, rect) in bounds.iter() {
+                if position >= target.selection.n_items()
+                    || !intersects(rect, left, top, right, bottom)
+                {
+                    continue;
                 }
                 if control && initial.contains(position) {
                     selected.remove(position);
                 } else {
                     selected.add(position);
                 }
-            });
+            }
             let mask = gtk::Bitset::new_range(0, target.selection.n_items());
-            target.selection.set_selection(&selected, &mask);
+            changes.push((target.selection.clone(), selected, mask));
+        }
+        drop(all_bounds);
+        drop(targets);
+        drop(initials);
+        for (selection, selected, mask) in changes {
+            selection.set_selection(&selected, &mask);
         }
     }
 
