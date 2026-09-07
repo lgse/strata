@@ -141,3 +141,40 @@ Native debugging (`./scripts/e2e-native.sh`) can use the preinstalled
   network wrapper is the supported workaround.
 - Do not push until format, Clippy, the isolated Rust suite, and
   `./scripts/e2e.sh` have all passed.
+
+## Verified on this snapshot
+
+Ran on 2026-09-07 against `origin/main` at `ab0cdc8` (Strata 0.12.0)
+inside Cloud Agent run `bc-e9e926b7-3910-4572-ac73-35846d9c7804`.
+
+| Check | Result |
+| --- | --- |
+| `cargo fmt --all --check` | passed |
+| `cargo clippy --all-targets --all-features -- -D warnings` | passed (`dev` compile 39.61s after a warm `target/`) |
+| Isolated `cargo test --all-targets --all-features` | **991 passed**, 0 failed, **19 ignored** in 46.97s (test compile 24.62s) |
+| `PATH=/tmp/docker-hostnet:$PATH ./scripts/e2e.sh` | **329 passed** in 367.06s (0:06:07) |
+
+The ignored Rust tests are expected on this VM: they require GVfs Trash,
+`dbus-run-session`, `xdotool`, or “run this test alone” mapped-window
+fixtures. `STRATA_REQUIRE_GTK_TESTS=1` still executed the GTK cases that
+can share the private Xvfb display.
+
+E2E container banner from this run:
+
+```text
+GTK: 4.14.5
+rustc 1.98.1 (48a229cea 2026-09-01)
+E2E resources: 4 CPUs, 13.8 GiB available; 2 workers
+```
+
+Cold E2E image build (apt snapshot packages, rustup 1.98.1, Python venv)
+is the long pole; the in-container `cargo build --locked --bin strata`
+then took 54.55s. Later runs reuse `target/e2e-container`.
+
+Harmless noise seen here:
+
+- `libEGL warning: DRI3 error: Could not get DRI3 device` during GTK
+  Rust tests on Xvfb. Software rendering still works.
+- Docker prints `DEPRECATED: The legacy builder is deprecated` because
+  Buildx is not installed. The host-network wrapper still applies to
+  `docker build` / `docker run`.
