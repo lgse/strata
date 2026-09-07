@@ -53,6 +53,49 @@ fn members_share_conflict_names_and_count_only_completed_work() -> Result<(), Bo
 }
 
 #[test]
+fn cancellation_reports_actual_destinations_for_duplicate_members() -> Result<(), Box<dyn Error>> {
+    for (name, first, second) in [
+        ("same.txt", "same.txt", "same (2).txt"),
+        (
+            "folder/same.txt",
+            "folder (2)/same.txt",
+            "folder (2)/same (2).txt",
+        ),
+    ] {
+        let root = tempfile::tempdir()?;
+        fs::create_dir(root.path().join("folder"))?;
+        let progress = AtomicUsize::new(0);
+        let cancelled = AtomicBool::new(false);
+        let mut session = ExtractionSession::open(root.path(), &progress, &cancelled)?;
+        session.extract_member(name, MemberContent::File(&mut &b"one"[..]))?;
+        session.extract_member(name, MemberContent::File(&mut &b"two"[..]))?;
+        cancelled.store(true, Ordering::Relaxed);
+        let result = session.check_cancelled();
+        let ArchiveOutcome::Cancelled {
+            completed,
+            failed,
+            not_attempted,
+        } = session.finish(result, Vec::new)?
+        else {
+            panic!("expected cancellation after both members completed");
+        };
+        assert_eq!(
+            completed,
+            [
+                Location::local(root.path().join(first)),
+                Location::local(root.path().join(second))
+            ]
+        );
+        assert!(failed.is_empty());
+        assert!(not_attempted.is_empty());
+        assert_eq!(progress.load(Ordering::Relaxed), 2);
+        assert_eq!(fs::read(root.path().join(first))?, b"one");
+        assert_eq!(fs::read(root.path().join(second))?, b"two");
+    }
+    Ok(())
+}
+
+#[test]
 fn cancellation_before_enumeration_uses_only_supplied_remaining_locations()
 -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;

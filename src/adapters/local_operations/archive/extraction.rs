@@ -96,9 +96,10 @@ impl<'a> ExtractionSession<'a> {
                 .next()
                 .map(|component| component.as_os_str().to_string_lossy().into_owned());
         }
-        match content {
+        let created = match content {
             MemberContent::Directory => {
                 self.directory.create_directories(&outpath)?;
+                outpath
             }
             MemberContent::File(reader) => {
                 let (mut file, created) = self.directory.create_file(&outpath)?;
@@ -115,10 +116,11 @@ impl<'a> ExtractionSession<'a> {
                     }
                     return Err(error);
                 }
+                created
             }
-        }
+        };
         self.completed
-            .push(extract_entry_location(self.destination, &outpath));
+            .push(extract_entry_location(self.destination, &created));
         self.progress.fetch_add(1, Ordering::Relaxed);
         Ok(())
     }
