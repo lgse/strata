@@ -22,16 +22,21 @@ use crate::{
 
 use super::{
     blur::BlurBin,
-    browser::{BrowserView, PeekBehavior, PinStatus, show_error_dialog},
+    browser::{
+        BrowserView, PeekBehavior, PinStatus, file_drop_action, locations_from_file_list_value,
+        show_error_dialog,
+    },
     browser_modes::{BrowserDensity, BrowserMode},
     motion::{animations_enabled, emphasized_deceleration},
-    preview::PreviewDrawer,
+    preview::{PreviewDrawer, preview_target},
     search::SearchDialog,
     theme::ThemeManager,
 };
 
-const SIDEBAR_WIDTH: i32 = 208;
-const MIN_SIDEBAR_WIDTH: i32 = 176;
+mod devices;
+
+pub(super) const SIDEBAR_WIDTH: i32 = 208;
+pub(super) const MIN_SIDEBAR_WIDTH: i32 = 176;
 const SIDEBAR_TRANSITION: Duration = Duration::from_millis(300);
 const PINNED_DRAG_PREFIX: &str = "pinned:";
 const STANDARD_PLACE_IDS: &[&str] = &["desktop", "documents", "downloads", "pictures", "videos"];
@@ -48,9 +53,21 @@ struct TypeToSearch {
     preferences: Rc<ThemeManager>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum TypeToSearchQuery {
+    Empty,
+    Character(char),
+}
+
 impl TypeToSearch {
-    fn show(&self, query: char) -> bool {
-        self.preferences.type_to_search() && self.view.show_filter_with_query(&query.to_string())
+    fn show(&self, query: TypeToSearchQuery) -> bool {
+        self.preferences.type_to_search()
+            && match query {
+                TypeToSearchQuery::Empty => self.view.show_filter(),
+                TypeToSearchQuery::Character(character) => {
+                    self.view.show_filter_with_query(&character.to_string())
+                }
+            }
     }
 }
 
@@ -86,6 +103,32 @@ pub fn present_reveal(application: &gtk::Application, request: RevealRequest) {
     );
 }
 
+fn bind_update_notice_preferences(
+    anchor: &impl IsA<gtk::Widget>,
+    manager: &ThemeManager,
+    notice: &super::settings::UpdateNoticeHandler,
+) {
+    let initial = Cell::new(true);
+    let notice = Rc::downgrade(notice);
+    manager.bind_preference(
+        anchor,
+        |manager| (manager.checks_for_updates(), manager.release_channel()),
+        move |_, _| {
+            if !initial.replace(false)
+                && let Some(notice) = notice.upgrade()
+            {
+                notice(None);
+            }
+        },
+    );
+}
+
+fn browser_for_window() -> BrowserView {
+    let browser = BrowserView::new(Rc::new(LocalFileSource), PeekBehavior::default());
+    browser.set_operation_provider(Rc::new(LocalOperationProvider));
+    browser
+}
+
 fn present_target(
     application: &gtk::Application,
     location: Option<Location>,
@@ -108,42 +151,17 @@ fn present_target(
         .default_height(760)
         .build();
 
-    let browser = BrowserView::new(Rc::new(LocalFileSource), PeekBehavior::default());
-    browser.set_view_mode(theme_manager.browser_mode());
-    browser.set_density(theme_manager.browser_density());
-    browser.set_group_by_type(theme_manager.group_by_type());
-    browser.set_operation_provider(Rc::new(LocalOperationProvider));
-    browser.set_auto_refresh_interval(theme_manager.auto_refresh_interval());
+    let browser = browser_for_window();
     let controller = browser.browser();
 
     let preview_preferences = theme_manager.clone();
-    let preview = PreviewDrawer::new(Rc::new(LocalPreviewProvider::new(Rc::new(move || {
-        preview_preferences.media_preview_backend()
-    }))));
-    let preview_for_selection = preview.clone();
-    let weak_controller = Rc::downgrade(&controller);
-    controller.observe(move |event| match event {
-        BrowserEvent::PreviewRequested { entry } => preview_for_selection.show(entry.clone()),
-        BrowserEvent::FocusChanged {
-            depth,
-            position: Some(position),
-        } if preview_for_selection.is_open() => {
-            if let Some(entry) = weak_controller
-                .upgrade()
-                .and_then(|browser| browser.entry_at(*depth, *position))
-            {
-                if entry.is_directory() {
-                    preview_for_selection.close();
-                } else {
-                    preview_for_selection.show(entry);
-                }
-            }
-        }
-        BrowserEvent::FocusChanged { position: None, .. } if preview_for_selection.is_open() => {
-            preview_for_selection.close();
-        }
-        _ => {}
-    });
+    let preview = PreviewDrawer::new(
+        Rc::new(LocalPreviewProvider::new(Rc::new(move || {
+            preview_preferences.media_preview_backend()
+        }))),
+        true,
+    );
+    preview.observe_browser(&controller);
 
     let header = gtk::HeaderBar::new();
     header.set_show_title_buttons(false);
@@ -151,9 +169,8 @@ fn present_target(
         .active(true)
         .tooltip_text("Toggle sidebar (Ctrl+B)")
         .build();
-    sidebar_toggle.set_child(Some(&crate::assets::primary_icon(
+    sidebar_toggle.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::PANEL_LEFT,
-        20,
     )));
     sidebar_toggle.add_css_class("sidebar-toggle");
     let location_widget = browser.location_widget();
@@ -161,23 +178,18 @@ fn present_target(
     let search_button = gtk::Button::builder()
         .tooltip_text("Search (Ctrl+K)")
         .build();
-    search_button.set_child(Some(&crate::assets::primary_icon(
+    search_button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::SEARCH,
-        20,
     )));
     search_button.add_css_class("header-action");
     let appearance = build_appearance_menu(&browser, &controller, theme_manager.clone());
     let settings = gtk::Button::builder().tooltip_text("Settings").build();
-    settings.set_child(Some(&crate::assets::primary_icon(
+    settings.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::SETTINGS,
-        20,
     )));
     settings.add_css_class("header-action");
     let close_window = gtk::Button::builder().tooltip_text("Close window").build();
-    close_window.set_child(Some(&crate::assets::primary_icon(
-        crate::assets::icons::X,
-        20,
-    )));
+    close_window.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
     close_window.add_css_class("header-action");
     let closing_window = window.clone();
     close_window.connect_clicked(move |_| closing_window.close());
@@ -189,6 +201,7 @@ fn present_target(
     header_actions.append(&close_window);
     let header_content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     header_content.set_hexpand(true);
+    header_content.set_valign(gtk::Align::Center);
     header_content.append(&sidebar_toggle);
     header_content.append(&location_widget);
     header_content.append(&header_actions);
@@ -203,13 +216,19 @@ fn present_target(
     content.set_resize_start_child(false);
     content.set_position(SIDEBAR_WIDTH);
     content.set_vexpand(true);
-    let sidebar = build_sidebar(browser.clone(), theme_manager.clone());
+    let sidebar = build_sidebar(browser.clone(), theme_manager.clone(), false);
     let weak_sidebar = Rc::downgrade(&sidebar.state);
+    let weak_unpin_sidebar = Rc::downgrade(&sidebar.state);
     let pinned_places = sidebar.state.pinned_places.clone();
     browser.set_pin_handlers(
         Rc::new(move |location, name| {
             if let Some(sidebar) = weak_sidebar.upgrade() {
                 sidebar.pin_location(location, name);
+            }
+        }),
+        Rc::new(move |location| {
+            if let Some(sidebar) = weak_unpin_sidebar.upgrade() {
+                sidebar.unpin_location(location);
             }
         }),
         Rc::new(move |location| pin_status(&pinned_places.borrow(), location)),
@@ -262,6 +281,13 @@ fn present_target(
         Rc::new(move || measured_content.position() + measured_browser.preview_occupied_width()),
     );
     root.append(&preview_split);
+    let shortcuts = super::shortcut_footer::ShortcutFooter::new(browser.view_mode());
+    shortcuts.bind_preferences(&theme_manager);
+    let clipboard = window.clipboard();
+    let clipboard_handler = RefCell::new(Some(shortcuts.connect_clipboard(&clipboard)));
+    root.append(shortcuts.widget());
+    let updated_shortcuts = shortcuts.clone();
+    browser.connect_view_mode_changed(move |mode| updated_shortcuts.set_mode(mode));
 
     let mouse_history = gtk::GestureClick::new();
     mouse_history.set_button(0);
@@ -304,6 +330,7 @@ fn present_target(
             search_preview.show(FileEntry {
                 location,
                 native_name: item.path.file_name().unwrap_or_default().to_os_string(),
+                thumbnail_path: None,
                 display_name: item.name,
                 kind: EntryKind::File,
                 size: MetadataValue::Unknown,
@@ -323,32 +350,36 @@ fn present_target(
     window_overlay.add_overlay(&search_dialog.widget());
     let shown_search = search_dialog.clone();
     let search_blurred_root = blurred_root.clone();
+    let search_preferences = theme_manager.clone();
     search_button.connect_clicked(move |button| {
         if shown_search.is_visible() {
             shown_search.hide();
             return;
         }
-        let root = home_directory();
+        let roots = devices::global_search_roots();
         button.add_css_class("active");
         search_blurred_root.set_blurred(true);
-        shown_search.show(root);
+        shown_search.show(roots, search_preferences.sort_preferences().show_hidden);
     });
     let search_action = gio::SimpleAction::new("search", None);
     let shortcut_search = search_dialog.clone();
     let shortcut_search_button = search_button.clone();
     let shortcut_search_root = blurred_root.clone();
+    let shortcut_search_preferences = theme_manager.clone();
     search_action.connect_activate(move |_, _| {
         if shortcut_search.is_visible() {
             shortcut_search.hide();
         } else {
-            let root = home_directory();
+            let roots = devices::global_search_roots();
             shortcut_search_button.add_css_class("active");
             shortcut_search_root.set_blurred(true);
-            shortcut_search.show(root);
+            shortcut_search.show(
+                roots,
+                shortcut_search_preferences.sort_preferences().show_hidden,
+            );
         }
     });
     window.add_action(&search_action);
-    application.set_accels_for_action("win.search", &["<Control>k"]);
 
     let terminal_view = browser.clone();
     let terminal_action = gio::SimpleAction::new("open-terminal", None);
@@ -356,7 +387,6 @@ fn present_target(
         terminal_view.open_terminal();
     });
     window.add_action(&terminal_action);
-    application.set_accels_for_action("win.open-terminal", &["<Primary>t"]);
 
     let refresh_view = browser.clone();
     let refresh_action = gio::SimpleAction::new("refresh", None);
@@ -364,7 +394,9 @@ fn present_target(
         refresh_view.refresh();
     });
     window.add_action(&refresh_action);
-    application.set_accels_for_action("win.refresh", &["F5", "<Primary>r"]);
+    for (action, accels) in DEFAULT_ACCELS {
+        application.set_accels_for_action(action, accels);
+    }
 
     let update_button = sidebar.update_notice.clone();
     let update_area = sidebar.update_area.clone();
@@ -433,9 +465,9 @@ fn present_target(
             update_area.set_visible(false);
         }
     });
+    bind_update_notice_preferences(&window, &theme_manager, &update_notice);
     let settings_layer: Rc<RefCell<Option<gtk::Box>>> = Rc::new(RefCell::new(None));
     let ensure_settings_layer = {
-        let browser = browser.clone();
         let settings_button = settings.clone();
         let blurred = blurred_root.clone();
         let themes = theme_manager.clone();
@@ -448,7 +480,6 @@ fn present_target(
                 return layer;
             }
             let layer = super::settings::build_layer(
-                &browser,
                 &settings_button,
                 &blurred,
                 themes.clone(),
@@ -522,17 +553,26 @@ fn present_target(
         view: browser.clone(),
         preferences: theme_manager.clone(),
     };
+    let top_bar = super::top_bar_navigation::TopBarNavigation::new(
+        &header_content,
+        &sidebar.widget,
+        &sidebar_toggle,
+    );
     install_keyboard_navigation(
         &window,
         &browser,
         &sidebar,
-        &sidebar_toggle,
+        &top_bar,
         &preview,
         &type_to_search,
+        &shortcuts,
     );
     let browser_controller = browser.browser();
     schedule_after_first_paint(&window, &sidebar);
     window.connect_destroy(move |_| {
+        if let Some(handler) = clipboard_handler.borrow_mut().take() {
+            clipboard.disconnect(handler);
+        }
         browser_controller.clear_observer();
         sidebar.disconnect();
     });
@@ -551,6 +591,7 @@ fn present_target(
             "present navigation started"
         );
     });
+    super::portal_preferences::schedule_offer(&window);
     schedule_due_update_check(&theme_manager, &update_notice);
 }
 
@@ -647,20 +688,24 @@ fn animate_sidebar(
     });
 }
 
+/// Apply saved activation before Settings is opened, including in the file chooser.
 fn install_keyboard_navigation(
     window: &gtk::ApplicationWindow,
     view: &BrowserView,
     sidebar: &SidebarView,
-    sidebar_toggle: &gtk::ToggleButton,
+    top_bar: &super::top_bar_navigation::TopBarNavigation,
     preview: &PreviewDrawer,
     type_to_search: &TypeToSearch,
+    shortcuts: &super::shortcut_footer::ShortcutFooter,
 ) {
+    let shortcuts = shortcuts.clone();
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let view = view.clone();
     let sidebar_state = sidebar.state.clone();
     let sidebar_widget = sidebar.widget.clone();
-    let sidebar_toggle = sidebar_toggle.clone();
+    let sidebar_toggle = top_bar.sidebar_toggle().clone();
+    let top_bar = top_bar.clone();
     let preview = preview.clone();
     let type_to_search = type_to_search.clone();
     let dialog_parent = window.clone();
@@ -679,6 +724,12 @@ fn install_keyboard_navigation(
             }
             return glib::Propagation::Proceed;
         }
+        if !view.rename_is_active()
+            && !view.new_entry_is_active()
+            && let Some(result) = shortcuts.handle_key(key, modifiers)
+        {
+            return result;
+        }
         if key == gtk::gdk::Key::Escape && super::scrolling::stop_autoscroll() {
             return glib::Propagation::Stop;
         }
@@ -689,6 +740,14 @@ fn install_keyboard_navigation(
         let sidebar_has_focus = focused.as_ref().is_some_and(|focused| {
             focused == &sidebar_widget || focused.is_ancestor(&sidebar_widget)
         });
+        if control
+            && !shift
+            && !alt
+            && let Some(mode) = browser_mode_for_digit(key)
+        {
+            apply_browser_mode(&view, &super::theme::ThemeManager::shared(), mode);
+            return glib::Propagation::Stop;
+        }
         if control && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::K) {
             if let Err(error) =
                 gtk::prelude::WidgetExt::activate_action(&dialog_parent, "win.search", None)
@@ -697,7 +756,12 @@ fn install_keyboard_navigation(
             }
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::F2 && view.begin_rename() {
+        if is_rename_shortcut(key, modifiers)
+            && !focused
+                .as_ref()
+                .is_some_and(super::focus_navigation::editable)
+            && view.begin_rename()
+        {
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::Escape && view.cancel_new_entry() {
@@ -728,6 +792,8 @@ fn install_keyboard_navigation(
             w.is::<gtk::Text>() || w.is::<gtk::TextView>() || w.is::<gtk::Entry>()
         });
         if preview.has_video()
+            && !sidebar_has_focus
+            && !top_bar.has_focus()
             && !text_has_focus
             && !alt
             && !control
@@ -747,6 +813,7 @@ fn install_keyboard_navigation(
             return glib::Propagation::Stop;
         }
         if is_sidebar_focus_shortcut(key, modifiers) {
+            view.keyboard_navigation();
             if sidebar_has_focus {
                 let restored = focus_before_sidebar
                     .borrow_mut()
@@ -786,6 +853,9 @@ fn install_keyboard_navigation(
             && type_to_search.show(query)
         {
             return glib::Propagation::Stop;
+        }
+        if !text_has_focus && is_browser_navigation_key(key, modifiers) {
+            view.keyboard_navigation();
         }
         if alt
             && !control
@@ -845,28 +915,58 @@ fn install_keyboard_navigation(
             view.open_terminal();
             return glib::Propagation::Stop;
         }
-        if is_refresh_shortcut(key, modifiers) {
+        if is_refresh_shortcut(key) {
             view.refresh();
             return glib::Propagation::Stop;
         }
-        let column_popover = focused
+        let popover = focused
             .as_ref()
             .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
-            .and_downcast::<gtk::Popover>()
-            .filter(|popover| popover.has_css_class("column-popover"));
-        if let Some(popover) = column_popover
+            .and_downcast::<gtk::Popover>();
+        if let Some(popover) = popover
             && !control
             && !alt
-            && let Some(direction) = vim_focus_direction(key)
         {
-            popover.child_focus(direction);
-            return glib::Propagation::Stop;
+            if popover.has_css_class("column-popover")
+                && let Some(direction) = vim_focus_direction(key)
+            {
+                popover.child_focus(direction);
+                return glib::Propagation::Stop;
+            }
+            return glib::Propagation::Proceed;
+        }
+        if top_bar.has_focus() && !text_has_focus && !control && !alt && !shift {
+            match key {
+                gtk::gdk::Key::Left | gtk::gdk::Key::Right => {
+                    top_bar.move_focus(if key == gtk::gdk::Key::Left {
+                        gtk::DirectionType::Left
+                    } else {
+                        gtk::DirectionType::Right
+                    });
+                    return glib::Propagation::Stop;
+                }
+                gtk::gdk::Key::Down => {
+                    if !top_bar.return_to_sidebar() {
+                        browser.focus_active();
+                    }
+                    return glib::Propagation::Stop;
+                }
+                gtk::gdk::Key::Up => return glib::Propagation::Stop,
+                _ => {}
+            }
         }
         let mut header_left_boundary = false;
         if view.header_actions_have_focus() && !control && !alt {
             match key {
                 gtk::gdk::Key::h | gtk::gdk::Key::Left => {
                     if view.move_header_focus(gtk::DirectionType::Left) {
+                        return glib::Propagation::Stop;
+                    }
+                    if view.view_mode() != BrowserMode::Columns {
+                        if sidebar_toggle.is_active() {
+                            focus_before_sidebar.replace(focused.clone());
+                            sidebar_state.focus_active_place();
+                        }
                         return glib::Propagation::Stop;
                     }
                     header_left_boundary = true;
@@ -885,11 +985,18 @@ fn install_keyboard_navigation(
         if sidebar_has_focus
             && !control
             && !alt
-            && let Some(direction) = vim_focus_direction(key)
+            && let Some(direction) = sidebar_focus_direction(key)
         {
             if direction == gtk::DirectionType::Right {
-                focus_before_sidebar.borrow_mut().take();
-                browser.focus_active();
+                let restored = focus_before_sidebar
+                    .borrow_mut()
+                    .take()
+                    .is_some_and(|widget| widget.is_mapped() && widget.grab_focus());
+                if !restored {
+                    browser.focus_active();
+                }
+            } else if direction == gtk::DirectionType::Up && !shift {
+                top_bar.move_up_from_sidebar();
             } else {
                 sidebar_widget.child_focus(direction);
             }
@@ -908,6 +1015,55 @@ fn install_keyboard_navigation(
         if !control && !alt && !view.item_view_has_focus() && !header_left_boundary {
             return glib::Propagation::Proceed;
         }
+        if let Some(direction) = jump_direction(key, modifiers)
+            && view.jump_selection(direction)
+        {
+            return glib::Propagation::Stop;
+        }
+        if view.item_view_has_focus()
+            && let Some(action) = single_pane_arrow_action(
+                view.view_mode(),
+                key,
+                modifiers,
+                view.at_left_edge(),
+                sidebar_toggle.is_active(),
+            )
+        {
+            return match action {
+                SinglePaneArrow::Native => {
+                    if !control
+                        && !shift
+                        && key == gtk::gdk::Key::Up
+                        && view.focus_header_from_top_item()
+                    {
+                        return glib::Propagation::Stop;
+                    }
+                    view.commit_selection();
+                    if !control
+                        && !shift
+                        && let Some(direction) = sidebar_focus_direction(key)
+                        && view.cross_type_group(direction, false)
+                    {
+                        glib::Propagation::Stop
+                    } else {
+                        glib::Propagation::Proceed
+                    }
+                }
+                SinglePaneArrow::Stay => glib::Propagation::Stop,
+                SinglePaneArrow::Sidebar => {
+                    focus_before_sidebar.replace(focused.clone());
+                    sidebar_state.focus_active_place();
+                    glib::Propagation::Stop
+                }
+            };
+        }
+        if view.item_view_has_focus()
+            && !control
+            && !alt
+            && matches!(key, gtk::gdk::Key::Home | gtk::gdk::Key::End)
+        {
+            view.commit_selection();
+        }
         if !control
             && !alt
             && let Some(direction) = page_direction(key)
@@ -924,7 +1080,7 @@ fn install_keyboard_navigation(
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::space && !alt && !control {
-            preview.toggle(browser.focused_entry());
+            preview.toggle(preview_target(browser.focused_entry()));
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::Escape && preview.is_open() {
@@ -944,12 +1100,16 @@ fn install_keyboard_navigation(
             return glib::Propagation::Stop;
         }
         if !shift
+            && !alt
             && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::Up)
             && view.focus_header_from_top_item()
         {
             return glib::Propagation::Stop;
         }
 
+        if control || modifiers.contains(gtk::gdk::ModifierType::SUPER_MASK) {
+            return glib::Propagation::Proceed;
+        }
         match (key, alt) {
             (gtk::gdk::Key::Left, true) => browser.back(),
             (gtk::gdk::Key::Right, true) => browser.forward(),
@@ -966,13 +1126,12 @@ fn install_keyboard_navigation(
                 sidebar_state.focus_active_place();
             }
             (gtk::gdk::Key::h | gtk::gdk::Key::Left, false) => view.navigate_left(),
-            (
-                gtk::gdk::Key::l
-                | gtk::gdk::Key::Right
-                | gtk::gdk::Key::Return
-                | gtk::gdk::Key::KP_Enter,
-                false,
-            ) => view.activate_focused(),
+            (gtk::gdk::Key::Right, false) if view.view_mode() == BrowserMode::Columns => {
+                browser.enter_focused_directory();
+            }
+            (gtk::gdk::Key::l | gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter, false) => {
+                view.activate_focused();
+            }
             (gtk::gdk::Key::Escape, false) => browser.escape(),
             _ => return glib::Propagation::Proceed,
         }
@@ -981,10 +1140,88 @@ fn install_keyboard_navigation(
     window.add_controller(keys);
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SinglePaneArrow {
+    Native,
+    Stay,
+    Sidebar,
+}
+
+fn single_pane_arrow_action(
+    mode: BrowserMode,
+    key: gtk::gdk::Key,
+    modifiers: gtk::gdk::ModifierType,
+    at_left_edge: bool,
+    sidebar_visible: bool,
+) -> Option<SinglePaneArrow> {
+    use gtk::gdk::{Key, ModifierType};
+    if mode == BrowserMode::Columns
+        || modifiers.intersects(ModifierType::ALT_MASK | ModifierType::SUPER_MASK)
+    {
+        return None;
+    }
+    let plain = !modifiers.intersects(ModifierType::CONTROL_MASK | ModifierType::SHIFT_MASK);
+    match key {
+        Key::Left if plain && at_left_edge && sidebar_visible => Some(SinglePaneArrow::Sidebar),
+        Key::Left | Key::Right if mode == BrowserMode::List => Some(SinglePaneArrow::Stay),
+        Key::Left | Key::Right | Key::Up | Key::Down => Some(SinglePaneArrow::Native),
+        _ => None,
+    }
+}
+
+pub(super) fn is_browser_navigation_key(
+    key: gtk::gdk::Key,
+    modifiers: gtk::gdk::ModifierType,
+) -> bool {
+    if modifiers
+        .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SUPER_MASK)
+    {
+        return false;
+    }
+    matches!(
+        key,
+        gtk::gdk::Key::j
+            | gtk::gdk::Key::k
+            | gtk::gdk::Key::h
+            | gtk::gdk::Key::l
+            | gtk::gdk::Key::Up
+            | gtk::gdk::Key::Down
+            | gtk::gdk::Key::Left
+            | gtk::gdk::Key::Right
+            | gtk::gdk::Key::Home
+            | gtk::gdk::Key::End
+            | gtk::gdk::Key::Page_Up
+            | gtk::gdk::Key::Page_Down
+            | gtk::gdk::Key::KP_Page_Up
+            | gtk::gdk::Key::KP_Page_Down
+            | gtk::gdk::Key::Tab
+            | gtk::gdk::Key::ISO_Left_Tab
+            | gtk::gdk::Key::Return
+            | gtk::gdk::Key::KP_Enter
+            | gtk::gdk::Key::BackSpace
+    )
+}
+
 fn page_direction(key: gtk::gdk::Key) -> Option<i32> {
     match key {
         gtk::gdk::Key::Page_Up | gtk::gdk::Key::KP_Page_Up => Some(-1),
         gtk::gdk::Key::Page_Down | gtk::gdk::Key::KP_Page_Down => Some(1),
+        _ => None,
+    }
+}
+
+fn jump_direction(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> Option<i32> {
+    use gtk::gdk::{Key, ModifierType};
+    if !modifiers.contains(ModifierType::CONTROL_MASK)
+        || modifiers.intersects(
+            ModifierType::SHIFT_MASK | ModifierType::ALT_MASK | ModifierType::SUPER_MASK,
+        )
+    {
+        return None;
+    }
+    match key {
+        Key::Up => Some(-1),
+        Key::Down => Some(1),
         _ => None,
     }
 }
@@ -996,15 +1233,26 @@ fn is_undo_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bo
         && matches!(key, gtk::gdk::Key::z | gtk::gdk::Key::Z)
 }
 
-fn type_to_search_query(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> Option<char> {
-    if modifiers.intersects(
-        gtk::gdk::ModifierType::CONTROL_MASK
-            | gtk::gdk::ModifierType::ALT_MASK
-            | gtk::gdk::ModifierType::SUPER_MASK,
-    ) {
+fn type_to_search_query(
+    key: gtk::gdk::Key,
+    modifiers: gtk::gdk::ModifierType,
+) -> Option<TypeToSearchQuery> {
+    // Space belongs to quick preview; focused text fields handle their own spaces.
+    if key == gtk::gdk::Key::space
+        || modifiers.intersects(
+            gtk::gdk::ModifierType::CONTROL_MASK
+                | gtk::gdk::ModifierType::ALT_MASK
+                | gtk::gdk::ModifierType::SUPER_MASK,
+        )
+    {
         return None;
     }
-    key.to_unicode().filter(|character| !character.is_control())
+    if key == gtk::gdk::Key::slash {
+        return Some(TypeToSearchQuery::Empty);
+    }
+    key.to_unicode()
+        .filter(|character| !character.is_control())
+        .map(TypeToSearchQuery::Character)
 }
 
 fn is_open_terminal_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
@@ -1024,20 +1272,52 @@ fn is_toggle_hidden_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierTy
         )
 }
 
-fn is_refresh_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+const DEFAULT_ACCELS: &[(&str, &[&str])] = &[
+    ("win.search", &["<Control>k"]),
+    ("win.open-terminal", &["<Primary>t"]),
+    ("win.refresh", &["F5"]),
+];
+
+fn is_refresh_shortcut(key: gtk::gdk::Key) -> bool {
     key == gtk::gdk::Key::F5
-        || (modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-            && !modifiers.contains(gtk::gdk::ModifierType::ALT_MASK)
-            && matches!(key, gtk::gdk::Key::r | gtk::gdk::Key::R))
 }
 
-fn is_sidebar_focus_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+const RENAME_EXCLUDED_MODIFIERS: gtk::gdk::ModifierType = gtk::gdk::ModifierType::ALT_MASK
+    .union(gtk::gdk::ModifierType::SHIFT_MASK)
+    .union(gtk::gdk::ModifierType::SUPER_MASK);
+
+pub(super) fn is_rename_shortcut(key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    if modifiers.intersects(RENAME_EXCLUDED_MODIFIERS) {
+        return false;
+    }
+    let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
+    match key {
+        gtk::gdk::Key::F2 => !control,
+        gtk::gdk::Key::r | gtk::gdk::Key::R => control,
+        _ => false,
+    }
+}
+
+pub(super) fn is_sidebar_focus_shortcut(
+    key: gtk::gdk::Key,
+    modifiers: gtk::gdk::ModifierType,
+) -> bool {
     modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
         && !modifiers.contains(gtk::gdk::ModifierType::ALT_MASK)
         && matches!(key, gtk::gdk::Key::b | gtk::gdk::Key::B)
 }
 
-fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
+fn sidebar_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
+    match key {
+        gtk::gdk::Key::Left => Some(gtk::DirectionType::Left),
+        gtk::gdk::Key::Right => Some(gtk::DirectionType::Right),
+        gtk::gdk::Key::Up => Some(gtk::DirectionType::Up),
+        gtk::gdk::Key::Down => Some(gtk::DirectionType::Down),
+        _ => vim_focus_direction(key),
+    }
+}
+
+pub(super) fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
     match key {
         gtk::gdk::Key::h => Some(gtk::DirectionType::Left),
         gtk::gdk::Key::j => Some(gtk::DirectionType::Down),
@@ -1047,24 +1327,25 @@ fn vim_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
     }
 }
 
-fn visible_modal_layer(window: &gtk::ApplicationWindow) -> Option<gtk::Widget> {
+pub(super) fn visible_modal_layer(window: &impl IsA<gtk::Window>) -> Option<gtk::Widget> {
     let overlay = window.child().and_downcast::<gtk::Overlay>()?;
     let mut child = overlay.first_child();
+    let mut topmost = None;
     while let Some(widget) = child {
-        if widget.is_visible() && widget.has_css_class("app-modal-layer") {
-            return Some(widget);
-        }
         child = widget.next_sibling();
+        if widget.is_visible() && widget.has_css_class("app-modal-layer") {
+            topmost = Some(widget);
+        }
     }
-    None
+    topmost
 }
 
-fn install_modal_focus_trap(window: &gtk::ApplicationWindow) {
+pub(super) fn install_modal_focus_trap(window: &impl IsA<gtk::Window>) {
     window.connect_focus_widget_notify(|window| {
         let Some(layer) = visible_modal_layer(window) else {
             return;
         };
-        let focus_is_inside = gtk::prelude::RootExt::focus(window)
+        let focus_is_inside = gtk::prelude::RootExt::focus(window.as_ref())
             .is_some_and(|focus| focus == layer || focus.is_ancestor(&layer));
         if !focus_is_inside {
             layer.grab_focus();
@@ -1072,7 +1353,25 @@ fn install_modal_focus_trap(window: &gtk::ApplicationWindow) {
     });
 }
 
-fn build_appearance_menu(
+pub(super) fn apply_browser_mode(
+    view: &BrowserView,
+    preferences: &super::theme::ThemeManager,
+    mode: BrowserMode,
+) {
+    view.set_view_mode(mode);
+    preferences.set_browser_mode(mode);
+}
+
+pub(super) fn browser_mode_for_digit(key: gtk::gdk::Key) -> Option<BrowserMode> {
+    match key {
+        gtk::gdk::Key::_1 | gtk::gdk::Key::KP_1 => Some(BrowserMode::Columns),
+        gtk::gdk::Key::_2 | gtk::gdk::Key::KP_2 => Some(BrowserMode::Icons),
+        gtk::gdk::Key::_3 | gtk::gdk::Key::KP_3 => Some(BrowserMode::List),
+        _ => None,
+    }
+}
+
+pub(super) fn build_appearance_menu(
     view: &BrowserView,
     controller: &Rc<Browser>,
     preferences: Rc<super::theme::ThemeManager>,
@@ -1089,25 +1388,29 @@ fn build_appearance_menu(
         .tooltip_text("Appearance")
         .popover(&popover)
         .build();
+    // Without an explicit name GTK builds one from the whole open popover, so
+    // a screen reader reads the entire menu back as the button's label.
+    super::accessibility::set_label(&button, "Appearance");
     let popover_weak = popover.downgrade();
     append_menu_heading(&content, "VIEW");
     let current_mode = view.view_mode();
-    let (list, list_check, _) = appearance_option(
-        crate::assets::icons::LIST,
-        "List",
+    let button_icon = crate::assets::chrome_icon(browser_mode_icon(current_mode));
+    let (columns, columns_check, _) = appearance_option(
+        crate::assets::icons::COLUMNS,
+        "Columns",
         current_mode == BrowserMode::Columns,
         true,
     );
-    let (grid, grid_check, _) = appearance_option(
-        crate::assets::icons::GRID,
-        "Grid",
-        current_mode == BrowserMode::Grid,
+    let (icons, icons_check, _) = appearance_option(
+        crate::assets::icons::ICONS,
+        "Icons",
+        current_mode == BrowserMode::Icons,
         true,
     );
-    let (explorer, explorer_check, _) = appearance_option(
-        crate::assets::icons::ROWS,
-        "Explorer",
-        current_mode == BrowserMode::Explorer,
+    let (list, list_check, _) = appearance_option(
+        crate::assets::icons::LIST,
+        "List",
+        current_mode == BrowserMode::List,
         true,
     );
     let grouped = preferences.group_by_type();
@@ -1115,54 +1418,58 @@ fn build_appearance_menu(
         crate::assets::icons::LIST_CHECKS,
         "Group by file type",
         grouped,
-        current_mode != BrowserMode::Columns,
+        current_mode.supports_type_grouping(),
     );
-    group_by_type.set_tooltip_text(Some(
-        "Group Explorer and Grid entries under file-type headings",
-    ));
+    group_by_type.set_tooltip_text(Some("Group List entries under file-type headings"));
+    preferences.bind_preference(
+        &group_check,
+        ThemeManager::group_by_type,
+        |widget, enabled| widget.set_visible(enabled),
+    );
     {
-        let view = view.clone();
         let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
-        let grouped = Cell::new(grouped);
         group_by_type.connect_clicked(move |_| {
-            let enabled = !grouped.get();
-            grouped.set(enabled);
-            view.set_group_by_type(enabled);
-            preferences.set_group_by_type(enabled);
-            group_check.set_visible(enabled);
+            preferences.set_group_by_type(!preferences.group_by_type());
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
         });
     }
     for (button, mode) in [
-        (&list, BrowserMode::Columns),
-        (&grid, BrowserMode::Grid),
-        (&explorer, BrowserMode::Explorer),
+        (&columns, BrowserMode::Columns),
+        (&icons, BrowserMode::Icons),
+        (&list, BrowserMode::List),
     ] {
         let view = view.clone();
-        let list_check = list_check.clone();
-        let grid_check = grid_check.clone();
-        let explorer_check = explorer_check.clone();
-        let group_by_type = group_by_type.clone();
         let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
         button.connect_clicked(move |_| {
-            view.set_view_mode(mode);
-            preferences.set_browser_mode(mode);
-            list_check.set_visible(mode == BrowserMode::Columns);
-            grid_check.set_visible(mode == BrowserMode::Grid);
-            explorer_check.set_visible(mode == BrowserMode::Explorer);
-            group_by_type.set_sensitive(mode != BrowserMode::Columns);
+            apply_browser_mode(&view, &preferences, mode);
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
         });
     }
+    {
+        // The mode also changes from the keyboard, so track the view rather
+        // than only the buttons in this menu.
+        let columns_check = columns_check.clone();
+        let icons_check = icons_check.clone();
+        let list_check = list_check.clone();
+        let group_by_type = group_by_type.clone();
+        let button_icon = button_icon.clone();
+        view.connect_view_mode_changed(move |mode| {
+            columns_check.set_visible(mode == BrowserMode::Columns);
+            icons_check.set_visible(mode == BrowserMode::Icons);
+            list_check.set_visible(mode == BrowserMode::List);
+            group_by_type.set_sensitive(mode.supports_type_grouping());
+            crate::assets::set_primary_icon(&button_icon, browser_mode_icon(mode));
+        });
+    }
+    content.append(&columns);
+    content.append(&icons);
     content.append(&list);
-    content.append(&grid);
-    content.append(&explorer);
 
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     append_menu_heading(&content, "DENSITY");
@@ -1180,30 +1487,31 @@ fn build_appearance_menu(
         current_density == BrowserDensity::Airy,
         true,
     );
+    preferences.bind_preference(
+        &compact_check,
+        ThemeManager::browser_density,
+        |widget, density| widget.set_visible(density == BrowserDensity::Compact),
+    );
+    preferences.bind_preference(
+        &airy_check,
+        ThemeManager::browser_density,
+        |widget, density| widget.set_visible(density == BrowserDensity::Airy),
+    );
     {
-        let view = view.clone();
-        let compact_check = compact_check.clone();
-        let airy_check = airy_check.clone();
         let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
         compact.connect_clicked(move |_| {
-            view.set_density(BrowserDensity::Compact);
             preferences.set_browser_density(BrowserDensity::Compact);
-            compact_check.set_visible(true);
-            airy_check.set_visible(false);
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
         });
     }
     {
-        let view = view.clone();
+        let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
         airy.connect_clicked(move |_| {
-            view.set_density(BrowserDensity::Airy);
             preferences.set_browser_density(BrowserDensity::Airy);
-            compact_check.set_visible(false);
-            airy_check.set_visible(true);
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
@@ -1251,20 +1559,17 @@ fn build_appearance_menu(
     content.append(&hidden);
 
     popover.set_child(Some(&content));
-    let icon = crate::assets::primary_icon(crate::assets::icons::LIST, 20);
-    button.set_child(Some(&icon));
+    button.set_child(Some(&button_icon));
     button.add_css_class("header-action");
-    button.connect_active_notify(move |button| {
-        crate::assets::set_primary_icon(
-            &icon,
-            if button.is_active() {
-                crate::assets::icons::LIST_ACTIVE
-            } else {
-                crate::assets::icons::LIST
-            },
-        );
-    });
     button
+}
+
+fn browser_mode_icon(mode: BrowserMode) -> &'static str {
+    match mode {
+        BrowserMode::Columns => crate::assets::icons::COLUMNS,
+        BrowserMode::Icons => crate::assets::icons::ICONS,
+        BrowserMode::List => crate::assets::icons::LIST,
+    }
 }
 
 fn appearance_option(
@@ -1322,30 +1627,96 @@ fn append_menu_heading(container: &gtk::Box, text: &str) {
     container.append(&heading);
 }
 
-struct SidebarState {
+pub(super) struct SidebarState {
     widget: gtk::Box,
     view: BrowserView,
     browser: Rc<Browser>,
     volume_monitor: gio::VolumeMonitor,
+    mount_monitor: gio_unix::MountMonitor,
     theme_manager: Rc<super::theme::ThemeManager>,
     place_order: RefCell<Vec<&'static str>>,
     pinned_places: Rc<RefCell<Vec<(Location, String)>>>,
     place_rows: RefCell<Vec<(Location, gtk::Button)>>,
+    trash_contents: Cell<TrashContents>,
+    trash_menu_rows: RefCell<Option<TrashMenuRows>>,
+    trash_monitor: RefCell<Option<gio::FileMonitor>>,
+    trash_probe_running: Cell<bool>,
+    trash_probe_pending: Cell<bool>,
+    local_only: bool,
 }
 
-struct SidebarView {
-    widget: gtk::Widget,
-    state: Rc<SidebarState>,
+/// Rows of the Trash sidebar context menu that only make sense while Trash holds items.
+struct TrashMenuRows {
+    separator: gtk::Separator,
+    empty: gtk::Button,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum TrashContents {
+    /// Not probed yet, or the probe failed.
+    Unknown,
+    Empty,
+    NonEmpty,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct TrashMenuVisibility {
+    separator: bool,
+    empty: bool,
+}
+
+/// Destructive actions stay hidden until Trash is confirmed to hold something, and the
+/// separator goes with them so Properties is not left above an empty gap.
+fn trash_menu_visibility(contents: TrashContents) -> TrashMenuVisibility {
+    let visible = matches!(contents, TrashContents::NonEmpty);
+    TrashMenuVisibility {
+        separator: visible,
+        empty: visible,
+    }
+}
+
+fn sync_trash_menu_rows(rows: &TrashMenuRows, contents: TrashContents) {
+    let visibility = trash_menu_visibility(contents);
+    rows.separator.set_visible(visibility.separator);
+    rows.empty.set_visible(visibility.empty);
+}
+
+fn trash_contents_from_probe(probe: Result<bool, glib::Error>) -> TrashContents {
+    match probe {
+        Ok(true) => TrashContents::NonEmpty,
+        Ok(false) => TrashContents::Empty,
+        Err(_) => TrashContents::Unknown,
+    }
+}
+
+fn event_changes_trash_contents(event: &BrowserEvent) -> bool {
+    matches!(
+        event,
+        BrowserEvent::DeletionFinished
+            | BrowserEvent::RestorationFinished
+            | BrowserEvent::TransferFinished { .. }
+            | BrowserEvent::OperationCompletedWithErrors { .. }
+            | BrowserEvent::OperationCancelled { .. }
+    )
+}
+
+pub(super) struct SidebarView {
+    pub(super) widget: gtk::Widget,
+    pub(super) state: Rc<SidebarState>,
     update_notice: gtk::Button,
     update_area: gtk::Box,
     update_label: gtk::Label,
     handlers: RefCell<Vec<glib::SignalHandlerId>>,
+    mount_handler: RefCell<Option<glib::SignalHandlerId>>,
 }
 
 impl SidebarView {
-    fn disconnect(&self) {
+    pub(super) fn disconnect(&self) {
         for handler in self.handlers.take() {
             self.state.volume_monitor.disconnect(handler);
+        }
+        if let Some(handler) = self.mount_handler.take() {
+            self.state.mount_monitor.disconnect(handler);
         }
     }
 }
@@ -1368,12 +1739,14 @@ impl SidebarState {
             "Home",
             Location::local(home_directory()),
         );
-        self.append_trash_place();
-        self.append_place(
-            crate::assets::icons::NETWORK,
-            "Network",
-            Location::uri("network:///"),
-        );
+        if !self.local_only {
+            self.append_trash_place();
+            self.append_place(
+                crate::assets::icons::NETWORK,
+                "Network",
+                Location::uri("network:///"),
+            );
+        }
         self.append_separator();
 
         for place in self.place_order.borrow().clone() {
@@ -1381,7 +1754,11 @@ impl SidebarState {
                 && let Some(path) = glib::user_special_dir(directory)
                     .filter(|path| should_show_standard_place(place, path, &home_directory()))
             {
-                self.append_reorderable_place(place, icon, name, Location::local(path));
+                if self.local_only {
+                    self.append_place(icon, name, Location::local(path));
+                } else {
+                    self.append_reorderable_place(place, icon, name, Location::local(path));
+                }
             }
         }
 
@@ -1391,35 +1768,64 @@ impl SidebarState {
             .iter()
             .enumerate()
             .filter(|(_, (location, _))| !is_standard_place_location(location))
+            .filter(|(_, (location, _))| !self.local_only || location.native_path().is_some())
             .map(|(index, (location, name))| (index, location.clone(), name.clone()))
             .collect::<Vec<_>>();
         if !pinned.is_empty() {
             self.append_separator();
             self.append_heading("PINNED");
             for (index, location, name) in pinned {
-                self.append_pinned_place(index, &name, location);
+                if self.local_only {
+                    self.append_place(crate::assets::icons::FOLDER, &name, location);
+                } else {
+                    self.append_pinned_place(index, &name, location);
+                }
             }
         }
     }
 
     fn append_devices(self: &Rc<Self>) {
         let volumes = self.volume_monitor.volumes();
+        let represented = self
+            .volume_monitor
+            .mounts()
+            .into_iter()
+            .chain(volumes.iter().filter_map(|volume| volume.get_mount()))
+            .filter_map(|mount| mount.root().path());
+        let fallback =
+            devices::unrepresented_devices(devices::system_mounted_devices(), represented);
         let mounts: Vec<_> = self
             .volume_monitor
             .mounts()
             .into_iter()
-            .filter(|mount| !mount.is_shadowed() && mount.volume().is_none())
+            .filter(|mount| !mount.is_shadowed())
+            .filter(|mount| {
+                !mount
+                    .volume()
+                    .is_some_and(|volume| volumes.contains(&volume))
+            })
             .filter_map(|mount| {
                 let name = mount.name().to_string();
                 let location = location_for_file(&mount.root())?;
+                if self.local_only && location.native_path().is_none() {
+                    return None;
+                }
                 Some((name, location, mount))
             })
             .collect();
-        if !volumes.is_empty() || !mounts.is_empty() {
+        if !volumes.is_empty() || !mounts.is_empty() || !fallback.is_empty() {
             self.append_separator();
             self.append_heading("DEVICES");
             for volume in volumes {
                 self.append_volume(volume);
+            }
+            for device in fallback {
+                self.append_device_place(
+                    crate::assets::icons::HARD_DRIVE,
+                    &device.name,
+                    Location::local(device.root),
+                    None,
+                );
             }
             for (name, location, mount) in mounts {
                 if is_smb_location(&location) {
@@ -1499,12 +1905,77 @@ impl SidebarState {
         }
     }
 
-    fn focus_active_place(&self) -> bool {
+    pub(super) fn focus_active_place(&self) -> bool {
         let rows = self.place_rows.borrow();
         rows.iter()
             .find(|(_, row)| row.has_css_class("active"))
             .or_else(|| rows.first())
             .is_some_and(|(_, row)| row.grab_focus())
+    }
+
+    fn apply_trash_menu_visibility(&self) {
+        if let Some(rows) = self.trash_menu_rows.borrow().as_ref() {
+            sync_trash_menu_rows(rows, self.trash_contents.get());
+        }
+    }
+
+    fn set_trash_contents(&self, contents: TrashContents) {
+        if self.trash_contents.get() == contents {
+            return;
+        }
+        self.trash_contents.set(contents);
+        self.apply_trash_menu_visibility();
+    }
+
+    fn refresh_trash_contents(self: &Rc<Self>) {
+        if self.local_only {
+            return;
+        }
+        // A probe already in flight may have read Trash before this change landed, so queue
+        // another pass instead of trusting the result it is about to return.
+        if self.trash_probe_running.get() {
+            self.trash_probe_pending.set(true);
+            return;
+        }
+        self.trash_probe_running.set(true);
+        let weak = Rc::downgrade(self);
+        glib::MainContext::default().spawn_local(async move {
+            let probe = trash_has_entries(&gio::File::for_uri("trash:///")).await;
+            if let Err(error) = &probe {
+                tracing::warn!(
+                    error_domain = ?error.domain(),
+                    error_code = error.code(),
+                    "unable to read trash contents"
+                );
+            }
+            if let Some(state) = weak.upgrade() {
+                state.trash_probe_running.set(false);
+                state.set_trash_contents(trash_contents_from_probe(probe));
+                if state.trash_probe_pending.replace(false) {
+                    state.refresh_trash_contents();
+                }
+            }
+        });
+    }
+
+    /// Keeps the context menu current when another application changes `trash:///`.
+    fn watch_trash(self: &Rc<Self>) {
+        if self.trash_monitor.borrow().is_some() {
+            return;
+        }
+        let trash = gio::File::for_uri("trash:///");
+        let Ok(monitor) =
+            trash.monitor_directory(gio::FileMonitorFlags::NONE, gio::Cancellable::NONE)
+        else {
+            return;
+        };
+        let weak = Rc::downgrade(self);
+        monitor.connect_changed(move |_, _, _, _| {
+            if let Some(state) = weak.upgrade() {
+                state.refresh_trash_contents();
+            }
+        });
+        *self.trash_monitor.borrow_mut() = Some(monitor);
     }
 
     fn append_trash_place(self: &Rc<Self>) {
@@ -1524,14 +1995,22 @@ impl SidebarState {
             }
         });
 
-        let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let menu = super::accessibility::menu_box();
         menu.add_css_class("folder-context-menu");
         let properties = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
         let empty = sidebar_context_option(crate::assets::icons::TRASH, "Empty Trash…", true);
         empty.add_css_class("danger");
+        let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
         menu.append(&properties);
-        menu.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+        menu.append(&separator);
         menu.append(&empty);
+        *self.trash_menu_rows.borrow_mut() = Some(TrashMenuRows {
+            separator,
+            empty: empty.clone(),
+        });
+        self.apply_trash_menu_visibility();
+        self.watch_trash();
+        self.refresh_trash_contents();
         let popover = gtk::Popover::builder()
             .child(&menu)
             .autohide(true)
@@ -1558,11 +2037,15 @@ impl SidebarState {
         let context = gtk::GestureClick::new();
         context.set_button(3);
         let weak_popover = popover.downgrade();
+        let weak_state = Rc::downgrade(self);
         context.connect_pressed(move |gesture, _, x, y| {
             gesture.set_state(gtk::EventSequenceState::Claimed);
             let Some(popover) = weak_popover.upgrade() else {
                 return;
             };
+            if let Some(state) = weak_state.upgrade() {
+                state.refresh_trash_contents();
+            }
             popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
                 x.round() as i32,
                 y.round() as i32,
@@ -1603,6 +2086,14 @@ impl SidebarState {
         row.add_controller(drag);
 
         let drop = gtk::DropTarget::new(String::static_type(), gtk::gdk::DragAction::MOVE);
+        drop.connect_accept(|_, offered| {
+            accepts_sidebar_reorder_payload(
+                offered.formats().contains_type(String::static_type()),
+                offered
+                    .formats()
+                    .contains_type(gtk::gdk::FileList::static_type()),
+            )
+        });
         let weak_state = Rc::downgrade(self);
         let target_row = row.clone();
         drop.connect_drop(move |_, value, _, y| {
@@ -1630,6 +2121,7 @@ impl SidebarState {
         self.place_rows
             .borrow_mut()
             .push((location.clone(), row.clone()));
+        install_sidebar_file_drop(&self.view, &row, location.clone());
         let weak_browser = Rc::downgrade(&self.browser);
         let sidebar = self.widget.clone();
         let selected_row = row.clone();
@@ -1699,13 +2191,17 @@ impl SidebarState {
         if let Some(mount) = volume.get_mount()
             && let Some(location) = location_for_file(&mount.root())
         {
-            self.place_rows.borrow_mut().push((location, row.clone()));
+            self.place_rows
+                .borrow_mut()
+                .push((location.clone(), row.clone()));
+            install_sidebar_file_drop(&self.view, &row, location);
         }
         let weak_browser = Rc::downgrade(&self.browser);
         let sidebar = self.widget.clone();
         let selected_row = row.clone();
         let clicked_volume = volume.clone();
-        row.connect_clicked(move |button| {
+        let mount_view = self.view.clone();
+        row.connect_clicked(move |_| {
             let volume = clicked_volume.clone();
             select_sidebar_row(&sidebar, &selected_row);
             let Some(browser) = weak_browser.upgrade() else {
@@ -1716,28 +2212,7 @@ impl SidebarState {
                 return;
             }
 
-            let window = button.root().and_downcast::<gtk::Window>();
-            let operation = gtk::MountOperation::new(window.as_ref());
-            glib::MainContext::default().spawn_local(async move {
-                match volume
-                    .mount_future(gio::MountMountFlags::NONE, Some(&operation))
-                    .await
-                {
-                    Ok(()) => {
-                        if let Some(mount) = volume.get_mount() {
-                            navigate_to_gio_file(&browser, &mount.root());
-                        }
-                    }
-                    Err(error) => {
-                        let dialog = gtk::AlertDialog::builder()
-                            .modal(true)
-                            .message("Unable to mount volume")
-                            .detail(error.to_string())
-                            .build();
-                        dialog.show(window.as_ref());
-                    }
-                }
-            });
+            mount_view.mount_volume(volume);
         });
         let (mount_can_eject, mount_can_unmount) = volume
             .get_mount()
@@ -1774,7 +2249,7 @@ impl SidebarState {
     fn append_smb_mount(self: &Rc<Self>, name: &str, location: Location, mount: gio::Mount) {
         let properties_location = location.clone();
         let row = self.append_place(crate::assets::icons::NETWORK, name, location);
-        let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let menu = super::accessibility::menu_box();
         menu.add_css_class("folder-context-menu");
         let properties = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
         let disconnect = sidebar_context_option(crate::assets::icons::UNPLUG, "Disconnect", true);
@@ -1842,7 +2317,7 @@ impl SidebarState {
     fn append_pinned_place(self: &Rc<Self>, index: usize, name: &str, location: Location) {
         let row = self.append_place(crate::assets::icons::FOLDER, name, location.clone());
         self.make_pinned_row_reorderable(&row, index);
-        let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let menu = super::accessibility::menu_box();
         menu.add_css_class("folder-context-menu");
         let unpin = sidebar_context_option(crate::assets::icons::PIN, "Unpin", false);
         let properties = sidebar_context_option(crate::assets::icons::INFO, "Properties", false);
@@ -1925,6 +2400,7 @@ impl SidebarState {
         self.place_rows
             .borrow_mut()
             .push((location.clone(), row.clone()));
+        install_sidebar_file_drop(&self.view, &row, location.clone());
         let weak_browser = Rc::downgrade(&self.browser);
         let sidebar = self.widget.clone();
         let selected_row = row.clone();
@@ -1949,6 +2425,45 @@ impl SidebarState {
         }
         row
     }
+}
+
+fn accepts_sidebar_reorder_payload(has_string: bool, has_file_list: bool) -> bool {
+    has_string && !has_file_list
+}
+
+fn sidebar_accepts_file_drop(location: &Location) -> bool {
+    location.native_path().is_some()
+}
+
+fn install_sidebar_file_drop(
+    view: &BrowserView,
+    row: &impl IsA<gtk::Widget>,
+    destination: Location,
+) {
+    if !sidebar_accepts_file_drop(&destination) {
+        return;
+    }
+    row.add_css_class("file-drop-zone");
+    let drop = gtk::DropTarget::new(
+        gtk::gdk::FileList::static_type(),
+        gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
+    );
+    drop.set_propagation_phase(gtk::PropagationPhase::Capture);
+    drop.connect_enter(|target, _, _| file_drop_action(target));
+    drop.connect_motion(|target, _, _| file_drop_action(target));
+    let view = view.clone();
+    drop.connect_drop(move |target, value, _, _| {
+        let Some(sources) = locations_from_file_list_value(value) else {
+            return false;
+        };
+        if sources.is_empty() {
+            return false;
+        }
+        let move_sources = file_drop_action(target) == gtk::gdk::DragAction::MOVE;
+        view.start_transfer(destination.clone(), sources, move_sources);
+        true
+    });
+    row.add_controller(drop);
 }
 
 fn select_sidebar_row(sidebar: &gtk::Box, selected: &gtk::Button) {
@@ -2286,8 +2801,23 @@ fn standard_place(id: &str) -> Option<(&'static str, &'static str, glib::UserDir
     }
 }
 
+async fn trash_has_entries(root: &gio::File) -> Result<bool, glib::Error> {
+    let enumerator = root
+        .enumerate_children_future(
+            gio::FILE_ATTRIBUTE_STANDARD_NAME,
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            glib::Priority::DEFAULT,
+        )
+        .await?;
+    let children = enumerator
+        .next_files_future(1, glib::Priority::DEFAULT)
+        .await?;
+    Ok(!children.is_empty())
+}
+
 fn sidebar_context_option(icon: &str, label: &str, danger: bool) -> gtk::Button {
-    let button = gtk::Button::new();
+    let button = super::accessibility::menu_item_button();
+    super::accessibility::describe_menu_item(&button, label, "");
     button.add_css_class("item-context-option");
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let icon = if danger {
@@ -2296,11 +2826,11 @@ fn sidebar_context_option(icon: &str, label: &str, danger: bool) -> gtk::Button 
         crate::assets::primary_icon(icon, 15)
     };
     icon.add_css_class("item-context-icon");
-    let label = gtk::Label::new(Some(label));
-    label.set_xalign(0.0);
-    label.set_hexpand(true);
+    let title = gtk::Label::new(Some(label));
+    title.set_xalign(0.0);
+    title.set_hexpand(true);
     row.append(&icon);
-    row.append(&label);
+    row.append(&title);
     button.set_child(Some(&row));
     button
 }
@@ -2349,7 +2879,7 @@ fn sidebar_device_row(row: &gtk::Button, eject: &gtk::Button) -> gtk::Box {
 }
 
 fn attach_device_release_menu(row: &gtk::Button, action: MediaRelease, on_release: Rc<dyn Fn()>) {
-    let menu = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let menu = super::accessibility::menu_box();
     menu.add_css_class("folder-context-menu");
     let release = sidebar_context_option(
         crate::assets::icons::EJECT,
@@ -2412,7 +2942,11 @@ fn sidebar_update_label(release: &ReleaseMetadata) -> String {
     }
 }
 
-fn build_sidebar(view: BrowserView, theme_manager: Rc<super::theme::ThemeManager>) -> SidebarView {
+pub(super) fn build_sidebar(
+    view: BrowserView,
+    theme_manager: Rc<super::theme::ThemeManager>,
+    local_only: bool,
+) -> SidebarView {
     let widget = gtk::Box::new(gtk::Orientation::Vertical, 2);
     widget.add_css_class("sidebar");
     let scroller = gtk::ScrolledWindow::builder()
@@ -2460,19 +2994,49 @@ fn build_sidebar(view: BrowserView, theme_manager: Rc<super::theme::ThemeManager
         browser: view.browser(),
         view,
         volume_monitor,
+        mount_monitor: gio_unix::MountMonitor::get(),
         theme_manager,
         place_order: RefCell::new(place_order),
         pinned_places: Rc::new(RefCell::new(load_pinned_places())),
         place_rows: RefCell::new(Vec::new()),
+        trash_contents: Cell::new(TrashContents::Unknown),
+        trash_menu_rows: RefCell::new(None),
+        trash_monitor: RefCell::new(None),
+        trash_probe_running: Cell::new(false),
+        trash_probe_pending: Cell::new(false),
+        local_only,
     });
 
     let weak = Rc::downgrade(&state);
+    state.theme_manager.bind_preference(
+        &state.widget,
+        ThemeManager::sidebar_order,
+        move |_, order| {
+            if let Some(state) = weak.upgrade() {
+                let order = resolve_place_order(&order);
+                if *state.place_order.borrow() != order {
+                    state.place_order.replace(order);
+                    state.rebuild();
+                }
+            }
+        },
+    );
+
+    let weak = Rc::downgrade(&state);
     state.browser.observe(move |event| {
-        if !SidebarState::event_changes_active_place(event) {
+        let changes_active_place = SidebarState::event_changes_active_place(event);
+        let changes_trash = event_changes_trash_contents(event);
+        if !changes_active_place && !changes_trash {
             return;
         }
-        if let Some(state) = weak.upgrade() {
+        let Some(state) = weak.upgrade() else {
+            return;
+        };
+        if changes_active_place {
             state.sync_active_place();
+        }
+        if changes_trash {
+            state.refresh_trash_contents();
         }
     });
 
@@ -2513,6 +3077,12 @@ fn build_sidebar(view: BrowserView, theme_manager: Rc<super::theme::ThemeManager
             state.rebuild();
         }
     }));
+    let weak = Rc::downgrade(&state);
+    let mount_handler = state.mount_monitor.connect_mounts_changed(move |_| {
+        if let Some(state) = weak.upgrade() {
+            state.rebuild();
+        }
+    });
     state.append_static_places();
     state.sync_active_place();
     SidebarView {
@@ -2522,6 +3092,7 @@ fn build_sidebar(view: BrowserView, theme_manager: Rc<super::theme::ThemeManager
         update_area,
         update_label,
         handlers: RefCell::new(handlers),
+        mount_handler: RefCell::new(Some(mount_handler)),
     }
 }
 
@@ -2593,7 +3164,7 @@ fn serialize_pinned_places(places: &[(Location, String)]) -> String {
     contents
 }
 
-fn home_directory() -> PathBuf {
+pub(crate) fn home_directory() -> PathBuf {
     env::var_os("HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/"))
@@ -2602,7 +3173,7 @@ fn home_directory() -> PathBuf {
 #[cfg(test)]
 mod tests;
 
-fn load_styles() {
+pub(super) fn load_styles() {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(include_str!("../style.css"));
 

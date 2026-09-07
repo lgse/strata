@@ -15,16 +15,17 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
+    adapters::{gio_file_for_location, location_for_file},
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
-        backend_unavailable_message, sanitize_uri_credentials,
+        backend_unavailable_message,
     },
 };
 
-const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,access::can-trash";
-const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,time::modified,unix::mode,access::can-trash";
+const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,access::can-trash,access::can-delete";
+const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,standard::target-uri,time::modified,unix::mode,access::can-trash,access::can-delete";
 const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified,unix::mode";
 const MAX_PENDING_MONITOR_CHANGES: usize = 256;
 const MAX_HIDDEN_FILE_BYTES: u64 = 1024 * 1024;
@@ -34,11 +35,13 @@ pub struct LocalFileSource;
 
 #[derive(Clone)]
 enum PendingMonitorChange {
-    Upsert(PathBuf),
-    Remove(PathBuf),
-    Move { from: PathBuf, to: PathBuf },
+    Upsert(Location),
+    Remove(Location),
+    Move { from: Location, to: Location },
     Rescan,
 }
+
+type PendingMonitorKey = Option<Location>;
 
 enum NativeEnumeration {
     Complete {
@@ -46,6 +49,7 @@ enum NativeEnumeration {
         truncated: bool,
         metadata_complete: bool,
         can_trash: Option<bool>,
+        can_delete: Option<bool>,
     },
     Failed(String),
     Cancelled,
@@ -57,23 +61,6 @@ fn map_validation_error(error: std::io::Error) -> LocationValidationError {
         ErrorKind::PermissionDenied => LocationValidationError::Inaccessible,
         _ => LocationValidationError::Unavailable(error.to_string()),
     }
-}
-
-/// Builds a `Location` for a `gio::File`, preferring a native path only when
-/// the file is genuinely on a local filesystem. A mounted GVfs backend (SMB,
-/// SFTP, ...) can still return a `.path()` via its FUSE mirror even though the
-/// file isn't native; using that path would leak the mirror's opaque
-/// `/run/user/$UID/gvfs/...` location instead of the clean URI (lgse/strata#5).
-/// Returns `None` when GIO provides a malformed URI.
-pub(crate) fn location_for_file(file: &gio::File) -> Option<Location> {
-    if file.is_native()
-        && let Some(path) = file.path()
-    {
-        return Some(Location::local(path));
-    }
-    let uri = file.uri();
-    let (sanitized, _) = sanitize_uri_credentials(&uri).ok()?;
-    Some(Location::uri(sanitized))
 }
 
 fn uri_validation_result(
@@ -109,6 +96,11 @@ fn info_is_symlink(info: &gio::FileInfo) -> bool {
 fn info_can_trash(info: &gio::FileInfo) -> Option<bool> {
     info.has_attribute(gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH)
         .then(|| info.boolean(gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH))
+}
+
+fn info_can_delete(info: &gio::FileInfo) -> Option<bool> {
+    info.has_attribute(gio::FILE_ATTRIBUTE_ACCESS_CAN_DELETE)
+        .then(|| info.boolean(gio::FILE_ATTRIBUTE_ACCESS_CAN_DELETE))
 }
 
 fn info_mode(info: &gio::FileInfo) -> MetadataValue<u32> {
@@ -154,6 +146,7 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         MetadataValue::Unknown
     };
     FileEntry {
+        thumbnail_path: trash_thumbnail_path(&location, &info),
         location,
         native_name,
         display_name: info.display_name().to_string(),
@@ -163,6 +156,20 @@ fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
         mode: info_mode(&info),
         is_hidden: info_is_hidden(&info),
     }
+}
+
+fn trash_thumbnail_path(location: &Location, info: &gio::FileInfo) -> Option<PathBuf> {
+    if !location
+        .uri_value()
+        .is_some_and(|uri| uri.starts_with("trash:"))
+    {
+        return None;
+    }
+    let target = info.attribute_string(gio::FILE_ATTRIBUTE_STANDARD_TARGET_URI)?;
+    let (path, hostname) = glib::filename_from_uri(&target).ok()?;
+    hostname
+        .is_none_or(|host| host.eq_ignore_ascii_case("localhost"))
+        .then_some(path)
 }
 
 fn native_kind(file_type: fs::FileType, path: &Path) -> EntryKind {
@@ -299,6 +306,7 @@ fn scan_native_directory(
         entries.push(FileEntry {
             location: Location::local(path),
             display_name: native_name.to_string_lossy().into_owned(),
+            thumbnail_path: None,
             native_name,
             kind,
             size: MetadataValue::Unknown,
@@ -308,19 +316,21 @@ fn scan_native_directory(
         });
     }
 
-    // `access::can-trash` describes the queried item, not its children. Probe one
-    // actual entry so a directory that cannot itself be removed (such as `$HOME`)
-    // does not incorrectly hide Trash for the entries it contains.
-    let can_trash = entries.first().and_then(|entry| {
+    // `access::can-trash`/`access::can-delete` describe the queried item, not its
+    // children. Probe one actual entry so a directory that cannot itself be removed
+    // (such as `$HOME`) does not incorrectly hide Trash/delete for the entries it
+    // contains.
+    let probed_capabilities = entries.first().and_then(|entry| {
         gio::File::for_path(entry.location.native_path()?)
             .query_info(
-                gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH,
+                "access::can-trash,access::can-delete",
                 gio::FileQueryInfoFlags::NONE,
                 Some(cancellable),
             )
             .ok()
-            .and_then(|info| info_can_trash(&info))
     });
+    let can_trash = probed_capabilities.as_ref().and_then(info_can_trash);
+    let can_delete = probed_capabilities.as_ref().and_then(info_can_delete);
 
     let mut metadata_complete = true;
     if request.include_metadata && !entries.is_empty() && Instant::now() < deadline {
@@ -352,6 +362,7 @@ fn scan_native_directory(
         truncated,
         metadata_complete,
         can_trash,
+        can_delete,
     }
 }
 
@@ -383,6 +394,7 @@ fn enumerate_native(
                 truncated,
                 metadata_complete,
                 can_trash,
+                can_delete,
             } => {
                 let total_entries = entries.len();
                 if !entries.is_empty() {
@@ -427,6 +439,7 @@ fn enumerate_native(
                     request_id,
                     truncated,
                     can_trash,
+                    can_delete,
                 });
             }
             NativeEnumeration::Failed(message) => {
@@ -507,30 +520,31 @@ impl FileSource for LocalFileSource {
         }
 
         let task = glib::MainContext::default().spawn_local(async move {
-            let directory = location
-                .native_path()
-                .map(gio::File::for_path)
-                .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()));
+            let directory = gio_file_for_location(&location);
             let deadline = started + request.time_budget;
-            let finish_truncated =
-                |entries: usize, reason: &'static str, can_trash: Option<bool>| {
-                    tracing::warn!(
-                        request_id = request_id.0,
-                        entries,
-                        elapsed_ms = started.elapsed().as_millis() as u64,
-                        reason,
-                        "directory load truncated"
-                    );
-                    emit(DirectoryEvent::Finished {
-                        request_id,
-                        truncated: true,
-                        can_trash,
-                    });
-                };
+            let finish_truncated = |entries: usize,
+                                    reason: &'static str,
+                                    can_trash: Option<bool>,
+                                    can_delete: Option<bool>| {
+                tracing::warn!(
+                    request_id = request_id.0,
+                    entries,
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    reason,
+                    "directory load truncated"
+                );
+                emit(DirectoryEvent::Finished {
+                    request_id,
+                    truncated: true,
+                    can_trash,
+                    can_delete,
+                });
+            };
             let mut can_trash = None;
+            let mut can_delete = None;
             let remaining = deadline.saturating_duration_since(Instant::now());
             if remaining.is_zero() {
-                finish_truncated(0, "time budget", can_trash);
+                finish_truncated(0, "time budget", can_trash, can_delete);
                 return;
             }
             let attributes = if request.include_metadata {
@@ -563,7 +577,7 @@ impl FileSource for LocalFileSource {
                     return;
                 }
                 Err(_) => {
-                    finish_truncated(0, "time budget", can_trash);
+                    finish_truncated(0, "time budget", can_trash, can_delete);
                     return;
                 }
             };
@@ -573,7 +587,7 @@ impl FileSource for LocalFileSource {
             loop {
                 let remaining = deadline.saturating_duration_since(Instant::now());
                 if remaining.is_zero() {
-                    finish_truncated(total_entries, "time budget", can_trash);
+                    finish_truncated(total_entries, "time budget", can_trash, can_delete);
                     break;
                 }
                 match glib::future_with_timeout(
@@ -594,12 +608,16 @@ impl FileSource for LocalFileSource {
                             request_id,
                             truncated: false,
                             can_trash,
+                            can_delete,
                         });
                         break;
                     }
                     Ok(Ok(files)) => {
                         if can_trash.is_none() {
                             can_trash = files.iter().find_map(info_can_trash);
+                        }
+                        if can_delete.is_none() {
+                            can_delete = files.iter().find_map(info_can_delete);
                         }
                         let mut entries: Vec<_> = files
                             .into_iter()
@@ -626,7 +644,7 @@ impl FileSource for LocalFileSource {
                             entries,
                         });
                         if entry_budget_exhausted {
-                            finish_truncated(total_entries, "entry budget", can_trash);
+                            finish_truncated(total_entries, "entry budget", can_trash, can_delete);
                             break;
                         }
                     }
@@ -644,7 +662,7 @@ impl FileSource for LocalFileSource {
                         break;
                     }
                     Err(_) => {
-                        finish_truncated(total_entries, "time budget", can_trash);
+                        finish_truncated(total_entries, "time budget", can_trash, can_delete);
                         break;
                     }
                 }
@@ -752,8 +770,7 @@ impl FileSource for LocalFileSource {
         notify: Rc<dyn Fn(DirectoryChange)>,
     ) -> Option<LoadHandle> {
         let _ = include_hidden;
-        let path = location.native_path()?.to_path_buf();
-        let file = gio::File::for_path(&path);
+        let file = gio_file_for_location(&location);
         let monitor = match file.monitor_directory(
             gio::FileMonitorFlags::WATCH_MOVES,
             None::<&gio::Cancellable>,
@@ -775,32 +792,35 @@ impl FileSource for LocalFileSource {
         };
 
         let cancelled = Rc::new(Cell::new(false));
-        let pending = Rc::new(RefCell::new(HashMap::<PathBuf, PendingMonitorChange>::new()));
+        let pending = Rc::new(RefCell::new(HashMap::<
+            PendingMonitorKey,
+            PendingMonitorChange,
+        >::new()));
         let timeout = Rc::new(RefCell::new(None::<glib::SourceId>));
         let pending_for_change = pending.clone();
         let timeout_for_change = timeout.clone();
         let cancelled_for_change = cancelled.clone();
+        let watched = location.clone();
         monitor.connect_changed(move |_, file, other_file, event| {
-            if pending_for_change.borrow().contains_key(Path::new("")) {
+            if pending_for_change.borrow().contains_key(&None) {
                 return;
             }
-            let path = file.path();
-            let other_path = other_file.and_then(gio::File::path);
+            let changed = monitored_change_target(&watched, location_for_file(file), event);
+            let other = other_file.and_then(location_for_file);
             let change = match event {
                 gio::FileMonitorEvent::Deleted | gio::FileMonitorEvent::MovedOut => {
-                    path.clone().map(PendingMonitorChange::Remove)
+                    changed.map(PendingMonitorChange::Remove)
                 }
                 gio::FileMonitorEvent::Created | gio::FileMonitorEvent::MovedIn => {
-                    path.clone().map(PendingMonitorChange::Upsert)
+                    changed.map(PendingMonitorChange::Upsert)
                 }
                 gio::FileMonitorEvent::Changed
                 | gio::FileMonitorEvent::ChangesDoneHint
                 | gio::FileMonitorEvent::AttributeChanged => {
-                    path.clone().map(PendingMonitorChange::Upsert)
+                    changed.map(PendingMonitorChange::Upsert)
                 }
-                gio::FileMonitorEvent::Moved | gio::FileMonitorEvent::Renamed => path
-                    .clone()
-                    .zip(other_path)
+                gio::FileMonitorEvent::Moved | gio::FileMonitorEvent::Renamed => changed
+                    .zip(other)
                     .map(|(from, to)| PendingMonitorChange::Move { from, to }),
                 gio::FileMonitorEvent::PreUnmount | gio::FileMonitorEvent::Unmounted => {
                     Some(PendingMonitorChange::Rescan)
@@ -811,11 +831,11 @@ impl FileSource for LocalFileSource {
                 return;
             };
             let key = match &change {
-                PendingMonitorChange::Upsert(path) | PendingMonitorChange::Remove(path) => {
-                    path.clone()
+                PendingMonitorChange::Upsert(location) | PendingMonitorChange::Remove(location) => {
+                    Some(location.clone())
                 }
-                PendingMonitorChange::Move { to, .. } => to.clone(),
-                PendingMonitorChange::Rescan => PathBuf::new(),
+                PendingMonitorChange::Move { to, .. } => Some(to.clone()),
+                PendingMonitorChange::Rescan => None,
             };
             if !queue_monitor_change(&mut pending_for_change.borrow_mut(), key, change) {
                 return;
@@ -1041,12 +1061,26 @@ fn log_directory_load_started(request_id: RequestId, location: &Location) {
     );
 }
 
+// GVfs can report content changes against the watched directory itself; keep only departures.
+fn monitored_change_target(
+    watched: &Location,
+    changed: Option<Location>,
+    event: gio::FileMonitorEvent,
+) -> Option<Location> {
+    let changed = changed?;
+    let departed = matches!(
+        event,
+        gio::FileMonitorEvent::Deleted | gio::FileMonitorEvent::MovedOut
+    );
+    (&changed != watched || departed).then_some(changed)
+}
+
 fn queue_monitor_change(
-    pending: &mut HashMap<PathBuf, PendingMonitorChange>,
-    key: PathBuf,
+    pending: &mut HashMap<PendingMonitorKey, PendingMonitorChange>,
+    key: PendingMonitorKey,
     change: PendingMonitorChange,
 ) -> bool {
-    if pending.contains_key(Path::new("")) {
+    if pending.contains_key(&None) {
         return false;
     }
     pending
@@ -1057,7 +1091,7 @@ fn queue_monitor_change(
         .or_insert(change);
     if pending.len() > MAX_PENDING_MONITOR_CHANGES {
         pending.clear();
-        pending.insert(PathBuf::new(), PendingMonitorChange::Rescan);
+        pending.insert(None, PendingMonitorChange::Rescan);
     }
     true
 }
@@ -1080,7 +1114,7 @@ fn merge_pending_change(
 }
 
 fn flush_monitor_changes(
-    pending: &RefCell<HashMap<PathBuf, PendingMonitorChange>>,
+    pending: &RefCell<HashMap<PendingMonitorKey, PendingMonitorChange>>,
     notify: &Rc<dyn Fn(DirectoryChange)>,
     cancelled: &Rc<Cell<bool>>,
 ) {
@@ -1099,11 +1133,11 @@ fn flush_monitor_changes(
 
     for change in changes {
         match change {
-            PendingMonitorChange::Remove(path) => {
-                notify(DirectoryChange::Remove(Location::local(path)));
+            PendingMonitorChange::Remove(location) => {
+                notify(DirectoryChange::Remove(location));
             }
-            PendingMonitorChange::Upsert(path) => {
-                query_monitored_entry(path, None, notify.clone(), cancelled.clone())
+            PendingMonitorChange::Upsert(location) => {
+                query_monitored_entry(location, None, notify.clone(), cancelled.clone())
             }
             PendingMonitorChange::Move { from, to } => {
                 query_monitored_entry(to, Some(from), notify.clone(), cancelled.clone())
@@ -1114,13 +1148,13 @@ fn flush_monitor_changes(
 }
 
 fn query_monitored_entry(
-    path: PathBuf,
-    moved_from: Option<PathBuf>,
+    location: Location,
+    moved_from: Option<Location>,
     notify: Rc<dyn Fn(DirectoryChange)>,
     cancelled: Rc<Cell<bool>>,
 ) {
     glib::MainContext::default().spawn_local(async move {
-        let file = gio::File::for_path(&path);
+        let file = gio_file_for_location(&location);
         let result = file
             .query_info_future(
                 FULL_ATTRIBUTES,
@@ -1133,24 +1167,25 @@ fn query_monitored_entry(
         }
         match result {
             Ok(info) => {
-                let entry = entry_from_info(Location::local(path), info);
+                let entry = entry_from_info(location, info);
                 if let Some(from) = moved_from {
-                    notify(DirectoryChange::Move {
-                        from: Location::local(from),
-                        entry,
-                    });
+                    notify(DirectoryChange::Move { from, entry });
                 } else {
                     notify(DirectoryChange::Upsert(entry));
                 }
             }
             Err(error) if error.matches(gio::IOErrorEnum::NotFound) => {
-                let removed = moved_from.unwrap_or(path);
+                let removed = moved_from.unwrap_or(location);
                 if !cancelled.get() {
-                    notify(DirectoryChange::Remove(Location::local(removed)));
+                    notify(DirectoryChange::Remove(removed));
                 }
             }
             Err(error) => {
-                tracing::debug!(path = %path.display(), error = %error, "monitor metadata unavailable");
+                tracing::debug!(
+                    location = %location.diagnostic_path(),
+                    error = %error,
+                    "monitor metadata unavailable"
+                );
                 if !cancelled.get() {
                     notify(DirectoryChange::Rescan);
                 }

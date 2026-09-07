@@ -25,6 +25,17 @@ installs missing native dependencies (prompting for `sudo`) and installs
 make start-dev
 ```
 
+Project coding-agent skills are listed in `skills-lock.json`. After cloning,
+restore them into the gitignored `.agents/` directory (requires Node.js for
+`npx`):
+
+```bash
+npx skills experimental_install
+```
+
+Commit `skills-lock.json` when adding or updating skills with `npx skills add`
+or `npx skills update`. Do not commit `.agents/`.
+
 ## Branching and pull requests
 
 All changes to `main` go through a pull request. The normal process is:
@@ -85,6 +96,23 @@ Install the optional local tools with:
 cargo install --locked cargo-deny
 cargo install --locked typos-cli
 ```
+
+## End-to-end GUI tests
+
+`./scripts/check.sh` clears desktop display variables and skips display-dependent
+Rust tests. Run `./scripts/test-headless.py` to include those tests on a private
+Xvfb display without opening windows on your desktop. The end-to-end suite also
+uses a private display and checks the real application and resulting files:
+
+```bash
+./scripts/e2e.sh
+```
+
+It needs Xvfb, `at-spi2-core`, the Python AT-SPI bindings, D-Bus, and
+ImageMagick; the script names the packages when one is missing. See
+[end-to-end GUI testing](docs/e2e-testing.md) for how scenarios are written,
+how failure artifacts are collected, and how to regenerate the visual
+baselines.
 
 ## Performance fixtures
 

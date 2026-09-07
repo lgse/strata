@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -16,6 +17,7 @@ jobs:
   quality:
     name: Format, lint, and test
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
 
     steps:
       - name: Check out repository
@@ -43,9 +45,35 @@ jobs:
       - name: Run tests
         run: cargo test --all-targets --all-features
 
+  e2e:
+    name: End-to-end GUI suite
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    # A wedged X server or accessibility bus must not hold a pull request open.
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run the hardware-aware end-to-end container
+        env:
+          STRATA_E2E_WORKERS: auto
+        run: ./scripts/e2e.sh -p no:cacheprovider
+
+      - name: Upload failure artifacts
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-artifacts
+          path: target/e2e-artifacts
+          if-no-files-found: ignore
+          retention-days: 7
+
   release-scripts:
     name: Release workflow scripts
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
 
     steps:
       - name: Check out repository
@@ -57,6 +85,7 @@ jobs:
   repository-policy:
     name: Dependency and spelling policy
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
 
     steps:
       - name: Check out repository

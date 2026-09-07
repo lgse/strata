@@ -1,0 +1,49 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
+use super::*;
+
+pub(super) fn bind_switch(
+    manager: &Rc<ThemeManager>,
+    toggle: &gtk::Switch,
+    read: fn(&ThemeManager) -> bool,
+    write: fn(&ThemeManager, bool),
+) {
+    manager.bind_preference(toggle, read, |widget, value| {
+        if let Some(toggle) = widget.downcast_ref::<gtk::Switch>() {
+            toggle.set_active(value);
+        }
+    });
+    let manager = manager.clone();
+    toggle.connect_active_notify(move |toggle| {
+        let value = toggle.is_active();
+        if read(&manager) != value {
+            write(&manager, value);
+        }
+    });
+}
+
+pub(super) fn bind_choice<T: Copy + PartialEq + 'static>(
+    manager: &Rc<ThemeManager>,
+    button: &gtk::ToggleButton,
+    value: T,
+    read: impl Fn(&ThemeManager) -> T + 'static,
+    write: impl Fn(&ThemeManager, T) + 'static,
+) {
+    let read = Rc::new(read);
+    let read_for_binding = read.clone();
+    manager.bind_preference(
+        button,
+        move |manager| read_for_binding(manager) == value,
+        |widget, active| {
+            if let Some(button) = widget.downcast_ref::<gtk::ToggleButton>() {
+                button.set_active(active);
+            }
+        },
+    );
+    let manager = manager.clone();
+    button.connect_toggled(move |button| {
+        if button.is_active() && read(&manager) != value {
+            write(&manager, value);
+        }
+    });
+}

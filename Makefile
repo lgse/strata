@@ -1,13 +1,19 @@
-.PHONY: start-dev run-dev build install-local uninstall-local
+.PHONY: start-dev run-dev run-chooser-dev build install-local uninstall-local
 
 DATA_HOME ?= $(HOME)/.local/share
 BIN_DIR ?= $(HOME)/.local/bin
+CHOOSER_CASE ?= save
+CHOOSER_ARGS ?= --choices
 
 start-dev:
 	./scripts/dev.sh
 
 run-dev:
 	cargo run
+
+run-chooser-dev:
+	cargo build
+	GTK_A11Y=none python3 scripts/portal-test.py $(CHOOSER_CASE) --binary target/debug/strata $(CHOOSER_ARGS)
 
 build:
 	cargo build --release

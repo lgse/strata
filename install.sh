@@ -17,6 +17,7 @@ WITH_RAW=ask
 WITH_DESKTOP_ENTRY=ask
 WITH_FOLDER_ASSOCIATION=ask
 WITH_FILE_MANAGER=ask
+WITH_FILE_CHOOSER=ask
 WITH_OMARCHY_KEYBINDS=ask
 
 info() {
@@ -93,6 +94,8 @@ Options:
   --with-desktop-entry          Add Strata to the desktop application menu
   --with-folder-association     Make Strata the default folder handler
   --with-file-manager           Handle "Open file location" requests
+  --with-file-chooser           Use Strata for portal Open and Save dialogs
+  --without-file-chooser        Keep the current chooser; suppress the app offer
   --with-omarchy-keybinds       Replace Omarchy's file-manager keybinds
   -h, --help                    Show this help
 
@@ -115,6 +118,8 @@ parse_args() {
         WITH_FILE_MANAGER=yes
         ;;
       --with-file-manager) NON_INTERACTIVE=yes; WITH_FILE_MANAGER=yes ;;
+      --with-file-chooser) NON_INTERACTIVE=yes; WITH_FILE_CHOOSER=yes ;;
+      --without-file-chooser) NON_INTERACTIVE=yes; WITH_FILE_CHOOSER=no ;;
       --with-omarchy-keybinds) NON_INTERACTIVE=yes; WITH_OMARCHY_KEYBINDS=yes ;;
       -h | --help) usage; exit 0 ;;
       *) die "Unknown option: $1 (run with --help for usage)." ;;
@@ -342,9 +347,29 @@ EOF
   return 0
 }
 
+configure_file_chooser() {
+  local extracted=$1 arch_based=${2:-no}
+  if [[ ! -r $extracted/portal/strata.portal ]]; then
+    [[ $WITH_FILE_CHOOSER != yes ]] \
+      || die "This release does not include file chooser integration. Install a newer release."
+    return 0
+  fi
+  if want_option "$WITH_FILE_CHOOSER" \
+    'Replace your current Open/Save chooser with Strata in portal-aware apps? (Restarts the portal service; close open file dialogs first.)' no; then
+    if [[ $arch_based == yes ]]; then
+      install_optional_arch_packages "File chooser integration" xdg-desktop-portal
+    fi
+    "$BIN_PATH" --install-portal \
+      || die "File chooser setup failed. Strata is installed; retry in Settings → General → System file chooser."
+  elif [[ $NON_INTERACTIVE == no || $WITH_FILE_CHOOSER == no ]]; then
+    "$BIN_PATH" --dismiss-portal-prompt \
+      || warn "Could not save your choice. Strata may offer file chooser integration on first launch."
+  fi
+}
+
 main() {
   local target glibc distro_id distro_like omarchy_major version archive extracted url
-  local local_bin_on_path=no make_default=no
+  local local_bin_on_path=no make_default=no arch_based=no
 
   parse_args "$@"
   [[ $(uname -s) == Linux ]] || die "The prebuilt Strata release supports Linux only."
@@ -385,6 +410,7 @@ main() {
 
   if [[ $distro_id == arch || $distro_like == *arch* || -n $omarchy_major ]]; then
     command -v pacman >/dev/null 2>&1 || die "This Arch-based system does not provide pacman."
+    arch_based=yes
     install_arch_dependencies
     if want_option "$WITH_SMB" "Install optional SMB network-share support (gvfs-smb)?"; then
       install_optional_arch_packages "SMB support" gvfs-smb
@@ -455,6 +481,8 @@ main() {
     'Use Strata for "Open file location" from other applications?'; then
     install_file_manager_service "$extracted"
   fi
+
+  configure_file_chooser "$extracted" "$arch_based"
 
   if want_option "$WITH_OMARCHY_KEYBINDS" \
     "Replace Omarchy's Nautilus file-manager keybinds with Strata?"; then

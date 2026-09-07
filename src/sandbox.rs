@@ -163,8 +163,11 @@ pub(crate) fn parse(
     }
 
     let output = PrivateOutput::create().map_err(|error| error.to_string())?;
-    let executable = std::env::current_exe()
+    let current_executable = std::env::current_exe()
         .map_err(|error| format!("Unable to locate the Strata executable: {error}"))?;
+    let running_executable = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
+    let executable =
+        resolve_renderer_executable(&current_executable, &running_executable, output.path())?;
     let devices = if operation == ParseOperation::PreviewMedia {
         gpu_devices(Path::new("/dev"), media_backend)
     } else {
@@ -227,6 +230,21 @@ pub(crate) fn parse(
     }
     let (page, pages) = read_metadata(&output.path().join("result.meta"));
     Ok(ParseOutput { data, page, pages })
+}
+
+fn resolve_renderer_executable(
+    current: &Path,
+    running: &Path,
+    private_output: &Path,
+) -> Result<PathBuf, String> {
+    if current.is_file() {
+        return Ok(current.to_path_buf());
+    }
+
+    let snapshot = private_output.join("strata-preview-helper");
+    fs::copy(running, &snapshot)
+        .map_err(|error| format!("Unable to preserve the running Strata executable: {error}"))?;
+    Ok(snapshot)
 }
 
 fn spawn_renderer(command: &mut Command) -> io::Result<Child> {

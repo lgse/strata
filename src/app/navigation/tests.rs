@@ -18,6 +18,7 @@ fn entry(path: &str) -> FileEntry {
 
 fn named_entry(path: &str, name: &str) -> FileEntry {
     FileEntry {
+        thumbnail_path: None,
         location: location(path),
         native_name: OsString::from(name),
         display_name: name.into(),
@@ -27,6 +28,52 @@ fn named_entry(path: &str, name: &str) -> FileEntry {
         is_hidden: false,
         mode: MetadataValue::Unknown,
     }
+}
+
+#[test]
+fn shared_defaults_do_not_replace_existing_column_sort_selection_or_location() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(RequestId(1), vec![entry("/fixture/child")]);
+    state.set_selection(0, &[0], Some(0));
+    let local = state.column_preferences(0).expect("existing column");
+    let path = state.current_path();
+    let defaults = ViewPreferences {
+        sort_key: SortKey::Size,
+        sort_direction: SortDirection::Descending,
+        ..local
+    };
+    state.set_default_preferences(defaults);
+    assert_eq!(state.column_preferences(0), Some(local));
+    assert_eq!(state.current_path(), path);
+    assert_eq!(state.selected_positions(0), [0]);
+    state.descend(0, location("/fixture/child"), RequestId(2));
+    assert_eq!(state.column_preferences(1), Some(defaults));
+}
+
+#[test]
+fn focusing_a_column_preserves_selection_and_descendants() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/alpha", "alpha"),
+            named_entry("/fixture/bravo", "bravo"),
+        ],
+    );
+    state.set_selection(0, &[0, 1], Some(1));
+    state.descend(0, location("/fixture/alpha"), RequestId(2));
+    let path = state.current_path();
+    assert!(state.focus_column(0));
+    assert_eq!(state.selected_positions(0), [0, 1]);
+    assert_eq!(state.active_focus(), Some((0, Some(1))));
+    assert_eq!(state.current_path(), path);
+    assert!(state.focus_column(1));
+    assert_eq!(state.active_focus(), Some((1, None)));
+    assert!(state.selected_entries().is_empty());
+    assert!(!state.focus_column(2));
+    assert_eq!(state.active_depth(), Some(1));
 }
 
 #[test]
@@ -94,6 +141,62 @@ fn keyboard_range_selection_extends_and_contracts_from_its_anchor() {
         Some(vec![0, 1])
     );
     assert_eq!(state.selected_entries().len(), 2);
+}
+
+#[test]
+fn visual_ranges_cross_type_groups_and_contract_without_selecting_filtered_entries() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/a.txt", "a.txt"),
+            named_entry("/fixture/b.txt", "b.txt"),
+            named_entry("/fixture/c.txt", "c.txt"),
+            named_entry("/fixture/d.json", "d.json"),
+            named_entry("/fixture/e.json", "e.json"),
+        ],
+    );
+    state.select(0, 4);
+    let visual_order = [3, 4, 0, 2];
+    assert_eq!(
+        state.extend_visual_selection(0, 2, &visual_order),
+        Some(vec![4, 0, 2])
+    );
+    assert_eq!(
+        state.extend_visual_selection(0, 0, &visual_order),
+        Some(vec![4, 0])
+    );
+    assert_eq!(
+        state.extend_visual_selection(0, 4, &visual_order),
+        Some(vec![4])
+    );
+    assert_eq!(
+        state.extend_visual_selection(0, 3, &visual_order),
+        Some(vec![3, 4])
+    );
+    assert_eq!(state.extend_visual_selection(0, 1, &visual_order), None);
+    assert_eq!(state.extend_visual_selection(0, 99, &[4, 99]), None);
+    assert_eq!(state.selected_entries().len(), 2);
+}
+
+#[test]
+fn a_filtered_out_range_anchor_restarts_at_the_visible_target() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/a", "a"),
+            named_entry("/fixture/b", "b"),
+        ],
+    );
+    state.select(0, 0);
+    assert_eq!(state.extend_visual_selection(0, 1, &[1]), Some(vec![1]));
+    assert_eq!(
+        state.extend_visual_selection(0, 0, &[0, 1]),
+        Some(vec![0, 1])
+    );
 }
 
 #[test]
@@ -288,6 +391,21 @@ fn external_removals_close_affected_descendant_columns() {
 }
 
 #[test]
+fn remote_external_removals_close_the_exact_open_column() {
+    let root = Location::uri("sftp://user@host/mnt/share");
+    let removed = Location::uri("sftp://user@host/mnt/share/removed");
+    let mut state = NavigationState::default();
+    state.navigate(root.clone(), RequestId(1));
+    assert!(state.descend(0, removed.clone(), RequestId(2)));
+
+    let path = state
+        .path_after_external_change(0, &DirectoryChange::Remove(removed))
+        .expect("the removed remote column should be closed");
+
+    assert_eq!(path.locations(), &[root]);
+}
+
+#[test]
 fn selecting_a_sibling_replaces_deeper_columns() {
     let mut state = NavigationState::default();
     state.navigate(location("/home"), RequestId(1));
@@ -320,7 +438,7 @@ fn empty_is_distinct_from_loading_and_error() {
     state.navigate(location("/empty"), RequestId(1));
     assert_eq!(state.columns[0].load_state, LoadState::Loading);
 
-    assert_eq!(state.finish(RequestId(1), false, None), Some(0));
+    assert_eq!(state.finish(RequestId(1), false, None, None), Some(0));
     assert_eq!(state.columns[0].load_state, LoadState::Empty);
 }
 
@@ -329,11 +447,26 @@ fn truncated_load_state_survives_until_reload() {
     let mut state = NavigationState::default();
     state.navigate(location("/partial"), RequestId(1));
 
-    assert_eq!(state.finish(RequestId(1), true, None), Some(0));
+    assert_eq!(state.finish(RequestId(1), true, None, None), Some(0));
     assert!(state.columns[0].truncated);
 
     state.reload_column(0, RequestId(2));
     assert!(!state.columns[0].truncated);
+}
+
+#[test]
+fn reload_clears_the_resolved_delete_capability() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+
+    assert_eq!(
+        state.finish(RequestId(1), false, None, Some(false)),
+        Some(0)
+    );
+    assert_eq!(state.can_delete_at(0), Some(false));
+
+    state.reload_column(0, RequestId(2));
+    assert_eq!(state.can_delete_at(0), None);
 }
 
 #[test]
@@ -389,6 +522,7 @@ fn parent_removes_the_deepest_committed_column() {
 
 fn hidden_entry(path: &str, name: &str) -> FileEntry {
     FileEntry {
+        thumbnail_path: None,
         location: location(path),
         native_name: OsString::from(name),
         display_name: name.into(),
@@ -441,6 +575,42 @@ fn staged_keyboard_descent_selects_the_first_visible_entry() {
         state.focused_entry().map(|(_, position, _)| position),
         Some(1)
     );
+    assert!(
+        state.selection_is_load_cursor(),
+        "the first visible item after load is a cursor, not a user selection"
+    );
+
+    assert!(state.set_selection(0, &[1], Some(1)));
+    assert!(
+        state.selection_is_load_cursor(),
+        "echoing the load selection must not treat it as a user pick"
+    );
+
+    assert!(state.set_selection(0, &[], None));
+    assert!(
+        state.selection_is_load_cursor(),
+        "an empty GTK echo is not itself a paste-into target"
+    );
+    assert!(state.set_selection(0, &[1], Some(1)));
+    assert!(
+        state.selection_is_load_cursor(),
+        "restoring the load cursor after an empty echo is still a load cursor"
+    );
+
+    assert!(state.set_selection(0, &[0], Some(0)));
+    assert!(
+        state.selection_is_load_cursor(),
+        "GTK focusing another row without a user pick must not arm paste-into"
+    );
+
+    state.commit_selection();
+    assert!(state.set_selection(0, &[0], Some(0)));
+    assert!(
+        !state.selection_is_load_cursor(),
+        "choosing another item is a user selection"
+    );
+    assert!(state.set_selection(0, &[1], Some(1)));
+    assert!(!state.selection_is_load_cursor());
 }
 
 #[test]
@@ -487,13 +657,13 @@ fn paging_moves_by_a_page_and_stops_at_the_ends() {
         .collect();
     state.apply_batch(RequestId(1), entries);
 
-    assert_eq!(state.page_selection(1, 5), Some((0, 0)));
-    assert_eq!(state.page_selection(1, 5), Some((0, 5)));
-    assert_eq!(state.page_selection(1, 5), Some((0, 10)));
-    assert_eq!(state.page_selection(1, 5), Some((0, 11)));
-    assert_eq!(state.page_selection(-1, 5), Some((0, 6)));
-    assert_eq!(state.page_selection(-1, 5), Some((0, 1)));
-    assert_eq!(state.page_selection(-1, 5), Some((0, 0)));
+    assert_eq!(state.page_along(1, 5, None), Some((0, 0)));
+    assert_eq!(state.page_along(1, 5, None), Some((0, 5)));
+    assert_eq!(state.page_along(1, 5, None), Some((0, 10)));
+    assert_eq!(state.page_along(1, 5, None), Some((0, 11)));
+    assert_eq!(state.page_along(-1, 5, None), Some((0, 6)));
+    assert_eq!(state.page_along(-1, 5, None), Some((0, 1)));
+    assert_eq!(state.page_along(-1, 5, None), Some((0, 0)));
     assert_eq!(state.selected_entries().len(), 1);
 }
 
@@ -512,8 +682,27 @@ fn paging_skips_hidden_entries_when_hidden_files_are_not_shown() {
     );
 
     assert!(state.select(0, 0));
-    assert_eq!(state.page_selection(1, 1), Some((0, 2)));
-    assert_eq!(state.page_selection(-1, 1), Some((0, 0)));
+    assert_eq!(state.page_along(1, 1, None), Some((0, 2)));
+    assert_eq!(state.page_along(-1, 1, None), Some((0, 0)));
+}
+
+#[test]
+fn paging_by_usize_max_jumps_to_the_first_or_last_visible_entry() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            hidden_entry("/home/alpha", "alpha"),
+            named_entry("/home/bravo", "bravo"),
+            named_entry("/home/charlie", "charlie"),
+            hidden_entry("/home/delta", "delta"),
+        ],
+    );
+
+    assert!(state.select(0, 2));
+    assert_eq!(state.page_along(1, usize::MAX, None), Some((0, 2)));
+    assert_eq!(state.page_along(-1, usize::MAX, None), Some((0, 1)));
 }
 
 #[test]
@@ -522,7 +711,31 @@ fn paging_an_empty_column_keeps_the_selection_unchanged() {
     state.navigate(location("/home"), RequestId(1));
     state.apply_batch(RequestId(1), Vec::new());
 
-    assert_eq!(state.page_selection(1, 4), None);
+    assert_eq!(state.page_along(1, 4, None), None);
+}
+
+#[test]
+fn paging_along_visual_order_follows_display_order_not_source_indices() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/home/a.txt", "a.txt"),
+            named_entry("/home/b.json", "b.json"),
+            named_entry("/home/c.txt", "c.txt"),
+            named_entry("/home/d.json", "d.json"),
+        ],
+    );
+    assert!(state.select(0, 0));
+    let visual_order = [0, 2, 1, 3];
+    assert_eq!(
+        state.page_along(1, 2, Some(&visual_order)),
+        Some((0, 1)),
+        "two steps from a.txt along txt-then-json lands on b.json"
+    );
+    assert_eq!(state.page_along(1, 1, Some(&visual_order)), Some((0, 3)));
+    assert_eq!(state.page_along(-1, 2, Some(&visual_order)), Some((0, 2)));
 }
 
 #[test]
@@ -719,6 +932,7 @@ fn file_entry(path: &str, name: &str) -> FileEntry {
     FileEntry {
         location: location(path),
         native_name: OsString::from(name),
+        thumbnail_path: None,
         display_name: name.into(),
         kind: EntryKind::File,
         size: MetadataValue::Unknown,
@@ -933,4 +1147,29 @@ fn selected_count_reports_without_cloning_entries() {
     assert_eq!(state.selected_count(), 0);
     assert!(state.set_selection(0, &[0, 2], Some(2)));
     assert_eq!(state.selected_count(), 2);
+}
+
+#[test]
+fn the_range_anchor_is_readable_and_replaceable_by_position() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.select_first_on_load(0);
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/a", "a"),
+            named_entry("/fixture/b", "b"),
+            named_entry("/fixture/c", "c"),
+        ],
+    );
+    assert_eq!(state.selection_anchor_position(0), Some(0));
+    assert!(state.set_selection_anchor(0, 2));
+    assert_eq!(state.selection_anchor_position(0), Some(2));
+    assert!(!state.set_selection_anchor(0, 9));
+    assert!(!state.set_selection_anchor(1, 0));
+    assert_eq!(state.selection_anchor_position(0), Some(2));
+    assert_eq!(
+        state.extend_visual_selection(0, 1, &[0, 1, 2]),
+        Some(vec![1, 2])
+    );
 }

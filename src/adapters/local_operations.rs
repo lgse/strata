@@ -4,7 +4,7 @@
 mod tests;
 
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     collections::{HashMap, HashSet},
     ffi::{OsStr, OsString},
     future::Future,
@@ -28,13 +28,13 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
-    adapters::location_for_file,
-    model::Location,
+    adapters::{gio_file_for_location, location_for_file},
+    model::{FileEntry, Location},
     services::{
         ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest,
         CreateFileRequest, DeleteRequest, ExtractRequest, LoadHandle, OperationEvent,
         OperationProvider, OperationRequestId, PasteRequest, RenameRequest, RestoreRequest,
-        RestoreSource, TransferConflict, UndoMoveRequest, validate_basename,
+        RestoreSource, TransferConflict, UndoCopyRequest, UndoMoveRequest, validate_basename,
     },
 };
 
@@ -55,11 +55,183 @@ where
     .await
 }
 
-fn gio_file(location: &Location) -> gio::File {
-    location
-        .native_path()
-        .map(gio::File::for_path)
-        .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()))
+struct TransferProgressTracker {
+    request_id: OperationRequestId,
+    completed_items: Cell<usize>,
+    transferred_bytes: Cell<u64>,
+    total_bytes: Option<u64>,
+    emit: Rc<dyn Fn(OperationEvent)>,
+}
+
+impl TransferProgressTracker {
+    fn new(
+        request_id: OperationRequestId,
+        total_bytes: Option<u64>,
+        emit: Rc<dyn Fn(OperationEvent)>,
+    ) -> Rc<Self> {
+        Rc::new(Self {
+            request_id,
+            completed_items: Cell::new(0),
+            transferred_bytes: Cell::new(0),
+            total_bytes,
+            emit,
+        })
+    }
+
+    fn emit(&self) {
+        self.emit_progress(None);
+    }
+
+    fn emit_progress(&self, created_location: Option<Location>) {
+        (self.emit)(OperationEvent::TransferProgress {
+            request_id: self.request_id,
+            completed_items: self.completed_items.get(),
+            transferred_bytes: self.transferred_bytes.get(),
+            total_bytes: self.total_bytes,
+            created_location,
+        });
+    }
+
+    fn add_bytes(&self, bytes: u64) {
+        self.transferred_bytes
+            .set(self.transferred_bytes.get().saturating_add(bytes));
+        self.emit();
+    }
+
+    fn begin_file(self: &Rc<Self>) -> FileTransferProgress {
+        FileTransferProgress {
+            tracker: self.clone(),
+            reported_bytes: Rc::new(Cell::new(0)),
+            reported_total: Rc::new(Cell::new(0)),
+        }
+    }
+
+    fn finish_item(
+        &self,
+        started_at: u64,
+        expected_bytes: Option<u64>,
+        created_location: Option<Location>,
+    ) {
+        if let Some(expected_bytes) = expected_bytes {
+            let expected_end = started_at.saturating_add(expected_bytes);
+            if self.transferred_bytes.get() < expected_end {
+                self.transferred_bytes.set(expected_end);
+            }
+        }
+        self.completed_items
+            .set(self.completed_items.get().saturating_add(1));
+        self.emit_progress(created_location);
+    }
+}
+
+struct FileTransferProgress {
+    tracker: Rc<TransferProgressTracker>,
+    reported_bytes: Rc<Cell<u64>>,
+    reported_total: Rc<Cell<u64>>,
+}
+
+impl FileTransferProgress {
+    fn callback(&self) -> Box<dyn FnMut(i64, i64)> {
+        let tracker = self.tracker.clone();
+        let reported_bytes = self.reported_bytes.clone();
+        let reported_total = self.reported_total.clone();
+        Box::new(move |current, total| {
+            let current = current.max(0) as u64;
+            let previous = reported_bytes.get();
+            if current > previous {
+                reported_bytes.set(current);
+            }
+            if total >= 0 {
+                reported_total.set(reported_total.get().max(total as u64));
+            }
+            tracker.add_bytes(current.saturating_sub(previous));
+        })
+    }
+
+    fn finish(&self) {
+        let final_bytes = self.reported_total.get().max(self.reported_bytes.get());
+        let missing = final_bytes.saturating_sub(self.reported_bytes.get());
+        if missing > 0 {
+            self.tracker.add_bytes(missing);
+            self.reported_bytes.set(final_bytes);
+        }
+    }
+}
+
+fn transfer_size(
+    file: gio::File,
+    cancellable: gio::Cancellable,
+) -> Pin<Box<dyn Future<Output = Result<Option<u64>, glib::Error>>>> {
+    Box::pin(async move {
+        let info = await_cancellable(&file, &cancellable, |file, cancellable, result| {
+            file.query_info_async(
+                "standard::type,standard::size",
+                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                glib::Priority::DEFAULT,
+                Some(cancellable),
+                move |output| result.resolve(output),
+            );
+        })
+        .await?;
+        if info.file_type() != gio::FileType::Directory {
+            return Ok(info
+                .has_attribute(gio::FILE_ATTRIBUTE_STANDARD_SIZE)
+                .then(|| info.size().max(0) as u64));
+        }
+
+        let enumerator = await_cancellable(&file, &cancellable, |file, cancellable, result| {
+            file.enumerate_children_async(
+                "standard::name",
+                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                glib::Priority::DEFAULT,
+                Some(cancellable),
+                move |output| result.resolve(output),
+            );
+        })
+        .await?;
+        let mut total = Some(0_u64);
+        loop {
+            let children = await_cancellable(
+                &enumerator,
+                &cancellable,
+                |enumerator, cancellable, result| {
+                    enumerator.next_files_async(
+                        64,
+                        glib::Priority::DEFAULT,
+                        Some(cancellable),
+                        move |output| result.resolve(output),
+                    );
+                },
+            )
+            .await?;
+            if children.is_empty() {
+                return Ok(total);
+            }
+            for child in children {
+                let child_size =
+                    transfer_size(file.child(child.name()), cancellable.clone()).await?;
+                total = total.and_then(|total| child_size.and_then(|size| total.checked_add(size)));
+            }
+        }
+    })
+}
+
+async fn transfer_sizes(
+    files: &[gio::File],
+    cancellable: &gio::Cancellable,
+) -> Result<(Vec<Option<u64>>, Option<u64>), glib::Error> {
+    let mut sizes = Vec::with_capacity(files.len());
+    let mut total = Some(0_u64);
+    for file in files {
+        let size = match transfer_size(file.clone(), cancellable.clone()).await {
+            Ok(size) => size,
+            Err(error) if was_cancelled(&error) => return Err(error),
+            Err(_) => None,
+        };
+        total = total.and_then(|total| size.and_then(|size| total.checked_add(size)));
+        sizes.push(size);
+    }
+    Ok((sizes, total))
 }
 
 fn validated_child(parent: &gio::File, name: &str) -> Result<gio::File, &'static str> {
@@ -281,6 +453,103 @@ async fn record_created_copy_root(
     Ok(())
 }
 
+type RemoteFileStageCopy = Rc<
+    dyn Fn(
+        gio::File,
+        gio::File,
+        gio::Cancellable,
+    ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>>,
+>;
+
+type RemoteFileStageCommit = Rc<
+    dyn Fn(
+        gio::File,
+        gio::File,
+        gio::Cancellable,
+    ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>>,
+>;
+
+async fn discard_incomplete_copy(stage: gio::File) -> Result<(), glib::Error> {
+    match permanently_delete(stage, false, gio::Cancellable::new()).await {
+        Err(error) if error.matches(gio::IOErrorEnum::NotFound) => Ok(()),
+        result => result,
+    }
+}
+
+/// Reserves an unpredictable sibling so a partial remote file is never exposed at the final path.
+async fn create_remote_file_stage(
+    target: &gio::File,
+    cancellable: &gio::Cancellable,
+) -> Result<gio::File, glib::Error> {
+    let parent = target
+        .parent()
+        .ok_or_else(|| io_error("The destination has no parent directory"))?;
+    let stage = parent.child(format!(".strata-copy-{}", glib::uuid_string_random()));
+    let stream = match await_cancellable(&stage, cancellable, |stage, cancellable, result| {
+        stage.create_async(
+            gio::FileCreateFlags::PRIVATE,
+            glib::Priority::DEFAULT,
+            Some(cancellable),
+            move |output| result.resolve(output),
+        );
+    })
+    .await
+    {
+        Ok(stream) => stream,
+        Err(error) if was_cancelled(&error) => {
+            let cleanup = discard_incomplete_copy(stage).await;
+            return Err(copy_failure_after_cleanup(error, cleanup));
+        }
+        Err(error) => return Err(error),
+    };
+    if let Err(error) = await_cancellable(&stream, cancellable, |stream, cancellable, result| {
+        stream.close_async(glib::Priority::DEFAULT, Some(cancellable), move |output| {
+            result.resolve(output)
+        });
+    })
+    .await
+    {
+        let cleanup = discard_incomplete_copy(stage).await;
+        return Err(copy_failure_after_cleanup(error, cleanup));
+    }
+    Ok(stage)
+}
+
+fn copy_failure_after_cleanup(
+    copy_error: glib::Error,
+    cleanup_result: Result<(), glib::Error>,
+) -> glib::Error {
+    match cleanup_result {
+        Ok(()) => copy_error,
+        Err(cleanup_error) => io_error(format!(
+            "{copy_error}; the incomplete copy could not be removed: {cleanup_error}"
+        )),
+    }
+}
+
+async fn copy_new_remote_file_with(
+    source: gio::File,
+    target: gio::File,
+    cancellable: gio::Cancellable,
+    copy_to_stage: RemoteFileStageCopy,
+    commit_stage: RemoteFileStageCommit,
+) -> Result<(), glib::Error> {
+    let stage = create_remote_file_stage(&target, &cancellable).await?;
+    if let Err(error) = copy_to_stage(source, stage.clone(), cancellable.clone()).await {
+        let cleanup = discard_incomplete_copy(stage).await;
+        return Err(copy_failure_after_cleanup(error, cleanup));
+    }
+    if let Err(error) = cancellable.set_error_if_cancelled() {
+        let cleanup = discard_incomplete_copy(stage).await;
+        return Err(copy_failure_after_cleanup(error, cleanup));
+    }
+    if let Err(error) = commit_stage(stage.clone(), target, cancellable).await {
+        let cleanup = discard_incomplete_copy(stage).await;
+        return Err(copy_failure_after_cleanup(error, cleanup));
+    }
+    Ok(())
+}
+
 /// Recursively copies the entry named `name` inside `parent` to `target`,
 /// walking descriptor-relative to each already-open source directory
 /// instead of re-resolving paths, so a component swapped out from under an
@@ -295,6 +564,7 @@ fn copy_recursively_local(
     overwrite_existing: bool,
     cancellable: gio::Cancellable,
     created_root: Option<Rc<CreatedCopyRoot>>,
+    progress: Option<Rc<TransferProgressTracker>>,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     Box::pin(async move {
         if cancellable.is_cancelled() {
@@ -310,9 +580,7 @@ fn copy_recursively_local(
                     .path()
                     .ok_or_else(|| io_error("Copy destination must be a local path"))?;
                 run_local_fs_step(move || {
-                    rustix::fs::symlink(&link_target, &target_path).map_err(|error| {
-                        format!("Could not recreate {}: {error}", target_path.display())
-                    })
+                    copy_local_symlink(&link_target, &target_path, overwrite_existing)
                 })
                 .await
             }
@@ -329,6 +597,8 @@ fn copy_recursively_local(
                     } else {
                         gio::FileCopyFlags::NONE
                     };
+                let file_progress = progress.as_ref().map(TransferProgressTracker::begin_file);
+                let progress_callback = file_progress.as_ref().map(FileTransferProgress::callback);
                 let result = await_cancellable(
                     &source_ref,
                     &cancellable,
@@ -338,12 +608,17 @@ fn copy_recursively_local(
                             flags,
                             glib::Priority::DEFAULT,
                             Some(cancellable),
-                            None,
+                            progress_callback,
                             move |output| result.resolve(output),
                         );
                     },
                 )
                 .await;
+                if result.is_ok()
+                    && let Some(file_progress) = file_progress
+                {
+                    file_progress.finish();
+                }
                 // Keeps `file` open (and its fd number stable) for the
                 // duration of the copy above; only drop it once resolved.
                 drop(file);
@@ -374,6 +649,7 @@ fn copy_recursively_local(
                         overwrite_existing,
                         cancellable.clone(),
                         None,
+                        progress.clone(),
                     )
                     .await?;
                 }
@@ -392,6 +668,7 @@ fn copy_recursively_local_path(
     overwrite_existing: bool,
     cancellable: gio::Cancellable,
     created_root: Option<Rc<CreatedCopyRoot>>,
+    progress: Option<Rc<TransferProgressTracker>>,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     Box::pin(async move {
         let Some(parent_path) = source_path.parent().map(Path::to_path_buf) else {
@@ -400,18 +677,7 @@ fn copy_recursively_local_path(
         let Some(name) = source_path.file_name().map(OsStr::to_os_string) else {
             return Err(io_error("Invalid copy source"));
         };
-        let parent = run_local_fs_step(move || {
-            rustix::fs::open(
-                &parent_path,
-                rustix::fs::OFlags::RDONLY
-                    | rustix::fs::OFlags::DIRECTORY
-                    | rustix::fs::OFlags::NOFOLLOW
-                    | rustix::fs::OFlags::CLOEXEC,
-                rustix::fs::Mode::empty(),
-            )
-            .map_err(|error| format!("Could not open {}: {error}", parent_path.display()))
-        })
-        .await?;
+        let parent = run_local_fs_step(move || open_local_parent_directory(&parent_path)).await?;
         copy_recursively_local(
             parent,
             name,
@@ -419,17 +685,19 @@ fn copy_recursively_local_path(
             overwrite_existing,
             cancellable,
             created_root,
+            progress,
         )
         .await
     })
 }
 
-fn copy_recursively(
+fn copy_recursively_with_progress(
     source: gio::File,
     target: gio::File,
     overwrite_existing: bool,
     cancellable: gio::Cancellable,
     created_root: Option<Rc<CreatedCopyRoot>>,
+    progress: Option<Rc<TransferProgressTracker>>,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     if source.is_native()
         && target.is_native()
@@ -444,6 +712,7 @@ fn copy_recursively(
             overwrite_existing,
             cancellable,
             created_root,
+            progress,
         );
     }
     Box::pin(async move {
@@ -498,12 +767,13 @@ fn copy_recursively(
                     break;
                 }
                 for child in children {
-                    copy_recursively(
+                    copy_recursively_with_progress(
                         source.child(child.name()),
                         target.child(child.name()),
                         overwrite_existing,
                         cancellable.clone(),
                         None,
+                        progress.clone(),
                     )
                     .await?;
                 }
@@ -517,26 +787,111 @@ fn copy_recursively(
                 } else {
                     gio::FileCopyFlags::NONE
                 };
-            await_cancellable(&source, &cancellable, move |source, cancellable, result| {
-                source.copy_async(
-                    &target,
-                    flags,
-                    glib::Priority::DEFAULT,
-                    Some(cancellable),
-                    None,
-                    move |output| result.resolve(output),
-                );
-            })
-            .await
+            let file_progress = progress.as_ref().map(TransferProgressTracker::begin_file);
+            let progress_callback = file_progress.as_ref().map(FileTransferProgress::callback);
+            let result =
+                await_cancellable(&source, &cancellable, move |source, cancellable, result| {
+                    source.copy_async(
+                        &target,
+                        flags,
+                        glib::Priority::DEFAULT,
+                        Some(cancellable),
+                        progress_callback,
+                        move |output| result.resolve(output),
+                    );
+                })
+                .await;
+            if result.is_ok()
+                && let Some(file_progress) = file_progress
+            {
+                file_progress.finish();
+            }
+            result
         }
     })
 }
 
-async fn copy_new_recursively(
+#[cfg(test)]
+fn copy_recursively(
+    source: gio::File,
+    target: gio::File,
+    overwrite_existing: bool,
+    cancellable: gio::Cancellable,
+    created_root: Option<Rc<CreatedCopyRoot>>,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    copy_recursively_with_progress(
+        source,
+        target,
+        overwrite_existing,
+        cancellable,
+        created_root,
+        None,
+    )
+}
+
+async fn copy_new_recursively_with_progress(
     source: gio::File,
     target: gio::File,
     cancellable: gio::Cancellable,
+    progress: Option<Rc<TransferProgressTracker>>,
 ) -> Result<(), glib::Error> {
+    if !target.is_native() {
+        let source_type =
+            await_cancellable(&source, &cancellable, |source, cancellable, result| {
+                source.query_info_async(
+                    "standard::type",
+                    gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                    glib::Priority::DEFAULT,
+                    Some(cancellable),
+                    move |output| result.resolve(output),
+                );
+            })
+            .await?
+            .file_type();
+        if source_type != gio::FileType::Directory {
+            let copy_progress = progress.clone();
+            return copy_new_remote_file_with(
+                source,
+                target,
+                cancellable,
+                Rc::new(move |source, stage, cancellable| {
+                    let progress = copy_progress.clone();
+                    Box::pin(async move {
+                        copy_recursively_with_progress(
+                            source,
+                            stage,
+                            true,
+                            cancellable,
+                            None,
+                            progress,
+                        )
+                        .await
+                    })
+                }),
+                Rc::new(|stage, target, cancellable| {
+                    Box::pin(async move {
+                        await_cancellable(
+                            &stage,
+                            &cancellable,
+                            move |stage, cancellable, result| {
+                                stage.move_async(
+                                    &target,
+                                    gio::FileCopyFlags::NO_FALLBACK_FOR_MOVE,
+                                    glib::Priority::DEFAULT,
+                                    Some(cancellable),
+                                    None,
+                                    move |output| result.resolve(output),
+                                );
+                            },
+                        )
+                        .await
+                    })
+                }),
+            )
+            .await;
+        }
+    }
+
     if source.is_native()
         && target.is_native()
         && let Some(target_path) = target.path()
@@ -558,12 +913,13 @@ async fn copy_new_recursively(
                 .parent()
                 .ok_or_else(|| io_error("The destination has no parent directory"))?;
             let staged = StagedSibling::create(parent, true).map_err(io_error)?;
-            if let Err(error) = copy_recursively(
+            if let Err(error) = copy_recursively_with_progress(
                 source,
                 gio::File::for_path(staged.path()),
                 true,
                 cancellable.clone(),
                 None,
+                progress.clone(),
             )
             .await
             {
@@ -603,25 +959,35 @@ async fn copy_new_recursively(
     }
 
     let created_root = Rc::new(CreatedCopyRoot::new());
-    let result = copy_recursively(
+    let result = copy_recursively_with_progress(
         source,
         target.clone(),
         false,
         cancellable.clone(),
         Some(created_root.clone()),
+        progress,
     )
     .await;
     if result.as_ref().is_err_and(was_cancelled) && created_root.was_created.get() {
-        let cleanup = gio::Cancellable::new();
-        let _cleanup_result = permanently_delete_maybe_local_if_unchanged(
+        let cleanup_result = permanently_delete_maybe_local_if_unchanged(
             target,
             true,
             created_root.identity.get(),
-            cleanup,
+            gio::Cancellable::new(),
         )
         .await;
+        return result.map_err(|error| copy_failure_after_cleanup(error, cleanup_result));
     }
     result
+}
+
+#[cfg(test)]
+async fn copy_new_recursively(
+    source: gio::File,
+    target: gio::File,
+    cancellable: gio::Cancellable,
+) -> Result<(), glib::Error> {
+    copy_new_recursively_with_progress(source, target, cancellable, None).await
 }
 
 type MoveAttempt = Rc<
@@ -632,17 +998,24 @@ type MoveAttempt = Rc<
     ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>>,
 >;
 
-async fn move_local_with(
+async fn move_local_with_progress(
     source: gio::File,
     target: gio::File,
     cancellable: gio::Cancellable,
+    progress: Option<Rc<TransferProgressTracker>>,
     attempt_move: MoveAttempt,
 ) -> Result<(), glib::Error> {
     let source_identity = local_file_identity(&source).await?;
     let result = attempt_move(source.clone(), target.clone(), cancellable.clone()).await;
     match result {
         Err(error) if error.matches(gio::IOErrorEnum::WouldRecurse) => {
-            copy_new_recursively(source.clone(), target, cancellable.clone()).await?;
+            copy_new_recursively_with_progress(
+                source.clone(),
+                target,
+                cancellable.clone(),
+                progress,
+            )
+            .await?;
             permanently_delete_maybe_local_if_unchanged(source, true, source_identity, cancellable)
                 .await
         }
@@ -650,30 +1023,111 @@ async fn move_local_with(
     }
 }
 
+#[cfg(test)]
+async fn move_local_with(
+    source: gio::File,
+    target: gio::File,
+    cancellable: gio::Cancellable,
+    attempt_move: MoveAttempt,
+) -> Result<(), glib::Error> {
+    move_local_with_progress(source, target, cancellable, None, attempt_move).await
+}
+
+/// Pins both resolved parents, then atomically renames without following either
+/// entry or replacing a destination created by a concurrent process.
+fn move_local_path(
+    source_path: PathBuf,
+    target_path: PathBuf,
+    cancellable: gio::Cancellable,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    Box::pin(async move {
+        if cancellable.is_cancelled() {
+            return Err(cancelled_local_operation());
+        }
+        let Some(source_parent_path) = source_path.parent().map(Path::to_path_buf) else {
+            return Err(io_error("Cannot move the filesystem root"));
+        };
+        let Some(source_name) = source_path.file_name().map(OsStr::to_os_string) else {
+            return Err(io_error("Invalid move source"));
+        };
+        let Some(target_parent_path) = target_path.parent().map(Path::to_path_buf) else {
+            return Err(io_error("The move destination has no parent directory"));
+        };
+        let Some(target_name) = target_path.file_name().map(OsStr::to_os_string) else {
+            return Err(io_error("Invalid move destination"));
+        };
+
+        let source_parent =
+            run_local_fs_step(move || open_local_parent_directory(&source_parent_path)).await?;
+        let target_parent =
+            run_local_fs_step(move || open_local_parent_directory(&target_parent_path)).await?;
+
+        let display_name = source_name.to_string_lossy().into_owned();
+        gio::spawn_blocking(move || {
+            rustix::fs::renameat_with(
+                &source_parent,
+                &source_name,
+                &target_parent,
+                &target_name,
+                rustix::fs::RenameFlags::NOREPLACE,
+            )
+        })
+        .await
+        .map_err(|_| io_error("Move task panicked"))?
+        .map_err(|error| match error {
+            rustix::io::Errno::XDEV | rustix::io::Errno::INVAL => {
+                glib::Error::new(gio::IOErrorEnum::WouldRecurse, "Cannot move directly")
+            }
+            error => io_error(format!("Could not move {display_name}: {error}")),
+        })
+    })
+}
+
 async fn move_local(
     source: gio::File,
     target: gio::File,
     cancellable: gio::Cancellable,
+    progress: Option<Rc<TransferProgressTracker>>,
 ) -> Result<(), glib::Error> {
-    move_local_with(
+    let fallback_progress = progress.clone();
+    move_local_with_progress(
         source,
         target,
         cancellable,
-        Rc::new(|source, target, cancellable| {
+        fallback_progress,
+        Rc::new(move |source, target, cancellable| {
+            if source.is_native()
+                && target.is_native()
+                && let (Some(source_path), Some(target_path)) = (source.path(), target.path())
+            {
+                return move_local_path(source_path, target_path, cancellable);
+            }
+            // Remote (GVfs) locations have no local descriptor to walk against, so
+            // anything not fully local keeps the GIO path-based move below rather
+            // than claiming an equivalent guarantee.
+            let move_progress = progress.as_ref().map(TransferProgressTracker::begin_file);
+            let progress_callback = move_progress.as_ref().map(FileTransferProgress::callback);
             Box::pin(async move {
                 let flags =
                     gio::FileCopyFlags::ALL_METADATA | gio::FileCopyFlags::NOFOLLOW_SYMLINKS;
-                await_cancellable(&source, &cancellable, move |source, cancellable, result| {
-                    source.move_async(
-                        &target,
-                        flags,
-                        glib::Priority::DEFAULT,
-                        Some(cancellable),
-                        None,
-                        move |output| result.resolve(output),
-                    );
-                })
-                .await
+                let result =
+                    await_cancellable(&source, &cancellable, move |source, cancellable, result| {
+                        source.move_async(
+                            &target,
+                            flags,
+                            glib::Priority::DEFAULT,
+                            Some(cancellable),
+                            progress_callback,
+                            move |output| result.resolve(output),
+                        );
+                    })
+                    .await;
+                if result.is_ok()
+                    && let Some(move_progress) = move_progress
+                {
+                    move_progress.finish();
+                }
+                result
             })
         }),
     )
@@ -856,12 +1310,13 @@ async fn replace_local_with(
     Ok(())
 }
 
-async fn replace_local(
+async fn replace_local_with_progress(
     source: gio::File,
     target: gio::File,
     move_source: bool,
     cancellable: gio::Cancellable,
     affected_locations: Option<&mut HashSet<Location>>,
+    progress: Option<Rc<TransferProgressTracker>>,
 ) -> Result<(), glib::Error> {
     replace_local_with(
         source,
@@ -869,28 +1324,35 @@ async fn replace_local(
         move_source,
         cancellable,
         affected_locations,
-        Rc::new(|source, staged, directory, cancellable| {
-            Box::pin(async move {
-                if directory {
-                    copy_recursively(source, staged, true, cancellable, None).await
-                } else {
-                    let flags = gio::FileCopyFlags::ALL_METADATA
-                        | gio::FileCopyFlags::NOFOLLOW_SYMLINKS
-                        | gio::FileCopyFlags::OVERWRITE;
-                    await_cancellable(&source, &cancellable, move |source, cancellable, result| {
-                        source.copy_async(
-                            &staged,
-                            flags,
-                            glib::Priority::DEFAULT,
-                            Some(cancellable),
-                            None,
-                            move |output| result.resolve(output),
-                        );
-                    })
-                    .await
-                }
-            })
+        Rc::new(move |source, staged, _directory, cancellable| {
+            copy_recursively_with_progress(
+                source,
+                staged,
+                true,
+                cancellable,
+                None,
+                progress.clone(),
+            )
         }),
+    )
+    .await
+}
+
+#[cfg(test)]
+async fn replace_local(
+    source: gio::File,
+    target: gio::File,
+    move_source: bool,
+    cancellable: gio::Cancellable,
+    affected_locations: Option<&mut HashSet<Location>>,
+) -> Result<(), glib::Error> {
+    replace_local_with_progress(
+        source,
+        target,
+        move_source,
+        cancellable,
+        affected_locations,
+        None,
     )
     .await
 }
@@ -1132,9 +1594,48 @@ fn permanently_delete_local(
     })
 }
 
-fn open_local_delete_parent(parent_path: &Path) -> Result<OwnedFd, String> {
+/// Uses a staged link so overwriting remains atomic without following the target.
+fn copy_local_symlink(
+    link_target: &OsStr,
+    target_path: &Path,
+    overwrite_existing: bool,
+) -> Result<(), String> {
+    let parent_path = target_path
+        .parent()
+        .ok_or_else(|| "The symlink destination has no parent directory".to_owned())?;
+    let target_name = target_path
+        .file_name()
+        .ok_or_else(|| "Invalid symlink destination".to_owned())?;
+    let parent = open_local_parent_directory(parent_path)?;
+
+    if !overwrite_existing {
+        return rustix::fs::symlinkat(link_target, &parent, target_name)
+            .map_err(|error| format!("Could not recreate {}: {error}", target_path.display()));
+    }
+
+    let staged_name = format!(".strata-symlink-{}", glib::uuid_string_random());
+    rustix::fs::symlinkat(link_target, &parent, &staged_name)
+        .map_err(|error| format!("Could not stage {}: {error}", target_path.display()))?;
+    let result = rustix::fs::renameat_with(
+        &parent,
+        &staged_name,
+        &parent,
+        target_name,
+        rustix::fs::RenameFlags::empty(),
+    );
+    if result.is_err() {
+        let _ = rustix::fs::unlinkat(&parent, &staged_name, rustix::fs::AtFlags::empty());
+    }
+    result.map_err(|error| format!("Could not recreate {}: {error}", target_path.display()))
+}
+
+/// Resolves ordinary parent aliases in one kernel lookup and pins the directory.
+/// This is the operation's starting point, not a recursive traversal: selected
+/// entries and their children retain their separate no-follow policy. Rooting at
+/// `/` permits absolute symlink targets without allowing procfs magic links.
+fn open_local_parent_directory(parent_path: &Path) -> Result<OwnedFd, String> {
     if !parent_path.is_absolute() {
-        return Err("A local delete target must use an absolute path".to_owned());
+        return Err("A local operation target must use an absolute path".to_owned());
     }
     let root = rustix::fs::open(
         c"/",
@@ -1144,7 +1645,7 @@ fn open_local_delete_parent(parent_path: &Path) -> Result<OwnedFd, String> {
     .map_err(|error| format!("Could not open the filesystem root: {error}"))?;
     let relative = parent_path
         .strip_prefix(Path::new("/"))
-        .map_err(|_| "A local delete target must use an absolute path".to_owned())?;
+        .map_err(|_| "A local operation target must use an absolute path".to_owned())?;
     if relative.as_os_str().is_empty() {
         return Ok(root);
     }
@@ -1153,9 +1654,7 @@ fn open_local_delete_parent(parent_path: &Path) -> Result<OwnedFd, String> {
         relative,
         rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
         rustix::fs::Mode::empty(),
-        rustix::fs::ResolveFlags::BENEATH
-            | rustix::fs::ResolveFlags::NO_SYMLINKS
-            | rustix::fs::ResolveFlags::NO_MAGICLINKS,
+        rustix::fs::ResolveFlags::IN_ROOT | rustix::fs::ResolveFlags::NO_MAGICLINKS,
     )
     .map_err(|error| format!("Could not safely open {}: {error}", parent_path.display()))
 }
@@ -1175,7 +1674,8 @@ fn permanently_delete_local_path_if_unchanged(
         let Some(name) = path.file_name().map(OsStr::to_os_string) else {
             return Err(io_error("Invalid delete target"));
         };
-        let parent = run_local_delete_step(move || open_local_delete_parent(&parent_path)).await?;
+        let parent =
+            run_local_delete_step(move || open_local_parent_directory(&parent_path)).await?;
         permanently_delete_local(parent, name, expected, cancellable).await
     })
 }
@@ -1194,7 +1694,7 @@ async fn local_file_identity(file: &gio::File) -> Result<Option<LocalFileIdentit
         let name = path
             .file_name()
             .ok_or_else(|| "Invalid local filesystem target".to_owned())?;
-        let parent = open_local_delete_parent(parent_path)?;
+        let parent = open_local_parent_directory(parent_path)?;
         let stat = rustix::fs::statat(&parent, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
             .map_err(|error| format!("Could not inspect {}: {error}", path.display()))?;
         Ok(LocalFileIdentity::from_stat(&stat))
@@ -1268,44 +1768,60 @@ async fn write_staged_archive<F>(
     destination: &Path,
     archive_path: &Path,
     conflict: TransferConflict,
+    cancelled: &AtomicBool,
     write_archive: F,
-) -> Result<(), String>
+) -> Result<(), ArchiveError>
 where
-    F: FnOnce(std::fs::File) -> Result<(), String> + Send + 'static,
+    F: FnOnce(std::fs::File) -> Result<(), ArchiveError> + Send + 'static,
 {
-    let existing_permissions = if conflict == TransferConflict::ReplaceExisting {
+    let published_permissions = if conflict == TransferConflict::ReplaceExisting {
         match std::fs::symlink_metadata(archive_path) {
             Ok(metadata) if metadata.file_type().is_file() => Some(metadata.permissions()),
             Ok(_) => None,
             Err(error) if error.kind() == io::ErrorKind::NotFound => None,
-            Err(error) => return Err(error.to_string()),
+            Err(error) => return Err(archive_failed(error)),
         }
     } else {
         None
-    };
+    }
+    .unwrap_or_else(umask_adjusted_file_permissions);
     let mut builder = tempfile::Builder::new();
     builder
         .prefix(".strata-compression-")
-        .permissions(std::fs::Permissions::from_mode(0o666));
-    let staged = builder
-        .tempfile_in(destination)
-        .map_err(|error| error.to_string())?;
-    let file = staged.reopen().map_err(|error| error.to_string())?;
+        .permissions(std::fs::Permissions::from_mode(0o600));
+    let staged = builder.tempfile_in(destination).map_err(archive_failed)?;
+    let file = staged.reopen().map_err(archive_failed)?;
     gio::spawn_blocking(move || write_archive(file))
         .await
-        .map_err(|_| "Compression task panicked".to_owned())??;
-    if let Some(permissions) = existing_permissions {
-        staged
-            .as_file()
-            .set_permissions(permissions)
-            .map_err(|error| error.to_string())?;
-    }
+        .map_err(|_| archive_failed("Compression task panicked"))??;
+    check_archive_cancelled(cancelled)?;
+    staged
+        .as_file()
+        .set_permissions(published_permissions)
+        .map_err(archive_failed)?;
     match conflict {
         TransferConflict::FailIfExists => staged.persist_noclobber(archive_path),
         TransferConflict::ReplaceExisting => staged.persist(archive_path),
     }
     .map(|_| ())
-    .map_err(|error| error.to_string())
+    .map_err(archive_failed)
+}
+
+fn umask_adjusted_file_permissions() -> std::fs::Permissions {
+    std::fs::Permissions::from_mode(0o666 & !process_umask())
+}
+
+fn process_umask() -> u32 {
+    // /proc avoids the process-global umask(2) set-and-restore race in a GUI.
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|status| {
+            status.lines().find_map(|line| {
+                line.strip_prefix("Umask:")
+                    .and_then(|value| u32::from_str_radix(value.trim(), 8).ok())
+            })
+        })
+        .unwrap_or(0o022)
 }
 
 fn deletion_error_summary(errors: &[String]) -> String {
@@ -1490,6 +2006,157 @@ fn cancellation_handle(cancellable: gio::Cancellable) -> LoadHandle {
     LoadHandle::new(move || cancellable.cancel())
 }
 
+struct DeletionTarget {
+    location: Location,
+    display_name: String,
+    is_directory: bool,
+}
+
+impl DeletionTarget {
+    fn from_entry(entry: &FileEntry) -> Self {
+        Self {
+            location: entry.location.clone(),
+            display_name: entry.display_name.clone(),
+            is_directory: entry.is_directory(),
+        }
+    }
+
+    async fn probed(location: &Location, cancellable: &gio::Cancellable) -> Self {
+        let file = gio_file_for_location(location);
+        let is_directory = await_cancellable(&file, cancellable, |file, cancellable, result| {
+            file.query_info_async(
+                "standard::type",
+                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                glib::Priority::DEFAULT,
+                Some(cancellable),
+                move |output| result.resolve(output),
+            );
+        })
+        .await
+        .is_ok_and(|info| info.file_type() == gio::FileType::Directory);
+        Self {
+            location: location.clone(),
+            display_name: location.display_name(),
+            is_directory,
+        }
+    }
+}
+
+async fn run_deletion(
+    request_id: OperationRequestId,
+    targets: Vec<DeletionTarget>,
+    permanent: bool,
+    emit: Rc<dyn Fn(OperationEvent)>,
+    cancellable: gio::Cancellable,
+) {
+    let mut errors = Vec::new();
+    let mut deleted_locations = Vec::new();
+    let mut failed_locations = Vec::new();
+    let mut retryable_locations = Vec::new();
+    let mut affected_locations = HashSet::new();
+    for target in &targets {
+        if let Some(parent) = target.location.parent() {
+            affected_locations.insert(parent);
+        }
+        if target.is_directory {
+            affected_locations.insert(target.location.clone());
+        }
+    }
+    if !permanent {
+        affected_locations.insert(Location::uri("trash:///"));
+    }
+    let total = targets.len();
+    for (index, target) in targets.iter().enumerate() {
+        if cancellable.is_cancelled() {
+            emit(cancelled_event(
+                request_id,
+                deleted_locations,
+                failed_locations,
+                targets[index..]
+                    .iter()
+                    .map(|target| target.location.clone())
+                    .collect(),
+                affected_locations,
+            ));
+            return;
+        }
+        let file = gio_file_for_location(&target.location);
+        let result = if permanent {
+            if target
+                .location
+                .uri_value()
+                .is_some_and(|uri| uri.starts_with("trash:"))
+            {
+                await_cancellable(&file, &cancellable, |file, cancellable, result| {
+                    file.delete_async(glib::Priority::DEFAULT, Some(cancellable), move |output| {
+                        result.resolve(output)
+                    });
+                })
+                .await
+            } else {
+                permanently_delete_maybe_local(file, target.is_directory, cancellable.clone()).await
+            }
+        } else {
+            await_cancellable(&file, &cancellable, |file, cancellable, result| {
+                file.trash_async(glib::Priority::DEFAULT, Some(cancellable), move |output| {
+                    result.resolve(output)
+                });
+            })
+            .await
+        };
+        let deleted_location = if let Err(error) = result {
+            if was_cancelled(&error) {
+                failed_locations.push(target.location.clone());
+                emit(cancelled_event(
+                    request_id,
+                    deleted_locations,
+                    failed_locations,
+                    targets[index + 1..]
+                        .iter()
+                        .map(|target| target.location.clone())
+                        .collect(),
+                    affected_locations,
+                ));
+                return;
+            }
+            if is_trash_unsupported_failure(permanent, &error) {
+                retryable_locations.push(target.location.clone());
+            }
+            errors.push(deletion_error_message(
+                &target.display_name,
+                permanent,
+                &error,
+            ));
+            failed_locations.push(target.location.clone());
+            None
+        } else {
+            deleted_locations.push(target.location.clone());
+            Some(target.location.clone())
+        };
+        emit(OperationEvent::DeleteProgress {
+            request_id,
+            completed: index + 1,
+            total,
+            deleted_location,
+        });
+    }
+    if errors.is_empty() {
+        emit(OperationEvent::Deleted {
+            request_id,
+            locations: deleted_locations,
+        });
+    } else {
+        let has_non_retryable_failures = errors.len() > retryable_locations.len();
+        emit(OperationEvent::CompletedWithErrors {
+            request_id,
+            deleted_locations,
+            retryable_locations,
+            has_non_retryable_failures,
+            message: deletion_error_summary(&errors),
+        });
+    }
+}
+
 fn cancelled_event(
     request_id: crate::services::OperationRequestId,
     completed: Vec<Location>,
@@ -1586,7 +2253,7 @@ impl OperationProvider for LocalOperationProvider {
         let cancellable = gio::Cancellable::new();
         let operation_cancellable = cancellable.clone();
         let _task = glib::MainContext::default().spawn_local(async move {
-            let parent = gio_file(&request.parent);
+            let parent = gio_file_for_location(&request.parent);
             let folder = match validated_child(&parent, &request.name) {
                 Ok(folder) => folder,
                 Err(message) => {
@@ -1657,7 +2324,7 @@ impl OperationProvider for LocalOperationProvider {
         let cancellable = gio::Cancellable::new();
         let operation_cancellable = cancellable.clone();
         let _task = glib::MainContext::default().spawn_local(async move {
-            let parent = gio_file(&request.parent);
+            let parent = gio_file_for_location(&request.parent);
             let file = match validated_child(&parent, &request.name) {
                 Ok(file) => file,
                 Err(message) => {
@@ -1725,12 +2392,44 @@ impl OperationProvider for LocalOperationProvider {
         let cancellable = gio::Cancellable::new();
         let operation_cancellable = cancellable.clone();
         let _task = glib::MainContext::default().spawn_local(async move {
-            let destination = gio_file(&request.destination);
+            let destination = gio_file_for_location(&request.destination);
             let mut affected_locations = HashSet::from([request.destination.clone()]);
             for parent in request.items.iter().filter_map(|item| item.source.parent()) {
                 affected_locations.insert(parent);
             }
-            let total = request.items.len();
+            let sources = request
+                .items
+                .iter()
+                .map(|item| gio_file_for_location(&item.source))
+                .collect::<Vec<_>>();
+            let (item_sizes, total_bytes) =
+                match transfer_sizes(&sources, &operation_cancellable).await {
+                    Ok(sizes) => sizes,
+                    Err(error) if was_cancelled(&error) => {
+                        emit(cancelled_event(
+                            request.id,
+                            Vec::new(),
+                            Vec::new(),
+                            request
+                                .items
+                                .iter()
+                                .map(|item| item.source.clone())
+                                .collect(),
+                            affected_locations,
+                        ));
+                        return;
+                    }
+                    Err(error) => {
+                        emit(OperationEvent::TransferFailed {
+                            request_id: request.id,
+                            completed_locations: Vec::new(),
+                            message: error.to_string(),
+                        });
+                        return;
+                    }
+                };
+            let progress = TransferProgressTracker::new(request.id, total_bytes, emit.clone());
+            progress.emit();
             let mut completed = Vec::new();
             for (index, item) in request.items.iter().enumerate() {
                 if operation_cancellable.is_cancelled() {
@@ -1746,7 +2445,8 @@ impl OperationProvider for LocalOperationProvider {
                     ));
                     return;
                 }
-                let source = gio_file(&item.source);
+                let source = sources[index].clone();
+                let item_started_at = progress.transferred_bytes.get();
                 let Some(name) = source.basename() else {
                     emit(OperationEvent::Failed {
                         request_id: request.id,
@@ -1758,11 +2458,7 @@ impl OperationProvider for LocalOperationProvider {
                 let is_duplicate = !request.move_sources && source.equal(&default_target);
                 if !is_duplicate && transfer_is_noop(&source, &destination, &default_target) {
                     completed.push(item.source.clone());
-                    emit(OperationEvent::TransferProgress {
-                        request_id: request.id,
-                        completed: completed.len(),
-                        total,
-                    });
+                    progress.finish_item(item_started_at, item_sizes[index], None);
                     continue;
                 }
                 let target = if is_duplicate {
@@ -1837,24 +2533,44 @@ impl OperationProvider for LocalOperationProvider {
                     default_target
                 };
                 affected_locations.insert(item.source.clone());
-                if let Some(target) = location_for_file(&target) {
+                let target_location = location_for_file(&target);
+                if let Some(target) = target_location.clone() {
                     affected_locations.insert(target);
                 }
                 let result = if is_duplicate {
-                    copy_new_recursively(source, target, operation_cancellable.clone()).await
+                    copy_new_recursively_with_progress(
+                        source,
+                        target,
+                        operation_cancellable.clone(),
+                        Some(progress.clone()),
+                    )
+                    .await
                 } else if item.conflict == TransferConflict::ReplaceExisting {
-                    replace_local(
+                    replace_local_with_progress(
                         source,
                         target,
                         request.move_sources,
                         operation_cancellable.clone(),
                         Some(&mut affected_locations),
+                        Some(progress.clone()),
                     )
                     .await
                 } else if request.move_sources {
-                    move_local(source, target, operation_cancellable.clone()).await
+                    move_local(
+                        source,
+                        target,
+                        operation_cancellable.clone(),
+                        Some(progress.clone()),
+                    )
+                    .await
                 } else {
-                    copy_new_recursively(source, target, operation_cancellable.clone()).await
+                    copy_new_recursively_with_progress(
+                        source,
+                        target,
+                        operation_cancellable.clone(),
+                        Some(progress.clone()),
+                    )
+                    .await
                 };
                 if let Err(error) = result {
                     if was_cancelled(&error) {
@@ -1878,11 +2594,8 @@ impl OperationProvider for LocalOperationProvider {
                     return;
                 }
                 completed.push(item.source.clone());
-                emit(OperationEvent::TransferProgress {
-                    request_id: request.id,
-                    completed: completed.len(),
-                    total,
-                });
+                let created_location = target_location.filter(|_| !request.move_sources);
+                progress.finish_item(item_started_at, item_sizes[index], created_location);
             }
             emit(OperationEvent::Pasted {
                 request_id: request.id,
@@ -1896,7 +2609,6 @@ impl OperationProvider for LocalOperationProvider {
         let cancellable = gio::Cancellable::new();
         let operation_cancellable = cancellable.clone();
         let _task = glib::MainContext::default().spawn_local(async move {
-            let total = request.items.len();
             let mut affected_locations = HashSet::new();
             for item in &request.items {
                 for location in [&item.record.current, &item.record.original] {
@@ -1906,6 +2618,39 @@ impl OperationProvider for LocalOperationProvider {
                     }
                 }
             }
+            let sources = request
+                .items
+                .iter()
+                .map(|item| gio_file_for_location(&item.record.current))
+                .collect::<Vec<_>>();
+            let (item_sizes, total_bytes) =
+                match transfer_sizes(&sources, &operation_cancellable).await {
+                    Ok(sizes) => sizes,
+                    Err(error) if was_cancelled(&error) => {
+                        emit(cancelled_event(
+                            request.id,
+                            Vec::new(),
+                            Vec::new(),
+                            request
+                                .items
+                                .iter()
+                                .map(|item| item.record.current.clone())
+                                .collect(),
+                            affected_locations,
+                        ));
+                        return;
+                    }
+                    Err(error) => {
+                        emit(OperationEvent::TransferFailed {
+                            request_id: request.id,
+                            completed_locations: Vec::new(),
+                            message: error.to_string(),
+                        });
+                        return;
+                    }
+                };
+            let progress = TransferProgressTracker::new(request.id, total_bytes, emit.clone());
+            progress.emit();
             let mut completed = Vec::new();
             for (index, item) in request.items.iter().enumerate() {
                 let remaining = || {
@@ -1924,19 +2669,27 @@ impl OperationProvider for LocalOperationProvider {
                     ));
                     return;
                 }
-                let source = gio_file(&item.record.current);
-                let target = gio_file(&item.record.original);
+                let source = sources[index].clone();
+                let item_started_at = progress.transferred_bytes.get();
+                let target = gio_file_for_location(&item.record.original);
                 let result = if item.conflict == TransferConflict::ReplaceExisting {
-                    replace_local(
+                    replace_local_with_progress(
                         source,
                         target,
                         true,
                         operation_cancellable.clone(),
                         Some(&mut affected_locations),
+                        Some(progress.clone()),
                     )
                     .await
                 } else {
-                    move_local(source, target, operation_cancellable.clone()).await
+                    move_local(
+                        source,
+                        target,
+                        operation_cancellable.clone(),
+                        Some(progress.clone()),
+                    )
+                    .await
                 };
                 if let Err(error) = result {
                     if was_cancelled(&error) {
@@ -1960,11 +2713,7 @@ impl OperationProvider for LocalOperationProvider {
                     return;
                 }
                 completed.push(item.record.current.clone());
-                emit(OperationEvent::TransferProgress {
-                    request_id: request.id,
-                    completed: completed.len(),
-                    total,
-                });
+                progress.finish_item(item_started_at, item_sizes[index], None);
             }
             emit(OperationEvent::Pasted {
                 request_id: request.id,
@@ -1978,129 +2727,32 @@ impl OperationProvider for LocalOperationProvider {
         let cancellable = gio::Cancellable::new();
         let operation_cancellable = cancellable.clone();
         let _task = glib::MainContext::default().spawn_local(async move {
-            let mut errors = Vec::new();
-            let mut deleted_locations = Vec::new();
-            let mut failed_locations = Vec::new();
-            let mut retryable_locations = Vec::new();
-            let mut affected_locations = HashSet::new();
-            for entry in &request.entries {
-                if let Some(parent) = entry.location.parent() {
-                    affected_locations.insert(parent);
-                }
-                if entry.is_directory() {
-                    affected_locations.insert(entry.location.clone());
-                }
+            let targets = request
+                .entries
+                .iter()
+                .map(DeletionTarget::from_entry)
+                .collect();
+            run_deletion(
+                request.id,
+                targets,
+                request.permanent,
+                emit,
+                operation_cancellable,
+            )
+            .await;
+        });
+        cancellation_handle(cancellable)
+    }
+
+    fn undo_copy(&self, request: UndoCopyRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        let cancellable = gio::Cancellable::new();
+        let operation_cancellable = cancellable.clone();
+        let _task = glib::MainContext::default().spawn_local(async move {
+            let mut targets = Vec::with_capacity(request.locations.len());
+            for location in &request.locations {
+                targets.push(DeletionTarget::probed(location, &operation_cancellable).await);
             }
-            if !request.permanent {
-                affected_locations.insert(Location::uri("trash:///"));
-            }
-            let total = request.entries.len();
-            for (index, entry) in request.entries.iter().enumerate() {
-                if operation_cancellable.is_cancelled() {
-                    emit(cancelled_event(
-                        request.id,
-                        deleted_locations,
-                        failed_locations,
-                        request.entries[index..]
-                            .iter()
-                            .map(|entry| entry.location.clone())
-                            .collect(),
-                        affected_locations,
-                    ));
-                    return;
-                }
-                let file = gio_file(&entry.location);
-                let result = if request.permanent {
-                    if entry
-                        .location
-                        .uri_value()
-                        .is_some_and(|uri| uri.starts_with("trash:"))
-                    {
-                        await_cancellable(
-                            &file,
-                            &operation_cancellable,
-                            |file, cancellable, result| {
-                                file.delete_async(
-                                    glib::Priority::DEFAULT,
-                                    Some(cancellable),
-                                    move |output| result.resolve(output),
-                                );
-                            },
-                        )
-                        .await
-                    } else {
-                        permanently_delete_maybe_local(
-                            file,
-                            entry.is_directory(),
-                            operation_cancellable.clone(),
-                        )
-                        .await
-                    }
-                } else {
-                    await_cancellable(
-                        &file,
-                        &operation_cancellable,
-                        |file, cancellable, result| {
-                            file.trash_async(
-                                glib::Priority::DEFAULT,
-                                Some(cancellable),
-                                move |output| result.resolve(output),
-                            );
-                        },
-                    )
-                    .await
-                };
-                let deleted_location = if let Err(error) = result {
-                    if was_cancelled(&error) {
-                        failed_locations.push(entry.location.clone());
-                        emit(cancelled_event(
-                            request.id,
-                            deleted_locations,
-                            failed_locations,
-                            request.entries[index + 1..]
-                                .iter()
-                                .map(|entry| entry.location.clone())
-                                .collect(),
-                            affected_locations,
-                        ));
-                        return;
-                    }
-                    if is_trash_unsupported_failure(request.permanent, &error) {
-                        retryable_locations.push(entry.location.clone());
-                    }
-                    errors.push(deletion_error_message(
-                        &entry.display_name,
-                        request.permanent,
-                        &error,
-                    ));
-                    failed_locations.push(entry.location.clone());
-                    None
-                } else {
-                    deleted_locations.push(entry.location.clone());
-                    Some(entry.location.clone())
-                };
-                emit(OperationEvent::DeleteProgress {
-                    request_id: request.id,
-                    completed: index + 1,
-                    total,
-                    deleted_location,
-                });
-            }
-            if errors.is_empty() {
-                emit(OperationEvent::Deleted {
-                    request_id: request.id,
-                    locations: deleted_locations,
-                });
-            } else {
-                let has_non_retryable_failures = errors.len() > retryable_locations.len();
-                emit(OperationEvent::CompletedWithErrors {
-                    request_id: request.id,
-                    deleted_locations,
-                    retryable_locations,
-                    has_non_retryable_failures,
-                    message: deletion_error_summary(&errors),
-                });
-            }
+            run_deletion(request.id, targets, false, emit, operation_cancellable).await;
         });
         cancellation_handle(cancellable)
     }
@@ -2151,13 +2803,13 @@ impl OperationProvider for LocalOperationProvider {
                     ));
                     return;
                 }
-                let source = gio_file(&entry.source);
+                let source = gio_file_for_location(&entry.source);
                 let result = if let Some(original_target) = entry.original_target.clone() {
-                    let target = gio_file(&original_target);
+                    let target = gio_file_for_location(&original_target);
                     if let Some(parent) = original_target.parent() {
                         affected_locations.insert(parent);
                     }
-                    move_local(source, target, operation_cancellable.clone()).await
+                    move_local(source, target, operation_cancellable.clone(), None).await
                 } else {
                     match await_cancellable(
                         &source,
@@ -2184,7 +2836,8 @@ impl OperationProvider for LocalOperationProvider {
                                 {
                                     affected_locations.insert(parent);
                                 }
-                                move_local(source, target, operation_cancellable.clone()).await
+                                move_local(source, target, operation_cancellable.clone(), None)
+                                    .await
                             }
                             None => Err(glib::Error::new(
                                 gio::IOErrorEnum::NotFound,
@@ -2247,7 +2900,14 @@ impl OperationProvider for LocalOperationProvider {
     fn compress(&self, request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         let cancelled = Arc::new(AtomicBool::new(false));
         let task_cancelled = cancelled.clone();
-        let task = glib::MainContext::default().spawn_local(async move {
+        let work_cancelled = cancelled.clone();
+        let destination = request.destination.clone();
+        let source_locations = request
+            .entries
+            .iter()
+            .map(|entry| entry.location.clone())
+            .collect::<Vec<_>>();
+        let _task = glib::MainContext::default().spawn_local(async move {
             let Some(dest_dir) = request.destination.native_path().map(Path::to_path_buf) else {
                 emit(OperationEvent::Failed {
                     request_id: request.id,
@@ -2288,29 +2948,53 @@ impl OperationProvider for LocalOperationProvider {
             let password = request.password.clone();
             let work_progress = progress.clone();
             let work_total = total.clone();
-            let result =
-                write_staged_archive(&dest_dir, &archive_path, request.conflict, move |file| {
-                    let count = count_files(&entries);
+            let result = write_staged_archive(
+                &dest_dir,
+                &archive_path,
+                request.conflict,
+                &task_cancelled,
+                move |file| {
+                    let count = count_archive_files(&entries, &work_cancelled)?;
                     work_total.store(count, Ordering::Relaxed);
                     match format {
-                        ArchiveFormat::Zip => {
-                            compress_zip(file, &entries, password.as_deref(), &work_progress)
+                        ArchiveFormat::Zip => compress_zip(
+                            file,
+                            &entries,
+                            password.as_deref(),
+                            &work_progress,
+                            &work_cancelled,
+                        ),
+                        ArchiveFormat::SevenZ => compress_7z(
+                            file,
+                            &entries,
+                            password.as_deref(),
+                            &work_progress,
+                            &work_cancelled,
+                        ),
+                        ArchiveFormat::TarGz => {
+                            compress_tar(file, &entries, true, &work_progress, &work_cancelled)
                         }
-                        ArchiveFormat::SevenZ => {
-                            compress_7z(file, &entries, password.as_deref(), &work_progress)
+                        ArchiveFormat::Tar => {
+                            compress_tar(file, &entries, false, &work_progress, &work_cancelled)
                         }
-                        ArchiveFormat::TarGz => compress_tar(file, &entries, true, &work_progress),
-                        ArchiveFormat::Tar => compress_tar(file, &entries, false, &work_progress),
                     }
-                })
-                .await;
+                },
+            )
+            .await;
             timer_id.remove();
             match result {
                 Ok(()) => emit(OperationEvent::Compressed {
                     request_id: request.id,
                     archive_name: archive_name.clone(),
                 }),
-                Err(error) => emit(OperationEvent::Failed {
+                Err(ArchiveError::Cancelled) => emit(cancelled_archive_event(
+                    request.id,
+                    destination,
+                    Vec::new(),
+                    Vec::new(),
+                    source_locations,
+                )),
+                Err(ArchiveError::Failed(error)) => emit(OperationEvent::Failed {
                     request_id: request.id,
                     message: error,
                 }),
@@ -2318,14 +3002,15 @@ impl OperationProvider for LocalOperationProvider {
         });
         LoadHandle::new(move || {
             cancelled.store(true, Ordering::Relaxed);
-            task.abort();
         })
     }
 
     fn extract(&self, request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
         let cancelled = Arc::new(AtomicBool::new(false));
         let task_cancelled = cancelled.clone();
-        let task = glib::MainContext::default().spawn_local(async move {
+        let work_cancelled = cancelled.clone();
+        let destination = request.destination.clone();
+        let _task = glib::MainContext::default().spawn_local(async move {
             let Some(archive_path) = request.entry.location.native_path().map(Path::to_path_buf)
             else {
                 emit(OperationEvent::Failed {
@@ -2364,6 +3049,7 @@ impl OperationProvider for LocalOperationProvider {
                         &dest_dir,
                         password.as_deref(),
                         &work_progress,
+                        &work_cancelled,
                     )
                 }
                 Some(ArchiveFormat::SevenZ) => {
@@ -2372,24 +3058,52 @@ impl OperationProvider for LocalOperationProvider {
                         .map(sevenz_rust2::Password::from)
                         .unwrap_or_default();
                     let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
-                    extract_7z_from_reader(file, &dest_dir, pw, &work_progress)
+                    extract_7z_from_reader(file, &dest_dir, pw, &work_progress, &work_cancelled)
                 }
-                Some(ArchiveFormat::TarGz) => {
-                    extract_tar(&archive_path, &dest_dir, true, &work_progress)
-                }
-                Some(ArchiveFormat::Tar) => {
-                    extract_tar(&archive_path, &dest_dir, false, &work_progress)
-                }
-                None => Err(format!("Unsupported archive format: {}", display_name)),
+                Some(ArchiveFormat::TarGz) => extract_tar(
+                    &archive_path,
+                    &dest_dir,
+                    true,
+                    &work_progress,
+                    &work_cancelled,
+                ),
+                Some(ArchiveFormat::Tar) => extract_tar(
+                    &archive_path,
+                    &dest_dir,
+                    false,
+                    &work_progress,
+                    &work_cancelled,
+                ),
+                None => Err(archive_failed(format!(
+                    "Unsupported archive format: {display_name}"
+                ))),
             })
             .await;
             timer_id.remove();
             match result {
-                Ok(Ok(first_name)) => emit(OperationEvent::Extracted {
+                Ok(Ok(ArchiveOutcome::Completed(first_name))) => emit(OperationEvent::Extracted {
                     request_id: request.id,
                     first_name,
                 }),
-                Ok(Err(error)) => emit(OperationEvent::Failed {
+                Ok(Ok(ArchiveOutcome::Cancelled {
+                    completed,
+                    failed,
+                    not_attempted,
+                })) => emit(cancelled_archive_event(
+                    request.id,
+                    destination,
+                    completed,
+                    failed,
+                    not_attempted,
+                )),
+                Ok(Err(ArchiveError::Cancelled)) => emit(cancelled_archive_event(
+                    request.id,
+                    destination,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                )),
+                Ok(Err(ArchiveError::Failed(error))) => emit(OperationEvent::Failed {
                     request_id: request.id,
                     message: error,
                 }),
@@ -2401,9 +3115,98 @@ impl OperationProvider for LocalOperationProvider {
         });
         LoadHandle::new(move || {
             cancelled.store(true, Ordering::Relaxed);
-            task.abort();
         })
     }
+}
+
+enum ArchiveSource {
+    File(std::fs::File),
+    Directory(std::fs::File),
+    Symlink(PathBuf),
+}
+
+fn open_archive_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<ArchiveSource, String> {
+    let stat = rustix::fs::statat(parent, name, rustix::fs::AtFlags::SYMLINK_NOFOLLOW)
+        .map_err(|error| error.to_string())?;
+    match rustix::fs::FileType::from_raw_mode(stat.st_mode) {
+        rustix::fs::FileType::Symlink => {
+            let target = rustix::fs::readlinkat(parent, name, Vec::new())
+                .map_err(|error| error.to_string())?;
+            Ok(ArchiveSource::Symlink(PathBuf::from(OsString::from_vec(
+                target.into_bytes(),
+            ))))
+        }
+        rustix::fs::FileType::Directory => open_local_child_directory(parent, name)
+            .map(std::fs::File::from)
+            .map(ArchiveSource::Directory),
+        rustix::fs::FileType::RegularFile => {
+            let file = rustix::fs::openat2(
+                parent,
+                name,
+                rustix::fs::OFlags::RDONLY
+                    | rustix::fs::OFlags::NONBLOCK
+                    | rustix::fs::OFlags::CLOEXEC,
+                rustix::fs::Mode::empty(),
+                rustix::fs::ResolveFlags::BENEATH
+                    | rustix::fs::ResolveFlags::NO_SYMLINKS
+                    | rustix::fs::ResolveFlags::NO_MAGICLINKS,
+            )
+            .map(std::fs::File::from)
+            .map_err(|error| error.to_string())?;
+            if !file
+                .metadata()
+                .map_err(|error| error.to_string())?
+                .is_file()
+            {
+                return Err("The file type changed during compression".to_owned());
+            }
+            Ok(ArchiveSource::File(file))
+        }
+        _ => Err("Compression supports only regular files, folders, and symbolic links".to_owned()),
+    }
+}
+
+fn visit_archive_entries(
+    entries: &[PathBuf],
+    cancelled: &AtomicBool,
+    visit: &mut impl FnMut(&Path, &ArchiveSource) -> Result<(), ArchiveError>,
+) -> Result<(), ArchiveError> {
+    for entry in entries {
+        check_archive_cancelled(cancelled)?;
+        let name = entry.file_name().ok_or("Entry has no file name")?;
+        let parent = open_local_parent_directory(entry.parent().ok_or("Entry has no parent")?)?;
+        visit_archive_entry(&parent, name, Path::new(name), cancelled, visit)?;
+    }
+    Ok(())
+}
+
+fn visit_archive_entry<Fd: AsFd>(
+    parent: &Fd,
+    name: &OsStr,
+    archive_path: &Path,
+    cancelled: &AtomicBool,
+    visit: &mut impl FnMut(&Path, &ArchiveSource) -> Result<(), ArchiveError>,
+) -> Result<(), ArchiveError> {
+    check_archive_cancelled(cancelled)?;
+    let source = open_archive_source(parent, name).map_err(|error| {
+        archive_failed(format!(
+            "Could not compress {}: {error}",
+            archive_path.display()
+        ))
+    })?;
+    visit(archive_path, &source)?;
+    if let ArchiveSource::Directory(directory) = source {
+        for child in local_directory_children(&directory)? {
+            visit_archive_entry(
+                &directory,
+                &child,
+                &archive_path.join(&child),
+                cancelled,
+                visit,
+            )?;
+        }
+    }
+    Ok(())
 }
 
 fn compress_zip(
@@ -2411,7 +3214,8 @@ fn compress_zip(
     entries: &[std::path::PathBuf],
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
-) -> Result<(), String> {
+    cancelled: &AtomicBool,
+) -> Result<(), ArchiveError> {
     let writer = std::io::BufWriter::with_capacity(COPY_BUF, file);
     let mut writer = zip::ZipWriter::new(writer);
     let deflated = zip::write::SimpleFileOptions::default()
@@ -2429,27 +3233,43 @@ fn compress_zip(
     } else {
         stored
     };
-    for entry in entries {
-        let name = entry
-            .file_name()
-            .ok_or("Entry has no file name")?
-            .to_string_lossy()
-            .to_string();
-        if entry.is_dir() {
-            add_dir_to_zip(&mut writer, entry, &name, &deflated, &stored, progress)?;
-        } else {
-            let opts = if is_incompressible(entry) {
-                &stored
-            } else {
-                &deflated
-            };
-            writer.start_file(&name, *opts).map_err(|e| e.to_string())?;
-            let f = std::fs::File::open(entry).map_err(|e| e.to_string())?;
-            let f = std::io::BufReader::with_capacity(COPY_BUF, f);
-            copy_with_big_buf(f, &mut writer).map_err(|e| e.to_string())?;
-            progress.fetch_add(1, Ordering::Relaxed);
+    visit_archive_entries(entries, cancelled, &mut |path, source| {
+        let name = path.to_string_lossy();
+        match source {
+            ArchiveSource::Directory(_) => {
+                return writer.add_directory(name, stored).map_err(archive_failed);
+            }
+            ArchiveSource::Symlink(target) => {
+                let target = target.to_str().ok_or_else(|| {
+                    format!(
+                        "ZIP cannot preserve the non-UTF-8 link target of {}. Use TAR instead.",
+                        path.display()
+                    )
+                })?;
+                writer
+                    .add_symlink(name, target, stored)
+                    .map_err(|error| error.to_string())?;
+            }
+            ArchiveSource::File(file) => {
+                let options = if is_incompressible(path) {
+                    stored
+                } else {
+                    deflated
+                };
+                writer
+                    .start_file(name, options)
+                    .map_err(|error| error.to_string())?;
+                copy_with_big_buf(
+                    std::io::BufReader::with_capacity(COPY_BUF, file),
+                    &mut writer,
+                    cancelled,
+                )?;
+            }
         }
-    }
+        progress.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    })?;
+    check_archive_cancelled(cancelled)?;
     writer
         .finish()
         .map_err(|error| error.to_string())?
@@ -2458,48 +3278,17 @@ fn compress_zip(
     Ok(())
 }
 
-fn add_dir_to_zip<W: std::io::Write + std::io::Seek>(
-    writer: &mut zip::ZipWriter<W>,
-    dir: &Path,
-    prefix: &str,
-    deflated: &zip::write::FileOptions<'_, ()>,
-    stored: &zip::write::FileOptions<'_, ()>,
-    progress: &Arc<AtomicUsize>,
-) -> Result<(), String> {
-    for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let path = entry.path();
-        let rel_name = format!("{}/{}", prefix, entry.file_name().to_string_lossy());
-        if path.is_dir() {
-            add_dir_to_zip(writer, &path, &rel_name, deflated, stored, progress)?;
-        } else {
-            let opts = if is_incompressible(&path) {
-                stored
-            } else {
-                deflated
-            };
-            writer
-                .start_file(&rel_name, *opts)
-                .map_err(|e| e.to_string())?;
-            let f = std::fs::File::open(&path).map_err(|e| e.to_string())?;
-            let f = std::io::BufReader::with_capacity(COPY_BUF, f);
-            copy_with_big_buf(f, writer).map_err(|e| e.to_string())?;
-            progress.fetch_add(1, Ordering::Relaxed);
-        }
-    }
-    Ok(())
-}
-
 fn compress_tar(
     file: std::fs::File,
     entries: &[std::path::PathBuf],
     gzip: bool,
     progress: &Arc<AtomicUsize>,
-) -> Result<(), String> {
+    cancelled: &AtomicBool,
+) -> Result<(), ArchiveError> {
     let writer = std::io::BufWriter::with_capacity(COPY_BUF, file);
     if gzip {
         let mut encoder = flate2::write::GzEncoder::new(writer, flate2::Compression::default());
-        append_tar_entries(&mut encoder, entries, progress)?;
+        append_tar_entries(&mut encoder, entries, progress, cancelled)?;
         encoder
             .finish()
             .map_err(|error| error.to_string())?
@@ -2507,7 +3296,7 @@ fn compress_tar(
             .map_err(|error| error.to_string())?;
     } else {
         let mut writer = writer;
-        append_tar_entries(&mut writer, entries, progress)?;
+        append_tar_entries(&mut writer, entries, progress, cancelled)?;
         writer.into_inner().map_err(|error| error.to_string())?;
     }
     Ok(())
@@ -2517,26 +3306,41 @@ fn append_tar_entries(
     writer: &mut dyn std::io::Write,
     entries: &[std::path::PathBuf],
     progress: &Arc<AtomicUsize>,
-) -> Result<(), String> {
+    cancelled: &AtomicBool,
+) -> Result<(), ArchiveError> {
     let mut builder = tar::Builder::new(writer);
-    for entry in entries {
-        let name = entry
-            .file_name()
-            .ok_or("Entry has no file name")?
-            .to_string_lossy()
-            .to_string();
-        if entry.is_dir() {
-            builder
-                .append_dir_all(&name, entry)
-                .map_err(|e| e.to_string())?;
-        } else {
-            builder
-                .append_path_with_name(entry, &name)
-                .map_err(|e| e.to_string())?;
+    visit_archive_entries(entries, cancelled, &mut |path, source| {
+        let mut header = tar::Header::new_gnu();
+        match source {
+            ArchiveSource::Symlink(target) => {
+                header.set_entry_type(tar::EntryType::Symlink);
+                header.set_size(0);
+                header.set_mode(0o777);
+                header.set_uid(0);
+                header.set_gid(0);
+                builder
+                    .append_link(&mut header, path, target)
+                    .map_err(|error| error.to_string())?;
+            }
+            ArchiveSource::Directory(directory) => {
+                header.set_metadata(&directory.metadata().map_err(|error| error.to_string())?);
+                return builder
+                    .append_data(&mut header, path, std::io::empty())
+                    .map_err(archive_failed);
+            }
+            ArchiveSource::File(file) => {
+                let mut file = file.try_clone().map_err(|error| error.to_string())?;
+                builder
+                    .append_file(path, &mut file)
+                    .map_err(|error| error.to_string())?;
+            }
         }
+        check_archive_cancelled(cancelled)?;
         progress.fetch_add(1, Ordering::Relaxed);
-    }
-    builder.finish().map_err(|e| e.to_string())?;
+        Ok(())
+    })?;
+    check_archive_cancelled(cancelled)?;
+    builder.finish().map_err(archive_failed)?;
     Ok(())
 }
 
@@ -2648,13 +3452,21 @@ impl ExtractionDestination {
         Ok(directory)
     }
 
-    fn create_file(&self, path: &Path) -> Result<std::fs::File, String> {
+    fn create_file(&self, path: &Path) -> Result<(std::fs::File, PathBuf), String> {
         let parent = self.create_directories(path.parent().unwrap_or_else(|| Path::new("")))?;
         let name = path
             .file_name()
             .ok_or_else(|| "Archive entry has no file name".to_owned())?;
         let name = self.available_name(&parent, name)?;
-        rustix::fs::openat(
+        let mut created = PathBuf::new();
+        if let Some(parent_path) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            created.push(parent_path);
+        }
+        created.push(&name);
+        let file = rustix::fs::openat(
             parent,
             name,
             rustix::fs::OFlags::WRONLY
@@ -2665,41 +3477,196 @@ impl ExtractionDestination {
             rustix::fs::Mode::from_raw_mode(0o666),
         )
         .map(std::fs::File::from)
-        .map_err(|error| error.to_string())
+        .map_err(|error| error.to_string())?;
+        Ok((file, created))
+    }
+
+    fn remove_file(&self, path: &Path) -> Result<(), String> {
+        let parent = self.create_directories(path.parent().unwrap_or_else(|| Path::new("")))?;
+        let name = path
+            .file_name()
+            .ok_or_else(|| "Archive entry has no file name".to_owned())?;
+        rustix::fs::unlinkat(&parent, name, rustix::fs::AtFlags::empty()).map_err(|error| {
+            format!(
+                "Could not remove incomplete extraction {}: {error}",
+                path.display()
+            )
+        })
     }
 }
 
-/// Counts all files (not directories) under the given paths recursively.
-fn count_files(entries: &[std::path::PathBuf]) -> usize {
+fn count_archive_files(entries: &[PathBuf], cancelled: &AtomicBool) -> Result<usize, ArchiveError> {
     let mut count = 0;
-    for entry in entries {
-        if entry.is_dir() {
-            if let Ok(rd) = std::fs::read_dir(entry) {
-                for child in rd.flatten() {
-                    count += count_files(&[child.path()]);
-                }
-            }
-        } else {
+    visit_archive_entries(entries, cancelled, &mut |_, source| {
+        if !matches!(source, ArchiveSource::Directory(_)) {
             count += 1;
         }
-    }
-    count
+        Ok(())
+    })?;
+    Ok(count)
 }
 
 const COPY_BUF: usize = 1 << 20; // 1 MiB
+const ARCHIVE_CANCELLED: &str = "Operation cancelled";
+
+#[derive(Debug, PartialEq, Eq)]
+enum ArchiveError {
+    Cancelled,
+    Failed(String),
+}
+
+impl std::fmt::Display for ArchiveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Cancelled => f.write_str(ARCHIVE_CANCELLED),
+            Self::Failed(message) => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for ArchiveError {}
+
+impl From<String> for ArchiveError {
+    fn from(message: String) -> Self {
+        Self::Failed(message)
+    }
+}
+
+impl From<&str> for ArchiveError {
+    fn from(message: &str) -> Self {
+        Self::Failed(message.to_owned())
+    }
+}
+
+fn archive_failed(error: impl std::fmt::Display) -> ArchiveError {
+    ArchiveError::Failed(error.to_string())
+}
+
+fn sevenz_cancelled() -> sevenz_rust2::Error {
+    sevenz_rust2::Error::Other(ARCHIVE_CANCELLED.into())
+}
+
+fn sevenz_is_cancelled(error: &sevenz_rust2::Error) -> bool {
+    matches!(error, sevenz_rust2::Error::Other(message) if message.as_ref() == ARCHIVE_CANCELLED)
+}
+
+enum ArchiveOutcome<T> {
+    Completed(T),
+    Cancelled {
+        completed: Vec<Location>,
+        failed: Vec<Location>,
+        not_attempted: Vec<Location>,
+    },
+}
+
+fn check_archive_cancelled(cancelled: &AtomicBool) -> Result<(), ArchiveError> {
+    if cancelled.load(Ordering::Relaxed) {
+        Err(ArchiveError::Cancelled)
+    } else {
+        Ok(())
+    }
+}
+
+fn cancelled_archive_event(
+    request_id: OperationRequestId,
+    destination: Location,
+    completed: Vec<Location>,
+    failed: Vec<Location>,
+    not_attempted: Vec<Location>,
+) -> OperationEvent {
+    OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation {
+            completed,
+            failed,
+            not_attempted,
+            affected_locations: HashSet::from([destination]),
+        },
+    }
+}
+
+fn extract_entry_location(destination: &Path, relative: &Path) -> Location {
+    Location::local(destination.join(relative))
+}
+
+fn zip_entry_locations(
+    archive: &zip::ZipArchive<std::fs::File>,
+    destination: &Path,
+    from: usize,
+) -> Vec<Location> {
+    (from..archive.len())
+        .filter_map(|index| archive.name_for_index(index))
+        .map(|name| Location::local(destination.join(name)))
+        .collect()
+}
+
+fn tar_entry_location<'a, R: std::io::Read + 'a>(
+    entry: tar::Entry<'a, R>,
+    dest_dir: &Path,
+) -> Option<Location> {
+    let name = entry.path().ok()?;
+    let path = validated_archive_path(&name.to_string_lossy()).ok()?;
+    Some(extract_entry_location(dest_dir, &path))
+}
+
+fn sevenz_locations_from(
+    dest_dir: &Path,
+    names: &[String],
+    from_name: &str,
+    skip_current: bool,
+) -> Vec<Location> {
+    let Some(index) = names.iter().position(|name| name == from_name) else {
+        return Vec::new();
+    };
+    let start = if skip_current { index + 1 } else { index };
+    names
+        .get(start..)
+        .unwrap_or(&[])
+        .iter()
+        .filter_map(|name| validated_archive_path(name).ok())
+        .map(|path| extract_entry_location(dest_dir, &path))
+        .collect()
+}
+
+fn cancelled_extract_after_partial_write(
+    dest_dir: &Path,
+    created: &Path,
+    completed: Vec<Location>,
+    remaining: Vec<Location>,
+    removed: Result<(), String>,
+) -> ArchiveOutcome<Option<String>> {
+    let interrupted = extract_entry_location(dest_dir, created);
+    if removed.is_ok() {
+        let mut not_attempted = vec![interrupted];
+        not_attempted.extend(remaining);
+        ArchiveOutcome::Cancelled {
+            completed,
+            failed: Vec::new(),
+            not_attempted,
+        }
+    } else {
+        ArchiveOutcome::Cancelled {
+            completed,
+            failed: vec![interrupted],
+            not_attempted: remaining,
+        }
+    }
+}
 
 fn copy_with_big_buf(
     mut reader: impl std::io::Read,
     writer: &mut (impl std::io::Write + ?Sized),
-) -> std::io::Result<u64> {
+    cancelled: &AtomicBool,
+) -> Result<u64, ArchiveError> {
     let mut buf = vec![0u8; COPY_BUF];
     let mut total = 0;
     loop {
-        let n = reader.read(&mut buf)?;
+        check_archive_cancelled(cancelled)?;
+        let n = reader.read(&mut buf).map_err(archive_failed)?;
         if n == 0 {
             break;
         }
-        writer.write_all(&buf[..n])?;
+        writer.write_all(&buf[..n]).map_err(archive_failed)?;
         total += n as u64;
     }
     Ok(total)
@@ -2718,14 +3685,14 @@ fn archive_progress_timer(
     let timer_cancelled = cancelled.clone();
     let timer_emit = emit.clone();
     glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-        if timer_cancelled.load(Ordering::Relaxed) {
-            return glib::ControlFlow::Break;
+        // Keep the source until the task calls remove(); Break would double-remove.
+        if !timer_cancelled.load(Ordering::Relaxed) {
+            timer_emit(OperationEvent::ArchiveProgress {
+                request_id,
+                completed: timer_progress.load(Ordering::Relaxed),
+                total: timer_total.load(Ordering::Relaxed),
+            });
         }
-        timer_emit(OperationEvent::ArchiveProgress {
-            request_id,
-            completed: timer_progress.load(Ordering::Relaxed),
-            total: timer_total.load(Ordering::Relaxed),
-        });
         glib::ControlFlow::Continue
     })
 }
@@ -2794,16 +3761,25 @@ fn extract_zip_from_archive(
     dest_dir: &Path,
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
-) -> Result<Option<String>, String> {
+    cancelled: &AtomicBool,
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let destination = ExtractionDestination::open(dest_dir)?;
     let pw_bytes = password.map(|p| p.as_bytes());
     let mut resolver = ExtractNameResolver::new();
     let mut first_name = None;
+    let mut completed = Vec::new();
     for i in 0..archive.len() {
+        if cancelled.load(Ordering::Relaxed) {
+            return Ok(ArchiveOutcome::Cancelled {
+                completed,
+                failed: Vec::new(),
+                not_attempted: zip_entry_locations(archive, dest_dir, i),
+            });
+        }
         let read_options = zip::read::ZipReadOptions::new().password(pw_bytes);
         let mut entry = archive
             .by_index_with_options(i, read_options)
-            .map_err(|e| e.to_string())?;
+            .map_err(archive_failed)?;
         let name = entry.name();
         entry
             .enclosed_name()
@@ -2819,12 +3795,27 @@ fn extract_zip_from_archive(
         if entry.is_dir() {
             destination.create_directories(&outpath)?;
         } else {
-            let mut outfile = destination.create_file(&outpath)?;
-            copy_with_big_buf(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
+            let (mut outfile, created) = destination.create_file(&outpath)?;
+            if let Err(error) = copy_with_big_buf(&mut entry, &mut outfile, cancelled) {
+                drop(outfile);
+                drop(entry);
+                let removed = destination.remove_file(&created);
+                return match error {
+                    ArchiveError::Cancelled => Ok(cancelled_extract_after_partial_write(
+                        dest_dir,
+                        &created,
+                        completed,
+                        zip_entry_locations(archive, dest_dir, i + 1),
+                        removed,
+                    )),
+                    failed => Err(failed),
+                };
+            }
         }
+        completed.push(extract_entry_location(dest_dir, &outpath));
         progress.fetch_add(1, Ordering::Relaxed);
     }
-    Ok(first_name)
+    Ok(ArchiveOutcome::Completed(first_name))
 }
 
 fn extract_tar(
@@ -2832,9 +3823,10 @@ fn extract_tar(
     dest_dir: &Path,
     gzip: bool,
     progress: &Arc<AtomicUsize>,
-) -> Result<Option<String>, String> {
+    cancelled: &AtomicBool,
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let destination = ExtractionDestination::open(dest_dir)?;
-    let file = std::fs::File::open(archive_path).map_err(|e| e.to_string())?;
+    let file = std::fs::File::open(archive_path).map_err(archive_failed)?;
     let reader: Box<dyn std::io::Read> = if gzip {
         Box::new(flate2::read::GzDecoder::new(file))
     } else {
@@ -2843,9 +3835,26 @@ fn extract_tar(
     let mut archive = tar::Archive::new(reader);
     let mut resolver = ExtractNameResolver::new();
     let mut first_name = None;
-    for entry in archive.entries().map_err(|e| e.to_string())? {
-        let mut entry = entry.map_err(|e| e.to_string())?;
-        let name = entry.path().map_err(|e| e.to_string())?;
+    let mut completed = Vec::new();
+    let entries = archive.entries().map_err(archive_failed)?;
+    for entry in entries {
+        if cancelled.load(Ordering::Relaxed) {
+            let not_attempted = entry
+                .ok()
+                .and_then(|entry| tar_entry_location(entry, dest_dir))
+                .into_iter()
+                .collect();
+            return Ok(ArchiveOutcome::Cancelled {
+                completed,
+                failed: Vec::new(),
+                not_attempted,
+            });
+        }
+        let mut entry = entry.map_err(archive_failed)?;
+        let name = entry.path().map_err(archive_failed)?;
+        if entry.header().entry_type().is_dir() && name == Path::new(".") {
+            continue;
+        }
         let path = validated_archive_path(&name.to_string_lossy())?;
         let outpath = resolver.resolve(&destination, &path)?;
         if first_name.is_none() {
@@ -2857,12 +3866,27 @@ fn extract_tar(
         if entry.header().entry_type().is_dir() {
             destination.create_directories(&outpath)?;
         } else {
-            let mut outfile = destination.create_file(&outpath)?;
-            copy_with_big_buf(&mut entry, &mut outfile).map_err(|e| e.to_string())?;
+            let (mut outfile, created) = destination.create_file(&outpath)?;
+            if let Err(error) = copy_with_big_buf(&mut entry, &mut outfile, cancelled) {
+                drop(outfile);
+                drop(entry);
+                let removed = destination.remove_file(&created);
+                return match error {
+                    ArchiveError::Cancelled => Ok(cancelled_extract_after_partial_write(
+                        dest_dir,
+                        &created,
+                        completed,
+                        Vec::new(),
+                        removed,
+                    )),
+                    failed => Err(failed),
+                };
+            }
         }
+        completed.push(extract_entry_location(dest_dir, &outpath));
         progress.fetch_add(1, Ordering::Relaxed);
     }
-    Ok(first_name)
+    Ok(ArchiveOutcome::Completed(first_name))
 }
 
 fn compress_7z(
@@ -2870,7 +3894,8 @@ fn compress_7z(
     entries: &[std::path::PathBuf],
     password: Option<&str>,
     progress: &Arc<AtomicUsize>,
-) -> Result<(), String> {
+    cancelled: &AtomicBool,
+) -> Result<(), ArchiveError> {
     use sevenz_rust2::encoder_options::{AesEncoderOptions, EncoderOptions, Lzma2Options};
     let mut writer = sevenz_rust2::ArchiveWriter::new(file).map_err(|e| e.to_string())?;
     let threads = std::thread::available_parallelism()
@@ -2886,37 +3911,55 @@ fn compress_7z(
     } else {
         writer.set_content_methods(vec![lzma2]);
     }
-    for entry in entries {
-        add_path_to_7z(&mut writer, entry, entry, progress)?;
-    }
-    writer.finish().map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-fn add_path_to_7z(
-    writer: &mut sevenz_rust2::ArchiveWriter<std::fs::File>,
-    base: &Path,
-    path: &Path,
-    progress: &Arc<AtomicUsize>,
-) -> Result<(), String> {
-    if path.is_dir() {
-        for child in std::fs::read_dir(path).map_err(|e| e.to_string())? {
-            let child = child.map_err(|e| e.to_string())?;
-            add_path_to_7z(writer, base, &child.path(), progress)?;
+    visit_archive_entries(entries, cancelled, &mut |path, source| {
+        let name = path.to_string_lossy();
+        let (mut entry, file) = match source {
+            ArchiveSource::Symlink(_) => {
+                return Err(archive_failed(format!(
+                    "7z compression does not support symbolic links: {}. Use ZIP or TAR instead.",
+                    path.display()
+                )));
+            }
+            ArchiveSource::Directory(file) => {
+                (sevenz_rust2::ArchiveEntry::new_directory(&name), file)
+            }
+            ArchiveSource::File(file) => (sevenz_rust2::ArchiveEntry::new_file(&name), file),
+        };
+        let metadata = file.metadata().map_err(|error| error.to_string())?;
+        if let Ok(modified) = metadata.modified()
+            && let Ok(date) = sevenz_rust2::NtTime::try_from(modified)
+        {
+            entry.last_modified_date = date;
+            entry.has_last_modified_date = u64::from(date) > 0;
         }
-    } else {
-        let name = path
-            .strip_prefix(base.parent().unwrap_or(base))
-            .unwrap_or(path)
-            .to_string_lossy()
-            .to_string();
-        let entry = sevenz_rust2::ArchiveEntry::from_path(path, name);
-        let reader = std::fs::File::open(path).map_err(|e| e.to_string())?;
+        if let Ok(created) = metadata.created()
+            && let Ok(date) = sevenz_rust2::NtTime::try_from(created)
+        {
+            entry.creation_date = date;
+            entry.has_creation_date = u64::from(date) > 0;
+        }
+        if let Ok(accessed) = metadata.accessed()
+            && let Ok(date) = sevenz_rust2::NtTime::try_from(accessed)
+        {
+            entry.access_date = date;
+            entry.has_access_date = u64::from(date) > 0;
+        }
+        let reader = if matches!(source, ArchiveSource::Directory(_)) {
+            None
+        } else {
+            Some(file)
+        };
         writer
-            .push_archive_entry(entry, Some(reader))
-            .map_err(|e| e.to_string())?;
-        progress.fetch_add(1, Ordering::Relaxed);
-    }
+            .push_archive_entry(entry, reader)
+            .map_err(archive_failed)?;
+        check_archive_cancelled(cancelled)?;
+        if reader.is_some() {
+            progress.fetch_add(1, Ordering::Relaxed);
+        }
+        Ok(())
+    })?;
+    check_archive_cancelled(cancelled)?;
+    writer.finish().map_err(archive_failed)?;
     Ok(())
 }
 
@@ -2925,43 +3968,91 @@ fn extract_7z_from_reader(
     dest_dir: &Path,
     password: sevenz_rust2::Password,
     progress: &Arc<AtomicUsize>,
-) -> Result<Option<String>, String> {
+    cancelled: &AtomicBool,
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let destination = ExtractionDestination::open(dest_dir)?;
-    let resolver = std::cell::RefCell::new(ExtractNameResolver::new());
-    let first_name = std::cell::RefCell::new(None::<String>);
+    let mut archive = sevenz_rust2::ArchiveReader::new(reader, password).map_err(archive_failed)?;
+    let entry_names: Vec<String> = archive
+        .archive()
+        .files
+        .iter()
+        .map(|entry| entry.name.clone())
+        .collect();
+    let resolver = RefCell::new(ExtractNameResolver::new());
+    let first_name = RefCell::new(None::<String>);
+    let completed = RefCell::new(Vec::new());
+    let failed = RefCell::new(Vec::new());
+    let not_attempted = RefCell::new(Vec::new());
     let progress = progress.clone();
-    sevenz_rust2::decompress_with_extract_fn_and_password(
-        reader,
-        dest_dir,
-        password,
-        |entry, reader, _safe_path| {
-            let path = validated_archive_path(&entry.name)
-                .map_err(|e| sevenz_rust2::Error::Other(e.into()))?;
-            let outpath = resolver
-                .borrow_mut()
-                .resolve(&destination, &path)
-                .map_err(|e| sevenz_rust2::Error::Other(e.into()))?;
-            if first_name.borrow().is_none() {
-                *first_name.borrow_mut() = outpath
-                    .components()
-                    .next()
-                    .map(|c| c.as_os_str().to_string_lossy().to_string());
+    let dest_dir = dest_dir.to_path_buf();
+    let result = archive.for_each_entries(|entry, reader| {
+        if cancelled.load(Ordering::Relaxed) {
+            *not_attempted.borrow_mut() =
+                sevenz_locations_from(&dest_dir, &entry_names, &entry.name, false);
+            return Err(sevenz_cancelled());
+        }
+        let path = validated_archive_path(&entry.name)
+            .map_err(|error| sevenz_rust2::Error::Other(error.into()))?;
+        let outpath = resolver
+            .borrow_mut()
+            .resolve(&destination, &path)
+            .map_err(|error| sevenz_rust2::Error::Other(error.into()))?;
+        if first_name.borrow().is_none() {
+            *first_name.borrow_mut() = outpath
+                .components()
+                .next()
+                .map(|c| c.as_os_str().to_string_lossy().to_string());
+        }
+        if entry.is_directory {
+            destination
+                .create_directories(&outpath)
+                .map_err(|error| sevenz_rust2::Error::Other(error.into()))?;
+        } else {
+            let (mut file, created) = destination
+                .create_file(&outpath)
+                .map_err(|error| sevenz_rust2::Error::Other(error.into()))?;
+            if let Err(error) = copy_with_big_buf(reader, &mut file, cancelled) {
+                drop(file);
+                let removed = destination.remove_file(&created);
+                return match error {
+                    ArchiveError::Cancelled => {
+                        if removed.is_err() {
+                            failed
+                                .borrow_mut()
+                                .push(extract_entry_location(&dest_dir, &created));
+                            *not_attempted.borrow_mut() =
+                                sevenz_locations_from(&dest_dir, &entry_names, &entry.name, true);
+                        } else {
+                            let mut remaining = vec![extract_entry_location(&dest_dir, &created)];
+                            remaining.extend(sevenz_locations_from(
+                                &dest_dir,
+                                &entry_names,
+                                &entry.name,
+                                true,
+                            ));
+                            *not_attempted.borrow_mut() = remaining;
+                        }
+                        Err(sevenz_cancelled())
+                    }
+                    ArchiveError::Failed(message) => {
+                        Err(sevenz_rust2::Error::Other(message.into()))
+                    }
+                };
             }
-            if entry.is_directory {
-                destination
-                    .create_directories(&outpath)
-                    .map_err(|e| sevenz_rust2::Error::Other(e.into()))?;
-            } else {
-                let mut file = destination
-                    .create_file(&outpath)
-                    .map_err(|e| sevenz_rust2::Error::Other(e.into()))?;
-                copy_with_big_buf(reader, &mut file)
-                    .map_err(|e| sevenz_rust2::Error::Other(e.to_string().into()))?;
-            }
-            progress.fetch_add(1, Ordering::Relaxed);
-            Ok(false)
-        },
-    )
-    .map_err(|e| e.to_string())?;
-    Ok(first_name.into_inner())
+        }
+        completed
+            .borrow_mut()
+            .push(extract_entry_location(&dest_dir, &outpath));
+        progress.fetch_add(1, Ordering::Relaxed);
+        Ok(true)
+    });
+    match result {
+        Ok(()) => Ok(ArchiveOutcome::Completed(first_name.into_inner())),
+        Err(error) if sevenz_is_cancelled(&error) => Ok(ArchiveOutcome::Cancelled {
+            completed: completed.into_inner(),
+            failed: failed.into_inner(),
+            not_attempted: not_attempted.into_inner(),
+        }),
+        Err(error) => Err(archive_failed(error)),
+    }
 }

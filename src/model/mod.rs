@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::{cmp::Ordering, ffi::OsString, path::PathBuf};
+use std::{
+    cmp::Ordering,
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 
 use gio::prelude::*;
 
@@ -114,9 +118,15 @@ impl Location {
     }
 
     pub fn is_within(&self, other: &Self) -> bool {
-        self.native_path()
-            .zip(other.native_path())
-            .is_some_and(|(path, parent)| path.starts_with(parent))
+        if let Some((path, parent)) = self.native_path().zip(other.native_path()) {
+            return path.starts_with(parent);
+        }
+        let (Some(uri), Some(parent_uri)) = (self.uri_value(), other.uri_value()) else {
+            return false;
+        };
+        let file = gio::File::for_uri(uri);
+        let parent = gio::File::for_uri(parent_uri);
+        file.equal(&parent) || file.has_prefix(&parent)
     }
 
     pub fn compare(&self, other: &Self) -> Ordering {
@@ -265,6 +275,8 @@ pub enum MetadataValue<T> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FileEntry {
     pub location: Location,
+    /// Local thumbnail source for virtual files; `location` remains their operational identity.
+    pub thumbnail_path: Option<PathBuf>,
     pub native_name: OsString,
     pub display_name: String,
     pub kind: EntryKind,
@@ -275,6 +287,12 @@ pub struct FileEntry {
 }
 
 impl FileEntry {
+    pub fn local_thumbnail_path(&self) -> Option<&Path> {
+        self.location
+            .native_path()
+            .or(self.thumbnail_path.as_deref())
+    }
+
     pub fn is_directory(&self) -> bool {
         matches!(
             self.kind,

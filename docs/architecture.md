@@ -59,11 +59,73 @@ platform choosers, such as GTK's color dialog, are also kept native.
 ### Browser presentation modes
 
 Browser presentations consume the same `BrowserEvent` stream and send intents back to the same
-application controller. Miller list columns, the single-pane grid, and the single-pane explorer must not
+application controller. Columns, the single-pane Icons grid, and the single-pane List must not
 own independent filesystem or navigation state. Mode-specific widget construction and interaction
 policy live behind the UI presentation boundary (`ui/browser_modes.rs`); shared operations stay in
 the application layer. A future mode should therefore add a renderer rather than add mode checks to
 filesystem, navigation, or operation code.
+
+Pointer intent is shared through `ui/pointer.rs` and `ui/marquee.rs`. In all three modes,
+thumbnail slots, rendered row text/metadata, and Icons' caption region are item drag targets;
+unused label allocation and the gutters beside thumbnails are marquee origins. Both paths use
+GTK's configured drag threshold. Within collection viewports, marquees claim the sequence only
+after that threshold, leaving simple clicks and modifier-clicks intact. A completed plain click
+on background clears selections; returning to an inactive column then selects its first visible entry. Presses and marquee releases do not clear selections. Click activation and automatic preview wait for release
+and reject cancelled gestures, drag motion, and recycled items. Marquees anchor and cache mapped
+item geometry in scroll-content coordinates, independent of native GtkScrollable or GtkViewport
+layout. Edge and wheel scrolling refresh selection after layout/paint, even without pointer motion;
+unmapped rows cannot overwrite cached geometry with stale allocations. The visible band stays
+clipped to the viewport, while earlier off-screen hits remain selected. Release completes pending
+layout-dependent selection before disconnecting the frame handler.
+
+### Browser implementation map
+
+`ui/browser.rs` is the composition root and stable `BrowserView` command facade. Private feature
+modules under `ui/browser/` implement methods on the same `ViewState`; splitting a feature into a
+file does not give it a second controller or a separate selection model. Imports name the owning
+module explicitly. Re-exports retain the shared entry points used by alternate modes and the chooser.
+
+| Responsibility | Owner |
+| --- | --- |
+| Exhaustive event dispatch and shared effects | `events.rs` |
+| Miller column assembly, publication helpers, sizing | `columns.rs` |
+| Miller row factory, binding, pointer and drag interactions | `columns/rows.rs` |
+| Collection filtering, position mapping, scrolling and selection | `collection.rs` |
+| Entry encoding, matching, labels, icons and metadata presentation | `entry.rs` |
+| Pane actions and loading presentation | `pane_header.rs`, `presentation.rs` |
+| Hover peek lifecycle and placement | `peek.rs` |
+| Inline rename and new-entry workflows | `inline_edit.rs` |
+| Location editing, breadcrumbs and mount authentication | `location.rs` |
+| Selection-aware menus and restricted chooser menus | `context_menu.rs`, `chooser_context.rs` |
+| Clipboard/cut intent and drag data | `clipboard.rs` |
+| Transfers, destination search and archive dialogs | `transfer.rs`, `destination.rs`, `archive.rs` |
+| Progress and Trash confirmation/cancellation | `progress.rs`, `trash.rs` |
+| Properties, permissions and item customization | `properties.rs`, `customization.rs` |
+| Display paths and desktop launching | `paths.rs`, `desktop.rs` |
+
+Generic modal hosting, animation and dismissal live in `ui/modal.rs`, not in a browser feature.
+`ModalHost` discovers the window overlay and enables its optional blur; existing dismissal owns
+unblurring and must leave it enabled while another visible modal remains. Dialog-specific cancel,
+close, backdrop and submission policies remain with the dialog.
+
+Filesystem work for Trash lives in `adapters/trash.rs`. Measurement shares one entry/time budget
+across root and descendant batches; depth truncation and unreadable descendants remain branch-local.
+Deleting Trash streams its own batches, independently of any incomplete measurement. Native path
+and GIO URI conversion lives in `adapters/gio_location.rs`, shared by files, operations, preview and
+browser presentation. It preserves native bytes and sanitizes credentials on inbound GIO locations.
+
+Feature unit tests sit beside their implementations. Cross-feature browser tests remain in
+`ui/browser/tests/`; GTK tests that need independent initialization can use
+`test_support::gtk_test`, which launches a subprocess with disposable XDG directories. Set
+`STRATA_REQUIRE_GTK_TESTS=1` when exercising those tests on a display to make unavailable GTK a
+failure rather than a skip.
+
+This separation is not a redesign of operation policy or a claim that all UI filesystem calls have
+been eliminated. Collision probes, destination creation and permission editing still deserve
+application/adapter boundaries in focused follow-ups. Likewise, alternate renderers, staged
+publication/metadata orchestration, native transfer security and the settings workspace should be
+refactored independently of browser composition. Investigation and scope decisions are recorded in
+[issue #397](https://github.com/lgse/strata/issues/397).
 
 ## Capability boundaries
 
@@ -90,6 +152,8 @@ Produces semantic tokens. Omarchy, generic system appearance, and user files are
 ### Settings store
 
 Loads and saves a versioned schema through XDG-standard locations. Unknown keys are tolerated, defaults are centralized, and migrations are explicit.
+
+Application preferences use immediate-and-live bindings rather than separate startup and Settings-page initializers. See [Preference lifecycle](preferences.md) for consumer scopes, binding ownership, and required regression coverage.
 
 ## Customization model
 

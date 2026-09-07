@@ -59,6 +59,55 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout, "yes ask yes")
 
+    def test_file_chooser_flags_are_independent_and_explicit(self) -> None:
+        for flag, expected in [("--with-file-chooser", "yes"), ("--without-file-chooser", "no")]:
+            with self.subTest(flag=flag):
+                result = bash(
+                    f'parse_args {flag}; '
+                    'printf "%s %s %s %s" "$NON_INTERACTIVE" "$WITH_FILE_CHOOSER" '
+                    '"$WITH_FILE_MANAGER" "$WITH_FOLDER_ASSOCIATION"'
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, f"yes {expected} ask ask")
+
+    def test_file_chooser_runs_only_the_permanently_installed_binary_after_consent(self) -> None:
+        cases = [
+            ("parse_args --non-interactive", []),
+            ("parse_args --with-file-manager", []),
+            ("parse_args --with-file-chooser", ["--install-portal"]),
+            ("parse_args --without-file-chooser", ["--dismiss-portal-prompt"]),
+            ("prompt() { return 1; }", ["--dismiss-portal-prompt"]),
+            ("prompt() { return 0; }", ["--install-portal"]),
+        ]
+        for setup, expected in cases:
+            with self.subTest(setup=setup), tempfile.TemporaryDirectory() as directory:
+                root = pathlib.Path(directory)
+                extracted = root / "archive"
+                (extracted / "portal").mkdir(parents=True)
+                (extracted / "portal/strata.portal").write_text("[portal]\\n", encoding="utf-8")
+                binary = root / "permanent bin/strata"
+                binary.parent.mkdir()
+                binary.write_text('#!/bin/bash\nprintf "%s\\n" "$@" >> "$CALLS"\n', encoding="utf-8")
+                binary.chmod(0o755)
+                calls = root / "calls"
+                result = bash(
+                    f'{setup}; BIN_PATH="$PERMANENT_BINARY"; configure_file_chooser "$EXTRACTED" no',
+                    env={"PERMANENT_BINARY": str(binary), "EXTRACTED": str(extracted), "CALLS": str(calls)},
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(calls.read_text().splitlines() if calls.exists() else [], expected)
+
+    def test_old_releases_do_not_receive_unknown_portal_arguments(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            for flags, succeeds in [("", True), ("--non-interactive", True), ("--with-file-chooser", False)]:
+                with self.subTest(flags=flags):
+                    result = bash(
+                        f'parse_args {flags}; BIN_PATH=/nonexistent/strata; configure_file_chooser "$EXTRACTED" no',
+                        env={"EXTRACTED": directory},
+                    )
+                    self.assertEqual(result.returncode == 0, succeeds, result.stderr)
+                    self.assertNotIn("No such file", result.stderr)
+
     def test_non_interactive_mode_declines_unspecified_options(self) -> None:
         result = bash("NON_INTERACTIVE=yes; ! want_option ask ignored")
         self.assertEqual(result.returncode, 0, result.stderr)

@@ -11,8 +11,8 @@ use std::{
 use super::{
     Cancellation, MAX_RASTER_INPUT_BYTES, MEDIA_WALL_TIME_LIMIT, MediaPreviewBackend,
     ParseOperation, PrivateOutput, WALL_TIME_LIMIT, gpu_devices, parse, polaris_gpu_available_at,
-    sandbox_command, sandbox_input_path, spawn_renderer, valid_output, wait_for_renderer,
-    wait_for_renderer_output,
+    resolve_renderer_executable, sandbox_command, sandbox_input_path, spawn_renderer, valid_output,
+    wait_for_renderer, wait_for_renderer_output,
 };
 
 fn limit_from(arguments: &[String], flag: &str) -> u64 {
@@ -415,6 +415,40 @@ fn accepts_only_bounded_png_webm_or_mp4_outputs() {
         ParseOperation::PreviewMedia,
         b"unrelated data"
     ));
+}
+
+#[test]
+fn renderer_uses_a_private_snapshot_after_the_original_executable_is_replaced() {
+    let directory = PrivateOutput::create().expect("create private output");
+    let running = directory.path().join("running-strata");
+    fs::write(&running, b"running executable").expect("write running executable");
+    let replaced = directory.path().join("replaced-strata");
+
+    let executable = resolve_renderer_executable(&replaced, &running, directory.path())
+        .expect("snapshot running executable");
+
+    assert_eq!(executable, directory.path().join("strata-preview-helper"));
+    assert_eq!(
+        fs::read(executable).expect("read snapshot"),
+        b"running executable"
+    );
+}
+
+#[test]
+fn renderer_uses_the_original_executable_while_it_is_available() {
+    let directory = PrivateOutput::create().expect("create private output");
+    let current = directory.path().join("strata");
+    fs::write(&current, b"current executable").expect("write current executable");
+
+    let executable = resolve_renderer_executable(
+        &current,
+        &directory.path().join("unused-running-strata"),
+        directory.path(),
+    )
+    .expect("resolve current executable");
+
+    assert_eq!(executable, current);
+    assert!(!directory.path().join("strata-preview-helper").exists());
 }
 
 #[test]

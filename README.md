@@ -20,7 +20,7 @@
 
 </div>
 
-Strata combines spatial Miller-column navigation with familiar Grid and Explorer views, instant fuzzy filename search, rich previews, and native Linux desktop integration. It is designed for Omarchy and works on compatible GTK4 Linux environments.
+Strata combines spatial Miller-column navigation with familiar Icons and List views, instant fuzzy filename search, rich previews, and native Linux desktop integration. It is designed for Omarchy and works on compatible GTK4 Linux environments.
 
 ## Contents
 
@@ -46,15 +46,16 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
 
 ## Features
 
-- **Three browser modes:** navigable Miller columns, a thumbnail Grid, and a sortable Explorer table.
-- **Keyboard-first control:** Vim-style movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews.
-- **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed.
+- **Three browser modes:** navigable Columns, an Icons grid, and a sortable List table.
+- **Keyboard-first control:** Vim-style movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also highlights when files are available to paste. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md).
+- **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed. Global search covers Home and all mounted local drives, regardless of the current folder. Hover the search field to see the included locations. The dialog warns when results are incomplete; folder-scoped filtering/search remains separate. URI-native remote shares are not yet included.
 - **Rich previews and thumbnails:** bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
 - **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
 - **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares from the location field.
 - **Adaptive appearance:** compact or airy density, six bundled themes, custom themes, and live Omarchy Quattro theme following.
 - **Updates in the app:** opt-in automatic checks, release notes, verified downloads, and in-place installation for release binaries.
+- **System file chooser:** opt in through **Settings → General → System file chooser**, the installer, or `strata --install-portal`; see [portal setup](docs/portal-file-chooser.md).
 
 ## Installation
 
@@ -64,8 +65,8 @@ Arch Linux and Omarchy are the primary supported environments. Current binaries 
 
 The interactive installer detects the Linux architecture, glibc version, Arch
 Linux, and Omarchy 3 or 4. It installs the latest verified stable release and
-offers optional desktop-menu, default-folder-handler, "Open file location", SMB,
-broader image/RAW, and Omarchy keybind integration:
+offers optional desktop-menu, default-folder-handler, "Open file location", system
+file chooser, SMB, broader image/RAW, and Omarchy keybind integration:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lgse/strata/main/install.sh | bash
@@ -92,8 +93,11 @@ curl -fsSL https://raw.githubusercontent.com/lgse/strata/main/install.sh \
 
 Each `--with-*` flag implies `--non-interactive`, and folder association implies
 the desktop entry and `--with-file-manager`. Use `--with-file-manager` by itself
-to enable only "Open file location" integration. Non-interactive package
-installation requires passwordless sudo or cached credentials. Run `./install.sh --help` for the full option list.
+to enable only "Open file location" integration. File chooser replacement is
+separate: use `--with-file-chooser` to opt in, or `--without-file-chooser` to keep
+your current chooser and dismiss the one-time in-app offer. Neither folder
+association nor an unattended install enables the chooser automatically.
+Non-interactive package installation requires passwordless sudo or cached credentials. Run `./install.sh --help` for the full option list.
 
 ### AI-assisted installation
 
@@ -188,7 +192,7 @@ Download the matching `strata-<version>-<target>.debug` asset from the same rele
 
 #### 3. Update or uninstall
 
-For a manual installation, use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. Package-managed installations are updated only by their system package manager. To remove a per-user installation:
+For a manual installation, use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. If the user opted into Strata's system file chooser, the update restarts the portal frontend so subsequent dialogs use the newly installed build. Package-managed installations are updated only by their system package manager. To remove a per-user installation:
 
 ```bash
 rm -f ~/.local/bin/strata \
@@ -383,6 +387,8 @@ Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-con
 sudo pacman -S --needed base-devel rust bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
   gst-libav gst-plugins-good gtk4 gtksourceview5 poppler-glib
 make start-dev        # rebuild and restart as files change
+make run-dev          # build and launch the main app once
+make run-chooser-dev  # build and open an isolated Save chooser with choices
 ./scripts/check.sh    # format, compile, Clippy, tests, and optional policy checks
 ```
 
