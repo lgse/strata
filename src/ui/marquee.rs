@@ -60,8 +60,8 @@ struct MarqueeState {
     dragging: Cell<bool>,
     clear_on_click: Cell<bool>,
     clear_selection: Rc<dyn Fn()>,
-    /// Anchor in the view's own coordinates, so it stays glued to the content
-    /// while the list scrolls underneath the pointer.
+    /// Anchor in scroll-content coordinates. Native GtkScrollable views move their
+    /// rows internally, whereas GtkViewport moves its child; neither may move the anchor.
     anchor: Cell<(f64, f64)>,
     /// Last pointer position in the scrolled window's coordinates, which do not
     /// move while the content scrolls.
@@ -73,6 +73,9 @@ struct MarqueeState {
     item_bounds: RefCell<Vec<BTreeMap<u32, graphene::Rect>>>,
     modifiers: Cell<(bool, bool)>,
     auto_scroll: RefCell<Option<glib::SourceId>>,
+    frame_handler: RefCell<Option<(glib::WeakRef<gtk::gdk::FrameClock>, glib::SignalHandlerId)>>,
+    refresh_pending: Cell<bool>,
+    finishing: Cell<bool>,
 }
 
 /// Installs marquee selection on `setup.surface` and returns a handle that can grant
@@ -105,6 +108,23 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
         item_bounds: RefCell::new(Vec::new()),
         modifiers: Cell::new((false, false)),
         auto_scroll: RefCell::new(None),
+        frame_handler: RefCell::new(None),
+        refresh_pending: Cell::new(false),
+        finishing: Cell::new(false),
+    });
+    for adjustment in [setup.scroll.hadjustment(), setup.scroll.vadjustment()] {
+        let weak = Rc::downgrade(&state);
+        adjustment.connect_value_changed(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.queue_refresh();
+            }
+        });
+    }
+    let weak = Rc::downgrade(&state);
+    setup.scroll.connect_unmap(move |_| {
+        if let Some(state) = weak.upgrade() {
+            state.end();
+        }
     });
 
     let gesture = gtk::GestureDrag::new();
@@ -119,13 +139,13 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
             .current_event_state()
             .contains(gtk::gdk::ModifierType::ALT_MASK);
         if !force && starts_on_item {
-            state_for_begin.active.set(false);
+            state_for_begin.end();
             return;
         }
-        let (Some(origin), Some(view)) = (gesture.widget(), state_for_begin.view()) else {
+        let (Some(origin), Some(scroll)) = (gesture.widget(), state_for_begin.scroll()) else {
             return;
         };
-        let Some(anchor) = translate(&origin, &view, (x, y)) else {
+        let Some(anchor) = translate(&origin, &scroll, (x, y)) else {
             return;
         };
         state_for_begin.begin(anchor, gesture.current_event_state());
@@ -154,7 +174,7 @@ impl Marquee {
         gesture.set_button(1);
         let state_for_begin = self.state.clone();
         gesture.connect_drag_begin(move |gesture, x, y| {
-            state_for_begin.active.set(false);
+            state_for_begin.end();
             let Some(surface) = gesture.widget() else {
                 return;
             };
@@ -167,7 +187,10 @@ impl Marquee {
             if !accepted || !view.is_mapped() {
                 return;
             }
-            let Some(anchor) = translate(&surface, &view, (x, y)) else {
+            let Some(scroll) = state_for_begin.scroll() else {
+                return;
+            };
+            let Some(anchor) = translate(&surface, &scroll, (x, y)) else {
                 return;
             };
             gesture.set_state(gtk::EventSequenceState::Claimed);
@@ -231,7 +254,10 @@ pub(super) fn install_shared_origin_surface(
         if !view.is_mapped() {
             return;
         }
-        let Some(anchor) = translate(&surface_for_begin, &view, (x, y)) else {
+        let Some(scroll) = state.scroll() else {
+            return;
+        };
+        let Some(anchor) = translate(&surface_for_begin, &scroll, (x, y)) else {
             return;
         };
         gesture.set_state(gtk::EventSequenceState::Claimed);
@@ -324,17 +350,33 @@ impl MarqueeState {
         self.overlay.upgrade()
     }
 
-    fn begin(&self, anchor: (f64, f64), modifiers: gtk::gdk::ModifierType) {
-        let (Some(view), Some(scroll)) = (self.view(), self.scroll()) else {
+    fn begin(self: &Rc<Self>, anchor: (f64, f64), modifiers: gtk::gdk::ModifierType) {
+        self.end();
+        let Some(scroll) = self.scroll() else {
             return;
         };
+        if let Some(clock) = scroll.frame_clock() {
+            let weak = Rc::downgrade(self);
+            let handler = clock.connect_after_paint(move |_| {
+                if let Some(state) = weak.upgrade()
+                    && state.active.get()
+                    && state.refresh_pending.replace(false)
+                {
+                    state.refresh();
+                    if state.finishing.get() {
+                        state.end();
+                    }
+                }
+            });
+            self.frame_handler
+                .replace(Some((clock.downgrade(), handler)));
+        }
         self.active.set(true);
         self.dragging.set(false);
         self.clear_on_click.set(true);
-        self.anchor.set(anchor);
+        self.anchor.set(content_point(&scroll, anchor));
         self.item_bounds.borrow_mut().clear();
-        self.pointer
-            .set(translate(&view, &scroll, anchor).unwrap_or_default());
+        self.pointer.set(anchor);
         self.initial.replace(
             self.targets
                 .borrow()
@@ -349,6 +391,12 @@ impl MarqueeState {
     }
 
     fn finish(&self) {
+        if self.active.get() && self.dragging.get() && self.refresh_pending.get() {
+            self.stop_auto_scroll();
+            self.finishing.set(true);
+            self.queue_refresh();
+            return;
+        }
         let clear = self.active.get()
             && !self.dragging.get()
             && self.clear_on_click.get()
@@ -361,38 +409,83 @@ impl MarqueeState {
 
     fn end(&self) {
         self.active.set(false);
+        self.finishing.set(false);
+        self.refresh_pending.set(false);
         self.stop_auto_scroll();
+        let handler = self.frame_handler.borrow_mut().take();
+        if let Some((clock, handler)) = handler
+            && let Some(clock) = clock.upgrade()
+        {
+            clock.disconnect(handler);
+        }
         self.band.set_visible(false);
         self.item_bounds.borrow_mut().clear();
         self.initial.borrow_mut().clear();
     }
 
+    fn queue_refresh(&self) {
+        if !self.active.get() || !self.dragging.get() {
+            return;
+        }
+        self.refresh_pending.set(true);
+        let clock = self
+            .frame_handler
+            .borrow()
+            .as_ref()
+            .and_then(|(clock, _)| clock.upgrade());
+        if let Some(clock) = clock {
+            // Adjustment changes precede allocation of recycled rows. Hit-test only
+            // after GTK has laid out and painted this frame, even with a stationary mouse.
+            if let Some(scroll) = self.scroll() {
+                scroll.queue_draw();
+            }
+            clock.request_phase(gtk::gdk::FrameClockPhase::AFTER_PAINT);
+        } else {
+            self.refresh_pending.set(false);
+            self.refresh();
+            if self.finishing.get() {
+                self.end();
+            }
+        }
+    }
+
     fn refresh(&self) {
-        let (Some(view), Some(scroll)) = (self.view(), self.scroll()) else {
+        let Some(scroll) = self.scroll() else {
             return;
         };
-        let Some((current_x, current_y)) = translate(&scroll, &view, self.pointer.get()) else {
-            return;
-        };
+        let (current_x, current_y) = content_point(&scroll, self.pointer.get());
         let (anchor_x, anchor_y) = self.anchor.get();
         let left = anchor_x.min(current_x);
         let right = anchor_x.max(current_x);
         let top = anchor_y.min(current_y);
         let bottom = anchor_y.max(current_y);
-        self.place_band(&view, left, top, right, bottom);
-        self.apply_selection(&view, left, top, right, bottom);
+        self.place_band(&scroll, left, top, right, bottom);
+        self.apply_selection(&scroll, left, top, right, bottom);
     }
 
-    fn place_band(&self, view: &gtk::Widget, left: f64, top: f64, right: f64, bottom: f64) {
+    fn place_band(
+        &self,
+        scroll: &gtk::ScrolledWindow,
+        left: f64,
+        top: f64,
+        right: f64,
+        bottom: f64,
+    ) {
         let Some(overlay) = self.overlay() else {
             return;
         };
-        let Some(view_bounds) = view.compute_bounds(&overlay) else {
+        let Some(viewport) = scroll.compute_bounds(&overlay) else {
             return;
         };
+        let x = scroll.hadjustment().value();
+        let y = scroll.vadjustment().value();
+        let left = (left - x).max(0.0);
+        let top = (top - y).max(0.0);
+        let right = (right - x).min(f64::from(scroll.width()));
+        let bottom = (bottom - y).min(f64::from(scroll.height()));
         let placement = band_placement(
-            f64::from(view_bounds.x()) + left,
-            f64::from(view_bounds.y()) + top,
+            f64::from(viewport.x()) + left,
+            f64::from(viewport.y()) + top,
             right - left,
             bottom - top,
             f64::from(overlay.width()),
@@ -408,7 +501,14 @@ impl MarqueeState {
         self.band.set_size_request(width, height);
     }
 
-    fn apply_selection(&self, view: &gtk::Widget, left: f64, top: f64, right: f64, bottom: f64) {
+    fn apply_selection(
+        &self,
+        scroll: &gtk::ScrolledWindow,
+        left: f64,
+        top: f64,
+        right: f64,
+        bottom: f64,
+    ) {
         let initials = self.initial.borrow();
         let (control, shift) = self.modifiers.get();
         let empty = gtk::Bitset::new_empty();
@@ -419,10 +519,18 @@ impl MarqueeState {
         for (index, target) in targets.iter().enumerate() {
             let bounds = &mut all_bounds[index];
             (target.visit_items)(&mut |position, widget| {
+                // Unmapped virtual rows can retain allocations from an earlier scroll position.
                 if position < target.selection.n_items()
-                    && let Some(rect) = widget.compute_bounds(view)
+                    && widget.is_mapped()
+                    && let Some(rect) = widget.compute_bounds(scroll)
+                    && rect.width() > 0.0
+                    && rect.height() > 0.0
                 {
-                    bounds.insert(position, rect);
+                    let (x, y) = content_point(scroll, (f64::from(rect.x()), f64::from(rect.y())));
+                    bounds.insert(
+                        position,
+                        graphene::Rect::new(x as f32, y as f32, rect.width(), rect.height()),
+                    );
                 }
             });
             let initial = initials.get(index).unwrap_or(&empty);
@@ -474,7 +582,7 @@ impl MarqueeState {
             return false;
         }
         if advance(&scroll.hadjustment(), step_x) | advance(&scroll.vadjustment(), step_y) {
-            self.refresh();
+            self.queue_refresh();
         }
         true
     }
@@ -515,7 +623,7 @@ impl MarqueeState {
             return;
         };
         self.pointer.set(pointer);
-        self.refresh();
+        self.queue_refresh();
         if self.auto_scroll_steps() == (0.0, 0.0) {
             self.stop_auto_scroll();
             return;
@@ -533,6 +641,13 @@ impl MarqueeState {
         });
         self.auto_scroll.replace(Some(source));
     }
+}
+
+fn content_point(scroll: &gtk::ScrolledWindow, point: (f64, f64)) -> (f64, f64) {
+    (
+        point.0 + scroll.hadjustment().value(),
+        point.1 + scroll.vadjustment().value(),
+    )
 }
 
 fn advance(adjustment: &gtk::Adjustment, step: f64) -> bool {

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod clicks;
+mod scrolling;
 mod virtualization;
 
 use std::{process::Command, rc::Rc};

@@ -71,8 +71,12 @@ unused label allocation and the gutters beside thumbnails are marquee origins. B
 GTK's configured drag threshold. Within collection viewports, marquees claim the sequence only
 after that threshold, leaving simple clicks and modifier-clicks intact. A completed plain click
 on background clears selections; presses and marquee releases do not. Click activation and automatic preview wait for release
-and reject cancelled gestures, drag motion, and recycled items. Edge-scrolling marquees retain
-visited item geometry so virtualization cannot silently remove earlier selections.
+and reject cancelled gestures, drag motion, and recycled items. Marquees anchor and cache mapped
+item geometry in scroll-content coordinates, independent of native GtkScrollable or GtkViewport
+layout. Edge and wheel scrolling refresh selection after layout/paint, even without pointer motion;
+unmapped rows cannot overwrite cached geometry with stale allocations. The visible band stays
+clipped to the viewport, while earlier off-screen hits remain selected. Release completes pending
+layout-dependent selection before disconnecting the frame handler.
 
 ### Browser implementation map
 

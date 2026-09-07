@@ -27,3 +27,18 @@ last column. Holding the press or extending a marquee preserves drag selection.
 | Before the click | After the click |
 | --- | --- |
 | ![Two selected files](before-background-click.png) | ![No selected files](after-background-click.png) |
+
+## Scrolling follow-up
+
+Before: `2c4b157`. The synthetic directory contains 600 numbered text files.
+Hold a marquee beginning beside `010.txt`, then scroll down with the wheel without
+moving or releasing the pointer. Before, the band stays at its original viewport
+position and newly revealed rows are missed. After, the anchor stays in content
+coordinates and selection extends through the scrolled viewport. Edge scrolling
+uses the same refresh path; earlier hits remain selected after returning to the top.
+
+| View | Before | After |
+| --- | --- | --- |
+| Columns (Grid) | ![Before scrolling in Columns](before-scroll-columns.png) | ![After scrolling in Columns](after-scroll-columns.png) |
+| List | ![Before scrolling in List](before-scroll-list.png) | ![After scrolling in List](after-scroll-list.png) |
+| Icons | ![Before scrolling in Icons](before-scroll-icons.png) | ![After scrolling in Icons](after-scroll-icons.png) |
