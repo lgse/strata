@@ -337,9 +337,10 @@ fn release_url(tag: &str, asset: &str) -> String {
 
 #[test]
 fn download_url_is_derived_from_the_release_tag_and_asset() {
-    let expected = release_url(TAG, ASSET);
+    let asset = super::super::update_check::archive_name("0.11.2");
+    let expected = release_url(TAG, &asset);
 
-    let url = verified_download_url(&request(TAG, ASSET, &expected)).expect("url should verify");
+    let url = verified_download_url(&request(TAG, &asset, &expected)).expect("url should verify");
 
     assert_eq!(url, expected);
 }
@@ -418,8 +419,6 @@ fn source_commit_rejects_an_empty_value() {
     assert!(commits_match("abc123", "").is_err());
 }
 
-/// A single-request HTTP server on the loopback interface, so the download
-/// path can be exercised without reaching the network.
 struct StubServer {
     url: String,
     handle: Option<std::thread::JoinHandle<()>>,
@@ -456,8 +455,6 @@ impl StubServer {
         Self::serving(headers, body)
     }
 
-    /// Advertises far more than it will ever send, so the advertised length is
-    /// what has to be rejected.
     fn claiming(length: u64) -> Self {
         let headers =
             format!("HTTP/1.1 200 OK\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n");
@@ -524,7 +521,6 @@ fn a_download_advertising_more_than_the_ceiling_is_refused() {
 fn a_download_that_streams_past_the_ceiling_is_stopped() {
     let dir = scratch_dir("download-streamed", line!());
     let destination = dir.join("strata.tar.gz");
-    // No advertised length at all, so only the streamed byte count can stop it.
     let server = StubServer::serving(
         "HTTP/1.1 200 OK\r\nConnection: close\r\n\r\n".to_owned(),
         vec![b'x'; 64 * 1024],

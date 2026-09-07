@@ -61,18 +61,10 @@ pub struct ResponsiveActivationRow {
 /// same time. See [`start_install`].
 pub(super) type InstallGuard = Rc<Cell<bool>>;
 
-/// How long after a restart a non-zero exit is still treated as the update
-/// failing to run, rather than as a crash of a version that did start.
 const RESTART_GRACE_SECONDS: u64 = 20;
-/// How long a replaced executable is kept for recovery once the new one is
-/// running. Long enough for the restart waiter to act, short enough that a
-/// copy of the binary does not linger beside the install.
+// Must outlast the restart waiter's recovery window.
 const ROLLBACK_RETENTION: Duration = Duration::from_secs(60);
 
-/// Drops the preserved previous executable once this instance has run long
-/// enough to be considered good. Called on startup: by the time it fires, an
-/// update that could not run would already have been rolled back by the
-/// restart waiter.
 pub(crate) fn schedule_rollback_cleanup() {
     let Ok(current_exe) = std::env::current_exe() else {
         return;
@@ -80,10 +72,20 @@ pub(crate) fn schedule_rollback_cleanup() {
     let Some(rollback) = current_exe.parent().map(services::rollback_path) else {
         return;
     };
-    if !rollback.is_file() {
+    use std::os::unix::fs::MetadataExt;
+    let Ok(preserved) = std::fs::symlink_metadata(&rollback) else {
+        return;
+    };
+    if !preserved.is_file() {
         return;
     }
     glib::timeout_add_local_once(ROLLBACK_RETENTION, move || {
+        // A later install owns its own rollback copy, even in this process.
+        if !std::fs::symlink_metadata(&rollback).is_ok_and(|current| {
+            current.dev() == preserved.dev() && current.ino() == preserved.ino()
+        }) {
+            return;
+        }
         if let Err(error) = std::fs::remove_file(&rollback) {
             tracing::warn!(%error, "could not remove the preserved previous version");
         }
@@ -1235,14 +1237,7 @@ fn is_stale_check(result_generation: u64, current_generation: u64) -> bool {
     result_generation != current_generation
 }
 
-/// An update that a completed check offered and that the next click will
-/// install, held with the [`BuildKind`] it was offered as.
-///
-/// The kind is what lets the click re-test the offer against the channel
-/// preference in force *then* rather than when the check ran -- see
-/// [`offer_still_eligible`]. It is kept here, beside the request, rather
-/// than on [`InstallRequest`], which deliberately carries nothing but what
-/// the installer needs to name and verify the release.
+// Retain the offered kind to recheck eligibility after a channel change.
 struct PendingInstall {
     kind: BuildKind,
     returns_to_stable: bool,
@@ -1326,7 +1321,6 @@ fn update_check_row(
     // Set once an install finishes, so the next click restarts instead of re-checking.
     let installed = Rc::new(Cell::new(false));
     let installing = Rc::new(Cell::new(false));
-    // Held while an install runs, so the button's next click cancels it.
     let cancel_handle = Rc::new(RefCell::new(None::<InstallCancel>));
     let install_underway: Rc<dyn Fn() -> bool> = Rc::new({
         let installed = installed.clone();
@@ -1815,13 +1809,7 @@ fn restart(application: Option<&gtk::Application>) {
     // affected systems. Detach the waiter from inherited terminal streams and
     // put it in its own process group so applying an update cannot disturb the
     // terminal that launched Strata.
-    //
-    // The waiter is also the last line of recovery for an update: if the
-    // replacement exits non-zero within `RESTART_GRACE_SECONDS` of starting --
-    // it will not run here at all -- the preserved previous executable is put
-    // back and launched instead, so a bad update cannot leave the user with
-    // nothing that starts. A later non-zero exit is an ordinary crash of a
-    // version that did run, and is left alone.
+    // Only early failures trigger rollback; later crashes do not invalidate an update.
     let parent_pid = std::process::id().to_string();
     let rollback = current_exe
         .parent()
@@ -1834,7 +1822,7 @@ fn restart(application: Option<&gtk::Application>) {
              started=$(date +%s); \"$2\" && exit 0; status=$?; \
              [ $(($(date +%s) - started)) -lt $4 ] || exit \"$status\"; \
              [ -f \"$3\" ] || exit \"$status\"; \
-             cp -f \"$3\" \"$2\" && chmod 755 \"$2\" && rm -f \"$3\" && exec \"$2\"; \
+             mv -f -- \"$3\" \"$2\" && exec \"$2\"; \
              exit \"$status\"",
             "strata-restart",
         ])
@@ -1966,7 +1954,6 @@ pub(super) fn show_update_dialog(
     action.grab_focus();
 
     let started = Rc::new(Cell::new(false));
-    // Held while an install runs, so Cancel stops it instead of dismissing.
     let cancel_handle = Rc::new(RefCell::new(None::<InstallCancel>));
     let cancel_layer = layer.clone();
     let cancel_overlay = window_overlay.clone();

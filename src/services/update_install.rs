@@ -21,16 +21,12 @@ use crate::services::{InstallSource, ensure_self_managed};
 use super::release_channel::Version;
 
 mod archive;
+mod command;
 
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
-/// The only location an in-place update is ever fetched from.
 const RELEASE_DOWNLOAD_ROOT: &str = "https://github.com/lgse/strata/releases/download";
 const REPOSITORY: &str = "lgse/strata";
-/// Release archives run a little under 6 MiB today. The ceiling leaves room for
-/// growth while keeping a malfunctioning or hostile server from streaming until
-/// the disk fills.
 const MAX_UPDATE_ARCHIVE_BYTES: u64 = 128 * 1024 * 1024;
-/// A published checksum is one `sha256sum` line.
 const MAX_CHECKSUM_BYTES: u64 = 8 * 1024;
 const DESKTOP_ENTRY: &str = "io.github.lgse.Strata.desktop";
 const APPLICATION_ICON: &str = "io.github.lgse.Strata.svg";
@@ -66,10 +62,6 @@ pub enum UpdateInstall {
     Failed(String),
 }
 
-/// Cooperative cancellation for one install. The installer checks it between
-/// download chunks and again immediately before it replaces the executable,
-/// which are the only points where stopping is both useful and safe: once the
-/// replacement has been renamed into place there is nothing left to abandon.
 #[derive(Clone, Debug, Default)]
 pub struct InstallCancel(Arc<AtomicBool>);
 
@@ -86,7 +78,6 @@ impl InstallCancel {
         self.0.load(Ordering::Relaxed)
     }
 
-    /// `Err` once cancelled, so install steps can use `?`.
     fn check(&self) -> Result<(), InstallStop> {
         if self.is_cancelled() {
             return Err(InstallStop::Cancelled);
@@ -95,8 +86,6 @@ impl InstallCancel {
     }
 }
 
-/// Why an install stopped early: at the user's request, or because a step
-/// failed. Kept separate so cancellation never renders as an error.
 #[derive(Debug)]
 enum InstallStop {
     Cancelled,
@@ -109,16 +98,6 @@ impl From<String> for InstallStop {
     }
 }
 
-/// What to install: the release the user accepted, named rather than pointed
-/// at.
-///
-/// The installer derives the download URL from `tag` and `asset_name` and
-/// refuses to proceed when `advertised_url` -- the URL the release feed
-/// supplied -- disagrees with it, so unexpected hosts, schemes, repositories,
-/// tags and asset names are rejected before any request is made.
-///
-/// `tag` also identifies the commit the archive must have been built from; see
-/// [`verify_source_commit`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InstallRequest {
     pub tag: String,
@@ -126,12 +105,13 @@ pub struct InstallRequest {
     pub advertised_url: String,
 }
 
-/// Rebuilds the expected release URL from the request and checks the feed
-/// agreed. Tag and asset names are restricted to the characters the release
-/// workflow can actually produce, so neither can smuggle a path segment into
-/// the derived URL.
 fn verified_download_url(request: &InstallRequest) -> Result<String, String> {
-    if !is_release_token(&request.tag) || !is_release_token(&request.asset_name) {
+    let version = request.tag.strip_prefix('v').and_then(Version::parse);
+    if !is_release_token(&request.tag)
+        || version.as_ref().is_none_or(|version| {
+            request.asset_name != super::update_check::archive_name(&version.to_string())
+        })
+    {
         return Err("The release names an unexpected update artifact.".to_owned());
     }
     let expected = format!(
@@ -516,25 +496,27 @@ fn try_install(
     let _sent = progress.send(UpdateInstall::Verifying);
     cancel.check()?;
     verify_checksum(download_url, &archive_path)?;
-    verify_provenance(&archive_path)?;
+    cancel.check()?;
+    verify_provenance(&archive_path, cancel)?;
+    cancel.check()?;
 
     let _sent = progress.send(UpdateInstall::Installing);
     let extract_dir = workdir.join("extracted");
     fs::create_dir_all(&extract_dir).map_err(|error| error.to_string())?;
     let package_dir = archive::extract_release_archive(&archive_path, &extract_dir)?;
+    verify_package_name(&package_dir, request)?;
     verify_source_commit(&package_dir, &request.tag)?;
+    cancel.check()?;
 
     let binary_path = package_dir.join("strata");
-    let staged = stage_binary_path(exe_dir)?;
-    fs::copy(&binary_path, staged.path())
-        .map_err(|error| format!("Could not stage the new binary: {error}"))?;
-    set_executable(staged.path())?;
-    verify_staged_binary(staged.path())?;
+    let staged = stage_verified_binary(&binary_path, exe_dir)?;
 
-    // The last point where abandoning the install still leaves the running
-    // executable untouched.
     cancel.check()?;
     let rollback = stage_rollback(current_exe, exe_dir)?;
+    if let Err(stop) = cancel.check() {
+        let _removed = fs::remove_file(&rollback);
+        return Err(stop);
+    }
     if let Err(error) = staged.persist(current_exe) {
         let _removed = fs::remove_file(&rollback);
         return Err(InstallStop::Failed(format!(
@@ -542,7 +524,7 @@ fn try_install(
         )));
     }
 
-    if let Err(error) = confirm_replacement(current_exe) {
+    if let Err(error) = sync_directory(exe_dir).and_then(|()| confirm_replacement(current_exe)) {
         restore_rollback(&rollback, current_exe)?;
         return Err(InstallStop::Failed(error));
     }
@@ -555,51 +537,95 @@ fn try_install(
     Ok(())
 }
 
-/// Where the previous executable is kept until the replacement has proved it
-/// starts. [`crate::ui::settings`]'s restart waiter reads the same path, and
-/// removes it once the new process has been up long enough to trust.
 pub(crate) fn rollback_path(exe_dir: &Path) -> PathBuf {
     exe_dir.join(".strata-update-rollback")
 }
 
-/// Copies the running executable aside before it is replaced.
 fn stage_rollback(current_exe: &Path, exe_dir: &Path) -> Result<PathBuf, String> {
     let rollback = rollback_path(exe_dir);
-    let _removed = fs::remove_file(&rollback);
-    fs::copy(current_exe, &rollback)
+    let staged = stage_binary_path(exe_dir)?;
+    fs::copy(current_exe, staged.path())
         .map_err(|error| format!("Could not preserve the current version: {error}"))?;
-    set_executable(&rollback)?;
+    set_executable(staged.path())?;
+    staged
+        .as_file()
+        .sync_all()
+        .map_err(|error| error.to_string())?;
+    staged
+        .persist(&rollback)
+        .map_err(|error| error.to_string())?;
+    sync_directory(exe_dir)?;
     Ok(rollback)
 }
 
-/// Puts the preserved executable back after a failure that has already
-/// replaced it. A failure here leaves no working install, so it is reported as
-/// such rather than folded into the original error.
+fn sync_directory(directory: &Path) -> Result<(), String> {
+    fs::File::open(directory)
+        .and_then(|file| file.sync_all())
+        .map_err(|error| format!("Could not synchronize the install directory: {error}"))
+}
+
 fn restore_rollback(rollback: &Path, current_exe: &Path) -> Result<(), InstallStop> {
-    fs::copy(rollback, current_exe).map_err(|error| {
+    fs::rename(rollback, current_exe).map_err(|error| {
         InstallStop::Failed(format!(
             "The update failed and the previous version could not be restored: {error}. \
              Reinstall Strata from the release page."
         ))
     })?;
-    set_executable(current_exe)?;
-    let _removed = fs::remove_file(rollback);
+    if let Some(directory) = current_exe.parent() {
+        sync_directory(directory)?;
+    }
     Ok(())
 }
 
-/// Runs the staged binary before it is installed, so an archive that is
-/// intact, attested, and built from the right commit but cannot run here --
-/// a wrong architecture, a missing library -- is caught while the working
-/// executable is still in place.
+fn stage_verified_binary(binary: &Path, directory: &Path) -> Result<tempfile::TempPath, String> {
+    let staged = stage_binary_path(directory)?;
+    fs::copy(binary, staged.path())
+        .map_err(|error| format!("Could not stage the new binary: {error}"))?;
+    set_executable(staged.path())?;
+    staged
+        .as_file()
+        .sync_all()
+        .map_err(|error| error.to_string())?;
+    // Linux refuses exec while any writable descriptor remains open (ETXTBSY).
+    let staged = staged.into_temp_path();
+    verify_staged_binary(&staged)?;
+    Ok(staged)
+}
+
+fn binary_probe_output(staged: &Path) -> Result<std::process::Output, String> {
+    // Published releases lack --version; this existing headless probe loads their runtime libraries.
+    command::run(
+        Command::new(staged)
+            .arg("--gvfs-probe")
+            .env("GIO_USE_VFS", "local")
+            .env("GIO_USE_VOLUME_MONITOR", "unix"),
+        &InstallCancel::new(),
+        Duration::from_secs(2),
+    )
+    .map_err(|stop| match stop {
+        InstallStop::Failed(message) => message,
+        InstallStop::Cancelled => "Update cancelled".to_owned(),
+    })
+}
+
 fn verify_staged_binary(staged: &Path) -> Result<(), String> {
-    match Command::new(staged).arg("--version").output() {
-        Ok(output) if output.status.success() => Ok(()),
-        Ok(_output) => Err("The downloaded update does not run on this system".to_owned()),
-        Err(error) => Err(format!("Could not verify the downloaded update: {error}")),
+    if binary_probe_output(staged)?.status.success() {
+        Ok(())
+    } else {
+        Err("The downloaded update does not run on this system".to_owned())
     }
 }
 
-/// Confirms the replacement is in place and runnable after the rename.
+fn verify_package_name(package: &Path, request: &InstallRequest) -> Result<(), String> {
+    if package.file_name().and_then(|name| name.to_str())
+        == request.asset_name.strip_suffix(".tar.gz")
+    {
+        Ok(())
+    } else {
+        Err("The authenticated archive does not contain the selected release package".to_owned())
+    }
+}
+
 fn confirm_replacement(current_exe: &Path) -> Result<(), String> {
     if !current_exe.is_file() {
         return Err("The updated executable is missing after installation".to_owned());
@@ -607,15 +633,26 @@ fn confirm_replacement(current_exe: &Path) -> Result<(), String> {
     verify_staged_binary(current_exe)
 }
 
-/// Compares the commit the archive was built from with the commit the release
-/// tag resolves to. Fails closed: an archive without a `SOURCE_COMMIT`, or a
-/// tag whose commit cannot be resolved, is not installed.
 fn verify_source_commit(package_dir: &Path, tag: &str) -> Result<(), String> {
     let packaged = fs::read_to_string(package_dir.join("SOURCE_COMMIT"))
         .map_err(|error| format!("Could not read the update's source commit: {error}"))?;
-    let expected = super::update_check::fetch_commit(tag)
+    let source_ref = release_source_ref(tag)?;
+    let expected = super::update_check::fetch_commit(&source_ref)
         .ok_or_else(|| "Could not confirm which commit this release was built from".to_owned())?;
     commits_match(&packaged, &expected)
+}
+
+fn release_source_ref(tag: &str) -> Result<String, String> {
+    let version = tag
+        .strip_prefix('v')
+        .and_then(Version::parse)
+        .ok_or_else(|| "The release tag is invalid".to_owned())?;
+    // Stable tags mark the version-bump commit; release.yml builds its parent.
+    Ok(if version.to_string().contains('-') {
+        tag.to_owned()
+    } else {
+        format!("{tag}~1")
+    })
 }
 
 fn commits_match(packaged: &str, expected: &str) -> Result<(), String> {
@@ -630,21 +667,21 @@ fn commits_match(packaged: &str, expected: &str) -> Result<(), String> {
     Err("The update was not built from this release's commit".to_owned())
 }
 
-/// Verifies the archive's GitHub build-provenance attestation.
-///
-/// Fails closed when `gh` is unavailable rather than installing an
-/// unauthenticated archive: a checksum published beside the archive proves only
-/// that the two match, so provenance is what actually ties the download to a
-/// build of this repository. Users without `gh` are directed to the release
-/// page, the same fallback package-managed installs already get.
-fn verify_provenance(archive: &Path) -> Result<(), String> {
-    let output = Command::new("gh")
-        .arg("attestation")
-        .arg("verify")
-        .arg(archive)
-        .arg("--repo")
-        .arg(REPOSITORY)
-        .output();
+fn verify_provenance(archive: &Path, cancel: &InstallCancel) -> Result<(), InstallStop> {
+    let output = command::run(
+        Command::new("gh")
+            .arg("attestation")
+            .arg("verify")
+            .arg(archive)
+            .arg("--repo")
+            .arg(REPOSITORY)
+            .arg("--signer-workflow")
+            .arg("lgse/strata/.github/workflows/release.yml")
+            .arg("--hostname")
+            .arg("github.com"),
+        cancel,
+        REQUEST_TIMEOUT,
+    );
     match output {
         Ok(output) if output.status.success() => Ok(()),
         Ok(output) => {
@@ -652,14 +689,14 @@ fn verify_provenance(archive: &Path) -> Result<(), String> {
                 stderr = %String::from_utf8_lossy(&output.stderr).trim(),
                 "update provenance verification failed"
             );
-            Err("The downloaded update failed build provenance verification".to_owned())
+            Err(InstallStop::Failed(
+                "The downloaded update failed build provenance verification".to_owned(),
+            ))
         }
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(
-            "Verifying this update needs the GitHub CLI (gh), which is not installed. \
-             Install it, or download the release manually."
-                .to_owned(),
-        ),
-        Err(error) => Err(format!("Could not verify the update: {error}")),
+        Err(InstallStop::Cancelled) => Err(InstallStop::Cancelled),
+        Err(InstallStop::Failed(message)) => Err(InstallStop::Failed(format!(
+            "Could not verify the update with GitHub CLI (gh): {message}. Install gh or download the release manually."
+        ))),
     }
 }
 
@@ -757,8 +794,6 @@ fn download_to_file(
     download_to_file_bounded(url, destination, MAX_UPDATE_ARCHIVE_BYTES, cancel, progress)
 }
 
-/// The ceiling is a parameter so tests can exercise it without a fixture the
-/// size of a real release.
 fn download_to_file_bounded(
     url: &str,
     destination: &Path,
@@ -799,8 +834,6 @@ fn download_to_file_bounded(
             break;
         }
         downloaded = downloaded.saturating_add(count as u64);
-        // Enforced against what actually arrives, not only against the
-        // advertised length: `Content-Length` can be absent or untrue.
         if downloaded > limit {
             return Err(oversized_update());
         }
@@ -826,15 +859,7 @@ fn verify_checksum(download_url: &str, archive_path: &Path) -> Result<(), String
         .header("User-Agent", "strata-file-manager")
         .call()
         .map_err(|error| format!("Could not verify the update: {error}"))?;
-    // Bounded rather than read whole: nothing else constrains what a server
-    // may return here.
-    let mut expected = String::new();
-    response
-        .body_mut()
-        .as_reader()
-        .take(MAX_CHECKSUM_BYTES)
-        .read_to_string(&mut expected)
-        .map_err(|error| format!("Could not verify the update: {error}"))?;
+    let expected = read_checksum_body(&mut response)?;
     let expected_hash =
         first_hash_token(&expected).ok_or_else(|| "The published checksum was empty".to_owned())?;
 
@@ -847,6 +872,29 @@ fn verify_checksum(download_url: &str, archive_path: &Path) -> Result<(), String
     } else {
         Err("Downloaded update failed checksum verification".to_owned())
     }
+}
+
+fn read_checksum_body(response: &mut ureq::http::Response<ureq::Body>) -> Result<String, String> {
+    if response
+        .headers()
+        .get("content-length")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.parse::<u64>().ok())
+        .is_some_and(|length| length > MAX_CHECKSUM_BYTES)
+    {
+        return Err("The published checksum is too large".to_owned());
+    }
+    let mut body = String::new();
+    response
+        .body_mut()
+        .as_reader()
+        .take(MAX_CHECKSUM_BYTES + 1)
+        .read_to_string(&mut body)
+        .map_err(|error| error.to_string())?;
+    if body.len() as u64 > MAX_CHECKSUM_BYTES {
+        return Err("The published checksum is too large".to_owned());
+    }
+    Ok(body)
 }
 
 fn first_hash_token(text: &str) -> Option<String> {
@@ -873,5 +921,7 @@ fn run(command: &mut Command) -> Result<String, String> {
     String::from_utf8(output.stdout).map_err(|error| error.to_string())
 }
 
+#[cfg(test)]
+mod review_tests;
 #[cfg(test)]
 mod tests;

@@ -1,33 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! In-process extraction of a release archive.
-//!
-//! Replaces a `tar -xzf` subprocess so the updater can refuse an entry before
-//! anything reaches the filesystem. The archive has already been checksummed,
-//! attested, and bound to a release tag by the time it arrives here; this layer
-//! exists so that a hostile archive which somehow passes all three still cannot
-//! write outside its staging directory or exhaust the disk.
-
 use std::{
     fs,
     io::Read,
     path::{Component, Path, PathBuf},
 };
 
-/// Release archives run a little under 6 MiB compressed and well under 64 MiB
-/// extracted. These ceilings leave generous room for growth while keeping a
-/// malformed or hostile archive from filling the disk.
 const MAX_ENTRIES: usize = 512;
 const MAX_ENTRY_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_TOTAL_BYTES: u64 = 512 * 1024 * 1024;
 
-/// Files the updater reads out of the extracted package. Their absence is an
-/// error; extra files are not, so that a future release adding a packaged file
-/// cannot strand older installs on a refusal to extract it.
+// Allow extra regular files so future package additions do not strand older updaters.
 const REQUIRED_ENTRIES: &[&str] = &["strata", "SOURCE_COMMIT"];
 
-/// Extracts `archive` beneath `destination` and returns the single package
-/// directory it contains.
 pub(super) fn extract_release_archive(
     archive: &Path,
     destination: &Path,
@@ -38,6 +23,7 @@ pub(super) fn extract_release_archive(
     let mut tar = tar::Archive::new(decoder);
     let entries = tar
         .entries()
+        .map(|entries| entries.raw(true))
         .map_err(|error| format!("Could not read the downloaded update: {error}"))?;
 
     let mut package_dir: Option<String> = None;
@@ -83,6 +69,9 @@ pub(super) fn extract_release_archive(
 
         let target = destination.join(&relative);
         if kind.is_dir() {
+            if entry.size() != 0 {
+                return Err("The update contains a directory with file data".to_owned());
+            }
             fs::create_dir_all(&target)
                 .map_err(|error| format!("Could not extract the update: {error}"))?;
             continue;
@@ -115,10 +104,11 @@ pub(super) fn extract_release_archive(
     Ok(package_dir)
 }
 
-/// Copies one entry out, refusing to write more than the header promised so a
-/// lying header cannot be used to slip past the cumulative ceiling.
 fn write_entry<R: Read>(entry: &mut R, target: &Path, size: u64) -> Result<(), String> {
-    let mut file = fs::File::create(target)
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(target)
         .map_err(|error| format!("Could not extract the update: {error}"))?;
     let copied = std::io::copy(&mut entry.take(size), &mut file)
         .map_err(|error| format!("Could not extract the update: {error}"))?;
@@ -128,8 +118,6 @@ fn write_entry<R: Read>(entry: &mut R, target: &Path, size: u64) -> Result<(), S
     Ok(())
 }
 
-/// Accepts only a relative, nested path: no absolute paths, no `..`, no root or
-/// prefix components, and at least a package directory plus one name.
 fn safe_relative_path(path: &Path) -> Result<PathBuf, String> {
     let mut relative = PathBuf::new();
     let mut depth = 0_usize;

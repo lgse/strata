@@ -74,9 +74,7 @@ impl ArchiveBuilder {
         self
     }
 
-    /// Writes the entry name straight into the header, bypassing the checks
-    /// `set_path` applies. A hostile archive is built by something that does
-    /// not use this crate, so the test fixtures cannot go through them either.
+    // Bypass tar::Header's path validation to construct hostile fixtures.
     fn raw_named(&mut self, name: &str, contents: &[u8]) -> &mut Self {
         let mut header = tar::Header::new_gnu();
         header.set_size(contents.len() as u64);
@@ -92,8 +90,6 @@ impl ArchiveBuilder {
         self
     }
 
-    /// Closes the tar stream *and* the gzip stream: a `GzEncoder` left
-    /// unfinished writes a truncated member that no reader can decode.
     fn finish(&mut self) -> PathBuf {
         let builder = self.builder.take().expect("archive is still open");
         let encoder = builder.into_inner().expect("finish tar stream");
@@ -126,6 +122,28 @@ fn extraction_writes_the_packaged_files_and_returns_the_package_directory() {
         "abc123\n"
     );
     assert!(package.join("portal/strata.portal").is_file());
+}
+
+#[test]
+fn extraction_rejects_duplicate_regular_files() {
+    let dir = scratch_dir("duplicate", line!());
+    let mut archive = ArchiveBuilder::new(&dir);
+    let archive = archive
+        .required()
+        .file(&format!("{PACKAGE}/strata"), b"other binary")
+        .finish();
+    assert!(extract_into(&dir, &archive).is_err());
+}
+
+#[test]
+fn extraction_rejects_extension_headers_instead_of_hiding_them_from_limits() {
+    let dir = scratch_dir("extension", line!());
+    let mut archive = ArchiveBuilder::new(&dir);
+    let archive = archive
+        .required()
+        .special(&format!("{PACKAGE}/extended"), tar::EntryType::XHeader, "")
+        .finish();
+    assert!(extract_into(&dir, &archive).is_err());
 }
 
 #[test]
@@ -283,8 +301,6 @@ fn extraction_rejects_an_archive_that_expands_past_the_ceiling() {
     let encoder = flate2::write::GzEncoder::new(file, flate2::Compression::best());
     let mut builder = tar::Builder::new(encoder);
     let mut header = tar::Header::new_gnu();
-    // A header promising far more than the ceiling, so the entry is refused
-    // before its bytes are written.
     header.set_size(super::MAX_TOTAL_BYTES + 1);
     header.set_mode(0o644);
     header.set_entry_type(tar::EntryType::Regular);
