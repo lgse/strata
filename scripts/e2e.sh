@@ -31,6 +31,7 @@ exec "$engine" run "${options[@]}" \
   --env CARGO_HOME=/workspace/target/e2e-container/cargo \
   --env CARGO_TARGET_DIR=/workspace/target/e2e-container/build \
   --env "STRATA_E2E_UPDATE_BASELINES=${STRATA_E2E_UPDATE_BASELINES:-0}" \
+  --env "STRATA_E2E_WORKERS=${STRATA_E2E_WORKERS:-auto}" \
   "$image" bash -euc '
     mkdir -p "$HOME" "$CARGO_HOME"
     printf "GTK: "; pkg-config --modversion gtk4

@@ -1631,6 +1631,12 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
         mode: MetadataValue::Unknown,
     }));
 
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::FocusChanged { depth: 0, .. }))
+    );
     assert!(events.borrow().iter().any(|event| matches!(
         event,
         BrowserEvent::EntriesSpliced { depth: 0, splices, .. }
@@ -1649,6 +1655,54 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
             .borrow()
             .iter()
             .any(|event| matches!(event, BrowserEvent::ColumnReloaded { .. }))
+    );
+}
+
+#[test]
+fn background_directory_removal_does_not_request_focus() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let parent = Location::local("/fixture");
+    browser.navigate(parent.clone());
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("moved")));
+    browser.preview(0, 0);
+    assert_eq!(browser.active_depth(), Some(1));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    browser.handle_directory_change(
+        0,
+        &parent,
+        DirectoryChange::Remove(Location::local("/fixture/moved")),
+    );
+
+    assert_eq!(browser.active_depth(), Some(1));
+    assert_eq!(
+        browser
+            .column_snapshot(0)
+            .expect("parent column")
+            .selected_positions,
+        [0]
+    );
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::EntriesSpliced { depth: 0, .. }))
+    );
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::SelectionSetChanged {
+            depth: 0,
+            take_focus: false,
+            ..
+        }
+    )));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::FocusChanged { .. }))
     );
 }
 
@@ -2459,7 +2513,7 @@ fn keyboard_selection_and_activation_descend_without_the_ui() {
 }
 
 #[test]
-fn escape_closes_a_peek_before_the_deepest_column() {
+fn escape_closes_a_peek_before_clearing_selection_and_closing_the_deepest_column() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
     let observed = events.clone();
@@ -2485,6 +2539,16 @@ fn escape_closes_a_peek_before_the_deepest_column() {
     );
 
     events.borrow_mut().clear();
+    let location = browser.active_location();
+    browser.escape();
+    assert!(browser.selected_positions(1).is_empty());
+    assert_eq!(browser.active_location(), location);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::SelectionSetChanged { depth: 1, positions, .. } if positions.is_empty()
+    )));
+
+    events.borrow_mut().clear();
     browser.escape();
     assert!(
         events
@@ -2492,6 +2556,38 @@ fn escape_closes_a_peek_before_the_deepest_column() {
             .iter()
             .any(|event| matches!(event, BrowserEvent::ColumnsTruncated { len: 1 }))
     );
+}
+
+#[test]
+fn escape_clears_only_the_active_selection_and_preserves_the_cursor() {
+    for multiple in [false, true] {
+        let mut source = ScriptedSource::scripted(vec!["a.txt", "b.txt"], Vec::new());
+        source.dirs = vec!["child"];
+        let browser = Browser::new(Rc::new(source));
+        browser.navigate(Location::local("/fixture"));
+        browser.move_selection(1);
+        browser.activate_focused();
+        if multiple {
+            browser.select_all(1);
+        }
+        let parent_selection = browser.selected_positions(0);
+        let focused = browser.focused_item();
+        let location = browser.active_location();
+        assert_eq!(
+            browser.selected_positions(1).len(),
+            if multiple { 3 } else { 1 }
+        );
+
+        browser.escape();
+
+        assert!(browser.selected_positions(1).is_empty());
+        assert_eq!(browser.selected_positions(0), parent_selection);
+        assert_eq!(browser.focused_item(), focused);
+        assert_eq!(browser.active_location(), location);
+        assert!(!browser.selection_is_load_cursor());
+        browser.move_selection(1);
+        assert!(!browser.selected_positions(1).is_empty());
+    }
 }
 
 type CapturedLoad = Rc<RefCell<Option<(RequestId, Rc<dyn Fn(DirectoryEvent)>)>>>;

@@ -878,14 +878,13 @@ impl ModeViews {
             BrowserEvent::ColumnAdded { depth, .. }
                 if self.browser.active_depth() == Some(*depth) =>
             {
+                self.browser.select_first_on_load(*depth);
                 match self.mode {
                     BrowserMode::Columns => {}
                     BrowserMode::Icons => {
-                        self.browser.select_first_on_load(*depth);
                         self.rebuild_icons();
                     }
                     BrowserMode::List => {
-                        self.browser.select_first_on_load(*depth);
                         self.rebuild_list();
                     }
                 }
@@ -1030,7 +1029,7 @@ impl ModeViews {
                 for pane in self.panes_at(*depth) {
                     set_selections(pane, positions);
                 }
-                if *take_focus || view_has_focus {
+                if *take_focus || (view_has_focus && !positions.is_empty()) {
                     self.focus_visible_pane(*depth);
                 }
             }
@@ -1061,6 +1060,21 @@ impl ModeViews {
             BrowserMode::Icons => self.icons_panes.iter().collect(),
             BrowserMode::List => self.list_pane.iter().collect(),
         }
+    }
+
+    pub fn resume_native_selection(&self) {
+        let Some((depth, focused, _)) = self.browser.focused_item() else {
+            return;
+        };
+        if !self.browser.selected_positions(depth).is_empty() {
+            return;
+        }
+        // Seed GTK's empty selection before the arrow moves it, without scheduling
+        // a focus restore that would undo the native move after key dispatch.
+        for pane in self.panes_at(depth) {
+            set_selections(pane, &[focused]);
+        }
+        self.browser.set_selection(depth, &[focused], Some(focused));
     }
 
     pub fn focused_position(&self) -> Option<(usize, usize)> {
@@ -1897,8 +1911,7 @@ fn build_icons_pane(
         pin_ungrouped_icons_columns(&section, width, context.density.get());
     });
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) =
-        collection_with_marquee(&root, scroll, targets.clone(), "icons-card");
+    let (collection, marquee) = collection_with_marquee(&root, scroll, targets.clone());
     content.append(&super::inline_search::wrap(
         &collection,
         &controls.filter_entry,
@@ -1954,12 +1967,15 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
     let factory = gtk::SignalListItemFactory::new();
     let bound_items_for_setup = bound_items.clone();
     let selection_for_setup = selection.clone();
-    let selection_anchor = Rc::new(Cell::new(None::<u32>));
     let browser_for_setup = Rc::downgrade(&context.browser);
     let previews_for_setup = context.click.previews.clone();
     let activation_for_setup = context.click.activation.clone();
     let filtered_for_setup = view_model.clone();
     let source_index_for_setup = context.source_index.clone();
+    let positions_for_setup = PanePositions {
+        index: source_index_for_setup.clone(),
+        view: filtered_for_setup.clone(),
+    };
     let transfers_for_setup = context.transfer.clone();
     let peek_for_setup = context.state.clone();
     let thumbnail_size_for_setup = context.thumbnail_size.clone();
@@ -1982,7 +1998,9 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             &card,
             item,
             selection_for_setup.clone(),
-            selection_anchor.clone(),
+            browser_for_setup.clone(),
+            depth,
+            positions_for_setup.clone(),
         );
         install_icons_peek(
             &card,
@@ -2609,7 +2627,6 @@ fn build_list_pane(
     let bound_items: Rc<RefCell<Vec<BoundModeItem>>> = Rc::new(RefCell::new(Vec::new()));
     let bound_items_for_setup = bound_items.clone();
     let selection_for_setup = selection.clone();
-    let selection_anchor = Rc::new(Cell::new(None::<u32>));
     let browser_for_setup = Rc::downgrade(&browser);
     let previews_for_setup = click_options.previews;
     let activation_for_setup = click_options.activation;
@@ -2617,6 +2634,10 @@ fn build_list_pane(
     let active_for_setup = active_new_entry.clone();
     let source_index_for_setup = source_index.clone();
     let view_model_for_setup = view_model_object.clone();
+    let positions_for_setup = PanePositions {
+        index: source_index_for_setup.clone(),
+        view: view_model_for_setup.clone(),
+    };
     let folder_location = browser.location_at(depth);
     let scrolling = Rc::new(Cell::new(false));
     let scrolling_for_setup = scrolling.clone();
@@ -2693,7 +2714,9 @@ fn build_list_pane(
             &row,
             item,
             selection_for_setup.clone(),
-            selection_anchor.clone(),
+            browser_for_setup.clone(),
+            depth,
+            positions_for_setup.clone(),
         );
         install_list_drag_drop(
             &row,
@@ -2849,8 +2872,7 @@ fn build_list_pane(
     table.set_vexpand(true);
     table.append(&headings);
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) =
-        collection_with_marquee(view.upcast_ref(), scroll, targets.clone(), "list-row");
+    let (collection, marquee) = collection_with_marquee(view.upcast_ref(), scroll, targets.clone());
     table.append(&collection);
     marquee.add_origin_surface(&header);
     marquee.add_origin_surface(&headings);
@@ -3079,7 +3101,6 @@ fn collection_with_marquee(
     view: &gtk::Widget,
     scroll: gtk::ScrolledWindow,
     targets: super::marquee::MarqueeTargets,
-    item_class: &'static str,
 ) -> (gtk::Overlay, super::marquee::Marquee) {
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&scroll));
@@ -3089,32 +3110,22 @@ fn collection_with_marquee(
 
     let marquee = super::marquee::install(super::marquee::MarqueeSetup {
         view: view.clone(),
+        surface: scroll.clone().upcast(),
         scroll,
         overlay: overlay.clone(),
         targets: targets.clone(),
-        is_item: Rc::new(|widget| widget_or_ancestor_has_class(widget, item_class)),
-    });
-
-    let clear = gtk::GestureClick::new();
-    clear.set_button(1);
-    let press = Rc::new(Cell::new((0.0, 0.0)));
-    let press_for_start = press.clone();
-    clear.connect_pressed(move |_, _, x, y| press_for_start.set((x, y)));
-    clear.connect_released(move |gesture, _, x, y| {
-        let (start_x, start_y) = press.get();
-        if (x - start_x).abs() > 3.0 || (y - start_y).abs() > 3.0 {
-            return;
-        }
-        let target = gesture
-            .widget()
-            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT));
-        if !target.is_some_and(|widget| widget_or_ancestor_has_class(&widget, item_class)) {
-            for target in targets.borrow().iter() {
-                target.selection.unselect_all();
+        is_item: Rc::new(super::pointer::hits_item_content),
+        clear_selection: Rc::new(move || {
+            let selections: Vec<_> = targets
+                .borrow()
+                .iter()
+                .map(|target| target.selection.clone())
+                .collect();
+            for selection in selections {
+                selection.unselect_all();
             }
-        }
+        }),
     });
-    view.add_controller(clear);
     (overlay, marquee)
 }
 
@@ -3130,17 +3141,6 @@ fn descendant_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widge
         child = widget.next_sibling();
     }
     None
-}
-
-fn widget_or_ancestor_has_class(widget: &gtk::Widget, class: &str) -> bool {
-    let mut current = Some(widget.clone());
-    while let Some(widget) = current {
-        if widget.has_css_class(class) {
-            return true;
-        }
-        current = widget.parent();
-    }
-    false
 }
 
 fn install_icons_peek(
@@ -3240,6 +3240,9 @@ fn install_list_drag_drop(
     let map_for_drag = position_map.clone();
     let drag_icon = drag_icon.map(gtk::Widget::downgrade);
     drag.connect_prepare(move |source, x, y| {
+        if !super::pointer::hits_item_content(&source.widget()?, x, y) {
+            return None;
+        }
         let browser = browser_for_drag.upgrade()?;
         let dragged_item = dragged_item.upgrade()?;
         let position = dragged_item.position();
@@ -3375,17 +3378,43 @@ fn install_list_drag_drop(
     row.add_controller(drop);
 }
 
+#[derive(Clone)]
+struct PanePositions {
+    index: SourceIndexMap,
+    view: gio::ListModel,
+}
+
+impl PanePositions {
+    fn source_position(&self, view_position: u32) -> Option<usize> {
+        source_position_for_view(&self.index, Some(&self.view), view_position)
+    }
+
+    fn view_position(&self, source_position: usize) -> Option<u32> {
+        let guessed = source_position as u32;
+        // Unfiltered views keep source order; a leading placeholder shifts by one.
+        [guessed, guessed.saturating_add(1)]
+            .into_iter()
+            .find(|candidate| self.source_position(*candidate) == Some(source_position))
+            .or_else(|| {
+                (0..self.view.n_items())
+                    .find(|candidate| self.source_position(*candidate) == Some(source_position))
+            })
+    }
+}
+
 fn install_modified_selection_click(
     widget: &impl IsA<gtk::Widget>,
     item: &gtk::ListItem,
     selection: gtk::MultiSelection,
-    anchor: Rc<Cell<Option<u32>>>,
+    browser: Weak<Browser>,
+    depth: usize,
+    positions: PanePositions,
 ) {
     let click = gtk::GestureClick::new();
     click.set_button(1);
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
     let item = item.downgrade();
-    click.connect_pressed(move |gesture, _, _, _| {
+    click.connect_pressed(move |gesture, _, x, y| {
         let Some(item) = item.upgrade() else {
             return;
         };
@@ -3393,28 +3422,55 @@ fn install_modified_selection_click(
         if position == gtk::INVALID_LIST_POSITION {
             return;
         }
+        let Some(browser) = browser.upgrade() else {
+            return;
+        };
         let modifiers = gesture.current_event_state();
         let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
         if shift {
-            let anchor = anchor.get().unwrap_or(position);
+            let anchor = browser
+                .selection_anchor_position(depth)
+                .and_then(|anchor| positions.view_position(anchor))
+                .unwrap_or(position);
             let start = anchor.min(position);
             let count = anchor.max(position).saturating_sub(start) + 1;
             selection.select_range(start, count, true);
         } else if control {
-            anchor.set(Some(position));
+            anchor_at(&browser, depth, &positions, position);
             if selection.is_selected(position) {
                 selection.unselect_item(position);
             } else {
                 selection.select_item(position, false);
             }
         } else {
-            anchor.set(Some(position));
+            anchor_at(&browser, depth, &positions, position);
             return;
         }
-        gesture.set_state(gtk::EventSequenceState::Claimed);
+        if let Some(widget) = gesture.widget()
+            && super::pointer::hits_item_content(&widget, x, y)
+        {
+            if let Some(item_widget) = widget.parent() {
+                item_widget.grab_focus();
+            }
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+        }
+    });
+    click.connect_released(|gesture, _, _, _| {
+        if gesture
+            .current_event_state()
+            .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
+        {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+        }
     });
     widget.add_controller(click);
+}
+
+fn anchor_at(browser: &Rc<Browser>, depth: usize, positions: &PanePositions, view_position: u32) {
+    if let Some(source_position) = positions.source_position(view_position) {
+        browser.set_selection_anchor(depth, source_position);
+    }
 }
 
 fn source_position_for_view(
@@ -3472,15 +3528,15 @@ fn install_preview_click(
 ) {
     let click = gtk::GestureClick::new();
     click.set_button(1);
-    let item = item.downgrade();
-    click.connect_released(move |gesture, press_count, _, _| {
+    let clicked_item = item.downgrade();
+    super::pointer::connect_click_release(&click, item, move |gesture, press_count| {
         let modifiers = gesture.current_event_state();
         if modifiers
             .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
         {
             return;
         }
-        let Some(item) = item.upgrade() else {
+        let Some(item) = clicked_item.upgrade() else {
             return;
         };
         let position = item.position();

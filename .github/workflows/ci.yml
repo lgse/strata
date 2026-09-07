@@ -56,7 +56,9 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Run the canonical end-to-end container
+      - name: Run the hardware-aware end-to-end container
+        env:
+          STRATA_E2E_WORKERS: auto
         run: ./scripts/e2e.sh -p no:cacheprovider
 
       - name: Upload failure artifacts

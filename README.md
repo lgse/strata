@@ -157,12 +157,16 @@ On Arch Linux or Omarchy:
 
 ```bash
 sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gst-libav gst-plugins-good gtk4 gtksourceview5 poppler-glib
+  gst-libav gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
 # Optional SMB and broader camera RAW support:
 sudo pacman -S --needed gvfs-smb imagemagick libraw dcraw
 ```
 
 GTK **4.12 or newer** and glibc **2.39 or newer** are required. Other glibc-based distributions may work when they provide equivalent runtime libraries, but their package names and binary compatibility vary. Systems with an older glibc must [build Strata from source](#development-and-documentation).
+
+Device discovery requires the GVfs UDisks2 volume monitor (`gvfs` on Arch and
+Fedora; `gvfs-daemons` on Debian/Ubuntu). Without that backend, removable drives
+may be absent from Devices. SMB support remains optional.
 
 #### 2. Download and verify
 
@@ -387,7 +391,7 @@ Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-con
 
 ```bash
 sudo pacman -S --needed base-devel rust bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gst-libav gst-plugins-good gtk4 gtksourceview5 poppler-glib
+  gst-libav gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
 make start-dev        # rebuild and restart as files change
 make run-dev          # build and launch the main app once
 make run-chooser-dev  # build and open an isolated Save chooser with choices

@@ -7,19 +7,14 @@ use std::{
 
 use gtk::{gio, prelude::*};
 
-pub(super) struct MountedDevice {
-    pub name: String,
-    pub root: PathBuf,
-}
-
-pub(super) fn system_mounted_devices() -> Vec<MountedDevice> {
+fn system_mounted_devices() -> Vec<PathBuf> {
     // MountEntry bindings require GLib 2.84; retain compatibility with GLib 2.72.
     std::fs::read("/proc/self/mountinfo")
         .map(|table| mounted_devices_from_table(&table))
         .unwrap_or_default()
 }
 
-fn mounted_devices_from_table(table: &[u8]) -> Vec<MountedDevice> {
+fn mounted_devices_from_table(table: &[u8]) -> Vec<PathBuf> {
     table
         .split(|byte| *byte == b'\n')
         .filter_map(|line| {
@@ -36,10 +31,7 @@ fn mounted_devices_from_table(table: &[u8]) -> Vec<MountedDevice> {
             {
                 return None;
             }
-            Some(MountedDevice {
-                name: root.file_name()?.to_string_lossy().into_owned(),
-                root,
-            })
+            Some(root)
         })
         .collect()
 }
@@ -64,17 +56,6 @@ fn mount_path(encoded: &[u8]) -> Option<PathBuf> {
     Some(std::ffi::OsString::from_vec(decoded).into())
 }
 
-pub(super) fn unrepresented_devices(
-    devices: Vec<MountedDevice>,
-    represented: impl IntoIterator<Item = PathBuf>,
-) -> Vec<MountedDevice> {
-    let mut roots: std::collections::HashSet<_> = represented.into_iter().collect();
-    devices
-        .into_iter()
-        .filter(|device| roots.insert(device.root.clone()))
-        .collect()
-}
-
 pub(super) fn global_search_roots() -> Vec<PathBuf> {
     let monitor = gio::VolumeMonitor::get();
     let roots = monitor
@@ -82,11 +63,7 @@ pub(super) fn global_search_roots() -> Vec<PathBuf> {
         .into_iter()
         .filter(|mount| !mount.is_shadowed())
         .filter_map(|mount| mount.root().path())
-        .chain(
-            system_mounted_devices()
-                .into_iter()
-                .map(|device| device.root),
-        );
+        .chain(system_mounted_devices());
     search_roots(&super::home_directory(), roots)
 }
 

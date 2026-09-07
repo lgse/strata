@@ -694,6 +694,16 @@ impl Browser {
         self.state.borrow_mut().select_first_on_load(depth);
     }
 
+    pub fn selection_anchor_position(&self, depth: usize) -> Option<usize> {
+        self.state.borrow().selection_anchor_position(depth)
+    }
+
+    pub fn set_selection_anchor(&self, depth: usize, position: usize) {
+        self.state
+            .borrow_mut()
+            .set_selection_anchor(depth, position);
+    }
+
     pub fn focus_active(&self) {
         let focus = self.state.borrow().active_focus();
         if let Some((depth, position)) = focus {
@@ -881,8 +891,22 @@ impl Browser {
         closed
     }
 
+    pub fn clear_active_selection(&self) -> bool {
+        let cleared = self.state.borrow_mut().clear_active_selection();
+        if let Some((depth, focused)) = cleared {
+            self.emit(BrowserEvent::SelectionSetChanged {
+                depth,
+                positions: Vec::new(),
+                focused,
+                take_focus: false,
+            });
+            return true;
+        }
+        false
+    }
+
     pub fn escape(self: &Rc<Self>) {
-        if self.close_peek() {
+        if self.close_peek() || self.clear_active_selection() {
             return;
         }
 
@@ -3385,10 +3409,14 @@ impl Browser {
                     take_focus: false,
                 });
             }
-            self.emit(BrowserEvent::FocusChanged {
-                depth,
-                position: selected,
-            });
+            // Monitor updates to an ancestor must not reclaim focus after a
+            // transfer has revealed its destination in a child column.
+            if self.active_depth() == Some(depth) {
+                self.emit(BrowserEvent::FocusChanged {
+                    depth,
+                    position: selected,
+                });
+            }
         }
     }
 

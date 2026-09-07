@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import select
 import shutil
 import subprocess
 import tempfile
@@ -23,7 +24,7 @@ MAX_RUNTIME_DIR_LENGTH = 60
 
 # Well clear of the session display and of the numbers Xephyr and friends take.
 FIRST_DISPLAY_NUMBER = 90
-DISPLAY_TRIES = 30
+DISPLAY_TRIES = 256
 XVFB_START_TIMEOUT = 15.0
 
 BUS_LAUNCHER_CANDIDATES = (
@@ -130,9 +131,9 @@ class HeadlessDisplay:
         return managed
 
     def _start_xvfb(self) -> None:
-        # `-displayfd` always searches upwards from :0, which on a developer
-        # machine means the real session display. Claim a high number instead
-        # and move on when the server refuses it.
+        # An explicit display keeps -displayfd away from the desktop's low
+        # numbers. The readiness pipe confirms ownership, not just a socket
+        # another concurrently starting worker may have created.
         for number in range(FIRST_DISPLAY_NUMBER, FIRST_DISPLAY_NUMBER + DISPLAY_TRIES):
             if self._display_is_taken(number):
                 continue
@@ -152,11 +153,21 @@ class HeadlessDisplay:
         )
 
     def _try_display(self, number: int) -> bool:
+        read_fd, write_fd = os.pipe()
+        try:
+            return self._start_display(number, read_fd, write_fd)
+        finally:
+            os.close(read_fd)
+            os.close(write_fd)
+
+    def _start_display(self, number: int, read_fd: int, write_fd: int) -> bool:
         server = self._spawn(
             f"xvfb-{number}",
             [
                 "Xvfb",
                 f":{number}",
+                "-displayfd",
+                str(write_fd),
                 "-screen",
                 "0",
                 f"{self.width}x{self.height}x{self.depth}",
@@ -167,16 +178,28 @@ class HeadlessDisplay:
                 "-noreset",
                 "-ac",
             ],
+            pass_fds=(write_fd,),
         )
-        socket = Path(f"/tmp/.X11-unix/X{number}")
         deadline = time.monotonic() + XVFB_START_TIMEOUT
+        advertised = b""
         while time.monotonic() < deadline:
-            if socket.exists():
-                return True
             if server.exited():
                 self._processes.remove(server)
                 return False
-            time.sleep(0.05)
+            ready, _, _ = select.select([read_fd], [], [], 0.05)
+            if ready:
+                chunk = os.read(read_fd, 64)
+                if not chunk:
+                    break
+                advertised += chunk
+                # Xvfb writes the number and newline separately. Keep the pipe
+                # open until both writes finish, or its newline can hit EPIPE.
+                if b"\n" in advertised:
+                    if advertised == f"{number}\n".encode():
+                        return True
+                    break
+                if len(advertised) >= 64:
+                    break
         terminate(server.popen)
         self._processes.remove(server)
         return False

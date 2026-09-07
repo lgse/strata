@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from harness import screenshots, tree  # noqa: E402
+from harness import resources, screenshots, tree  # noqa: E402
 from harness.application import Application, build_binary  # noqa: E402
 from harness.artifacts import ArtifactCollector  # noqa: E402
 from harness.browser import Strata  # noqa: E402
@@ -32,6 +32,23 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         action="store_true",
         help="write the failure artifact bundle for passing scenarios too",
     )
+
+
+def pytest_xdist_auto_num_workers(config: pytest.Config) -> int:
+    cpus, memory = resources.available_resources()
+    try:
+        workers = resources.worker_count(cpus, memory, os.environ.get("STRATA_E2E_WORKERS", "auto"))
+    except ValueError as error:
+        raise pytest.UsageError(str(error)) from error
+    print(f"E2E resources: {cpus:g} CPUs, {memory / resources.GIB:.1f} GiB available; {workers} workers")
+    return workers
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
+    for item in items:
+        if item.get_closest_marker("baseline"):
+            item.add_marker(pytest.mark.xdist_group("visual-baselines"))
 
 
 @pytest.fixture(scope="session")
@@ -186,6 +203,8 @@ def pytest_unconfigure(config: pytest.Config) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    if config.getoption("numprocesses", 0) and config.getoption("dist", "no") != "loadgroup":
+        raise pytest.UsageError("Parallel E2E requires --dist=loadgroup to isolate visual baselines")
     config.stash[_TERMINATION_HANDLER_KEY] = signal.signal(signal.SIGTERM, _terminate_session)
     config.addinivalue_line(
         "markers", "preferences(**values): seed Strata preferences for a scenario"

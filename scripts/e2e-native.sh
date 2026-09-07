@@ -21,16 +21,22 @@ if ((${#missing[@]})); then
   exit 1
 fi
 
-# PyGObject comes from the system; only pytest and Pillow are installed here.
+# PyGObject comes from the system; Python-only dependencies live in the venv.
 if [[ ! -x "$venv/bin/python" ]]; then
   echo "Creating the end-to-end virtual environment in $venv"
   python3 -m venv --system-site-packages "$venv"
+fi
+if ! cmp -s "$suite/requirements.txt" "$venv/strata-requirements.txt"; then
   "$venv/bin/pip" install --quiet --requirement "$suite/requirements.txt"
+  cp "$suite/requirements.txt" "$venv/strata-requirements.txt"
 fi
 
 if [[ -z "${STRATA_BINARY:-}" ]]; then
   cargo build --manifest-path "$repository/Cargo.toml" --bin strata
+  STRATA_BINARY="$(realpath "${CARGO_TARGET_DIR:-$repository/target}/debug/strata")"
+  export STRATA_BINARY
 fi
 
 cd "$repository"
-exec "$venv/bin/python" -m pytest -c "$suite/pytest.ini" --rootdir "$repository" "$@"
+exec "$venv/bin/python" -m pytest -c "$suite/pytest.ini" --rootdir "$repository" \
+  -n auto --dist=loadgroup --max-worker-restart=0 "$@"

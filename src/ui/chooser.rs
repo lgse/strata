@@ -202,6 +202,29 @@ enum ChoiceControl {
 
 type SelectionChanged = Box<dyn Fn(usize)>;
 
+const DROPDOWN_EDGE_MARGIN: i32 = 24;
+const MIN_DROPDOWN_CONTENT_HEIGHT: i32 = 120;
+
+// Popovers use separate surfaces, so the window does not constrain their content height.
+fn dropdown_placement(
+    available_height: i32,
+    anchor_top: i32,
+    anchor_bottom: i32,
+) -> (gtk::PositionType, i32) {
+    let below = available_height.saturating_sub(anchor_bottom).max(0);
+    let above = anchor_top.max(0);
+    let (position, room) = if below >= above {
+        (gtk::PositionType::Bottom, below)
+    } else {
+        (gtk::PositionType::Top, above)
+    };
+    (
+        position,
+        room.saturating_sub(DROPDOWN_EDGE_MARGIN)
+            .max(MIN_DROPDOWN_CONTENT_HEIGHT),
+    )
+}
+
 struct ChooserDropdown {
     button: gtk::MenuButton,
     popover: gtk::Popover,
@@ -215,8 +238,15 @@ impl ChooserDropdown {
         let current = labels.get(selected).copied().unwrap_or_default();
         let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
         content.add_css_class("column-menu");
-        let popover = gtk::Popover::builder()
+        let scroll = gtk::ScrolledWindow::builder()
             .child(&content)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .propagate_natural_height(true)
+            .build();
+        scroll.add_css_class("context-menu-scroll");
+        let popover = gtk::Popover::builder()
+            .child(&scroll)
             .has_arrow(false)
             .position(gtk::PositionType::Bottom)
             .build();
@@ -235,6 +265,24 @@ impl ChooserDropdown {
         button.add_css_class("form-control");
         button.add_css_class("chooser-dropdown");
         button.set_halign(gtk::Align::Start);
+
+        let scroll_for_show = scroll.clone();
+        let button_for_show = button.downgrade();
+        popover.connect_show(move |popover| {
+            let (Some(root), Some(button)) = (popover.root(), button_for_show.upgrade()) else {
+                return;
+            };
+            let anchor_top = button
+                .compute_point(&root, &gtk::graphene::Point::new(0.0, 0.0))
+                .map_or(0, |point| point.y().round() as i32);
+            let (position, max_content_height) = dropdown_placement(
+                root.height(),
+                anchor_top,
+                anchor_top.saturating_add(button.height()),
+            );
+            popover.set_position(position);
+            scroll_for_show.set_max_content_height(max_content_height);
+        });
 
         let selected = Rc::new(Cell::new(selected));
         let changed = Rc::new(RefCell::new(None::<SelectionChanged>));
@@ -643,6 +691,22 @@ fn chooser_default_dimensions_for_monitor(monitor_width: i32, monitor_height: i3
     (target_width, target_height)
 }
 
+fn chooser_initial_dimensions(
+    monitor: Option<(i32, i32)>,
+    parent_size_hint: Option<(i32, i32)>,
+) -> (i32, i32) {
+    let monitor = monitor.filter(|(width, height)| *width > 0 && *height > 0);
+    let parent = parent_size_hint.filter(|(width, height)| *width > 0 && *height > 0);
+    let bounds = match (monitor, parent) {
+        (Some((mw, mh)), Some((pw, ph))) => Some((mw.min(pw), mh.min(ph))),
+        (monitor, parent) => parent.or(monitor),
+    };
+    bounds.map_or(
+        (FALLBACK_CHOOSER_WIDTH, FALLBACK_CHOOSER_HEIGHT),
+        |(width, height)| chooser_default_dimensions_for_monitor(width, height),
+    )
+}
+
 fn detect_monitor_geometry(
     display: Option<&gtk::gdk::Display>,
     window: Option<&gtk::Window>,
@@ -719,9 +783,9 @@ fn build_chooser(
         false,
     );
 
-    let (initial_width, initial_height) = detect_monitor_geometry(None, None).map_or(
-        (FALLBACK_CHOOSER_WIDTH, FALLBACK_CHOOSER_HEIGHT),
-        |(w, h)| chooser_default_dimensions_for_monitor(w, h),
+    let (initial_width, initial_height) = chooser_initial_dimensions(
+        detect_monitor_geometry(None, None),
+        request.parent_size_hint,
     );
 
     let window = gtk::Window::builder()
@@ -1015,22 +1079,11 @@ fn build_chooser(
 
     gtk::prelude::WidgetExt::realize(&window);
     apply_external_parent(&window, state.request.parent.as_ref());
-    if let Some(surface) = window.surface() {
-        let weak_window = window.downgrade();
-        surface.connect_enter_monitor(move |_, monitor| {
-            let Some(window) = weak_window.upgrade() else {
-                return;
-            };
-            let geometry = monitor.geometry();
-            let dimensions =
-                chooser_default_dimensions_for_monitor(geometry.width(), geometry.height());
-            window.set_default_size(dimensions.0, dimensions.1);
-        });
-    }
-    if let Some((width, height)) = detect_monitor_geometry(None, Some(&window)) {
-        let dimensions = chooser_default_dimensions_for_monitor(width, height);
-        window.set_default_size(dimensions.0, dimensions.1);
-    }
+    let dimensions = chooser_initial_dimensions(
+        detect_monitor_geometry(None, Some(&window)),
+        state.request.parent_size_hint,
+    );
+    window.set_default_size(dimensions.0, dimensions.1);
     browser.navigate(Location::local(&state.request.initial_directory));
     window.present();
     if let Some(filename) = state.filename.as_ref() {

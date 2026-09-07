@@ -7,7 +7,7 @@ APP_ID="io.github.lgse.Strata"
 MIN_GLIBC="2.39"
 REQUIRED_PACKAGES=(
   bubblewrap desktop-file-utils ffmpeg ffmpegthumbnailer fontconfig gst-libav
-  gst-plugins-good gtk4 gtksourceview5 poppler-glib github-cli xdg-utils
+  gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib github-cli xdg-utils
 )
 RAW_PREVIEW_PACKAGES=(imagemagick libraw dcraw)
 
@@ -422,7 +422,8 @@ main() {
     fi
   else
     printf '\nStrata needs GTK 4.12+, GtkSourceView 5, Poppler GLib, Fontconfig, Bubblewrap,\n'
-    printf 'FFmpeg, ffmpegthumbnailer, and GStreamer runtime plugins.\n'
+    printf 'FFmpeg, ffmpegthumbnailer, GStreamer plugins, and the GVfs UDisks2 volume monitor.\n'
+    printf 'For the volume monitor, install gvfs-daemons on Debian/Ubuntu or gvfs on Fedora.\n'
     if [[ $NON_INTERACTIVE == yes ]]; then
       die "Non-interactive dependency installation currently supports Arch-based systems only."
     fi

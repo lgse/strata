@@ -4,6 +4,7 @@ mod context_menu;
 mod keyboard;
 mod layout;
 mod selection;
+mod sizing;
 
 use std::{ffi::OsString, path::Path};
 
@@ -266,4 +267,124 @@ fn chooser_dimensions_fall_back_for_invalid_geometry() {
             (FALLBACK_CHOOSER_WIDTH, FALLBACK_CHOOSER_HEIGHT)
         );
     }
+}
+
+#[test]
+fn chooser_dimensions_follow_split_application_geometry() {
+    let monitor = Some((1920, 1080));
+    assert_eq!(
+        chooser_initial_dimensions(monitor, Some((960, 1080))),
+        (768, 680)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(monitor, Some((960, 540))),
+        (768, 460)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(monitor, Some((1920, 1080))),
+        (1000, 680)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(monitor, Some((i32::MAX, i32::MAX))),
+        (1000, 680)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(Some((800, 600)), Some((1920, 1080))),
+        (640, 468)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(None, Some((960, 1080))),
+        (768, 680)
+    );
+}
+
+#[test]
+fn missing_or_invalid_application_geometry_preserves_monitor_fallback() {
+    for parent in [None, Some((0, 600)), Some((800, -1))] {
+        assert_eq!(
+            chooser_initial_dimensions(Some((1920, 1080)), parent),
+            (1000, 680)
+        );
+        assert_eq!(chooser_initial_dimensions(None, parent), (920, 580));
+        assert_eq!(
+            chooser_initial_dimensions(Some((0, 1080)), parent),
+            (920, 580)
+        );
+    }
+}
+
+#[test]
+fn a_long_dropdown_opens_toward_the_roomier_side() {
+    let (position, height) = dropdown_placement(680, 572, 602);
+    assert_eq!(
+        position,
+        gtk::PositionType::Top,
+        "a button near the bottom must open upward"
+    );
+    assert_eq!(height, 572 - DROPDOWN_EDGE_MARGIN);
+
+    let (position, height) = dropdown_placement(680, 78, 108);
+    assert_eq!(
+        position,
+        gtk::PositionType::Bottom,
+        "a button near the top must open downward"
+    );
+    assert_eq!(height, 680 - 108 - DROPDOWN_EDGE_MARGIN);
+
+    for (available, top, bottom) in [(0, 0, 0), (-10, -10, -5), (120, 60, 90)] {
+        let (_, height) = dropdown_placement(available, top, bottom);
+        assert_eq!(
+            height, MIN_DROPDOWN_CONTENT_HEIGHT,
+            "a cramped or invalid window still shows a usable list"
+        );
+    }
+}
+
+#[test]
+fn a_long_dropdown_scrolls_instead_of_overflowing_the_window() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::a_long_dropdown_scrolls_instead_of_overflowing_the_window",
+        || {
+            let owned = (0..80)
+                .map(|index| format!("Filter {index}"))
+                .collect::<Vec<_>>();
+            let labels = owned.iter().map(String::as_str).collect::<Vec<_>>();
+            let dropdown = ChooserDropdown::new(&labels, 0);
+            let window = gtk::Window::builder()
+                .default_width(900)
+                .default_height(561)
+                .child(&dropdown.button)
+                .build();
+            window.present();
+            dropdown.button.popup();
+
+            let scroll = dropdown
+                .popover
+                .child()
+                .and_downcast::<gtk::ScrolledWindow>()
+                .expect("the dropdown list is scrollable");
+            assert_eq!(scroll.vscrollbar_policy(), gtk::PolicyType::Automatic);
+            assert!(scroll.propagates_natural_height());
+            let bounded = scroll.max_content_height();
+            assert!(
+                bounded <= window.height().max(MIN_DROPDOWN_CONTENT_HEIGHT),
+                "the list must stay within the window: {bounded}"
+            );
+            assert!(
+                bounded >= MIN_DROPDOWN_CONTENT_HEIGHT,
+                "the list must be bounded to a usable height, got {bounded}"
+            );
+            let natural = scroll
+                .child()
+                .expect("dropdown list")
+                .preferred_size()
+                .1
+                .height();
+            assert!(
+                natural > bounded,
+                "the fixture must exceed the bound so it actually scrolls: {natural} vs {bounded}"
+            );
+            window.destroy();
+        },
+    );
 }

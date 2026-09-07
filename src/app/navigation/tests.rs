@@ -77,6 +77,31 @@ fn focusing_a_column_preserves_selection_and_descendants() {
 }
 
 #[test]
+fn empty_selection_sync_preserves_the_keyboard_cursor() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/alpha", "alpha"),
+            named_entry("/fixture/bravo", "bravo"),
+            named_entry("/fixture/charlie", "charlie"),
+        ],
+    );
+    state.select(0, 1);
+    assert_eq!(state.clear_active_selection(), Some((0, 1)));
+    assert!(state.set_selection(0, &[], None));
+    assert!(state.selected_positions(0).is_empty());
+    assert_eq!(state.active_focus(), Some((0, Some(1))));
+    assert_eq!(state.move_selection(1), Some((0, 2)));
+
+    assert!(state.set_selection(0, &[], Some(1)));
+    assert!(state.selected_positions(0).is_empty());
+    assert_eq!(state.active_focus(), Some((0, Some(1))));
+    assert_eq!(state.move_selection(-1), Some((0, 0)));
+}
+
+#[test]
 fn multi_selection_tracks_entries_and_replaces_cleanly() {
     let mut state = NavigationState::default();
     state.navigate(location("/fixture"), RequestId(1));
@@ -1147,4 +1172,29 @@ fn selected_count_reports_without_cloning_entries() {
     assert_eq!(state.selected_count(), 0);
     assert!(state.set_selection(0, &[0, 2], Some(2)));
     assert_eq!(state.selected_count(), 2);
+}
+
+#[test]
+fn the_range_anchor_is_readable_and_replaceable_by_position() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.select_first_on_load(0);
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/a", "a"),
+            named_entry("/fixture/b", "b"),
+            named_entry("/fixture/c", "c"),
+        ],
+    );
+    assert_eq!(state.selection_anchor_position(0), Some(0));
+    assert!(state.set_selection_anchor(0, 2));
+    assert_eq!(state.selection_anchor_position(0), Some(2));
+    assert!(!state.set_selection_anchor(0, 9));
+    assert!(!state.set_selection_anchor(1, 0));
+    assert_eq!(state.selection_anchor_position(0), Some(2));
+    assert_eq!(
+        state.extend_visual_selection(0, 1, &[0, 1, 2]),
+        Some(vec![1, 2])
+    );
 }

@@ -11,7 +11,7 @@ REPOSITORY = Path(__file__).resolve().parents[1]
 
 
 class ContainerRunnerTests(unittest.TestCase):
-    def run_runner(self, engine_name="docker", binary=None, uid=None):
+    def run_runner(self, engine_name="docker", binary=None, uid=None, workers="auto"):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             engine = root / engine_name
@@ -34,6 +34,7 @@ class ContainerRunnerTests(unittest.TestCase):
                 "WAYLAND_DISPLAY": "wayland-0",
                 "NOTIFY_SOCKET": "/run/user/1000/systemd/notify",
                 "STRATA_E2E_UPDATE_BASELINES": "1",
+                "STRATA_E2E_WORKERS": workers,
             }
             if uid is not None:
                 identity = root / "id"
@@ -70,6 +71,13 @@ class ContainerRunnerTests(unittest.TestCase):
             self.assertIsNone(call["display"])
             self.assertIsNone(call["wayland"])
             self.assertIsNone(call["notify"])
+
+    def test_worker_budget_is_forwarded_into_container(self):
+        for workers in ("auto", "1", "8"):
+            with self.subTest(workers=workers):
+                result, calls = self.run_runner(workers=workers)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(f"STRATA_E2E_WORKERS={workers}", calls[1]["args"])
 
     def test_rootless_podman_preserves_checkout_ownership(self):
         result, calls = self.run_runner("podman")
@@ -124,6 +132,72 @@ class ContainerRunnerTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("e2e-native.sh", result.stderr)
         self.assertEqual(calls, [])
+
+
+class NativeRunnerTests(unittest.TestCase):
+    def run_runner(self, *, current_requirements=True, binary=None, arguments=()):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            scripts = root / "scripts"
+            scripts.mkdir()
+            runner = scripts / "e2e-native.sh"
+            runner.write_text((REPOSITORY / "scripts/e2e-native.sh").read_text())
+            suite = root / "tests/e2e"
+            suite.mkdir(parents=True)
+            (suite / "requirements.txt").write_text("pytest-xdist==3.8.0\n")
+            venv = root / "venv"
+            tools = venv / "bin"
+            tools.mkdir(parents=True)
+            (root / "target/debug").mkdir(parents=True)
+            if current_requirements:
+                (venv / "strata-requirements.txt").write_text((suite / "requirements.txt").read_text())
+            for name in ("Xvfb", "dbus-daemon", "dbus-send", "import", "python3"):
+                tool = tools / name
+                tool.write_text("#!/bin/sh\nexit 0\n")
+                tool.chmod(0o755)
+            log = root / "calls.jsonl"
+            for name in ("python", "pip", "cargo"):
+                tool = tools / name
+                tool.write_text(
+                    f"#!{sys.executable}\nimport json, os, sys\n"
+                    f"with open({str(log)!r}, 'a') as stream:\n"
+                    "    stream.write(json.dumps({'tool': os.path.basename(sys.argv[0]), "
+                    "'args': sys.argv[1:], 'binary': os.environ.get('STRATA_BINARY'), "
+                    "'display': os.environ.get('DISPLAY'), 'wayland': os.environ.get('WAYLAND_DISPLAY')}) + '\\n')\n"
+                )
+                tool.chmod(0o755)
+            environment = {**os.environ, "PATH": f"{tools}:{os.defpath}",
+                           "STRATA_E2E_VENV": str(venv), "DISPLAY": ":0", "WAYLAND_DISPLAY": "wayland-0"}
+            environment.pop("STRATA_BINARY", None)
+            environment.pop("CARGO_TARGET_DIR", None)
+            if binary:
+                environment["STRATA_BINARY"] = binary
+            result = subprocess.run(["bash", str(runner), *arguments], cwd=root,
+                                    env=environment, capture_output=True, text=True)
+            calls = [json.loads(line) for line in log.read_text().splitlines()]
+            return result, calls, root
+
+    def test_default_builds_once_before_parallel_pytest(self):
+        result, calls, root = self.run_runner()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([call["tool"] for call in calls], ["cargo", "python"])
+        invocation = calls[-1]
+        self.assertEqual(invocation["binary"], str(root / "target/debug/strata"))
+        self.assertEqual(invocation["args"][-4:], ["-n", "auto", "--dist=loadgroup", "--max-worker-restart=0"])
+        self.assertIsNone(invocation["display"])
+        self.assertIsNone(invocation["wayland"])
+
+    def test_explicit_pytest_options_follow_defaults_and_binary_skips_build(self):
+        result, calls, _ = self.run_runner(binary="/provided/strata", arguments=("-n", "0", "-k", "baseline"))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([call["tool"] for call in calls], ["python"])
+        self.assertEqual(calls[0]["args"][-4:], ["-n", "0", "-k", "baseline"])
+        self.assertEqual(calls[0]["binary"], "/provided/strata")
+
+    def test_existing_venv_is_updated_when_requirements_change(self):
+        result, calls, _ = self.run_runner(current_requirements=False)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([call["tool"] for call in calls], ["pip", "cargo", "python"])
 
 
 if __name__ == "__main__":

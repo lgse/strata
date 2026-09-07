@@ -44,7 +44,6 @@ pub mod icons {
     pub const ICONS: &str = "strata-icons";
     pub const HOME: &str = "strata-house";
     pub const LIST: &str = "strata-list";
-    pub const LIST_ACTIVE: &str = "strata-list-active";
     pub const LIST_CHECKS: &str = "strata-list-checks";
     pub const KEY: &str = "strata-key";
     pub const KEYBOARD: &str = "strata-keyboard";

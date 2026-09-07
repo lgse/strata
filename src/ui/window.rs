@@ -1011,6 +1011,21 @@ fn install_keyboard_navigation(
         if key == gtk::gdk::Key::Delete && !view.filter_has_focus() && view.confirm_delete(shift) {
             return glib::Propagation::Stop;
         }
+        if key == gtk::gdk::Key::Escape
+            && !control
+            && !alt
+            && !modifiers.contains(gtk::gdk::ModifierType::SUPER_MASK)
+            && !text_has_focus
+        {
+            if preview.is_open() {
+                preview.close();
+                return glib::Propagation::Stop;
+            }
+            // Transient surfaces may return focus to pane chrome rather than an item.
+            if browser.close_peek() || browser.clear_active_selection() {
+                return glib::Propagation::Stop;
+            }
+        }
         if !control && !alt && !view.item_view_has_focus() && !header_left_boundary {
             return glib::Propagation::Proceed;
         }
@@ -1038,6 +1053,9 @@ fn install_keyboard_navigation(
                         return glib::Propagation::Stop;
                     }
                     view.commit_selection();
+                    if !control {
+                        view.resume_native_selection();
+                    }
                     if !control
                         && !shift
                         && let Some(direction) = sidebar_focus_direction(key)
@@ -1080,10 +1098,6 @@ fn install_keyboard_navigation(
         }
         if key == gtk::gdk::Key::space && !alt && !control {
             preview.toggle(preview_target(browser.focused_entry()));
-            return glib::Propagation::Stop;
-        }
-        if key == gtk::gdk::Key::Escape && preview.is_open() {
-            preview.close();
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::BackSpace && !control && !alt {
@@ -1393,6 +1407,7 @@ pub(super) fn build_appearance_menu(
     let popover_weak = popover.downgrade();
     append_menu_heading(&content, "VIEW");
     let current_mode = view.view_mode();
+    let button_icon = crate::assets::chrome_icon(browser_mode_icon(current_mode));
     let (columns, columns_check, _) = appearance_option(
         crate::assets::icons::COLUMNS,
         "Columns",
@@ -1456,11 +1471,13 @@ pub(super) fn build_appearance_menu(
         let icons_check = icons_check.clone();
         let list_check = list_check.clone();
         let group_by_type = group_by_type.clone();
+        let button_icon = button_icon.clone();
         view.connect_view_mode_changed(move |mode| {
             columns_check.set_visible(mode == BrowserMode::Columns);
             icons_check.set_visible(mode == BrowserMode::Icons);
             list_check.set_visible(mode == BrowserMode::List);
             group_by_type.set_sensitive(mode.supports_type_grouping());
+            crate::assets::set_primary_icon(&button_icon, browser_mode_icon(mode));
         });
     }
     content.append(&columns);
@@ -1555,20 +1572,17 @@ pub(super) fn build_appearance_menu(
     content.append(&hidden);
 
     popover.set_child(Some(&content));
-    let icon = crate::assets::chrome_icon(crate::assets::icons::LIST);
-    button.set_child(Some(&icon));
+    button.set_child(Some(&button_icon));
     button.add_css_class("header-action");
-    button.connect_active_notify(move |button| {
-        crate::assets::set_primary_icon(
-            &icon,
-            if button.is_active() {
-                crate::assets::icons::LIST_ACTIVE
-            } else {
-                crate::assets::icons::LIST
-            },
-        );
-    });
     button
+}
+
+fn browser_mode_icon(mode: BrowserMode) -> &'static str {
+    match mode {
+        BrowserMode::Columns => crate::assets::icons::COLUMNS,
+        BrowserMode::Icons => crate::assets::icons::ICONS,
+        BrowserMode::List => crate::assets::icons::LIST,
+    }
 }
 
 fn appearance_option(
@@ -1785,14 +1799,6 @@ impl SidebarState {
 
     fn append_devices(self: &Rc<Self>) {
         let volumes = self.volume_monitor.volumes();
-        let represented = self
-            .volume_monitor
-            .mounts()
-            .into_iter()
-            .chain(volumes.iter().filter_map(|volume| volume.get_mount()))
-            .filter_map(|mount| mount.root().path());
-        let fallback =
-            devices::unrepresented_devices(devices::system_mounted_devices(), represented);
         let mounts: Vec<_> = self
             .volume_monitor
             .mounts()
@@ -1812,19 +1818,11 @@ impl SidebarState {
                 Some((name, location, mount))
             })
             .collect();
-        if !volumes.is_empty() || !mounts.is_empty() || !fallback.is_empty() {
+        if !volumes.is_empty() || !mounts.is_empty() {
             self.append_separator();
             self.append_heading("DEVICES");
             for volume in volumes {
                 self.append_volume(volume);
-            }
-            for device in fallback {
-                self.append_device_place(
-                    crate::assets::icons::HARD_DRIVE,
-                    &device.name,
-                    Location::local(device.root),
-                    None,
-                );
             }
             for (name, location, mount) in mounts {
                 if is_smb_location(&location) {

@@ -25,7 +25,7 @@ Keyboard navigation suppresses stale row-hover effects and pending folder peeks 
 
 ## Focus without selection changes
 
-Clicking blank column content focuses that directory, including empty directories, without clearing its selection or closing descendants. Row clicks, controls, scrollbars, context menus, and marquee selection keep their own interactions. Returning to a column preserves a multi-selection; Ctrl+A selects the focused column, not the deepest open column.
+Pressing blank column content focuses that directory, including empty directories, without closing descendants. Releasing a plain click on empty space clears file selections across columns. When returning to an inactive column, it also selects that column's first visible entry as the range anchor. Holding or dragging does not clear selections before marquee intent is resolved. Row clicks, controls, scrollbars, context menus, and marquee selection keep their own interactions. Returning to a column by keyboard preserves a multi-selection; Ctrl+A selects the focused column, not the deepest open column.
 
 Copy/cut use the selection in the focused column, never a hovered row. In Columns, Delete/Shift+Delete with no selected items does nothing: an open parent-path marker is not an implicit deletion target. The separate List/Icons parent-deletion fallback is tracked in #300.
 
