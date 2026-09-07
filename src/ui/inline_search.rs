@@ -123,12 +123,12 @@ pub(super) fn wrap(
             state.generation.set(state.generation.get().wrapping_add(1));
             state.handle.borrow_mut().take();
             state.items.borrow_mut().clear();
-            state.list.remove_all();
+            clear_rows(&state.list);
             state.stack.set_visible_child_name("files");
             return;
         }
         state.stack.set_visible_child_name("search");
-        state.list.remove_all();
+        clear_rows(&state.list);
         state.items.borrow_mut().clear();
         state.status.set_text("Searching…");
         state.status.set_visible(true);
@@ -168,7 +168,7 @@ pub(super) fn wrap(
                 && !returned.is_empty()
                 && returned == entry.text().trim()
             {
-                state.list.remove_all();
+                clear_rows(&state.list);
                 for item in &items {
                     let row = gtk::ListBoxRow::new();
                     // Keep keyboard focus in the query, away from file-operation shortcuts.
@@ -176,14 +176,8 @@ pub(super) fn wrap(
                     super::accessibility::set_label(&row, &item.name);
                     let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
                     line.add_css_class("file-row");
-                    line.append(&crate::assets::primary_icon(
-                        if item.is_directory {
-                            crate::assets::icons::FOLDER
-                        } else {
-                            crate::assets::icons::DOCUMENTS
-                        },
-                        17,
-                    ));
+                    let icon = super::thumbnail::ThumbnailSlot::new(17);
+                    line.append(&icon);
                     let labels = gtk::Box::new(gtk::Orientation::Vertical, 2);
                     labels.set_hexpand(true);
                     let name = gtk::Label::builder()
@@ -207,6 +201,22 @@ pub(super) fn wrap(
                     line.append(&labels);
                     row.set_child(Some(&line));
                     state.list.append(&row);
+                    if item.is_directory {
+                        super::thumbnail::show_customized_icon(
+                            &icon,
+                            &item.path,
+                            crate::assets::icons::FOLDER,
+                            17,
+                        );
+                    } else {
+                        super::thumbnail::set_thumbnail_or_icon_for_path(
+                            &icon,
+                            &item.path,
+                            crate::assets::icons::DOCUMENTS,
+                            17,
+                            17,
+                        );
+                    }
                 }
                 state
                     .status
@@ -224,6 +234,11 @@ pub(super) fn wrap(
         });
     });
     stack.upcast()
+}
+
+fn clear_rows(list: &gtk::ListBox) {
+    super::thumbnail::cancel_thumbnails_in(list.upcast_ref());
+    list.remove_all();
 }
 
 fn relative_result_path(root: &Path, path: &Path) -> String {
