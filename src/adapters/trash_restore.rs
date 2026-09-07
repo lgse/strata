@@ -106,14 +106,19 @@ pub(crate) fn plan_restore_from_known_paths(
 ) -> Result<RestorePlan, RestoreTargetError> {
     let (destination, allowed_root) =
         resolve_restore_destination(orig_path, source_path, trash_root, context)?;
+    if !destination.starts_with(&allowed_root) {
+        return Err(escaped_restore_error());
+    }
+    if context.mounts.mount_point_for(&destination) != Some(allowed_root.as_path()) {
+        return Err(RestoreTargetError::new(
+            "The original location crosses a bind mount or subvolume boundary and cannot be restored",
+        ));
+    }
     if restore_volume_relation(
         &Location::local(source_path),
         &Location::local(&destination),
     ) != VolumeRelation::Same
     {
-        return Err(escaped_restore_error());
-    }
-    if !destination.starts_with(&allowed_root) {
         return Err(escaped_restore_error());
     }
     let trash_tree = trash_tree_root(trash_root);
@@ -205,34 +210,65 @@ pub(crate) async fn plan_restore_for_location(
     .await
 }
 
-/// Resolves a whole selection against one mount-table snapshot, with the
-/// per-item lookups in flight together so a slow mount costs one timeout for
-/// the batch rather than one per item.
+/// Shares one mount snapshot and bounds concurrent filesystem lookups. Dropping
+/// the batch drops its active futures instead of detaching per-item tasks.
 pub(crate) async fn restore_destinations_for_locations(
     items: Vec<(Location, Option<PathBuf>)>,
 ) -> Vec<Result<PathBuf, RestoreTargetError>> {
     let context = RestoreContext::current();
-    let main_context = glib::MainContext::default();
-    let handles = items
-        .into_iter()
-        .map(|(location, physical_path)| {
-            let context = context.clone();
-            main_context.spawn_local(async move {
-                plan_restore_for_location(&location, None, None, physical_path.as_deref(), &context)
-                    .await
-                    .map(|plan| plan.destination)
-            })
-        })
-        .collect::<Vec<_>>();
-    let mut destinations = Vec::with_capacity(handles.len());
-    for handle in handles {
-        destinations.push(
-            handle
+    resolve_batch(items, |(location, physical_path)| {
+        let context = &context;
+        async move {
+            plan_restore_for_location(&location, None, None, physical_path.as_deref(), context)
                 .await
-                .unwrap_or_else(|_| Err(RestoreTargetError::new("Restore lookup failed"))),
-        );
-    }
-    destinations
+                .map(|plan| plan.destination)
+        }
+    })
+    .await
+}
+
+const MAX_RESTORE_LOOKUPS: usize = 8;
+
+async fn resolve_batch<T, R, F: Future<Output = R>>(
+    items: Vec<T>,
+    resolve: impl Fn(T) -> F,
+) -> Vec<R> {
+    let mut results = (0..items.len()).map(|_| None).collect::<Vec<_>>();
+    let mut queued = items.into_iter().enumerate();
+    let mut active = Vec::new();
+    std::future::poll_fn(|cx| {
+        loop {
+            while active.len() < MAX_RESTORE_LOOKUPS {
+                let Some((index, item)) = queued.next() else {
+                    break;
+                };
+                active.push((index, Box::pin(resolve(item))));
+            }
+            if active.is_empty() {
+                return std::task::Poll::Ready(());
+            }
+            let mut completed = false;
+            let mut slot = 0;
+            while slot < active.len() {
+                match active[slot].1.as_mut().poll(cx) {
+                    std::task::Poll::Ready(result) => {
+                        let (index, _) = active.swap_remove(slot);
+                        results[index] = Some(result);
+                        completed = true;
+                    }
+                    std::task::Poll::Pending => slot += 1,
+                }
+            }
+            if !completed {
+                return std::task::Poll::Pending;
+            }
+        }
+    })
+    .await;
+    results
+        .into_iter()
+        .map(|result| result.expect("every restore lookup completed"))
+        .collect()
 }
 
 async fn with_lookup_timeout<T>(
@@ -650,6 +686,6 @@ fn path_is_within(path: &Path, root: &Path) -> bool {
 
 fn escaped_restore_error() -> RestoreTargetError {
     RestoreTargetError::new(
-        "The original location is outside the trash volume and cannot be restored. Bind mounts and subvolumes are treated as separate volumes.",
+        "The original location is outside the trash volume and cannot be restored.",
     )
 }

@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::*;
+
+mod batch;
+mod safety;
 use std::{
     fs,
     os::unix::fs::{PermissionsExt, symlink},
@@ -11,7 +14,7 @@ fn context_for(home_trash: &Path, uid: u32, mount_point: &Path) -> RestoreContex
     RestoreContext {
         home_trash_root: home_trash.to_path_buf(),
         uid,
-        mounts: MountTable::parse(&format!(
+        mounts: MountTable::parse(format!(
             "1 0 8:1 / / rw - ext4 /dev/sda1 rw\n22 1 8:2 / {} rw - ext4 /dev/sdb1 rw\n",
             mount_point.display()
         )),

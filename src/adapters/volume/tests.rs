@@ -3,7 +3,6 @@
 use std::{
     cell::RefCell,
     fs,
-    os::unix::fs::MetadataExt,
     path::Path,
     rc::Rc,
     time::{Duration, Instant},
@@ -13,16 +12,10 @@ use super::*;
 use crate::{model::Location, services::VolumeRelation};
 use gtk::{gio, glib};
 
+mod lookup_regressions;
+
 fn distinct_device_dirs() -> Option<(tempfile::TempDir, tempfile::TempDir)> {
-    let first = tempfile::tempdir().ok()?;
-    let shm = Path::new("/dev/shm");
-    if !shm.is_dir() {
-        return None;
-    }
-    let second = tempfile::TempDir::new_in(shm).ok()?;
-    let first_dev = fs::metadata(first.path()).ok()?.dev();
-    let second_dev = fs::metadata(second.path()).ok()?.dev();
-    (first_dev != second_dev).then_some((first, second))
+    crate::test_support::distinct_device_dirs("volume identity tests")
 }
 
 fn ready(volumes: DropVolumes) -> DropVolumeLookup {
@@ -307,7 +300,7 @@ fn native_path_and_file_uri_of_the_same_directory_share_an_identity() {
 
 /// A mount table that claims `path` sits on an NFS mount.
 fn mounts_treating_as_nfs(path: &Path) -> MountTable {
-    MountTable::parse(&format!(
+    MountTable::parse(format!(
         "1 0 0:1 / / rw - ext4 /dev/root rw\n2 1 0:2 / {} rw - nfs4 server:/export rw\n",
         path.display()
     ))

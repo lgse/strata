@@ -7,6 +7,7 @@ use std::{
     ffi::OsString,
     os::unix::ffi::OsStringExt,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 /// Mount points and filesystem types from `/proc/self/mountinfo`. Reading it
@@ -14,29 +15,31 @@ use std::{
 /// on a network mount that may be unresponsive.
 #[derive(Clone)]
 pub(crate) struct MountTable {
-    entries: Vec<(PathBuf, String)>,
+    entries: Arc<[(PathBuf, String)]>,
 }
 
 impl MountTable {
     pub(crate) fn current() -> Self {
-        std::fs::read_to_string("/proc/self/mountinfo")
-            .map(|mountinfo| Self::parse(&mountinfo))
-            .unwrap_or(Self {
-                entries: Vec::new(),
-            })
+        std::fs::read("/proc/self/mountinfo")
+            .map(Self::parse)
+            .unwrap_or_else(|_| Self::parse(b""))
     }
 
-    pub(crate) fn parse(mountinfo: &str) -> Self {
+    pub(crate) fn parse(mountinfo: impl AsRef<[u8]>) -> Self {
         let entries = mountinfo
-            .lines()
+            .as_ref()
+            .split(|byte| *byte == b'\n')
             .filter_map(|line| {
-                let (front, back) = line.split_once(" - ")?;
-                let mount_point = front.split(' ').nth(4)?;
-                let fs_type = back.split(' ').next()?;
+                let separator = line.windows(3).position(|bytes| bytes == b" - ")?;
+                let (front, back) = (&line[..separator], &line[separator + 3..]);
+                let mount_point = front.split(|byte| *byte == b' ').nth(4)?;
+                let fs_type = std::str::from_utf8(back.split(|byte| *byte == b' ').next()?).ok()?;
                 Some((PathBuf::from(unescape(mount_point)), fs_type.to_owned()))
             })
-            .collect();
-        Self { entries }
+            .collect::<Vec<_>>();
+        Self {
+            entries: entries.into(),
+        }
     }
 
     /// Filesystem type of the innermost mount containing `path`.
@@ -144,8 +147,8 @@ pub(super) fn is_remote_fs_type(fs_type: &str) -> bool {
 /// points are arbitrary bytes, so the result stays an `OsString` rather than
 /// passing through a lossy UTF-8 conversion that would stop a non-UTF-8 mount
 /// point from ever matching a path on it.
-fn unescape(field: &str) -> OsString {
-    let bytes = field.as_bytes();
+fn unescape(field: impl AsRef<[u8]>) -> OsString {
+    let bytes = field.as_ref();
     let mut out = Vec::with_capacity(bytes.len());
     let mut index = 0;
     while index < bytes.len() {

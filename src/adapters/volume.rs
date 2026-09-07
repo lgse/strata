@@ -152,6 +152,7 @@ fn lookup_drop_volumes_with_mounts(
 struct Directory<'a> {
     location: &'a Location,
     is_remote: bool,
+    synchronous: bool,
 }
 
 impl<'a> Directory<'a> {
@@ -160,17 +161,19 @@ impl<'a> Directory<'a> {
             Some(path) => mounts.is_remote_path(path),
             None => location_is_remote(location),
         };
+        let synchronous = !is_remote
+            && location
+                .native_path()
+                .is_some_and(|path| !native_query_may_leave_mount(path));
         Self {
             location,
             is_remote,
+            synchronous,
         }
     }
 
     fn resolves_synchronously(&self) -> bool {
-        let Some(path) = self.location.native_path() else {
-            return false;
-        };
-        !self.is_remote && !native_query_may_leave_mount(path)
+        self.synchronous
     }
 }
 

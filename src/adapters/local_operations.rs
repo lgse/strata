@@ -1086,47 +1086,81 @@ fn move_local_path(
     })
 }
 
-fn move_restore_path(
+async fn move_restore_path(
     source_path: PathBuf,
     target_path: PathBuf,
     allowed_root: PathBuf,
     cancellable: gio::Cancellable,
-) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
-    Box::pin(async move {
-        if cancellable.is_cancelled() {
-            return Err(cancelled_local_operation());
-        }
-        let Some(source_parent_path) = source_path.parent().map(Path::to_path_buf) else {
-            return Err(io_error("Cannot restore the filesystem root"));
-        };
-        let Some(source_name) = source_path.file_name().map(OsStr::to_os_string) else {
-            return Err(io_error("Invalid restore source"));
-        };
-        let Some(target_parent_path) = target_path.parent().map(Path::to_path_buf) else {
-            return Err(io_error("The restore destination has no parent directory"));
-        };
-        let Some(target_name) = target_path.file_name().map(OsStr::to_os_string) else {
-            return Err(io_error("Invalid restore destination"));
-        };
+) -> Result<(), glib::Error> {
+    move_restore_path_with(
+        source_path,
+        target_path,
+        allowed_root,
+        cancellable,
+        |source_parent, source_name, target_parent, target_name, flags| {
+            rustix::fs::renameat_with(
+                source_parent,
+                source_name,
+                target_parent,
+                target_name,
+                flags,
+            )
+        },
+    )
+    .await
+}
 
-        let source_parent =
-            run_local_fs_step(move || open_local_parent_directory(&source_parent_path)).await?;
-        let target_parent = run_local_fs_step(move || {
-            open_local_parent_beneath(&target_parent_path, &allowed_root)
-        })
-        .await?;
+async fn move_restore_path_with(
+    source_path: PathBuf,
+    target_path: PathBuf,
+    allowed_root: PathBuf,
+    cancellable: gio::Cancellable,
+    rename: impl FnOnce(
+        &OwnedFd,
+        &OsStr,
+        &OwnedFd,
+        &OsStr,
+        rustix::fs::RenameFlags,
+    ) -> rustix::io::Result<()>
+    + Send
+    + 'static,
+) -> Result<(), glib::Error> {
+    if cancellable.is_cancelled() {
+        return Err(cancelled_local_operation());
+    }
+    let Some(source_parent_path) = source_path.parent().map(Path::to_path_buf) else {
+        return Err(io_error("Cannot restore the filesystem root"));
+    };
+    let Some(source_name) = source_path.file_name().map(OsStr::to_os_string) else {
+        return Err(io_error("Invalid restore source"));
+    };
+    let Some(target_parent_path) = target_path.parent().map(Path::to_path_buf) else {
+        return Err(io_error("The restore destination has no parent directory"));
+    };
+    let Some(target_name) = target_path.file_name().map(OsStr::to_os_string) else {
+        return Err(io_error("Invalid restore destination"));
+    };
 
-        let display_name = source_name.to_string_lossy().into_owned();
-        gio::spawn_blocking(move || {
-            rename_without_replacing(&target_parent, &target_name, |flags| {
-                rustix::fs::renameat_with(
-                    &source_parent,
-                    &source_name,
-                    &target_parent,
-                    &target_name,
-                    flags,
-                )
-            })
+    let source_parent =
+        run_local_fs_step(move || open_local_parent_directory(&source_parent_path)).await?;
+    let target_parent =
+        run_local_fs_step(move || open_local_parent_beneath(&target_parent_path, &allowed_root))
+            .await?;
+
+    let display_name = source_name.to_string_lossy().into_owned();
+    gio::spawn_blocking(move || {
+            if cancellable.is_cancelled() {
+                return Err(rustix::io::Errno::CANCELED);
+            }
+            // An existence check followed by an unflagged rename is not a
+            // no-clobber fallback, even with the destination parent pinned.
+            rename(
+                &source_parent,
+                &source_name,
+                &target_parent,
+                &target_name,
+                rustix::fs::RenameFlags::NOREPLACE,
+            )
         })
         .await
         .map_err(|_| io_error("Restore task panicked"))?
@@ -1137,34 +1171,12 @@ fn move_restore_path(
             rustix::io::Errno::EXIST => io_error(format!(
                 "Could not restore {display_name}: something already exists at the destination"
             )),
+            rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS | rustix::io::Errno::OPNOTSUPP => io_error(format!(
+                "Could not restore {display_name}: this filesystem does not support atomic no-replace renames. The item remains in Trash. Copy it to a destination you choose instead."
+            )),
+            rustix::io::Errno::CANCELED => cancelled_local_operation(),
             error => io_error(format!("Could not restore {display_name}: {error}")),
         })
-    })
-}
-
-/// Filesystems without `renameat2` flag support (NFS, libfuse2 daemons such as
-/// ntfs-3g) refuse `RENAME_NOREPLACE` with `EINVAL`. Emulate it there with an
-/// existence check through the already pinned target parent before a plain
-/// rename; the destination has been validated and confirmed by then.
-fn rename_without_replacing(
-    target_parent: &OwnedFd,
-    target_name: &OsStr,
-    rename: impl Fn(rustix::fs::RenameFlags) -> rustix::io::Result<()>,
-) -> rustix::io::Result<()> {
-    match rename(rustix::fs::RenameFlags::NOREPLACE) {
-        Err(rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS) => {
-            match rustix::fs::statat(
-                target_parent,
-                target_name,
-                rustix::fs::AtFlags::SYMLINK_NOFOLLOW,
-            ) {
-                Ok(_) => Err(rustix::io::Errno::EXIST),
-                Err(rustix::io::Errno::NOENT) => rename(rustix::fs::RenameFlags::empty()),
-                Err(error) => Err(error),
-            }
-        }
-        result => result,
-    }
 }
 
 async fn move_restore(

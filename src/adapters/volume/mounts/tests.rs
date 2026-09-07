@@ -4,6 +4,8 @@ use std::path::Path;
 
 use super::{MountTable, is_remote_fs_type, unescape};
 
+mod byte_paths;
+
 const SAMPLE: &str = "\
 22 1 0:20 / / rw,relatime shared:1 - ext4 /dev/sda2 rw
 40 22 0:36 / /mnt/nfs rw,relatime shared:22 - nfs4 server:/export rw,vers=4.2
