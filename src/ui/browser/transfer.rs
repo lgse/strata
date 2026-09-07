@@ -3,7 +3,7 @@
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::services::{
-    DropCommit, MoveRecord, PasteItem, TransferConflict, TransferKind, UndoMoveItem,
+    DropCommit, MoveRecord, PasteItem, TransferConflict, TransferKind, UndoMoveItem, VolumeRelation,
 };
 use crate::ui::browser::ViewState;
 use crate::ui::browser::destination::{
@@ -50,6 +50,15 @@ fn transfer_has_collision(source: &Location, destination: &Location) -> bool {
     target.query_exists(None::<&gio::Cancellable>)
 }
 
+fn cross_volume_drop_description(volume: VolumeRelation) -> &'static str {
+    match volume {
+        VolumeRelation::Different => "The destination is on a different device.",
+        VolumeRelation::Same | VolumeRelation::Unknown => {
+            "Strata could not determine whether the destination is on the same device."
+        }
+    }
+}
+
 pub(super) fn duplicate_transfer(entries: &[FileEntry]) -> Option<(Location, Vec<Location>)> {
     let destination = entries.first()?.location.parent()?;
     if is_trash_location(&destination)
@@ -73,8 +82,8 @@ impl ViewState {
         match commit {
             DropCommit::Copy => self.start_transfer(destination, sources, false),
             DropCommit::Move => self.start_transfer(destination, sources, true),
-            DropCommit::Ask { default } => {
-                self.confirm_cross_volume_drop(destination, sources, default);
+            DropCommit::Ask { default, volume } => {
+                self.confirm_cross_volume_drop(destination, sources, default, volume);
             }
             DropCommit::Forbidden => {}
         }
@@ -85,6 +94,7 @@ impl ViewState {
         destination: Location,
         sources: Vec<Location>,
         default: TransferKind,
+        volume: VolumeRelation,
     ) {
         let Some(ModalHost {
             overlay: window_overlay,
@@ -108,9 +118,11 @@ impl ViewState {
             "Copy",
             ModalTone::Accent,
         );
-        layout.body.append(&message_dialog_description(
-            "The destination is on a different device.",
-        ));
+        layout
+            .body
+            .append(&message_dialog_description(cross_volume_drop_description(
+                volume,
+            )));
         let move_button = gtk::Button::with_label("Move");
         move_button.add_css_class("action-dialog-cancel");
         layout

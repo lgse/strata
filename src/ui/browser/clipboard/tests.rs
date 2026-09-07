@@ -164,6 +164,7 @@ fn file_drop_action_hover_matches_cross_volume_strategy() {
         ),
         crate::services::DropCommit::Ask {
             default: crate::services::TransferKind::Copy,
+            volume: different,
         }
     );
     assert_eq!(
