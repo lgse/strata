@@ -178,6 +178,11 @@ fn drop_commit_follows_cross_volume_strategy() {
     let neither = (false, false);
     let ask_copy = DropCommit::Ask {
         default: TransferKind::Copy,
+        volume: Different,
+    };
+    let ask_copy_unknown = DropCommit::Ask {
+        default: TransferKind::Copy,
+        volume: Unknown,
     };
 
     let cases = [
@@ -185,7 +190,7 @@ fn drop_commit_follows_cross_volume_strategy() {
         (both, Same, None, Copy, DropCommit::Move),
         (both, Same, None, Move, DropCommit::Move),
         (both, Different, None, Ask, ask_copy),
-        (both, Unknown, None, Ask, ask_copy),
+        (both, Unknown, None, Ask, ask_copy_unknown),
         (both, Different, None, Copy, DropCommit::Copy),
         (both, Unknown, None, Copy, DropCommit::Copy),
         (both, Different, None, Move, DropCommit::Move),

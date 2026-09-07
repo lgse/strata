@@ -34,9 +34,22 @@ fn commit_file_drop_routes_copy_move_ask_and_forbidden() {
     assert_eq!(
         DropCommit::Ask {
             default: TransferKind::Copy,
+            volume: VolumeRelation::Different,
         }
         .transfer_kind(),
         TransferKind::Copy
+    );
+}
+
+#[test]
+fn cross_volume_prompt_only_claims_another_device_when_the_lookup_resolved() {
+    assert_eq!(
+        cross_volume_drop_description(VolumeRelation::Different),
+        "The destination is on a different device."
+    );
+    assert_eq!(
+        cross_volume_drop_description(VolumeRelation::Unknown),
+        "Strata could not determine whether the destination is on the same device."
     );
 }
 

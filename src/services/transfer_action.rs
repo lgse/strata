@@ -72,7 +72,12 @@ pub(crate) enum TransferKind {
 pub(crate) enum DropCommit {
     Copy,
     Move,
-    Ask { default: TransferKind },
+    /// `volume` is `Unknown` when the lookup had not resolved (or timed out) at
+    /// drop time, so the prompt must not claim the destination is another device.
+    Ask {
+        default: TransferKind,
+        volume: VolumeRelation,
+    },
     Forbidden,
 }
 
@@ -81,7 +86,7 @@ impl DropCommit {
         match self {
             Self::Copy => TransferKind::Copy,
             Self::Move => TransferKind::Move,
-            Self::Ask { default } => default,
+            Self::Ask { default, .. } => default,
             Self::Forbidden => TransferKind::Forbidden,
         }
     }
@@ -160,6 +165,7 @@ fn cross_volume_commit(input: DropActionInput) -> DropCommit {
     if input.strategy == CrossVolumeDropStrategy::Ask && input.can_copy && input.can_move {
         DropCommit::Ask {
             default: TransferKind::Copy,
+            volume: input.volume,
         }
     } else {
         match preferred {
