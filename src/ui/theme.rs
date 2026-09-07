@@ -149,7 +149,7 @@ impl Default for Preferences {
     fn default() -> Self {
         Self {
             mode: "theme".to_owned(),
-            theme: "azure-glow".to_owned(),
+            theme: "tokyo-night".to_owned(),
             folder_peeking: true,
             single_click_previews: true,
             hardware_accelerated_video_previews: None,
