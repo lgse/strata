@@ -16,8 +16,8 @@ use crate::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord, OperationEvent,
         OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRequest, RequestId,
-        RestoreRequest, RestoreSource, TransferConflict, UndoCopyRequest, UndoMoveItem,
-        UndoMoveRequest, validate_basename, validate_uri_credentials,
+        RestoreRequest, RestoreSource, RestoreTrashItem, TransferConflict, UndoCopyRequest,
+        UndoMoveItem, UndoMoveRequest, validate_basename, validate_uri_credentials,
     },
 };
 
@@ -1360,8 +1360,8 @@ impl Browser {
         self.operation_load.replace(Some(load));
     }
 
-    pub fn restore(self: &Rc<Self>, entries: Vec<FileEntry>) {
-        if entries.is_empty() {
+    pub fn restore(self: &Rc<Self>, items: Vec<RestoreTrashItem>) {
+        if items.is_empty() {
             return;
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
@@ -1370,14 +1370,14 @@ impl Browser {
             });
             return;
         };
-        let total = entries.len();
+        let total = items.len();
         let request_id = self.begin_operation();
         self.restoration_operation.set(true);
         self.emit(BrowserEvent::RestorationStarted { total });
         let load = provider.restore(
             RestoreRequest {
                 id: request_id,
-                source: RestoreSource::TrashEntries(entries),
+                source: RestoreSource::TrashEntries(items),
             },
             self.operation_callback(request_id, false, HashSet::new()),
         );

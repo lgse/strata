@@ -64,9 +64,42 @@ fn detects_mount_points_exactly() {
 }
 
 #[test]
+fn trash_scan_skips_virtual_remote_and_fuse_mounts() {
+    let table = MountTable::parse(SAMPLE);
+    let scanned: Vec<_> = table.trash_scan_mounts().collect();
+    assert_eq!(scanned, vec![Path::new("/"), Path::new("/mnt/nfs/local")]);
+}
+
+#[test]
+fn innermost_mount_point_wins() {
+    let table = MountTable::parse(SAMPLE);
+    assert_eq!(
+        table.mount_point_for(Path::new("/mnt/nfs/local/file")),
+        Some(Path::new("/mnt/nfs/local"))
+    );
+    assert_eq!(
+        table.mount_point_for(Path::new("/mnt/nfs/docs")),
+        Some(Path::new("/mnt/nfs"))
+    );
+    assert_eq!(
+        table.mount_point_for(Path::new("/home/user")),
+        Some(Path::new("/"))
+    );
+    assert_eq!(
+        table.mount_point_for(Path::new("/mnt/nfsdata")),
+        Some(Path::new("/"))
+    );
+}
+
+#[test]
 fn prefix_matching_is_component_wise() {
     let table = MountTable::parse("1 0 0:1 / /mnt/nfs rw - nfs4 s:/e rw\n");
     assert!(table.fs_type_for(Path::new("/mnt/nfsdata/file")).is_none());
+    assert!(
+        table
+            .mount_point_for(Path::new("/mnt/nfsdata/file"))
+            .is_none()
+    );
     assert!(table.fs_type_for(Path::new("relative/path")).is_none());
 }
 

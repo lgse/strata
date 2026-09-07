@@ -197,6 +197,68 @@ fn missing_native_directory_is_unknown() {
 }
 
 #[test]
+fn restore_identity_walks_missing_dest_to_an_existing_ancestor() {
+    let root = tempfile::tempdir().expect("tempdir");
+    let dest = root.path().join("new/dir/file.txt");
+    let walked = volume_identity_of_existing_ancestor(&Location::local(&dest));
+    let root_id = native_volume_identity(&Location::local(root.path()));
+    assert_eq!(walked, root_id);
+    assert_eq!(
+        restore_volume_relation(
+            &Location::local(root.path().join("source")),
+            &Location::local(&dest),
+        ),
+        VolumeRelation::Same
+    );
+}
+
+#[test]
+fn restore_identity_follows_a_parent_symlink_onto_another_device() {
+    let Some((home, stick)) = distinct_device_dirs() else {
+        return;
+    };
+    let source = home.path().join("trashed");
+    fs::write(&source, b"x").expect("source");
+    let link = home.path().join("usb");
+    std::os::unix::fs::symlink(stick.path(), &link).expect("symlink");
+    let dest = link.join("payload.desktop");
+    assert_eq!(
+        restore_volume_relation(&Location::local(&source), &Location::local(&dest)),
+        VolumeRelation::Different
+    );
+}
+
+#[test]
+fn restore_source_symlink_is_classified_on_its_own_device() {
+    let Some((home, stick)) = distinct_device_dirs() else {
+        return;
+    };
+    let target = stick.path().join("elsewhere");
+    fs::write(&target, b"x").expect("target");
+    let source = home.path().join("trashed-link");
+    std::os::unix::fs::symlink(&target, &source).expect("symlink");
+    let dest = home.path().join("payload.desktop");
+    assert_eq!(
+        restore_volume_relation(&Location::local(&source), &Location::local(&dest)),
+        VolumeRelation::Same
+    );
+}
+
+#[test]
+fn restore_identity_rejects_a_path_on_another_device() {
+    let Some((home, stick)) = distinct_device_dirs() else {
+        return;
+    };
+    let source = home.path().join("trashed");
+    fs::write(&source, b"x").expect("source");
+    let dest = stick.path().join(".config/autostart/payload.desktop");
+    assert_eq!(
+        restore_volume_relation(&Location::local(&source), &Location::local(&dest)),
+        VolumeRelation::Different
+    );
+}
+
+#[test]
 fn smb_and_sftp_uris_are_remote() {
     assert!(!location_is_remote(&Location::local("/tmp")));
     assert!(!location_is_remote(&Location::uri("trash:///foo")));

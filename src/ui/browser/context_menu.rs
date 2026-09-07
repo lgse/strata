@@ -567,7 +567,7 @@ pub(in crate::ui) fn install_item_context_menu(
     });
     for button in [&restore, &restore_multiple] {
         connect_selection_action(button, &popover, state, &target, |state, entries| {
-            state.browser.restore(entries);
+            state.request_restore(entries);
         });
     }
     for (button, moving) in [

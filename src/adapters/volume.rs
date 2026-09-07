@@ -20,9 +20,9 @@ use crate::{
     services::{VolumeIdentity, VolumeRelation, volume_relation},
 };
 
-use mounts::MountTable;
+pub(crate) use mounts::MountTable;
 
-const REMOTE_QUERY_TIMEOUT: Duration = Duration::from_secs(2);
+pub(crate) const REMOTE_QUERY_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// Directories whose filesystem decides a drop's volume relation: the
 /// destination and each distinct source volume directory. A file is queried
@@ -293,13 +293,49 @@ impl PendingState {
     }
 }
 
+/// Walks to the nearest path GIO can identify, following parent symlinks.
+/// A missing restore destination therefore classifies as its existing ancestor.
+pub(crate) fn volume_identity_of_existing_ancestor(location: &Location) -> Option<VolumeIdentity> {
+    volume_identity_of_existing_ancestor_with(location, gio::FileQueryInfoFlags::NONE)
+}
+
+fn volume_identity_of_existing_ancestor_with(
+    location: &Location,
+    flags: gio::FileQueryInfoFlags,
+) -> Option<VolumeIdentity> {
+    let mut current = location.clone();
+    loop {
+        if let Some(identity) = native_volume_identity_with(&current, flags) {
+            return Some(identity);
+        }
+        current = current.parent()?;
+    }
+}
+
+pub(crate) fn restore_volume_relation(source: &Location, dest: &Location) -> VolumeRelation {
+    volume_relation(
+        volume_identity_of_existing_ancestor(dest).as_ref(),
+        &[volume_identity_of_existing_ancestor_with(
+            source,
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+        )],
+    )
+}
+
 /// Native directories go through GIO too so their ids share one encoding with
 /// `file://` URIs and any backend that reports the underlying local filesystem.
 pub(crate) fn native_volume_identity(location: &Location) -> Option<VolumeIdentity> {
+    native_volume_identity_with(location, gio::FileQueryInfoFlags::NONE)
+}
+
+fn native_volume_identity_with(
+    location: &Location,
+    flags: gio::FileQueryInfoFlags,
+) -> Option<VolumeIdentity> {
     let info = gio::File::for_path(location.native_path()?)
         .query_info(
             gio::FILE_ATTRIBUTE_ID_FILESYSTEM,
-            gio::FileQueryInfoFlags::NONE,
+            flags,
             None::<&gio::Cancellable>,
         )
         .ok()?;

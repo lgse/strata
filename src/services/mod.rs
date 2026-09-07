@@ -22,7 +22,8 @@ pub use operations::{
     ArchiveFormat, CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
     DeleteRequest, ExtractRequest, MoveRecord, OperationEvent, OperationProvider,
     OperationRequestId, PasteItem, PasteRequest, RenameRequest, RestoreRequest, RestoreSource,
-    TransferConflict, UndoCopyRequest, UndoMoveItem, UndoMoveRequest, validate_basename,
+    RestoreTrashItem, TransferConflict, UndoCopyRequest, UndoMoveItem, UndoMoveRequest,
+    validate_basename,
 };
 pub use preview::{
     Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,

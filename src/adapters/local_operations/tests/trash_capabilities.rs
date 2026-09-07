@@ -174,7 +174,10 @@ fn isolated_trash_supports_read_copy_move_restore_and_delete() {
     let _operation = LocalOperationProvider.restore(
         RestoreRequest {
             id: OperationRequestId(433),
-            source: RestoreSource::TrashEntries(vec![entry]),
+            source: RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry,
+                destination: restored.clone(),
+            }]),
         },
         Rc::new(move |event| emitted.borrow_mut().push(event)),
     );
