@@ -368,6 +368,12 @@ impl ViewState {
     }
 
     pub(super) fn request_delete(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
+        if entries
+            .iter()
+            .any(|entry| !super::paths::can_remove_location(&entry.location))
+        {
+            return;
+        }
         if permanent {
             self.show_delete_confirmation(entries);
         } else {

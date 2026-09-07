@@ -15,13 +15,13 @@ use crate::{
 };
 
 use super::{
-    MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, TrashContents,
+    DEFAULT_ACCELS, MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, TrashContents,
     TrashMenuVisibility, TypeToSearchQuery, accepts_sidebar_reorder_payload, begin_media_release,
     browser_for_window, browser_mode_for_digit, event_changes_trash_contents,
-    is_open_terminal_shortcut, is_sidebar_focus_shortcut, is_smb_location,
-    is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction,
-    media_release_label, mount_release_action, mouse_history_action, page_direction,
-    parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
+    is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
+    is_smb_location, is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut,
+    jump_direction, media_release_label, mount_release_action, mouse_history_action,
+    page_direction, parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
     reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
     should_show_standard_place, sidebar_accepts_file_drop, sidebar_update_label, standard_place,
     trash_contents_from_probe, trash_has_entries, trash_menu_visibility, type_to_search_query,
@@ -921,5 +921,78 @@ fn chrome_stylesheet_requests_header_bar_icon_size() {
     assert!(
         !css.contains("-gtk-icon-size: 20px;"),
         "20px chrome icon size regresses XFCE toolbar density"
+    );
+}
+
+#[test]
+fn rename_shortcut_accepts_f2_and_control_r() {
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+    assert!(is_rename_shortcut(
+        gtk::gdk::Key::F2,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(is_rename_shortcut(gtk::gdk::Key::r, control));
+    assert!(is_rename_shortcut(gtk::gdk::Key::R, control));
+}
+
+#[test]
+fn rename_shortcut_ignores_extra_modifiers_and_other_keys() {
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+    assert!(!is_rename_shortcut(
+        gtk::gdk::Key::r,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(!is_rename_shortcut(
+        gtk::gdk::Key::r,
+        control | gtk::gdk::ModifierType::SHIFT_MASK
+    ));
+    assert!(!is_rename_shortcut(
+        gtk::gdk::Key::r,
+        control | gtk::gdk::ModifierType::ALT_MASK
+    ));
+    assert!(!is_rename_shortcut(gtk::gdk::Key::F2, control));
+    assert!(!is_rename_shortcut(gtk::gdk::Key::F5, control));
+}
+
+#[test]
+fn refresh_shortcut_keeps_f5_and_releases_control_r() {
+    assert!(is_refresh_shortcut(gtk::gdk::Key::F5));
+    assert!(!is_refresh_shortcut(gtk::gdk::Key::r));
+    assert!(!is_rename_shortcut(
+        gtk::gdk::Key::F5,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(is_rename_shortcut(
+        gtk::gdk::Key::r,
+        gtk::gdk::ModifierType::CONTROL_MASK
+    ));
+}
+
+#[test]
+fn default_accels_never_bind_one_chord_twice() {
+    gtk_test(
+        "ui::window::tests::default_accels_never_bind_one_chord_twice",
+        || {
+            let mut seen = std::collections::HashMap::new();
+            for (action, accels) in DEFAULT_ACCELS {
+                for accel in *accels {
+                    let chord = gtk::accelerator_parse(*accel).expect("valid default accelerator");
+                    assert!(
+                        !is_rename_shortcut(chord.0, chord.1),
+                        "{action} must not claim a rename shortcut"
+                    );
+                    assert!(
+                        seen.insert(chord, *action).is_none(),
+                        "{accel} is bound to more than one action"
+                    );
+                }
+            }
+            let refresh = DEFAULT_ACCELS
+                .iter()
+                .find(|(action, _)| *action == "win.refresh")
+                .expect("refresh accels")
+                .1;
+            assert_eq!(refresh, &["F5"]);
+        },
     );
 }

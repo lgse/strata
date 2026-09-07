@@ -187,7 +187,11 @@ impl ViewState {
     }
 
     pub(super) fn show_compress_dialog(self: &Rc<Self>, entries: Vec<FileEntry>) {
-        if entries.is_empty() {
+        if entries.is_empty()
+            || entries
+                .iter()
+                .any(|entry| entry.location.native_path().is_none())
+        {
             return;
         }
         let destination = entries[0]
@@ -351,6 +355,9 @@ impl ViewState {
     }
 
     pub(super) fn extract_entry(self: &Rc<Self>, entry: FileEntry) {
+        if entry.location.native_path().is_none() {
+            return;
+        }
         let Some(parent) = entry.location.parent() else {
             show_error_dialog(
                 &self.overlay,
@@ -368,6 +375,9 @@ impl ViewState {
     }
 
     pub(super) fn show_extract_to_dialog(self: &Rc<Self>, entry: FileEntry) {
+        if entry.location.native_path().is_none() {
+            return;
+        }
         let base = entry
             .location
             .parent()
