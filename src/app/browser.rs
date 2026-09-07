@@ -3385,10 +3385,14 @@ impl Browser {
                     take_focus: false,
                 });
             }
-            self.emit(BrowserEvent::FocusChanged {
-                depth,
-                position: selected,
-            });
+            // Monitor updates to an ancestor must not reclaim focus after a
+            // transfer has revealed its destination in a child column.
+            if self.active_depth() == Some(depth) {
+                self.emit(BrowserEvent::FocusChanged {
+                    depth,
+                    position: selected,
+                });
+            }
         }
     }
 

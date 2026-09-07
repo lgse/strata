@@ -29,10 +29,17 @@ fn press_column_background(view: &BrowserView, depth: usize) {
 
 fn background_gesture(surface: &gtk::Widget) -> gtk::GestureClick {
     let controllers = surface.observe_controllers();
-    (0..controllers.n_items())
+    let click = (0..controllers.n_items())
         .filter_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
         .find(|gesture| gesture.button() == 1)
-        .expect("background focus gesture")
+        .expect("background focus gesture");
+    assert!(
+        (0..controllers.n_items())
+            .filter_map(|index| controllers.item(index).and_downcast::<gtk::GestureDrag>())
+            .any(|drag| drag.is_grouped_with(&click)),
+        "background focus must share the surface's marquee gesture"
+    );
+    click
 }
 
 #[test]

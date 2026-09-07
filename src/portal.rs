@@ -35,7 +35,7 @@ const MAX_ACTIVE_REQUESTS: usize = 16;
 const MAX_CHOICES: usize = 16;
 const MAX_CHOICE_OPTIONS: usize = 32;
 const MAX_TOTAL_CHOICE_OPTIONS: usize = 128;
-const MAX_FILTERS: usize = 32;
+const FILTER_COUNT_WARNING_THRESHOLD: usize = 128;
 const FILTER_RULE_WARNING_THRESHOLD: usize = 1024;
 const MAX_GLOB_BYTES: usize = 256;
 const MAX_GLOB_STAR_RUNS: usize = 2;
@@ -379,11 +379,6 @@ fn validate_filters(
     filters: &[FileFilter],
     current: Option<&FileFilter>,
 ) -> ashpd::backend::Result<()> {
-    if filters.len() > MAX_FILTERS
-        || current.is_some_and(|current| !filters.contains(current) && filters.len() == MAX_FILTERS)
-    {
-        return invalid_argument("too many file filters");
-    }
     let mut total_rules = 0usize;
     for filter in filters
         .iter()
@@ -400,6 +395,13 @@ fn validate_filters(
         for mimetype in mimetypes {
             validate_string(mimetype, MAX_STRING_BYTES, "MIME filter rule")?;
         }
+    }
+    let count = filters.len();
+    if count > FILTER_COUNT_WARNING_THRESHOLD {
+        tracing::warn!(
+            filters = count,
+            "file filter list exceeded the count budget and was accepted untrimmed"
+        );
     }
     if total_rules > FILTER_RULE_WARNING_THRESHOLD {
         tracing::warn!(

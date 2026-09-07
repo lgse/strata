@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Column background clicks preserve the open path and selection."""
+"""Column background clicks focus the parent without closing its descendants."""
 
 import pytest
 
@@ -19,5 +19,8 @@ def test_column_background_click_focuses_parent(strata, surface):
         assert heading is not None
         strata.pointer.click(heading)
     strata.wait_for_directory(root)
-    assert strata.selected_names(directory=root) == selected
+    if surface == "content":
+        strata.wait(lambda: not strata.all_selected_names(), "background click to clear selection")
+    else:
+        assert strata.selected_names(directory=root) == selected
     assert "documents" in strata.pane_names()

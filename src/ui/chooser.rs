@@ -202,6 +202,29 @@ enum ChoiceControl {
 
 type SelectionChanged = Box<dyn Fn(usize)>;
 
+const DROPDOWN_EDGE_MARGIN: i32 = 24;
+const MIN_DROPDOWN_CONTENT_HEIGHT: i32 = 120;
+
+// Popovers use separate surfaces, so the window does not constrain their content height.
+fn dropdown_placement(
+    available_height: i32,
+    anchor_top: i32,
+    anchor_bottom: i32,
+) -> (gtk::PositionType, i32) {
+    let below = available_height.saturating_sub(anchor_bottom).max(0);
+    let above = anchor_top.max(0);
+    let (position, room) = if below >= above {
+        (gtk::PositionType::Bottom, below)
+    } else {
+        (gtk::PositionType::Top, above)
+    };
+    (
+        position,
+        room.saturating_sub(DROPDOWN_EDGE_MARGIN)
+            .max(MIN_DROPDOWN_CONTENT_HEIGHT),
+    )
+}
+
 struct ChooserDropdown {
     button: gtk::MenuButton,
     popover: gtk::Popover,
@@ -215,8 +238,15 @@ impl ChooserDropdown {
         let current = labels.get(selected).copied().unwrap_or_default();
         let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
         content.add_css_class("column-menu");
-        let popover = gtk::Popover::builder()
+        let scroll = gtk::ScrolledWindow::builder()
             .child(&content)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .propagate_natural_height(true)
+            .build();
+        scroll.add_css_class("context-menu-scroll");
+        let popover = gtk::Popover::builder()
+            .child(&scroll)
             .has_arrow(false)
             .position(gtk::PositionType::Bottom)
             .build();
@@ -235,6 +265,24 @@ impl ChooserDropdown {
         button.add_css_class("form-control");
         button.add_css_class("chooser-dropdown");
         button.set_halign(gtk::Align::Start);
+
+        let scroll_for_show = scroll.clone();
+        let button_for_show = button.downgrade();
+        popover.connect_show(move |popover| {
+            let (Some(root), Some(button)) = (popover.root(), button_for_show.upgrade()) else {
+                return;
+            };
+            let anchor_top = button
+                .compute_point(&root, &gtk::graphene::Point::new(0.0, 0.0))
+                .map_or(0, |point| point.y().round() as i32);
+            let (position, max_content_height) = dropdown_placement(
+                root.height(),
+                anchor_top,
+                anchor_top.saturating_add(button.height()),
+            );
+            popover.set_position(position);
+            scroll_for_show.set_max_content_height(max_content_height);
+        });
 
         let selected = Rc::new(Cell::new(selected));
         let changed = Rc::new(RefCell::new(None::<SelectionChanged>));

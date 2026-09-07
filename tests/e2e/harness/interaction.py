@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Sequence
+from typing import Callable, Sequence
 
 from .tree import Bounds, Node
 from .xtest import XTestConnection, XTestError
@@ -197,12 +197,40 @@ class Pointer:
         """Press on `source`, travel to `target`, and release."""
 
         end = target_point or target.screen_bounds().center
-        self._drag(source.screen_bounds().center, end, steps=steps, release=True)
+        self._drag(self.drag_origin(source), end, steps=steps, release=True)
+
+    @staticmethod
+    def drag_origin(source: Node) -> tuple[int, int]:
+        """File drags begin on content, not the inert space in a wide row."""
+
+        icon = source.find(role="image")
+        return (icon or source).screen_bounds().center
+
+    def drag_points(
+        self,
+        start: tuple[int, int],
+        end: tuple[int, int],
+        *,
+        steps: int = DRAG_STEPS,
+        release: bool = True,
+        after_press: Callable[[], None] | None = None,
+        modifiers: Sequence[str] = (),
+    ) -> None:
+        """Drag between points derived from accessible content or inert bounds."""
+
+        held = [MODIFIER_KEYSYMS[modifier.lower()] for modifier in modifiers]
+        for modifier in held:
+            self.connection.key(modifier, True)
+        try:
+            self._drag(start, end, steps=steps, release=release, after_press=after_press)
+        finally:
+            for modifier in reversed(held):
+                self.connection.key(modifier, False)
 
     def drag_to_point(
         self, source: Node, end: tuple[int, int], *, steps: int = DRAG_STEPS
     ) -> None:
-        self._drag(source.screen_bounds().center, end, steps=steps, release=True)
+        self._drag(self.drag_origin(source), end, steps=steps, release=True)
 
     def abandon_drag(
         self,
@@ -213,7 +241,7 @@ class Pointer:
     ) -> None:
         """Start a drag over a valid target, then release outside the window."""
 
-        start = source.screen_bounds().center
+        start = self.drag_origin(source)
         self._drag(start, outside, steps=steps, release=False)
         self.connection.button(1, False)
         time.sleep(POINTER_GAP)
@@ -253,6 +281,7 @@ class Pointer:
         *,
         steps: int,
         release: bool,
+        after_press: Callable[[], None] | None = None,
     ) -> None:
         self.move_to(*start)
         # A drag immediately after selecting must not become a double-click
@@ -262,6 +291,12 @@ class Pointer:
             time.sleep(remaining)
         self.connection.button(1, True)
         time.sleep(POINTER_GAP)
+        if after_press is not None:
+            try:
+                after_press()
+            except BaseException:
+                self.connection.button(1, False)
+                raise
         # GTK starts a drag only once the pointer passes the drag threshold,
         # and the drop site needs motion events to register the hover.
         for step in range(1, steps + 1):

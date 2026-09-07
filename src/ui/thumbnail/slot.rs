@@ -22,6 +22,10 @@ mod imp {
         const NAME: &'static str = "StrataThumbnailSlot";
         type Type = super::ThumbnailSlot;
         type ParentType = gtk::Widget;
+
+        fn class_init(class: &mut Self::Class) {
+            class.set_accessible_role(gtk::AccessibleRole::Img);
+        }
     }
 
     impl ObjectImpl for ThumbnailSlot {}
