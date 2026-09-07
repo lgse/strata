@@ -27,6 +27,69 @@ fn find_grid(widget: &gtk::Widget) -> Option<gtk::GridView> {
     None
 }
 
+fn count_grids(widget: &gtk::Widget) -> usize {
+    let nested = {
+        let mut n = 0;
+        let mut child = widget.first_child();
+        while let Some(widget) = child {
+            n += count_grids(&widget);
+            child = widget.next_sibling();
+        }
+        n
+    };
+    nested
+        + usize::from(
+            widget
+                .clone()
+                .downcast::<gtk::GridView>()
+                .is_ok_and(|grid| grid.is_mapped()),
+        )
+}
+
+#[test]
+fn icons_stays_one_grid_when_type_grouping_is_enabled() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::sidebar::icons_stays_one_grid_when_type_grouping_is_enabled",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            std::fs::create_dir(fixture.path().join("folder")).expect("folder");
+            std::fs::write(fixture.path().join("a.txt"), b"x").expect("file");
+            std::fs::write(fixture.path().join("b.json"), b"{}").expect("file");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            view.set_view_mode(BrowserMode::Icons);
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(800)
+                .default_height(500)
+                .build();
+            window.present();
+            browser.navigate(Location::local(fixture.path()));
+            let deadline = Instant::now() + Duration::from_secs(5);
+            while !browser
+                .column_snapshot(0)
+                .is_some_and(|snapshot| !snapshot.loading)
+            {
+                assert!(Instant::now() < deadline, "directory load");
+                glib::MainContext::default().iteration(false);
+            }
+            settle();
+            view.set_group_by_type(true);
+            settle();
+            assert_eq!(
+                count_grids(&view.widget()),
+                1,
+                "Icons stays one GridView when grouping is enabled"
+            );
+            window.destroy();
+            browser.clear_observer();
+        },
+    );
+}
+
 #[test]
 #[ignore = "requires a mapped GTK window; run this test alone"]
 fn sidebar_boundary_tracks_icons_layout_and_empty_views() {
@@ -56,6 +119,10 @@ fn sidebar_boundary_tracks_icons_layout_and_empty_views() {
     crate::assets::register_icon_theme();
     let fixture = tempfile::tempdir().expect("fixture");
     std::fs::create_dir(fixture.path().join("Child")).expect("folder group");
+    for index in 0..9 {
+        std::fs::create_dir(fixture.path().join(format!("folder-{index:02}")))
+            .expect("folder fixture");
+    }
     for index in 0..12 {
         std::fs::write(
             fixture.path().join(format!("file-{index:02}.txt")),
@@ -63,6 +130,7 @@ fn sidebar_boundary_tracks_icons_layout_and_empty_views() {
         )
         .expect("fixture file");
     }
+    std::fs::write(fixture.path().join(".hidden.md"), "fixture").expect("hidden group fixture");
     let view = BrowserView::new(
         Rc::new(crate::adapters::LocalFileSource),
         PeekBehavior::default(),
@@ -136,34 +204,25 @@ fn sidebar_boundary_tracks_icons_layout_and_empty_views() {
 
     view.set_group_by_type(true);
     settle();
-    let group = find_grid(&view.widget()).expect("folder group");
-    group.scroll_to(
-        0,
+    assert_eq!(
+        count_grids(&view.widget()),
+        1,
+        "Icons stays one GridView when grouping is enabled"
+    );
+    let icons = find_grid(&view.widget()).expect("icons view");
+    icons.set_max_columns(3);
+    icons.set_min_columns(3);
+    settle();
+    icons.scroll_to(
+        9,
         gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
         None,
     );
     settle();
     assert!(view.at_left_edge());
-    group.grab_focus();
-    assert!(view.move_icons_group(gtk::DirectionType::Down));
-    settle();
-    assert_eq!(
-        browser
-            .focused_entry()
-            .expect("file group cursor")
-            .display_name,
-        "file-00.txt"
-    );
-    assert!(view.at_left_edge());
-    assert!(view.move_icons_group(gtk::DirectionType::Up));
-    settle();
-    assert_eq!(
-        browser
-            .focused_entry()
-            .expect("folder group cursor")
-            .display_name,
-        "Child"
-    );
+    icons.grab_focus();
+    assert!(!view.cross_type_group(gtk::DirectionType::Down, false));
+    assert!(!view.cross_type_group(gtk::DirectionType::Up, false));
 
     view.set_group_by_type(false);
     view.set_view_mode(BrowserMode::List);

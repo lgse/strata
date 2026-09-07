@@ -20,7 +20,7 @@ const FILES: &[Shortcut] = &[
     ("Delete", "Move selected items to Trash, when supported"),
     ("Shift+Delete", "Permanently delete selected items"),
     ("Ctrl+Z", "Undo the last file operation"),
-    ("F2", "Rename"),
+    ("F2 / Ctrl+R", "Rename"),
     ("Ctrl+Shift+N", "Create a folder"),
     ("Ctrl+A", "Select all items in the focused pane"),
     ("Shift+↑ / ↓", "Extend selection"),
@@ -33,8 +33,9 @@ const TOOLS: &[Shortcut] = &[
     ("Ctrl+K", "Open global search"),
     ("Ctrl+L", "Edit the location"),
     ("Ctrl+T", "Open a terminal"),
-    ("F5 / Ctrl+R", "Refresh"),
+    ("F5", "Refresh"),
     ("Ctrl+H / Ctrl+.", "Show or hide hidden files"),
+    ("Ctrl+1 / 2 / 3", "Switch to Columns, Icons, or List"),
     ("Ctrl+B", "Show or hide the sidebar"),
     ("Ctrl+Shift+B", "Switch focus between sidebar and browser"),
     ("Ctrl+,", "Open Settings"),
@@ -67,9 +68,9 @@ impl ShortcutFooter {
             .build();
         summary.add_css_class("shortcut-footer-summary");
         root.append(&summary);
-        let paste = gtk::Label::new(Some("Ctrl+V  Paste available"));
+        let paste = gtk::Label::new(Some("Files on clipboard"));
         paste.add_css_class("shortcut-footer-paste");
-        paste.set_tooltip_text(Some("Files are on the clipboard. Press Ctrl+V to paste."));
+        paste.set_tooltip_text(Some("Press Ctrl+V to paste into a supported directory."));
         paste.set_visible(false);
         root.append(&paste);
         let show_hints = Rc::new(Cell::new(true));

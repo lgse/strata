@@ -44,12 +44,13 @@ struct PendingPointerActivation {
     pub(super) location: Location,
     pub(super) press: (f64, f64),
     pub(super) moved: bool,
+    pub(super) preview: bool,
 }
 
 impl PendingPointerActivation {
     pub(super) fn update(&mut self, x: f64, y: f64, drag_threshold: i32) {
-        let threshold = f64::from(drag_threshold);
-        self.moved |= (x - self.press.0).abs() > threshold || (y - self.press.1).abs() > threshold;
+        self.moved |=
+            crate::ui::pointer::exceeds_drag_threshold(self.press, (x, y), drag_threshold);
     }
 
     fn can_activate(&self, location: &Location) -> bool {
@@ -208,6 +209,7 @@ pub(super) fn is_column_background(surface: &gtk::Widget, picked: &gtk::Widget) 
             return true;
         }
         if widget.is::<gtk::Button>()
+            || widget.is::<gtk::MenuButton>()
             || widget.is::<gtk::Editable>()
             || widget.is::<gtk::Range>()
             || widget.is::<gtk::Scrollbar>()
@@ -368,6 +370,23 @@ fn animate_horizontal_scroll(
 }
 
 impl ViewState {
+    pub(super) fn clear_column_selections(&self) {
+        let active = self.browser.active_depth();
+        let selections: Vec<_> = self
+            .columns
+            .borrow()
+            .iter()
+            .map(|column| column.selection.clone())
+            .collect();
+        for selection in selections {
+            selection.unselect_all();
+        }
+        if let Some(depth) = active {
+            self.browser.set_active_column(depth);
+        }
+        self.refresh_destination_style();
+    }
+
     pub(super) fn rebuild_columns(self: &Rc<Self>) {
         self.truncate(0);
         let snapshots = (0..)
@@ -391,11 +410,13 @@ impl ViewState {
                 .collect::<Vec<_>>();
             set_column_selections(column, &positions);
             if snapshot.loading {
+                cancel_column_spinner(column);
+                column.spinner.set_visible(true);
                 column.spinner.start();
                 column.presentation.show_loading();
             } else {
-                column.spinner.stop();
-                column.spinner.set_visible(false);
+                // Rebuilt, already-loaded columns receive no finish event to cancel the timer.
+                stop_column_spinner(column);
                 if let Some(message) = snapshot.error.as_deref() {
                     column
                         .presentation
@@ -456,8 +477,13 @@ impl ViewState {
     }
 
     pub(super) fn append_column(self: &Rc<Self>, depth: usize, location: &Location) {
-        let column = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let column = crate::ui::accessibility::pane_box();
         column.add_css_class("directory-column");
+        crate::ui::accessibility::describe_pane(
+            &column,
+            &location.display_name(),
+            crate::ui::browser_modes::BrowserMode::Columns,
+        );
         column.set_hexpand(true);
         column.set_vexpand(true);
         let pane_motion = gtk::EventControllerMotion::new();
@@ -517,7 +543,7 @@ impl ViewState {
             .hexpand(true)
             .build();
         filter_entry.add_css_class("column-filter-entry");
-        let filter_icon = crate::assets::primary_icon(crate::assets::icons::FUNNEL, 16);
+        let filter_icon = crate::assets::chrome_icon(crate::assets::icons::FUNNEL);
         let filter_control = gtk::Box::new(gtk::Orientation::Horizontal, 7);
         filter_control.add_css_class("column-filter");
         filter_control.append(&filter_icon);
@@ -529,9 +555,8 @@ impl ViewState {
         let filter_button = gtk::ToggleButton::builder()
             .tooltip_text("Filter this pane (Ctrl+F)")
             .build();
-        filter_button.set_child(Some(&crate::assets::primary_icon(
+        filter_button.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::FUNNEL,
-            16,
         )));
         filter_button.add_css_class("column-header-action");
         let shown_filter = filter_revealer.clone();
@@ -549,10 +574,7 @@ impl ViewState {
             let close = gtk::Button::builder()
                 .tooltip_text("Close this pane")
                 .build();
-            close.set_child(Some(&crate::assets::primary_icon(
-                crate::assets::icons::X,
-                16,
-            )));
+            close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
             close.add_css_class("column-header-action");
             let weak_browser = Rc::downgrade(&self.browser);
             close.connect_clicked(move |_| {
@@ -778,6 +800,7 @@ impl ViewState {
         list.set_enable_rubberband(false);
         list.set_single_click_activate(false);
         list.set_vexpand(true);
+        crate::ui::accessibility::describe_entry_container(&list, &location.display_name());
 
         let search_navigation = gtk::EventControllerKey::new();
         search_navigation.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -878,9 +901,23 @@ impl ViewState {
             .build();
         scroll.add_css_class("fixed-scrollbar");
         crate::ui::scrolling::install_autoscroll(&scroll, &self.overlay);
+        let retry = gtk::Button::with_label("Retry");
+        retry.add_css_class("retry-button");
+        let weak_browser = Rc::downgrade(&self.browser);
+        retry.connect_clicked(move |_| {
+            if let Some(browser) = weak_browser.upgrade() {
+                browser.retry_column(depth);
+            }
+        });
+        let presentation = LoadPresentation::new(&scroll, Some(retry));
         let rows_for_marquee = bound_rows.clone();
+        let weak_for_clear = Rc::downgrade(self);
+        let returning_to_column = Rc::new(Cell::new(false));
+        let returning_for_clear = returning_to_column.clone();
+        let search_active_for_clear = recursive_search_active.clone();
         let marquee = crate::ui::marquee::install(crate::ui::marquee::MarqueeSetup {
             view: list.clone().upcast(),
+            surface: presentation.stack.clone().upcast(),
             scroll: scroll.clone(),
             overlay: self.overlay.clone(),
             targets: Rc::new(RefCell::new(vec![crate::ui::marquee::MarqueeTarget {
@@ -896,18 +933,24 @@ impl ViewState {
                     });
                 }),
             }])),
-            is_item: Rc::new(|widget| is_file_row_target(widget.clone())),
+            is_item: Rc::new(crate::ui::pointer::hits_item_content),
+            clear_selection: Rc::new(move || {
+                if let Some(state) = weak_for_clear.upgrade() {
+                    state.clear_column_selections();
+                    if returning_for_clear.replace(false) && !search_active_for_clear.get() {
+                        let first = state.columns.borrow().get(depth).and_then(|column| {
+                            (0..column.selection.n_items())
+                                .find_map(|position| column.map.source_position(position))
+                        });
+                        if let Some(position) = first {
+                            state.browser.select(depth, position);
+                        }
+                    }
+                }
+            }),
         });
         marquee.add_origin_surface(&header);
 
-        let retry = gtk::Button::with_label("Retry");
-        retry.add_css_class("retry-button");
-        let weak_browser = Rc::downgrade(&self.browser);
-        retry.connect_clicked(move |_| {
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.retry_column(depth);
-            }
-        });
         let new_entry_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         new_entry_row.add_css_class("file-row");
         new_entry_row.add_css_class("new-entry-row");
@@ -916,6 +959,7 @@ impl ViewState {
         new_entry_icon.add_css_class("file-icon");
         let new_entry_entry = gtk::Entry::new();
         new_entry_entry.add_css_class("inline-rename");
+        crate::ui::accessibility::set_label(&new_entry_entry, "New item name");
         new_entry_entry.set_hexpand(true);
         new_entry_entry.connect_changed(|field| {
             update_basename_validation(field);
@@ -938,7 +982,6 @@ impl ViewState {
         });
         new_entry_entry.add_controller(new_entry_focus);
 
-        let presentation = LoadPresentation::new(&scroll, Some(retry));
         presentation.stack.set_focusable(true);
         let focus = gtk::EventControllerFocus::new();
         let weak = Rc::downgrade(self);
@@ -949,26 +992,14 @@ impl ViewState {
             }
         });
         column.add_controller(focus);
-        let background = gtk::GestureClick::new();
-        background.set_button(1);
-        background.set_propagation_phase(gtk::PropagationPhase::Capture);
-        let weak = Rc::downgrade(self);
-        background.connect_pressed(move |gesture, _, x, y| {
-            let Some(surface) = gesture.widget() else {
-                return;
-            };
-            let Some(picked) = surface.pick(x, y, gtk::PickFlags::DEFAULT) else {
-                return;
-            };
-            if is_file_row_target(picked.clone()) || !is_column_background(&surface, &picked) {
-                return;
-            }
-            if let Some(state) = weak.upgrade() {
-                state.browser.set_active_column(depth);
-                state.browser.focus_active();
-            }
-        });
-        presentation.stack.add_controller(background);
+        for surface in [
+            presentation.stack.upcast_ref::<gtk::Widget>(),
+            header.upcast_ref(),
+        ] {
+            let click =
+                self.install_column_background_focus(surface, depth, returning_to_column.clone());
+            marquee.group_background_click(&click);
+        }
         if self.interactive {
             install_directory_drop_target(self, &presentation.stack, location.clone());
         }
@@ -1137,6 +1168,64 @@ impl ViewState {
         self.refresh_active_path_rows();
         animate_column_entry(&shell, &column, &animation_generation);
         self.reveal_column(shell);
+    }
+
+    fn install_column_background_focus(
+        self: &Rc<Self>,
+        surface: &gtk::Widget,
+        depth: usize,
+        returning_to_column: Rc<Cell<bool>>,
+    ) -> gtk::GestureClick {
+        let click = gtk::GestureClick::new();
+        click.set_button(1);
+        click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let origin = Rc::new(Cell::new(None));
+        let pressed_origin = origin.clone();
+        let weak_for_press = Rc::downgrade(self);
+        click.connect_pressed(move |gesture, _, x, y| {
+            returning_to_column.set(
+                weak_for_press
+                    .upgrade()
+                    .is_some_and(|state| state.browser.active_depth() != Some(depth)),
+            );
+            pressed_origin.set(None);
+            let Some(surface) = gesture.widget() else {
+                return;
+            };
+            let Some(picked) = surface.pick(x, y, gtk::PickFlags::DEFAULT) else {
+                return;
+            };
+            if !is_file_row_target(picked.clone()) && is_column_background(&surface, &picked) {
+                pressed_origin.set(Some((x, y)));
+            }
+        });
+        let stopped_origin = origin.clone();
+        click.connect_stopped(move |_| stopped_origin.set(None));
+        let weak = Rc::downgrade(self);
+        click.connect_released(move |gesture, _, x, y| {
+            let (Some((start_x, start_y)), Some(surface)) = (origin.take(), gesture.widget())
+            else {
+                return;
+            };
+            if surface.drag_check_threshold(start_x as i32, start_y as i32, x as i32, y as i32) {
+                return;
+            }
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.browser.set_active_column(depth);
+            state.browser.focus_active();
+            let shell = state
+                .columns
+                .borrow()
+                .get(depth)
+                .map(|column| column.shell.clone());
+            if let Some(shell) = shell {
+                state.reveal_column(shell);
+            }
+        });
+        surface.add_controller(click.clone());
+        click
     }
 
     fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {

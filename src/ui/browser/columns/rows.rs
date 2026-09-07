@@ -17,6 +17,7 @@ use crate::ui::{
             entry_icon, entry_responds_to_preview_click, metadata_needs_fill, model_display_name,
         },
         inline_edit::update_basename_validation,
+        paths::is_trash_location,
     },
     browser_modes::BrowserMode,
     modal::{slide_in_down, slide_out},
@@ -31,6 +32,18 @@ use std::{
     rc::Rc,
     time::Duration,
 };
+
+fn anchored_row(state: &std::rc::Weak<ViewState>, depth: usize, map: &ViewMap) -> Option<u32> {
+    let state = state.upgrade()?;
+    let anchor = state.browser.selection_anchor_position(depth)?;
+    map.view_position(anchor)
+}
+
+fn anchor_at(state: &std::rc::Weak<ViewState>, depth: usize, map: &ViewMap, row: u32) {
+    if let (Some(state), Some(source_position)) = (state.upgrade(), map.source_position(row)) {
+        state.browser.set_selection_anchor(depth, source_position);
+    }
+}
 
 pub(super) struct ColumnRows {
     pub(super) factory: gtk::SignalListItemFactory,
@@ -52,7 +65,6 @@ pub(super) fn column_rows(
     let weak_state = Rc::downgrade(state);
     let modified_selection_for_rows = modified_selection.clone();
     let selection_for_rows = selection.clone();
-    let mouse_selection_anchor = Rc::new(Cell::new(None::<u32>));
     let map_for_hover = map.clone();
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
@@ -67,9 +79,9 @@ pub(super) fn column_rows(
                 row.remove_css_class("file-appear");
             }
         });
-        let icon = gtk::Image::new();
+        let icon = crate::ui::thumbnail::ThumbnailSlot::new(17);
         icon.add_css_class("file-icon");
-        icon.set_pixel_size(17);
+        icon.set_valign(gtk::Align::Center);
         let label = gtk::Label::builder()
             .halign(gtk::Align::Fill)
             .xalign(0.0)
@@ -78,6 +90,7 @@ pub(super) fn column_rows(
             .build();
         let rename = gtk::Entry::new();
         rename.add_css_class("inline-rename");
+        crate::ui::accessibility::set_label(&rename, "Rename");
         rename.set_hexpand(true);
         rename.set_visible(false);
         rename.connect_changed(|field| {
@@ -102,6 +115,7 @@ pub(super) fn column_rows(
         size.set_xalign(1.0);
         let middle = gtk::Overlay::new();
         middle.set_hexpand(true);
+        middle.set_valign(gtk::Align::Center);
         let path = gtk::Label::builder()
             .xalign(0.0)
             .wrap(true)
@@ -118,6 +132,7 @@ pub(super) fn column_rows(
         middle.add_overlay(&size);
         let chevron = crate::assets::primary_icon(crate::assets::icons::CHEVRON_RIGHT, 15);
         chevron.add_css_class("file-chevron");
+        chevron.set_valign(gtk::Align::Center);
         row.append(&icon);
         row.append(&middle);
         row.append(&chevron);
@@ -163,6 +178,9 @@ pub(super) fn column_rows(
             let prepare_row = row.downgrade();
             drag.connect_prepare(move |source, x, y| {
                 let prepare_row = prepare_row.upgrade()?;
+                if !crate::ui::pointer::hits_item_content(prepare_row.upcast_ref(), x, y) {
+                    return None;
+                }
                 prepare_row.remove_css_class("slide-out");
                 let state = weak_state_for_drag.upgrade()?;
                 let dragged_item = dragged_item.upgrade()?;
@@ -235,6 +253,7 @@ pub(super) fn column_rows(
                     .and_then(|position| state.browser.entry_at(depth, position));
                 entry.is_some_and(|entry| {
                     entry.is_directory()
+                        && !is_trash_location(&entry.location)
                         && offered
                             .formats()
                             .contains_type(gtk::gdk::FileList::static_type())
@@ -282,7 +301,6 @@ pub(super) fn column_rows(
         selection_click.set_propagation_phase(gtk::PropagationPhase::Capture);
         let clicked_item = item.downgrade();
         let selection_for_click = selection_for_rows.clone();
-        let selection_anchor_for_click = mouse_selection_anchor.clone();
         let modified_for_click = modified_selection_for_rows.clone();
         let map_for_click = map_for_hover.clone();
         // Open on release so a press-and-move can start a drag first.
@@ -311,24 +329,31 @@ pub(super) fn column_rows(
                 );
             modified_for_click.set(control || shift);
             if shift {
-                let anchor = selection_anchor_for_click.get().unwrap_or(position);
+                let anchor =
+                    anchored_row(&weak_state_for_click, depth, &map_for_click).unwrap_or(position);
                 let start = anchor.min(position);
                 let count = anchor.max(position).saturating_sub(start) + 1;
                 selection_for_click.select_range(start, count, true);
             } else if control {
-                selection_anchor_for_click.set(Some(position));
+                anchor_at(&weak_state_for_click, depth, &map_for_click, position);
                 if selection_for_click.is_selected(position) {
                     selection_for_click.unselect_item(position);
                 } else {
                     selection_for_click.select_item(position, false);
                 }
             } else {
-                selection_anchor_for_click.set(Some(position));
+                anchor_at(&weak_state_for_click, depth, &map_for_click, position);
                 if !preserve_group {
                     selection_for_click.select_item(position, true);
                 }
             }
-            if control || shift {
+            if (control || shift)
+                && let Some(widget) = gesture.widget()
+                && crate::ui::pointer::hits_item_content(&widget, x, y)
+            {
+                if let Some(item_widget) = widget.parent() {
+                    item_widget.grab_focus();
+                }
                 gesture.set_state(gtk::EventSequenceState::Claimed);
             }
             modified_for_click.set(false);
@@ -338,28 +363,35 @@ pub(super) fn column_rows(
                 (weak_state_for_click.upgrade(), source_position)
             {
                 let entry = state.browser.entry_at(depth, source_position);
-                if let Some(entry) = entry.as_ref().filter(|entry| {
-                    should_activate_single_click(
+                if let Some(entry) = entry.as_ref() {
+                    let activate = should_activate_single_click(
                         press_count,
                         entry.is_directory(),
                         state.columns_click_activation.get(),
                         control,
                         shift,
                         preserve_group,
-                    )
-                }) {
-                    pending_activation_for_press.replace(Some(PendingPointerActivation {
-                        position: source_position,
-                        location: entry.location.clone(),
-                        press: (x, y),
-                        moved: false,
-                    }));
-                } else if should_preview_pointer_press(press_count, control, shift, preserve_group)
-                    && entry.as_ref().is_some_and(|entry| {
-                        entry_responds_to_preview_click(entry, state.single_click_previews.get())
-                    })
-                {
-                    state.browser.preview(depth, source_position);
+                    );
+                    let preview = !activate
+                        && should_preview_pointer_press(
+                            press_count,
+                            control,
+                            shift,
+                            preserve_group,
+                        )
+                        && entry_responds_to_preview_click(
+                            entry,
+                            state.single_click_previews.get(),
+                        );
+                    if activate || preview {
+                        pending_activation_for_press.replace(Some(PendingPointerActivation {
+                            position: source_position,
+                            location: entry.location.clone(),
+                            press: (x, y),
+                            moved: false,
+                            preview,
+                        }));
+                    }
                 }
             }
         });
@@ -373,10 +405,19 @@ pub(super) fn column_rows(
             }
         });
         let weak_state_for_release = weak_state.clone();
-        selection_click.connect_released(move |gesture, _, _, _| {
-            let Some(pending) = pending_activation_for_release.take() else {
+        selection_click.connect_released(move |gesture, _, x, y| {
+            if gesture.current_event_state().intersects(
+                gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
+            ) {
+                gesture.set_state(gtk::EventSequenceState::Claimed);
+            }
+            let Some(mut pending) = pending_activation_for_release.take() else {
                 return;
             };
+            let Some(widget) = gesture.widget() else {
+                return;
+            };
+            pending.update(x, y, widget.settings().gtk_dnd_drag_threshold());
             let Some(state) = weak_state_for_release.upgrade() else {
                 return;
             };
@@ -387,8 +428,14 @@ pub(super) fn column_rows(
             {
                 return;
             }
-            gesture.set_state(gtk::EventSequenceState::Claimed);
-            state.browser.activate(depth, pending.position);
+            // GTK 4.14's DragSource needs the release to reset before the next press.
+            if pending.preview {
+                if state.single_click_previews.get() {
+                    state.browser.preview(depth, pending.position);
+                }
+            } else {
+                state.browser.activate(depth, pending.position);
+            }
         });
         selection_click.connect_cancel(move |_, _| {
             pending_activation_for_cancel.take();
@@ -418,7 +465,10 @@ pub(super) fn column_rows(
         let Some(row) = item.child().and_downcast::<gtk::Box>() else {
             return;
         };
-        let Some(icon) = row.first_child().and_downcast::<gtk::Image>() else {
+        let Some(icon) = row
+            .first_child()
+            .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
+        else {
             return;
         };
         let Some(middle) = icon.next_sibling().and_downcast::<gtk::Overlay>() else {
@@ -478,6 +528,7 @@ pub(super) fn column_rows(
                 .map(|item| FileEntry {
                     location: Location::local(item.path.clone()),
                     native_name: item.path.file_name().unwrap_or_default().to_os_string(),
+                    thumbnail_path: None,
                     display_name: item.name.clone(),
                     kind: if item.is_directory {
                         EntryKind::Directory
@@ -526,7 +577,7 @@ pub(super) fn column_rows(
                     17,
                 );
             } else {
-                crate::assets::set_primary_icon(&icon, entry_icon(entry));
+                crate::ui::thumbnail::show_fallback_icon(&icon, entry_icon(entry), 17);
             }
             icon.set_opacity(if entry.is_directory() { 1.0 } else { 0.72 });
             chevron.set_visible(entry.is_directory());
@@ -547,6 +598,7 @@ pub(super) fn column_rows(
         let size_text = column_size_text(entry.as_ref());
         size.set_label(&size_text);
         size.set_visible(!size_text.is_empty());
+        crate::ui::accessibility::describe_entry(item, &label.label(), entry.as_ref());
     });
     factory.connect_unbind(|_, item| crate::ui::thumbnail::cancel_list_item_thumbnails(item));
     ColumnRows {

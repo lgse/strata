@@ -48,7 +48,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 
 - **Three browser modes:** navigable Columns, an Icons grid, and a sortable List table.
 - **Keyboard-first control:** Vim-style movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also highlights when files are available to paste. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md).
-- **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed.
+- **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed. Global search covers Home and all mounted local drives, regardless of the current folder. Hover the search field to see the included locations. The dialog warns when results are incomplete; folder-scoped filtering/search remains separate. URI-native remote shares are not yet included.
 - **Rich previews and thumbnails:** bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
 - **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
@@ -157,12 +157,16 @@ On Arch Linux or Omarchy:
 
 ```bash
 sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gst-libav gst-plugins-good gtk4 gtksourceview5 poppler-glib
+  gst-libav gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
 # Optional SMB and broader camera RAW support:
 sudo pacman -S --needed gvfs-smb imagemagick libraw dcraw
 ```
 
 GTK **4.12 or newer** and glibc **2.39 or newer** are required. Other glibc-based distributions may work when they provide equivalent runtime libraries, but their package names and binary compatibility vary. Systems with an older glibc must [build Strata from source](#development-and-documentation).
+
+Device discovery requires the GVfs UDisks2 volume monitor (`gvfs` on Arch and
+Fedora; `gvfs-daemons` on Debian/Ubuntu). Without that backend, removable drives
+may be absent from Devices. SMB support remains optional.
 
 #### 2. Download and verify
 
@@ -192,7 +196,7 @@ Download the matching `strata-<version>-<target>.debug` asset from the same rele
 
 #### 3. Update or uninstall
 
-For a manual installation, use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. Package-managed installations are updated only by their system package manager. To remove a per-user installation:
+For a manual installation, use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. If the user opted into Strata's system file chooser, the update restarts the portal frontend so subsequent dialogs use the newly installed build. Package-managed installations are updated only by their system package manager. To remove a per-user installation:
 
 ```bash
 rm -f ~/.local/bin/strata \
@@ -385,7 +389,7 @@ Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-con
 
 ```bash
 sudo pacman -S --needed base-devel rust bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gst-libav gst-plugins-good gtk4 gtksourceview5 poppler-glib
+  gst-libav gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
 make start-dev        # rebuild and restart as files change
 make run-dev          # build and launch the main app once
 make run-chooser-dev  # build and open an isolated Save chooser with choices

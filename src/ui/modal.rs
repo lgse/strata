@@ -109,6 +109,28 @@ pub(super) fn modal_layer(
     layer
 }
 
+pub(super) fn submit_on_enter(fields: &impl IsA<gtk::Widget>, confirm: &gtk::Button) {
+    let mut child = fields.as_ref().first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        if let Some(entry) = widget.downcast_ref::<gtk::Entry>() {
+            let confirm = confirm.clone();
+            entry.connect_activate(move |_| activate_primary(&confirm));
+        } else if let Some(entry) = widget.downcast_ref::<gtk::PasswordEntry>() {
+            let confirm = confirm.clone();
+            entry.connect_activate(move |_| activate_primary(&confirm));
+        } else {
+            submit_on_enter(&widget, confirm);
+        }
+    }
+}
+
+fn activate_primary(confirm: &gtk::Button) {
+    if confirm.is_sensitive() {
+        confirm.emit_clicked();
+    }
+}
+
 pub(super) fn animate_in(layer: &gtk::Box) {
     layer.remove_css_class("dismissing");
     layer.set_sensitive(true);

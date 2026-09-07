@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use std::{cmp::Ordering, ffi::OsString, path::PathBuf};
+use std::{
+    cmp::Ordering,
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 
 use gio::prelude::*;
 
@@ -271,6 +275,8 @@ pub enum MetadataValue<T> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FileEntry {
     pub location: Location,
+    /// Local thumbnail source for virtual files; `location` remains their operational identity.
+    pub thumbnail_path: Option<PathBuf>,
     pub native_name: OsString,
     pub display_name: String,
     pub kind: EntryKind,
@@ -281,6 +287,12 @@ pub struct FileEntry {
 }
 
 impl FileEntry {
+    pub fn local_thumbnail_path(&self) -> Option<&Path> {
+        self.location
+            .native_path()
+            .or(self.thumbnail_path.as_deref())
+    }
+
     pub fn is_directory(&self) -> bool {
         matches!(
             self.kind,

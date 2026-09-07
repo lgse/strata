@@ -4,6 +4,8 @@ use super::*;
 
 mod focus;
 mod navigate;
+mod paste;
+mod preferences;
 mod recursive_search;
 mod sidebar;
 
@@ -39,6 +41,63 @@ fn vim_focus_keys_map_to_dialog_directions() {
         Some(gtk::DirectionType::Right)
     );
     assert_eq!(vim_focus_direction(gtk::gdk::Key::Down), None);
+}
+
+#[test]
+fn paste_prefers_only_a_single_selected_directory() {
+    let entry = |name: &str, kind: crate::model::EntryKind| FileEntry {
+        location: Location::local(format!("/fixture/{name}")),
+        thumbnail_path: None,
+        native_name: name.into(),
+        display_name: name.to_owned(),
+        kind,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        mode: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    let folder = entry("folder", crate::model::EntryKind::Directory);
+    let file = entry("file.txt", crate::model::EntryKind::File);
+    let column = Location::local("/fixture");
+
+    assert_eq!(
+        paste_destination(std::slice::from_ref(&folder), Some(column.clone()), false),
+        Some(folder.location.clone())
+    );
+    assert_eq!(
+        paste_destination(std::slice::from_ref(&folder), Some(column.clone()), true),
+        Some(column.clone()),
+        "a load cursor folder is the current directory, not a paste-into target"
+    );
+    assert_eq!(
+        paste_destination(std::slice::from_ref(&file), Some(column.clone()), false),
+        Some(column.clone())
+    );
+    assert_eq!(
+        paste_destination(&[folder, file], Some(column.clone()), false),
+        Some(column.clone())
+    );
+    assert_eq!(
+        paste_destination(&[], Some(column.clone()), false),
+        Some(column)
+    );
+    assert_eq!(paste_destination(&[], None, false), None);
+    for location in [Location::uri("trash:///"), Location::uri("trash:///folder")] {
+        for load_cursor in [false, true] {
+            assert_eq!(
+                paste_destination(&[], Some(location.clone()), load_cursor),
+                None
+            );
+        }
+        let folder = FileEntry {
+            location,
+            ..entry("folder", crate::model::EntryKind::Directory)
+        };
+        assert_eq!(
+            paste_destination(&[folder], Some(Location::local("/fixture")), false),
+            None
+        );
+    }
 }
 
 #[test]

@@ -43,6 +43,7 @@ fn pinning_requires_an_available_non_trash_directory() {
     let entry = |location, kind| FileEntry {
         location,
         native_name: "item".into(),
+        thumbnail_path: None,
         display_name: "item".into(),
         kind,
         size: crate::model::MetadataValue::Unknown,
@@ -68,4 +69,53 @@ fn pinning_requires_an_available_non_trash_directory() {
     assert!(!can_pin_entry(&directory, PinStatus::Unavailable));
     assert!(!can_pin_entry(&file, PinStatus::Available));
     assert!(!can_pin_entry(&trash_directory, PinStatus::Available));
+}
+
+#[test]
+fn properties_offers_unpin_for_an_already_pinned_directory() {
+    let folder = Location::local("/fixture/folder");
+
+    assert_eq!(
+        pin_action_for(&folder, true, PinStatus::Available),
+        Some(PinAction::Pin)
+    );
+    assert_eq!(
+        pin_action_for(&folder, true, PinStatus::Pinned),
+        Some(PinAction::Unpin)
+    );
+    assert_eq!(PinAction::Pin.label(), "Pin");
+    assert_eq!(PinAction::Unpin.label(), "Unpin");
+}
+
+#[test]
+fn properties_hides_the_pin_control_where_pinning_is_impossible() {
+    let folder = Location::local("/fixture/folder");
+
+    assert_eq!(pin_action_for(&folder, true, PinStatus::Unavailable), None);
+    assert_eq!(pin_action_for(&folder, false, PinStatus::Available), None);
+    assert_eq!(
+        pin_action_for(
+            &Location::uri("trash:///folder"),
+            true,
+            PinStatus::Available
+        ),
+        None
+    );
+}
+
+#[test]
+fn only_top_level_trash_items_can_be_removed_or_restored() {
+    for (uri, removable, restorable) in [
+        ("trash:///", false, false),
+        ("trash:///folder", true, true),
+        ("trash:///folder/child.txt", false, false),
+        ("trash:///folder%20name", true, true),
+        ("trash:///folder%20name/child.txt", false, false),
+        ("sftp://host/folder/file.txt", true, false),
+    ] {
+        let location = Location::uri(uri);
+        assert_eq!(can_remove_location(&location), removable, "{uri}");
+        assert_eq!(is_trash_item(&location), restorable, "{uri}");
+    }
+    assert!(can_remove_location(&Location::local("/fixture/file.txt")));
 }

@@ -35,6 +35,13 @@ fn navigation_reference_matches_each_mode() {
 }
 
 #[test]
+fn reference_lists_rename_and_refresh_bindings_without_overlap() {
+    assert!(FILES.contains(&("F2 / Ctrl+R", "Rename")));
+    assert!(TOOLS.contains(&("F5", "Refresh")));
+    assert!(!TOOLS.iter().any(|(keys, _)| keys.contains("Ctrl+R")));
+}
+
+#[test]
 #[ignore = "requires a mapped GTK window; run this test alone"]
 fn footer_tracks_modes_and_shields_files_while_open() {
     const CHILD: &str = "STRATA_SHORTCUT_FOOTER_GTK_CHILD";

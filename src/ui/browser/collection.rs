@@ -10,7 +10,21 @@ use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
-pub(crate) const FILTER_DEBOUNCE_DELAY: Duration = Duration::from_millis(200);
+pub(crate) const FILTER_DEBOUNCE_DELAY: Duration = Duration::from_millis(40);
+
+thread_local! {
+    static PENDING_SCROLLS: RefCell<Vec<(glib::WeakRef<gtk::Widget>, gtk::TickCallbackId)>> = const { RefCell::new(Vec::new()) };
+}
+
+fn take_pending_scroll(view: &gtk::Widget) -> Option<gtk::TickCallbackId> {
+    PENDING_SCROLLS.with_borrow_mut(|pending| {
+        pending.retain(|(view, _)| view.upgrade().is_some());
+        let index = pending
+            .iter()
+            .position(|(candidate, _)| candidate.upgrade().as_ref() == Some(view))?;
+        Some(pending.swap_remove(index).1)
+    })
+}
 
 /// `scroll_to` before the view has a real height leaves ListView/GridView with a
 /// one-row widget pool, so scrolling after a mode switch stays janky.
@@ -18,12 +32,9 @@ pub(crate) fn scroll_collection_when_allocated(view: &gtk::Widget, position: u32
     scroll_collection_when_allocated_with(view, position, gtk::ListScrollFlags::FOCUS);
 }
 
+/// SELECT would collapse the multi-selection already applied by the caller.
 pub(crate) fn focus_collection_item_when_allocated(view: &gtk::Widget, position: u32) {
-    scroll_collection_when_allocated_with(
-        view,
-        position,
-        gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT,
-    );
+    scroll_collection_when_allocated_with(view, position, gtk::ListScrollFlags::FOCUS);
 }
 
 fn scroll_collection_when_allocated_with(
@@ -31,15 +42,17 @@ fn scroll_collection_when_allocated_with(
     position: u32,
     flags: gtk::ListScrollFlags,
 ) {
+    if let Some(pending) = take_pending_scroll(view) {
+        pending.remove();
+    }
     if view.height() > 1 {
         apply_collection_scroll(view, position, flags);
         return;
     }
-    // ponytail: a few frames is enough for the first layout. Upgrade: a real
-    // allocate listener if GTK grows one that is safe to scroll from.
     let frames = Cell::new(0u8);
-    view.add_tick_callback(move |view, _| {
+    let callback = view.add_tick_callback(move |view, _| {
         if view.height() > 1 {
+            take_pending_scroll(view);
             if flags.intersects(gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT)
                 && !collection_view_holds_focus(view)
             {
@@ -51,11 +64,13 @@ fn scroll_collection_when_allocated_with(
         let waited = frames.get().saturating_add(1);
         frames.set(waited);
         if waited >= 8 {
+            take_pending_scroll(view);
             glib::ControlFlow::Break
         } else {
             glib::ControlFlow::Continue
         }
     });
+    PENDING_SCROLLS.with_borrow_mut(|pending| pending.push((view.downgrade(), callback)));
 }
 
 fn collection_view_holds_focus(view: &gtk::Widget) -> bool {
@@ -175,9 +190,8 @@ pub(crate) fn apply_filter_query(
     let previous = query.borrow().clone();
     let change = filter_change_for(&previous, &settled);
     *query.borrow_mut() = settled;
-    if query.borrow().is_empty() {
-        model.set_filter(None::<&gtk::Filter>);
-    } else if previous.is_empty() {
+    // The filter also hides dotfiles, even when the search query is empty.
+    if model.filter().is_none() {
         model.set_filter(Some(filter));
     } else {
         filter.changed(change);

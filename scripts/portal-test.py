@@ -18,6 +18,8 @@ import time
 import uuid
 import zlib
 
+from portal_test_environment import isolated_process_environment
+
 from gi.repository import Gio, GLib
 
 BACKEND = "org.freedesktop.impl.portal.desktop.strata"
@@ -52,11 +54,18 @@ def request(connection, args, folder):
         options["directory"] = GLib.Variant("b", True)
         options["accept_label"] = GLib.Variant("s", "Select Folder")
     if args.case in ("filters", "save"):
-        options["filters"] = GLib.Variant("a(sa(us))", [
-            ("Text files", [(0, "*.txt"), (0, "*.md")]),
-            ("Images", [(1, "image/png"), (1, "image/jpeg")]),
-            ("All files", [(0, "*")]),
-        ])
+        if args.filter_count:
+            filters = [
+                (f"Filter {index:02d}", [(1, f"application/x-upload-{index}")])
+                for index in range(1, args.filter_count + 1)
+            ]
+        else:
+            filters = [
+                ("Text files", [(0, "*.txt"), (0, "*.md")]),
+                ("Images", [(1, "image/png"), (1, "image/jpeg")]),
+                ("All files", [(0, "*")]),
+            ]
+        options["filters"] = GLib.Variant("a(sa(us))", filters)
     if args.case == "save":
         method = "SaveFile"
         options["current_name"] = GLib.Variant("s", "strata-portal-demo.txt")
@@ -109,6 +118,8 @@ def main():
     parser.add_argument("--view", choices=["columns", "icons", "list"], default="list")
     parser.add_argument("--theme", default="tokyo-night", help="Built-in theme for the isolated backend")
     parser.add_argument("--group-by-type", action="store_true")
+    parser.add_argument("--filter-count", type=int, metavar="N",
+                        help="Send N generated filters instead of the three-filter fixture")
     args = parser.parse_args()
     if not args.binary and (args.theme != "tokyo-night" or args.view != "list" or args.group_by_type):
         parser.error("Theme and view overrides require --binary; existing user settings are never modified")
@@ -120,9 +131,7 @@ def main():
         bus = backend = None
         try:
             if args.binary:
-                env = os.environ.copy()
-                for key, directory in [("XDG_CONFIG_HOME", "config"), ("XDG_DATA_HOME", "data"), ("XDG_CACHE_HOME", "cache")]:
-                    env[key] = str(root / directory)
+                env = isolated_process_environment(root)
                 settings = root / "config/strata/settings.toml"
                 settings.parent.mkdir(parents=True)
                 settings.write_text(
@@ -135,11 +144,14 @@ def main():
                         for key, name in (("DOCUMENTS", "Documents"), ("DOWNLOAD", "Downloads"),
                                           ("PICTURES", "Pictures"), ("VIDEOS", "Videos"))
                     ), encoding="utf-8")
-                bus = subprocess.Popen(["dbus-daemon", "--session", "--nofork", "--print-address=1"],
-                                       stdout=subprocess.PIPE, text=True)
+                bus = subprocess.Popen(
+                    ["dbus-daemon", "--session", "--nofork", "--print-address=1"],
+                    stdout=subprocess.PIPE,
+                    text=True,
+                    env=env,
+                )
                 address = bus.stdout.readline().strip()
                 env["DBUS_SESSION_BUS_ADDRESS"] = address
-                env["GIO_USE_VFS"] = "local"
                 backend = subprocess.Popen([str(args.binary.resolve()), "--portal"], env=env)
             else:
                 address = os.environ["DBUS_SESSION_BUS_ADDRESS"]

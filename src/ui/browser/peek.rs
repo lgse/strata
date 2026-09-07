@@ -25,6 +25,7 @@ pub(super) struct PeekAnchor {
 
 pub(super) struct PeekView {
     pub(super) revealer: gtk::Revealer,
+    pub(super) anchor: gtk::Widget,
     pub(super) location: Location,
     pub(super) presentation: LoadPresentation,
     pub(super) model: gtk::StringList,
@@ -60,9 +61,8 @@ fn peek_label_factory(entries: Rc<RefCell<Vec<FileEntry>>>) -> gtk::SignalListIt
         };
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.add_css_class("file-row");
-        let icon = gtk::Image::new();
+        let icon = crate::ui::thumbnail::ThumbnailSlot::new(17);
         icon.add_css_class("file-icon");
-        icon.set_pixel_size(17);
         let label = gtk::Label::builder()
             .halign(gtk::Align::Start)
             .hexpand(true)
@@ -85,7 +85,10 @@ fn peek_label_factory(entries: Rc<RefCell<Vec<FileEntry>>>) -> gtk::SignalListIt
         let Some(row) = item.child().and_downcast::<gtk::Box>() else {
             return;
         };
-        let Some(icon) = row.first_child().and_downcast::<gtk::Image>() else {
+        let Some(icon) = row
+            .first_child()
+            .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
+        else {
             return;
         };
         let Some(label) = icon.next_sibling().and_downcast::<gtk::Label>() else {
@@ -299,6 +302,7 @@ impl ViewState {
         let selection = gtk::NoSelection::new(Some(model.clone()));
         let factory = peek_label_factory(entries.clone());
         let list = gtk::ListView::new(Some(selection), Some(factory));
+        list.set_focusable(false);
         list.add_css_class("file-list");
         let weak_browser = Rc::downgrade(&self.browser);
         list.connect_activate(move |_, _| {
@@ -362,8 +366,11 @@ impl ViewState {
             .margin_top(row_bounds.y().round().max(0.0) as i32)
             .build();
         self.overlay.add_overlay(&revealer);
+        self.overlay.add_css_class("peek-open");
+        anchor.widget.add_css_class("peek-anchor");
         self.peek.replace(Some(PeekView {
             revealer: revealer.clone(),
+            anchor: anchor.widget,
             location: location.clone(),
             presentation,
             model,
@@ -377,7 +384,10 @@ impl ViewState {
     pub(super) fn close_peek_visual(&self) {
         cancel_source(&self.pending_peek);
         cancel_source(&self.pending_close);
+        self.overlay.remove_css_class("peek-open");
+        self.peek_anchor.take();
         if let Some(peek) = self.peek.take() {
+            peek.anchor.remove_css_class("peek-anchor");
             peek.revealer.set_can_target(false);
             peek.revealer.set_reveal_child(false);
             let overlay = self.overlay.clone();

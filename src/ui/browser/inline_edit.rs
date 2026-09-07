@@ -3,6 +3,7 @@
 use crate::model::{FileEntry, Location};
 use crate::services::validate_basename;
 use crate::ui::browser::ViewState;
+use crate::ui::browser::paths::is_trash_location;
 use crate::ui::browser_modes::BrowserMode;
 use gtk::prelude::*;
 use std::rc::Rc;
@@ -12,6 +13,7 @@ pub(super) struct ActiveRename {
     pub(super) field: gtk::Entry,
     pub(super) label: gtk::Label,
     pub(super) spacer: gtk::Box,
+    pub(super) size: gtk::Label,
 }
 
 pub(super) struct ActiveNewEntry {
@@ -68,6 +70,9 @@ impl ViewState {
         location: Location,
         is_directory: bool,
     ) {
+        if is_trash_location(&location) {
+            return;
+        }
         if self.mode_views.borrow().mode() != BrowserMode::Columns {
             self.cancel_new_entry();
             self.mode_views
@@ -143,6 +148,9 @@ impl ViewState {
         let Some((depth, source_position, entry)) = self.browser.rename_item() else {
             return false;
         };
+        if is_trash_location(&entry.location) {
+            return false;
+        }
         if self.mode_views.borrow().mode() != BrowserMode::Columns {
             return self
                 .mode_views
@@ -186,12 +194,16 @@ impl ViewState {
         let Some(spacer) = field.next_sibling().and_downcast::<gtk::Box>() else {
             return false;
         };
+        let Some(size) = middle.last_child().and_downcast::<gtk::Label>() else {
+            return false;
+        };
         field.remove_css_class("error");
         field.set_tooltip_text(None);
         field.set_sensitive(true);
         field.set_text(&entry.display_name);
         label.set_visible(false);
         spacer.set_visible(false);
+        size.set_visible(false);
         field.set_visible(true);
         field.grab_focus();
         field.select_region(0, rename_stem_end(&entry.display_name));
@@ -200,6 +212,7 @@ impl ViewState {
             field,
             label,
             spacer,
+            size,
         }));
         true
     }
@@ -217,17 +230,23 @@ impl ViewState {
         rename.field.set_sensitive(true);
         rename.label.set_visible(true);
         rename.spacer.set_visible(true);
+        rename.size.set_visible(!rename.size.label().is_empty());
         true
     }
 
     pub(super) fn submit_rename(self: &Rc<Self>, field: &gtk::Entry) {
-        let mut active = self.active_rename.borrow_mut();
-        let Some(rename) = active.as_mut().filter(|rename| rename.field == *field) else {
-            return;
+        // `Browser::rename` rejects an invalid basename by emitting `RenameFailed` before it
+        // returns, and that handler reads `active_rename` to flag the field, so the borrow
+        // taken to read the entry must be released first.
+        let entry = {
+            let active = self.active_rename.borrow();
+            let Some(rename) = active.as_ref().filter(|rename| rename.field == *field) else {
+                return;
+            };
+            rename.entry.clone()
         };
         let new_name = field.text().to_string();
-        if new_name == rename.entry.display_name {
-            drop(active);
+        if new_name == entry.display_name {
             self.cancel_rename();
             self.browser.focus_active();
             return;
@@ -235,7 +254,7 @@ impl ViewState {
         field.remove_css_class("error");
         field.set_tooltip_text(None);
         field.set_sensitive(false);
-        self.browser.rename(rename.entry.clone(), new_name);
+        self.browser.rename(entry, new_name);
     }
 }
 

@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod preferences;
+
 use super::{
     MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, format_file_size, format_media_time,
     media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
@@ -126,6 +128,7 @@ fn preview_drag_entries_wraps_loaded_file_entry() {
     let entry = crate::model::FileEntry {
         location: crate::model::Location::local("/tmp/test.png"),
         native_name: std::ffi::OsString::from("test.png"),
+        thumbnail_path: None,
         display_name: "test.png".to_owned(),
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Known(100),

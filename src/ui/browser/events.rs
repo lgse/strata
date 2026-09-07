@@ -42,6 +42,17 @@ impl ViewState {
                 self.set_location(location);
                 if self.mode_views.borrow().mode() == BrowserMode::Columns {
                     self.append_column(*depth, location);
+                    // A pointer click that opens a folder leaves the mouse on
+                    // the parent column, so paste would target the folder's
+                    // parent instead of the folder itself. Follow the newly
+                    // opened column while the pointer owns navigation.
+                    if self.input_ownership.borrow().last_navigation
+                        == super::super::input_ownership::NavigationInput::Pointer
+                        && self.hovered_column.get() == depth.checked_sub(1)
+                    {
+                        self.hovered_column.set(Some(*depth));
+                        self.refresh_destination_style();
+                    }
                 }
             }
             BrowserEvent::EntriesInserted { depth, insertions } => {
@@ -135,15 +146,20 @@ impl ViewState {
                                 && let Some(&entry) = filled.get(&position)
                                 && let Some(size) = row
                                     .first_child()
-                                    .and_downcast::<gtk::Image>()
+                                    .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
                                     .and_then(|icon| icon.next_sibling())
                                     .and_then(|middle| middle.downcast::<gtk::Overlay>().ok())
                                     .and_then(|middle| middle.last_child())
                                     .and_downcast::<gtk::Label>()
                             {
                                 let text = column_size_text(Some(entry));
+                                let actively_renaming = self
+                                    .active_rename
+                                    .borrow()
+                                    .as_ref()
+                                    .is_some_and(|rename| rename.size == size);
                                 size.set_label(&text);
-                                size.set_visible(!text.is_empty());
+                                size.set_visible(!text.is_empty() && !actively_renaming);
                             }
                             true
                         });
@@ -255,11 +271,26 @@ impl ViewState {
                 if self.browser.active_depth() == Some(*depth) {
                     let names = self.pending_select.take();
                     let properties = self.pending_select_properties.replace(false);
-                    if !names.is_empty() {
+                    let locations = self
+                        .pending_transfer_selection
+                        .take()
+                        .filter(|(target, _)| {
+                            self.browser.active_location().as_ref() == Some(target)
+                        })
+                        .map(|(_, locations)| locations)
+                        .unwrap_or_default();
+                    if !names.is_empty() || !locations.is_empty() {
                         let weak = Rc::downgrade(self);
+                        let location = self.browser.active_location();
                         glib::idle_add_local_once(move || {
-                            if let Some(state) = weak.upgrade() {
-                                state.browser.select_entries_by_name(&names);
+                            if let Some(state) = weak.upgrade()
+                                && state.browser.active_location() == location
+                            {
+                                if locations.is_empty() {
+                                    state.browser.select_entries_by_name(&names);
+                                } else {
+                                    state.browser.select_entries_by_location(&locations);
+                                }
                                 if properties && let Some(entry) = state.browser.focused_entry() {
                                     state.show_entry_properties(entry);
                                 }
@@ -543,7 +574,7 @@ impl ViewState {
                     *total,
                     crate::assets::icons::FILE_ARCHIVE,
                     "Working",
-                    "This may take a moment",
+                    "Cancelling will not undo completed changes",
                     Rc::new(move || browser.cancel_file_operation()),
                 );
             }
@@ -560,6 +591,35 @@ impl ViewState {
                     self.browser.navigate(dest);
                 } else {
                     self.browser.reload_active();
+                }
+            }
+            BrowserEvent::TransferReveal {
+                destination,
+                locations,
+            } => {
+                self.pending_navigate.take();
+                self.pending_select.take();
+                self.pending_select_properties.set(false);
+                self.pending_transfer_selection
+                    .replace(Some((destination.clone(), locations.clone())));
+                if self.mode_views.borrow().mode() == BrowserMode::Columns {
+                    let open_depth = (0..self.columns.borrow().len()).find(|depth| {
+                        self.browser.location_at(*depth).as_ref() == Some(destination)
+                    });
+                    let parent_depth = (0..self.columns.borrow().len())
+                        .find(|depth| self.browser.location_at(*depth) == destination.parent());
+                    if let Some(depth) = open_depth {
+                        self.browser.set_active_column(depth);
+                        self.browser.reload_active();
+                    } else if let Some(parent_depth) = parent_depth {
+                        self.browser.descend(parent_depth, destination.clone());
+                    } else {
+                        self.browser.navigate(destination.clone());
+                    }
+                } else if self.browser.active_location().as_ref() == Some(destination) {
+                    self.browser.reload_active();
+                } else {
+                    self.browser.navigate(destination.clone());
                 }
             }
             BrowserEvent::TransferCompleted => {

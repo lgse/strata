@@ -1,21 +1,30 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+mod trash;
+
 use std::{
     path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
-use gtk::glib;
+use gtk::{gdk, glib};
 
 use super::{
     ACTIVE_REQUESTS, ActiveRequest, CacheHit, CachedThumbnail, MAX_CACHE_ENTRIES,
     MAX_PERSIST_QUEUE, MAX_QUEUED_THUMBNAILS, MAX_THUMBNAIL_WORKERS, METADATA_WAITERS,
     MetadataWaiter, PENDING_THUMBNAILS, PendingTarget, PendingThumbnail, PersistJob, PersistQueue,
-    SETTLE_VIEWS, SettledPark, THUMBNAIL_QUEUE, ThumbnailCache, ThumbnailKey, ThumbnailKind,
-    ThumbnailQueue, ViewSettle, cancel_thumbnail, finish_thumbnail_targets,
-    fire_settled_thumbnails, note_metadata, retry_deferred_thumbnail, schedule_or_defer,
-    take_pending_targets, thumbnail_kind,
+    SETTLE_VIEWS, SettledPark, THUMBNAIL_CACHE, THUMBNAIL_QUEUE, ThumbnailCache, ThumbnailKey,
+    ThumbnailKind, ThumbnailQueue, ViewSettle, cancel_thumbnail, clear_thumbnail_runtime,
+    finish_thumbnail_targets, fire_settled_thumbnails, has_pending_thumbnail,
+    hold_thumbnail_workers, note_metadata, refresh_all_customized_icons, retry_deferred_thumbnail,
+    schedule_or_defer, set_thumbnail_or_icon, show_customized_icon, take_pending_targets,
+    thumbnail_kind,
 };
+use crate::{
+    model::{EntryKind, FileEntry, Location, MetadataValue},
+    test_support::gtk_test,
+};
+use gtk::prelude::*;
 
 fn key(index: usize) -> ThumbnailKey {
     ThumbnailKey {
@@ -58,16 +67,39 @@ fn recognizes_mainstream_image_and_video_formats() {
     );
 }
 
+fn sample_texture() -> gdk::Texture {
+    // 1×1 transparent PNG.
+    const PNG: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1F,
+        0x15, 0xC4, 0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9C, 0x63, 0x00,
+        0x01, 0x00, 0x00, 0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, 0x00, 0x00, 0x00, 0x49,
+        0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+    gdk::Texture::from_bytes(&glib::Bytes::from_static(PNG)).expect("1x1 PNG texture")
+}
+
 #[test]
 fn thumbnail_cache_evicts_the_least_recent_entry() {
     let mut cache = ThumbnailCache::default();
     for index in 0..=MAX_CACHE_ENTRIES {
-        cache.insert(key(index), glib::Bytes::from_static(&[1]));
+        cache.insert(key(index), sample_texture());
     }
 
     let oldest = key(0);
     assert!(cache.get(&oldest).is_none());
     assert_eq!(cache.entries.len(), MAX_CACHE_ENTRIES);
+}
+
+#[test]
+fn thumbnail_cache_hits_reuse_the_decoded_texture() {
+    let texture = sample_texture();
+    let mut cache = ThumbnailCache::default();
+    cache.insert(key(0), texture.clone());
+    match cache.get(&key(0)) {
+        Some(CacheHit::Ready(hit)) => assert_eq!(hit, texture),
+        _ => panic!("expected a cached texture"),
+    }
 }
 
 #[test]
@@ -457,4 +489,179 @@ fn persist_queue_bounds_and_drains_oldest_first() {
         drained += 1;
     }
     assert_eq!(drained, MAX_PERSIST_QUEUE);
+}
+
+fn sample_entry(path: &Path) -> FileEntry {
+    FileEntry {
+        location: Location::local(path),
+        thumbnail_path: None,
+        native_name: path
+            .file_name()
+            .map_or_else(Default::default, |name| name.to_os_string()),
+        display_name: path
+            .file_name()
+            .map(|name| name.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        kind: EntryKind::File,
+        size: MetadataValue::Known(1),
+        modified_unix_seconds: MetadataValue::Known(1),
+        mode: MetadataValue::Known(0o100644),
+        is_hidden: false,
+    }
+}
+
+fn drain_main_loop() {
+    let context = glib::MainContext::default();
+    for _ in 0..64 {
+        if !context.iteration(false) {
+            break;
+        }
+    }
+}
+
+fn displayed_texture(image: &super::ThumbnailSlot) -> Option<gdk::Texture> {
+    image.texture()
+}
+
+fn bind_thumbnail(image: &super::ThumbnailSlot, entry: &FileEntry) {
+    set_thumbnail_or_icon(image, entry, crate::assets::icons::PICTURES, 64, 64);
+}
+
+#[test]
+fn cache_hit_applies_texture_on_idle_not_during_bind() {
+    gtk_test(
+        "ui::thumbnail::tests::cache_hit_applies_texture_on_idle_not_during_bind",
+        || {
+            super::super::theme::ThemeManager::shared();
+            let path = PathBuf::from("/fixture/cache-hit.png");
+            let texture = sample_texture();
+            THUMBNAIL_CACHE.with(|cache| {
+                cache.borrow_mut().insert(
+                    ThumbnailKey {
+                        path: path.clone(),
+                        modified: Some(1),
+                        file_size: Some(1),
+                        thumbnail_size: 64,
+                    },
+                    texture.clone(),
+                );
+            });
+            let image = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&image, &sample_entry(&path));
+            assert_eq!(displayed_texture(&image).as_ref(), Some(&texture));
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn theme_refresh_does_not_reenter_tracked_icon_refcell() {
+    gtk_test(
+        "ui::thumbnail::tests::theme_refresh_does_not_reenter_tracked_icon_refcell",
+        || {
+            super::super::theme::ThemeManager::shared();
+            let list = gtk::ListBox::new();
+            let scroll = gtk::ScrolledWindow::builder()
+                .child(&list)
+                .min_content_height(80)
+                .build();
+            let window = gtk::Window::builder().child(&scroll).build();
+            window.present();
+            for name in ["a.txt", "b.txt"] {
+                let slot = super::ThumbnailSlot::new(19);
+                show_customized_icon(&slot, Path::new(name), crate::assets::icons::DOCUMENTS, 19);
+                let row = gtk::ListBoxRow::new();
+                row.set_child(Some(&slot));
+                list.append(&row);
+            }
+            drain_main_loop();
+            refresh_all_customized_icons();
+            drain_main_loop();
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn texture_swap_does_not_queue_resize() {
+    gtk_test(
+        "ui::thumbnail::tests::texture_swap_does_not_queue_resize",
+        || {
+            let image = super::ThumbnailSlot::new(64);
+            let before = image.measure(gtk::Orientation::Horizontal, -1);
+            let resizes = image.resize_calls();
+            image.set_texture(&sample_texture());
+            image.set_fallback(crate::assets::icons::PICTURES, Some(&sample_texture()));
+            assert_eq!(image.resize_calls(), resizes);
+            assert_eq!(image.measure(gtk::Orientation::Horizontal, -1), before);
+        },
+    );
+}
+
+#[test]
+fn cache_miss_enqueues_sandbox_job_without_settle_timeout() {
+    gtk_test(
+        "ui::thumbnail::tests::cache_miss_enqueues_sandbox_job_without_settle_timeout",
+        || {
+            super::super::theme::ThemeManager::shared();
+            hold_thumbnail_workers();
+            let path = PathBuf::from("/fixture/cache-miss.png");
+            let image = super::ThumbnailSlot::new(64);
+            bind_thumbnail(&image, &sample_entry(&path));
+            drain_main_loop();
+            assert!(has_pending_thumbnail(&path));
+            SETTLE_VIEWS.with(|views| {
+                let views = views.borrow();
+                if let Some(settle) = views.get(&0) {
+                    assert!(settle.timer.is_none());
+                    assert!(settle.pending.is_empty());
+                }
+            });
+            clear_thumbnail_runtime();
+        },
+    );
+}
+
+#[test]
+fn stale_request_id_does_not_apply_completed_texture() {
+    gtk_test(
+        "ui::thumbnail::tests::stale_request_id_does_not_apply_completed_texture",
+        || {
+            super::super::theme::ThemeManager::shared();
+            let path = PathBuf::from("/fixture/stale.png");
+            let image = super::ThumbnailSlot::new(64);
+            let image_id = image.as_ptr() as usize;
+            let weak = glib::WeakRef::new();
+            weak.set(Some(&image));
+            ACTIVE_REQUESTS.with(|requests| {
+                requests.borrow_mut().insert(
+                    image_id,
+                    ActiveRequest {
+                        id: 2,
+                        image: weak.clone(),
+                        deferred: None,
+                    },
+                );
+            });
+            let texture = sample_texture();
+            finish_thumbnail_targets(
+                vec![PendingTarget {
+                    image_id,
+                    request: 1,
+                    image: weak,
+                }],
+                Some(&texture),
+                &path,
+            );
+            drain_main_loop();
+            assert_ne!(displayed_texture(&image).as_ref(), Some(&texture));
+            ACTIVE_REQUESTS.with(|requests| {
+                assert_eq!(
+                    requests.borrow().get(&image_id).map(|active| active.id),
+                    Some(2)
+                );
+            });
+            clear_thumbnail_runtime();
+        },
+    );
 }

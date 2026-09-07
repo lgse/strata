@@ -74,6 +74,9 @@ fn main() -> gtk::glib::ExitCode {
     if let Err(error) = tracing_subscriber::fmt::try_init() {
         eprintln!("Unable to initialize logging: {error}");
     }
+    if let Err(error) = portal_setup::refresh_stale_portal() {
+        tracing::warn!(%error, "could not refresh the stale Strata portal");
+    }
 
     // Timed from here so `window presented` covers the whole launch, the way
     // the field harness measures mapped from process start.

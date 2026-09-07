@@ -4,6 +4,7 @@ mod context_menu;
 mod keyboard;
 mod layout;
 mod selection;
+mod sizing;
 
 use std::{ffi::OsString, path::Path};
 
@@ -16,6 +17,7 @@ fn entry(name: &str, kind: EntryKind) -> FileEntry {
     FileEntry {
         location: Location::local(Path::new("/tmp").join(name)),
         native_name: OsString::from(name),
+        thumbnail_path: None,
         display_name: name.to_owned(),
         kind,
         is_hidden: false,
@@ -220,4 +222,169 @@ fn folder_accept_shortcut_requires_control_and_enter() {
         gtk::gdk::Key::Return,
         control | alt
     ));
+}
+
+#[test]
+fn chooser_dimensions_leave_margins_on_scaled_screens() {
+    let (width, height) = chooser_default_dimensions_for_monitor(1152, 720);
+
+    assert_eq!((width, height), (921, 561));
+    assert!(1152 - width >= 120);
+    assert!(720 - height >= 100);
+}
+
+#[test]
+fn chooser_dimensions_have_maximums_on_large_screens() {
+    assert_eq!(
+        chooser_default_dimensions_for_monitor(1920, 1080),
+        (MAX_CHOOSER_WIDTH, MAX_CHOOSER_HEIGHT)
+    );
+    assert_eq!(
+        chooser_default_dimensions_for_monitor(2560, 1440),
+        (MAX_CHOOSER_WIDTH, MAX_CHOOSER_HEIGHT)
+    );
+    assert_eq!(
+        chooser_default_dimensions_for_monitor(i32::MAX, i32::MAX),
+        (MAX_CHOOSER_WIDTH, MAX_CHOOSER_HEIGHT)
+    );
+}
+
+#[test]
+fn chooser_dimensions_adapt_to_compact_screens() {
+    assert_eq!(
+        chooser_default_dimensions_for_monitor(1024, 768),
+        (819, 599)
+    );
+    assert_eq!(chooser_default_dimensions_for_monitor(800, 600), (640, 468));
+    assert_eq!(chooser_default_dimensions_for_monitor(600, 400), (600, 400));
+}
+
+#[test]
+fn chooser_dimensions_fall_back_for_invalid_geometry() {
+    for geometry in [(0, 0), (-10, -20), (1920, 0), (0, 1080)] {
+        assert_eq!(
+            chooser_default_dimensions_for_monitor(geometry.0, geometry.1),
+            (FALLBACK_CHOOSER_WIDTH, FALLBACK_CHOOSER_HEIGHT)
+        );
+    }
+}
+
+#[test]
+fn chooser_dimensions_follow_split_application_geometry() {
+    let monitor = Some((1920, 1080));
+    assert_eq!(
+        chooser_initial_dimensions(monitor, Some((960, 1080))),
+        (768, 680)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(monitor, Some((960, 540))),
+        (768, 460)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(monitor, Some((1920, 1080))),
+        (1000, 680)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(monitor, Some((i32::MAX, i32::MAX))),
+        (1000, 680)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(Some((800, 600)), Some((1920, 1080))),
+        (640, 468)
+    );
+    assert_eq!(
+        chooser_initial_dimensions(None, Some((960, 1080))),
+        (768, 680)
+    );
+}
+
+#[test]
+fn missing_or_invalid_application_geometry_preserves_monitor_fallback() {
+    for parent in [None, Some((0, 600)), Some((800, -1))] {
+        assert_eq!(
+            chooser_initial_dimensions(Some((1920, 1080)), parent),
+            (1000, 680)
+        );
+        assert_eq!(chooser_initial_dimensions(None, parent), (920, 580));
+        assert_eq!(
+            chooser_initial_dimensions(Some((0, 1080)), parent),
+            (920, 580)
+        );
+    }
+}
+
+#[test]
+fn a_long_dropdown_opens_toward_the_roomier_side() {
+    let (position, height) = dropdown_placement(680, 572, 602);
+    assert_eq!(
+        position,
+        gtk::PositionType::Top,
+        "a button near the bottom must open upward"
+    );
+    assert_eq!(height, 572 - DROPDOWN_EDGE_MARGIN);
+
+    let (position, height) = dropdown_placement(680, 78, 108);
+    assert_eq!(
+        position,
+        gtk::PositionType::Bottom,
+        "a button near the top must open downward"
+    );
+    assert_eq!(height, 680 - 108 - DROPDOWN_EDGE_MARGIN);
+
+    for (available, top, bottom) in [(0, 0, 0), (-10, -10, -5), (120, 60, 90)] {
+        let (_, height) = dropdown_placement(available, top, bottom);
+        assert_eq!(
+            height, MIN_DROPDOWN_CONTENT_HEIGHT,
+            "a cramped or invalid window still shows a usable list"
+        );
+    }
+}
+
+#[test]
+fn a_long_dropdown_scrolls_instead_of_overflowing_the_window() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::a_long_dropdown_scrolls_instead_of_overflowing_the_window",
+        || {
+            let owned = (0..80)
+                .map(|index| format!("Filter {index}"))
+                .collect::<Vec<_>>();
+            let labels = owned.iter().map(String::as_str).collect::<Vec<_>>();
+            let dropdown = ChooserDropdown::new(&labels, 0);
+            let window = gtk::Window::builder()
+                .default_width(900)
+                .default_height(561)
+                .child(&dropdown.button)
+                .build();
+            window.present();
+            dropdown.button.popup();
+
+            let scroll = dropdown
+                .popover
+                .child()
+                .and_downcast::<gtk::ScrolledWindow>()
+                .expect("the dropdown list is scrollable");
+            assert_eq!(scroll.vscrollbar_policy(), gtk::PolicyType::Automatic);
+            assert!(scroll.propagates_natural_height());
+            let bounded = scroll.max_content_height();
+            assert!(
+                bounded <= window.height().max(MIN_DROPDOWN_CONTENT_HEIGHT),
+                "the list must stay within the window: {bounded}"
+            );
+            assert!(
+                bounded >= MIN_DROPDOWN_CONTENT_HEIGHT,
+                "the list must be bounded to a usable height, got {bounded}"
+            );
+            let natural = scroll
+                .child()
+                .expect("dropdown list")
+                .preferred_size()
+                .1
+                .height();
+            assert!(
+                natural > bounded,
+                "the fixture must exceed the bound so it actually scrolls: {natural} vs {bounded}"
+            );
+            window.destroy();
+        },
+    );
 }

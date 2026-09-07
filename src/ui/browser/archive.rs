@@ -14,7 +14,9 @@ use crate::ui::controls::{
     ModalTone, form_entry, form_label, form_password_entry, message_dialog_description,
     message_dialog_layout, modal_layout, segmented_control,
 };
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
+use crate::ui::modal::{
+    ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
+};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::Cell;
@@ -185,12 +187,17 @@ impl ViewState {
     }
 
     pub(super) fn show_compress_dialog(self: &Rc<Self>, entries: Vec<FileEntry>) {
-        if entries.is_empty() {
+        if entries.is_empty()
+            || entries
+                .iter()
+                .any(|entry| entry.location.native_path().is_none())
+        {
             return;
         }
-        let destination = self
-            .browser
-            .active_location()
+        let destination = entries[0]
+            .location
+            .parent()
+            .or_else(|| self.browser.active_location())
             .unwrap_or_else(|| Location::local(glib::home_dir()));
 
         let default_name = if entries.len() == 1 {
@@ -343,10 +350,14 @@ impl ViewState {
                 );
             }
         });
+        submit_on_enter(&body, &confirm);
         name_entry.grab_focus();
     }
 
     pub(super) fn extract_entry(self: &Rc<Self>, entry: FileEntry) {
+        if entry.location.native_path().is_none() {
+            return;
+        }
         let Some(parent) = entry.location.parent() else {
             show_error_dialog(
                 &self.overlay,
@@ -364,6 +375,9 @@ impl ViewState {
     }
 
     pub(super) fn show_extract_to_dialog(self: &Rc<Self>, entry: FileEntry) {
+        if entry.location.native_path().is_none() {
+            return;
+        }
         let base = entry
             .location
             .parent()
@@ -459,6 +473,7 @@ impl ViewState {
             dismiss_for_confirm();
         });
 
+        submit_on_enter(&body, &confirm);
         field.grab_focus();
     }
 
@@ -490,6 +505,7 @@ impl ViewState {
             dismiss_for_confirm();
             browser.extract(entry.clone(), destination.clone(), password);
         });
+        submit_on_enter(&body, &confirm);
         password_entry.grab_focus();
     }
 }

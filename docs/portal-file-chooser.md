@@ -2,9 +2,45 @@
 
 Strata can serve the XDG Desktop Portal FileChooser interface for portal-aware applications. Native file pickers and applications that do not use the portal are unchanged.
 
-The chooser is deliberately limited to local files and folders. It uses the main app's sidebar, Columns/Icons/List views, type grouping, filters, metadata, previews, and themed controls. Overwrite confirmation uses the same in-window modal as the app.
+The chooser is deliberately limited to local files and folders. It uses the main app's sidebar, Columns/Icons/List views, List type grouping, filters, metadata, previews, and themed controls. Overwrite confirmation uses the same in-window modal as the app.
 
 Wayland applications can provide an exported parent handle. X11 parent handles are not attached; these requests appear as standalone windows.
+
+### Initial size in split-window layouts
+
+On Hyprland, requests with a Wayland parent and an application ID can use the
+requesting application's window size as an initial sizing hint. Strata queries
+Hyprland's local IPC socket before loading the requested directory, and uses the
+hint only when exactly one window's current or initial class matches the app ID
+(case-insensitively). The query is read-only, limited to 100 ms and a 1 MiB reply,
+and does not depend on which window has keyboard focus. Monitor dimensions still
+cap the result. Moving the chooser between monitors no longer reapplies its
+initial default size over a manual resize.
+
+The exported Wayland handle does not expose parent geometry. Other compositors,
+X11 requests, missing or differently named app IDs, multiple matching windows,
+and unavailable IPC retain monitor-based sizing. This is a best-effort improvement,
+not guaranteed parent-relative sizing on every desktop. GTK's compositor bounds
+and the controls' minimum usable size continue to apply.
+
+### Initial placement on Hyprland
+
+On native Wayland under Hyprland, floating choosers open at the center of their
+monitor by default, rather than at the center of the calling application. The portal process identifies its
+windows as `io.github.lgse.Strata.FileChooser`, separate from the normal file
+manager's `io.github.lgse.Strata` identity.
+
+Before showing a chooser, Strata registers the named runtime rule
+`strata-file-chooser-center` through Hyprland's IPC socket. The rule matches only
+the chooser identity and sets `center`; it does not force floating, resize the
+window, or remove its parent/modal relationship. No Hyprland configuration files
+are edited. The same rule is refreshed before each chooser, so it also works
+after a compositor configuration reload without accumulating rules.
+
+Both Lua and legacy configurations with named window-rule support are handled.
+The entire placement request has a 100 ms deadline; unsupported rules, unavailable
+IPC, and other compositors retain compositor-default placement. Centering does
+not require identifying the calling application's size.
 
 ## Opt in through the app or installer
 
@@ -156,7 +192,7 @@ From the repository root, use `make run-chooser-dev` to rebuild and open an isol
 
 ```bash
 make run-chooser-dev
-make run-chooser-dev CHOOSER_CASE=multiple CHOOSER_ARGS="--view icons --group-by-type"
+make run-chooser-dev CHOOSER_CASE=multiple CHOOSER_ARGS="--view list --group-by-type"
 make run-chooser-dev CHOOSER_ARGS="--choices --theme classic-light"
 ```
 
@@ -167,20 +203,20 @@ You can also build Strata and run the dedicated client directly:
 ```bash
 cargo build
 python3 scripts/portal-test.py single --binary target/debug/strata
-python3 scripts/portal-test.py multiple --binary target/debug/strata --view icons --group-by-type
+python3 scripts/portal-test.py multiple --binary target/debug/strata --view list --group-by-type
 python3 scripts/portal-test.py directory --binary target/debug/strata --view columns
 python3 scripts/portal-test.py filters --binary target/debug/strata
 python3 scripts/portal-test.py save --binary target/debug/strata --choices
 python3 scripts/portal-test.py savefiles --binary target/debug/strata --choices
 ```
 
-`--binary` starts a private session bus and backend with disposable settings, cache, and sample files. It never installs portal metadata, changes your preferences, or restarts your desktop services. Closing the chooser prints the actual D-Bus response (`0` for success, `1` for cancellation) and cleans up the private backend. The client returns destinations but does not write to them.
+`--binary` starts a private session bus and backend with disposable settings, cache, and sample files. It disables accessibility integration for that isolated backend so it cannot replace the desktop's accessibility bus. It never installs portal metadata, changes your preferences, or restarts your desktop services. Closing the chooser prints the actual D-Bus response (`0` for success, `1` for cancellation) and cleans up the private backend. The client returns destinations but does not write to them.
 
 Use `--folder /absolute/path` for your own files, `--theme classic-light` for a light theme, or `--cancel-after 1` to exercise `Request.Close`. Omit `--binary` to call an already-running Strata backend on your session bus. This client tests the backend directly, not portal frontend routing.
 
 Check these interactions:
 
-- Single-selection requests remain single-selection with Ctrl/Shift clicks, including grouped Icons sections. Multiple-selection requests return all selected files.
+- Single-selection requests remain single-selection with Ctrl/Shift clicks, including grouped List sections. Multiple-selection requests return all selected files.
 - Ctrl+L edits the location; Ctrl+F opens the browser filter; F5 refreshes; Ctrl+H or Ctrl+. toggles hidden files. Remote locations show an error.
 - Space opens/closes a preview. Escape dismisses a filter/menu/preview before cancelling the chooser.
 - Ctrl+Shift+N or the **New Folder** icon beside Refresh in the browser toolbar creates a directory inline. In folder requests, Ctrl+Enter accepts the current folder when the file view has focus.

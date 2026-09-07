@@ -1,5 +1,18 @@
 # Agent Instructions
 
+## Agent skills
+
+Restore project skills from the committed `skills-lock.json` after cloning:
+
+```bash
+npx skills experimental_install
+```
+
+That installs them into `.agents/skills/`, which is gitignored. Keep
+`skills-lock.json` in version control. Add or update skills with `npx skills add`
+and `npx skills update`, then commit the lockfile. Do not vendor skill files
+under `.agents/`.
+
 ## Git workflow
 
 - Never commit or push directly to `main`. Work from a GitHub issue and submit changes through a pull request.
@@ -10,6 +23,18 @@
 ## Pre-push checks
 
 - Do not push until the full local CI suite passes: `cargo fmt --all --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all-targets --all-features`.
+- Agents must never run GTK tests against the user's active Wayland or X11 display. Run the suite under a private Xvfb display with accessibility bridging disabled:
+
+  ```bash
+  xvfb-run -a env -u WAYLAND_DISPLAY GDK_BACKEND=x11 \
+    GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
+    cargo test --all-targets --all-features
+  ```
+
+  If `xvfb-run` is unavailable, use a non-root portable extraction of the distribution's Xvfb package or another isolated display server. Do not fall back to the active desktop display, and do not use a backend that causes GTK tests to skip because initialization failed.
+- Run `./scripts/e2e.sh` before pushing. It uses the same pinned container as CI;
+  use `STRATA_CONTAINER_ENGINE=podman` for rootless Podman. Native-host E2E results
+  do not substitute for this gate. See `docs/e2e-testing.md`.
 - Fix failures before pushing rather than relying on CI for feedback. Keep tests portable across supported environments and avoid assertions that depend on platform-specific URI normalization or other incidental system behavior.
 
 ## Issues and pull requests
@@ -26,6 +51,13 @@
 - Do not place test implementations inline with production code.
 - Put module unit tests in an adjacent test module, such as `src/app/navigation/tests.rs`, and declare it from the implementation with `#[cfg(test)] mod tests;`.
 - Use the top-level `tests/` directory for integration tests that exercise the crate through its public API.
+
+## Saved preferences
+
+- Follow `docs/preferences.md` when adding or changing application-wide settings.
+- Use `ThemeManager::bind_preference` for immediate initialization and live updates, or read the manager at action dispatch. Settings pages must only edit preferences, never initialize browser behavior.
+- Use shared control bindings rather than window-local copies or one-off broadcasts. Preserve documented chooser and window-local exceptions.
+- Extend the exhaustive saved-preferences fixture and behavioral coverage for startup before Settings opens, changes across two windows, and relevant view rebuilds. Serialization-only tests are not sufficient.
 
 ## Comments
 

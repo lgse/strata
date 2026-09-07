@@ -16,8 +16,8 @@ use crate::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord, OperationEvent,
         OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRequest, RequestId,
-        RestoreRequest, RestoreSource, TransferConflict, UndoMoveItem, UndoMoveRequest,
-        validate_basename, validate_uri_credentials,
+        RestoreRequest, RestoreSource, TransferConflict, UndoCopyRequest, UndoMoveItem,
+        UndoMoveRequest, validate_basename, validate_uri_credentials,
     },
 };
 
@@ -199,6 +199,10 @@ pub enum BrowserEvent {
         select_name: String,
     },
     TransferCompleted,
+    TransferReveal {
+        destination: Location,
+        locations: Vec<Location>,
+    },
 }
 
 /// Events dispatch by reference: payloads move once into authoritative state,
@@ -209,28 +213,42 @@ type PreferencesObserver = Rc<dyn Fn(ViewPreferences)>;
 
 const MAX_INCREMENTAL_OPERATION_UPDATES: usize = 64;
 
-/// The latest reversible operation. Trash entries restore from Trash; moved
-/// entries transfer back to the location they started from.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum UndoEntry {
     Trash(Vec<Location>),
     Move(Vec<MoveRecord>),
+    Copy(Vec<Location>),
 }
 
 impl UndoEntry {
     fn is_empty(&self) -> bool {
         match self {
-            Self::Trash(locations) => locations.is_empty(),
+            Self::Trash(locations) | Self::Copy(locations) => locations.is_empty(),
             Self::Move(records) => records.is_empty(),
         }
     }
 }
 
+struct PendingUndo {
+    generation: u64,
+    entry: UndoEntry,
+    claimed: bool,
+}
+
+const MAX_UNDO_HISTORY: usize = 32;
+
 #[derive(Default)]
 struct UndoState {
-    generation: u64,
-    entry: Option<UndoEntry>,
-    claimed: bool,
+    next_generation: u64,
+    history: Vec<PendingUndo>,
+}
+
+impl UndoState {
+    fn find_mut(&mut self, generation: u64) -> Option<&mut PendingUndo> {
+        self.history
+            .iter_mut()
+            .find(|pending| pending.generation == generation)
+    }
 }
 
 // Undo follows the latest operation across every Strata window on the GTK main thread.
@@ -238,41 +256,42 @@ thread_local! {
     static PENDING_UNDO: RefCell<UndoState> = RefCell::new(UndoState::default());
 }
 
-fn replace_pending_undo(entry: UndoEntry) {
+fn push_pending_undo(entry: UndoEntry) {
     if entry.is_empty() {
         return;
     }
     PENDING_UNDO.with(|pending| {
-        let generation = pending.borrow().generation.saturating_add(1);
-        pending.replace(UndoState {
+        let mut pending = pending.borrow_mut();
+        let generation = pending.next_generation.saturating_add(1);
+        pending.next_generation = generation;
+        pending.history.push(PendingUndo {
             generation,
-            entry: Some(entry),
+            entry,
             claimed: false,
         });
+        if pending.history.len() > MAX_UNDO_HISTORY {
+            pending.history.remove(0);
+        }
     });
 }
 
 fn peek_pending_undo() -> Option<(u64, UndoEntry)> {
     PENDING_UNDO.with(|pending| {
         let pending = pending.borrow();
-        if pending.claimed {
-            return None;
-        }
-        Some((pending.generation, pending.entry.clone()?))
+        let latest = pending.history.last()?;
+        (!latest.claimed).then(|| (latest.generation, latest.entry.clone()))
     })
 }
 
-/// Claims the pending entry so a second undo cannot run the same work twice.
-/// `expected` pins the claim to the entry a caller already inspected.
 fn claim_pending_undo(expected: Option<u64>) -> Option<(u64, UndoEntry)> {
     PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();
-        if pending.claimed || expected.is_some_and(|generation| generation != pending.generation) {
+        let latest = pending.history.last_mut()?;
+        if latest.claimed || expected.is_some_and(|generation| generation != latest.generation) {
             return None;
         }
-        let entry = pending.entry.clone()?;
-        pending.claimed = true;
-        Some((pending.generation, entry))
+        latest.claimed = true;
+        Some((latest.generation, latest.entry.clone()))
     })
 }
 
@@ -281,17 +300,16 @@ fn claim_pending_undo(expected: Option<u64>) -> Option<(u64, UndoEntry)> {
 fn mark_undo_item_completed(generation: u64, location: &Location) {
     PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();
-        if pending.generation != generation {
+        let Some(pending) = pending.find_mut(generation) else {
             return;
-        }
-        match pending.entry.as_mut() {
-            Some(UndoEntry::Trash(locations)) => {
+        };
+        match &mut pending.entry {
+            UndoEntry::Trash(locations) | UndoEntry::Copy(locations) => {
                 locations.retain(|candidate| candidate != location);
             }
-            Some(UndoEntry::Move(records)) => {
+            UndoEntry::Move(records) => {
                 records.retain(|record| &record.current != location);
             }
-            None => {}
         }
     });
 }
@@ -299,11 +317,14 @@ fn mark_undo_item_completed(generation: u64, location: &Location) {
 fn finish_undo(generation: u64, completed: bool) {
     PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();
-        if pending.generation == generation {
-            if completed {
-                pending.entry = None;
-            }
-            pending.claimed = false;
+        let Some(entry) = pending.find_mut(generation) else {
+            return;
+        };
+        entry.claimed = false;
+        if completed || entry.entry.is_empty() {
+            pending
+                .history
+                .retain(|pending| pending.generation != generation);
         }
     });
 }
@@ -311,10 +332,21 @@ fn finish_undo(generation: u64, completed: bool) {
 fn retain_pending_move_items(generation: u64, items: &[UndoMoveItem]) {
     PENDING_UNDO.with(|pending| {
         let mut pending = pending.borrow_mut();
-        if pending.generation == generation
-            && let Some(UndoEntry::Move(records)) = pending.entry.as_mut()
+        if let Some(pending) = pending.find_mut(generation)
+            && let UndoEntry::Move(records) = &mut pending.entry
         {
             records.retain(|record| items.iter().any(|item| &item.record == record));
+        }
+    });
+}
+
+fn retain_pending_copy_items(generation: u64, locations: &[Location]) {
+    PENDING_UNDO.with(|pending| {
+        let mut pending = pending.borrow_mut();
+        if let Some(pending) = pending.find_mut(generation)
+            && let UndoEntry::Copy(created) = &mut pending.entry
+        {
+            created.retain(|location| locations.contains(location));
         }
     });
 }
@@ -336,7 +368,13 @@ fn move_records(sources: &[Location], destination: &Location) -> Vec<MoveRecord>
 
 #[cfg(test)]
 fn pending_undo_entry() -> Option<UndoEntry> {
-    PENDING_UNDO.with(|pending| pending.borrow().entry.clone())
+    PENDING_UNDO.with(|pending| {
+        pending
+            .borrow()
+            .history
+            .last()
+            .map(|pending| pending.entry.clone())
+    })
 }
 
 /// Settles scrolling before asking for viewport metadata, so a fling never
@@ -486,7 +524,9 @@ pub struct Browser {
     deletion_operation: Cell<bool>,
     deletion_permanent: Cell<bool>,
     restoration_operation: Cell<bool>,
+    archive_operation: Cell<bool>,
     transfer_destination: RefCell<Option<Location>>,
+    created_locations: RefCell<Vec<Location>>,
     undo_claim: RefCell<Option<(u64, UndoEntry)>>,
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
@@ -531,7 +571,9 @@ impl Browser {
             deletion_operation: Cell::new(false),
             deletion_permanent: Cell::new(false),
             restoration_operation: Cell::new(false),
+            archive_operation: Cell::new(false),
             transfer_destination: RefCell::new(None),
+            created_locations: RefCell::new(Vec::new()),
             undo_claim: RefCell::new(None),
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
@@ -650,6 +692,16 @@ impl Browser {
 
     pub fn select_first_on_load(&self, depth: usize) {
         self.state.borrow_mut().select_first_on_load(depth);
+    }
+
+    pub fn selection_anchor_position(&self, depth: usize) -> Option<usize> {
+        self.state.borrow().selection_anchor_position(depth)
+    }
+
+    pub fn set_selection_anchor(&self, depth: usize, position: usize) {
+        self.state
+            .borrow_mut()
+            .set_selection_anchor(depth, position);
     }
 
     pub fn focus_active(&self) {
@@ -839,8 +891,22 @@ impl Browser {
         closed
     }
 
+    pub fn clear_active_selection(&self) -> bool {
+        let cleared = self.state.borrow_mut().clear_active_selection();
+        if let Some((depth, focused)) = cleared {
+            self.emit(BrowserEvent::SelectionSetChanged {
+                depth,
+                positions: Vec::new(),
+                focused,
+                take_focus: false,
+            });
+            return true;
+        }
+        false
+    }
+
     pub fn escape(self: &Rc<Self>) {
-        if self.close_peek() {
+        if self.close_peek() || self.clear_active_selection() {
             return;
         }
 
@@ -904,6 +970,23 @@ impl Browser {
         self.apply_column_preferences(depth, move |preferences| {
             preferences.folders_first = folders_first;
         });
+    }
+
+    pub fn apply_default_preferences(&self, preferences: ViewPreferences) {
+        let previous = self.preferences.replace(preferences);
+        self.state.borrow_mut().set_default_preferences(preferences);
+        if previous.show_hidden != preferences.show_hidden {
+            self.close_peek();
+            self.state
+                .borrow_mut()
+                .set_show_hidden(preferences.show_hidden);
+            self.emit(BrowserEvent::HiddenToggled {
+                show_hidden: preferences.show_hidden,
+            });
+        }
+        if previous != preferences {
+            self.notify_preferences_observers();
+        }
     }
 
     pub fn toggle_hidden(self: &Rc<Self>) {
@@ -1107,6 +1190,14 @@ impl Browser {
         self.state.borrow().selected_entries()
     }
 
+    pub fn selection_is_load_cursor(&self) -> bool {
+        self.state.borrow().selection_is_load_cursor()
+    }
+
+    pub fn commit_selection(&self) {
+        self.state.borrow_mut().commit_selection();
+    }
+
     pub fn deletion_entries(&self) -> Vec<FileEntry> {
         let state = self.state.borrow();
         let selected = state.selected_entries();
@@ -1146,6 +1237,7 @@ impl Browser {
         }
         let positions: Vec<_> = (0..count).collect();
         let focused = count - 1;
+        self.commit_selection();
         if self
             .state
             .borrow_mut()
@@ -1340,7 +1432,17 @@ impl Browser {
         }
         match peek_pending_undo()? {
             (generation, UndoEntry::Move(records)) => Some((generation, records)),
-            (_, UndoEntry::Trash(_)) => None,
+            (_, UndoEntry::Trash(_) | UndoEntry::Copy(_)) => None,
+        }
+    }
+
+    pub fn pending_undo_copy(&self) -> Option<(u64, Vec<Location>)> {
+        if self.current_operation.get().is_some() {
+            return None;
+        }
+        match peek_pending_undo()? {
+            (generation, UndoEntry::Copy(locations)) => Some((generation, locations)),
+            (_, UndoEntry::Trash(_) | UndoEntry::Move(_)) => None,
         }
     }
 
@@ -1432,6 +1534,44 @@ impl Browser {
         true
     }
 
+    /// Copy undo uses Trash so it never permanently deletes data.
+    pub fn undo_copy(self: &Rc<Self>, generation: u64, locations: Vec<Location>) -> bool {
+        if locations.is_empty() || self.current_operation.get().is_some() {
+            return false;
+        }
+        let Some((generation, entry)) = claim_pending_undo(Some(generation)) else {
+            return false;
+        };
+        let UndoEntry::Copy(_) = entry else {
+            finish_undo(generation, false);
+            return false;
+        };
+        let Some(provider) = self.operation_provider.borrow().clone() else {
+            finish_undo(generation, false);
+            return false;
+        };
+        retain_pending_copy_items(generation, &locations);
+        let total = locations.len();
+        let refresh_locations = locations
+            .iter()
+            .filter_map(|location| location.parent())
+            .collect();
+        let request_id = self.begin_operation();
+        self.deletion_operation.set(true);
+        self.undo_claim
+            .replace(Some((generation, UndoEntry::Copy(locations.clone()))));
+        self.emit(BrowserEvent::DeletionStarted { total });
+        let load = provider.undo_copy(
+            UndoCopyRequest {
+                id: request_id,
+                locations,
+            },
+            self.operation_callback(request_id, false, refresh_locations),
+        );
+        self.operation_load.replace(Some(load));
+        true
+    }
+
     pub fn compress(
         self: &Rc<Self>,
         entries: Vec<FileEntry>,
@@ -1451,6 +1591,7 @@ impl Browser {
             return;
         };
         let request_id = self.begin_operation();
+        self.archive_operation.set(true);
         let load = provider.compress(
             CompressRequest {
                 id: request_id,
@@ -1479,6 +1620,7 @@ impl Browser {
             return;
         };
         let request_id = self.begin_operation();
+        self.archive_operation.set(true);
         let load = provider.extract(
             ExtractRequest {
                 id: request_id,
@@ -1492,19 +1634,6 @@ impl Browser {
     }
 
     pub fn cancel_file_operation(&self) {
-        if self.transfer_operation.get().is_none()
-            && !self.deletion_operation.get()
-            && !self.restoration_operation.get()
-        {
-            let had_operation = self.current_operation.replace(None).is_some();
-            self.operation_load.borrow_mut().take();
-            if had_operation {
-                self.emit(BrowserEvent::ArchiveCompleted {
-                    select_name: String::new(),
-                });
-            }
-            return;
-        }
         self.operation_load.borrow_mut().take();
     }
 
@@ -1515,9 +1644,11 @@ impl Browser {
         }
         self.transfer_operation.set(None);
         self.transfer_destination.replace(None);
+        self.created_locations.borrow_mut().clear();
         self.deletion_operation.set(false);
         self.deletion_permanent.set(false);
         self.restoration_operation.set(false);
+        self.archive_operation.set(false);
         let request_id = OperationRequestId(self.next_request.get());
         self.next_request
             .set(self.next_request.get().saturating_add(1));
@@ -1531,6 +1662,8 @@ impl Browser {
         rename: bool,
         refresh_locations: HashSet<Location>,
     ) -> Rc<dyn Fn(OperationEvent)> {
+        let navigation_generation = self.validation_generation.get();
+        let origin = self.active_location();
         let weak = Rc::downgrade(self);
         Rc::new(move |event| {
             let Some(browser) = weak.upgrade() else {
@@ -1580,9 +1713,16 @@ impl Browser {
                 completed_items,
                 transferred_bytes,
                 total_bytes,
+                created_location,
                 ..
             } = &event
             {
+                if let Some(location) = created_location {
+                    browser
+                        .created_locations
+                        .borrow_mut()
+                        .push(location.clone());
+                }
                 browser.emit(BrowserEvent::TransferProgress {
                     completed_items: *completed_items,
                     transferred_bytes: *transferred_bytes,
@@ -1636,6 +1776,7 @@ impl Browser {
             let deleting = browser.deletion_operation.replace(false);
             let deletion_permanent = browser.deletion_permanent.replace(false);
             let restoring = browser.restoration_operation.replace(false);
+            let archiving = browser.archive_operation.replace(false);
             let destination = browser.transfer_destination.replace(None);
             let undoing = browser.undo_claim.take();
             if let Some((generation, entry)) = &undoing {
@@ -1651,10 +1792,17 @@ impl Browser {
                             ..
                         },
                     ) => completed_locations.clone(),
-                    (UndoEntry::Move(_), OperationEvent::Cancelled { result, .. }) => {
-                        result.completed.clone()
-                    }
-                    (UndoEntry::Move(_), _) => Vec::new(),
+                    (
+                        UndoEntry::Copy(_),
+                        OperationEvent::CompletedWithErrors {
+                            deleted_locations, ..
+                        },
+                    ) => deleted_locations.clone(),
+                    (
+                        UndoEntry::Move(_) | UndoEntry::Copy(_),
+                        OperationEvent::Cancelled { result, .. },
+                    ) => result.completed.clone(),
+                    (UndoEntry::Move(_) | UndoEntry::Copy(_), _) => Vec::new(),
                 };
                 for location in &completed {
                     mark_undo_item_completed(*generation, location);
@@ -1666,10 +1814,11 @@ impl Browser {
                             matches!(&event, OperationEvent::Restored { .. })
                         }
                         UndoEntry::Move(_) => matches!(&event, OperationEvent::Pasted { .. }),
+                        UndoEntry::Copy(_) => matches!(&event, OperationEvent::Deleted { .. }),
                     },
                 );
             }
-            if deleting && !deletion_permanent {
+            if deleting && !deletion_permanent && undoing.is_none() {
                 let locations = match &event {
                     OperationEvent::Deleted { locations, .. } => locations.clone(),
                     OperationEvent::CompletedWithErrors {
@@ -1678,29 +1827,41 @@ impl Browser {
                     OperationEvent::Cancelled { result, .. } => result.completed.clone(),
                     _ => Vec::new(),
                 };
-                replace_pending_undo(UndoEntry::Trash(locations));
+                push_pending_undo(UndoEntry::Trash(locations));
             }
-            if moving.is_some() {
+            let mut reveal_locations = Vec::new();
+            if let Some(moving) = moving {
+                let created_locations = browser.created_locations.take();
+                if let OperationEvent::Pasted { locations, .. } = &event {
+                    reveal_locations = if moving {
+                        locations
+                            .iter()
+                            .filter_map(|source| source.transfer_target(destination.as_ref()?))
+                            .collect()
+                    } else {
+                        created_locations.clone()
+                    };
+                }
                 let moved_locations = match &event {
-                    OperationEvent::Pasted { locations, .. } if moving == Some(true) => {
-                        locations.clone()
-                    }
-                    OperationEvent::Cancelled { result, .. } if moving == Some(true) => {
-                        result.completed.clone()
-                    }
+                    OperationEvent::Pasted { locations, .. } if moving => locations.clone(),
+                    OperationEvent::Cancelled { result, .. } if moving => result.completed.clone(),
                     OperationEvent::TransferFailed {
                         completed_locations,
                         ..
-                    } if moving == Some(true) => completed_locations.clone(),
+                    } if moving => completed_locations.clone(),
                     _ => Vec::new(),
                 };
-                if undoing.is_none()
-                    && let Some(destination) = destination.as_ref()
-                {
-                    replace_pending_undo(UndoEntry::Move(move_records(
-                        &moved_locations,
-                        destination,
-                    )));
+                if undoing.is_none() {
+                    if moving {
+                        if let Some(destination) = destination.as_ref() {
+                            push_pending_undo(UndoEntry::Move(move_records(
+                                &moved_locations,
+                                destination,
+                            )));
+                        }
+                    } else {
+                        push_pending_undo(UndoEntry::Copy(created_locations));
+                    }
                 }
                 browser.emit(BrowserEvent::TransferFinished {
                     moved_locations: if undoing.is_some() {
@@ -1763,6 +1924,11 @@ impl Browser {
                 OperationEvent::Cancelled { result, .. } => {
                     let mut affected_locations = refresh_locations.clone();
                     affected_locations.extend(result.affected_locations);
+                    if archiving {
+                        browser.emit(BrowserEvent::ArchiveCompleted {
+                            select_name: String::new(),
+                        });
+                    }
                     browser.emit(BrowserEvent::OperationCancelled {
                         completed: result.completed.len(),
                         failed: result.failed.len(),
@@ -1789,12 +1955,23 @@ impl Browser {
                     });
                 }
                 OperationEvent::Pasted { .. } => {
-                    browser.emit(BrowserEvent::TransferCompleted);
                     for location in &refresh_locations {
                         if location.native_path().is_none() {
                             browser.refresh_columns_at(location);
                         }
                     }
+                    if undoing.is_none()
+                        && browser.validation_generation.get() == navigation_generation
+                        && browser.active_location() == origin
+                        && !reveal_locations.is_empty()
+                        && let Some(destination) = destination
+                    {
+                        browser.emit(BrowserEvent::TransferReveal {
+                            destination,
+                            locations: reveal_locations,
+                        });
+                    }
+                    browser.emit(BrowserEvent::TransferCompleted);
                 }
                 OperationEvent::Created { .. } => {
                     for location in &refresh_locations {
@@ -1890,8 +2067,8 @@ impl Browser {
     }
 
     /// Moves the focus by `page` visible entries, for `Page Up` and `Page Down`.
-    pub fn page_selection(&self, direction: i32, page: usize) {
-        let moved = self.state.borrow_mut().page_selection(direction, page);
+    pub fn page_along(&self, direction: i32, page: usize, order: Option<&[usize]>) {
+        let moved = self.state.borrow_mut().page_along(direction, page, order);
         if let Some((depth, position)) = moved {
             self.emit(BrowserEvent::FocusChanged {
                 depth,
@@ -2693,8 +2870,10 @@ impl Browser {
         self: &Rc<Self>,
         depth: usize,
         generation: u64,
-        preferences: ViewPreferences,
+        mut preferences: ViewPreferences,
     ) {
+        // Metadata can arrive after another window changes the application-wide visibility.
+        preferences.show_hidden = self.preferences.get().show_hidden;
         self.sort_awaiting_fill.borrow_mut().take();
         self.sort_loads.borrow_mut().remove(&depth);
         let outcome = {
@@ -3125,10 +3304,19 @@ impl Browser {
     }
 
     pub fn select_entries_by_name(self: &Rc<Self>, names: &[String]) {
+        let requested: HashSet<&str> = names.iter().map(String::as_str).collect();
+        self.select_entries_matching(|entry| requested.contains(entry.display_name.as_str()));
+    }
+
+    pub fn select_entries_by_location(self: &Rc<Self>, locations: &[Location]) {
+        let requested: HashSet<_> = locations.iter().collect();
+        self.select_entries_matching(|entry| requested.contains(&entry.location));
+    }
+
+    fn select_entries_matching(self: &Rc<Self>, matches: impl Fn(&FileEntry) -> bool) {
         let Some(depth) = self.active_depth() else {
             return;
         };
-        let requested: HashSet<&str> = names.iter().map(String::as_str).collect();
         let state = self.state.borrow();
         let Some(column) = state.columns.get(depth) else {
             return;
@@ -3137,16 +3325,13 @@ impl Browser {
             .entries
             .iter()
             .enumerate()
-            .filter_map(|(position, entry)| {
-                requested
-                    .contains(entry.display_name.as_str())
-                    .then_some(position)
-            })
+            .filter_map(|(position, entry)| matches(entry).then_some(position))
             .collect();
         drop(state);
-        let Some(&focused) = positions.last() else {
+        let Some(&focused) = positions.first() else {
             return;
         };
+        self.commit_selection();
         self.set_selection(depth, &positions, Some(focused));
         self.emit(BrowserEvent::SelectionSetChanged {
             depth,
@@ -3224,10 +3409,14 @@ impl Browser {
                     take_focus: false,
                 });
             }
-            self.emit(BrowserEvent::FocusChanged {
-                depth,
-                position: selected,
-            });
+            // Monitor updates to an ancestor must not reclaim focus after a
+            // transfer has revealed its destination in a child column.
+            if self.active_depth() == Some(depth) {
+                self.emit(BrowserEvent::FocusChanged {
+                    depth,
+                    position: selected,
+                });
+            }
         }
     }
 

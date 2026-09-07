@@ -196,7 +196,7 @@ pub(super) fn show_customize_modal(
     preview.set_halign(gtk::Align::Center);
     let preview_icon = gtk::Image::new();
     preview_icon.add_css_class("customize-preview-icon");
-    crate::ui::thumbnail::show_customized_icon(&preview_icon, &path, fallback_icon, 56);
+    crate::ui::thumbnail::show_customized_icon_image(&preview_icon, &path, fallback_icon, 56);
     let preview_name = gtk::Label::new(Some(&item_name));
     preview_name.add_css_class("customize-preview-name");
     preview_name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
@@ -229,7 +229,7 @@ pub(super) fn show_customize_modal(
         item_label,
         move |selected_color| {
             crate::ui::theme::ThemeManager::shared().set_folder_color(&color_path, selected_color);
-            crate::ui::thumbnail::show_customized_icon(
+            crate::ui::thumbnail::show_customized_icon_image(
                 &color_preview,
                 &color_path,
                 fallback_icon,
@@ -311,7 +311,12 @@ pub(super) fn show_customize_modal(
             emoji_for_icon.set_label("Choose Emoji…");
             crate::ui::theme::ThemeManager::shared()
                 .set_custom_icon(&icon_path, Some(selected_name));
-            crate::ui::thumbnail::show_customized_icon(&preview, &icon_path, fallback_icon, 56);
+            crate::ui::thumbnail::show_customized_icon_image(
+                &preview,
+                &icon_path,
+                fallback_icon,
+                56,
+            );
             clear_for_icon.set_sensitive(true);
         });
     }
@@ -328,7 +333,12 @@ pub(super) fn show_customize_modal(
         }
         emoji_label.set_label(&format!("Emoji  {emoji}"));
         crate::ui::theme::ThemeManager::shared().set_custom_icon(&emoji_path, Some(&preference));
-        crate::ui::thumbnail::show_customized_icon(&emoji_preview, &emoji_path, fallback_icon, 56);
+        crate::ui::thumbnail::show_customized_icon_image(
+            &emoji_preview,
+            &emoji_path,
+            fallback_icon,
+            56,
+        );
         clear_for_emoji.set_sensitive(true);
         chooser.popdown();
     });
@@ -349,7 +359,12 @@ pub(super) fn show_customize_modal(
             icon_button.remove_css_class("active");
         }
         emoji_for_clear.set_label("Choose Emoji…");
-        crate::ui::thumbnail::show_customized_icon(&clear_preview, &clear_path, fallback_icon, 56);
+        crate::ui::thumbnail::show_customized_icon_image(
+            &clear_preview,
+            &clear_path,
+            fallback_icon,
+            56,
+        );
         button.set_sensitive(false);
     });
 

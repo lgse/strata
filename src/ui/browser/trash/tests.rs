@@ -29,6 +29,7 @@ fn retryable_delete_entries_keeps_only_the_named_locations() {
     let entry = |name: &str| FileEntry {
         location: Location::local(format!("/fixture/{name}")),
         native_name: name.into(),
+        thumbnail_path: None,
         display_name: name.into(),
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Unknown,
@@ -50,6 +51,7 @@ fn retryable_delete_entries_is_empty_when_nothing_matches() {
     let entry = FileEntry {
         location: Location::local("/fixture/photo"),
         native_name: "photo".into(),
+        thumbnail_path: None,
         display_name: "photo".into(),
         kind: crate::model::EntryKind::File,
         size: crate::model::MetadataValue::Unknown,

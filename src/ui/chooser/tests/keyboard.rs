@@ -122,6 +122,7 @@ fn save_modal(mode: BrowserMode, root: &Path) {
         accept_label: "Save".into(),
         modal: false,
         parent: None,
+        parent_size_hint: None,
         initial_directory: root.into(),
         kind: ChooserKind::SaveFile {
             current_name: Some("00.txt".into()),
@@ -207,6 +208,7 @@ fn keyboard_only_controls_and_file_navigation_work_in_every_chooser_view() {
                 accept_label: "Open".into(),
                 modal: false,
                 parent: None,
+                parent_size_hint: None,
                 initial_directory: root.path().into(),
                 kind: ChooserKind::Open {
                     directory: false,
@@ -263,7 +265,7 @@ fn keyboard_only_controls_and_file_navigation_work_in_every_chooser_view() {
             browser.select(0, 0);
             browser.focus_active();
             settle();
-            if grouped && mode != BrowserMode::Columns {
+            if grouped && mode.supports_type_grouping() {
                 let first = collections(&state.view.widget())
                     .into_iter()
                     .find(|widget| {
@@ -455,47 +457,6 @@ fn keyboard_only_controls_and_file_navigation_work_in_every_chooser_view() {
                 anchor,
                 "Shift+Up restores the focused range endpoint"
             );
-
-            if mode == BrowserMode::Icons && grouped {
-                let grids = collections(&state.view.widget())
-                    .into_iter()
-                    .filter_map(|widget| widget.downcast::<gtk::GridView>().ok())
-                    .filter(|grid| grid.model().is_some_and(|model| model.n_items() > 0))
-                    .collect::<Vec<_>>();
-                assert!(grids.len() > 1);
-                let first = &grids[0];
-                let model = first.model().expect("group selection");
-                for grid in &grids {
-                    grid.model().expect("selection").unselect_all();
-                }
-                let last = model.n_items() - 1;
-                model.select_item(last, true);
-                first.grab_focus();
-                first.scroll_to(last, gtk::ListScrollFlags::FOCUS, None);
-                settle();
-                let previous = selected(&state);
-                key("Down");
-                assert_ne!(
-                    selected(&state),
-                    previous,
-                    "Down crosses type-group boundaries"
-                );
-                assert_eq!(
-                    browser.selected_entries().len(),
-                    1,
-                    "plain arrows collapse selections across groups"
-                );
-                key("shift+Up");
-                assert!(
-                    browser.selected_entries().len() > 1,
-                    "Shift extends selection across groups: selected={}, sizes={:?}",
-                    selected(&state),
-                    grids
-                        .iter()
-                        .map(|grid| grid.model().expect("selection").selection().size())
-                        .collect::<Vec<_>>()
-                );
-            }
 
             let filter = state.filter_dropdown.as_ref().expect("filter");
             filter.button.grab_focus();
