@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod multi_root;
+mod performance;
 
 use std::{
     fs,
@@ -86,6 +87,77 @@ fn recursive_results_stay_in_the_root_and_rank_nearby_duplicates_first() {
 }
 
 #[test]
+fn completed_index_returns_only_the_best_bounded_matches() {
+    let root = unique_fixture_root("bounded-best-matches");
+    fs::create_dir_all(&root).expect("create fixture");
+    fs::write(root.join("needle"), b"best match").expect("write exact match");
+    for position in 0..120 {
+        fs::write(root.join(format!("needle-{position:03}")), b"candidate")
+            .expect("write candidate");
+    }
+
+    let (search, events) = index_tree(root.clone(), false);
+    let SearchEvent::Results { indexing, .. } = events
+        .recv_timeout(Duration::from_secs(2))
+        .expect("index completion");
+    assert!(!indexing);
+    search.query("needle");
+    let event = wait_for_results(&events);
+
+    drop(search);
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let Some(SearchEvent::Results { items, .. }) = event else {
+        panic!("the worker should publish bounded results");
+    };
+    assert_eq!(items.len(), 100);
+    assert_eq!(items.first().map(|item| item.name.as_str()), Some("needle"));
+}
+
+#[test]
+fn searches_of_the_same_tree_share_an_index_but_keep_independent_queries() {
+    let root = unique_fixture_root("shared-index");
+    fs::create_dir_all(&root).expect("create fixture");
+    fs::write(root.join("alpha-only"), b"alpha").expect("write alpha fixture");
+    fs::write(root.join("beta-only"), b"beta").expect("write beta fixture");
+
+    let (alpha_search, alpha_events) = index_tree(root.clone(), false);
+    let (beta_search, beta_events) = index_tree(root.clone(), false);
+    assert!(std::sync::Arc::ptr_eq(
+        &alpha_search.index,
+        &beta_search.index
+    ));
+    alpha_search.query("alpha-only");
+    beta_search.query("beta-only");
+    let alpha_event = wait_for_results(&alpha_events);
+    let beta_event = wait_for_results(&beta_events);
+
+    drop((alpha_search, beta_search));
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let Some(SearchEvent::Results {
+        items: alpha_items, ..
+    }) = alpha_event
+    else {
+        panic!("the alpha session should publish results");
+    };
+    let Some(SearchEvent::Results {
+        items: beta_items, ..
+    }) = beta_event
+    else {
+        panic!("the beta session should publish results");
+    };
+    assert_eq!(
+        alpha_items.first().map(|item| item.name.as_str()),
+        Some("alpha-only")
+    );
+    assert_eq!(
+        beta_items.first().map(|item| item.name.as_str()),
+        Some("beta-only")
+    );
+}
+
+#[test]
 fn searches_relative_path_fragments_and_rejects_non_matches() {
     let candidate = "/home/me/themes/azure/colors.toml";
     assert!(score_path(candidate, "themes/azure", Path::new("/home/me")).is_some());
@@ -149,6 +221,40 @@ fn hidden_files_are_indexed_only_when_show_hidden_is_enabled() {
         items.iter().any(|item| item.name == ".dotfile-needle"),
         "a visible hidden file should match once hidden files are shown"
     );
+}
+
+#[test]
+fn generated_tool_content_is_pruned_without_hiding_tool_configuration() {
+    let root = unique_fixture_root("tool-content");
+    fs::create_dir_all(root.join(".cargo/registry")).expect("create Cargo registry fixture");
+    fs::create_dir_all(root.join(".m2/repository")).expect("create Maven repository fixture");
+    fs::write(root.join(".cargo/config-needle.toml"), b"[build]")
+        .expect("write Cargo configuration fixture");
+    fs::write(root.join(".m2/settings-needle.xml"), b"<settings />")
+        .expect("write Maven configuration fixture");
+    fs::write(root.join(".cargo/registry/registry-needle"), b"generated")
+        .expect("write generated Cargo fixture");
+    fs::write(root.join(".m2/repository/artifact-needle"), b"generated")
+        .expect("write generated Maven fixture");
+
+    let (search, events) = index_tree(root.clone(), true);
+    search.query("needle");
+    let event = wait_for_results(&events);
+
+    drop(search);
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let Some(SearchEvent::Results { items, .. }) = event else {
+        panic!("the worker should publish tool configuration results");
+    };
+    let names = items
+        .iter()
+        .map(|item| item.name.as_str())
+        .collect::<Vec<_>>();
+    assert!(names.contains(&"config-needle.toml"));
+    assert!(names.contains(&"settings-needle.xml"));
+    assert!(!names.contains(&"registry-needle"));
+    assert!(!names.contains(&"artifact-needle"));
 }
 
 #[test]

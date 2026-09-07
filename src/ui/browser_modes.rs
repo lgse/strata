@@ -17,9 +17,10 @@ use gtk::{gio, glib, prelude::*};
 use crate::{
     app::{Browser, BrowserColumnSnapshot, BrowserEvent},
     model::{FileEntry, Location, MetadataValue, SortDirection, SortKey},
+    ui::browser::paths::is_trash_location,
 };
 
-const LIST_COLUMN_WIDTHS: [i32; 5] = [160, 110, 90, 120, 150];
+const LIST_COLUMN_WIDTHS: [i32; 5] = [160, 160, 90, 120, 150];
 const LIST_COLUMN_MIN_WIDTHS: [i32; 5] = [160, 80, 70, 80, 110];
 const DEFAULT_ICONS_THUMBNAIL_SIZE: i32 = 64;
 const SCROLL_SETTLE_DELAY: std::time::Duration = std::time::Duration::from_millis(80);
@@ -3148,7 +3149,7 @@ fn build_list_pane(
                 position,
             )
         {
-            browser.activate(depth, position);
+            browser.activate_in_place(depth, position);
         }
     });
     let section = PaneSection {
@@ -3545,7 +3546,7 @@ fn install_mode_directory_drop_target(
     destination: Location,
     transfer_handler: TransferHandlerSlot,
 ) {
-    if transfer_handler.borrow().is_none() {
+    if transfer_handler.borrow().is_none() || is_trash_location(&destination) {
         return;
     }
     widget.add_css_class("file-drop-zone");
@@ -3681,7 +3682,7 @@ fn install_list_drag_drop(
         position.is_some()
             && browser
                 .entry_at(depth, position.unwrap_or_default())
-                .is_some_and(|entry| entry.is_directory())
+                .is_some_and(|entry| entry.is_directory() && !is_trash_location(&entry.location))
             && offered
                 .formats()
                 .contains_type(gtk::gdk::FileList::static_type())
@@ -3890,6 +3891,15 @@ fn connect_selection(
     source_index: SourceIndexMap,
     multiple_selection: Rc<Cell<bool>>,
 ) {
+    let commit = gtk::GestureClick::new();
+    commit.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let browser_for_commit = Rc::downgrade(browser);
+    commit.connect_pressed(move |_, _, _, _| {
+        if let Some(browser) = browser_for_commit.upgrade() {
+            browser.commit_selection();
+        }
+    });
+    section.view.add_controller(commit);
     let syncing = section.syncing.clone();
     let view_model = section.view_model.clone();
     let browser = Rc::downgrade(browser);

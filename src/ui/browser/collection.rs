@@ -10,7 +10,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
-pub(crate) const FILTER_DEBOUNCE_DELAY: Duration = Duration::from_millis(200);
+pub(crate) const FILTER_DEBOUNCE_DELAY: Duration = Duration::from_millis(40);
 
 /// `scroll_to` before the view has a real height leaves ListView/GridView with a
 /// one-row widget pool, so scrolling after a mode switch stays janky.

@@ -879,6 +879,92 @@ fn another_browser_can_undo_the_latest_trash_operation() {
 }
 
 #[test]
+fn successful_transfers_reveal_actual_destination_names_only_without_navigation() {
+    for moving in [false, true] {
+        for navigate_away in [false, true] {
+            let browser = Browser::new(Rc::new(FakeFileSource));
+            let root = Location::local("/fixture");
+            browser.navigate(root.clone());
+            let events = Rc::new(RefCell::new(Vec::new()));
+            let observed = events.clone();
+            browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+            let request_id = browser.begin_operation();
+            browser.transfer_operation.set(Some(moving));
+            let destination = Location::local("/fixture/archive");
+            browser
+                .transfer_destination
+                .replace(Some(destination.clone()));
+            if !moving {
+                browser
+                    .created_locations
+                    .replace(vec![Location::local("/fixture/archive/report (copy).txt")]);
+            }
+            let emit = browser.operation_callback(request_id, false, HashSet::new());
+            if navigate_away {
+                browser.navigate(Location::local("/elsewhere"));
+                browser.navigate(root);
+            }
+            emit(OperationEvent::Pasted {
+                request_id,
+                locations: vec![Location::local("/fixture/report.txt")],
+            });
+            let events = events.borrow();
+            let reveals: Vec<_> = events
+                .iter()
+                .filter_map(|event| match event {
+                    BrowserEvent::TransferReveal {
+                        destination,
+                        locations,
+                    } => Some((destination, locations)),
+                    _ => None,
+                })
+                .collect();
+            if navigate_away {
+                assert!(reveals.is_empty());
+            } else {
+                let name = if moving {
+                    "report.txt"
+                } else {
+                    "report (copy).txt"
+                };
+                assert_eq!(
+                    reveals,
+                    vec![(
+                        &destination,
+                        &vec![Location::local(format!("/fixture/archive/{name}"))]
+                    )]
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn failed_transfers_do_not_request_a_reveal() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = browser.begin_operation();
+    browser.transfer_operation.set(Some(false));
+    browser
+        .transfer_destination
+        .replace(Some(Location::local("/fixture/archive")));
+    let emit = browser.operation_callback(request_id, false, HashSet::new());
+    emit(OperationEvent::TransferFailed {
+        request_id,
+        completed_locations: Vec::new(),
+        message: "Permission denied".to_owned(),
+    });
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::TransferReveal { .. }))
+    );
+}
+
+#[test]
 fn a_completed_move_records_where_each_item_landed() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     browser.set_operation_provider(Rc::new(ImmediateOperationProvider));

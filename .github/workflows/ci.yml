@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -16,6 +17,7 @@ jobs:
   quality:
     name: Format, lint, and test
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
 
     steps:
       - name: Check out repository
@@ -46,6 +48,7 @@ jobs:
   e2e:
     name: End-to-end GUI suite
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     # A wedged X server or accessibility bus must not hold a pull request open.
     timeout-minutes: 20
 
@@ -91,6 +94,7 @@ jobs:
   release-scripts:
     name: Release workflow scripts
     runs-on: ubuntu-24.04
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
 
     steps:
       - name: Check out repository
@@ -102,6 +106,7 @@ jobs:
   repository-policy:
     name: Dependency and spelling policy
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
 
     steps:
       - name: Check out repository

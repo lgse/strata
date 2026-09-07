@@ -45,10 +45,19 @@ pub(in crate::ui) fn is_trash_root(location: &Location) -> bool {
     location.uri_value() == Some("trash:///")
 }
 
-pub(super) fn is_trash_location(location: &Location) -> bool {
+pub(in crate::ui) fn is_trash_location(location: &Location) -> bool {
     location
         .uri_value()
         .is_some_and(|uri| uri.starts_with("trash:"))
+}
+
+pub(super) fn is_trash_item(location: &Location) -> bool {
+    is_trash_location(location) && location.parent().as_ref().is_some_and(is_trash_root)
+}
+
+/// GVfs can move/delete whole trashed items, but cannot modify their children.
+pub(super) fn can_remove_location(location: &Location) -> bool {
+    !is_trash_location(location) || is_trash_item(location)
 }
 
 pub(super) fn compact_display_path(location: &Location) -> String {

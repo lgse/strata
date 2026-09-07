@@ -128,6 +128,24 @@ fn printing_is_offered_for_text_code_images_and_pdfs() {
             crate::model::EntryKind::File
         )));
     }
+
+    for (name, supported) in [
+        ("notes.txt", true),
+        ("main.rs", true),
+        ("photo.png", false),
+        ("guide.pdf", false),
+    ] {
+        let trashed = FileEntry {
+            location: Location::uri(format!("trash:///{name}")),
+            ..entry(name, crate::model::EntryKind::File)
+        };
+        assert_eq!(entry_supports_printing(&trashed), supported, "{name}");
+        assert_eq!(
+            crate::ui::preview::entry_supports_quick_preview(&trashed),
+            supported,
+            "{name}"
+        );
+    }
     assert!(!entry_supports_printing(&entry(
         "archive.zip",
         crate::model::EntryKind::File,

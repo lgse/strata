@@ -8,7 +8,9 @@ use crate::ui::browser::destination::{
     folder_input_path, resolve_destination_path, setup_transfer_search,
 };
 use crate::ui::browser::entry::item_count_label;
-use crate::ui::browser::paths::{compact_display_path, compact_native_path};
+use crate::ui::browser::paths::{
+    can_remove_location, compact_display_path, compact_native_path, is_trash_location,
+};
 use crate::ui::controls::{
     ModalTone, form_check_button, form_entry, form_label, message_dialog_description,
     message_dialog_layout, modal_layout,
@@ -45,9 +47,10 @@ fn transfer_has_collision(source: &Location, destination: &Location) -> bool {
 
 pub(super) fn duplicate_transfer(entries: &[FileEntry]) -> Option<(Location, Vec<Location>)> {
     let destination = entries.first()?.location.parent()?;
-    if !entries
-        .iter()
-        .all(|entry| entry.location.parent().as_ref() == Some(&destination))
+    if is_trash_location(&destination)
+        || !entries
+            .iter()
+            .all(|entry| entry.location.parent().as_ref() == Some(&destination))
     {
         return None;
     }
@@ -62,6 +65,11 @@ impl ViewState {
         sources: Vec<Location>,
         move_sources: bool,
     ) {
+        if is_trash_location(&destination)
+            || (move_sources && sources.iter().any(|source| !can_remove_location(source)))
+        {
+            return;
+        }
         let mut accepted = Vec::new();
         let mut collisions = Vec::new();
         for source in sources {
@@ -312,7 +320,12 @@ impl ViewState {
         entries: Vec<FileEntry>,
         move_sources: bool,
     ) {
-        if entries.is_empty() {
+        if entries.is_empty()
+            || (move_sources
+                && entries
+                    .iter()
+                    .any(|entry| !can_remove_location(&entry.location)))
+        {
             return;
         }
         let Some(ModalHost {

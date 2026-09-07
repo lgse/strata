@@ -1755,6 +1755,7 @@ fn write_zip(path: &Path, entries: &[(&str, &[u8])]) -> Result<(), Box<dyn Error
 
 fn append_raw_tar_entry<W: Write>(
     builder: &mut tar::Builder<W>,
+    entry_type: tar::EntryType,
     name: &str,
     contents: &[u8],
 ) -> Result<(), Box<dyn Error>> {
@@ -1762,19 +1763,19 @@ fn append_raw_tar_entry<W: Write>(
     header.as_old_mut().name[..name.len()].copy_from_slice(name.as_bytes());
     header.set_mode(0o644);
     header.set_size(contents.len() as u64);
-    header.set_entry_type(tar::EntryType::Regular);
+    header.set_entry_type(entry_type);
     header.set_cksum();
     builder.append(&header, contents)?;
     Ok(())
 }
 
 fn write_tar(path: &Path, name: &str, contents: &[u8], gzip: bool) -> Result<(), Box<dyn Error>> {
-    write_tar_entries(path, &[(name, contents)], gzip)
+    write_tar_entries(path, &[(tar::EntryType::Regular, name, contents)], gzip)
 }
 
 fn write_tar_entries(
     path: &Path,
-    entries: &[(&str, &[u8])],
+    entries: &[(tar::EntryType, &str, &[u8])],
     gzip: bool,
 ) -> Result<(), Box<dyn Error>> {
     let file = fs::File::create(path)?;
@@ -1783,14 +1784,14 @@ fn write_tar_entries(
             file,
             flate2::Compression::default(),
         ));
-        for (name, contents) in entries {
-            append_raw_tar_entry(&mut builder, name, contents)?;
+        for (entry_type, name, contents) in entries {
+            append_raw_tar_entry(&mut builder, *entry_type, name, contents)?;
         }
         builder.into_inner()?.finish()?;
     } else {
         let mut builder = tar::Builder::new(file);
-        for (name, contents) in entries {
-            append_raw_tar_entry(&mut builder, name, contents)?;
+        for (entry_type, name, contents) in entries {
+            append_raw_tar_entry(&mut builder, *entry_type, name, contents)?;
         }
         builder.finish()?;
     }
@@ -1938,10 +1939,117 @@ fn extract_zip(path: &Path, destination: &Path) -> Result<Option<String>, String
 }
 
 #[test]
+fn tar_extraction_skips_root_directories_and_preserves_contents() -> Result<(), Box<dyn Error>> {
+    for gzip in [false, true] {
+        for root_entry in [None, Some("."), Some("./")] {
+            let root = tempfile::tempdir()?;
+            let destination = root.path().join("destination");
+            fs::create_dir_all(destination.join("folder"))?;
+            fs::write(destination.join("folder/keep.txt"), b"keep")?;
+            let archive = root.path().join("content.tar");
+            let mut entries = Vec::new();
+            if let Some(name) = root_entry {
+                entries.push((tar::EntryType::Directory, name, b"".as_slice()));
+            }
+            entries.extend([
+                (tar::EntryType::Directory, "./folder/", b"".as_slice()),
+                (tar::EntryType::Regular, "./folder/item.txt", b"contents"),
+                (tar::EntryType::Regular, "./empty.txt", b""),
+            ]);
+            write_tar_entries(&archive, &entries, gzip)?;
+            let progress = Arc::new(AtomicUsize::new(0));
+            assert_eq!(
+                completed_extract(extract_tar(
+                    &archive,
+                    &destination,
+                    gzip,
+                    &progress,
+                    &never_cancelled(),
+                )?)?,
+                Some("folder (2)".to_owned()),
+            );
+            assert_eq!(progress.load(Ordering::Relaxed), 3);
+            assert_eq!(
+                fs::read(destination.join("folder (2)/item.txt"))?,
+                b"contents"
+            );
+            assert_eq!(fs::read(destination.join("folder/keep.txt"))?, b"keep");
+            assert_eq!(fs::metadata(destination.join("empty.txt"))?.len(), 0);
+            assert_eq!(fs::read_dir(&destination)?.count(), 3);
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn tar_extraction_root_only_completes_without_a_name_and_respects_cancellation()
+-> Result<(), Box<dyn Error>> {
+    for gzip in [false, true] {
+        let root = tempfile::tempdir()?;
+        let destination = root.path().join("destination");
+        fs::create_dir(&destination)?;
+        let archive = root.path().join("content.tar");
+        write_tar_entries(&archive, &[(tar::EntryType::Directory, "./", b"")], gzip)?;
+        let progress = Arc::new(AtomicUsize::new(0));
+        assert_eq!(
+            completed_extract(extract_tar(
+                &archive,
+                &destination,
+                gzip,
+                &progress,
+                &never_cancelled(),
+            )?)?,
+            None,
+        );
+        assert!(matches!(
+            extract_tar(&archive, &destination, gzip, &progress, &always_cancelled())?,
+            ArchiveOutcome::Cancelled { completed, failed, not_attempted }
+                if completed.is_empty() && failed.is_empty() && not_attempted.is_empty()
+        ));
+        assert_eq!(progress.load(Ordering::Relaxed), 0);
+        assert!(fs::read_dir(&destination)?.next().is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn tar_extraction_rejects_empty_paths_and_root_file_entries() -> Result<(), Box<dyn Error>> {
+    for gzip in [false, true] {
+        for (entry_type, name) in [
+            (tar::EntryType::Directory, ""),
+            (tar::EntryType::Directory, "/"),
+            (tar::EntryType::Regular, ""),
+            (tar::EntryType::Regular, "."),
+            (tar::EntryType::Regular, "./"),
+            (tar::EntryType::Regular, "././"),
+        ] {
+            let root = tempfile::tempdir()?;
+            let destination = root.path().join("destination");
+            fs::create_dir(&destination)?;
+            let archive = root.path().join("content.tar");
+            write_tar_entries(&archive, &[(entry_type, name, b"")], gzip)?;
+            let progress = Arc::new(AtomicUsize::new(0));
+            assert!(
+                matches!(
+                    extract_tar(&archive, &destination, gzip, &progress, &never_cancelled()),
+                    Err(ArchiveError::Failed(_))
+                ),
+                "accepted {entry_type:?} {name:?}, gzip={gzip}"
+            );
+            assert_eq!(progress.load(Ordering::Relaxed), 0);
+            assert!(fs::read_dir(&destination)?.next().is_none());
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn archive_paths_must_be_nonempty_confined_relative_paths() -> Result<(), Box<dyn Error>> {
     for path in [
         "",
         ".",
+        "./",
+        "././",
         "../marker",
         "safe/../marker",
         "/tmp/marker",
@@ -2998,7 +3106,10 @@ fn tar_extraction_stops_without_scanning_remaining_entries() -> Result<(), Box<d
     let archive_path = root.path().join("content.tar");
     write_tar_entries(
         &archive_path,
-        &[("first.bin", b"early"), ("second.txt", b"late")],
+        &[
+            (tar::EntryType::Regular, "first.bin", b"early"),
+            (tar::EntryType::Regular, "second.txt", b"late"),
+        ],
         false,
     )?;
 
@@ -3855,3 +3966,5 @@ fn a_move_reports_no_created_destination() -> Result<(), Box<dyn Error>> {
     assert!(created.into_iter().flatten().next().is_none());
     Ok(())
 }
+
+mod trash_capabilities;
