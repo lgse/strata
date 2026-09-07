@@ -3547,6 +3547,64 @@ fn restore_uses_the_trash_entry_target_path_as_the_physical_source() -> Result<(
     Ok(())
 }
 
+#[test]
+fn restore_rename_emulates_noreplace_when_the_filesystem_rejects_the_flag()
+-> Result<(), Box<dyn Error>> {
+    use rustix::fs::RenameFlags;
+    use rustix::io::Errno;
+
+    let fixture = tempfile::tempdir()?;
+    fs::write(fixture.path().join("a.txt"), b"a")?;
+    fs::write(fixture.path().join("taken.txt"), b"taken")?;
+    let parent = super::open_local_parent_directory(fixture.path())?;
+    let attempts = RefCell::new(Vec::new());
+    let rejecting_flags = |target: &str, flags: RenameFlags| {
+        attempts.borrow_mut().push(flags);
+        if flags.contains(RenameFlags::NOREPLACE) {
+            return Err(Errno::INVAL);
+        }
+        rustix::fs::renameat(&parent, "a.txt", &parent, target)
+    };
+
+    let result = super::rename_without_replacing(&parent, OsStr::new("taken.txt"), |flags| {
+        rejecting_flags("taken.txt", flags)
+    });
+    assert_eq!(result, Err(Errno::EXIST));
+    assert_eq!(*attempts.borrow(), vec![RenameFlags::NOREPLACE]);
+    assert_eq!(fs::read(fixture.path().join("taken.txt"))?, b"taken");
+    assert!(fixture.path().join("a.txt").exists());
+
+    attempts.borrow_mut().clear();
+    super::rename_without_replacing(&parent, OsStr::new("b.txt"), |flags| {
+        rejecting_flags("b.txt", flags)
+    })?;
+    assert_eq!(
+        *attempts.borrow(),
+        vec![RenameFlags::NOREPLACE, RenameFlags::empty()]
+    );
+    assert_eq!(fs::read(fixture.path().join("b.txt"))?, b"a");
+    assert!(!fixture.path().join("a.txt").exists());
+    Ok(())
+}
+
+#[test]
+fn restore_rename_keeps_the_kernel_result_when_noreplace_is_supported() -> Result<(), Box<dyn Error>>
+{
+    use rustix::fs::RenameFlags;
+    use rustix::io::Errno;
+
+    let fixture = tempfile::tempdir()?;
+    let parent = super::open_local_parent_directory(fixture.path())?;
+    let attempts = RefCell::new(Vec::new());
+    let result = super::rename_without_replacing(&parent, OsStr::new("missing"), |flags| {
+        attempts.borrow_mut().push(flags);
+        Err(Errno::EXIST)
+    });
+    assert_eq!(result, Err(Errno::EXIST));
+    assert_eq!(*attempts.borrow(), vec![RenameFlags::NOREPLACE]);
+    Ok(())
+}
+
 fn distinct_restore_devices() -> Option<(tempfile::TempDir, tempfile::TempDir)> {
     use std::os::unix::fs::MetadataExt;
     let first = tempfile::tempdir().ok()?;

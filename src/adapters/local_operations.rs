@@ -1118,23 +1118,53 @@ fn move_restore_path(
 
         let display_name = source_name.to_string_lossy().into_owned();
         gio::spawn_blocking(move || {
-            rustix::fs::renameat_with(
-                &source_parent,
-                &source_name,
-                &target_parent,
-                &target_name,
-                rustix::fs::RenameFlags::NOREPLACE,
-            )
+            rename_without_replacing(&target_parent, &target_name, |flags| {
+                rustix::fs::renameat_with(
+                    &source_parent,
+                    &source_name,
+                    &target_parent,
+                    &target_name,
+                    flags,
+                )
+            })
         })
         .await
         .map_err(|_| io_error("Restore task panicked"))?
         .map_err(|error| match error {
-            rustix::io::Errno::XDEV | rustix::io::Errno::INVAL => {
+            rustix::io::Errno::XDEV => {
                 io_error(format!("Could not restore {display_name} across volumes"))
             }
+            rustix::io::Errno::EXIST => io_error(format!(
+                "Could not restore {display_name}: something already exists at the destination"
+            )),
             error => io_error(format!("Could not restore {display_name}: {error}")),
         })
     })
+}
+
+/// Filesystems without `renameat2` flag support (NFS, libfuse2 daemons such as
+/// ntfs-3g) refuse `RENAME_NOREPLACE` with `EINVAL`. Emulate it there with an
+/// existence check through the already pinned target parent before a plain
+/// rename; the destination has been validated and confirmed by then.
+fn rename_without_replacing(
+    target_parent: &OwnedFd,
+    target_name: &OsStr,
+    rename: impl Fn(rustix::fs::RenameFlags) -> rustix::io::Result<()>,
+) -> rustix::io::Result<()> {
+    match rename(rustix::fs::RenameFlags::NOREPLACE) {
+        Err(rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS) => {
+            match rustix::fs::statat(
+                target_parent,
+                target_name,
+                rustix::fs::AtFlags::SYMLINK_NOFOLLOW,
+            ) {
+                Ok(_) => Err(rustix::io::Errno::EXIST),
+                Err(rustix::io::Errno::NOENT) => rename(rustix::fs::RenameFlags::empty()),
+                Err(error) => Err(error),
+            }
+        }
+        result => result,
+    }
 }
 
 async fn move_restore(
