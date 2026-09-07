@@ -176,6 +176,9 @@ pub(super) fn column_rows(
             let prepare_row = row.downgrade();
             drag.connect_prepare(move |source, x, y| {
                 let prepare_row = prepare_row.upgrade()?;
+                if !crate::ui::pointer::hits_item_content(prepare_row.upcast_ref(), x, y) {
+                    return None;
+                }
                 prepare_row.remove_css_class("slide-out");
                 let state = weak_state_for_drag.upgrade()?;
                 let dragged_item = dragged_item.upgrade()?;
@@ -344,7 +347,11 @@ pub(super) fn column_rows(
                     selection_for_click.select_item(position, true);
                 }
             }
-            if control || shift {
+            if (control || shift)
+                && gesture
+                    .widget()
+                    .is_some_and(|widget| crate::ui::pointer::hits_item_content(&widget, x, y))
+            {
                 gesture.set_state(gtk::EventSequenceState::Claimed);
             }
             modified_for_click.set(false);
@@ -354,28 +361,35 @@ pub(super) fn column_rows(
                 (weak_state_for_click.upgrade(), source_position)
             {
                 let entry = state.browser.entry_at(depth, source_position);
-                if let Some(entry) = entry.as_ref().filter(|entry| {
-                    should_activate_single_click(
+                if let Some(entry) = entry.as_ref() {
+                    let activate = should_activate_single_click(
                         press_count,
                         entry.is_directory(),
                         state.columns_click_activation.get(),
                         control,
                         shift,
                         preserve_group,
-                    )
-                }) {
-                    pending_activation_for_press.replace(Some(PendingPointerActivation {
-                        position: source_position,
-                        location: entry.location.clone(),
-                        press: (x, y),
-                        moved: false,
-                    }));
-                } else if should_preview_pointer_press(press_count, control, shift, preserve_group)
-                    && entry.as_ref().is_some_and(|entry| {
-                        entry_responds_to_preview_click(entry, state.single_click_previews.get())
-                    })
-                {
-                    state.browser.preview(depth, source_position);
+                    );
+                    let preview = !activate
+                        && should_preview_pointer_press(
+                            press_count,
+                            control,
+                            shift,
+                            preserve_group,
+                        )
+                        && entry_responds_to_preview_click(
+                            entry,
+                            state.single_click_previews.get(),
+                        );
+                    if activate || preview {
+                        pending_activation_for_press.replace(Some(PendingPointerActivation {
+                            position: source_position,
+                            location: entry.location.clone(),
+                            press: (x, y),
+                            moved: false,
+                            preview,
+                        }));
+                    }
                 }
             }
         });
@@ -389,10 +403,19 @@ pub(super) fn column_rows(
             }
         });
         let weak_state_for_release = weak_state.clone();
-        selection_click.connect_released(move |_, _, _, _| {
-            let Some(pending) = pending_activation_for_release.take() else {
+        selection_click.connect_released(move |gesture, _, x, y| {
+            if gesture.current_event_state().intersects(
+                gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
+            ) {
+                gesture.set_state(gtk::EventSequenceState::Claimed);
+            }
+            let Some(mut pending) = pending_activation_for_release.take() else {
                 return;
             };
+            let Some(widget) = gesture.widget() else {
+                return;
+            };
+            pending.update(x, y, widget.settings().gtk_dnd_drag_threshold());
             let Some(state) = weak_state_for_release.upgrade() else {
                 return;
             };
@@ -404,7 +427,13 @@ pub(super) fn column_rows(
                 return;
             }
             // GTK 4.14's DragSource needs the release to reset before the next press.
-            state.browser.activate(depth, pending.position);
+            if pending.preview {
+                if state.single_click_previews.get() {
+                    state.browser.preview(depth, pending.position);
+                }
+            } else {
+                state.browser.activate(depth, pending.position);
+            }
         });
         selection_click.connect_cancel(move |_, _| {
             pending_activation_for_cancel.take();

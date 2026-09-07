@@ -1897,8 +1897,7 @@ fn build_icons_pane(
         pin_ungrouped_icons_columns(&section, width, context.density.get());
     });
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) =
-        collection_with_marquee(&root, scroll, targets.clone(), "icons-card");
+    let (collection, marquee) = collection_with_marquee(&root, scroll, targets.clone());
     content.append(&super::inline_search::wrap(
         &collection,
         &controls.filter_entry,
@@ -2859,8 +2858,7 @@ fn build_list_pane(
     table.set_vexpand(true);
     table.append(&headings);
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) =
-        collection_with_marquee(view.upcast_ref(), scroll, targets.clone(), "list-row");
+    let (collection, marquee) = collection_with_marquee(view.upcast_ref(), scroll, targets.clone());
     table.append(&collection);
     marquee.add_origin_surface(&header);
     marquee.add_origin_surface(&headings);
@@ -3089,7 +3087,6 @@ fn collection_with_marquee(
     view: &gtk::Widget,
     scroll: gtk::ScrolledWindow,
     targets: super::marquee::MarqueeTargets,
-    item_class: &'static str,
 ) -> (gtk::Overlay, super::marquee::Marquee) {
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&scroll));
@@ -3099,32 +3096,22 @@ fn collection_with_marquee(
 
     let marquee = super::marquee::install(super::marquee::MarqueeSetup {
         view: view.clone(),
+        surface: scroll.clone().upcast(),
         scroll,
         overlay: overlay.clone(),
         targets: targets.clone(),
-        is_item: Rc::new(|widget| widget_or_ancestor_has_class(widget, item_class)),
-    });
-
-    let clear = gtk::GestureClick::new();
-    clear.set_button(1);
-    let press = Rc::new(Cell::new((0.0, 0.0)));
-    let press_for_start = press.clone();
-    clear.connect_pressed(move |_, _, x, y| press_for_start.set((x, y)));
-    clear.connect_released(move |gesture, _, x, y| {
-        let (start_x, start_y) = press.get();
-        if (x - start_x).abs() > 3.0 || (y - start_y).abs() > 3.0 {
-            return;
-        }
-        let target = gesture
-            .widget()
-            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT));
-        if !target.is_some_and(|widget| widget_or_ancestor_has_class(&widget, item_class)) {
-            for target in targets.borrow().iter() {
-                target.selection.unselect_all();
+        is_item: Rc::new(super::pointer::hits_item_content),
+        clear_selection: Rc::new(move || {
+            let selections: Vec<_> = targets
+                .borrow()
+                .iter()
+                .map(|target| target.selection.clone())
+                .collect();
+            for selection in selections {
+                selection.unselect_all();
             }
-        }
+        }),
     });
-    view.add_controller(clear);
     (overlay, marquee)
 }
 
@@ -3140,17 +3127,6 @@ fn descendant_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widge
         child = widget.next_sibling();
     }
     None
-}
-
-fn widget_or_ancestor_has_class(widget: &gtk::Widget, class: &str) -> bool {
-    let mut current = Some(widget.clone());
-    while let Some(widget) = current {
-        if widget.has_css_class(class) {
-            return true;
-        }
-        current = widget.parent();
-    }
-    false
 }
 
 fn install_icons_peek(
@@ -3250,6 +3226,9 @@ fn install_list_drag_drop(
     let map_for_drag = position_map.clone();
     let drag_icon = drag_icon.map(gtk::Widget::downgrade);
     drag.connect_prepare(move |source, x, y| {
+        if !super::pointer::hits_item_content(&source.widget()?, x, y) {
+            return None;
+        }
         let browser = browser_for_drag.upgrade()?;
         let dragged_item = dragged_item.upgrade()?;
         let position = dragged_item.position();
@@ -3422,7 +3401,7 @@ fn install_modified_selection_click(
     click.set_button(1);
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
     let item = item.downgrade();
-    click.connect_pressed(move |gesture, _, _, _| {
+    click.connect_pressed(move |gesture, _, x, y| {
         let Some(item) = item.upgrade() else {
             return;
         };
@@ -3457,7 +3436,20 @@ fn install_modified_selection_click(
             anchor_at(&browser, depth, &positions, position);
             return;
         }
-        gesture.set_state(gtk::EventSequenceState::Claimed);
+        if gesture
+            .widget()
+            .is_some_and(|widget| super::pointer::hits_item_content(&widget, x, y))
+        {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+        }
+    });
+    click.connect_released(|gesture, _, _, _| {
+        if gesture
+            .current_event_state()
+            .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
+        {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+        }
     });
     widget.add_controller(click);
 }
@@ -3523,15 +3515,15 @@ fn install_preview_click(
 ) {
     let click = gtk::GestureClick::new();
     click.set_button(1);
-    let item = item.downgrade();
-    click.connect_released(move |gesture, press_count, _, _| {
+    let clicked_item = item.downgrade();
+    super::pointer::connect_click_release(&click, item, move |gesture, press_count| {
         let modifiers = gesture.current_event_state();
         if modifiers
             .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK)
         {
             return;
         }
-        let Some(item) = item.upgrade() else {
+        let Some(item) = clicked_item.upgrade() else {
             return;
         };
         let position = item.position();
