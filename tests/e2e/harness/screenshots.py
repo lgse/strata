@@ -15,8 +15,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import Gtk  # noqa: E402
 
-# GTK minors differ in icon sizing, text metrics, and popup layout even with
-# the same theme and renderer. Each supported rendering profile is reviewed.
+# Native debugging must not compare a different GTK minor against the container's images.
 RENDERING_PROFILE = f"gtk-{Gtk.get_major_version()}.{Gtk.get_minor_version()}"
 BASELINE_DIRECTORY = Path(__file__).resolve().parents[1] / "baselines" / RENDERING_PROFILE
 

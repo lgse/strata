@@ -32,6 +32,9 @@ under `.agents/`.
   ```
 
   If `xvfb-run` is unavailable, use a non-root portable extraction of the distribution's Xvfb package or another isolated display server. Do not fall back to the active desktop display, and do not use a backend that causes GTK tests to skip because initialization failed.
+- Run `./scripts/e2e.sh` before pushing. It uses the same pinned container as CI;
+  use `STRATA_CONTAINER_ENGINE=podman` for rootless Podman. Native-host E2E results
+  do not substitute for this gate. See `docs/e2e-testing.md`.
 - Fix failures before pushing rather than relying on CI for feedback. Keep tests portable across supported environments and avoid assertions that depend on platform-specific URI normalization or other incidental system behavior.
 
 ## Issues and pull requests
