@@ -2,7 +2,9 @@
 
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
-use crate::services::{MoveRecord, PasteItem, TransferConflict, UndoMoveItem};
+use crate::services::{
+    DropCommit, MoveRecord, PasteItem, TransferConflict, TransferKind, UndoMoveItem,
+};
 use crate::ui::browser::ViewState;
 use crate::ui::browser::destination::{
     folder_input_path, resolve_destination_path, setup_transfer_search,
@@ -21,6 +23,9 @@ use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
 use std::path::Path;
 use std::rc::Rc;
+
+#[cfg(test)]
+mod tests;
 
 #[derive(Clone, Copy)]
 enum ConflictChoice {
@@ -59,6 +64,116 @@ pub(super) fn duplicate_transfer(entries: &[FileEntry]) -> Option<(Location, Vec
 }
 
 impl ViewState {
+    pub(super) fn commit_file_drop(
+        self: &Rc<Self>,
+        destination: Location,
+        sources: Vec<Location>,
+        commit: DropCommit,
+    ) {
+        match commit {
+            DropCommit::Copy => self.start_transfer(destination, sources, false),
+            DropCommit::Move => self.start_transfer(destination, sources, true),
+            DropCommit::Ask { default } => {
+                self.confirm_cross_volume_drop(destination, sources, default);
+            }
+            DropCommit::Forbidden => {}
+        }
+    }
+
+    fn confirm_cross_volume_drop(
+        self: &Rc<Self>,
+        destination: Location,
+        sources: Vec<Location>,
+        default: TransferKind,
+    ) {
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
+        else {
+            let move_sources = default == TransferKind::Move;
+            self.start_transfer(destination, sources, move_sources);
+            return;
+        };
+
+        let count = sources.len();
+        let layout = message_dialog_layout(
+            crate::assets::icons::COPY,
+            "Copy or move?",
+            &format!(
+                "{} to {}",
+                item_count_label(count),
+                compact_display_path(&destination)
+            ),
+            "Copy",
+            ModalTone::Accent,
+        );
+        layout.body.append(&message_dialog_description(
+            "The destination is on a different device.",
+        ));
+        let move_button = gtk::Button::with_label("Move");
+        move_button.add_css_class("action-dialog-cancel");
+        layout
+            .actions
+            .insert_child_after(&move_button, Some(&layout.cancel));
+        let content = layout.content;
+        let cancel = layout.cancel;
+        let copy = layout.confirm;
+
+        let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        window_overlay.add_overlay(&layer);
+
+        let dismiss_layer = layer.clone();
+        let dismiss_overlay = window_overlay.clone();
+        let dismiss_root = blurred_root.clone();
+        cancel.connect_clicked(move |_| {
+            dismiss_modal_layer(&dismiss_layer, &dismiss_overlay, dismiss_root.as_ref());
+        });
+        let closed_layer = layer.clone();
+        let closed_overlay = window_overlay.clone();
+        let closed_root = blurred_root.clone();
+        layout.close.connect_clicked(move |_| {
+            dismiss_modal_layer(&closed_layer, &closed_overlay, closed_root.as_ref());
+        });
+
+        for (button, move_sources) in [(move_button.clone(), true), (copy.clone(), false)] {
+            let chosen_layer = layer.clone();
+            let chosen_overlay = window_overlay.clone();
+            let chosen_root = blurred_root.clone();
+            let chosen_state = self.clone();
+            let chosen_destination = destination.clone();
+            let chosen_sources = sources.clone();
+            button.connect_clicked(move |_| {
+                dismiss_modal_layer(&chosen_layer, &chosen_overlay, chosen_root.as_ref());
+                chosen_state.start_transfer(
+                    chosen_destination.clone(),
+                    chosen_sources.clone(),
+                    move_sources,
+                );
+            });
+        }
+
+        let escape = gtk::EventControllerKey::new();
+        escape.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let escaped_layer = layer.clone();
+        let escaped_overlay = window_overlay;
+        let escaped_root = blurred_root;
+        let enter_copy = copy.clone();
+        escape.connect_key_pressed(move |_, key, _, _| {
+            if key == gtk::gdk::Key::Escape {
+                dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
+                glib::Propagation::Stop
+            } else if key == gtk::gdk::Key::Return || key == gtk::gdk::Key::KP_Enter {
+                enter_copy.emit_clicked();
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        layer.add_controller(escape);
+        copy.grab_focus();
+    }
+
     pub(super) fn start_transfer(
         self: &Rc<Self>,
         destination: Location,
@@ -613,6 +728,3 @@ impl ViewState {
         field.grab_focus();
     }
 }
-
-#[cfg(test)]
-mod tests;

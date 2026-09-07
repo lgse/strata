@@ -16,7 +16,7 @@ use sourceview5::prelude::BufferExt as _;
 use crate::{
     model::{FolderColorValue, SortDirection, SortKey, ViewPreferences},
     sandbox::MediaPreviewBackend,
-    services::Channel,
+    services::{Channel, CrossVolumeDropStrategy},
 };
 
 thread_local! {
@@ -155,6 +155,8 @@ struct Preferences {
     preview_volume: f64,
     #[serde(default)]
     auto_refresh_interval: u32,
+    #[serde(default = "default_cross_volume_drop_strategy")]
+    cross_volume_drop_strategy: String,
     #[serde(default = "default_release_channel")]
     release_channel: String,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -195,6 +197,7 @@ impl Default for Preferences {
             preview_muted: false,
             preview_volume: default_full_volume(),
             auto_refresh_interval: 0,
+            cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
             release_channel: default_release_channel(),
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
@@ -311,6 +314,10 @@ fn default_sort_direction() -> String {
 
 fn default_full_volume() -> f64 {
     1.0
+}
+
+fn default_cross_volume_drop_strategy() -> String {
+    CrossVolumeDropStrategy::Ask.as_str().to_owned()
 }
 
 type KeybindingHintsCallback = dyn Fn(&gtk::Widget, bool);
@@ -620,6 +627,18 @@ impl ThemeManager {
 
     pub fn set_auto_refresh_interval(&self, secs: u32) {
         self.preferences.borrow_mut().auto_refresh_interval = secs;
+        self.save_preferences();
+    }
+
+    pub fn cross_volume_drop_strategy(&self) -> CrossVolumeDropStrategy {
+        CrossVolumeDropStrategy::parse(&self.preferences.borrow().cross_volume_drop_strategy)
+    }
+
+    pub fn set_cross_volume_drop_strategy(&self, strategy: CrossVolumeDropStrategy) {
+        if self.cross_volume_drop_strategy() == strategy {
+            return;
+        }
+        self.preferences.borrow_mut().cross_volume_drop_strategy = strategy.as_str().to_owned();
         self.save_preferences();
     }
 

@@ -12,7 +12,7 @@ use super::{
 use crate::{
     model::{SortDirection, SortKey, ViewPreferences},
     sandbox::MediaPreviewBackend,
-    services::Channel,
+    services::{Channel, CrossVolumeDropStrategy},
     ui::browser_modes::BrowserMode,
 };
 
@@ -297,6 +297,58 @@ fn general_preferences_round_trip() {
     assert_eq!(restored.icons_folder_clicks, 2);
     assert_eq!(restored.list_file_clicks, 1);
     assert_eq!(restored.list_folder_clicks, 2);
+}
+
+#[test]
+fn cross_volume_drop_strategy_round_trips() {
+    for strategy in [
+        CrossVolumeDropStrategy::Copy,
+        CrossVolumeDropStrategy::Move,
+        CrossVolumeDropStrategy::Ask,
+    ] {
+        let preferences = Preferences {
+            cross_volume_drop_strategy: strategy.as_str().to_owned(),
+            ..Preferences::default()
+        };
+        let serialized = toml::to_string(&preferences).expect("preferences should serialize");
+        let restored: Preferences =
+            toml::from_str(&serialized).expect("preferences should deserialize");
+        assert_eq!(
+            CrossVolumeDropStrategy::parse(&restored.cross_volume_drop_strategy),
+            strategy
+        );
+        assert!(
+            serialized.contains(&format!(
+                "cross_volume_drop_strategy = \"{}\"",
+                strategy.as_str()
+            )),
+            "{serialized}"
+        );
+    }
+}
+
+#[test]
+fn omitted_cross_volume_drop_strategy_defaults_to_always_ask() {
+    let preferences: Preferences = toml::from_str(
+        r#"
+mode = "theme"
+theme = "azure-glow"
+"#,
+    )
+    .expect("legacy preferences without cross_volume_drop_strategy should remain valid");
+
+    assert_eq!(
+        preferences.cross_volume_drop_strategy,
+        CrossVolumeDropStrategy::Ask.as_str()
+    );
+    assert_eq!(
+        CrossVolumeDropStrategy::parse(&preferences.cross_volume_drop_strategy),
+        CrossVolumeDropStrategy::Ask
+    );
+    assert_eq!(
+        CrossVolumeDropStrategy::parse("not-a-strategy"),
+        CrossVolumeDropStrategy::Ask
+    );
 }
 
 #[test]

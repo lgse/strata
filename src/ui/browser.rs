@@ -46,7 +46,10 @@ mod transfer;
 mod trash;
 
 pub(super) use crate::ui::browser::clipboard::file_drag_content;
-pub(crate) use crate::ui::browser::clipboard::{file_drop_action, locations_from_file_list_value};
+pub(crate) use crate::ui::browser::clipboard::{
+    PreparedFileDrop, file_drop_action, file_drop_commit, locations_from_file_list_value,
+    prepare_file_drop_target,
+};
 pub(crate) use crate::ui::browser::collection::{
     activate_recursive_search_result, debounce_filter_entry, detach_collection_view,
     focus_collection_item_when_allocated, focus_filter_entry, notify_filter_query,
@@ -383,9 +386,9 @@ impl BrowserView {
         if interactive {
             let weak_state = Rc::downgrade(&state);
             state.mode_views.borrow().set_transfer_handler(Rc::new(
-                move |destination, sources, move_sources| {
+                move |destination, sources, commit| {
                     if let Some(state) = weak_state.upgrade() {
-                        state.start_transfer(destination, sources, move_sources);
+                        state.commit_file_drop(destination, sources, commit);
                     }
                 },
             ));
@@ -441,14 +444,13 @@ impl BrowserView {
         self.state.browser.navigate(location);
     }
 
-    pub fn start_transfer(
+    pub fn commit_file_drop(
         &self,
         destination: Location,
         sources: Vec<Location>,
-        move_sources: bool,
+        commit: crate::services::DropCommit,
     ) {
-        self.state
-            .start_transfer(destination, sources, move_sources);
+        self.state.commit_file_drop(destination, sources, commit);
     }
 
     /// Selects `names` in the active column once it finishes loading,

@@ -14,8 +14,9 @@ use crate::{
     assets::icons,
     sandbox::MediaPreviewBackend,
     services::{
-        self, BuildKind, Channel, InstallRequest, InstallSource, ManagedInstall, ReleaseMetadata,
-        ReleaseNoteBlock, ReleaseNotes, UpdateCheck, UpdateInstall, UpdateMethod, Version,
+        self, BuildKind, Channel, CrossVolumeDropStrategy, InstallRequest, InstallSource,
+        ManagedInstall, ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes, UpdateCheck,
+        UpdateInstall, UpdateMethod, Version,
     },
 };
 
@@ -684,6 +685,49 @@ fn general_page(
         manager_for_type_to_search.set_type_to_search(toggle.is_active());
     });
     preferences.append(&type_to_search_row);
+
+    append_heading(&preferences, "FILE TRANSFERS");
+    let strategies = [
+        CrossVolumeDropStrategy::Copy,
+        CrossVolumeDropStrategy::Move,
+        CrossVolumeDropStrategy::Ask,
+    ];
+    let labels: Vec<&str> = strategies
+        .iter()
+        .copied()
+        .map(cross_volume_drop_strategy_label)
+        .collect();
+    let selected = manager.cross_volume_drop_strategy();
+    let active = strategies
+        .iter()
+        .position(|strategy| *strategy == selected)
+        .unwrap_or(2);
+    let (strategy_control, strategy_buttons) = segmented_control(&labels, active);
+    let strategy_row = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    strategy_row.add_css_class("settings-option");
+    let strategy_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    strategy_copy.set_hexpand(true);
+    let strategy_title = gtk::Label::new(Some("Cross-device Drag and Drop"));
+    strategy_title.set_xalign(0.0);
+    strategy_title.add_css_class("settings-option-title");
+    let strategy_desc = gtk::Label::new(Some("Behavior for drag and drop to a different device."));
+    strategy_desc.set_xalign(0.0);
+    strategy_desc.set_wrap(true);
+    strategy_desc.add_css_class("settings-option-description");
+    strategy_copy.append(&strategy_title);
+    strategy_copy.append(&strategy_desc);
+    strategy_row.append(&strategy_copy);
+    strategy_row.append(&strategy_control);
+    preferences.append(&strategy_row);
+    for (idx, button) in strategy_buttons.iter().enumerate() {
+        let manager = manager.clone();
+        let strategy = strategies[idx];
+        button.connect_toggled(move |toggled| {
+            if toggled.is_active() {
+                manager.set_cross_volume_drop_strategy(strategy);
+            }
+        });
+    }
 
     append_heading(&preferences, "REFRESH");
     let interval = manager.auto_refresh_interval();
@@ -3057,6 +3101,14 @@ fn connect_click_activation_buttons(
             };
             update(selected(&buttons), selected(&other_buttons));
         });
+    }
+}
+
+pub(super) fn cross_volume_drop_strategy_label(strategy: CrossVolumeDropStrategy) -> &'static str {
+    match strategy {
+        CrossVolumeDropStrategy::Copy => "Always Copy",
+        CrossVolumeDropStrategy::Move => "Always Move",
+        CrossVolumeDropStrategy::Ask => "Always Ask",
     }
 }
 
