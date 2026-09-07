@@ -82,7 +82,7 @@ impl RestoreContext {
 }
 
 pub(crate) fn decode_trashinfo_path(encoded: &str) -> Option<PathBuf> {
-    let encoded = encoded.trim().trim_end_matches('\r');
+    let encoded = encoded.trim();
     if encoded.is_empty() {
         return None;
     }
@@ -204,13 +204,34 @@ pub(crate) async fn plan_restore_for_location(
     .await
 }
 
-pub(crate) async fn restore_destination_for_location(
-    location: &Location,
-    physical_path: Option<&Path>,
-) -> Result<PathBuf, RestoreTargetError> {
+/// Resolves a whole selection against one mount-table snapshot, with the
+/// per-item lookups in flight together so a slow mount costs one timeout for
+/// the batch rather than one per item.
+pub(crate) async fn restore_destinations_for_locations(
+    items: Vec<(Location, Option<PathBuf>)>,
+) -> Vec<Result<PathBuf, RestoreTargetError>> {
     let context = RestoreContext::current();
-    let plan = plan_restore_for_location(location, None, None, physical_path, &context).await?;
-    Ok(plan.destination)
+    let main_context = glib::MainContext::default();
+    let handles = items
+        .into_iter()
+        .map(|(location, physical_path)| {
+            let context = context.clone();
+            main_context.spawn_local(async move {
+                plan_restore_for_location(&location, None, None, physical_path.as_deref(), &context)
+                    .await
+                    .map(|plan| plan.destination)
+            })
+        })
+        .collect::<Vec<_>>();
+    let mut destinations = Vec::with_capacity(handles.len());
+    for handle in handles {
+        destinations.push(
+            handle
+                .await
+                .unwrap_or_else(|_| Err(RestoreTargetError::new("Restore lookup failed"))),
+        );
+    }
+    destinations
 }
 
 async fn with_lookup_timeout<T>(
@@ -252,8 +273,7 @@ fn resolve_restore_destination(
     let absolute = if orig_path.is_absolute() {
         orig_path.to_path_buf()
     } else {
-        trash_root
-            .parent()
+        topdir_for_trash_root(trash_root)
             .ok_or_else(|| RestoreTargetError::new("The original location is invalid"))?
             .join(orig_path)
     };
@@ -263,13 +283,9 @@ fn resolve_restore_destination(
     if destination.file_name().is_none() {
         return Err(RestoreTargetError::new("The original location is invalid"));
     }
-    let allowed_root = if allowed_root.exists() {
-        allowed_root
-            .canonicalize()
-            .map_err(|_| escaped_restore_error())?
-    } else {
-        allowed_root
-    };
+    let allowed_root = allowed_root
+        .canonicalize()
+        .map_err(|_| escaped_restore_error())?;
     Ok((destination, allowed_root))
 }
 
@@ -427,7 +443,8 @@ fn find_trash_item_by_orig_path(
     let files_root = trash_root.join("files");
     // A relative `Path=` is relative to the directory holding the trash
     // directory, which is how GVfs reports `trash::orig-path`.
-    let topdir = trash_root.parent()?;
+    let topdir = topdir_for_trash_root(trash_root)?;
+    let wanted = lexically_normalize(orig_path)?;
     let infos = std::fs::read_dir(info_root).ok()?;
     for info in infos.flatten() {
         let info_path = info.path();
@@ -445,7 +462,7 @@ fn find_trash_item_by_orig_path(
         } else {
             topdir.join(path)
         };
-        if path != orig_path {
+        if lexically_normalize(&path).as_deref() != Some(wanted.as_path()) {
             continue;
         }
         let source_path = files_root.join(OsStr::from_bytes(file_name));
@@ -497,6 +514,18 @@ pub(crate) fn trash_root_from_files_path(path: &Path) -> Option<PathBuf> {
         return None;
     }
     files.parent().map(Path::to_path_buf)
+}
+
+/// Directory a relative `.trashinfo` `Path=` is resolved against. That is the
+/// trash directory's parent, except for the shared `$topdir/.Trash/$uid`
+/// layout, where the spec anchors relative paths at `$topdir` rather than at
+/// the intervening `.Trash`.
+fn topdir_for_trash_root(trash_root: &Path) -> Option<&Path> {
+    let parent = trash_root.parent()?;
+    if parent.file_name() == Some(OsStr::new(".Trash")) {
+        return parent.parent();
+    }
+    Some(parent)
 }
 
 fn trash_root_from_info_path(path: &Path) -> Option<PathBuf> {

@@ -3,7 +3,7 @@
 use super::*;
 use std::{
     fs,
-    os::unix::fs::{MetadataExt, PermissionsExt, symlink},
+    os::unix::fs::{PermissionsExt, symlink},
     path::Path,
 };
 
@@ -18,23 +18,18 @@ fn context_for(home_trash: &Path, uid: u32, mount_point: &Path) -> RestoreContex
     }
 }
 
-fn volume_trash(root: &Path, uid: u32) -> PathBuf {
-    let trash = root.join(format!(".Trash-{uid}"));
+fn shared_volume_trash(root: &Path, uid: u32) -> PathBuf {
+    let trash = root.join(".Trash").join(uid.to_string());
     fs::create_dir_all(trash.join("files")).expect("files");
     fs::create_dir_all(trash.join("info")).expect("info");
     trash
 }
 
-fn distinct_device_dirs() -> Option<(tempfile::TempDir, tempfile::TempDir)> {
-    let first = tempfile::tempdir().ok()?;
-    let shm = Path::new("/dev/shm");
-    if !shm.is_dir() {
-        return None;
-    }
-    let second = tempfile::TempDir::new_in(shm).ok()?;
-    let first_dev = fs::metadata(first.path()).ok()?.dev();
-    let second_dev = fs::metadata(second.path()).ok()?.dev();
-    (first_dev != second_dev).then_some((first, second))
+fn volume_trash(root: &Path, uid: u32) -> PathBuf {
+    let trash = root.join(format!(".Trash-{uid}"));
+    fs::create_dir_all(trash.join("files")).expect("files");
+    fs::create_dir_all(trash.join("info")).expect("info");
+    trash
 }
 
 #[test]
@@ -205,7 +200,9 @@ fn similar_prefixes_are_not_treated_as_the_same_volume_root() {
 
 #[test]
 fn symlink_parent_that_leaves_the_volume_is_rejected() -> std::io::Result<()> {
-    let Some((home, stick)) = distinct_device_dirs() else {
+    let Some((home, stick)) = crate::test_support::distinct_device_dirs(
+        "symlink_parent_that_leaves_the_volume_is_rejected",
+    ) else {
         return Ok(());
     };
     let uid = 1000;
@@ -250,7 +247,9 @@ fn destination_inside_the_trash_directory_is_rejected() {
 
 #[test]
 fn different_device_orig_path_is_rejected_by_volume_identity() -> std::io::Result<()> {
-    let Some((home, stick)) = distinct_device_dirs() else {
+    let Some((home, stick)) = crate::test_support::distinct_device_dirs(
+        "different_device_orig_path_is_rejected_by_volume_identity",
+    ) else {
         return Ok(());
     };
     let uid = rustix::process::getuid().as_raw();
@@ -457,4 +456,47 @@ fn trash_root_is_derived_from_the_files_entry() {
         trash_root_from_files_path(Path::new("/tmp/not-trash/report.txt")),
         None
     );
+}
+
+#[test]
+fn relative_orig_path_in_shared_trash_is_joined_to_the_volume_topdir() {
+    let mount = tempfile::tempdir().expect("mount");
+    let mount_path = mount.path().canonicalize().expect("canonical mount");
+    let uid = 1000;
+    let trash = shared_volume_trash(&mount_path, uid);
+    let source = trash.join("files/report.txt");
+    fs::write(&source, b"report").expect("source");
+    let context = context_for(&mount_path.join("unused"), uid, &mount_path);
+
+    let plan = plan_restore_from_known_paths(
+        &source,
+        Path::new("Documents/report.txt"),
+        &trash,
+        None,
+        &context,
+    )
+    .expect("shared trash restore");
+
+    assert_eq!(plan.destination, mount_path.join("Documents/report.txt"));
+    assert_eq!(plan.allowed_root, mount_path);
+}
+
+#[test]
+fn shared_trash_item_is_discovered_from_its_relative_trashinfo() {
+    let mount = tempfile::tempdir().expect("mount");
+    let mount_path = mount.path().canonicalize().expect("canonical mount");
+    let uid = 1000;
+    let trash = shared_volume_trash(&mount_path, uid);
+    fs::write(trash.join("files/report.txt"), b"report").expect("source");
+    fs::write(
+        trash.join("info/report.txt.trashinfo"),
+        "[Trash Info]\nPath=Documents/report.txt\nDeletionDate=2026-01-01T00:00:00\n",
+    )
+    .expect("info");
+
+    let found = find_trash_item_by_orig_path(&trash, &mount_path.join("Documents/report.txt"))
+        .expect("discovered by orig path");
+
+    assert_eq!(found.source_path, trash.join("files/report.txt"));
+    assert_eq!(found.trash_root, trash);
 }

@@ -1129,9 +1129,14 @@ fn move_restore_path(
         .await
         .map_err(|_| io_error("Restore task panicked"))?
         .map_err(|error| match error {
-            rustix::io::Errno::XDEV | rustix::io::Errno::INVAL => {
+            rustix::io::Errno::XDEV => {
                 io_error(format!("Could not restore {display_name} across volumes"))
             }
+            // The filesystem does not implement `renameat2` flags, so the
+            // no-clobber guarantee this restore depends on is unavailable.
+            rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS => io_error(format!(
+                "Could not restore {display_name} because this filesystem cannot rename without replacing an existing file"
+            )),
             error => io_error(format!("Could not restore {display_name}: {error}")),
         })
     })
@@ -1749,9 +1754,6 @@ fn open_local_parent_beneath(parent_path: &Path, allowed_root: &Path) -> Result<
     let relative = parent_path
         .strip_prefix(allowed_root)
         .map_err(|_| "The restore destination is outside the trash volume".to_owned())?;
-    if relative.as_os_str().is_empty() {
-        return Ok(root);
-    }
     // BENEATH keeps the walk inside allowed_root; NO_XDEV refuses a sub-mount.
     rustix::fs::openat2(
         &root,

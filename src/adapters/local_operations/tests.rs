@@ -3377,7 +3377,9 @@ fn restore_rejects_a_volume_orig_path_on_another_device() -> Result<(), Box<dyn 
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
-    let Some((home, stick)) = distinct_restore_devices() else {
+    let Some((home, stick)) = crate::test_support::distinct_device_dirs(
+        "restore_rejects_a_volume_orig_path_on_another_device",
+    ) else {
         return Ok(());
     };
     let dest = home.path().join(".config/autostart/payload.desktop");
@@ -3545,19 +3547,6 @@ fn restore_uses_the_trash_entry_target_path_as_the_physical_source() -> Result<(
     assert_eq!(fs::read(&destination)?, b"notes");
     assert!(!source.exists());
     Ok(())
-}
-
-fn distinct_restore_devices() -> Option<(tempfile::TempDir, tempfile::TempDir)> {
-    use std::os::unix::fs::MetadataExt;
-    let first = tempfile::tempdir().ok()?;
-    let shm = Path::new("/dev/shm");
-    if !shm.is_dir() {
-        return None;
-    }
-    let second = tempfile::TempDir::new_in(shm).ok()?;
-    let first_dev = fs::metadata(first.path()).ok()?.dev();
-    let second_dev = fs::metadata(second.path()).ok()?.dev();
-    (first_dev != second_dev).then_some((first, second))
 }
 
 #[test]
