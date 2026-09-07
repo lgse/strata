@@ -51,15 +51,18 @@ def test_creating_a_folder_can_be_cancelled(strata):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_rename_with_f2(strata, mode):
+@pytest.mark.parametrize("shortcut", ["F2", "ctrl+r"])
+def test_rename_shortcuts(strata, mode, shortcut):
     fixture = strata.fixture
 
     strata.select_entry("todo.txt")
-    strata.keyboard.press("F2")
+    strata.keyboard.press(shortcut)
     field = strata.editable_field()
     strata.keyboard.press("ctrl+a")
     strata.keyboard.type_text("renamed.txt")
     strata.wait(lambda: field.text == "renamed.txt", "the new name to be typed")
+    strata.keyboard.press("ctrl+r")
+    assert strata.editable_field().text == "renamed.txt"
     strata.keyboard.press("Return")
 
     strata.wait(
@@ -69,6 +72,21 @@ def test_rename_with_f2(strata, mode):
     assert not fixture.path("todo.txt").exists()
     assert fixture.path("renamed.txt").read_text() == "todo\n"
     strata.entry("renamed.txt")
+
+
+@pytest.mark.parametrize("shortcut", ["F2", "ctrl+r"])
+def test_rename_shortcuts_leave_location_editing_alone(strata, shortcut):
+    strata.select_entry("todo.txt")
+    strata.keyboard.press("ctrl+l")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(str(strata.fixture.path("documents")))
+    strata.wait(lambda: field.text.endswith("documents"), "the location to be typed")
+    strata.keyboard.press(shortcut)
+    assert strata.editable_field().text == str(strata.fixture.path("documents"))
+    strata.keyboard.press("Return")
+    strata.wait_for_directory("documents")
+    assert strata.fixture.path("todo.txt").exists()
 
 
 def test_rename_can_be_cancelled(strata):

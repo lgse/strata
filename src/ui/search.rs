@@ -389,7 +389,7 @@ fn result_row(item: &SearchItem) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
     row.add_css_class("search-result");
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    let icon = gtk::Image::new();
+    let icon = super::thumbnail::ThumbnailSlot::new(19);
     icon.add_css_class("search-result-thumbnail");
     let fallback = if item.is_directory {
         crate::assets::icons::FOLDER
@@ -444,7 +444,7 @@ fn refresh_visible_thumbnails(state: &SearchState) {
             let Some(image) = row
                 .child()
                 .and_then(|content| content.first_child())
-                .and_then(|child| child.downcast::<gtk::Image>().ok())
+                .and_then(|child| child.downcast::<super::thumbnail::ThumbnailSlot>().ok())
             else {
                 continue;
             };

@@ -1,0 +1,72 @@
+# Preference lifecycle
+
+Application-wide preferences live in `ui::theme::Preferences`. `ThemeManager`
+loads them once per application process and persists changes atomically to
+`$XDG_CONFIG_HOME/strata/settings.toml` (normally `~/.config/strata/settings.toml`).
+The manager's historical name does not make non-theme settings window-local.
+
+## One initialization and update path
+
+Use `ThemeManager::bind_preference(anchor, read, apply)` for cached behavior and
+controls. The binding applies the current value immediately, then applies only
+changes to its selected value. There is no separate startup initializer to keep
+in sync with the change handler. Every setter goes through `save_preferences`,
+which deduplicates unchanged preferences and publishes changes through the same
+notification mechanism. Failed writes are logged, still apply in memory, and
+are retried on the next save attempt.
+
+Bindings use weak widget anchors and remove their listeners when the anchor is
+destroyed. Callbacks must capture weak references to any owned widget/state or
+manager. Reentrant changes are delivered in another notification pass, without
+holding preference/listener borrows across callbacks. A binding updates its
+last-seen value before calling its consumer.
+
+Settings pages **only edit preferences**; they must not initialize application
+behavior. Boolean and segmented controls use `settings::bindings` helpers,
+which ignore programmatic synchronization instead of writing it back. A
+multi-field choice reads its other fields from the manager, not from another
+control that might be midway through synchronization.
+
+## Consumers and intentional scopes
+
+| Stored preferences | Consumer / application point |
+| --- | --- |
+| Folder peeking, single-click previews, mode, density, grouping, per-mode click counts, auto-refresh | Every browser binds at construction, including lazily rebuilt view modes. The chooser explicitly disallows folder peeking regardless of the saved value. |
+| Hidden files | Shared across existing browsers and new columns. |
+| Sort key/direction, folders-first | Shared defaults for new columns; an existing column keeps its own sort, selection and navigation. Sorting a column updates the persisted defaults. |
+| Type-to-search, opening search results directly | Keyboard/search actions read the current manager value at dispatch. |
+| Reduced motion | Set before any window is constructed; animation helpers read the current process-wide value. |
+| Theme, Omarchy following, text size | Shared CSS is applied by the manager; controls and theme-card selections bind to preferences. Newly saved custom themes appear in other open theme pages. Missing themes/Omarchy use the existing fallback policy. |
+| Keybinding hints | Footers and settings controls bind immediately and live. |
+| Hardware video acceleration/backend | Preview providers read the current choice when requesting a preview; changing it does not restart an already playing file. Settings controls and backend availability synchronize live. |
+| Preview mute/volume | Every player's controls and media stream bind to the saved audio state. Slider changes publish/persist together, without a delayed stale save overwriting another window or being discarded when closing a preview. |
+| Automatic updates, release channel | Eligibility checks read current preferences. Controls synchronize, and all windows clear outdated notices when these preferences change, even without opening Settings. A package-managed installation's tracked channel is enforced when read, not by constructing Settings. |
+| Sidebar order | Existing sidebars bind to the shared order. |
+| Folder colors/custom icons | Icon resolution reads the manager; existing customization refreshes notify rendered icons. |
+
+Location, selection, history, each column's sort, filter query, transient theme
+catalog filters, dialogs, and preview playback position remain window-local.
+Pinned places, portal integration and other externally managed state have their
+own stores and are not fields in the application preferences schema.
+Synchronization between independently running application processes, or manual
+external edits to `settings.toml` while Strata runs, is not supported by this
+in-process binding mechanism. External edits are read on the next launch.
+
+## Adding a preference
+
+1. Add its backward-compatible serialized field/default, getter and setter.
+2. Bind cached consumers at construction, or read directly at action dispatch.
+   Do not add behavior initialization to a Settings page.
+3. Bind its controls with the shared helpers; document any deliberate override.
+4. Extend the **exhaustive** fixture in `ui/theme/tests/preferences.rs` (it has no
+   `..Default` escape hatch) and the setter notification/persistence coverage.
+   That test compares the union of changed keys against every serialized field,
+   so extending the fixture without exercising the new setter still fails.
+5. Test the effective behavior with a saved non-default value before opening
+   Settings, a live change in two windows, and any relevant lazy view rebuild.
+   Test both directions; a test that only saves and deserializes is insufficient.
+
+The regression suites also check no writes from opening Settings, no duplicate
+notifications, reentrant changes, listener cleanup, failed-write retries,
+chooser overrides, type-to-search keyboard behavior, and synchronized media
+controls. Run GTK tests on the private display described in `e2e-testing.md`.

@@ -8,6 +8,7 @@ mod chooser;
 mod controls;
 mod entry_list_model;
 mod focus_navigation;
+mod icons_cell;
 mod inline_search;
 mod input_ownership;
 mod loading_skeleton;

@@ -140,6 +140,8 @@ Produces semantic tokens. Omarchy, generic system appearance, and user files are
 
 Loads and saves a versioned schema through XDG-standard locations. Unknown keys are tolerated, defaults are centralized, and migrations are explicit.
 
+Application preferences use immediate-and-live bindings rather than separate startup and Settings-page initializers. See [Preference lifecycle](preferences.md) for consumer scopes, binding ownership, and required regression coverage.
+
 ## Customization model
 
 Start with stable data-driven customization:

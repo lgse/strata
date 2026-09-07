@@ -709,13 +709,6 @@ fn build_chooser(
     let multiple = matches!(&request.kind, ChooserKind::Open { multiple: true, .. });
     let view = BrowserView::new_chooser(source.clone(), multiple);
     let theme = ThemeManager::shared();
-    view.set_view_mode(theme.browser_mode());
-    view.set_density(theme.browser_density());
-    view.set_group_by_type(theme.group_by_type());
-    super::window::apply_click_activation(&view, &theme);
-    view.set_auto_refresh_interval(theme.auto_refresh_interval());
-    view.set_peek_enabled(false);
-    view.set_single_click_previews(theme.single_click_previews());
     view.set_operation_provider(Rc::new(LocalOperationProvider));
     let browser = view.browser();
     let preview_preferences = theme.clone();
@@ -743,9 +736,8 @@ fn build_chooser(
         .active(true)
         .tooltip_text("Toggle sidebar (Ctrl+B)")
         .build();
-    sidebar_toggle.set_child(Some(&crate::assets::primary_icon(
+    sidebar_toggle.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::PANEL_LEFT,
-        20,
     )));
     sidebar_toggle.add_css_class("sidebar-toggle");
     let location = view.location_widget();
@@ -753,15 +745,13 @@ fn build_chooser(
     let appearance = build_appearance_menu(&view, &browser, theme.clone());
     let header_content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     header_content.set_hexpand(true);
+    header_content.set_valign(gtk::Align::Center);
     header_content.append(&sidebar_toggle);
     header_content.append(&location);
     let close = gtk::Button::builder()
         .tooltip_text("Cancel file selection (Esc)")
         .build();
-    close.set_child(Some(&crate::assets::primary_icon(
-        crate::assets::icons::X,
-        20,
-    )));
+    close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
     close.add_css_class("header-action");
     let closing_window = window.downgrade();
     close.connect_clicked(move |_| {
@@ -1297,11 +1287,7 @@ fn install_shortcuts(
             state.cancel();
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::F2
-            && !control
-            && !alt
-            && !shift
-            && !modifiers.contains(gtk::gdk::ModifierType::SUPER_MASK)
+        if super::window::is_rename_shortcut(key, modifiers)
             && browser.selected_entries().len() == 1
             && !focused.as_ref().is_some_and(|widget| {
                 super::focus_navigation::editable(widget)
@@ -1394,9 +1380,7 @@ fn install_shortcuts(
             state.view.select_all();
             return glib::Propagation::Stop;
         }
-        if key == gtk::gdk::Key::F5
-            || (control && !alt && matches!(key, gtk::gdk::Key::r | gtk::gdk::Key::R))
-        {
+        if key == gtk::gdk::Key::F5 {
             if let Some(depth) = browser.active_depth() {
                 browser.retry_column(depth);
             }
@@ -1564,8 +1548,7 @@ fn install_shortcuts(
             if !shift && key == gtk::gdk::Key::Up && state.view.focus_header_from_top_item() {
                 return glib::Propagation::Stop;
             }
-            // Keep GTK's spatial movement, then reconcile selection in visual order
-            // across the independent collection views used for type groups.
+            // Keep GTK's spatial movement, then reconcile selection in visual order.
             let weak = Rc::downgrade(&state);
             glib::idle_add_local_once(move || {
                 let Some(state) = weak.upgrade() else {

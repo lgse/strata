@@ -27,24 +27,14 @@ impl PreviewProvider for TextPreview {
 
 #[test]
 fn type_to_search_shortcuts_work_in_all_view_modes() {
-    const CHILD: &str = "STRATA_SPACE_PREVIEW_TEST_CHILD";
-    if env::var_os(CHILD).is_none() {
-        let sandbox = tempfile::tempdir().expect("isolated preferences");
-        let status = std::process::Command::new(env::current_exe().expect("test executable"))
-            .args(["--exact", "ui::window::tests::type_to_search::type_to_search_shortcuts_work_in_all_view_modes", "--nocapture"])
-            .env(CHILD, "1")
-            .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
-            .env("XDG_CACHE_HOME", sandbox.path().join("cache"))
-            .env("XDG_DATA_HOME", sandbox.path().join("data"))
-            .status().expect("isolated GTK test");
-        assert!(status.success());
-        return;
-    }
-    if gtk::init().is_err() {
-        return;
-    }
-    crate::assets::prepare().expect("assets");
-    crate::assets::register_icon_theme();
+    crate::test_support::gtk_test(
+        "ui::window::tests::type_to_search::type_to_search_shortcuts_work_in_all_view_modes",
+        exercise_type_to_search,
+    );
+}
+
+fn exercise_type_to_search() {
+    ThemeManager::seed_saved_preferences_for_test();
     load_styles();
     let preferences = ThemeManager::shared();
     let fixture = tempfile::tempdir().expect("fixture");
@@ -93,6 +83,17 @@ fn type_to_search_shortcuts_work_in_all_view_modes() {
             .column_snapshot(0)
             .is_some_and(|column| !column.loading)
     });
+
+    assert!(!preferences.type_to_search());
+    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+        view.set_view_mode(mode);
+        browser.focus_active();
+        press(&keys, gtk::gdk::Key::n);
+        assert!(
+            !view.filter_has_focus(),
+            "saved disabled type-to-search: {mode:?}"
+        );
+    }
 
     for enabled in [true, false] {
         preferences.set_type_to_search(enabled);

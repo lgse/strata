@@ -146,7 +146,7 @@ impl ViewState {
                                 && let Some(&entry) = filled.get(&position)
                                 && let Some(size) = row
                                     .first_child()
-                                    .and_downcast::<gtk::Image>()
+                                    .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
                                     .and_then(|icon| icon.next_sibling())
                                     .and_then(|middle| middle.downcast::<gtk::Overlay>().ok())
                                     .and_then(|middle| middle.last_child())
