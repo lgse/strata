@@ -1372,6 +1372,18 @@ fn install_shortcuts(
         if state.view.new_entry_is_active() || state.view.rename_is_active() {
             return glib::Propagation::Proceed;
         }
+        if key == gtk::gdk::Key::space
+            && !modifiers.intersects(
+                gtk::gdk::ModifierType::CONTROL_MASK
+                    | gtk::gdk::ModifierType::ALT_MASK
+                    | gtk::gdk::ModifierType::SUPER_MASK
+                    | gtk::gdk::ModifierType::SHIFT_MASK,
+            )
+            && let Some(entry) = state.view.selected_search_result()
+        {
+            preview.toggle(preview_target(Some(entry)));
+            return glib::Propagation::Stop;
+        }
         if control
             && !shift
             && !alt

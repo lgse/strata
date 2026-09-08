@@ -4,7 +4,7 @@ use super::*;
 use crate::ui::browser_modes::BrowserMode;
 use std::time::{Duration, Instant};
 
-fn capture(window: &gtk::Window, output: &Path, name: &str) {
+pub(super) fn capture(window: &gtk::Window, output: &Path, name: &str) {
     let context = glib::MainContext::default();
     let deadline = Instant::now() + Duration::from_millis(300);
     while Instant::now() < deadline {

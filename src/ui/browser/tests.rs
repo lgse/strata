@@ -3,6 +3,7 @@
 use super::*;
 
 mod focus;
+mod loading;
 mod navigate;
 mod paste;
 mod preferences;

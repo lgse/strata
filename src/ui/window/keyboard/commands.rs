@@ -59,6 +59,19 @@ impl Dispatcher {
     }
 
     pub(super) fn filter_and_location_commands(&self, event: &KeyEvent) -> KeyResult {
+        if event.key == Key::space
+            && event.without(
+                Modifiers::CONTROL_MASK
+                    | Modifiers::ALT_MASK
+                    | Modifiers::SUPER_MASK
+                    | Modifiers::SHIFT_MASK,
+            )
+            && let Some(entry) = self.view.selected_search_result()
+        {
+            self.preview
+                .toggle(crate::ui::preview::preview_target(Some(entry)));
+            return Some(Propagation::Stop);
+        }
         if event.key == Key::Escape && self.view.dismiss_focused_filter() {
             return Some(Propagation::Stop);
         }

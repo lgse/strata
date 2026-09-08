@@ -242,7 +242,7 @@ workflow fail:
 ```
 
 Each patch breaks a single critical workflow — drag and drop, clipboard,
-keyboard navigation, click modes, view switching. The unmodified scenarios
+keyboard navigation, click modes, view switching, filtered quick preview. The unmodified scenarios
 must pass first; only a failed scenario assertion in the mutated run counts as
 detection, not a startup/collection error or killed process. Logs and JUnit
 reports are saved in `target/e2e-mutations`. The script restores source changes
