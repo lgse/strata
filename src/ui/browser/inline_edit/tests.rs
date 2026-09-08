@@ -2,12 +2,13 @@
 
 use super::*;
 use crate::{
+    app::Browser,
     model::{EntryKind, MetadataValue},
     services::{
-        CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest, DirectoryEvent,
-        DirectoryRequest, ExtractRequest, FileSource, LoadHandle, LocationValidationError,
-        OperationEvent, OperationProvider, OperationRequestId, PasteRequest, RenameRequest,
-        RestoreRequest, UndoCopyRequest, UndoMoveRequest,
+        CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest, DirectoryChange,
+        DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
+        LocationValidationError, OperationEvent, OperationProvider, OperationRequestId,
+        PasteRequest, RenameRequest, RestoreRequest, UndoCopyRequest, UndoMoveRequest,
     },
     test_support::gtk_test,
     ui::{
@@ -18,7 +19,6 @@ use crate::{
 use std::{
     cell::{Cell, RefCell},
     ffi::OsString,
-    path::Path,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -142,9 +142,12 @@ struct PendingDirectoryLoad {
     emit: Rc<dyn Fn(DirectoryEvent)>,
 }
 
+type MonitorNotify = Rc<dyn Fn(DirectoryChange)>;
+
 struct ControlledRenameSource {
     initial: FileEntry,
     reloads: RefCell<Vec<PendingDirectoryLoad>>,
+    monitor: RefCell<Option<MonitorNotify>>,
     loads: Cell<usize>,
 }
 
@@ -161,7 +164,21 @@ impl ControlledRenameSource {
             .collect()
     }
 
+    fn emit_monitor_change(&self, change: DirectoryChange) {
+        let notify = self.monitor.borrow().clone().expect("directory monitor");
+        notify(change);
+    }
+
     fn respond(&self, index: usize, entries: Option<Vec<FileEntry>>) -> crate::services::RequestId {
+        self.respond_with(index, entries, false)
+    }
+
+    fn respond_with(
+        &self,
+        index: usize,
+        entries: Option<Vec<FileEntry>>,
+        truncated: bool,
+    ) -> crate::services::RequestId {
         let load = self.reloads.borrow_mut().remove(index);
         let request_id = load.request_id;
         if let Some(entries) = entries {
@@ -171,7 +188,7 @@ impl ControlledRenameSource {
             });
             (load.emit)(DirectoryEvent::Finished {
                 request_id,
-                truncated: false,
+                truncated,
                 can_trash: None,
                 can_delete: None,
             });
@@ -210,6 +227,16 @@ impl FileSource for ControlledRenameSource {
             });
         }
         LoadHandle::new(|| {})
+    }
+
+    fn watch(
+        &self,
+        _location: Location,
+        _include_hidden: bool,
+        notify: Rc<dyn Fn(DirectoryChange)>,
+    ) -> Option<LoadHandle> {
+        self.monitor.replace(Some(notify));
+        Some(LoadHandle::new(|| {}))
     }
 }
 
@@ -284,9 +311,17 @@ impl OperationProvider for DelayedRenameProvider {
     unsupported_operation!(extract, ExtractRequest);
 }
 
-fn entry_at(parent: &Path, name: &str, directory: bool) -> FileEntry {
+fn remote_entry(name: &str, directory: bool) -> FileEntry {
+    entry_at_location(
+        Location::uri(format!("smb://host/share/{name}")),
+        name,
+        directory,
+    )
+}
+
+fn entry_at_location(location: Location, name: &str, directory: bool) -> FileEntry {
     FileEntry {
-        location: Location::local(parent.join(name)),
+        location,
         native_name: OsString::from(name),
         display_name: name.to_owned(),
         kind: if directory {
@@ -300,6 +335,21 @@ fn entry_at(parent: &Path, name: &str, directory: bool) -> FileEntry {
         is_hidden: false,
         mode: MetadataValue::Unknown,
     }
+}
+
+fn assert_model_contains_only(browser: &Browser, old: &Location, new: &Location) {
+    let snapshot = browser.column_snapshot(0).expect("loaded column");
+    let locations = browser
+        .with_entries(0, 0..snapshot.count, |entries| {
+            entries
+                .iter()
+                .map(|entry| entry.location.clone())
+                .collect::<Vec<_>>()
+        })
+        .expect("entries");
+    assert!(!locations.iter().any(|location| location == old));
+    assert!(locations.iter().any(|location| location == new));
+    assert_eq!(locations.len(), 1);
 }
 
 fn icon_card_bounds(root: &gtk::Widget) -> Vec<(i32, i32, i32, i32)> {
@@ -383,6 +433,9 @@ fn columns_rename_hides_and_restores_the_size_badge() {
 enum DelayedRenameResult {
     Success,
     Failure,
+    MonitorBeforeCompletion,
+    MonitorAfterCompletion,
+    QueuedThroughRebuild,
     RefreshFailure,
     Replacement,
     SynchronousSuccess,
@@ -390,18 +443,39 @@ enum DelayedRenameResult {
 }
 
 fn run_delayed_rename_handler(mode: BrowserMode, directory: bool, result: DelayedRenameResult) {
-    let fixture = tempfile::tempdir().expect("directory fixture");
     let original = if directory {
         "original"
     } else {
         "original.txt"
     };
     let replacement = if directory { "renamed" } else { "renamed.txt" };
-    let initial = entry_at(fixture.path(), original, directory);
-    let renamed = entry_at(fixture.path(), replacement, directory);
+    let native_fixture = matches!(
+        result,
+        DelayedRenameResult::MonitorBeforeCompletion | DelayedRenameResult::MonitorAfterCompletion
+    )
+    .then(|| tempfile::tempdir().expect("directory fixture"));
+    let location = native_fixture.as_ref().map_or_else(
+        || Location::uri("smb://host/share"),
+        |fixture| Location::local(fixture.path()),
+    );
+    let initial_location = location.child(original.as_ref()).expect("initial location");
+    let renamed_location = location
+        .child(replacement.as_ref())
+        .expect("renamed location");
+    let initial = if native_fixture.is_some() {
+        entry_at_location(initial_location, original, directory)
+    } else {
+        remote_entry(original, directory)
+    };
+    let renamed = if native_fixture.is_some() {
+        entry_at_location(renamed_location, replacement, directory)
+    } else {
+        remote_entry(replacement, directory)
+    };
     let source = Rc::new(ControlledRenameSource {
         initial: initial.clone(),
         reloads: RefCell::new(Vec::new()),
+        monitor: RefCell::new(None),
         loads: Cell::new(0),
     });
     let provider = Rc::new(DelayedRenameProvider {
@@ -421,7 +495,7 @@ fn run_delayed_rename_handler(mode: BrowserMode, directory: bool, result: Delaye
     view.install_inline_edit_dismissal(&window);
     window.present();
     let browser = view.browser();
-    browser.navigate(Location::local(fixture.path()));
+    browser.navigate(location);
     wait_until(|| {
         browser
             .column_snapshot(0)
@@ -440,8 +514,53 @@ fn run_delayed_rename_handler(mode: BrowserMode, directory: bool, result: Delaye
     field.set_text(replacement);
     click_away(&window);
 
+    if matches!(result, DelayedRenameResult::QueuedThroughRebuild) {
+        view.set_view_mode(BrowserMode::List);
+        browser.reload_active();
+    }
     wait_until(|| provider.request.borrow().is_some());
     let operation_id = provider.request_id();
+    if matches!(result, DelayedRenameResult::QueuedThroughRebuild) {
+        wait_until(|| source.pending_count() == 1);
+        source.respond_with(0, Some(vec![initial.clone()]), true);
+        assert!(view.state.rename_operation_pending());
+        provider.succeed();
+        wait_until(|| source.pending_count() == 1);
+        source.respond(0, Some(vec![renamed.clone()]));
+        wait_until(|| !view.state.rename_operation_pending());
+        browser.clear_observer();
+        window.destroy();
+        return;
+    }
+    if matches!(result, DelayedRenameResult::MonitorBeforeCompletion) {
+        source.emit_monitor_change(DirectoryChange::Move {
+            from: initial.location.clone(),
+            entry: renamed.clone(),
+        });
+        assert_eq!(source.pending_count(), 0);
+        assert!(view.state.rename_operation_pending());
+        provider.succeed();
+        wait_until(|| !view.state.rename_operation_pending());
+        assert_eq!(source.pending_count(), 0);
+        assert_model_contains_only(&browser, &initial.location, &renamed.location);
+        browser.clear_observer();
+        window.destroy();
+        return;
+    }
+    if matches!(result, DelayedRenameResult::MonitorAfterCompletion) {
+        provider.succeed();
+        assert_eq!(source.pending_count(), 0);
+        source.emit_monitor_change(DirectoryChange::Move {
+            from: initial.location.clone(),
+            entry: renamed.clone(),
+        });
+        wait_until(|| !view.state.rename_operation_pending());
+        assert_eq!(source.pending_count(), 0);
+        assert_model_contains_only(&browser, &initial.location, &renamed.location);
+        browser.clear_observer();
+        window.destroy();
+        return;
+    }
     assert_eq!(
         provider
             .request
@@ -478,10 +597,7 @@ fn run_delayed_rename_handler(mode: BrowserMode, directory: bool, result: Delaye
     // deliberately looks up the current bound row after the rebind, not the old widget.
     browser.reload_active();
     assert_eq!(source.pending_count(), 1);
-    source.respond(
-        0,
-        Some(vec![entry_at(fixture.path(), "unrelated", directory)]),
-    );
+    source.respond(0, Some(vec![remote_entry("unrelated", directory)]));
     browser.reload_active();
     wait_until(|| source.pending_count() == 1);
     source.respond(0, Some(vec![initial]));
@@ -530,9 +646,11 @@ fn run_delayed_rename_handler(mode: BrowserMode, directory: bool, result: Delaye
             let current = wait_for_current_rename_label(&view, mode);
             assert_eq!(label_text(&current).as_deref(), Some(replacement));
         }
-        DelayedRenameResult::SynchronousSuccess | DelayedRenameResult::SynchronousCancellation => {
-            unreachable!()
-        }
+        DelayedRenameResult::SynchronousSuccess
+        | DelayedRenameResult::SynchronousCancellation
+        | DelayedRenameResult::MonitorBeforeCompletion
+        | DelayedRenameResult::MonitorAfterCompletion
+        | DelayedRenameResult::QueuedThroughRebuild => unreachable!(),
     }
 
     browser.clear_observer();
@@ -573,6 +691,7 @@ fn rename_callbacks_only_affect_their_owned_operation() {
                 old_name: first.display_name.clone(),
                 new_name: "first-renamed.txt".to_owned(),
                 generation: 1,
+                monitor_has_new_location: false,
                 state: PendingRenameState::Running(first_id),
             }));
             view.state.complete_pending_rename(OperationRequestId(99));
@@ -587,6 +706,7 @@ fn rename_callbacks_only_affect_their_owned_operation() {
                 old_name: second.display_name.clone(),
                 new_name: "second-renamed.txt".to_owned(),
                 generation: 2,
+                monitor_has_new_location: false,
                 state: PendingRenameState::Running(second_id),
             }));
             view.state.complete_pending_rename(first_id);
@@ -595,6 +715,64 @@ fn rename_callbacks_only_affect_their_owned_operation() {
                 view.state.pending_rename_name(&second),
                 Some("second-renamed.txt".to_owned())
             );
+        },
+    );
+}
+
+#[test]
+fn escape_after_submission_does_not_cancel_the_rename() {
+    gtk_test(
+        "ui::browser::inline_edit::tests::escape_after_submission_does_not_cancel_the_rename",
+        || {
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let entry = fixture_entry("original.txt");
+            view.state
+                .start_pending_rename(&entry, "renamed.txt".to_owned());
+
+            assert!(!view.state.cancel_rename());
+            assert!(view.state.rename_operation_pending());
+        },
+    );
+}
+
+#[test]
+fn monitor_completion_is_safe_in_both_event_orders() {
+    gtk_test(
+        "ui::browser::inline_edit::tests::monitor_completion_is_safe_in_both_event_orders",
+        || {
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                for directory in [false, true] {
+                    run_delayed_rename_handler(
+                        mode,
+                        directory,
+                        DelayedRenameResult::MonitorBeforeCompletion,
+                    );
+                    run_delayed_rename_handler(
+                        mode,
+                        directory,
+                        DelayedRenameResult::MonitorAfterCompletion,
+                    );
+                }
+            }
+        },
+    );
+}
+
+#[test]
+fn queued_rename_survives_truncation_and_mode_rebuild() {
+    gtk_test(
+        "ui::browser::inline_edit::tests::queued_rename_survives_truncation_and_mode_rebuild",
+        || {
+            for directory in [false, true] {
+                run_delayed_rename_handler(
+                    BrowserMode::Columns,
+                    directory,
+                    DelayedRenameResult::QueuedThroughRebuild,
+                );
+            }
         },
     );
 }
@@ -623,61 +801,8 @@ fn successful_rename_handler_clears_pending_state_after_the_refreshed_entry() {
         "ui::browser::inline_edit::tests::successful_rename_handler_clears_pending_state_after_the_refreshed_entry",
         || {
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
-                for (directory, original, replacement) in [
-                    (false, "original.txt", "renamed.txt"),
-                    (true, "original", "renamed"),
-                    (false, "visible.txt", ".renamed.txt"),
-                ] {
-                    let fixture = tempfile::tempdir().expect("directory fixture");
-                    let original_path = fixture.path().join(original);
-                    let replacement_path = fixture.path().join(replacement);
-                    if directory {
-                        std::fs::create_dir(&original_path).expect("fixture directory");
-                    } else {
-                        std::fs::write(&original_path, b"body").expect("fixture file");
-                    }
-                    let view = BrowserView::new(
-                        Rc::new(crate::adapters::LocalFileSource),
-                        PeekBehavior::default(),
-                    );
-                    view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
-                    view.set_view_mode(mode);
-                    let window = gtk::Window::builder()
-                        .child(&view.widget())
-                        .default_width(800)
-                        .default_height(600)
-                        .build();
-                    view.install_inline_edit_dismissal(&window);
-                    window.present();
-                    let browser = view.browser();
-                    browser.navigate(Location::local(fixture.path()));
-                    wait_until(|| {
-                        browser
-                            .column_snapshot(0)
-                            .is_some_and(|snapshot| !snapshot.loading && snapshot.count == 1)
-                    });
-                    browser.select(0, 0);
-                    wait_until(|| view.state.begin_rename());
-                    let field = view
-                        .state
-                        .active_rename
-                        .borrow()
-                        .as_ref()
-                        .map(|rename| rename.field.clone())
-                        .or_else(|| view.state.mode_views.borrow().active_rename_field())
-                        .expect("rename field");
-                    field.set_text(replacement);
-                    click_away(&window);
-                    let current = wait_for_current_rename_label(&view, mode);
-                    assert_eq!(label_text(&current).as_deref(), Some(replacement));
-
-                    wait_until(|| {
-                        replacement_path.exists() && !view.state.rename_operation_pending()
-                    });
-                    assert!(!original_path.exists());
-                    assert_eq!(replacement_path.is_dir(), directory);
-                    browser.clear_observer();
-                    window.destroy();
+                for directory in [false, true] {
+                    run_delayed_rename_handler(mode, directory, DelayedRenameResult::Success);
                 }
             }
         },

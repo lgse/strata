@@ -208,6 +208,7 @@ impl ViewState {
                     set_column_busy(column, false);
                     update_empty_trash_sensitivity(column, count);
                 }
+                self.note_pending_rename_splices(*depth, splices);
             }
             BrowserEvent::ColumnReloaded { depth } => {
                 if let Some(column) = self.columns.borrow().get(*depth) {

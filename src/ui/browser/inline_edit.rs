@@ -30,6 +30,7 @@ pub(super) struct PendingRename {
     old_name: String,
     new_name: String,
     generation: u64,
+    monitor_has_new_location: bool,
     state: PendingRenameState,
 }
 
@@ -179,6 +180,7 @@ impl ViewState {
             old_name: entry.display_name.clone(),
             new_name,
             generation,
+            monitor_has_new_location: false,
             state: PendingRenameState::Queued,
         }));
         generation
@@ -238,6 +240,38 @@ impl ViewState {
         (0..)
             .map_while(|depth| self.browser.column_snapshot(depth))
             .any(|snapshot| snapshot.location == parent)
+    }
+
+    pub(super) fn note_pending_rename_splices(
+        &self,
+        depth: usize,
+        splices: &[crate::app::EntrySplice],
+    ) {
+        let Some(snapshot) = self.browser.column_snapshot(depth) else {
+            return;
+        };
+        let completed = {
+            let mut pending = self.pending_rename.borrow_mut();
+            let Some(pending) = pending.as_mut() else {
+                return;
+            };
+            let Some(new_location) = pending.new_location.as_ref() else {
+                return;
+            };
+            if pending.old_location.parent().as_ref() != Some(&snapshot.location)
+                || !splices
+                    .iter()
+                    .flat_map(|splice| splice.entries.iter())
+                    .any(|entry| &entry.location == new_location)
+            {
+                return;
+            }
+            pending.monitor_has_new_location = true;
+            matches!(&pending.state, PendingRenameState::AwaitingRefresh { .. })
+        };
+        if completed {
+            self.pending_rename.take();
+        }
     }
 
     pub(super) fn reconcile_pending_rename(&self) {
@@ -361,7 +395,16 @@ impl ViewState {
             return;
         };
         self.update_rename_labels(&old_location, new_location.as_ref(), &new_name);
-        self.reconcile_pending_rename();
+        let observed = self
+            .pending_rename
+            .borrow()
+            .as_ref()
+            .is_some_and(|pending| pending.monitor_has_new_location);
+        if observed {
+            self.pending_rename.take();
+        } else {
+            self.reconcile_pending_rename();
+        }
     }
 
     pub(super) fn fail_pending_rename(&self) {
@@ -645,28 +688,6 @@ impl ViewState {
             finish_mode_rename(mode_rename);
             return true;
         }
-        if self.rename_operation_pending() {
-            let awaiting_refresh = self
-                .pending_rename
-                .borrow()
-                .as_ref()
-                .is_some_and(|pending| {
-                    matches!(&pending.state, PendingRenameState::AwaitingRefresh { .. })
-                });
-            if awaiting_refresh {
-                return true;
-            }
-            let running = self
-                .pending_rename
-                .borrow()
-                .as_ref()
-                .is_some_and(|pending| matches!(&pending.state, PendingRenameState::Running(_)));
-            if running {
-                self.browser.cancel_file_operation();
-            }
-            self.fail_pending_rename();
-            return true;
-        }
         let Some(rename) = self.active_rename.take() else {
             return false;
         };
@@ -694,8 +715,12 @@ impl ViewState {
     }
 
     pub(in crate::ui) fn submit_mode_rename(self: &Rc<Self>, field: &gtk::Entry) {
-        let Some((mode_rename, entry, name)) = self.mode_views.borrow().take_active_rename(field)
-        else {
+        let active_rename = self
+            .mode_views
+            .try_borrow_mut()
+            .ok()
+            .and_then(|mode_views| mode_views.take_active_rename(field));
+        let Some((mode_rename, entry, name)) = active_rename else {
             return;
         };
         finish_mode_rename(mode_rename);
@@ -703,7 +728,14 @@ impl ViewState {
     }
 
     pub(super) fn submit_rename(self: &Rc<Self>, field: &gtk::Entry) {
-        if self.mode_views.borrow().active_rename_field().as_ref() == Some(field) {
+        let mode_field_active = self
+            .mode_views
+            .try_borrow()
+            .ok()
+            .and_then(|mode_views| mode_views.active_rename_field())
+            .as_ref()
+            == Some(field);
+        if mode_field_active {
             self.submit_mode_rename(field);
             return;
         }

@@ -1647,6 +1647,35 @@ fn creating_a_directory_locally_does_not_trigger_a_redundant_refresh() {
 }
 
 #[test]
+fn renaming_locally_does_not_trigger_a_redundant_refresh() {
+    let enumerate_calls = Rc::new(Cell::new(0));
+    let source = CountingFileSource {
+        enumerate_calls: enumerate_calls.clone(),
+    };
+    let browser = Browser::new(Rc::new(source));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::local("/fixture"));
+    assert_eq!(enumerate_calls.get(), 1);
+
+    browser.rename(
+        FileEntry {
+            location: Location::local("/fixture/old-name.txt"),
+            native_name: "old-name.txt".into(),
+            thumbnail_path: None,
+            display_name: "old-name.txt".to_owned(),
+            kind: EntryKind::File,
+            size: MetadataValue::Known(1),
+            modified_unix_seconds: MetadataValue::Unknown,
+            is_hidden: false,
+            mode: MetadataValue::Unknown,
+        },
+        "new-name.txt".to_owned(),
+    );
+
+    assert_eq!(enumerate_calls.get(), 1);
+}
+
+#[test]
 fn restored_sorting_applies_to_the_initial_navigation_load() {
     let browser = Browser::with_preferences(
         Rc::new(RestoredSortingSource),

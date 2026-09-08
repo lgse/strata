@@ -1974,11 +1974,11 @@ impl Browser {
                 }
                 OperationEvent::Renamed { .. } => {
                     browser.emit(BrowserEvent::RenameCompleted { request_id });
-                    // A monitor update can race the operation terminal. Refresh every
-                    // affected open column so the pending UI name has authoritative data
-                    // to reconcile against, including native locations with delayed monitors.
+                    // Remote locations have no monitor to publish the authoritative rename.
                     for location in &refresh_locations {
-                        browser.refresh_columns_at(location);
+                        if location.native_path().is_none() {
+                            browser.refresh_columns_at(location);
+                        }
                     }
                 }
                 OperationEvent::Compressed { archive_name, .. } => {
