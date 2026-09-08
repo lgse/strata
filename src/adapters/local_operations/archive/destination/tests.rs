@@ -124,8 +124,8 @@ fn available_bytes_reports_unprivileged_free_space() -> Result<(), Box<dyn Error
     let root = tempfile::tempdir()?;
     let destination = ExtractionDestination::open(root.path())?;
     assert!(
-        destination.available_bytes()? > 0,
-        "tempdir should have some free space"
+        matches!(destination.available_bytes()?, Some(bytes) if bytes > 0),
+        "tempdir should report some free space"
     );
     Ok(())
 }

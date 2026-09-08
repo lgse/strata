@@ -7,6 +7,8 @@
 //! without scanning ahead, probing the filesystem or reserving pending names.
 //! Claimed uncompressed sizes are checked against destination free space before
 //! writing, and extracted bytes must match the size declared for each member.
+//! Filesystems that do not report capacity skip the free-space checks; the size
+//! match still applies.
 
 use std::{
     io::{Read, Write},
@@ -57,7 +59,8 @@ pub(super) struct ExtractionSession<'a> {
     completed: Vec<Location>,
     interrupted: Option<InterruptedMember>,
     written: u64,
-    available_bytes: u64,
+    /// Free space at open, or `None` when the filesystem does not report it.
+    available_bytes: Option<u64>,
 }
 
 impl<'a> ExtractionSession<'a> {
@@ -90,7 +93,7 @@ impl<'a> ExtractionSession<'a> {
         directory: ExtractionDestination,
         progress: &'a AtomicUsize,
         cancelled: &'a AtomicBool,
-        available_bytes: u64,
+        available_bytes: Option<u64>,
     ) -> Self {
         Self {
             destination,
@@ -107,6 +110,7 @@ impl<'a> ExtractionSession<'a> {
     }
 
     /// Test constructor that substitutes a free-space ceiling for [`fstatvfs`].
+    /// `None` models a filesystem that does not report capacity.
     ///
     /// [`fstatvfs`]: rustix::fs::fstatvfs
     #[cfg(test)]
@@ -114,7 +118,7 @@ impl<'a> ExtractionSession<'a> {
         destination: &'a Path,
         progress: &'a AtomicUsize,
         cancelled: &'a AtomicBool,
-        available_bytes: u64,
+        available_bytes: Option<u64>,
     ) -> Result<Self, ArchiveError> {
         Ok(Self::from_open(
             destination,
@@ -134,6 +138,7 @@ impl<'a> ExtractionSession<'a> {
     ///
     /// Call before extracting members when the format advertises a total. Sequential
     /// formats that cannot cheaply sum headers rely on per-member checks instead.
+    /// Passes when the destination filesystem does not report free space.
     ///
     /// # Errors
     ///
@@ -141,28 +146,26 @@ impl<'a> ExtractionSession<'a> {
     ///
     /// [`Failed`]: ArchiveError::Failed
     pub(super) fn preflight_claimed_size(&self, claimed: u128) -> Result<(), ArchiveError> {
-        let available = self.remaining();
-        if claimed > u128::from(available) {
-            Err(archive_failed(format!(
+        match self.remaining() {
+            Some(available) if claimed > u128::from(available) => Err(archive_failed(format!(
                 "Archive declared size ({claimed} bytes) exceeds the {available} bytes of free space at the destination"
-            )))
-        } else {
-            Ok(())
+            ))),
+            _ => Ok(()),
         }
     }
 
-    fn remaining(&self) -> u64 {
-        self.available_bytes.saturating_sub(self.written)
+    /// Free space left for this session, or `None` when it is not reported.
+    fn remaining(&self) -> Option<u64> {
+        self.available_bytes
+            .map(|available| available.saturating_sub(self.written))
     }
 
     fn ensure_member_fits(&self, name: &str, declared: u64) -> Result<(), ArchiveError> {
-        let available = self.remaining();
-        if declared > available {
-            Err(archive_failed(format!(
+        match self.remaining() {
+            Some(available) if declared > available => Err(archive_failed(format!(
                 "Archive member `{name}` declared {declared} bytes, but only {available} bytes are free at the destination"
-            )))
-        } else {
-            Ok(())
+            ))),
+            _ => Ok(()),
         }
     }
 
@@ -284,9 +287,15 @@ fn extract_entry_location(destination: &Path, relative: &Path) -> Location {
     Location::local(destination.join(relative))
 }
 
-fn declared_size_mismatch(name: &str, declared: u64, actual: u64) -> ArchiveError {
+fn declared_size_exceeded(name: &str, declared: u64) -> ArchiveError {
     archive_failed(format!(
-        "Archive member `{name}` declared {declared} bytes but extracted {actual} bytes"
+        "Archive member `{name}` declared {declared} bytes but produced more"
+    ))
+}
+
+fn declared_size_short(name: &str, declared: u64, actual: u64) -> ArchiveError {
+    archive_failed(format!(
+        "Archive member `{name}` declared {declared} bytes but produced {actual} bytes"
     ))
 }
 
@@ -299,8 +308,8 @@ fn destination_full(name: &str, available: u64) -> ArchiveError {
 /// Copies `reader` to `writer`, enforcing declared size and remaining free space.
 ///
 /// Reads at most the declared uncompressed size and the remaining destination
-/// capacity. An extra byte past either limit, or a short read versus a declared
-/// size, fails without leaving the extra data on disk.
+/// capacity, when either is known. An extra byte past either limit, or a short
+/// read versus a declared size, fails without leaving the extra data on disk.
 ///
 /// # Errors
 ///
@@ -316,33 +325,34 @@ fn copy_member(
     writer: &mut (impl Write + ?Sized),
     cancelled: &AtomicBool,
     declared_size: Option<u64>,
-    remaining_disk: u64,
+    remaining_disk: Option<u64>,
 ) -> Result<u64, ArchiveError> {
     let mut buf = vec![0u8; COPY_BUF];
     let mut copied = 0u64;
     loop {
         check_archive_cancelled(cancelled)?;
         let declared_remaining = declared_size.map(|declared| declared.saturating_sub(copied));
-        let disk_remaining = remaining_disk.saturating_sub(copied);
-        let allowed = match declared_remaining {
-            Some(declared) => disk_remaining.min(declared),
-            None => disk_remaining,
+        let disk_remaining = remaining_disk.map(|disk| disk.saturating_sub(copied));
+        let allowed = match (declared_remaining, disk_remaining) {
+            (Some(declared), Some(disk)) => declared.min(disk),
+            (Some(limit), None) | (None, Some(limit)) => limit,
+            (None, None) => u64::MAX,
         };
         if allowed == 0 {
             let mut probe = [0u8; 1];
-            match reader.read(&mut probe).map_err(archive_failed)? {
-                0 => break,
-                extra if declared_remaining == Some(0) => {
-                    let declared =
-                        declared_size.expect("should be present when declared remaining is zero");
-                    return Err(declared_size_mismatch(
-                        name,
-                        declared,
-                        copied.saturating_add(extra as u64),
-                    ));
-                }
-                _ => return Err(destination_full(name, remaining_disk)),
+            if reader.read(&mut probe).map_err(archive_failed)? == 0 {
+                break;
             }
+            return Err(match declared_size {
+                Some(declared) if declared_remaining == Some(0) => {
+                    declared_size_exceeded(name, declared)
+                }
+                _ => destination_full(
+                    name,
+                    remaining_disk
+                        .expect("should know free space when the declared size is not exhausted"),
+                ),
+            });
         }
         let cap = buf
             .len()
@@ -357,7 +367,7 @@ fn copy_member(
     if let Some(declared) = declared_size
         && copied != declared
     {
-        return Err(declared_size_mismatch(name, declared, copied));
+        return Err(declared_size_short(name, declared, copied));
     }
     Ok(copied)
 }

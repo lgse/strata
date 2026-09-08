@@ -94,21 +94,29 @@ impl ExtractionDestination {
     /// Uses [`fstatvfs`] on the pinned root so a swapped path cannot redirect
     /// the query. Fragment size falls back to block size when `f_frsize` is 0.
     ///
+    /// Returns `None` when the filesystem does not report capacity at all
+    /// (`f_blocks == 0`), which is how FUSE mounts without a `statfs` handler
+    /// and some network filesystems answer. Treating that as zero free space
+    /// would refuse every extraction there, so callers skip the check instead.
+    ///
     /// # Errors
     ///
     /// Returns an error if the destination filesystem cannot be queried.
     ///
     /// [`fstatvfs`]: rustix::fs::fstatvfs
-    pub(super) fn available_bytes(&self) -> Result<u64, String> {
+    pub(super) fn available_bytes(&self) -> Result<Option<u64>, String> {
         let stat = rustix::fs::fstatvfs(&self.root).map_err(|error| {
             format!("Could not inspect free space at the extraction destination: {error}")
         })?;
+        if stat.f_blocks == 0 {
+            return Ok(None);
+        }
         let block = if stat.f_frsize > 0 {
             stat.f_frsize
         } else {
             stat.f_bsize.max(1)
         };
-        Ok(stat.f_bavail.saturating_mul(block))
+        Ok(Some(stat.f_bavail.saturating_mul(block)))
     }
 
     /// Finds a name in `directory` that does not already exist.

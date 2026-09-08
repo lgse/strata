@@ -360,15 +360,19 @@ fn declared_size_overflow_removes_partial_output() -> Result<(), Box<dyn Error>>
     let root = tempfile::tempdir()?;
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
-    let mut session =
-        ExtractionSession::open_with_available_bytes(root.path(), &progress, &cancelled, 1024)?;
+    let mut session = ExtractionSession::open_with_available_bytes(
+        root.path(),
+        &progress,
+        &cancelled,
+        Some(1024),
+    )?;
 
     let message = failed_extract(session.extract_member(
         "overflow.txt",
         MemberContent::File(&mut &b"abcdefgh"[..], Some(4)),
     ));
     assert!(
-        message.contains("declared 4 bytes but extracted 5 bytes"),
+        message.contains("declared 4 bytes but produced more"),
         "{message}"
     );
     assert!(!root.path().join("overflow.txt").exists());
@@ -387,7 +391,7 @@ fn declared_size_shortfall_removes_partial_output() -> Result<(), Box<dyn Error>
         session.extract_member("short.txt", MemberContent::File(&mut &b"four"[..], Some(8))),
     );
     assert!(
-        message.contains("declared 8 bytes but extracted 4 bytes"),
+        message.contains("declared 8 bytes but produced 4 bytes"),
         "{message}"
     );
     assert!(!root.path().join("short.txt").exists());
@@ -401,7 +405,7 @@ fn member_preflight_refuses_when_destination_lacks_space() -> Result<(), Box<dyn
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
     let mut session =
-        ExtractionSession::open_with_available_bytes(root.path(), &progress, &cancelled, 4)?;
+        ExtractionSession::open_with_available_bytes(root.path(), &progress, &cancelled, Some(4))?;
     let mut reader = TestReader(|_: &mut [u8]| panic!("member that cannot fit must not be read"));
 
     let message = failed_extract(
@@ -422,7 +426,7 @@ fn copy_without_declared_size_stops_at_free_space() -> Result<(), Box<dyn Error>
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
     let mut session =
-        ExtractionSession::open_with_available_bytes(root.path(), &progress, &cancelled, 4)?;
+        ExtractionSession::open_with_available_bytes(root.path(), &progress, &cancelled, Some(4))?;
 
     let message = failed_extract(session.extract_member(
         "payload.txt",
@@ -443,7 +447,7 @@ fn claimed_total_preflight_refuses_before_any_member() -> Result<(), Box<dyn Err
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
     let session =
-        ExtractionSession::open_with_available_bytes(root.path(), &progress, &cancelled, 10)?;
+        ExtractionSession::open_with_available_bytes(root.path(), &progress, &cancelled, Some(10))?;
 
     let message = failed_extract(session.preflight_claimed_size(100));
     assert!(
@@ -460,7 +464,7 @@ fn second_member_preflight_uses_remaining_space() -> Result<(), Box<dyn Error>> 
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
     let mut session =
-        ExtractionSession::open_with_available_bytes(root.path(), &progress, &cancelled, 10)?;
+        ExtractionSession::open_with_available_bytes(root.path(), &progress, &cancelled, Some(10))?;
     session.extract_member(
         "first.txt",
         MemberContent::File(&mut &b"12345678"[..], Some(8)),
@@ -487,7 +491,7 @@ fn matching_declared_size_completes_under_an_injected_quota() -> Result<(), Box<
     let progress = AtomicUsize::new(0);
     let cancelled = AtomicBool::new(false);
     let mut session =
-        ExtractionSession::open_with_available_bytes(root.path(), &progress, &cancelled, 16)?;
+        ExtractionSession::open_with_available_bytes(root.path(), &progress, &cancelled, Some(16))?;
     session.extract_member(
         "ok.txt",
         MemberContent::File(&mut &b"contents"[..], Some(8)),
@@ -498,5 +502,59 @@ fn matching_declared_size_completes_under_an_injected_quota() -> Result<(), Box<
     ));
     assert_eq!(fs::read(root.path().join("ok.txt"))?, b"contents");
     assert_eq!(progress.load(Ordering::Relaxed), 1);
+    Ok(())
+}
+
+/// A filesystem that does not report capacity must not be mistaken for a full
+/// one; free-space checks are skipped while writes proceed normally.
+#[test]
+fn unreported_free_space_skips_capacity_checks() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let progress = AtomicUsize::new(0);
+    let cancelled = AtomicBool::new(false);
+    let mut session =
+        ExtractionSession::open_with_available_bytes(root.path(), &progress, &cancelled, None)?;
+
+    session.preflight_claimed_size(u128::MAX)?;
+    session.extract_member(
+        "declared.txt",
+        MemberContent::File(&mut &b"12345678"[..], Some(8)),
+    )?;
+    session.extract_member(
+        "undeclared.txt",
+        MemberContent::File(&mut &b"12345678"[..], None),
+    )?;
+
+    assert!(matches!(
+        session.finish(Ok(()), Vec::new)?,
+        ArchiveOutcome::Completed(Some(name)) if name == "declared.txt"
+    ));
+    assert_eq!(fs::read(root.path().join("declared.txt"))?, b"12345678");
+    assert_eq!(fs::read(root.path().join("undeclared.txt"))?, b"12345678");
+    assert_eq!(progress.load(Ordering::Relaxed), 2);
+    Ok(())
+}
+
+/// Unreported free space relaxes only the capacity checks; a member that
+/// overruns its declared size is still refused.
+#[test]
+fn unreported_free_space_still_enforces_declared_size() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let progress = AtomicUsize::new(0);
+    let cancelled = AtomicBool::new(false);
+    let mut session =
+        ExtractionSession::open_with_available_bytes(root.path(), &progress, &cancelled, None)?;
+
+    let message = failed_extract(session.extract_member(
+        "overflow.txt",
+        MemberContent::File(&mut &b"abcdefgh"[..], Some(4)),
+    ));
+
+    assert!(
+        message.contains("declared 4 bytes but produced more"),
+        "{message}"
+    );
+    assert!(!root.path().join("overflow.txt").exists());
+    assert_eq!(progress.load(Ordering::Relaxed), 0);
     Ok(())
 }

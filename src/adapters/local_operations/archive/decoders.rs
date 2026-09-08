@@ -133,16 +133,18 @@ pub(super) fn extract_7z_from_reader(
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let mut session = ExtractionSession::open(dest_dir, progress, cancelled)?;
     let mut archive = sevenz_rust2::ArchiveReader::new(reader, password).map_err(archive_failed)?;
+    // Like `ZipArchive::decompressed_size`, an unrepresentable total skips the
+    // whole-archive preflight and leaves the per-member checks to refuse it.
     let claimed = archive
         .archive()
         .files
         .iter()
         .try_fold(0u128, |total, entry| {
-            total
-                .checked_add(u128::from(entry.size))
-                .ok_or_else(|| archive_failed("Archive declared size overflows"))
-        })?;
-    session.preflight_claimed_size(claimed)?;
+            total.checked_add(u128::from(entry.size))
+        });
+    if let Some(claimed) = claimed {
+        session.preflight_claimed_size(claimed)?;
+    }
     // for_each_entries lends elements of the unchanged header vector, but visits
     // them out of order. Addresses identify even duplicate names; never dereference
     // these keys, and keep them local to this reader invocation.

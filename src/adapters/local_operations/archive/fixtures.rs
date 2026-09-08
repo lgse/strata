@@ -83,6 +83,25 @@ pub(super) fn write_zip(path: &Path, entries: &[(&str, &[u8])]) -> Result<(), Bo
     Ok(())
 }
 
+/// Rewrites the uncompressed size in the first central directory record of a
+/// single-member ZIP, simulating a header that lies about its expanded size.
+pub(super) fn patch_zip_uncompressed_size(
+    path: &Path,
+    uncompressed_size: u32,
+) -> Result<(), Box<dyn Error>> {
+    const CENTRAL_DIRECTORY_SIGNATURE: [u8; 4] = [0x50, 0x4b, 0x01, 0x02];
+    const UNCOMPRESSED_SIZE_OFFSET: usize = 24;
+    let mut bytes = fs::read(path)?;
+    let record = bytes
+        .windows(CENTRAL_DIRECTORY_SIGNATURE.len())
+        .position(|window| window == CENTRAL_DIRECTORY_SIGNATURE)
+        .ok_or("zip fixture has no central directory record")?;
+    let field = record + UNCOMPRESSED_SIZE_OFFSET;
+    bytes[field..field + 4].copy_from_slice(&uncompressed_size.to_le_bytes());
+    fs::write(path, bytes)?;
+    Ok(())
+}
+
 fn append_raw_tar_entry<W: Write>(
     builder: &mut tar::Builder<W>,
     entry_type: tar::EntryType,
