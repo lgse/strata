@@ -90,7 +90,6 @@ where
     match conflict {
         TransferConflict::FailIfExists => staged.persist_noclobber(archive_path),
         TransferConflict::ReplaceExisting => staged.persist(archive_path),
-        // Compression cannot generate a unique archive name.
         TransferConflict::KeepBoth => staged.persist_noclobber(archive_path),
     }
     .map(|_| ())
