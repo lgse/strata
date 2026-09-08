@@ -1660,90 +1660,6 @@ fn disable_scale_long_press_zoom(scale: &gtk::Scale) {
     }
 }
 
-fn close_thumbnail_popover_on_outside_scroll(popover: &gtk::Popover, scroll: &gtk::ScrolledWindow) {
-    let wheel = gtk::EventControllerScroll::new(
-        gtk::EventControllerScrollFlags::VERTICAL | gtk::EventControllerScrollFlags::HORIZONTAL,
-    );
-    wheel.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let popover_for_scroll = popover.clone();
-    let scroll = scroll.clone();
-    wheel.connect_scroll(move |controller, dx, dy| {
-        if !popover_for_scroll.is_visible() || pointer_over_widget(&popover_for_scroll) {
-            return glib::Propagation::Proceed;
-        }
-        let over_icons = pointer_over_widget(&scroll);
-        popover_for_scroll.popdown();
-        if over_icons {
-            apply_scrolled_window_wheel(&scroll, controller, dx, dy);
-        }
-        glib::Propagation::Stop
-    });
-    popover.add_controller(wheel);
-}
-
-fn pointer_over_widget(widget: &impl IsA<gtk::Widget>) -> bool {
-    let widget = widget.as_ref();
-    let Some(native) = widget.native() else {
-        return false;
-    };
-    let Some(surface) = native.surface() else {
-        return false;
-    };
-    let Some(pointer) = widget
-        .display()
-        .default_seat()
-        .and_then(|seat| seat.pointer())
-    else {
-        return false;
-    };
-    let Some((x, y, _)) = surface.device_position(&pointer) else {
-        return false;
-    };
-    let (ox, oy) = native.surface_transform();
-    let Some(bounds) = widget.compute_bounds(native.upcast_ref::<gtk::Widget>()) else {
-        return false;
-    };
-    bounds.contains_point(&gtk::graphene::Point::new((x - ox) as f32, (y - oy) as f32))
-}
-
-fn apply_scrolled_window_wheel(
-    scroll: &gtk::ScrolledWindow,
-    controller: &gtk::EventControllerScroll,
-    mut dx: f64,
-    mut dy: f64,
-) {
-    if controller
-        .current_event_state()
-        .contains(gtk::gdk::ModifierType::SHIFT_MASK)
-    {
-        std::mem::swap(&mut dx, &mut dy);
-    }
-    let unit = controller.unit();
-    if dx != 0.0 {
-        apply_adjustment_scroll(&scroll.hadjustment(), dx, unit);
-    }
-    if dy != 0.0 {
-        apply_adjustment_scroll(&scroll.vadjustment(), dy, unit);
-    }
-}
-
-fn apply_adjustment_scroll(adjustment: &gtk::Adjustment, delta: f64, unit: gtk::gdk::ScrollUnit) {
-    let max = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
-    adjustment.set_value(
-        (adjustment.value() + scroll_delta_for_unit(delta, adjustment.page_size(), unit))
-            .clamp(adjustment.lower(), max),
-    );
-}
-
-fn scroll_delta_for_unit(delta: f64, page_size: f64, unit: gtk::gdk::ScrollUnit) -> f64 {
-    delta
-        * match unit {
-            gtk::gdk::ScrollUnit::Wheel => page_size.powf(2.0 / 3.0),
-            gtk::gdk::ScrollUnit::Surface => 2.5,
-            _ => 1.0,
-        }
-}
-
 /// Shared wiring every icons view in a pane needs, so a pane that groups entries by
 /// type can build one view per group without threading a dozen arguments through.
 struct IconsContext {
@@ -1886,7 +1802,8 @@ fn build_icons_pane(
         .vexpand(true)
         .build();
     scroll.add_css_class("fixed-scrollbar");
-    close_thumbnail_popover_on_outside_scroll(&controls.thumbnail_popover, &scroll);
+    scroll.add_css_class("browser-listing-scroll");
+    super::scrolling::popover::dismiss_on_outside_scroll(&controls.thumbnail_popover);
     let browser_for_settle = Rc::downgrade(&context.browser);
     let source_index_for_settle = context.source_index.clone();
     let sections_for_settle = context.sections.clone();
@@ -2862,6 +2779,7 @@ fn build_list_pane(
         .vexpand(true)
         .build();
     scroll.add_css_class("fixed-scrollbar");
+    scroll.add_css_class("browser-listing-scroll");
     let browser_for_settle = Rc::downgrade(&browser);
     let source_index_for_settle = source_index.clone();
     let sections_for_settle = Rc::downgrade(&sections);

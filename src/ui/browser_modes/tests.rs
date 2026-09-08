@@ -4,8 +4,8 @@ use super::{
     BrowserDensity, BrowserMode, ClickActivation, ClickCount, LIST_COLUMN_MIN_WIDTHS,
     LIST_COLUMN_WIDTHS, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, SourceIndexMap,
     compare_type_groups, icons_card_extent, icons_card_icon_slot, list_column_width,
-    metadata_fill_position, scroll_delta_for_unit, should_activate_pointer_click,
-    type_group_sorter, type_groups_of, value_type_group,
+    metadata_fill_position, should_activate_pointer_click, type_group_sorter, type_groups_of,
+    value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use crate::test_support::gtk_test;
@@ -278,21 +278,6 @@ fn first_row_columns(view: &impl IsA<gtk::Widget>) -> usize {
         return 0;
     };
     tops.iter().filter(|y| (*y - min_y).abs() <= 1).count()
-}
-
-#[test]
-fn icons_scroll_maps_a_wheel_notch_from_page_size() {
-    let wheel = scroll_delta_for_unit(1.0, 1000.0, gtk::gdk::ScrollUnit::Wheel);
-    assert!((wheel - 100.0).abs() < 1e-9);
-    assert!(scroll_delta_for_unit(1.0, 8000.0, gtk::gdk::ScrollUnit::Wheel) > wheel);
-    assert_eq!(
-        scroll_delta_for_unit(4.0, 100.0, gtk::gdk::ScrollUnit::Surface),
-        10.0
-    );
-    assert_eq!(
-        scroll_delta_for_unit(1.0, 50.0, gtk::gdk::ScrollUnit::Surface),
-        scroll_delta_for_unit(1.0, 999.0, gtk::gdk::ScrollUnit::Surface)
-    );
 }
 
 #[test]
