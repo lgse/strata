@@ -65,7 +65,7 @@ fn icon_and_list_subheaders_preserve_compact_hierarchy() {
                         .expect("main header bounds");
                     assert_eq!(
                         pane_bounds.height(),
-                        main_bounds.height() - 2.0,
+                        main_bounds.height() - 6.0,
                         "{size:?}, {mode:?}"
                     );
                     let main_button = fixture
@@ -80,6 +80,27 @@ fn icon_and_list_subheaders_preserve_compact_hierarchy() {
                         .expect("main icon bounds");
                     assert_eq!(main_icon.width(), 16.0);
                     assert_eq!(main_icon.height(), 16.0);
+                    let close = descendant(&main_header, "header-actions")
+                        .expect("main actions")
+                        .last_child()
+                        .expect("close button");
+                    let filter = descendant(&pane_header, "icons-header-actions")
+                        .expect("pane actions")
+                        .last_child()
+                        .expect("filter button");
+                    let close_icon = descendant(&close, "chrome-icon")
+                        .expect("close icon")
+                        .compute_bounds(&fixture.window)
+                        .expect("close icon bounds");
+                    let filter_icon = descendant(&filter, "chrome-icon")
+                        .expect("filter icon")
+                        .compute_bounds(&fixture.window)
+                        .expect("filter icon bounds");
+                    assert_eq!(
+                        filter_icon.center().x(),
+                        close_icon.center().x(),
+                        "filter and close alignment: {size:?}, {mode:?}"
+                    );
                     for class in ["list-navigation-button", "column-header-action"] {
                         let button = descendant(&pane_header, class).expect("toolbar action");
                         let bounds = button

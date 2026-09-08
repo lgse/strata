@@ -3597,8 +3597,8 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 .mode-pane-header {
   color: @theme_accent;
   font-weight: 700;
-  min-height: 44px;
-  padding: 0 12px 0 6px;
+  min-height: 40px;
+  padding: 0 6px;
 }
 
 .file-icons {
