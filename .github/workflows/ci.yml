@@ -79,6 +79,13 @@ jobs:
           key: ${{ steps.identity.outputs.runtime_key }}
           lookup-only: true
 
+      - name: Restore the compiled dependency layers with segmented cache transfers
+        id: dependency-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/e2e-dependency-cache
+          key: strata-e2e-dependencies-local-v1-${{ steps.identity.outputs.image_key }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.dockerignore') }}-${{ steps.identity.outputs.uid }}-${{ steps.identity.outputs.gid }}
+
       - name: Set up cached container builder
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
@@ -96,10 +103,8 @@ jobs:
             STRATA_BUILD_COMMIT=${{ github.sha }}
           outputs: type=local,dest=target/e2e-bundle
           cache-from: |
-            type=gha,scope=strata-e2e-bundle-v1
-            type=gha,scope=strata-e2e-dependencies-v1
-            type=gha,scope=strata-e2e-v1
-          cache-to: type=gha,mode=min,scope=strata-e2e-bundle-v1
+            ${{ steps.dependency-cache.outputs.cache-hit == 'true' && 'type=local,src=target/e2e-dependency-cache' || 'type=gha,scope=strata-e2e-dependencies-v1' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && 'type=gha,scope=strata-e2e-v1' || '' }}
 
       - name: Prepare a runtime archive on cache miss
         if: steps.runtime-cache.outputs.cache-hit != 'true'
@@ -120,8 +125,8 @@ jobs:
           tags: strata-e2e:ci-runtime
           outputs: type=docker,dest=target/e2e-runtime/runtime.tar
           cache-from: |
-            type=gha,scope=strata-e2e-dependencies-v1
-            type=gha,scope=strata-e2e-v1
+            ${{ steps.dependency-cache.outputs.cache-hit == 'true' && 'type=local,src=target/e2e-dependency-cache' || 'type=gha,scope=strata-e2e-dependencies-v1' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && 'type=gha,scope=strata-e2e-v1' || '' }}
 
       - name: Compress the runtime without another image load or build
         if: steps.runtime-cache.outputs.cache-hit != 'true'

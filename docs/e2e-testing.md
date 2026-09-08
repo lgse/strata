@@ -352,10 +352,18 @@ by an arbitrary host binary or an artifact from another run.
 `Warm E2E dependencies` publishes the full dependency cache in a separate workflow,
 with a 30-minute bootstrap allowance: daily, on image/dependency changes on main
 and PRs, and on manual dispatch. PRs warm only their own branch-scoped cache.
-The timed build reads that cache but exports only the small final bundle cache
-(`mode=min`), never the full compiler/dependency cache. The old `strata-e2e-v1`
-cache remains a read-only migration source; the new bundle cache has a separate
-scope so it cannot replace an existing full dependency index.
+The timed build restores a BuildKit local-cache directory through the cache action's
+segmented transfer path, keyed by image inputs, manifests, ignore rules, and UID/GID.
+BuildKit still validates content-addressed dependency records before reusing them.
+A missing local cache falls back to the shared GHA dependency cache; the old
+`strata-e2e-v1` cache remains a read-only migration source. The warmer publishes both
+formats and replaces its local export directory so obsolete blobs do not accumulate.
+
+The timed build does not publish an application BuildKit cache. It compiles the
+tested revision against cached dependencies and immediately hands off the binary
+and plan instead of waiting for cache export. Repeated same-revision runs therefore
+exercise the same compilation path as new revisions, not a misleading binary-cache
+shortcut.
 
 The runtime archive uses a separate exact-key cache; shards restore it without
 starting BuildKit. Only the producer exports or saves a missing archive. It confirms
