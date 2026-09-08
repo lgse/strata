@@ -53,6 +53,7 @@ def wait_for_stable_selected_entry(strata, name: str, directory: str | None = No
             and fully_above_footer(panel, footer)
             and fully_above_footer(label, footer)
             and entry.has_state("selected")
+            and entry.has_state("focused")
         )
         if visible and geometry == stable["identity"]:
             stable["count"] += 1
@@ -262,6 +263,37 @@ def test_columns_new_entry_stays_above_footer(strata, kind):
         "the final selected item content to stay above the Columns footer",
     )
     capture_evidence(strata, "after")
+
+
+@pytest.mark.preferences(reduce_motion=False, theme="3024")
+@pytest.mark.parametrize("final_name", ("m-file-0118a.txt", "zzzz"))
+def test_columns_rename_focus_follows_the_item_instead_of_its_old_position(strata, final_name):
+    strata.switch_view("Columns")
+    for index in range(120):
+        strata.fixture.path(f"m-file-{index:04d}.txt").write_text("body\n")
+    for index in range(24):
+        strata.fixture.path(f"z-tail-{index:04d}.txt").write_text("body\n")
+    strata.keyboard.press("F5")
+    strata.entry("m-file-0000.txt")
+    strata.pointer.right_click(strata.pane(), at=strata.folder_context_point())
+    strata.choose_menu_item("New File")
+    field = strata.editable_field()
+    strata.wait(lambda: field.text == "new file", "the default file name")
+    strata.pointer.move_to(*field.screen_bounds().center)
+    anchor = strata.entry("m-file-0118.txt").find(role="label", name="m-file-0118.txt")
+    assert fully_in_pane(strata.settle(anchor), strata.pane().screen_bounds())
+
+    strata.keyboard.type_text(final_name)
+    strata.wait(lambda: field.text == final_name, "the replacement name")
+    strata.keyboard.press("Return")
+    strata.wait(strata.fixture.path(final_name).exists, "the renamed file on disk")
+    strata.wait_for_entry_gone("new file")
+    wait_for_stable_selected_entry(strata, final_name)
+    if final_name == "m-file-0118a.txt":
+        assert fully_in_pane(
+            strata.entry("m-file-0118.txt").find(role="label", name="m-file-0118.txt"),
+            strata.pane().screen_bounds(),
+        )
 
 
 @pytest.mark.preferences(reduce_motion=False)

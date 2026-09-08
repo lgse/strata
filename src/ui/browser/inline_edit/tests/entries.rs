@@ -358,6 +358,68 @@ fn columns_creation_rename_stays_above_destination_hint_at_the_bottom() {
 }
 
 #[test]
+fn columns_final_name_moves_the_native_keyboard_cursor_to_the_renamed_row() {
+    gtk_test(
+        "ui::browser::inline_edit::tests::entries::columns_final_name_moves_the_native_keyboard_cursor_to_the_renamed_row",
+        || {
+            for final_name in ["m-file-0118a.txt", "zzz"] {
+                let fixture = tempfile::tempdir().expect("fixture");
+                for index in 0..120 {
+                    std::fs::write(
+                        fixture.path().join(format!("m-file-{index:04}.txt")),
+                        b"body",
+                    )
+                    .expect("fixture file");
+                }
+                for index in 0..24 {
+                    std::fs::write(
+                        fixture.path().join(format!("z-tail-{index:04}.txt")),
+                        b"body",
+                    )
+                    .expect("fixture tail file");
+                }
+                with_new_entry_at(
+                    BrowserMode::Columns,
+                    false,
+                    fixture.path(),
+                    |view, path, original| {
+                        wait_until(|| rename_field(view).is_some_and(|field| field.is_mapped()));
+                        finish_creation_rename(
+                            view,
+                            path,
+                            original,
+                            final_name,
+                            BrowserMode::Columns,
+                            false,
+                        );
+                        let location = Location::local(path.join(final_name));
+                        let columns = view.state.columns.borrow();
+                        let column = &columns[0];
+                        let row = column
+                            .bound_rows
+                            .borrow()
+                            .iter()
+                            .find_map(|bound| {
+                                (bound.location.borrow().as_ref() == Some(&location))
+                                    .then(|| bound.row.upgrade())
+                                    .flatten()
+                            })
+                            .expect("renamed row");
+                        let cursor = row.parent().expect("native list item");
+                        let focus = view.widget().root().and_then(|root| root.focus());
+                        assert_eq!(
+                            focus.as_ref(),
+                            Some(&cursor),
+                            "native cursor must follow {final_name}"
+                        );
+                    },
+                );
+            }
+        },
+    );
+}
+
+#[test]
 fn final_names_keep_created_items_selected_focused_and_visible_in_every_view_mode() {
     gtk_test(
         "ui::browser::inline_edit::tests::entries::final_names_keep_created_items_selected_focused_and_visible_in_every_view_mode",

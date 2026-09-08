@@ -550,11 +550,11 @@ impl ViewState {
                 if !selection_applied.replace(true) {
                     state.suppress_created_entry_scroll();
                     state.browser.select(pending.depth, position);
-                    state.focus_created_entry_view(pending.depth);
+                    state.focus_created_entry_view(pending.depth, &location);
                     return gtk::glib::ControlFlow::Continue;
                 }
                 if !focus_requested.replace(true) {
-                    state.focus_created_entry_view(pending.depth);
+                    state.focus_created_entry_view(pending.depth, &location);
                     return gtk::glib::ControlFlow::Continue;
                 }
                 let focused = state
@@ -563,13 +563,13 @@ impl ViewState {
                     .is_some_and(|(depth, _, entry)| {
                         depth == pending.depth && entry.location == location
                     })
-                    && state.item_view_has_focus();
+                    && state.created_entry_has_focus(pending.depth, &location);
                 if focused && state.created_entry_is_visible(pending.depth, position, &location) {
                     state.clear_created_entry_rename();
                     return gtk::glib::ControlFlow::Break;
                 }
                 if !focused {
-                    state.focus_created_entry_view(pending.depth);
+                    state.focus_created_entry_view(pending.depth, &location);
                 }
                 return gtk::glib::ControlFlow::Continue;
             }
@@ -577,29 +577,35 @@ impl ViewState {
         });
     }
 
-    fn focus_created_entry_view(&self, depth: usize) {
+    fn created_entry_cursor(&self, depth: usize, location: &Location) -> Option<gtk::Widget> {
+        let columns = self.columns.borrow();
+        let column = columns.get(depth)?;
+        column.bound_rows.borrow().iter().find_map(|bound| {
+            (bound.location.borrow().as_ref() == Some(location))
+                .then(|| bound.row.upgrade()?.parent())
+                .flatten()
+                .filter(|row| row.is_mapped())
+        })
+    }
+
+    fn focus_created_entry_view(&self, depth: usize, location: &Location) {
         if self.mode_views.borrow().mode() == BrowserMode::Columns {
-            if let Some(column) = self.columns.borrow().get(depth)
-                && !column.list.grab_focus()
-            {
-                column.presentation.stack.grab_focus();
+            if let Some(cursor) = self.created_entry_cursor(depth, location) {
+                // Focusing ListView itself restores its previous cursor, not the selected row.
+                cursor.grab_focus();
             }
         } else {
             self.mode_views.borrow().focus_visible_pane(depth);
         }
     }
 
-    fn item_view_has_focus(&self) -> bool {
-        let focused = self.overlay.root().and_then(|root| root.focus());
-        self.mode_views.borrow().item_view_has_focus()
-            || self.columns.borrow().iter().any(|column| {
-                focused.as_ref().is_some_and(|focused| {
-                    focused == column.presentation.stack.upcast_ref::<gtk::Widget>()
-                        || focused == column.list.upcast_ref::<gtk::Widget>()
-                        || column.list.is_ancestor(focused)
-                        || focused.is_ancestor(&column.list)
-                })
-            })
+    fn created_entry_has_focus(&self, depth: usize, location: &Location) -> bool {
+        if self.mode_views.borrow().mode() == BrowserMode::Columns {
+            self.created_entry_cursor(depth, location)
+                .is_some_and(|cursor| cursor.has_focus())
+        } else {
+            self.mode_views.borrow().item_view_has_focus()
+        }
     }
 
     fn reveal_created_entry(&self, depth: usize, source_position: usize, location: &Location) {
