@@ -56,6 +56,71 @@ pub(super) fn launch(
     app.launch(files, context)
 }
 
+fn application_icon(app: &gio::AppInfo, display: &gtk::gdk::Display) -> gtk::Image {
+    let icon = app.icon().and_then(|icon| {
+        if let Some(file_icon) = icon.downcast_ref::<gio::FileIcon>() {
+            return gtk::gdk::Texture::from_file(&file_icon.file())
+                .ok()
+                .map(|texture| gtk::Image::from_paintable(Some(&texture)));
+        }
+        gtk::IconTheme::for_display(display)
+            .has_gicon(&icon)
+            .then(|| gtk::Image::from_gicon(&icon))
+    });
+    icon.unwrap_or_else(|| crate::assets::primary_icon(crate::assets::icons::FILE_CODE, 24))
+}
+
+fn install_list_tab_navigation(
+    content: &gtk::Box,
+    list: &gtk::ListBox,
+    close: &gtk::Button,
+    cancel: &gtk::Button,
+) {
+    let keys = gtk::EventControllerKey::new();
+    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let list = list.downgrade();
+    let close = close.downgrade();
+    let cancel = cancel.downgrade();
+    keys.connect_key_pressed(move |_, key, _, modifiers| {
+        if !matches!(key, gtk::gdk::Key::Tab | gtk::gdk::Key::ISO_Left_Tab)
+            || modifiers.intersects(
+                gtk::gdk::ModifierType::CONTROL_MASK
+                    | gtk::gdk::ModifierType::ALT_MASK
+                    | gtk::gdk::ModifierType::SUPER_MASK,
+            )
+        {
+            return glib::Propagation::Proceed;
+        }
+        let (Some(list), Some(close), Some(cancel)) =
+            (list.upgrade(), close.upgrade(), cancel.upgrade())
+        else {
+            return glib::Propagation::Proceed;
+        };
+        let Some(focus) = list.root().and_then(|root| root.focus()) else {
+            return glib::Propagation::Proceed;
+        };
+        let backward = key == gtk::gdk::Key::ISO_Left_Tab
+            || modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        let moved = if focus == list || focus.is_ancestor(&list) {
+            if backward {
+                close.grab_focus()
+            } else {
+                cancel.grab_focus()
+            }
+        } else if (backward && focus == cancel) || (!backward && focus == close) {
+            list.selected_row().is_some_and(|row| row.grab_focus())
+        } else {
+            false
+        };
+        if moved {
+            glib::Propagation::Stop
+        } else {
+            glib::Propagation::Proceed
+        }
+    });
+    content.add_controller(keys);
+}
+
 pub(super) fn show(
     parent: &impl IsA<gtk::Widget>,
     files: Vec<gio::File>,
@@ -93,15 +158,18 @@ pub(super) fn show(
     list.set_selection_mode(gtk::SelectionMode::Single);
     list.set_activate_on_single_click(false);
     list.set_vexpand(true);
+    list.update_property(&[gtk::accessible::Property::Label("Applications")]);
+    install_list_tab_navigation(&layout.content, &list, &layout.close, &layout.cancel);
 
     for app in &apps {
         let row = gtk::ListBoxRow::new();
         row.add_css_class("open-with-row");
+        row.update_property(&[gtk::accessible::Property::Label(&app.display_name())]);
+        if let Some(description) = app.description() {
+            row.update_property(&[gtk::accessible::Property::Description(&description)]);
+        }
         let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-        let icon = app
-            .icon()
-            .map(|icon| gtk::Image::from_gicon(&icon))
-            .unwrap_or_else(|| crate::assets::primary_icon(crate::assets::icons::FILE_CODE, 24));
+        let icon = application_icon(app, &list.display());
         icon.set_pixel_size(24);
         icon.add_css_class("open-with-icon");
         let labels = gtk::Box::new(gtk::Orientation::Vertical, 1);

@@ -101,6 +101,34 @@ fn uri_capable_launch_preserves_every_remote_argument() {
 }
 
 #[test]
+fn missing_and_unresolvable_icons_use_the_live_themed_fallback() {
+    crate::test_support::gtk_test(
+        "ui::open_with::tests::missing_and_unresolvable_icons_use_the_live_themed_fallback",
+        || {
+            crate::assets::register_icon_theme();
+            let display = gtk::gdk::Display::default().expect("display");
+            let missing = application_icon(&desktop_app("Missing", "%U", ""), &display);
+            for extra in [
+                "Icon=strata-nonexistent-icon-569",
+                "Icon=/nonexistent/strata-icon.png",
+            ] {
+                let broken = application_icon(&desktop_app("Broken", "%U", extra), &display);
+                assert_eq!(broken.storage_type(), missing.storage_type());
+                assert_eq!(broken.paintable(), missing.paintable());
+                let original = broken.paintable();
+                let color = crate::assets::primary_icon_color();
+                crate::assets::set_primary_icon_color("#123456");
+                assert_ne!(broken.paintable(), original);
+                assert_eq!(broken.paintable(), missing.paintable());
+                crate::assets::set_primary_icon_color(&color);
+            }
+            let valid = application_icon(&desktop_app("Valid", "%U", "Icon=folder"), &display);
+            assert_eq!(valid.storage_type(), gtk::ImageType::Gicon);
+        },
+    );
+}
+
+#[test]
 fn empty_chooser_disables_open_and_restores_focus_after_backdrop_dismissal() {
     crate::test_support::gtk_test(
         "ui::open_with::tests::empty_chooser_disables_open_and_restores_focus_after_backdrop_dismissal",
