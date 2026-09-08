@@ -293,11 +293,13 @@ a workflow that does not have a mutation yet.
    dependencies, Rust toolchain, and compiled `Cargo.lock` dependencies. It
    compiles the tested revision **once**, without debug information or incremental
    artifacts, and collects the real pytest inventory (including parameter IDs).
-   Only the binary, checksummed provenance, and complete shard plan are uploaded.
-2. **E2E shard N** jobs start on independent 4-vCPU runners, restore only the
-   runtime layers (no Rust toolchain), download that run's bundle, and invoke
-   `./scripts/e2e.sh` with two isolated xdist workers. There is no host build,
-   Cargo cache restore, or pip installation on the warm path. Every runner uses
+   It exports the runtime once as a Zstandard-compressed Docker archive and uploads
+   it with the binary, checksummed provenance, and complete shard plan. A separate
+   small plan artifact lets aggregation avoid downloading the runtime or binary.
+2. **E2E shard N** jobs start on independent 4-vCPU runners, download that attempt's
+   bundle, load its runtime archive, and invoke `./scripts/e2e.sh` with two isolated
+   xdist workers. Shards do not start BuildKit, contact a registry, restore Cargo
+   caches, compile, or install packages. Every runner uses
    the same pinned rendering packages and baselines as a local canonical run.
 3. **End-to-end GUI suite** retains the existing required-check name. It requires
    every dependency to succeed, verifies that all planned node IDs passed setup,
@@ -312,7 +314,7 @@ a workflow that does not have a mutation yet.
 
 The matrix is generated from `harness/sharding.py`, not a fixed runner count or
 file list. Tests are scheduled longest-first using committed setup+call+teardown
-measurements from `tests/e2e/durations.json`, with 25% headroom and a 40-second
+CI measurements from `tests/e2e/durations.json`, with 25% headroom and a 30-second
 estimated worker budget. New tests automatically receive a conservative five-second
 weight. More tests or longer measured durations add runners. Baselines stay in
 one serial scheduling group. An indivisible group over budget or a plan requiring
@@ -347,20 +349,28 @@ commit, source/resource contents (including local edits), rendering inputs, bina
 checksum, and plan checksum. The runtime image's input label must match too; it cannot be replaced
 by an arbitrary host binary or an artifact from another run.
 
-`Warm E2E dependencies` seeds a separate default-branch cache daily, when image or
-Rust dependency inputs change, and on manual dispatch. The regular build can read
-that cache and the previous application cache. Only the build job writes the
-application cache; shards are read-only consumers. GitHub's cache branch scoping
+`Warm E2E dependencies` publishes the full dependency cache in a separate workflow,
+with a 30-minute bootstrap allowance: daily, on image/dependency changes on main
+and PRs, and on manual dispatch. PRs warm only their own branch-scoped cache.
+The timed build reads that cache but exports only the small final bundle cache
+(`mode=min`), never the full compiler/dependency cache. The old `strata-e2e-v1`
+cache remains a read-only migration source; the new bundle cache has a separate
+scope so it cannot replace an existing full dependency index.
+
+Shards consume only the current attempt's artifact, including the runtime archive.
+Node-24-native actions verify artifact download digests; the runner also checks
+bundle provenance and the loaded image's input label. GitHub's cache branch scoping
 allows fork PRs to read the main cache without credentials or registry access and
 prevents PR caches from replacing main's cache. No `pull_request_target` execution
 or package-write permission is needed.
 
 **A completely cold/evicted cache or a newly changed image is not guaranteed to
-install and compile within three minutes.** The build is allowed ten minutes to
-finish and save usable layers, but the aggregate still fails the 180-second budget:
-a cold run is not silently exempted or advertised as a fast pass. Seed the dependency
-cache before enabling the new required gate, and rerun the **entire workflow** after
-cold recovery. External package outages, cache eviction, and runner queues cannot
+install and compile within three minutes.** The timed build retains a ten-minute
+limit for cold-build diagnostics, but the aggregate still fails the 180-second
+budget: a cold run is not silently exempted or advertised as a fast pass. Large
+cache publication no longer blocks binary handoff or races that ten-minute limit;
+the separate warmer owns it. Seed the dependency cache before enabling the new
+required gate, and rerun the **entire workflow** after the warmer completes. External package outages, cache eviction, and runner queues cannot
 be solved by adding test shards. Inspect the build logs' `CACHED` entries and the
 critical-path summary rather than raising the time limit.
 
@@ -392,8 +402,9 @@ STRATA_CONTAINER_ENGINE=podman STRATA_E2E_IMAGE=strata-e2e:ci-runtime \
 The bundle must be inside the checkout. Without these explicit bundle/image
 variables the local canonical runner still builds the source normally.
 
-After a complete successful CI attempt, download its `e2e-report-<attempt>-*`
-artifacts into an empty `target/e2e-reports` directory and its bundle into
+After a complete CI attempt with every test passing (even if its wall-clock gate
+failed), download its `e2e-report-<attempt>-*` artifacts into an empty
+`target/e2e-reports` directory and its `e2e-plan-<attempt>` into
 `target/e2e-bundle`, then refresh timings:
 
 ```bash

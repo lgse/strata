@@ -15,7 +15,7 @@ from e2e_bundle import create, image_key, verify
 from e2e_ci import check_budget, critical_path, main as ci_main, workflow_jobs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests/e2e"))
-from harness.sharding import make_plan, validate_plan, verify_reports
+from harness.sharding import TARGET_SECONDS, make_plan, validate_plan, verify_reports
 
 
 def inventory(count):
@@ -35,11 +35,11 @@ class ShardingTests(unittest.TestCase):
         tests = inventory(150)
         for test in tests[:6]:
             test["group"] = "visual-baselines"
-        plan = make_plan(tests, {})
+        plan = make_plan(tests, {test["nodeid"]: 2 for test in tests[:6]})
         validate_plan(plan, tests)
         members = {test["nodeid"] for test in tests[:6]}
         self.assertEqual(sum(members <= set(shard["nodeids"]) for shard in plan["shards"]), 1)
-        self.assertTrue(all(shard["estimated_seconds"] <= 40 for shard in plan["shards"]))
+        self.assertTrue(all(shard["estimated_seconds"] <= TARGET_SECONDS for shard in plan["shards"]))
 
     def test_input_order_and_duration_key_order_do_not_change_assignments(self):
         tests = inventory(60)
@@ -52,6 +52,14 @@ class ShardingTests(unittest.TestCase):
         self.assertGreater(len(make_plan(inventory(200), {})["shards"]),
                            len(make_plan(inventory(100), {})["shards"]))
 
+    def test_tighter_worker_budget_adds_runners_without_dropping_tests(self):
+        tests = inventory(100)
+        normal = make_plan(tests, {}, target=40)
+        tighter = make_plan(tests, {}, target=30)
+        self.assertGreater(len(tighter["shards"]), len(normal["shards"]))
+        validate_plan(tighter, tests)
+        self.assertTrue(all(shard["estimated_seconds"] <= 30 for shard in tighter["shards"]))
+
     def test_new_tests_receive_a_nonzero_conservative_weight(self):
         tests = inventory(25)
         self.assertGreater(len(make_plan(tests, {})["shards"]),
@@ -61,7 +69,7 @@ class ShardingTests(unittest.TestCase):
         tests = inventory(50)
         times = {test["nodeid"]: 0.1 for test in tests}
         times[tests[0]["nodeid"]] = 30
-        plan = make_plan(tests, times)
+        plan = make_plan(tests, times, target=40)
         self.assertTrue(all(shard["estimated_seconds"] <= 40 for shard in plan["shards"]))
 
     def test_empty_duplicate_and_invalid_duration_inputs_fail_closed(self):

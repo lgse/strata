@@ -51,14 +51,11 @@ jobs:
     env:
       DOCKER_BUILD_RECORD_UPLOAD: 'false'
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
-    # Allow cold cache recovery to finish and populate caches; the aggregate
-    # gate still rejects a critical path of 180 seconds or more.
+    # Preserve cold-build diagnostics without exempting them from the 180s gate.
+    # The separate warmer publishes the large dependency cache.
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
-      uid: ${{ steps.identity.outputs.uid }}
-      gid: ${{ steps.identity.outputs.gid }}
-      image_key: ${{ steps.identity.outputs.image_key }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -87,15 +84,36 @@ jobs:
             STRATA_BUILD_COMMIT=${{ github.sha }}
           outputs: type=local,dest=target/e2e-bundle
           cache-from: |
-            type=gha,scope=strata-e2e-v1
+            type=gha,scope=strata-e2e-bundle-v1
             type=gha,scope=strata-e2e-dependencies-v1
-          cache-to: type=gha,mode=max,scope=strata-e2e-v1
+            type=gha,scope=strata-e2e-v1
+          cache-to: type=gha,mode=min,scope=strata-e2e-bundle-v1
+
+      - name: Export the pinned runtime once for every shard
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: tests/e2e/Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          build-args: |
+            E2E_UID=${{ steps.identity.outputs.uid }}
+            E2E_GID=${{ steps.identity.outputs.gid }}
+            E2E_IMAGE_KEY=${{ steps.identity.outputs.image_key }}
+          tags: strata-e2e:ci-runtime
+          outputs: type=docker,dest=target/e2e-bundle/runtime.tar
+          cache-from: |
+            type=gha,scope=strata-e2e-dependencies-v1
+            type=gha,scope=strata-e2e-v1
+
+      - name: Compress the runtime without another image load or build
+        run: zstd -T0 -1 --rm target/e2e-bundle/runtime.tar
 
       - name: Generate the runner matrix
         id: plan
         run: python3 scripts/e2e_ci.py matrix target/e2e-bundle/plan.json >> "$GITHUB_OUTPUT"
 
-      - name: Share the binary and plan, not Cargo or a toolchain
+      - name: Share the binary, plan, and runtime, not Cargo or a toolchain
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-bundle-${{ github.run_attempt }}
@@ -104,12 +122,18 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Share the small plan separately for aggregation
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-plan-${{ github.run_attempt }}
+          path: target/e2e-bundle/plan.json
+          if-no-files-found: error
+          retention-days: 1
+
   e2e-shard:
     name: E2E shard ${{ matrix.shard }}
     needs: e2e-build
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    env:
-      DOCKER_BUILD_RECORD_UPLOAD: 'false'
     timeout-minutes: 3
     strategy:
       fail-fast: false
@@ -118,31 +142,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Set up cached container builder
-        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
-
-      - name: Load the pinned runtime from the shared layer cache
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
-        with:
-          context: .
-          file: tests/e2e/Dockerfile
-          target: runtime
-          platforms: linux/amd64
-          build-args: |
-            E2E_UID=${{ needs.e2e-build.outputs.uid }}
-            E2E_GID=${{ needs.e2e-build.outputs.gid }}
-            E2E_IMAGE_KEY=${{ needs.e2e-build.outputs.image_key }}
-          load: true
-          tags: strata-e2e:ci-runtime
-          cache-from: |
-            type=gha,scope=strata-e2e-v1
-            type=gha,scope=strata-e2e-dependencies-v1
-
-      - name: Download this attempt's binary and complete shard plan
+      - name: Download this attempt's binary, runtime, and complete shard plan
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: e2e-bundle-${{ github.run_attempt }}
           path: target/e2e-bundle
+
+      - name: Load the shared runtime without BuildKit or registry access
+        shell: bash
+        run: zstd -dc target/e2e-bundle/runtime.tar.zst | docker load
 
       - name: Run the assigned scenarios without rebuilding or installing
         env:
@@ -192,7 +200,7 @@ jobs:
         if: ${{ needs.e2e-build.result == 'success' }}
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
-          name: e2e-bundle-${{ github.run_attempt }}
+          name: e2e-plan-${{ github.run_attempt }}
           path: target/e2e-bundle
 
       - name: Download all shard reports

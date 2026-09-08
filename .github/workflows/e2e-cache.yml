@@ -2,6 +2,16 @@ name: Warm E2E dependencies
 
 on:
   workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - tests/e2e/Dockerfile
+      - tests/e2e/requirements.txt
+      - tests/e2e/install-packages.sh
+      - .dockerignore
+      - .github/workflows/e2e-cache.yml
   schedule:
     - cron: '23 4 * * *'
   push:
@@ -19,14 +29,16 @@ permissions:
   contents: read
 
 concurrency:
-  group: e2e-cache-warm
+  group: e2e-cache-warm-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 
 jobs:
   warm:
-    if: github.ref == 'refs/heads/main'
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 10
+    timeout-minutes: 30
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: 'false'
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,5 +64,7 @@ jobs:
             E2E_UID=${{ steps.identity.outputs.uid }}
             E2E_GID=${{ steps.identity.outputs.gid }}
             E2E_IMAGE_KEY=${{ steps.identity.outputs.image_key }}
-          cache-from: type=gha,scope=strata-e2e-dependencies-v1
+          cache-from: |
+            type=gha,scope=strata-e2e-dependencies-v1
+            type=gha,scope=strata-e2e-v1
           cache-to: type=gha,mode=max,scope=strata-e2e-dependencies-v1
