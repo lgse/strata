@@ -238,8 +238,8 @@ in the test output, and CI uploads the whole directory. Pass
 
 `tests/e2e/scenarios/test_visual_baselines.py` compares a small set of stable
 states with the images in `tests/e2e/baselines/gtk-4.14`: one canonical fixture
-in each view, a selection with focus, an open context menu, and a confirmation
-dialog. Local and CI runs use this one rendering profile. Other host GTK
+in each view, a hovered Icons tile, a selection with focus, an open context menu,
+and a confirmation dialog. Local and CI runs use this one rendering profile. Other host GTK
 versions do not have separate baselines; native baseline runs fail rather than
 silently accepting a different renderer.
 These scenarios exclusively claim `/tmp/strata-e2e-baseline`, because the
