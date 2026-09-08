@@ -322,7 +322,13 @@ pub(in crate::ui) fn install_folder_context_menu(
         );
         if let Some(state) = weak_state.upgrade() {
             focus_context_column(&state, depth);
-            show_context_popover(&popover_for_trigger, &scroll_for_trigger, &parent_for_trigger, x, y);
+            show_context_popover(
+                &popover_for_trigger,
+                &scroll_for_trigger,
+                &parent_for_trigger,
+                x,
+                y,
+            );
         }
     });
 
@@ -923,7 +929,13 @@ pub(in crate::ui) fn install_item_context_menu(
             multiple.set_visible(false);
         }
         focus_context_column(&state, depth);
-        show_context_popover(&popover_for_trigger, &scroll_for_trigger, &widget_for_trigger, x, y);
+        show_context_popover(
+            &popover_for_trigger,
+            &scroll_for_trigger,
+            &widget_for_trigger,
+            x,
+            y,
+        );
         true
     });
 
