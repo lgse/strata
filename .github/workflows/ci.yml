@@ -284,12 +284,13 @@ jobs:
           path: target/e2e-reports
           merge-multiple: true
 
-      - name: Require every dependency to succeed
+      - name: Explain unsuccessful prerequisites and require them to succeed
         if: ${{ always() }}
         env:
+          GH_TOKEN: ${{ github.token }}
           BUILD_RESULT: ${{ needs.e2e-build.result }}
           SHARD_RESULT: ${{ needs.e2e-shard.result }}
-        run: test "$BUILD_RESULT" = success && test "$SHARD_RESULT" = success
+        run: python3 scripts/e2e_ci.py dependencies
 
       - name: Verify exact coverage
         run: python3 scripts/e2e_ci.py verify target/e2e-bundle/plan.json target/e2e-reports
