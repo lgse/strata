@@ -133,6 +133,7 @@ class BundleTests(unittest.TestCase):
             suite = root / "tests/e2e"
             suite.mkdir(parents=True)
             (suite / "Dockerfile").write_text("FROM pinned\n")
+            (suite / "install-packages.sh").write_text("pinned package installation\n")
             requirements = suite / "requirements.txt"
             requirements.write_text("pytest==9.1.1\n")
             bundle = root / "bundle"
@@ -153,11 +154,15 @@ class BundleTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "source differs"):
                 verify(bundle, "revision", root)
             (root / "build.rs").write_text("source")
-            old_key = image_key(root)
-            requirements.write_text("pytest==new\n")
-            self.assertNotEqual(old_key, image_key(root))
-            with self.assertRaisesRegex(ValueError, "inputs"):
-                verify(bundle, "revision", root)
+            for path in (requirements, suite / "Dockerfile", suite / "install-packages.sh"):
+                with self.subTest(image_input=path.name):
+                    original = path.read_bytes()
+                    old_key = image_key(root)
+                    path.write_bytes(original + b"changed\n")
+                    self.assertNotEqual(old_key, image_key(root))
+                    with self.assertRaisesRegex(ValueError, "inputs"):
+                        verify(bundle, "revision", root)
+                    path.write_bytes(original)
 
 
 class CliTests(unittest.TestCase):

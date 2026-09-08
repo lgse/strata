@@ -332,8 +332,16 @@ failures. The gate never mixes previous attempts into a fresh measurement.
 
 ### Cache lifecycle and cold starts
 
-BuildKit's content-addressed cache invalidates on the actual Dockerfile,
-requirements, Rust manifest/lockfile, source, and resource inputs. A stub application
+BuildKit's content-addressed cache invalidates on the actual Dockerfile, package
+installer, requirements, Rust manifest/lockfile, source, and resource inputs.
+`install-packages.sh` downloads from the official archive using byte-identical,
+signed snapshot indexes, then installs against the original snapshot sources.
+It never refreshes indexes from the moving archive: versions and APT checksum
+verification stay pinned. Superseded packages unavailable on the archive fall back
+to the snapshot; failed maintainer scripts are not retried. This avoids making every
+package download wait on the slower snapshot service during cold recovery.
+
+A stub application
 warms dependencies only; its executable and all Strata fingerprints are removed
 before the real source is copied and compiled. The bundle is tied to the checked-out
 commit, source/resource contents (including local edits), rendering inputs, binary

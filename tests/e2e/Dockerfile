@@ -4,15 +4,17 @@ RUN apt-get update && apt-get install --yes --no-install-recommends ca-certifica
 
 FROM docker.io/library/ubuntu:24.04@sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316 AS runtime
 COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+COPY tests/e2e/install-packages.sh /opt/e2e-install-packages.sh
+ENV STRATA_E2E_SNAPSHOT_URL=http://snapshot.ubuntu.com/ubuntu/20260901T000000Z
 
 RUN printf '%s\n' \
-    'deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20260901T000000Z noble main universe' \
-    'deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20260901T000000Z noble-updates main universe' \
-    'deb [check-valid-until=no] http://snapshot.ubuntu.com/ubuntu/20260901T000000Z noble-security main universe' \
+    "deb [check-valid-until=no] $STRATA_E2E_SNAPSHOT_URL noble main universe" \
+    "deb [check-valid-until=no] $STRATA_E2E_SNAPSHOT_URL noble-updates main universe" \
+    "deb [check-valid-until=no] $STRATA_E2E_SNAPSHOT_URL noble-security main universe" \
     > /etc/apt/sources.list \
     && rm /etc/apt/sources.list.d/ubuntu.sources \
-    && apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
+    && apt-get update --error-on=any \
+    && DEBIAN_FRONTEND=noninteractive sh /opt/e2e-install-packages.sh \
     at-spi2-core ca-certificates dbus-bin dbus-daemon fonts-cantarell \
     gir1.2-atspi-2.0 gir1.2-gtk-4.0 imagemagick libfontconfig1 libgtk-4-1 \
     libgtksourceview-5-0 libpoppler-glib8 librsvg2-common python3-gi python3-venv \
@@ -36,8 +38,8 @@ ARG E2E_IMAGE_KEY
 LABEL org.strata.e2e.inputs=$E2E_IMAGE_KEY
 
 FROM runtime AS toolchain
-RUN apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install --yes --no-install-recommends \
+RUN apt-get update --error-on=any \
+    && DEBIAN_FRONTEND=noninteractive sh /opt/e2e-install-packages.sh \
         build-essential libfontconfig1-dev libgtk-4-dev libgtksourceview-5-dev \
         libpoppler-glib-dev pkg-config rustup \
     && rm -rf /var/lib/apt/lists/*

@@ -18,7 +18,7 @@ def digest(path):
 
 def image_key(repository=REPOSITORY):
     return hashlib.sha256("".join(digest(repository / path) for path in (
-        "tests/e2e/Dockerfile", "tests/e2e/requirements.txt",
+        "tests/e2e/Dockerfile", "tests/e2e/requirements.txt", "tests/e2e/install-packages.sh",
     )).encode()).hexdigest()
 
 

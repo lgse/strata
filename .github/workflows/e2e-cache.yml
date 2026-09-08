@@ -11,6 +11,7 @@ on:
       - Cargo.lock
       - tests/e2e/Dockerfile
       - tests/e2e/requirements.txt
+      - tests/e2e/install-packages.sh
       - .dockerignore
       - .github/workflows/e2e-cache.yml
 
