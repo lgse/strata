@@ -48,6 +48,11 @@ pub(super) fn context_menu_popover(
         .propagate_natural_height(true)
         .build();
     scroll.add_css_class("context-menu-scroll");
+    // GTK auto-wraps a non-Scrollable child in a GtkViewport, which does not
+    // scroll a focused descendant into view unless this is turned on.
+    if let Some(viewport) = content.parent().and_downcast::<gtk::Viewport>() {
+        viewport.set_scroll_to_focus(true);
+    }
 
     (
         gtk::Popover::builder()
@@ -90,9 +95,6 @@ pub(super) fn bind_column_context_owner(
 }
 
 pub(super) fn focus_context_column(state: &Rc<ViewState>, depth: usize) {
-    if state.mode_views.borrow().mode() != crate::ui::browser_modes::BrowserMode::Columns {
-        return;
-    }
     state
         .context_menu_generation
         .set(state.context_menu_generation.get().wrapping_add(1));

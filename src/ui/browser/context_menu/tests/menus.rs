@@ -8,7 +8,7 @@ use crate::services::{
 use crate::ui::browser::{BrowserView, PeekBehavior};
 use std::time::{Duration, Instant};
 
-struct MenuSource;
+pub(super) struct MenuSource;
 
 impl FileSource for MenuSource {
     fn validate_location(&self, _: &Location) -> Result<(), LocationValidationError> {
@@ -58,7 +58,7 @@ impl FileSource for MenuSource {
     }
 }
 
-fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
+pub(super) fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
     let mut result = vec![widget.clone()];
     let mut child = widget.first_child();
     while let Some(current) = child {
@@ -69,7 +69,7 @@ fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
 }
 
 #[track_caller]
-fn wait_until(condition: impl Fn() -> bool) {
+pub(super) fn wait_until(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
         assert!(Instant::now() < deadline, "menu fixture did not settle");
@@ -84,7 +84,7 @@ fn wait_until(condition: impl Fn() -> bool) {
     }
 }
 
-fn label(widget: &gtk::Widget, text: &str) -> Option<gtk::Widget> {
+pub(super) fn label(widget: &gtk::Widget, text: &str) -> Option<gtk::Widget> {
     descendants(widget).into_iter().find(|widget| {
         widget.is_mapped()
             && widget.width() > 0
@@ -97,7 +97,7 @@ fn label(widget: &gtk::Widget, text: &str) -> Option<gtk::Widget> {
     })
 }
 
-fn open_menu(view: &BrowserView, name: Option<&str>) -> gtk::Popover {
+pub(super) fn open_menu(view: &BrowserView, name: Option<&str>) -> gtk::Popover {
     let root = view.widget();
     let target = name.map(|name| label(&root, name).expect("mapped entry label"));
     for owner in descendants(&root).into_iter().rev() {
