@@ -22,6 +22,12 @@ def image_key(repository=REPOSITORY):
     )).encode()).hexdigest()
 
 
+def dependency_key(repository=REPOSITORY):
+    inputs = [image_key(repository)] + [digest(repository / name)
+                                       for name in ("Cargo.toml", "Cargo.lock", ".dockerignore")]
+    return hashlib.sha256("".join(inputs).encode()).hexdigest()
+
+
 def source_key(repository=REPOSITORY):
     files = [repository / name for name in ("Cargo.toml", "Cargo.lock", "build.rs")]
     for directory in ("src", "data"):
@@ -56,13 +62,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("image-key")
+    sub.add_parser("dependency-key")
     for command in ("create", "verify"):
         child = sub.add_parser(command)
         child.add_argument("bundle", type=Path)
         child.add_argument("--commit")
     args = parser.parse_args()
-    if args.command == "image-key":
-        print(image_key())
+    if args.command in ("image-key", "dependency-key"):
+        print(image_key() if args.command == "image-key" else dependency_key())
         return
     commit = args.commit or subprocess.check_output(
         ["git", "rev-parse", "HEAD"], cwd=REPOSITORY, text=True).strip()

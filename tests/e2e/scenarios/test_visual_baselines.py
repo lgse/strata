@@ -53,6 +53,14 @@ def test_icons_view_baseline(strata, baseline):
     baseline(strata, "icons-view")
 
 
+@pytest.mark.preferences(browser_mode="icons")
+def test_icons_hover_baseline(strata, baseline):
+    _settle(strata)
+    strata.pointer.move_to(*strata.entry("todo.txt").screen_bounds().center)
+    strata.settle(strata.pane())
+    baseline(strata, "icons-hover")
+
+
 @pytest.mark.preferences(browser_mode="list")
 def test_list_view_baseline(strata, baseline):
     _settle(strata)

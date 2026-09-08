@@ -839,11 +839,8 @@ pub(in crate::ui) fn install_item_context_menu(
         target.replace(Some((resolved_position, entry.clone())));
         let entries = context_entries(&state, &target);
         let open_with_entries = entries.clone();
-        open_with.set_visible(open_with_entries.len() == 1 && !open_with_entries[0].is_directory());
-        open_with_multiple.set_visible(
-            open_with_entries.len() > 1
-                && open_with_entries.iter().all(|entry| !entry.is_directory()),
-        );
+        open_with.set_visible(open_with_entries.len() == 1);
+        open_with_multiple.set_visible(open_with_entries.len() > 1);
         open_multiple.set_visible(false);
         for button in [&open_with, &open_with_multiple] {
             button.set_sensitive(false);
@@ -1132,7 +1129,7 @@ fn prepare_open_with(
     generation: &Rc<Cell<u64>>,
     expected_generation: u64,
 ) {
-    if entries.is_empty() || entries.iter().any(FileEntry::is_directory) {
+    if entries.is_empty() {
         return;
     }
     let locations = entries
@@ -1174,10 +1171,6 @@ fn prepare_open_with(
                 unavailable("Unable to read the selected file type");
                 return;
             };
-            if info.file_type() == gio::FileType::Directory {
-                unavailable("Open With is unavailable for folders");
-                return;
-            }
             if info.file_type() == gio::FileType::SymbolicLink {
                 unavailable("Broken symbolic links cannot be opened with an application");
                 return;
