@@ -3,7 +3,9 @@
 use gtk::gdk::{Key, ModifierType};
 
 use super::super::*;
-use crate::ui::{shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation};
+use crate::ui::{
+    preview::PreviewDrawer, shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation,
+};
 
 struct KeyboardFixture {
     window: gtk::ApplicationWindow,

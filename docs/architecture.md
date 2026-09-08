@@ -151,6 +151,22 @@ publication/metadata orchestration, native transfer security and the settings wo
 refactored independently of browser composition. Investigation and scope decisions are recorded in
 [issue #397](https://github.com/lgse/strata/issues/397).
 
+### Window composition
+
+`ui/window.rs::present_target` owns the startup sequence: prepare theme/styles, compose
+and bind the window, arm first-paint work and destruction cleanup, present, then schedule
+initial navigation, portal integration, and the due update check. Reveal selection is
+queued before navigation. Sidebar discovery remains deferred until after the first paint.
+
+`ui/window/composition.rs` coordinates the window's components. Its private `layout`
+module assembles the header, sidebar/browser/preview splits, and live shortcut footer;
+`input` installs pointer history and edit-cancellation gestures. `search` shares one
+toggle/dismissal path between the header button and window action, reading preferences
+at dispatch. `settings` owns update notices and a single lazily created Settings layer
+per window; both Settings entry points reuse it and the process-wide install guard.
+Preferences take effect before Settings opens. Destruction disconnects the clipboard
+subscription, browser observers, and sidebar monitors.
+
 ### Window keyboard routing
 
 `ui/window/keyboard.rs` owns the window's capture-phase keyboard dispatcher. Its ordered

@@ -4,7 +4,9 @@ use super::super::*;
 use crate::services::{
     LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
 };
-use crate::ui::{shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation};
+use crate::ui::{
+    preview::PreviewDrawer, shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation,
+};
 
 pub(super) struct TextPreview;
 
