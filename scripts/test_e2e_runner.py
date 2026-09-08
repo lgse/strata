@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -81,6 +82,16 @@ class ContainerRunnerTests(unittest.TestCase):
             self.assertIsNone(call["display"])
             self.assertIsNone(call["wayland"])
             self.assertIsNone(call["notify"])
+
+    def test_ci_explicitly_runs_the_engine_that_loaded_its_runtime(self):
+        workflow = (REPOSITORY / ".github/workflows/ci.yml").read_text()
+        loader = re.search(r"zstd -dc target/e2e-runtime/runtime.tar.zst \| (\w+) load", workflow)
+        step = workflow.split("- name: Run the assigned scenarios without rebuilding or installing", 1)[1]
+        step = step.split("- name:", 1)[0]
+        runner = re.search(r"STRATA_CONTAINER_ENGINE: (\w+)", step)
+        self.assertIsNotNone(loader)
+        self.assertIsNotNone(runner)
+        self.assertEqual(loader.group(1), runner.group(1))
 
     def test_worker_budget_is_forwarded_into_container(self):
         for workers in ("auto", "1", "8"):

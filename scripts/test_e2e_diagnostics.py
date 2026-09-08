@@ -16,6 +16,13 @@ def failed_job(index=1, name="E2E build and plan", conclusion="failure"):
 
 
 class ClassificationTests(unittest.TestCase):
+    def test_rendered_commands_are_not_mistaken_for_executed_errors(self):
+        command = "##[group]Run echo 'Runtime cache did not match its exact pinned key'\n##[endgroup]\n"
+        self.assertIsNone(classify_log(command))
+        reason = classify_log(command + "Error: strata-e2e:ci-runtime: image not known\n")
+        self.assertIn("same engine", reason)
+        self.assertNotIn("cache did not match", reason)
+
     def test_snapshot_errors_are_attributed_to_bootstrap_not_gui_assertions(self):
         log = "\n".join(
             f"E: Failed to fetch https://snapshot.ubuntu.com/ubuntu/date/dists/noble/InRelease  {code} Error"

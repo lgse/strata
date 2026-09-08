@@ -252,6 +252,7 @@ jobs:
 
       - name: Run the assigned scenarios without rebuilding or installing
         env:
+          STRATA_CONTAINER_ENGINE: docker
           STRATA_E2E_IMAGE: strata-e2e:ci-runtime
           STRATA_E2E_BUNDLE: target/e2e-bundle
           STRATA_E2E_WORKERS: '2'

@@ -14,7 +14,9 @@ checks both what the window reports and what happened on disk.
 ```
 
 The runner prefers Podman when available; select an engine explicitly with
-`STRATA_CONTAINER_ENGINE=podman` or `docker`. Normal runs verify and reuse the
+`STRATA_CONTAINER_ENGINE=podman` or `docker`. CI explicitly selects Docker to match
+its runtime archive loader; an image in one engine's store is not visible to the
+other. Normal runs verify and reuse the
 local base image. If missing, they pull the published environment once, verify
 its input label and platform, and record it locally. They **never automatically
 build images or fetch Ubuntu packages**. A missing publication fails with an

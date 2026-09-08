@@ -38,6 +38,10 @@ def job_log(job_id: int) -> str:
 
 def classify_log(log: str) -> str | None:
     log = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", log)
+    log = re.sub(r"##\[group\]Run [\s\S]*?##\[endgroup\]", "", log)
+    if re.search(r"(?m)^.*\bError: [^\n]+: image not known\s*$", log):
+        return ("The selected container engine cannot find the loaded runtime. "
+                "Use the same engine for image loading and scenario execution.")
     statuses = sorted(set(re.findall(
         r"E: Failed to fetch https?://snapshot\.ubuntu\.com/\S+[^\n]*?\s(5\d\d)\s", log)))
     if statuses:
