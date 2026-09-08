@@ -23,6 +23,12 @@ under `.agents/`.
 ## Pre-push checks
 
 - Do not push until the full local CI suite passes: `cargo fmt --all --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all-targets --all-features`.
+- Run `./scripts/quality.sh` before pushing to exercise formatting, Clippy, and the full Rust suite
+  in CI's verified pinned build environment. It reuses the same base as E2E but
+  keeps Cargo artifacts in `target/quality-container`, and requires GTK tests to
+  execute under private Xvfb. Individual phases are `fmt`, `clippy`, and `test`.
+  It never implicitly builds an image; the explicit E2E base-update command below
+  also prepares this shared environment.
 - Agents must never run GTK tests against the user's active Wayland or X11 display. Run the suite under a private Xvfb display with accessibility bridging disabled:
 
   ```bash
