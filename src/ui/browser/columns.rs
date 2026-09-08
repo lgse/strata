@@ -76,6 +76,8 @@ pub(super) struct ColumnView {
     pub(super) list: gtk::ListView,
     pub(super) marquee: crate::ui::marquee::Marquee,
     pub(super) bound_rows: Rc<RefCell<Vec<BoundRow>>>,
+    pub(super) folder_context_trigger: Rc<dyn Fn(f64, f64)>,
+    pub(super) item_context_trigger: Rc<dyn Fn(f64, f64)>,
     pub(super) entry_count: Rc<Cell<usize>>,
     pub(super) spinner: gtk::Spinner,
     pub(super) spinner_delay: Rc<RefCell<Option<glib::SourceId>>>,
@@ -87,6 +89,39 @@ pub(super) struct ColumnView {
     pub(super) search_handle: Rc<RefCell<Option<crate::services::SearchHandle>>>,
     pub(super) search_generation: Rc<Cell<u64>>,
     pub(super) search_model: gtk::StringList,
+}
+
+impl ColumnView {
+    /// The trigger and local `(x, y)` point to open this column's context menu
+    /// for `position` (the item menu) or its background (the folder menu, when
+    /// `position` is `None` or not currently rendered).
+    pub(super) fn context_menu_target(
+        &self,
+        position: Option<usize>,
+    ) -> Option<(Rc<dyn Fn(f64, f64)>, f64, f64)> {
+        if let Some(position) = position
+            && let Some(row) = self.bound_rows.borrow().iter().find_map(|bound| {
+                let item = bound.item.upgrade()?;
+                (item.position() as usize == position).then(|| bound.row.upgrade())?
+            })
+        {
+            let bounds = row.compute_bounds(&self.list)?;
+            return Some((
+                self.item_context_trigger.clone(),
+                f64::from(bounds.center().x()),
+                f64::from(bounds.center().y()),
+            ));
+        }
+        let width = f64::from(self.presentation.stack.width());
+        let height = f64::from(self.presentation.stack.height());
+        (width > 0.0 && height > 0.0).then(|| {
+            (
+                self.folder_context_trigger.clone(),
+                width / 2.0,
+                height / 2.0,
+            )
+        })
+    }
 }
 
 pub(super) fn column_size_text(entry: Option<&FileEntry>) -> String {
@@ -988,7 +1023,7 @@ impl ViewState {
         if self.interactive {
             install_directory_drop_target(self, &presentation.stack, location.clone());
         }
-        install_folder_context_menu(
+        let folder_context_trigger = install_folder_context_menu(
             self,
             presentation.stack.upcast_ref(),
             {
@@ -1012,7 +1047,7 @@ impl ViewState {
                 (row == picked).then_some(item.position())
             })
         });
-        {
+        let item_context_trigger = {
             let map_for_context = map.clone();
             let source_position =
                 Rc::new(move |position| map_for_context.source_position(position));
@@ -1024,8 +1059,8 @@ impl ViewState {
                 source_position,
                 Rc::new(|| {}),
                 depth,
-            );
-        }
+            )
+        };
         column.append(&presentation.stack);
         let destination_hint = gtk::Label::new(None);
         destination_hint.add_css_class("column-destination-hint");
@@ -1130,6 +1165,8 @@ impl ViewState {
             list,
             marquee,
             bound_rows,
+            folder_context_trigger,
+            item_context_trigger,
             entry_count,
             spinner,
             spinner_delay: Rc::new(RefCell::new(None)),
