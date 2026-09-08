@@ -122,8 +122,7 @@ impl ViewState {
             compact_display_path(&destination)
         );
         let state = self.clone();
-        // Keep Both is copy-only: undo/reveal for moves assume `transfer_target`'s
-        // unrenamed destination, which a renamed move target would violate.
+        // Move undo/reveal assumes an unrenamed `transfer_target`.
         self.confirm_replace_conflict(
             &name,
             &explanation,
@@ -265,8 +264,7 @@ impl ViewState {
         );
     }
 
-    /// Asks whether one conflicting item should be replaced or skipped.
-    /// Cancelling abandons the whole operation, so `on_choice` never runs.
+    /// Cancelling abandons the whole operation without calling `on_choice`.
     fn confirm_replace_conflict(
         &self,
         name: &str,
@@ -343,14 +341,18 @@ impl ViewState {
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay;
         let escaped_root = blurred_root;
-        let enter_replace = replace.clone();
+        let enter_buttons = [skip, keep_both, replace.clone(), cancel, layout.close];
         escape.connect_key_pressed(move |_, key, _, _| {
             if key == gtk::gdk::Key::Escape {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
                 glib::Propagation::Stop
             } else if key == gtk::gdk::Key::Return || key == gtk::gdk::Key::KP_Enter {
-                enter_replace.emit_clicked();
-                glib::Propagation::Stop
+                if let Some(button) = enter_buttons.iter().find(|button| button.has_focus()) {
+                    button.emit_clicked();
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                }
             } else {
                 glib::Propagation::Proceed
             }
