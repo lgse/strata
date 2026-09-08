@@ -32,7 +32,9 @@ mod context_menu;
 mod customization;
 mod desktop;
 mod destination;
+mod dissolve_delete;
 mod entry;
+mod entry_animation;
 mod events;
 mod fly_to_trash;
 mod inline_edit;
@@ -170,6 +172,7 @@ pub(super) struct ViewState {
     /// failed only because the location doesn't support Trash can offer a
     /// permanent-delete retry for exactly those entries.
     pending_delete_entries: RefCell<Vec<FileEntry>>,
+    pending_delete_animation_cleanup: RefCell<Option<dissolve_delete::DissolveCleanup>>,
     pending_navigate: RefCell<Option<Location>>,
     pending_location_credentials: RefCell<Option<MountCredentials>>,
     pending_trash_summary: RefCell<Option<LoadHandle>>,
@@ -348,6 +351,7 @@ impl BrowserView {
             pending_select_properties: Cell::new(false),
             pending_extract_retry: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
+            pending_delete_animation_cleanup: RefCell::new(None),
             pending_navigate: RefCell::new(None),
             pending_location_credentials: RefCell::new(None),
             pending_trash_summary: RefCell::new(None),

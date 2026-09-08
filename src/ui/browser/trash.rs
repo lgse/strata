@@ -11,7 +11,9 @@ use crate::ui::browser::{ViewState, vim_focus_direction};
 use crate::ui::controls::{
     ModalTone, message_dialog_description, message_dialog_layout, modal_layout,
 };
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
+use crate::ui::modal::{
+    ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer, show_error_dialog,
+};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::rc::Rc;
@@ -70,6 +72,12 @@ fn delete_confirmation_focus_target(key: gtk::gdk::Key) -> Option<DeleteConfirma
 }
 
 impl ViewState {
+    pub(super) fn clear_delete_animation(&self) {
+        if let Some(cleanup) = self.pending_delete_animation_cleanup.take() {
+            cleanup();
+        }
+    }
+
     /// Safe to call more than once: whichever of cancel or completion runs first leaves the
     /// other a no-op.
     fn clear_empty_trash(&self) {
@@ -492,14 +500,35 @@ impl ViewState {
         let confirmed_overlay = window_overlay.clone();
         let confirmed_root = blurred_root.clone();
         let browser = self.browser.clone();
+        let overlay_for_dissolve = self.overlay.clone();
+        let entries_for_dissolve = entries.clone();
+        let weak_ui = Rc::downgrade(self);
         confirm.connect_clicked(move |_| {
-            dismiss_modal_layer(
+            let browser = browser.clone();
+            let overlay_for_dissolve = overlay_for_dissolve.clone();
+            let entries_for_dissolve = entries_for_dissolve.clone();
+            let weak_ui = weak_ui.clone();
+            dismiss_modal_layer_then(
                 &confirmed_layer,
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
+                move || {
+                    let browser_for_delete = browser.clone();
+                    let entries_for_delete = entries_for_dissolve.clone();
+                    super::dissolve_delete::dissolve_delete(
+                        overlay_for_dissolve.upcast_ref(),
+                        &entries_for_dissolve,
+                        move |cleanup| {
+                            if let Some(ui) = weak_ui.upgrade() {
+                                ui.clear_delete_animation();
+                                ui.pending_delete_animation_cleanup.replace(Some(cleanup));
+                            }
+                            browser_for_delete.delete(entries_for_delete, true);
+                            browser_for_delete.focus_active();
+                        },
+                    );
+                },
             );
-            browser.delete(entries.clone(), true);
-            browser.focus_active();
         });
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);

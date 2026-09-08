@@ -210,6 +210,7 @@ pub enum BrowserEvent {
 /// emission stays safe.
 type Observer = Rc<dyn Fn(&BrowserEvent)>;
 type PreferencesObserver = Rc<dyn Fn(ViewPreferences)>;
+type DeferredDirectoryChanges = HashMap<usize, Vec<(Location, DirectoryChange)>>;
 
 const MAX_INCREMENTAL_OPERATION_UPDATES: usize = 64;
 
@@ -523,6 +524,7 @@ pub struct Browser {
     transfer_operation: Cell<Option<bool>>,
     deletion_operation: Cell<bool>,
     deletion_permanent: Cell<bool>,
+    deferred_file_operation_changes: RefCell<DeferredDirectoryChanges>,
     restoration_operation: Cell<bool>,
     archive_operation: Cell<bool>,
     transfer_destination: RefCell<Option<Location>>,
@@ -570,6 +572,7 @@ impl Browser {
             transfer_operation: Cell::new(None),
             deletion_operation: Cell::new(false),
             deletion_permanent: Cell::new(false),
+            deferred_file_operation_changes: RefCell::new(HashMap::new()),
             restoration_operation: Cell::new(false),
             archive_operation: Cell::new(false),
             transfer_destination: RefCell::new(None),
@@ -1647,6 +1650,7 @@ impl Browser {
         self.created_locations.borrow_mut().clear();
         self.deletion_operation.set(false);
         self.deletion_permanent.set(false);
+        self.deferred_file_operation_changes.borrow_mut().clear();
         self.restoration_operation.set(false);
         self.archive_operation.set(false);
         let request_id = OperationRequestId(self.next_request.get());
@@ -1694,15 +1698,10 @@ impl Browser {
             if let OperationEvent::DeleteProgress {
                 completed,
                 total,
-                deleted_location,
+                deleted_location: _deleted_location,
                 ..
             } = &event
             {
-                if *total <= MAX_INCREMENTAL_OPERATION_UPDATES
-                    && let Some(location) = deleted_location
-                {
-                    browser.remove_deleted_locations(std::slice::from_ref(location));
-                }
                 browser.emit(BrowserEvent::DeletionProgress {
                     completed: *completed,
                     total: *total,
@@ -1746,11 +1745,6 @@ impl Browser {
                 {
                     mark_undo_item_completed(*generation, location);
                 }
-                if *total <= MAX_INCREMENTAL_OPERATION_UPDATES
-                    && let Some(location) = restored_location
-                {
-                    browser.remove_deleted_locations(std::slice::from_ref(location));
-                }
                 browser.emit(BrowserEvent::RestorationProgress {
                     completed: *completed,
                     total: *total,
@@ -1778,6 +1772,29 @@ impl Browser {
             let restoring = browser.restoration_operation.replace(false);
             let archiving = browser.archive_operation.replace(false);
             let destination = browser.transfer_destination.replace(None);
+            let deferred_file_operation_changes = if deleting || restoring {
+                browser.deferred_file_operation_changes.take()
+            } else {
+                HashMap::new()
+            };
+            let completed_changes = match &event {
+                OperationEvent::Deleted { locations, .. }
+                | OperationEvent::Restored { locations, .. } => locations.len(),
+                OperationEvent::CompletedWithErrors {
+                    deleted_locations, ..
+                } => deleted_locations.len(),
+                OperationEvent::RestoreCompletedWithErrors {
+                    restored_locations, ..
+                } => restored_locations.len(),
+                OperationEvent::Cancelled { result, .. } => result.completed.len(),
+                _ => 0,
+            };
+            let file_operation_refreshed = (deleting || restoring)
+                && !matches!(&event, OperationEvent::Cancelled { .. })
+                && browser.flush_deferred_file_operation_changes(
+                    deferred_file_operation_changes,
+                    completed_changes > MAX_INCREMENTAL_OPERATION_UPDATES,
+                );
             let undoing = browser.undo_claim.take();
             if let Some((generation, entry)) = &undoing {
                 let completed = match (entry, &event) {
@@ -1898,7 +1915,9 @@ impl Browser {
                     message,
                     ..
                 } => {
-                    browser.remove_deleted_locations(&deleted_locations);
+                    if !file_operation_refreshed {
+                        browser.remove_deleted_locations(&deleted_locations);
+                    }
                     browser.emit(BrowserEvent::OperationCompletedWithErrors {
                         message,
                         retryable_locations,
@@ -1907,14 +1926,18 @@ impl Browser {
                 }
                 OperationEvent::Deleted { locations, .. }
                 | OperationEvent::Restored { locations, .. } => {
-                    browser.remove_deleted_locations(&locations);
+                    if !file_operation_refreshed {
+                        browser.remove_deleted_locations(&locations);
+                    }
                 }
                 OperationEvent::RestoreCompletedWithErrors {
                     restored_locations,
                     message,
                     ..
                 } => {
-                    browser.remove_deleted_locations(&restored_locations);
+                    if !file_operation_refreshed {
+                        browser.remove_deleted_locations(&restored_locations);
+                    }
                     browser.emit(BrowserEvent::OperationCompletedWithErrors {
                         message,
                         retryable_locations: Vec::new(),
@@ -3348,12 +3371,100 @@ impl Browser {
         Some((depth, native))
     }
 
+    fn flush_deferred_file_operation_changes(
+        self: &Rc<Self>,
+        changes: DeferredDirectoryChanges,
+        prefer_refresh: bool,
+    ) -> bool {
+        if changes.is_empty() {
+            return false;
+        }
+        let mut batches: Vec<_> = changes.into_iter().collect();
+        batches.sort_by_key(|(depth, _)| *depth);
+        if prefer_refresh {
+            for (depth, _) in batches {
+                self.refresh_column(depth);
+            }
+            return true;
+        }
+
+        for (depth, changes) in batches {
+            if changes
+                .iter()
+                .any(|(_, change)| matches!(change, DirectoryChange::Rescan))
+            {
+                self.refresh_column(depth);
+                continue;
+            }
+            let path_update = {
+                let state = self.state.borrow();
+                changes
+                    .iter()
+                    .find_map(|(_, change)| state.path_after_external_change(depth, change))
+            };
+            if let Some(path) = path_update {
+                self.restore_path(path);
+                continue;
+            }
+
+            self.drain_publish(depth);
+            let application = {
+                let mut state = self.state.borrow_mut();
+                let mut splices = Vec::new();
+                let mut selected = None;
+                for (watched, change) in changes {
+                    if let Some((mut next, next_selected)) =
+                        state.apply_directory_change(depth, &watched, change)
+                    {
+                        splices.append(&mut next);
+                        selected = next_selected;
+                    }
+                }
+                (!splices.is_empty()).then(|| {
+                    let positions = state.selected_positions(depth);
+                    (splices, selected, positions)
+                })
+            };
+            let Some((splices, selected, positions)) = application else {
+                continue;
+            };
+            self.emit(BrowserEvent::EntriesSpliced {
+                depth,
+                splices,
+                selected,
+            });
+            if let Some(focused) = selected {
+                self.emit(BrowserEvent::SelectionSetChanged {
+                    depth,
+                    positions,
+                    focused,
+                    take_focus: false,
+                });
+            }
+            if self.active_depth() == Some(depth) {
+                self.emit(BrowserEvent::FocusChanged {
+                    depth,
+                    position: selected,
+                });
+            }
+        }
+        false
+    }
+
     fn handle_directory_change(
         self: &Rc<Self>,
         depth: usize,
         watched: &Location,
         change: DirectoryChange,
     ) {
+        if self.deletion_operation.get() || self.restoration_operation.get() {
+            self.deferred_file_operation_changes
+                .borrow_mut()
+                .entry(depth)
+                .or_default()
+                .push((watched.clone(), change));
+            return;
+        }
         if matches!(&change, DirectoryChange::Rescan) {
             self.refresh_column(depth);
             return;
