@@ -2332,6 +2332,11 @@ fn build_list_pane(
         .vexpand(true)
         .build();
     table_scroll.add_css_class("fixed-scrollbar");
+    if let Some(viewport) = table_scroll.child().and_downcast::<gtk::Viewport>() {
+        // The outer viewport must not horizontally reveal oversized metadata rows; the inner
+        // ListView still reveals focused rows vertically.
+        viewport.set_scroll_to_focus(false);
+    }
     let search = super::inline_search::wrap(
         &table_scroll,
         &filter_entry,

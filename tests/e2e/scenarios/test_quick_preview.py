@@ -11,6 +11,7 @@ from harness.modes import ALL_MODES, NEXT_ENTRY_KEY, PREVIOUS_ENTRY_KEY
 PREVIEW_FIXTURE = {
     "notes.txt": "the quick brown fox\n",
     "page.md": "# Heading\n\nBody text.\n",
+    "third.txt": "third preview fixture\n",
     "data.csv": "name,value\nalpha,1\n",
     "folder": {"inner.txt": "inner\n", "nested-notes.txt": "nested preview fixture\n"},
 }
@@ -106,6 +107,35 @@ def test_preview_follows_the_selection(strata, mode, selection, preferences):
     )
     assert strata.focused_name() == "page.md"
     assert not strata.preview_shows("the quick brown fox")
+
+
+def test_list_preview_keyboard_navigation_preserves_horizontal_scroll(strata, fixture_tree):
+    strata.switch_view("List")
+    strata.select_entry_with_keyboard("notes.txt")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "the first preview")
+
+    def list_scroll_origin():
+        container = strata.pane()
+        list_view = container.find(description="Files")
+        assert list_view is not None, "the List file view"
+        panes = [
+            ancestor for ancestor in list_view.ancestors() if ancestor.role == "scroll pane"
+        ]
+        assert len(panes) >= 2, "the List view content is wrapped by its listing scroller"
+        return panes[0].window_bounds().x
+
+    origin = list_scroll_origin()
+    for key, name, preview in (
+        ("Down", "page.md", "Body text."),
+        ("Down", "third.txt", "third preview fixture"),
+        ("Up", "page.md", "Body text."),
+    ):
+        strata.keyboard.press(key)
+        strata.wait_for_selection([name])
+        strata.wait(lambda: strata.focused_name() == name, f"focus on {name}")
+        strata.wait(lambda: strata.preview_shows(preview), f"preview for {name}")
+        assert list_scroll_origin() == origin, (origin, list_scroll_origin())
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
