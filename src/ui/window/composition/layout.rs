@@ -41,7 +41,7 @@ impl Header {
             .active(true)
             .tooltip_text("Toggle sidebar (Ctrl+B)")
             .build();
-        sidebar_toggle.set_child(Some(&assets::chrome_icon(icons::PANEL_LEFT)));
+        sidebar_toggle.set_child(Some(&assets::primary_icon(icons::PANEL_LEFT, 17)));
         sidebar_toggle.add_css_class("sidebar-toggle");
         let location = browser.location_widget();
         location.set_hexpand(true);

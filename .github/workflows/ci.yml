@@ -1,6 +1,12 @@
 name: CI
 
 on:
+  workflow_dispatch:
+    inputs:
+      require_published_environments:
+        description: Bypass the fast dependency cache and require verified published base images
+        type: boolean
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -10,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.require_published_environments && 'published' || 'normal' }}
   cancel-in-progress: true
 
 jobs:
@@ -18,57 +24,354 @@ jobs:
     name: Format, lint, and test
     runs-on: blacksmith-4vcpu-ubuntu-2404
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install native development libraries
-        run: >-
-          sudo apt-get update &&
-          sudo apt-get install --yes libfontconfig1-dev libgtk-4-dev libgtksourceview-5-dev libpoppler-glib-dev
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
-        with:
-          components: clippy, rustfmt
-
-      - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
-
-      - name: Check formatting
-        run: cargo fmt --all --check
-
-      - name: Run Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
-
-      - name: Run tests
-        run: cargo test --all-targets --all-features
-
-  e2e:
-    name: End-to-end GUI suite
-    runs-on: blacksmith-4vcpu-ubuntu-2404
-    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
-    # A wedged X server or accessibility bus must not hold a pull request open.
     timeout-minutes: 20
 
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
 
-      - name: Run the hardware-aware end-to-end container
+      - name: Set up image inspection
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        with:
+          driver: docker
+
+      - name: Resolve the shared environment or build an explicit recipe update
+        id: environment
         env:
-          STRATA_E2E_WORKERS: auto
-        run: ./scripts/e2e.sh -p no:cacheprovider
+          BASE_REF: ${{ github.event.pull_request.base.sha || 'HEAD^' }}
+        run: |
+          if reference="$(python3 scripts/e2e_images.py environment)"; then
+            docker pull --platform=linux/amd64 "${reference#environment_image=}"
+          else
+            git cat-file -e "$BASE_REF^{commit}"
+            if git diff --quiet "$BASE_REF" HEAD -- tests/e2e/Dockerfile tests/e2e/requirements.txt tests/e2e/install-packages.sh; then
+              echo 'The unchanged environment is unavailable. Restore public access; ordinary quality runs do not bootstrap Ubuntu.' >&2
+              exit 1
+            else
+              status=$?
+              if [[ "$status" != 1 ]]; then exit "$status"; fi
+            fi
+            echo 'Environment inputs changed: explicitly building this unpublished candidate without publishing it.'
+            reference="environment_image=$(python3 scripts/e2e_base.py build --engine docker)"
+          fi
+          printf '%s\n' "$reference" >> "$GITHUB_OUTPUT"
+          echo "inputs=$(python3 scripts/e2e_bundle.py image-key)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore quality-only Cargo cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            target/quality-container/cargo
+            target/quality-container/build
+          key: strata-quality-v1-${{ steps.environment.outputs.inputs }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            strata-quality-v1-${{ steps.environment.outputs.inputs }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-
+
+      - name: Check formatting
+        env:
+          STRATA_CONTAINER_ENGINE: docker
+          STRATA_QUALITY_IMAGE: ${{ steps.environment.outputs.environment_image }}
+        run: ./scripts/quality.sh fmt
+
+      - name: Run Clippy
+        env:
+          STRATA_CONTAINER_ENGINE: docker
+          STRATA_QUALITY_IMAGE: ${{ steps.environment.outputs.environment_image }}
+        run: ./scripts/quality.sh clippy
+
+      - name: Run tests on a private display
+        env:
+          STRATA_CONTAINER_ENGINE: docker
+          STRATA_QUALITY_IMAGE: ${{ steps.environment.outputs.environment_image }}
+        run: ./scripts/quality.sh test
+
+      - name: Save trusted quality cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            target/quality-container/cargo
+            target/quality-container/build
+          key: strata-quality-v1-${{ steps.environment.outputs.inputs }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ github.sha }}
+
+  e2e-build:
+    name: E2E build and plan
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: 'false'
+    if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    # Bound hung bootstrap jobs independently of informational timing reports.
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      runtime_key: ${{ steps.identity.outputs.runtime_key }}
+      runtime_cached: ${{ steps.runtime-cache.outputs.cache-hit == 'true' || steps.runtime-ready.outputs.cache-hit == 'true' }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Container account
+        id: identity
+        run: |
+          echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
+          echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
+          image_key=$(python3 scripts/e2e_bundle.py image-key)
+          echo "image_key=$image_key" >> "$GITHUB_OUTPUT"
+          echo "runtime_key=strata-e2e-runtime-v1-$image_key-$(id -u)-$(id -g)" >> "$GITHUB_OUTPUT"
+
+      - name: Look up the immutable runtime archive without downloading it
+        id: runtime-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/e2e-runtime/runtime.tar.zst
+          key: ${{ steps.identity.outputs.runtime_key }}
+          lookup-only: true
+
+      - name: Restore the compiled dependency layers with segmented cache transfers
+        if: ${{ !inputs.require_published_environments }}
+        id: dependency-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/e2e-dependency-cache
+          key: strata-e2e-dependencies-local-v1-${{ steps.identity.outputs.image_key }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.dockerignore') }}-${{ steps.identity.outputs.uid }}-${{ steps.identity.outputs.gid }}
+
+      - name: Set up cached container builder
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Resolve trusted published base images to OCI digests
+        if: steps.dependency-cache.outputs.cache-hit != 'true'
+        id: registry
+        env:
+          REQUIRE_PUBLISHED: ${{ inputs.require_published_environments }}
+        run: |
+          if [ "$REQUIRE_PUBLISHED" = true ]; then
+            python3 scripts/e2e_images.py bases --require-published >> "$GITHUB_OUTPUT"
+          else
+            python3 scripts/e2e_images.py bases >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build the tested revision once and collect its exact inventory
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: tests/e2e/Dockerfile
+          target: bundle
+          platforms: linux/amd64
+          build-args: |
+            E2E_UID=${{ steps.identity.outputs.uid }}
+            E2E_GID=${{ steps.identity.outputs.gid }}
+            STRATA_BUILD_COMMIT=${{ github.sha }}
+            E2E_DEPENDENCIES_IMAGE=${{ steps.registry.outputs.dependencies_image || 'dependencies' }}
+          outputs: type=local,dest=target/e2e-bundle
+          cache-from: |
+            ${{ steps.dependency-cache.outputs.cache-hit == 'true' && 'type=local,src=target/e2e-dependency-cache' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.dependencies_image == 'dependencies' && 'type=gha,scope=strata-e2e-dependencies-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.dependencies_image == 'dependencies' && 'type=gha,scope=strata-e2e-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.dependencies_image == 'dependencies' && 'type=gha,scope=strata-e2e-indexes-v1' || '' }}
+            ${{ steps.registry.outputs.dependencies_image == 'dependencies' && steps.registry.outputs.cache_from || '' }}
+
+      - name: Prepare a runtime archive on cache miss
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        run: mkdir -p target/e2e-runtime
+
+      - name: Export the pinned runtime once for every shard
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: tests/e2e/Dockerfile
+          target: ci-runtime
+          platforms: linux/amd64
+          build-args: |
+            E2E_UID=${{ steps.identity.outputs.uid }}
+            E2E_GID=${{ steps.identity.outputs.gid }}
+            E2E_RUNTIME_IMAGE=${{ steps.registry.outputs.runtime_image || 'runtime' }}
+          labels: ${{ (steps.registry.outputs.runtime_image == '' || steps.registry.outputs.runtime_image == 'runtime') && format('org.strata.e2e.inputs={0}', steps.identity.outputs.image_key) || '' }}
+          tags: strata-e2e:ci-runtime
+          outputs: type=docker,dest=target/e2e-runtime/runtime.tar
+          cache-from: |
+            ${{ steps.dependency-cache.outputs.cache-hit == 'true' && 'type=local,src=target/e2e-dependency-cache' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.runtime_image == 'runtime' && 'type=gha,scope=strata-e2e-dependencies-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.runtime_image == 'runtime' && 'type=gha,scope=strata-e2e-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.runtime_image == 'runtime' && 'type=gha,scope=strata-e2e-indexes-v1' || '' }}
+            ${{ steps.registry.outputs.runtime_image == 'runtime' && steps.registry.outputs.cache_from || '' }}
+
+      - name: Compress the runtime without another image load or build
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        run: zstd -T0 -1 --rm target/e2e-runtime/runtime.tar
+
+      - name: Cache the immutable runtime independently of source revisions
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/e2e-runtime/runtime.tar.zst
+          key: ${{ steps.identity.outputs.runtime_key }}
+
+      - name: Confirm publication before choosing the shard transport
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        id: runtime-ready
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/e2e-runtime/runtime.tar.zst
+          key: ${{ steps.identity.outputs.runtime_key }}
+          lookup-only: true
+
+      - name: Share the runtime when cache publication is unavailable or read-only
+        if: steps.runtime-cache.outputs.cache-hit != 'true' && steps.runtime-ready.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-runtime-${{ github.run_attempt }}
+          path: target/e2e-runtime/runtime.tar.zst
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Generate the runner matrix
+        id: plan
+        run: python3 scripts/e2e_ci.py matrix target/e2e-bundle/plan.json >> "$GITHUB_OUTPUT"
+
+      - name: Share the binary and plan, not Cargo or a toolchain
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-bundle-${{ github.run_attempt }}
+          path: target/e2e-bundle
+          compression-level: 1
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Share the small plan separately for aggregation
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-plan-${{ github.run_attempt }}
+          path: target/e2e-bundle/plan.json
+          if-no-files-found: error
+          retention-days: 1
+
+  e2e-shard:
+    name: E2E shard ${{ matrix.shard }}
+    needs: e2e-build
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.e2e-build.outputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Restore only the exact pinned runtime archive
+        if: needs.e2e-build.outputs.runtime_cached == 'true'
+        id: runtime-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/e2e-runtime/runtime.tar.zst
+          key: ${{ needs.e2e-build.outputs.runtime_key }}
+          fail-on-cache-miss: true
+
+      - name: Download the runtime artifact when the cache is unavailable
+        if: needs.e2e-build.outputs.runtime_cached != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: e2e-runtime-${{ github.run_attempt }}
+          path: target/e2e-runtime
+
+      - name: Download this attempt's binary and complete shard plan
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: e2e-bundle-${{ github.run_attempt }}
+          path: target/e2e-bundle
+
+      - name: Load the shared runtime without BuildKit or registry access
+        shell: bash
+        env:
+          RUNTIME_CACHED: ${{ needs.e2e-build.outputs.runtime_cached }}
+          RUNTIME_CACHE_HIT: ${{ steps.runtime-restore.outputs.cache-hit }}
+        run: |
+          if [[ "$RUNTIME_CACHED" == true && "$RUNTIME_CACHE_HIT" != true ]]; then
+            echo "::error::Runtime cache did not match the exact pinned key"
+            exit 1
+          fi
+          zstd -dc target/e2e-runtime/runtime.tar.zst | docker load
+
+      - name: Run the assigned scenarios without rebuilding or installing
+        env:
+          STRATA_CONTAINER_ENGINE: docker
+          STRATA_E2E_IMAGE: strata-e2e:ci-runtime
+          STRATA_E2E_BUNDLE: target/e2e-bundle
+          STRATA_E2E_WORKERS: '2'
+          SHARD: ${{ matrix.shard }}
+        run: |
+          chmod +x target/e2e-bundle/strata
+          ./scripts/e2e.sh -p no:cacheprovider --timeout=60 \
+            --e2e-plan=target/e2e-bundle/plan.json --e2e-shard="$SHARD" \
+            --e2e-report="target/e2e-reports/shard-$SHARD.json" \
+            --junitxml="target/e2e-reports/shard-$SHARD.xml" --durations=10
+
+      - name: Upload shard results even on failure
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-report-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: target/e2e-reports
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload failure artifacts
         if: ${{ failure() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: e2e-artifacts
+          name: e2e-artifacts-${{ github.run_attempt }}-${{ matrix.shard }}
           path: target/e2e-artifacts
           if-no-files-found: ignore
           retention-days: 7
+
+  e2e:
+    name: End-to-end GUI suite
+    needs: [e2e-build, e2e-shard]
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download the plan
+        if: ${{ needs.e2e-build.result == 'success' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: e2e-plan-${{ github.run_attempt }}
+          path: target/e2e-bundle
+
+      - name: Download all shard reports
+        if: ${{ !cancelled() && needs.e2e-build.result == 'success' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: e2e-report-${{ github.run_attempt }}-*
+          path: target/e2e-reports
+          merge-multiple: true
+
+      - name: Explain unsuccessful prerequisites and require them to succeed
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_RESULT: ${{ needs.e2e-build.result }}
+          SHARD_RESULT: ${{ needs.e2e-shard.result }}
+        run: python3 scripts/e2e_ci.py dependencies
+
+      - name: Verify exact coverage
+        run: python3 scripts/e2e_ci.py verify target/e2e-bundle/plan.json target/e2e-reports
+
+      - name: Report E2E timing without affecting test results
+        if: ${{ always() }}
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/e2e_ci.py timing
 
   release-scripts:
     name: Release workflow scripts
@@ -79,7 +382,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Test release version calculation
+      - name: Test CI and release helpers
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
   repository-policy:
