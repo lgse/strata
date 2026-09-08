@@ -38,7 +38,36 @@ impl Dispatcher {
             popover.child_focus(direction);
             return Some(Propagation::Stop);
         }
+        if popover.has_css_class("folder-context-popover") {
+            return self.context_menu_popover_navigation(event, &popover);
+        }
         Some(Propagation::Proceed)
+    }
+
+    fn context_menu_popover_navigation(
+        &self,
+        event: &KeyEvent,
+        popover: &gtk::Popover,
+    ) -> KeyResult {
+        match event.key {
+            Key::Up => {
+                navigate_menu_items(popover, gtk::DirectionType::Up);
+                Some(Propagation::Stop)
+            }
+            Key::Down => {
+                navigate_menu_items(popover, gtk::DirectionType::Down);
+                Some(Propagation::Stop)
+            }
+            Key::Home => {
+                focus_first_or_last_menu_item(popover, true);
+                Some(Propagation::Stop)
+            }
+            Key::End => {
+                focus_first_or_last_menu_item(popover, false);
+                Some(Propagation::Stop)
+            }
+            _ => None,
+        }
     }
 
     fn top_bar_navigation(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
@@ -115,4 +144,53 @@ impl Dispatcher {
         }
         Some(Propagation::Stop)
     }
+}
+
+fn navigate_menu_items(popover: &gtk::Popover, direction: gtk::DirectionType) {
+    if popover.child_focus(direction) {
+        return;
+    }
+    // No more focusable items in that direction, wrap around
+    let opposite = if direction == gtk::DirectionType::Down {
+        gtk::DirectionType::Up
+    } else {
+        gtk::DirectionType::Down
+    };
+    let _ = popover.child_focus(opposite);
+}
+
+pub fn focus_first_or_last_menu_item(popover: &gtk::Popover, first: bool) {
+    let Some(child) = popover.child() else {
+        return;
+    };
+    if let Some(scrolled) = child.downcast_ref::<gtk::ScrolledWindow>()
+        && let Some(content) = scrolled.child()
+        && let Some(box_widget) = content.downcast_ref::<gtk::Box>()
+    {
+        let mut current = if first {
+            box_widget.first_child()
+        } else {
+            box_widget.last_child()
+        };
+        while let Some(widget) = current {
+            if is_focusable_menu_item(&widget) {
+                widget.grab_focus();
+                return;
+            }
+            current = if first {
+                widget.next_sibling()
+            } else {
+                widget.prev_sibling()
+            };
+        }
+    }
+}
+
+fn is_focusable_menu_item(widget: &gtk::Widget) -> bool {
+    // Skip separators
+    if widget.type_() == gtk::Separator::static_type() {
+        return false;
+    }
+    // Only return true if the widget is sensitive (enabled)
+    widget.is_sensitive()
 }

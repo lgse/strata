@@ -19,7 +19,7 @@ use crate::{
 use super::{SidebarState, SidebarView, TypeToSearch, visible_modal_layer};
 
 mod commands;
-mod focus;
+pub mod focus;
 mod items;
 
 // None tries the next Strata stage; Some(Proceed) gives the event to GTK instead.

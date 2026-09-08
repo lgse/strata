@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 mod actions;
+mod keyboard;
 mod menus;
 mod open_with;
 

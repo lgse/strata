@@ -29,7 +29,7 @@ use super::{
 
 mod composition;
 mod devices;
-mod keyboard;
+pub mod keyboard;
 mod sidebar;
 
 use sidebar::PlaceNavigation;
