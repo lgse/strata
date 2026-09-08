@@ -1539,7 +1539,7 @@ fn build_icons_pane(
         pin_ungrouped_icons_columns(&section, width, context.density.get());
     });
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) = collection_with_marquee(&root, scroll, targets.clone());
+    let (collection, marquee) = collection_with_marquee(&root, scroll, targets.clone(), false);
     let search = super::inline_search::wrap(
         &collection,
         &controls.filter_entry,
@@ -1647,7 +1647,11 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             transfers_for_setup.clone(),
             depth,
             Some((source_index_for_setup.clone(), filtered_for_setup.clone())),
-            None,
+            RowDragBehavior {
+                icon: None,
+                view_state: peek_for_setup.clone(),
+                whole_row: false,
+            },
         );
         item.set_child(Some(&card));
         if let Some(parent) = card.parent() {
@@ -2236,6 +2240,7 @@ fn build_list_pane(
     };
     let scrolling = Rc::new(Cell::new(false));
     let scrolling_for_setup = scrolling.clone();
+    let state_for_setup = options.state.clone();
     factory.connect_setup(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -2285,6 +2290,7 @@ fn build_list_pane(
             depth,
             positions_for_setup.clone(),
         );
+        item.set_child(Some(&row));
         install_list_drag_drop(
             &row,
             item,
@@ -2292,9 +2298,12 @@ fn build_list_pane(
             transfers_for_setup.clone(),
             depth,
             Some((source_index_for_setup.clone(), view_model_for_setup.clone())),
-            Some(name.upcast_ref()),
+            RowDragBehavior {
+                icon: Some(name.upcast_ref()),
+                view_state: state_for_setup.clone(),
+                whole_row: true,
+            },
         );
-        item.set_child(Some(&row));
         register_bound_mode_item(&bound_items_for_setup, item, &row);
     });
     let browser_for_bind = Rc::downgrade(&browser);
@@ -2435,7 +2444,8 @@ fn build_list_pane(
     table.set_vexpand(true);
     table.append(&headings);
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) = collection_with_marquee(view.upcast_ref(), scroll, targets.clone());
+    let (collection, marquee) =
+        collection_with_marquee(view.upcast_ref(), scroll, targets.clone(), true);
     table.append(&collection);
     marquee.add_origin_surface(&header);
     marquee.add_origin_surface(&headings);
@@ -2668,6 +2678,7 @@ fn collection_with_marquee(
     view: &gtk::Widget,
     scroll: gtk::ScrolledWindow,
     targets: super::marquee::MarqueeTargets,
+    whole_row: bool,
 ) -> (gtk::Overlay, super::marquee::Marquee) {
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&scroll));
@@ -2675,13 +2686,18 @@ fn collection_with_marquee(
     overlay.set_vexpand(true);
     super::scrolling::install_autoscroll(&scroll, &overlay);
 
+    let is_item = if whole_row {
+        super::marquee::item_bounds_predicate(targets.clone())
+    } else {
+        Rc::new(super::pointer::hits_item_content)
+    };
     let marquee = super::marquee::install(super::marquee::MarqueeSetup {
         view: view.clone(),
         surface: scroll.clone().upcast(),
         scroll,
         overlay: overlay.clone(),
         targets: targets.clone(),
-        is_item: Rc::new(super::pointer::hits_item_content),
+        is_item,
         clear_selection: Rc::new(move || {
             let selections: Vec<_> = targets
                 .borrow()
@@ -2785,6 +2801,12 @@ fn install_mode_directory_drop_target(
     widget.add_controller(drop);
 }
 
+struct RowDragBehavior<'a> {
+    icon: Option<&'a gtk::Widget>,
+    view_state: Option<Weak<super::browser::ViewState>>,
+    whole_row: bool,
+}
+
 fn install_list_drag_drop(
     row: &impl IsA<gtk::Widget>,
     item: &gtk::ListItem,
@@ -2792,7 +2814,7 @@ fn install_list_drag_drop(
     transfer_handler: TransferHandlerSlot,
     depth: usize,
     position_map: Option<(SourceIndexMap, gio::ListModel)>,
-    drag_icon: Option<&gtk::Widget>,
+    behavior: RowDragBehavior<'_>,
 ) {
     if transfer_handler.borrow().is_none() {
         return;
@@ -2805,9 +2827,19 @@ fn install_list_drag_drop(
     let dragged_item = item.downgrade();
     let browser_for_drag = browser.clone();
     let map_for_drag = position_map.clone();
-    let drag_icon = drag_icon.map(gtk::Widget::downgrade);
+    let drag_icon = behavior.icon.map(gtk::Widget::downgrade);
+    let whole_row = behavior.whole_row;
+    let prepare_row = row.downgrade();
     drag.connect_prepare(move |source, x, y| {
-        if !super::pointer::hits_item_content(&source.widget()?, x, y) {
+        let prepare_row = prepare_row.upgrade()?;
+        if whole_row {
+            if prepare_row
+                .pick(x, y, gtk::PickFlags::DEFAULT)
+                .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
+            {
+                return None;
+            }
+        } else if !super::pointer::hits_item_content(&prepare_row, x, y) {
             return None;
         }
         let browser = browser_for_drag.upgrade()?;
@@ -2832,8 +2864,7 @@ fn install_list_drag_drop(
             vec![entry]
         };
         let compact_icon = drag_icon.as_ref().and_then(glib::WeakRef::upgrade);
-        let fallback_icon = source.widget();
-        let paintable = gtk::WidgetPaintable::new(compact_icon.as_ref().or(fallback_icon.as_ref()));
+        let paintable = gtk::WidgetPaintable::new(compact_icon.as_ref().or(Some(&prepare_row)));
         let (hot_x, hot_y) = if compact_icon.is_some() {
             (0, 0)
         } else {
@@ -2843,15 +2874,23 @@ fn install_list_drag_drop(
         super::browser::file_drag_content(&entries)
     });
     let dragged_row = row.downgrade();
+    let state_for_begin = behavior.view_state.clone();
     drag.connect_drag_begin(move |_, _| {
         if let Some(row) = dragged_row.upgrade() {
             row.add_css_class("dragging");
         }
+        if let Some(state) = state_for_begin.as_ref().and_then(Weak::upgrade) {
+            state.cancel_peek();
+        }
     });
     let dragged_row = row.downgrade();
+    let state_for_end = behavior.view_state;
     drag.connect_drag_end(move |_, _, _| {
         if let Some(row) = dragged_row.upgrade() {
             row.remove_css_class("dragging");
+        }
+        if let Some(state) = state_for_end.as_ref().and_then(Weak::upgrade) {
+            state.cancel_peek();
         }
     });
     row.add_controller(drag);

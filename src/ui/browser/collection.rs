@@ -476,7 +476,7 @@ pub(super) fn bitset_positions(bitset: &gtk::Bitset) -> Vec<u32> {
     std::iter::once(first).chain(iterator).collect()
 }
 
-pub(super) fn cancel_source(source: &RefCell<Option<glib::SourceId>>) {
+pub(crate) fn cancel_source(source: &RefCell<Option<glib::SourceId>>) {
     if let Some(source) = source.take() {
         source.remove();
     }

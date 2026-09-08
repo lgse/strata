@@ -926,12 +926,8 @@ impl ViewState {
         let returning_to_column = Rc::new(Cell::new(false));
         let returning_for_clear = returning_to_column.clone();
         let search_active_for_clear = recursive_search_active.clone();
-        let marquee = crate::ui::marquee::install(crate::ui::marquee::MarqueeSetup {
-            view: list.clone().upcast(),
-            surface: presentation.stack.clone().upcast(),
-            scroll: scroll.clone(),
-            overlay: self.overlay.clone(),
-            targets: Rc::new(RefCell::new(vec![crate::ui::marquee::MarqueeTarget {
+        let marquee_targets: Rc<RefCell<Vec<crate::ui::marquee::MarqueeTarget>>> =
+            Rc::new(RefCell::new(vec![crate::ui::marquee::MarqueeTarget {
                 selection: selection.clone(),
                 visit_items: Rc::new(move |visit| {
                     rows_for_marquee.borrow_mut().retain(|bound| {
@@ -943,8 +939,14 @@ impl ViewState {
                         true
                     });
                 }),
-            }])),
-            is_item: Rc::new(crate::ui::pointer::hits_item_content),
+            }]));
+        let marquee = crate::ui::marquee::install(crate::ui::marquee::MarqueeSetup {
+            view: list.clone().upcast(),
+            surface: presentation.stack.clone().upcast(),
+            scroll: scroll.clone(),
+            overlay: self.overlay.clone(),
+            targets: marquee_targets.clone(),
+            is_item: crate::ui::marquee::item_bounds_predicate(marquee_targets),
             clear_selection: Rc::new(move || {
                 if let Some(state) = weak_for_clear.upgrade() {
                     state.clear_column_selections();

@@ -206,6 +206,32 @@ class Pointer:
         icon = source.find(role="image")
         return (icon or source).screen_bounds().center
 
+    @staticmethod
+    def row_whitespace_point(source: Node, name: str) -> tuple[int, int]:
+        """A point inside the visible row but beyond the rendered name text.
+
+        Columns and List rows own their whole allocated bounds as a drag surface,
+        so a press in unused label allocation must start a drag, not a marquee.
+        """
+
+        label = source.find(role="label", name=name)
+        assert label is not None, f"no name label on {name!r}"
+        bounds = label.screen_bounds()
+        return bounds.x + bounds.width * 2 // 3, bounds.center[1]
+
+    @staticmethod
+    def row_padding_point(source: Node, edge: str) -> tuple[int, int]:
+        """A point in the visual row's top or bottom padding.
+
+        Row spacing lives on the application-owned drag surface so its empty
+        vertical area remains draggable.
+        """
+
+        bounds = source.screen_bounds()
+        if edge == "top":
+            return bounds.center[0], bounds.y + max(1, bounds.height // 6)
+        return bounds.center[0], bounds.y + bounds.height - max(1, bounds.height // 6)
+
     def drag_points(
         self,
         start: tuple[int, int],

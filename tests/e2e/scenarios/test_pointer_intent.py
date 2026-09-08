@@ -77,7 +77,10 @@ def test_marquee_begins_beside_content_in_a_full_pane(strata, mode, modifiers):
     initial = set(strata.selected_names())
     start = _inert_point(strata, "000.txt", mode)
     end = _inert_point(strata, "010.txt", mode)
-    strata.pointer.drag_points(start, (end[0] + 3, end[1]), modifiers=modifiers)
+    drag_modifiers = modifiers if mode == "Icons" else (*modifiers, "alt")
+    strata.pointer.drag_points(
+        start, (end[0] + 3, end[1]), modifiers=drag_modifiers
+    )
 
     strata.wait(
         lambda: len(strata.selected_names()) > 1,
@@ -134,8 +137,10 @@ def test_marquee_from_a_full_row_auto_scrolls(strata, mode):
     pane = strata.pane().screen_bounds()
     container = strata.entry_container().screen_bounds()
     bottom = min(pane.y + pane.height, container.y + container.height)
-    end = (start[0] + 3, bottom - 4)
-    strata.pointer.drag_points(start, end, release=False)
+    modifiers = () if mode == "Icons" else ("alt",)
+    strata.pointer.drag_points(
+        start, (start[0] + 3, bottom - 4), release=False, modifiers=modifiers
+    )
     try:
         strata.wait(
             lambda: any(name >= "060.txt" for name in strata.selected_names()),

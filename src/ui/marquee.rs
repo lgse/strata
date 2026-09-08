@@ -31,6 +31,39 @@ pub(super) struct MarqueeTarget {
 /// them without reinstalling the drag.
 pub(super) type MarqueeTargets = Rc<RefCell<Vec<MarqueeTarget>>>;
 
+/// An item-origin policy that treats the whole allocated row as item space.
+///
+/// Unlike [`super::pointer::hits_item_content`], this uses allocated bounds rather
+/// than `Widget::pick`, so transparent row allocation (the inert space beside
+/// rendered label text) is correctly claimed as item space and not as marquee
+/// background.
+pub(super) fn item_bounds_predicate(targets: MarqueeTargets) -> ItemPredicate {
+    Rc::new(move |surface, x, y| hits_item_bounds(surface, x, y, &targets))
+}
+
+fn hits_item_bounds(surface: &gtk::Widget, x: f64, y: f64, targets: &MarqueeTargets) -> bool {
+    for target in targets.borrow().iter() {
+        let mut hit = false;
+        (target.visit_items)(&mut |_, widget| {
+            if !widget.is_mapped() {
+                return;
+            }
+            if let Some(bounds) = widget.compute_bounds(surface)
+                && x >= f64::from(bounds.x())
+                && x < f64::from(bounds.x() + bounds.width())
+                && y >= f64::from(bounds.y())
+                && y < f64::from(bounds.y() + bounds.height())
+            {
+                hit = true;
+            }
+        });
+        if hit {
+            return true;
+        }
+    }
+    false
+}
+
 pub(super) struct MarqueeSetup {
     pub view: gtk::Widget,
     /// Includes the viewport's unused area and, in Columns, its empty-state surface.
@@ -152,7 +185,7 @@ pub(super) fn install(setup: MarqueeSetup) -> Marquee {
         state_for_begin.begin(anchor, gesture.current_event_state());
         state_for_begin
             .clear_on_click
-            .set(super::pointer::is_background(&origin, x, y));
+            .set(!starts_on_item && super::pointer::is_background(&origin, x, y));
     });
     connect_drag_progress(&gesture, &state);
     surface.add_controller(gesture.clone());

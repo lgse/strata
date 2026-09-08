@@ -129,3 +129,51 @@ def test_dragging_a_multi_selection_moves_every_entry(strata):
     )
     assert not fixture.path("todo.txt").exists()
     assert not fixture.path("readme.md").exists()
+
+
+ROW_DRAG_MODES = [
+    mode for mode in ALL_MODES if mode.id != "icons"
+]
+
+
+@pytest.mark.parametrize("mode", ROW_DRAG_MODES)
+def test_dragging_from_empty_row_space_moves_the_file(strata, mode):
+    """#631: a press in the inert label allocation must start a drag, not select."""
+
+    fixture = strata.fixture
+    source = strata.entry("todo.txt")
+    target = strata.entry("archive")
+    start = strata.pointer.row_whitespace_point(source, "todo.txt")
+
+    strata.pointer.drag_points(start, target.screen_bounds().center)
+
+    strata.wait(
+        lambda: fixture.path("archive/todo.txt").exists(),
+        "the file dragged from empty row space to arrive in archive",
+    )
+    strata.wait(
+        lambda: not fixture.path("todo.txt").exists(),
+        "the file dragged from empty row space to leave its source directory",
+    )
+
+
+@pytest.mark.parametrize("mode", ROW_DRAG_MODES)
+@pytest.mark.parametrize("edge", ["top", "bottom"])
+def test_dragging_from_row_padding_moves_the_file(strata, mode, edge):
+    """#631: a press in visual row padding must reach the drag source."""
+
+    fixture = strata.fixture
+    source = strata.entry("todo.txt")
+    target = strata.entry("archive")
+    start = strata.pointer.row_padding_point(source, edge)
+
+    strata.pointer.drag_points(start, target.screen_bounds().center)
+
+    strata.wait(
+        lambda: fixture.path("archive/todo.txt").exists(),
+        f"the file dragged from {edge} row padding to arrive in archive",
+    )
+    strata.wait(
+        lambda: not fixture.path("todo.txt").exists(),
+        f"the file dragged from {edge} row padding to leave its source directory",
+    )

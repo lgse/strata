@@ -1230,6 +1230,11 @@ impl BrowserView {
 }
 
 impl ViewState {
+    pub(in crate::ui) fn cancel_peek(&self) {
+        cancel_source(&self.pending_peek);
+        self.browser.close_peek();
+    }
+
     fn begin_global_activity(self: &Rc<Self>, label: impl Into<String>) -> GlobalActivity {
         let label = label.into();
         let id = self.global_activity.borrow_mut().begin(label.clone());

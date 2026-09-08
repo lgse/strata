@@ -176,6 +176,7 @@ pub(super) fn column_rows(
         });
         row.add_controller(motion);
 
+        item.set_child(Some(&row));
         if weak_state.upgrade().is_some_and(|state| state.interactive) {
             let drag = gtk::DragSource::builder()
                 .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
@@ -186,7 +187,10 @@ pub(super) fn column_rows(
             let prepare_row = row.downgrade();
             drag.connect_prepare(move |source, x, y| {
                 let prepare_row = prepare_row.upgrade()?;
-                if !crate::ui::pointer::hits_item_content(prepare_row.upcast_ref(), x, y) {
+                if prepare_row
+                    .pick(x, y, gtk::PickFlags::DEFAULT)
+                    .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
+                {
                     return None;
                 }
                 prepare_row.remove_css_class("slide-out");
@@ -203,21 +207,29 @@ pub(super) fn column_rows(
                 } else {
                     vec![entry]
                 };
-                let paintable = gtk::WidgetPaintable::new(source.widget().as_ref());
+                let paintable = gtk::WidgetPaintable::new(Some(&prepare_row));
                 source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);
                 file_drag_content(&entries)
             });
             let dragged_row = row.downgrade();
+            let weak_state_for_begin = weak_state.clone();
             drag.connect_drag_begin(move |_, _| {
                 if let Some(row) = dragged_row.upgrade() {
                     row.add_css_class("dragging");
                 }
+                if let Some(state) = weak_state_for_begin.upgrade() {
+                    state.cancel_peek();
+                }
             });
             let dragged_row = row.downgrade();
+            let weak_state_for_end = weak_state.clone();
             drag.connect_drag_end(move |_, _, _| {
                 if let Some(row) = dragged_row.upgrade() {
                     row.remove_css_class("dragging");
                     slide_out(&row);
+                }
+                if let Some(state) = weak_state_for_end.upgrade() {
+                    state.cancel_peek();
                 }
             });
             row.add_controller(drag);
@@ -456,7 +468,6 @@ pub(super) fn column_rows(
             pending_activation_for_cancel.take();
         });
         row.add_controller(selection_click);
-        item.set_child(Some(&row));
         let weak_item = glib::WeakRef::new();
         weak_item.set(Some(item));
         let weak_row = glib::WeakRef::new();
