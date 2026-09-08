@@ -1228,7 +1228,7 @@ impl BrowserView {
         true
     }
 
-    pub fn open_focused_context_menu(&self) -> bool {
+    pub(super) fn open_focused_context_menu(&self) -> bool {
         let target = if self.view_mode() == BrowserMode::Columns {
             self.columns_context_menu_target()
         } else {
