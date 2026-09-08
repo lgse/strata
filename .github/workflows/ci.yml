@@ -71,10 +71,10 @@ jobs:
           echo "image_key=$(python3 scripts/e2e_bundle.py image-key)" >> "$GITHUB_OUTPUT"
 
       - name: Set up cached container builder
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Build the tested revision once and collect its exact inventory
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: tests/e2e/Dockerfile
@@ -96,7 +96,7 @@ jobs:
         run: python3 scripts/e2e_ci.py matrix target/e2e-bundle/plan.json >> "$GITHUB_OUTPUT"
 
       - name: Share the binary and plan, not Cargo or a toolchain
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-bundle-${{ github.run_attempt }}
           path: target/e2e-bundle
@@ -119,10 +119,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up cached container builder
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
 
       - name: Load the pinned runtime from the shared layer cache
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: tests/e2e/Dockerfile
@@ -139,7 +139,7 @@ jobs:
             type=gha,scope=strata-e2e-dependencies-v1
 
       - name: Download this attempt's binary and complete shard plan
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: e2e-bundle-${{ github.run_attempt }}
           path: target/e2e-bundle
@@ -159,7 +159,7 @@ jobs:
 
       - name: Upload shard results even on failure
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-report-${{ github.run_attempt }}-${{ matrix.shard }}
           path: target/e2e-reports
@@ -168,7 +168,7 @@ jobs:
 
       - name: Upload failure artifacts
         if: ${{ failure() }}
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-artifacts-${{ github.run_attempt }}-${{ matrix.shard }}
           path: target/e2e-artifacts
@@ -190,14 +190,14 @@ jobs:
 
       - name: Download the plan
         if: ${{ needs.e2e-build.result == 'success' }}
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: e2e-bundle-${{ github.run_attempt }}
           path: target/e2e-bundle
 
       - name: Download all shard reports
         if: ${{ !cancelled() && needs.e2e-build.result == 'success' }}
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: e2e-report-${{ github.run_attempt }}-*
           path: target/e2e-reports
