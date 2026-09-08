@@ -103,6 +103,20 @@ From the sidebar, Right returns to the item you left (or the current file view i
 
 [Right-arrow demo: files stay selected; folders open in a child column](screenshots/291/right-folder-only.mp4).
 
+## Opening and navigating the context menu
+
+**Menu** (the hardware context-menu key) and **Shift+F10** open the selection-aware
+context menu without the pointer. With an item keyboard-focused, the menu opens for
+that item — or the full multi-selection, if the focused item is part of one. With no
+item focus, it opens the active pane's background menu. The menu is anchored to the
+focused item or pane, never to the pointer.
+
+Once open: **Up/Down** move between enabled actions, wrapping past the first/last;
+**Home/End** jump to the first/last enabled action; separators and disabled actions
+are skipped. **Enter/Space** activates the focused action. **Escape** closes the menu
+without changing the selection and returns keyboard focus to the item or pane that
+opened it. This applies in Columns, Icons, List, Trash, and the file chooser.
+
 ## Review fixture
 
 Create `Fonts/` (empty), `Scripts/example.txt`, and `LICENSE` under a temporary directory.
