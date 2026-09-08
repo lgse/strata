@@ -768,6 +768,109 @@ impl OperationProvider for ImmediateOperationProvider {
 
 type OperationEmit = Rc<dyn Fn(OperationEvent)>;
 
+#[derive(Default)]
+struct HeldRenameProvider {
+    requests: RefCell<Vec<(OperationRequestId, OperationEmit)>>,
+    cancelled: Rc<Cell<usize>>,
+}
+
+macro_rules! immediate_operation {
+    ($method:ident, $request:ty) => {
+        fn $method(&self, request: $request, emit: OperationEmit) -> LoadHandle {
+            ImmediateOperationProvider.$method(request, emit)
+        }
+    };
+}
+
+impl OperationProvider for HeldRenameProvider {
+    fn rename(&self, request: RenameRequest, emit: OperationEmit) -> LoadHandle {
+        self.requests.borrow_mut().push((request.id, emit));
+        let cancelled = self.cancelled.clone();
+        LoadHandle::new(move || cancelled.set(cancelled.get() + 1))
+    }
+    immediate_operation!(create_directory, CreateDirectoryRequest);
+    immediate_operation!(create_file, CreateFileRequest);
+    immediate_operation!(paste, PasteRequest);
+    immediate_operation!(undo_move, UndoMoveRequest);
+    immediate_operation!(undo_copy, UndoCopyRequest);
+    immediate_operation!(delete, DeleteRequest);
+    immediate_operation!(restore, RestoreRequest);
+    immediate_operation!(compress, CompressRequest);
+    immediate_operation!(extract, ExtractRequest);
+}
+
+#[test]
+fn rename_completion_ignores_wrong_duplicate_superseded_and_navigated_events() {
+    for (stale, success, cancel) in [
+        (false, true, false),
+        (false, false, false),
+        (true, true, false),
+        (false, true, true),
+    ] {
+        let browser = Browser::new(Rc::new(CountingFileSource {
+            enumerate_calls: Rc::new(Cell::new(0)),
+        }));
+        let provider = Rc::new(HeldRenameProvider::default());
+        browser.set_operation_provider(provider.clone());
+        browser.navigate(Location::uri("smb://host/share"));
+        let entry = FileEntry {
+            location: Location::uri("smb://host/share/old"),
+            native_name: "old".into(),
+            thumbnail_path: None,
+            display_name: "old".into(),
+            kind: EntryKind::File,
+            size: MetadataValue::Known(1),
+            modified_unix_seconds: MetadataValue::Unknown,
+            is_hidden: false,
+            mode: MetadataValue::Unknown,
+        };
+        let results = Rc::new(RefCell::new(Vec::new()));
+        for name in ["first", "second"] {
+            let results = results.clone();
+            browser.rename_with_completion(
+                entry.clone(),
+                name.into(),
+                Rc::new(move |ok| {
+                    results.borrow_mut().push(ok);
+                }),
+            );
+        }
+        assert_eq!(
+            provider.cancelled.get(),
+            1,
+            "superseded operation is cancelled"
+        );
+        let requests = provider.requests.borrow();
+        let (old_id, old_emit) = &requests[0];
+        let (id, emit) = &requests[1];
+        old_emit(OperationEvent::Renamed {
+            request_id: *old_id,
+        });
+        emit(OperationEvent::Renamed {
+            request_id: *old_id,
+        });
+        assert_eq!(*results.borrow(), vec![false]);
+        if cancel {
+            browser.cancel_file_operation();
+            assert_eq!(*results.borrow(), vec![false, false]);
+            assert!(browser.rename_completion.borrow().is_none());
+        }
+        if stale {
+            browser.navigate(Location::uri("smb://host/elsewhere"));
+        }
+        if success {
+            emit(OperationEvent::Renamed { request_id: *id });
+        } else {
+            emit(OperationEvent::Failed {
+                request_id: *id,
+                message: "Destination exists".into(),
+            });
+        }
+        emit(OperationEvent::Renamed { request_id: *id });
+        assert_eq!(*results.borrow(), vec![false, !stale && !cancel && success]);
+    }
+}
+
 struct HeldExtractProvider {
     cancelled: Rc<Cell<bool>>,
     emit: Rc<RefCell<Option<OperationEmit>>>,

@@ -11,6 +11,80 @@ from harness.tree import Atspi
 KINDS = ["file", "folder"]
 
 
+def rename_viewport(strata):
+    # The pane shell includes the Columns destination hint; only the inner
+    # scroller is available to the editor and the committed entry.
+    container = strata.entry_container()
+    return next(node for node in container.ancestors() if node.role == "scroll pane").window_bounds()
+
+
+def fully_inside(node, viewport):
+    bounds = node.window_bounds()
+    return (
+        bounds.width > 0 and bounds.height > 0
+        and viewport.x <= bounds.x
+        and viewport.y <= bounds.y
+        and bounds.x + bounds.width <= viewport.x + viewport.width
+        and bounds.y + bounds.height <= viewport.y + viewport.height
+    )
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("kind", KINDS)
+@pytest.mark.parametrize("movement", ["offscreen", "up", "down"])
+def test_creation_reveals_final_identity_without_unnecessary_scroll(strata, mode, kind, movement, request):
+    if movement == "offscreen":
+        for index in range(160):
+            path = strata.fixture.path(f"item-{index:03}")
+            path.mkdir() if kind == "folder" else path.touch()
+    else:
+        for name in ("m-neighbor", "p-neighbor"):
+            path = strata.fixture.path(name)
+            path.mkdir() if kind == "folder" else path.touch()
+    strata.keyboard.press("F5")
+    strata.select_entry_with_keyboard("archive" if movement == "offscreen" else "readme.md")
+    if movement == "offscreen" and kind == "file":
+        container = strata.entry_container().screen_bounds()
+        # A full viewport has no background below its rows; use the side gutter.
+        strata.pointer.right_click(strata.pane(), at=(container.x + 2, container.y + 20))
+        strata.choose_menu_item("New File")
+        field = rename_field(strata)
+    else:
+        field = start_creation(strata, kind, via_menu=kind == "file")
+    original = strata.fixture.path("new " + kind)
+    strata.wait(lambda: field.text == original.name, "the selected default name")
+    identity = original.stat().st_ino
+    strata.wait(lambda: fully_inside(field, rename_viewport(strata)), "the entire initial editor above the destination hint")
+    final_name = {"offscreen": "000-renamed", "up": "l-renamed", "down": "q-renamed"}[movement]
+    if movement == "offscreen":
+        first = strata.entry_container().find(name="item-000", rendered=False)
+        assert first is None or not fully_inside(first, rename_viewport(strata))
+    else:
+        neighbor = strata.entry("m-neighbor" if movement == "up" else "p-neighbor")
+        assert fully_inside(neighbor, rename_viewport(strata))
+    anchor_before = strata.entry("readme.md").window_bounds() if movement != "offscreen" else None
+    collector = ArtifactCollector(test_name=request.node.name) if request.config.getoption("--keep-artifacts") else None
+    if collector:
+        capture(strata.display.display, collector.directory / "before-commit.png")
+    strata.keyboard.type_text(final_name)
+    strata.wait(lambda: field.text == final_name, "typing to replace the default name")
+    strata.keyboard.press("Return")
+    wait_for_edit_closed(strata)
+    final = strata.fixture.path(final_name)
+    strata.wait(final.exists, "the final name on disk")
+    assert not original.exists()
+    assert final.stat().st_ino == identity
+    assert final.is_dir() if kind == "folder" else final.is_file()
+    strata.wait_for_selection([final_name])
+    strata.wait_for_focused_entry(final_name)
+    # entry() only observes accessibility; do not reveal/select the renamed row.
+    strata.wait(lambda: fully_inside(strata.entry(final_name), rename_viewport(strata)), "the final entry in the viewport")
+    if movement != "offscreen":
+        assert strata.entry("readme.md").window_bounds() == anchor_before
+    if collector:
+        capture(strata.display.display, collector.directory / "after-commit.png")
+
+
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_long_rename_keeps_caret_visible(strata, mode, request):
     name = "synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt"

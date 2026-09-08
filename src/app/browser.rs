@@ -463,6 +463,8 @@ struct SortPlan {
     can_delete: Option<bool>,
 }
 
+type RenameCompletion = (OperationRequestId, Rc<dyn Fn(bool)>);
+
 pub struct Browser {
     source: Rc<dyn FileSource>,
     state: RefCell<NavigationState>,
@@ -490,6 +492,7 @@ pub struct Browser {
     operation_provider: RefCell<Option<Rc<dyn OperationProvider>>>,
     operation_load: RefCell<Option<LoadHandle>>,
     current_operation: Cell<Option<OperationRequestId>>,
+    rename_completion: RefCell<Option<RenameCompletion>>,
     transfer_operation: Cell<Option<bool>>,
     deletion_operation: Cell<bool>,
     deletion_permanent: Cell<bool>,
@@ -537,6 +540,7 @@ impl Browser {
             operation_provider: RefCell::new(None),
             operation_load: RefCell::new(None),
             current_operation: Cell::new(None),
+            rename_completion: RefCell::new(None),
             transfer_operation: Cell::new(None),
             deletion_operation: Cell::new(false),
             deletion_permanent: Cell::new(false),
@@ -616,6 +620,9 @@ impl Browser {
     fn navigate_validated(self: &Rc<Self>, location: Location) {
         let generation = self.validation_generation.get().saturating_add(1);
         self.validation_generation.set(generation);
+        if let Some(id) = self.current_operation.get() {
+            self.finish_rename(id, false);
+        }
         self.validation_load.borrow_mut().take();
         let weak = Rc::downgrade(self);
         let pending_location = location.clone();
@@ -694,6 +701,9 @@ impl Browser {
     pub fn navigate(self: &Rc<Self>, location: Location) {
         self.validation_generation
             .set(self.validation_generation.get().saturating_add(1));
+        if let Some(id) = self.current_operation.get() {
+            self.finish_rename(id, false);
+        }
         self.validation_load.borrow_mut().take();
         if self.active_location().as_ref() == Some(&location) {
             return;
@@ -730,6 +740,9 @@ impl Browser {
     ) {
         self.validation_generation
             .set(self.validation_generation.get().saturating_add(1));
+        if let Some(id) = self.current_operation.get() {
+            self.finish_rename(id, false);
+        }
         self.validation_load.borrow_mut().take();
         if self.is_open_child(parent_depth, &location) {
             return;
@@ -750,6 +763,9 @@ impl Browser {
 
         let generation = self.validation_generation.get().saturating_add(1);
         self.validation_generation.set(generation);
+        if let Some(id) = self.current_operation.get() {
+            self.finish_rename(id, false);
+        }
         self.validation_load.borrow_mut().take();
         let weak = Rc::downgrade(self);
         let pending_location = location.clone();
@@ -1223,21 +1239,57 @@ impl Browser {
     }
 
     pub fn rename(self: &Rc<Self>, entry: FileEntry, new_name: String) {
+        self.rename_with_completion(entry, new_name, Rc::new(|_| {}));
+    }
+
+    pub(crate) fn rename_with_completion(
+        self: &Rc<Self>,
+        entry: FileEntry,
+        new_name: String,
+        completed: Rc<dyn Fn(bool)>,
+    ) {
         if let Err(message) = validate_basename(&new_name) {
             self.emit(BrowserEvent::RenameFailed {
                 message: message.to_owned(),
             });
+            completed(false);
             return;
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::RenameFailed {
                 message: "File operations are unavailable".to_owned(),
             });
+            completed(false);
             return;
         };
         let request_id = self.begin_operation();
         let refresh_locations = entry.location.parent().into_iter().collect();
         let emit = self.operation_callback(request_id, true, refresh_locations);
+        let weak = Rc::downgrade(self);
+        let generation = self.validation_generation.get();
+        self.rename_completion
+            .replace(Some((request_id, completed)));
+        let emit = Rc::new(move |event: OperationEvent| {
+            let result = match &event {
+                OperationEvent::Renamed { request_id: id } if *id == request_id => Some(true),
+                OperationEvent::Failed { request_id: id, .. }
+                | OperationEvent::Cancelled { request_id: id, .. }
+                    if *id == request_id =>
+                {
+                    Some(false)
+                }
+                _ => None,
+            };
+            emit(event);
+            if let Some(browser) = weak.upgrade()
+                && let Some(success) = result
+            {
+                browser.finish_rename(
+                    request_id,
+                    success && browser.validation_generation.get() == generation,
+                );
+            }
+        });
         let load = provider.rename(
             RenameRequest {
                 id: request_id,
@@ -1614,12 +1666,29 @@ impl Browser {
         self.operation_load.replace(Some(load));
     }
 
+    fn finish_rename(&self, request_id: OperationRequestId, success: bool) {
+        let completion = {
+            let mut slot = self.rename_completion.borrow_mut();
+            if slot.as_ref().is_some_and(|(id, _)| *id == request_id) {
+                slot.take()
+            } else {
+                None
+            }
+        };
+        if let Some((_, completed)) = completion {
+            completed(success);
+        }
+    }
+
     pub fn cancel_file_operation(&self) {
+        if let Some(request_id) = self.current_operation.get() {
+            self.finish_rename(request_id, false);
+        }
         self.operation_load.borrow_mut().take();
     }
 
     fn begin_operation(&self) -> OperationRequestId {
-        self.operation_load.borrow_mut().take();
+        self.cancel_file_operation();
         if let Some((generation, _)) = self.undo_claim.take() {
             finish_undo(generation, false);
         }

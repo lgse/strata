@@ -15,6 +15,50 @@ use crate::{
     test_support::gtk_test,
 };
 
+#[test]
+fn created_naming_resolves_the_gtk_display_identity_not_the_browser_index() {
+    gtk_test(
+        "ui::browser_modes::events::tests::created_naming_resolves_the_gtk_display_identity_not_the_browser_index",
+        || {
+            for mode in [BrowserMode::List, BrowserMode::Icons] {
+                let fixture = Fixture::new(mode, false);
+                fixture.window.present();
+                let pane = fixture.views.visible_panes()[0];
+                pane.model
+                    .splice(0, 3, &["fv\tc.rs", "fv\tb.png", "fv\ta.txt"]);
+                let target = fixture
+                    .views
+                    .created_entry_target(0, &entry("a.txt"))
+                    .expect("created target");
+                assert_eq!(
+                    fixture
+                        .browser
+                        .entry_at(0, 0)
+                        .expect("source entry")
+                        .display_name,
+                    "a.txt"
+                );
+                assert_eq!(target.position, 2);
+                let until = Instant::now() + Duration::from_secs(5);
+                while !fixture.views.begin_rename(0, 0, &entry("a.txt"), true) {
+                    assert!(Instant::now() < until, "editor did not allocate");
+                    while glib::MainContext::default().pending() {
+                        glib::MainContext::default().iteration(false);
+                    }
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+                let field = fixture.views.active_rename_field().expect("editor");
+                assert_eq!(field.text(), "a.txt");
+                let target = fixture
+                    .views
+                    .created_entry_target(0, &entry("a.txt"))
+                    .expect("allocated target");
+                assert!(field.is_ancestor(target.widget.as_ref().expect("bound row")));
+            }
+        },
+    );
+}
+
 struct StaticSource;
 
 impl FileSource for StaticSource {

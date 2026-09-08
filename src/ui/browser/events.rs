@@ -348,8 +348,10 @@ impl ViewState {
                     // A background batch delivered for a column that already has a
                     // selection re-fires this event; don't let it steal focus from
                     // an in-progress rename (visible for slow network directories
-                    // that stream many batches). A pending creation still needs to scroll.
-                    if self.active_rename.borrow().is_none() {
+                    // that stream many batches). Creation naming owns its identity-based reveal.
+                    if self.active_rename.borrow().is_none()
+                        && self.pending_new_entry.borrow().is_none()
+                    {
                         if (*take_focus || self.focused_column_depth() == Some(*depth))
                             && let Some(focused) = column.map.view_position(*focused)
                         {
@@ -363,7 +365,8 @@ impl ViewState {
             }
             BrowserEvent::FocusChanged { depth, position } => {
                 if let Some(column) = self.columns.borrow().get(*depth) {
-                    let editing = self.active_rename.borrow().is_some();
+                    let editing = self.active_rename.borrow().is_some()
+                        || self.pending_new_entry.borrow().is_some();
                     if let Some(filtered_position) =
                         position.and_then(|position| column.map.view_position(position))
                     {
@@ -397,6 +400,7 @@ impl ViewState {
             }
             BrowserEvent::RenameCompleted => {}
             BrowserEvent::RenameFailed { message } => {
+                self.pending_new_entry.take();
                 show_error_dialog(&self.overlay, "Unable to rename item", message);
             }
             BrowserEvent::TransferStarted { total, moving } => {
@@ -615,7 +619,14 @@ impl ViewState {
         if Self::event_refreshes_active_path(event) {
             self.refresh_active_path_rows();
         }
-        self.mode_views.borrow_mut().handle(event);
+        if self.pending_new_entry.borrow().is_none()
+            || !matches!(
+                event,
+                BrowserEvent::FocusChanged { .. } | BrowserEvent::SelectionSetChanged { .. }
+            )
+        {
+            self.mode_views.borrow_mut().handle(event);
+        }
     }
 
     fn event_refreshes_active_path(event: &BrowserEvent) -> bool {

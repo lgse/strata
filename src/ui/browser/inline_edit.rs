@@ -8,6 +8,9 @@ use crate::ui::browser_modes::BrowserMode;
 use gtk::prelude::*;
 use std::rc::Rc;
 
+mod created_entry;
+pub(in crate::ui) use created_entry::CreatedEntryTarget;
+
 pub(super) struct ActiveRename {
     pub(super) entry: FileEntry,
     pub(super) field: gtk::Entry,
@@ -15,6 +18,7 @@ pub(super) struct ActiveRename {
     pub(super) spacer: gtk::Box,
     pub(super) size: gtk::Label,
     viewport_tick: gtk::TickCallbackId,
+    pub(super) created: Option<Rc<dyn Fn(String)>>,
 }
 
 fn constrain_rename_to_viewport(field: &gtk::Entry, viewport: &gtk::ScrolledWindow) {
@@ -121,65 +125,6 @@ pub(in crate::ui) fn queue_rename(
 }
 
 impl ViewState {
-    pub(super) fn rename_created_entry(self: &Rc<Self>, location: &Location) {
-        let Some(pending) = self
-            .pending_new_entry
-            .borrow()
-            .clone()
-            .filter(|pending| Some(pending.parent.clone()) == location.parent())
-        else {
-            return;
-        };
-        let location = location.clone();
-        let weak = Rc::downgrade(self);
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        let selected = std::cell::Cell::new(false);
-        // Wait for the refreshed listing and the virtualized row to be allocated.
-        self.overlay.add_tick_callback(move |_, _| {
-            let Some(state) = weak.upgrade() else {
-                return gtk::glib::ControlFlow::Break;
-            };
-            if !state
-                .pending_new_entry
-                .borrow()
-                .as_ref()
-                .is_some_and(|current| Rc::ptr_eq(current, &pending))
-            {
-                return gtk::glib::ControlFlow::Break;
-            }
-            if std::time::Instant::now() >= deadline
-                || state.browser.location_at(pending.depth).as_ref() != Some(&pending.parent)
-            {
-                state.pending_new_entry.take();
-                return gtk::glib::ControlFlow::Break;
-            }
-            let Some(snapshot) = state
-                .browser
-                .column_snapshot(pending.depth)
-                .filter(|snapshot| !snapshot.loading)
-            else {
-                return gtk::glib::ControlFlow::Continue;
-            };
-            let position = state
-                .browser
-                .with_entries(pending.depth, 0..snapshot.count, |entries| {
-                    entries.iter().position(|entry| entry.location == location)
-                })
-                .flatten();
-            if let Some(position) = position {
-                if !selected.replace(true) {
-                    state.browser.select(pending.depth, position);
-                } else if let Some(entry) = state.browser.entry_at(pending.depth, position)
-                    && state.begin_rename_item(pending.depth, position, entry)
-                {
-                    state.pending_new_entry.take();
-                    return gtk::glib::ControlFlow::Break;
-                }
-            }
-            gtk::glib::ControlFlow::Continue
-        });
-    }
-
     pub(super) fn begin_new_entry(
         self: &Rc<Self>,
         depth: usize,
@@ -208,7 +153,10 @@ impl ViewState {
     }
 
     pub(super) fn cancel_new_entry(&self) -> bool {
-        self.pending_new_entry.take().is_some()
+        let pending = self.pending_new_entry.take().is_some();
+        pending
+            && self.active_rename.borrow().is_none()
+            && !self.mode_views.borrow().rename_is_active()
     }
 
     pub(super) fn begin_rename(self: &Rc<Self>) -> bool {
@@ -217,7 +165,7 @@ impl ViewState {
         let Some((depth, source_position, entry)) = self.browser.rename_item() else {
             return false;
         };
-        self.begin_rename_item(depth, source_position, entry)
+        self.begin_rename_item(depth, source_position, entry, false)
     }
 
     fn begin_rename_item(
@@ -225,6 +173,7 @@ impl ViewState {
         depth: usize,
         source_position: usize,
         entry: FileEntry,
+        created: bool,
     ) -> bool {
         if is_trash_location(&entry.location) {
             return false;
@@ -233,19 +182,33 @@ impl ViewState {
             return self
                 .mode_views
                 .borrow()
-                .begin_rename(depth, source_position, &entry);
+                .begin_rename(depth, source_position, &entry, created);
         }
         self.cancel_rename();
         let columns = self.columns.borrow();
         let Some(column) = columns.get(depth) else {
             return false;
         };
-        let Some(filtered_position) = column.map.view_position(source_position) else {
+        let position = if created {
+            let value = super::entry_model_value(&entry);
+            (0..column.selection.n_items()).find(|position| {
+                column
+                    .selection
+                    .item(*position)
+                    .and_downcast::<gtk::StringObject>()
+                    .is_some_and(|item| item.string() == value)
+            })
+        } else {
+            column.map.view_position(source_position)
+        };
+        let Some(filtered_position) = position else {
             return false;
         };
         // GTK 4.14 can bind an inserted row without allocating it after the first
         // scroll request. Let the creation tick reveal it before requiring a field.
-        super::prepare_collection_inline_edit(column.list.upcast_ref(), filtered_position);
+        if !created {
+            super::prepare_collection_inline_edit(column.list.upcast_ref(), filtered_position);
+        }
         let row = column.bound_rows.borrow().iter().find_map(|bound| {
             let item = bound.item.upgrade()?;
             (item.position() == filtered_position).then(|| bound.row.upgrade())?
@@ -313,6 +276,7 @@ impl ViewState {
             spacer,
             size,
             viewport_tick,
+            created: None,
         }));
         true
     }
@@ -350,7 +314,18 @@ impl ViewState {
             .map(|active| active.entry.clone());
         let Some(entry) = entry else { return };
         let name = field.text().to_string();
+        let created = self
+            .active_rename
+            .borrow_mut()
+            .as_mut()
+            .and_then(|active| active.created.take());
         self.cancel_rename();
+        if validate_basename(&name).is_ok()
+            && let Some(created) = created
+        {
+            created(name.clone());
+            return;
+        }
         queue_rename(&self.browser, entry, name);
     }
 }

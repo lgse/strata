@@ -184,6 +184,7 @@ impl SourceIndexMap {
 }
 
 struct ActiveModeRename {
+    created: Option<Rc<dyn Fn(String)>>,
     entry: FileEntry,
     field: gtk::Entry,
     label: gtk::Widget,
@@ -557,7 +558,52 @@ impl ModeViews {
         }
     }
 
-    pub fn begin_rename(&self, depth: usize, source_position: usize, entry: &FileEntry) -> bool {
+    pub(in crate::ui) fn set_created_rename_handler(&self, handler: Rc<dyn Fn(String)>) {
+        if let Some(active) = self.active_rename.borrow_mut().as_mut() {
+            active.created = Some(handler);
+        }
+    }
+
+    pub(in crate::ui) fn created_entry_target(
+        &self,
+        depth: usize,
+        entry: &FileEntry,
+    ) -> Option<super::browser::CreatedEntryTarget> {
+        let value = super::browser::entry_model_value(entry);
+        self.visible_panes()
+            .into_iter()
+            .filter(|pane| pane.depth == depth && !pane.stack.is_transition_running())
+            .find_map(|pane| {
+                pane.item_sections().iter().find_map(|section| {
+                    let position = (0..section.view_model.n_items()).find(|position| {
+                        section
+                            .view_model
+                            .item(*position)
+                            .and_downcast::<gtk::StringObject>()
+                            .is_some_and(|item| item.string() == value)
+                    })?;
+                    let widget = section.bound_items.borrow().iter().find_map(|bound| {
+                        let item = bound.item.upgrade()?;
+                        (item.position() == position).then(|| bound.widget.upgrade())?
+                    });
+                    Some(super::browser::CreatedEntryTarget {
+                        view: section.view.clone(),
+                        selection: section.selection.clone(),
+                        syncing: section.syncing.clone(),
+                        position,
+                        widget,
+                    })
+                })
+            })
+    }
+
+    pub fn begin_rename(
+        &self,
+        depth: usize,
+        source_position: usize,
+        entry: &FileEntry,
+        created: bool,
+    ) -> bool {
         self.cancel_rename();
         let pane = match self.mode {
             BrowserMode::Columns => return false,
@@ -568,8 +614,18 @@ impl ModeViews {
             return false;
         };
         let widget = pane.item_sections().iter().find_map(|section| {
-            let position =
-                view_position_for_source(&pane.model, Some(&section.view_model), source_position)?;
+            let position = if created {
+                let value = super::browser::entry_model_value(entry);
+                (0..section.view_model.n_items()).find(|position| {
+                    section
+                        .view_model
+                        .item(*position)
+                        .and_downcast::<gtk::StringObject>()
+                        .is_some_and(|item| item.string() == value)
+                })
+            } else {
+                view_position_for_source(&pane.model, Some(&section.view_model), source_position)
+            }?;
             section.bound_items.borrow().iter().find_map(|bound| {
                 let item = bound.item.upgrade()?;
                 (item.position() == position).then(|| {
@@ -601,7 +657,9 @@ impl ModeViews {
         let Some(field) = field else {
             return false;
         };
-        super::browser::prepare_collection_inline_edit(&collection, position);
+        if !created {
+            super::browser::prepare_collection_inline_edit(&collection, position);
+        }
         field.set_text(&entry.display_name);
         field.set_visible(true);
         label.set_visible(false);
@@ -614,6 +672,7 @@ impl ModeViews {
         field.remove_css_class("error");
         field.set_tooltip_text(None);
         self.active_rename.replace(Some(ActiveModeRename {
+            created: None,
             entry: entry.clone(),
             field: field.clone(),
             label,
@@ -1195,8 +1254,15 @@ fn submit_mode_rename(
         .map(|active| active.entry.clone());
     let Some(entry) = entry else { return };
     let name = field.text().to_string();
-    if let Some(rename) = active.take() {
+    if let Some(mut rename) = active.take() {
+        let created = rename.created.take();
         finish_mode_rename(rename);
+        if crate::services::validate_basename(&name).is_ok()
+            && let Some(created) = created
+        {
+            created(name.clone());
+            return;
+        }
     }
     if let Some(browser) = browser.upgrade() {
         super::browser::queue_rename(&browser, entry, name);
@@ -3313,6 +3379,10 @@ fn assemble_list_row() -> gtk::Box {
     super::accessibility::set_label(&field, "Rename");
     field.set_hexpand(true);
     field.set_visible(false);
+    // Editing must not change row height and trigger GTK scroll anchoring.
+    let height = gtk::SizeGroup::new(gtk::SizeGroupMode::Vertical);
+    height.add_widget(&name);
+    height.add_widget(&field);
     name_cell.append(&icon);
     name_cell.append(&name);
     name_cell.append(&field);

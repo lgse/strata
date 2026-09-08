@@ -2,7 +2,7 @@
 
 use super::*;
 
-fn rename_field(view: &BrowserView) -> Option<gtk::Entry> {
+pub(super) fn rename_field(view: &BrowserView) -> Option<gtk::Entry> {
     view.state
         .active_rename
         .borrow()
@@ -20,10 +20,20 @@ fn with_new_entry(
     with_new_entry_at(mode, directory, fixture.path(), run);
 }
 
-fn with_new_entry_at(
+pub(super) fn with_new_entry_at(
     mode: BrowserMode,
     directory: bool,
     path: &std::path::Path,
+    run: impl FnOnce(&BrowserView, &std::path::Path, &str),
+) {
+    with_new_entry_setup(mode, directory, path, |_| {}, run);
+}
+
+pub(super) fn with_new_entry_setup(
+    mode: BrowserMode,
+    directory: bool,
+    path: &std::path::Path,
+    setup: impl FnOnce(&BrowserView),
     run: impl FnOnce(&BrowserView, &std::path::Path, &str),
 ) {
     let view = BrowserView::new(
@@ -45,6 +55,7 @@ fn with_new_entry_at(
             .column_snapshot(0)
             .is_some_and(|snapshot| !snapshot.loading)
     });
+    setup(&view);
     view.state
         .begin_new_entry(0, Location::local(path), directory);
     run(
@@ -74,15 +85,38 @@ fn new_entries_scroll_into_view_when_the_default_name_sorts_past_the_initial_vie
                             .expect("fixture directory");
                     }
                     with_new_entry_at(mode, directory, fixture.path(), |view, path, original| {
-                        wait_until(|| rename_field(view).is_some());
+                        wait_until(|| rename_field(view).is_some() && !view.new_entry_is_active());
                         let field = rename_field(view).expect("offscreen item editor");
                         assert!(field.is_mapped());
                         assert_eq!(field.text(), original);
                         assert!(path.join(original).exists());
-                        let bounds = field.compute_bounds(&view.widget()).expect("editor bounds");
+                        let entry = view
+                            .browser()
+                            .selected_entries()
+                            .pop()
+                            .expect("selected new item");
+                        let target = view
+                            .state
+                            .created_entry_target(0, &entry)
+                            .expect("display target");
+                        let scroll = target
+                            .view
+                            .ancestor(gtk::ScrolledWindow::static_type())
+                            .and_downcast::<gtk::ScrolledWindow>()
+                            .expect("viewport");
+                        let bounds = target
+                            .widget
+                            .expect("allocated item")
+                            .parent()
+                            .expect("item container")
+                            .compute_bounds(&scroll)
+                            .expect("item bounds");
                         assert!(
-                            bounds.y() >= 0.0 && bounds.y() < view.widget().height() as f32,
-                            "{mode:?}: editor is outside the visible pane"
+                            bounds.y() >= 0.0
+                                && f64::from(bounds.y() + bounds.height())
+                                    <= scroll.vadjustment().page_size(),
+                            "{mode:?}: entire new item must fit above the destination hint: {bounds:?}, viewport={}",
+                            scroll.vadjustment().page_size()
                         );
                     });
                 }

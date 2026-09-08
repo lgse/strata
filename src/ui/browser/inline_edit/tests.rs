@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 mod caret;
 mod entries;
+mod reveal;
 
 #[test]
 fn an_empty_name_is_not_flagged_as_an_error() {

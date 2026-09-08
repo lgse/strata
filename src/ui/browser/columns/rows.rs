@@ -91,6 +91,10 @@ pub(super) fn column_rows(
         rename.set_hexpand(true);
         rename.set_width_chars(1);
         rename.set_visible(false);
+        // Editing must not change row height and trigger GTK scroll anchoring.
+        let height = gtk::SizeGroup::new(gtk::SizeGroupMode::Vertical);
+        height.add_widget(&label);
+        height.add_widget(&rename);
         rename.connect_changed(|field| {
             update_basename_validation(field);
         });

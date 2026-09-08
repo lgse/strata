@@ -22,6 +22,7 @@ fn rename_handlers_do_not_keep_the_active_editor_alive_after_the_view_drops() {
                 mode: MetadataValue::Unknown,
             };
             let active = Rc::new(RefCell::new(Some(ActiveModeRename {
+                created: None,
                 entry,
                 field: field.clone(),
                 label: gtk::Label::new(Some("folder")).upcast(),
