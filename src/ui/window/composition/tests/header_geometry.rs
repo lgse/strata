@@ -29,9 +29,9 @@ fn settle() {
 }
 
 #[test]
-fn icon_and_list_subheaders_match_main_header() {
+fn icon_and_list_subheaders_preserve_compact_hierarchy() {
     gtk_test(
-        "ui::window::composition::tests::header_geometry::icon_and_list_subheaders_match_main_header",
+        "ui::window::composition::tests::header_geometry::icon_and_list_subheaders_preserve_compact_hierarchy",
         || {
             crate::ui::prepare_portal_ui();
             let fixture = Fixture::new();
@@ -65,7 +65,7 @@ fn icon_and_list_subheaders_match_main_header() {
                         .expect("main header bounds");
                     assert_eq!(
                         pane_bounds.height(),
-                        main_bounds.height(),
+                        main_bounds.height() - 2.0,
                         "{size:?}, {mode:?}"
                     );
                     let main_button = fixture
@@ -74,6 +74,12 @@ fn icon_and_list_subheaders_match_main_header() {
                         .search
                         .compute_bounds(&fixture.window)
                         .expect("main button bounds");
+                    let main_icon = descendant(&main_header, "chrome-icon")
+                        .expect("main header icon")
+                        .compute_bounds(&fixture.window)
+                        .expect("main icon bounds");
+                    assert_eq!(main_icon.width(), 16.0);
+                    assert_eq!(main_icon.height(), 16.0);
                     for class in ["list-navigation-button", "column-header-action"] {
                         let button = descendant(&pane_header, class).expect("toolbar action");
                         let bounds = button
@@ -84,6 +90,12 @@ fn icon_and_list_subheaders_match_main_header() {
                             main_button.height(),
                             "{size:?}, {mode:?}, {class}"
                         );
+                        let icon = descendant(&button, "chrome-icon")
+                            .expect("pane toolbar icon")
+                            .compute_bounds(&fixture.window)
+                            .expect("pane icon bounds");
+                        assert_eq!(icon.width(), main_icon.width());
+                        assert_eq!(icon.height(), main_icon.height());
                         assert!(bounds.y() > pane_bounds.y());
                         assert!(
                             bounds.y() + bounds.height() < pane_bounds.y() + pane_bounds.height()
