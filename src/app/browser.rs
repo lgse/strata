@@ -22,8 +22,10 @@ use crate::{
 };
 
 mod loading;
+mod publication;
 
 use loading::{LoadCompletion, RemoteTerminal};
+use publication::{PublicationPlan, PublishTerminal, StagedPublish};
 
 /// Caps a normal directory load at this project's own documented performance baseline for
 /// 100,000 entries (docs/performance-baseline.md: 3,755 ms, 286 MiB) -- past this, per-batch
@@ -401,15 +403,9 @@ const COALESCE_ENTRIES: usize = 2048;
 const REMOTE_FLUSH_CAP: usize = 512;
 /// Latency bound so later remote batches flush on the next idle/frame.
 const REMOTE_FLUSH_DELAY: Duration = Duration::from_millis(50);
-/// Rows published synchronously with a staged load or sort; the rest stream
-/// from idle callbacks inside an 8 ms work budget.
-const FIRST_PUBLISH_COUNT: usize = 128;
-const STAGE_INLINE_LIMIT: usize = 512;
 /// Snapshots at or below this size sort synchronously; larger ones sort in a
 /// blocking worker.
 const SORT_INLINE_LIMIT: usize = 2048;
-const PUBLISH_TAIL_CHUNK: usize = 2048;
-const PUBLISH_SLICE_BUDGET: Duration = Duration::from_millis(8);
 
 /// Last selection emitted per depth on the batch path, keyed by request so a
 /// new load re-emits; lets background batches skip redundant refreshes.
@@ -465,26 +461,6 @@ struct SortPlan {
     truncated: bool,
     can_trash: Option<bool>,
     can_delete: Option<bool>,
-}
-
-enum PublishTerminal {
-    LoadFinished {
-        truncated: bool,
-        retry_metadata: bool,
-    },
-    SortingFinished,
-}
-
-/// A staged publication streaming to the UI: the prefix is already in the model,
-/// tails append from idle callbacks in a work budget, and selection plus the
-/// terminal event wait for the final tail.
-struct StagedPublish {
-    request_id: RequestId,
-    published: usize,
-    total: usize,
-    focused: Option<usize>,
-    positions: Vec<usize>,
-    terminal: PublishTerminal,
 }
 
 pub struct Browser {
@@ -1056,23 +1032,19 @@ impl Browser {
             self.preferences.set(preferences);
             let request_id = state.request_id_for_depth(depth);
             let total = state.columns.get(depth).map(|column| column.entries.len());
-            result.map(|(focused, positions)| (request_id, total, focused, positions))
-        };
-        self.notify_preferences_observers();
-        if let Some((request_id, total, focused, positions)) = result {
-            if let (Some(request_id), Some(total)) = (request_id, total) {
-                self.publish_staged(
-                    depth,
-                    request_id,
-                    total,
+            result.and_then(|(focused, positions)| {
+                Some(PublicationPlan {
+                    request_id: request_id?,
+                    total: total?,
                     focused,
                     positions,
-                    PublishTerminal::SortingFinished,
-                );
-            } else {
-                self.pending_sort.set(None);
-                self.emit(BrowserEvent::SortingFinished { depth });
-            }
+                    terminal: PublishTerminal::SortingFinished,
+                })
+            })
+        };
+        self.notify_preferences_observers();
+        if let Some(plan) = result {
+            self.publish_staged(depth, plan);
         } else {
             self.pending_sort.set(None);
             self.emit(BrowserEvent::SortingFinished { depth });
@@ -2560,13 +2532,15 @@ impl Browser {
             .finish(request_id, truncated, can_trash, can_delete);
         self.publish_staged(
             depth,
-            request_id,
-            total,
-            focused,
-            positions,
-            PublishTerminal::LoadFinished {
-                truncated,
-                retry_metadata,
+            PublicationPlan {
+                request_id,
+                total,
+                focused,
+                positions,
+                terminal: PublishTerminal::LoadFinished {
+                    truncated,
+                    retry_metadata,
+                },
             },
         );
     }
@@ -2627,194 +2601,6 @@ impl Browser {
         }
     }
 
-    /// Publishes an installed column in stages: a synchronous prefix for fast first
-    /// rows, tails from idle callbacks in a work budget, and deferred selection
-    /// plus terminal on the final tail.
-    fn publish_staged(
-        self: &Rc<Self>,
-        depth: usize,
-        request_id: RequestId,
-        total: usize,
-        focused: Option<usize>,
-        positions: Vec<usize>,
-        terminal: PublishTerminal,
-    ) {
-        self.drain_publish(depth);
-        if total <= STAGE_INLINE_LIMIT {
-            if self.state.borrow().columns.get(depth).is_none() {
-                return;
-            }
-            self.emit(BrowserEvent::EntriesReplaced {
-                depth,
-                count: total,
-            });
-            if let Some(focused) = focused {
-                self.emit(BrowserEvent::SelectionSetChanged {
-                    depth,
-                    positions,
-                    focused,
-                    take_focus: false,
-                });
-            }
-            self.emit_publish_terminal(depth, terminal);
-            return;
-        }
-        let published = self
-            .state
-            .borrow()
-            .columns
-            .get(depth)
-            .map_or(0, |column| column.entries.len().min(FIRST_PUBLISH_COUNT));
-        self.emit(BrowserEvent::EntriesReplaced {
-            depth,
-            count: published,
-        });
-        self.staged_publishes.borrow_mut().insert(
-            depth,
-            StagedPublish {
-                request_id,
-                published,
-                total,
-                focused,
-                positions,
-                terminal,
-            },
-        );
-        self.arm_publish_timer();
-    }
-
-    fn emit_publish_terminal(self: &Rc<Self>, depth: usize, terminal: PublishTerminal) {
-        match terminal {
-            PublishTerminal::LoadFinished {
-                truncated,
-                retry_metadata,
-            } => {
-                self.emit(BrowserEvent::LoadFinished { depth, truncated });
-                if retry_metadata {
-                    self.ensure_sorted_after_load(depth);
-                }
-            }
-            PublishTerminal::SortingFinished => self.emit(BrowserEvent::SortingFinished { depth }),
-        }
-    }
-
-    /// Completes a staged publication synchronously before any mutation assuming a
-    /// converged model.
-    fn drain_publish(self: &Rc<Self>, depth: usize) {
-        let staged = self.staged_publishes.borrow_mut().remove(&depth);
-        let Some(staged) = staged else {
-            return;
-        };
-        let remainder = self.state.borrow().columns.get(depth).map_or(0, |column| {
-            column.entries.len().saturating_sub(staged.published)
-        });
-        if remainder > 0 {
-            self.emit(BrowserEvent::EntriesPublished {
-                depth,
-                position: staged.published,
-                count: remainder,
-            });
-        }
-        if let Some(focused) = staged.focused {
-            self.emit(BrowserEvent::SelectionSetChanged {
-                depth,
-                positions: staged.positions,
-                focused,
-                take_focus: false,
-            });
-        }
-        self.emit_publish_terminal(depth, staged.terminal);
-    }
-
-    fn cancel_publish(&self, depth: usize) {
-        self.staged_publishes.borrow_mut().remove(&depth);
-        if self.staged_publishes.borrow().is_empty()
-            && let Some(source) = self.publish_timer.borrow_mut().take()
-        {
-            source.remove();
-        }
-    }
-
-    fn arm_publish_timer(self: &Rc<Self>) {
-        if self.publish_timer.borrow().is_some() {
-            return;
-        }
-        let weak: Weak<Self> = Rc::downgrade(self);
-        // Run after GDK redraw (priority 120), but before default idle (200):
-        // frames stay smooth without letting continuous frame work starve tails.
-        let source = gio::glib::idle_add_local_full(glib::Priority::from(130), move || {
-            if let Some(browser) = weak.upgrade() {
-                browser.fire_publish_tails();
-            }
-            glib::ControlFlow::Break
-        });
-        *self.publish_timer.borrow_mut() = Some(source);
-    }
-
-    fn fire_publish_tails(self: &Rc<Self>) {
-        self.publish_timer.borrow_mut().take();
-        let started = std::time::Instant::now();
-        loop {
-            let depth = self.staged_publishes.borrow().keys().copied().next();
-            let Some(depth) = depth else {
-                return;
-            };
-            let current = self
-                .staged_publishes
-                .borrow()
-                .get(&depth)
-                .map(|staged| staged.request_id);
-            if current.is_some_and(|id| self.state.borrow().request_id_for_depth(depth) != Some(id))
-            {
-                self.staged_publishes.borrow_mut().remove(&depth);
-                continue;
-            }
-            if started.elapsed() >= PUBLISH_SLICE_BUDGET {
-                self.arm_publish_timer();
-                return;
-            }
-            let chunk: Option<(usize, usize)> = self
-                .staged_publishes
-                .borrow()
-                .get(&depth)
-                .and_then(|staged| {
-                    self.state.borrow().columns.get(depth).map(|column| {
-                        let end = (staged.published + PUBLISH_TAIL_CHUNK)
-                            .min(column.entries.len())
-                            .min(staged.total);
-                        (staged.published, end.saturating_sub(staged.published))
-                    })
-                });
-            let Some((position, chunk)) = chunk else {
-                self.staged_publishes.borrow_mut().remove(&depth);
-                continue;
-            };
-            if chunk == 0 {
-                let staged = self.staged_publishes.borrow_mut().remove(&depth);
-                let Some(staged) = staged else {
-                    continue;
-                };
-                if let Some(focused) = staged.focused {
-                    self.emit(BrowserEvent::SelectionSetChanged {
-                        depth,
-                        positions: staged.positions,
-                        focused,
-                        take_focus: false,
-                    });
-                }
-                self.emit_publish_terminal(depth, staged.terminal);
-                continue;
-            }
-            self.emit(BrowserEvent::EntriesPublished {
-                depth,
-                position,
-                count: chunk,
-            });
-            if let Some(staged) = self.staged_publishes.borrow_mut().get_mut(&depth) {
-                staged.published += chunk;
-            }
-        }
-    }
     pub fn request_metadata_fill(
         self: &Rc<Self>,
         depth: usize,
@@ -2910,24 +2696,19 @@ impl Browser {
             let outcome = state.apply_sort_preferences(depth, preferences);
             self.preferences.set(preferences);
             self.pending_sort.set(None);
-            outcome.map(|(focused, positions)| {
-                let request_id = state.request_id_for_depth(depth);
-                let total = state.columns.get(depth).map(|column| column.entries.len());
-                (request_id, total, focused, positions)
+            outcome.and_then(|(focused, positions)| {
+                Some(PublicationPlan {
+                    request_id: state.request_id_for_depth(depth)?,
+                    total: state.columns.get(depth)?.entries.len(),
+                    focused,
+                    positions,
+                    terminal: PublishTerminal::SortingFinished,
+                })
             })
         };
         self.notify_preferences_observers();
         match outcome {
-            Some((Some(request_id), Some(total), focused, positions)) => {
-                self.publish_staged(
-                    depth,
-                    request_id,
-                    total,
-                    focused,
-                    positions,
-                    PublishTerminal::SortingFinished,
-                );
-            }
+            Some(plan) => self.publish_staged(depth, plan),
             _ => {
                 self.emit(BrowserEvent::SortingFinished { depth });
             }

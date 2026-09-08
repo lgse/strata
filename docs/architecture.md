@@ -171,8 +171,26 @@ stale work is still checked against the owning directory or peek request.
 validated against directory identity and row-position/location tokens. Metadata chunks
 never complete a sort; `MetadataFinished` retains that responsibility. Both modules release
 state and routing borrows before synchronous observer dispatch, allowing observers to
-navigate safely. Sorting, publication budgets, timers, and cancellation remain in the
-browser controller; this extraction does not change those policies.
+navigate safely. Sorting, metadata scheduling, and cancellation remain in the browser
+controller; event routing does not change those policies.
+
+### Browser staged publication
+
+`app/browser/publication.rs` owns staged row publication on the same `Browser`, not a
+second controller. A `PublicationPlan` captures request identity, row count, selection,
+and terminal payload; only the separate progress cursor advances while tails stream.
+Sort paths capture the plan before notifying preference observers.
+
+Inline publication, idle completion, and synchronous draining share selection/terminal
+dispatch. Selection follows the final rows; a load's metadata retry follows its load
+completion event. Idle tails reject superseded directory requests and respect both the
+captured total and current model length. Draining instead publishes the entire remaining
+current model before mutations that require convergence. Borrows end before synchronous
+observer calls, including cancellation from a tail observer.
+
+Inline thresholds, prefix/chunk sizes, idle priority, and the cooperative time budget
+are unchanged. Queue ownership and cancellation/truncation remain on `Browser`; sort
+workers, remote coalescing, and operation callbacks are separate responsibilities.
 
 ### Window composition
 
