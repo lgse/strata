@@ -19,10 +19,12 @@ pub(super) use super::icons_cell::{
     icons_card_icon_slot,
 };
 use crate::{
-    app::{Browser, BrowserColumnSnapshot, BrowserEvent},
+    app::{Browser, BrowserColumnSnapshot},
     model::{FileEntry, Location, MetadataValue, SortDirection, SortKey},
     ui::browser::paths::is_trash_location,
 };
+
+mod events;
 
 const LIST_COLUMN_WIDTHS: [i32; 5] = [160, 160, 90, 120, 150];
 const LIST_COLUMN_MIN_WIDTHS: [i32; 5] = [160, 80, 70, 80, 110];
@@ -795,185 +797,6 @@ impl ModeViews {
         self.group_by_type = enabled;
         if self.mode.supports_type_grouping() {
             self.rebuild_list();
-        }
-    }
-
-    pub fn handle(&mut self, event: &BrowserEvent) {
-        match event {
-            BrowserEvent::Reset => {
-                self.clear_icons();
-                self.clear_list();
-            }
-            BrowserEvent::ColumnsTruncated { .. } => match self.mode {
-                BrowserMode::Columns => {}
-                BrowserMode::Icons => self.rebuild_icons(),
-                BrowserMode::List => self.rebuild_list(),
-            },
-            BrowserEvent::ColumnAdded { depth, .. }
-                if self.browser.active_depth() == Some(*depth) =>
-            {
-                self.browser.select_first_on_load(*depth);
-                match self.mode {
-                    BrowserMode::Columns => {}
-                    BrowserMode::Icons => {
-                        self.rebuild_icons();
-                    }
-                    BrowserMode::List => {
-                        self.rebuild_list();
-                    }
-                }
-            }
-            BrowserEvent::ColumnAdded { .. } => {}
-            BrowserEvent::EntriesInserted { depth, insertions } => {
-                for pane in self.panes_at(*depth) {
-                    for insertion in insertions {
-                        let values: Vec<String> = insertion
-                            .entries
-                            .iter()
-                            .map(super::browser::entry_model_value)
-                            .collect();
-                        let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
-                        pane.model.splice(insertion.position as u32, 0, &values_ref);
-                    }
-                    if !pane.spinner.is_spinning() {
-                        show_count(pane);
-                    }
-                }
-            }
-            BrowserEvent::EntriesReplaced { depth, count } => {
-                for pane in self.panes_at(*depth) {
-                    if *count > 0 {
-                        pane.spinner.stop();
-                        pane.spinner.set_visible(false);
-                    }
-                    replace_entries(pane, &self.browser, *count);
-                }
-            }
-            BrowserEvent::EntriesPublished {
-                depth,
-                position,
-                count,
-            } => {
-                for pane in self.panes_at(*depth) {
-                    let values = self
-                        .browser
-                        .with_entries(
-                            *depth,
-                            *position..position.saturating_add(*count),
-                            |entries| {
-                                entries
-                                    .iter()
-                                    .map(super::browser::entry_model_value)
-                                    .collect::<Vec<_>>()
-                            },
-                        )
-                        .unwrap_or_default();
-                    let values: Vec<_> = values.iter().map(String::as_str).collect();
-                    pane.model.splice(*position as u32, 0, &values);
-                    if !pane.spinner.is_spinning() {
-                        show_count(pane);
-                    }
-                }
-            }
-            BrowserEvent::MetadataFilled { depth, updates } => {
-                if self.mode == BrowserMode::List {
-                    for pane in self.panes_at(*depth) {
-                        update_bound_list_metadata(pane, updates);
-                    }
-                }
-            }
-            BrowserEvent::SortingStarted { depth } => {
-                for pane in self.panes_at(*depth) {
-                    pane.spinner.set_tooltip_text(Some("Sorting…"));
-                    pane.spinner.set_visible(true);
-                    pane.spinner.start();
-                }
-            }
-            BrowserEvent::SortingFinished { depth } => {
-                for pane in self.panes_at(*depth) {
-                    pane.spinner.stop();
-                    pane.spinner.set_visible(false);
-                    pane.spinner.set_tooltip_text(None);
-                }
-            }
-            BrowserEvent::EntriesSpliced { depth, splices, .. } => {
-                for pane in self.panes_at(*depth) {
-                    for splice in splices {
-                        let values: Vec<String> = splice
-                            .entries
-                            .iter()
-                            .map(super::browser::entry_model_value)
-                            .collect();
-                        let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
-                        pane.model.splice(
-                            splice.position as u32,
-                            splice.removed as u32,
-                            &values_ref,
-                        );
-                    }
-                    show_count(pane);
-                }
-            }
-            BrowserEvent::ColumnReloaded { depth } => {
-                for pane in self.panes_at(*depth) {
-                    pane.detached.set(true);
-                    for section in pane.all_sections() {
-                        section.syncing.set(true);
-                        section.selection.set_model(None::<&gio::ListModel>);
-                    }
-                    if let Some(filtered) = pane.filter_model.as_ref() {
-                        filtered.set_model(None::<&gio::ListModel>);
-                    }
-                    pane.model.splice(0, pane.model.n_items(), &[]);
-                    pane.truncated_hint.set_visible(false);
-                    pane.spinner.set_visible(true);
-                    pane.spinner.start();
-                    pane.loading.start();
-                }
-            }
-            BrowserEvent::LoadFinished { depth, truncated } => {
-                for pane in self.panes_at(*depth) {
-                    reconnect_pane_model(pane);
-                    pane.spinner.stop();
-                    pane.spinner.set_visible(false);
-                    pane.truncated_hint.set_visible(*truncated);
-                    show_count(pane);
-                }
-            }
-            BrowserEvent::LoadFailed { depth, message } => {
-                for pane in self.panes_at(*depth) {
-                    reconnect_pane_model(pane);
-                    pane.spinner.stop();
-                    pane.status
-                        .set_label(&format!("Unable to read this directory\n{message}"));
-                    pane.status.add_css_class("error");
-                    pane.loading.show("status");
-                }
-            }
-            BrowserEvent::SelectionSetChanged {
-                depth,
-                positions,
-                take_focus,
-                ..
-            } => {
-                let view_has_focus = self
-                    .panes_at(*depth)
-                    .iter()
-                    .any(|pane| pane_holds_keyboard_focus(pane));
-                for pane in self.panes_at(*depth) {
-                    set_selections(pane, positions);
-                }
-                if *take_focus || (view_has_focus && !positions.is_empty()) {
-                    self.focus_visible_pane(*depth);
-                }
-            }
-            BrowserEvent::FocusChanged { depth, position } => {
-                for pane in self.panes_at(*depth) {
-                    set_selections(pane, &position.iter().copied().collect::<Vec<_>>());
-                }
-                self.focus_visible_pane(*depth);
-            }
-            _ => {}
         }
     }
 
@@ -3517,8 +3340,7 @@ fn replace_entries(pane: &Pane, browser: &Browser, count: usize) {
                 .collect::<Vec<_>>()
         })
         .unwrap_or_default();
-    let values_ref: Vec<&str> = values.iter().map(String::as_str).collect();
-    pane.model.splice(0, pane.model.n_items(), &values_ref);
+    pane.splice_values(0, pane.model.n_items(), &values);
     show_count(pane);
 }
 

@@ -2551,5 +2551,169 @@ fn a_move_reports_no_created_destination() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+#[test]
+fn keeping_both_preserves_transfer_noops() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let nested = source.join("nested");
+    fs::create_dir_all(&nested)?;
+    fs::write(source.join("report.txt"), b"original")?;
+
+    for moving in [false, true] {
+        for destination in [&source, &nested] {
+            let created = run_paste_collecting_created(PasteRequest {
+                id: OperationRequestId(77),
+                destination: Location::local(destination),
+                items: vec![PasteItem {
+                    source: Location::local(&source),
+                    conflict: TransferConflict::KeepBoth,
+                }],
+                move_sources: moving,
+            })?;
+            assert!(created.into_iter().flatten().next().is_none());
+            assert_eq!(fs::read_dir(&source)?.count(), 2);
+            assert_eq!(fs::read_dir(&nested)?.count(), 0);
+            assert_eq!(fs::read(source.join("report.txt"))?, b"original");
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn keeping_both_in_a_cross_folder_paste_generates_a_unique_name() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source_dir = root.path().join("source");
+    let source = source_dir.join("report.txt");
+    let destination = root.path().join("dest");
+    fs::create_dir_all(&source_dir)?;
+    fs::create_dir_all(&destination)?;
+    fs::write(&source, b"incoming")?;
+    fs::write(destination.join("report.txt"), b"existing")?;
+
+    let created = run_paste_collecting_created(PasteRequest {
+        id: OperationRequestId(74),
+        destination: Location::local(&destination),
+        items: vec![PasteItem {
+            source: Location::local(&source),
+            conflict: TransferConflict::KeepBoth,
+        }],
+        move_sources: false,
+    })?;
+
+    assert_eq!(
+        created.into_iter().flatten().collect::<Vec<_>>(),
+        vec![Location::local(destination.join("report (1).txt"))]
+    );
+    assert_eq!(fs::read(destination.join("report.txt"))?, b"existing");
+    assert_eq!(fs::read(destination.join("report (1).txt"))?, b"incoming");
+    assert!(source.exists());
+    Ok(())
+}
+
+#[test]
+fn keeping_both_while_moving_renames_the_destination_instead_of_replacing_it()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source_dir = root.path().join("source");
+    let source = source_dir.join("report.txt");
+    let destination = root.path().join("dest");
+    fs::create_dir_all(&source_dir)?;
+    fs::create_dir_all(&destination)?;
+    fs::write(&source, b"incoming")?;
+    fs::write(destination.join("report.txt"), b"existing")?;
+
+    let created = run_paste_collecting_created(PasteRequest {
+        id: OperationRequestId(75),
+        destination: Location::local(&destination),
+        items: vec![PasteItem {
+            source: Location::local(&source),
+            conflict: TransferConflict::KeepBoth,
+        }],
+        move_sources: true,
+    })?;
+
+    assert!(created.into_iter().flatten().next().is_none());
+    assert_eq!(fs::read(destination.join("report.txt"))?, b"existing");
+    assert_eq!(fs::read(destination.join("report (1).txt"))?, b"incoming");
+    assert!(!source.exists());
+    Ok(())
+}
+
+#[test]
+fn mixed_conflict_choices_apply_independently_across_a_multi_item_paste()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let sources = root.path().join("sources");
+    let destination = root.path().join("destination");
+    fs::create_dir_all(&sources)?;
+    fs::create_dir_all(&destination)?;
+    fs::write(sources.join("new.txt"), b"brand new")?;
+    fs::write(sources.join("replace.txt"), b"new replacement")?;
+    fs::write(destination.join("replace.txt"), b"old replacement")?;
+    fs::write(sources.join("keep.txt"), b"new keep")?;
+    fs::write(destination.join("keep.txt"), b"old keep")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(76),
+            destination: Location::local(&destination),
+            items: vec![
+                PasteItem {
+                    source: Location::local(sources.join("new.txt")),
+                    conflict: TransferConflict::FailIfExists,
+                },
+                PasteItem {
+                    source: Location::local(sources.join("replace.txt")),
+                    conflict: TransferConflict::ReplaceExisting,
+                },
+                PasteItem {
+                    source: Location::local(sources.join("keep.txt")),
+                    conflict: TransferConflict::KeepBoth,
+                },
+            ],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. }
+                | OperationEvent::Cancelled { .. }
+                | OperationEvent::TransferFailed { .. }
+                | OperationEvent::Failed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert_eq!(fs::read(destination.join("new.txt"))?, b"brand new");
+    assert_eq!(
+        fs::read(destination.join("replace.txt"))?,
+        b"new replacement"
+    );
+    assert_eq!(fs::read(destination.join("keep.txt"))?, b"old keep");
+    assert_eq!(fs::read(destination.join("keep (1).txt"))?, b"new keep");
+    Ok(())
+}
+
 mod create_entry;
 mod trash_capabilities;

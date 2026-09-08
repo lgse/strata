@@ -20,6 +20,7 @@ declare -A SCENARIOS=(
   [view-switching]="tests/e2e/scenarios/test_view_switching.py"
   [quick-preview]="tests/e2e/scenarios/test_quick_preview.py"
   [popover-scrolling]="tests/e2e/scenarios/test_popover_scrolling.py"
+  [rename-caret]="tests/e2e/scenarios/test_inline_renaming.py::test_long_rename_keeps_caret_visible"
 )
 
 selected=("$@")

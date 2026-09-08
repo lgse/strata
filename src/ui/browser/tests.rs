@@ -2,6 +2,7 @@
 
 use super::*;
 
+mod filter_scope;
 mod focus;
 mod loading;
 mod navigate;

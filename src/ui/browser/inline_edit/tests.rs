@@ -10,6 +10,7 @@ use crate::{
 };
 use std::time::{Duration, Instant};
 
+mod caret;
 mod entries;
 
 #[test]

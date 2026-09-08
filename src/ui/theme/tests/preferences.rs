@@ -17,6 +17,7 @@ fn non_default_preferences() -> Preferences {
         video_preview_backend: "vulkan".into(),
         search_open_files_directly: true,
         type_to_search: false,
+        filter_include_subfolders: false,
         show_keybinding_hints: false,
         reduce_motion: true,
         browser_mode: "list".into(),
@@ -78,6 +79,20 @@ impl ThemeManager {
 }
 
 #[test]
+fn older_preferences_keep_recursive_filtering_enabled() {
+    let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
+    saved.remove("filter_include_subfolders");
+    let restored: Preferences = saved.try_into().expect("backward-compatible preferences");
+    assert_eq!(
+        restored,
+        Preferences {
+            filter_include_subfolders: true,
+            ..non_default_preferences()
+        }
+    );
+}
+
+#[test]
 fn fresh_preferences_select_tokyo_night_before_settings_opens() {
     gtk_test(
         "ui::theme::tests::preferences::fresh_preferences_select_tokyo_night_before_settings_opens",
@@ -85,6 +100,7 @@ fn fresh_preferences_select_tokyo_night_before_settings_opens() {
             assert!(!settings_path().exists());
             let manager = ThemeManager::shared();
             assert_eq!(manager.selected_id(), "tokyo-night");
+            assert!(manager.filter_include_subfolders());
             assert!(!manager.follows_omarchy());
             assert_eq!(
                 manager.current_tokens().expect("selected theme").name,
@@ -133,6 +149,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             );
             assert!(manager.search_open_files_directly());
             assert!(!manager.type_to_search());
+            assert!(!manager.filter_include_subfolders());
             assert!(!manager.show_keybinding_hints());
             assert!(manager.reduce_motion());
             assert!(!crate::ui::motion::animations_enabled());
@@ -238,6 +255,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_video_preview_backend(MediaPreviewBackend::VaApi),
                 |m| m.set_search_open_files_directly(false),
                 |m| m.set_type_to_search(true),
+                |m| m.set_filter_include_subfolders(true),
                 |m| m.set_show_keybinding_hints(true),
                 |m| m.set_reduce_motion(false),
                 |m| m.set_browser_mode(BrowserMode::Icons),

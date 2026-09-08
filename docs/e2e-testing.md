@@ -185,6 +185,15 @@ directories.
 ./scripts/e2e.sh tests/e2e/scenarios/test_inline_renaming.py tests/e2e/scenarios/test_entry_management.py
 ```
 
+The long-name scenario sends real F2, End, Left/Right, typing, Backspace, and
+inside-field clicks. It uses a 420×300 Columns window with the sidebar open,
+so the column is wider than the browser viewport; List/Icons use 640×300 to
+leave room for their minimum card/table widths. The adjacent Rust caret fixture
+requires mapped, non-zero-width editors and overflowing text, then checks the
+scroll-adjusted caret against both `GtkText` and browser bounds, including
+viewport resizes. `./scripts/e2e-mutation-check.sh rename-caret` proves that
+removing the viewport constraint is detected.
+
 Keep these as real XTEST pointer interactions: emitting a focus controller's
 `leave` signal in a Rust test checks the handler, not GTK's in-flight focus walk
 (#566). Rename dispatch must wait until that walk returns because an operation

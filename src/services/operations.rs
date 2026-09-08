@@ -45,6 +45,7 @@ pub struct CreateDirectoryRequest {
 pub enum TransferConflict {
     FailIfExists,
     ReplaceExisting,
+    KeepBoth,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

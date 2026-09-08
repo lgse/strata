@@ -11,7 +11,7 @@ use gtk::{glib, prelude::*};
 
 use crate::{
     app::Browser,
-    services::{SearchEvent, SearchHandle, SearchItem, index_tree},
+    services::{SearchEvent, SearchHandle, SearchItem, index_filter},
 };
 
 pub(super) const SEARCH_RESULTS_LABEL: &str = "Search results";
@@ -152,7 +152,11 @@ pub(super) fn wrap(
         widget: stack.clone().upcast(),
         state: Some(state.clone()),
     };
-    super::browser::debounce_filter_entry(entry, move |text| {
+    super::browser::bind_filter_query(entry, move |text, recursive, restart| {
+        if restart {
+            state.generation.set(state.generation.get().wrapping_add(1));
+            state.handle.borrow_mut().take();
+        }
         let query = text.trim();
         if query.is_empty() {
             state.generation.set(state.generation.get().wrapping_add(1));
@@ -175,7 +179,7 @@ pub(super) fn wrap(
         let show_hidden = weak_browser
             .upgrade()
             .is_some_and(|browser| browser.preferences().show_hidden);
-        let (handle, receiver) = index_tree(root.clone(), show_hidden);
+        let (handle, receiver) = index_filter(root.clone(), show_hidden, recursive);
         handle.query(query);
         state.handle.replace(Some(handle));
         let weak = Rc::downgrade(&state);
@@ -230,6 +234,7 @@ pub(super) fn wrap(
                         .ellipsize(gtk::pango::EllipsizeMode::Middle)
                         .build();
                     origin.add_css_class("file-search-path");
+                    origin.set_visible(recursive);
                     labels.append(&name);
                     labels.append(&origin);
                     row.set_tooltip_text(Some(&path));

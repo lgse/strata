@@ -14,6 +14,25 @@ pub(super) struct ActiveRename {
     pub(super) label: gtk::Label,
     pub(super) spacer: gtk::Box,
     pub(super) size: gtk::Label,
+    viewport_tick: gtk::TickCallbackId,
+}
+
+fn constrain_rename_to_viewport(field: &gtk::Entry, viewport: &gtk::ScrolledWindow) {
+    let Some(editor) = field.parent() else { return };
+    let Some(bounds) = editor.compute_bounds(viewport) else {
+        return;
+    };
+    if bounds.width() <= 0.0 || viewport.width() <= 0 {
+        return;
+    }
+    // Columns can be wider than the viewport. GtkText must scroll within the
+    // visible slice, not an allocation clipped by the outer horizontal scroller.
+    let start = (-bounds.x()).ceil().max(0.0) as i32;
+    let end = (bounds.x() + bounds.width() - viewport.width() as f32)
+        .ceil()
+        .max(0.0) as i32;
+    field.set_margin_start(start.min(editor.width().saturating_sub(1)));
+    field.set_margin_end(end.min(editor.width().saturating_sub(start + 1).max(0)));
 }
 
 pub(super) struct PendingEntryRename {
@@ -267,6 +286,15 @@ impl ViewState {
         spacer.set_visible(false);
         size.set_visible(false);
         field.set_visible(true);
+        constrain_rename_to_viewport(&field, &self.scroller);
+        let viewport = self.scroller.downgrade();
+        let viewport_tick = field.add_tick_callback(move |field, _| {
+            let Some(viewport) = viewport.upgrade() else {
+                return gtk::glib::ControlFlow::Break;
+            };
+            constrain_rename_to_viewport(field, &viewport);
+            gtk::glib::ControlFlow::Continue
+        });
         field.grab_focus();
         field.select_region(
             0,
@@ -282,6 +310,7 @@ impl ViewState {
             label,
             spacer,
             size,
+            viewport_tick,
         }));
         true
     }
@@ -293,6 +322,9 @@ impl ViewState {
         let Some(rename) = self.active_rename.take() else {
             return false;
         };
+        rename.viewport_tick.remove();
+        rename.field.set_margin_start(0);
+        rename.field.set_margin_end(0);
         rename.field.remove_css_class("error");
         rename.field.set_tooltip_text(None);
         rename.field.set_visible(false);

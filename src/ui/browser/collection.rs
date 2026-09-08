@@ -142,6 +142,47 @@ pub(crate) fn debounce_filter_entry(entry: &gtk::Entry, on_settled: impl Fn(Stri
     });
 }
 
+/// Scope changes bypass typing's debounce and cancel queued old-scope queries.
+pub(crate) fn bind_filter_query(
+    entry: &gtk::Entry,
+    on_query: impl Fn(String, bool, bool) + 'static,
+) {
+    let pending = Rc::new(RefCell::new(None));
+    let callback = Rc::new(on_query);
+    let scope = Rc::new(Cell::new(true));
+    let weak_callback = Rc::downgrade(&callback);
+    let pending_for_binding = pending.clone();
+    let scope_for_binding = scope.clone();
+    crate::ui::theme::ThemeManager::shared().bind_preference(
+        entry,
+        crate::ui::theme::ThemeManager::filter_include_subfolders,
+        move |entry, recursive| {
+            scope_for_binding.set(recursive);
+            cancel_source(&pending_for_binding);
+            if let Some(callback) = weak_callback.upgrade() {
+                let entry = entry
+                    .downcast_ref::<gtk::Entry>()
+                    .expect("filter entry anchor");
+                callback(entry.text().to_string(), recursive, true);
+            }
+        },
+    );
+    entry.connect_changed(move |entry| {
+        cancel_source(&pending);
+        let slot = pending.clone();
+        let callback = callback.clone();
+        let text = entry.text().to_string();
+        let recursive = scope.get();
+        *pending.borrow_mut() = Some(glib::timeout_add_local_once(
+            FILTER_DEBOUNCE_DELAY,
+            move || {
+                slot.borrow_mut().take();
+                callback(text, recursive, false);
+            },
+        ));
+    });
+}
+
 pub(crate) fn filter_change_for(previous: &str, settled: &str) -> gtk::FilterChange {
     if settled.starts_with(previous) && settled.len() > previous.len() {
         gtk::FilterChange::MoreStrict

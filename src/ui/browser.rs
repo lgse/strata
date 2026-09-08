@@ -49,9 +49,9 @@ mod trash;
 pub(super) use crate::ui::browser::clipboard::file_drag_content;
 pub(crate) use crate::ui::browser::clipboard::{file_drop_action, locations_from_file_list_value};
 pub(crate) use crate::ui::browser::collection::{
-    activate_recursive_search_result, debounce_filter_entry, detach_collection_view,
-    focus_collection_item_when_allocated, focus_filter_entry, notify_filter_query,
-    prepare_collection_inline_edit, recursive_search_activation_key,
+    activate_recursive_search_result, bind_filter_query, debounce_filter_entry,
+    detach_collection_view, focus_collection_item_when_allocated, focus_filter_entry,
+    notify_filter_query, prepare_collection_inline_edit, recursive_search_activation_key,
     scroll_collection_when_allocated, search_result_entry, search_result_navigation_position,
 };
 pub(super) use crate::ui::browser::columns::max_child_natural_width;

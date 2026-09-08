@@ -65,6 +65,20 @@ policy live behind the UI presentation boundary (`ui/browser_modes.rs`); shared 
 the application layer. A future mode should therefore add a renderer rather than add mode checks to
 filesystem, navigation, or operation code.
 
+`ui/browser_modes/events.rs` applies alternate-mode events on the same `ModeViews`.
+Structural events rebuild the active presentation; row, loading, and selection handlers
+keep their effects separate. Only panes belonging to the active mode and event depth
+receive incremental updates. Shared browser effects in `ui/browser/events.rs` still run
+before alternate-mode dispatch.
+
+Pane helpers share string-model splicing, but authoritative entry borrows end before GTK
+notifications. Reload detaches selection/filter models without detaching the collection
+views; completion or failure reconnects them. Teardown retains its stronger detachment.
+Busy insertions/publication, replacement, and splices keep their distinct count/spinner
+rules. Selection restoration captures existing pane focus before applying the selection
+and preserves explicit focus requests and empty-selection behavior. Renderer construction,
+rename, pointer policy, and preference ownership remain separate responsibilities.
+
 Pointer intent is shared through `ui/pointer.rs` and `ui/marquee.rs`. In all three modes,
 thumbnail slots, rendered row text/metadata, and Icons' caption region are item drag targets;
 unused label allocation and the gutters beside thumbnails are marquee origins. Both paths use
@@ -181,8 +195,26 @@ stale work is still checked against the owning directory or peek request.
 validated against directory identity and row-position/location tokens. Metadata chunks
 never complete a sort; `MetadataFinished` retains that responsibility. Both modules release
 state and routing borrows before synchronous observer dispatch, allowing observers to
-navigate safely. Sorting, publication budgets, timers, and cancellation remain in the
-browser controller; this extraction does not change those policies.
+navigate safely. Sorting, metadata scheduling, and cancellation remain in the browser
+controller; event routing does not change those policies.
+
+### Browser staged publication
+
+`app/browser/publication.rs` owns staged row publication on the same `Browser`, not a
+second controller. A `PublicationPlan` captures request identity, row count, selection,
+and terminal payload; only the separate progress cursor advances while tails stream.
+Sort paths capture the plan before notifying preference observers.
+
+Inline publication, idle completion, and synchronous draining share selection/terminal
+dispatch. Selection follows the final rows; a load's metadata retry follows its load
+completion event. Idle tails reject superseded directory requests and respect both the
+captured total and current model length. Draining instead publishes the entire remaining
+current model before mutations that require convergence. Borrows end before synchronous
+observer calls, including cancellation from a tail observer.
+
+Inline thresholds, prefix/chunk sizes, idle priority, and the cooperative time budget
+are unchanged. Queue ownership and cancellation/truncation remain on `Browser`; sort
+workers, remote coalescing, and operation callbacks are separate responsibilities.
 
 ### Window composition
 

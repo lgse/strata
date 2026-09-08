@@ -37,6 +37,7 @@ control that might be midway through synchronization.
 | Hidden files | Shared across existing browsers and new columns. |
 | Sort key/direction, folders-first | Shared defaults for new columns; an existing column keeps its own sort, selection and navigation. Sorting a column updates the persisted defaults. |
 | Type-to-search, opening search results directly | Keyboard/search actions read the current manager value at dispatch. |
+| Include subfolders when filtering | Every pane filter binds at construction, including lazy view rebuilds. Enabled by default; disabling indexes only immediate files and folders, without traversing descendants. Live changes cancel pending queries and invalidate old result streams before refreshing the active filter. Global search remains recursive. |
 | Reduced motion | Set before any window is constructed; animation helpers read the current process-wide value. |
 | Theme, Omarchy following, text size | Shared CSS is applied by the manager; controls and theme-card selections bind to preferences. Newly saved custom themes appear in other open theme pages. Missing themes/Omarchy use the existing fallback policy. |
 | Keybinding hints | Footers and settings controls bind immediately and live. |
@@ -53,6 +54,22 @@ own stores and are not fields in the application preferences schema.
 Synchronization between independently running application processes, or manual
 external edits to `settings.toml` while Strata runs, is not supported by this
 in-process binding mechanism. External edits are read on the next launch.
+
+## Filter scope
+
+In **Settings → General → Browsing**, **Include subfolders when filtering** is
+on by default. Turn it off to match only immediate files and folders, without
+redundant path subtitles. The choice applies to pane filtering in Columns, Icons,
+and List views, not global search.
+Changing it refreshes active filters across windows and is saved for next launch.
+
+Default recursive results:
+
+![Filtering with subfolders included](images/filter-scope-recursive.png)
+
+The same query with subfolders excluded:
+
+![Filtering only the current directory](images/filter-scope-directory.png)
 
 ## Adding a preference
 

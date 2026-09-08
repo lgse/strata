@@ -26,6 +26,7 @@ use std::rc::Rc;
 enum ConflictChoice {
     Replace,
     Skip,
+    KeepBoth,
 }
 
 fn location_exists(location: &Location) -> bool {
@@ -121,10 +122,12 @@ impl ViewState {
             compact_display_path(&destination)
         );
         let state = self.clone();
+        // Move undo/reveal assumes an unrenamed `transfer_target`.
         self.confirm_replace_conflict(
             &name,
             &explanation,
             !collisions.is_empty(),
+            !move_sources,
             Rc::new(move |choice, apply_to_all| {
                 let mut accepted = accepted.clone();
                 let mut remaining = collisions.clone();
@@ -138,6 +141,18 @@ impl ViewState {
                             accepted.extend(remaining.drain(..).map(|source| PasteItem {
                                 source,
                                 conflict: TransferConflict::ReplaceExisting,
+                            }));
+                        }
+                    }
+                    ConflictChoice::KeepBoth => {
+                        accepted.push(PasteItem {
+                            source: source.clone(),
+                            conflict: TransferConflict::KeepBoth,
+                        });
+                        if apply_to_all {
+                            accepted.extend(remaining.drain(..).map(|source| PasteItem {
+                                source,
+                                conflict: TransferConflict::KeepBoth,
                             }));
                         }
                     }
@@ -221,6 +236,7 @@ impl ViewState {
             &name,
             &explanation,
             !collisions.is_empty(),
+            false,
             Rc::new(move |choice, apply_to_all| {
                 let mut accepted = accepted.clone();
                 let mut remaining = collisions.clone();
@@ -237,6 +253,9 @@ impl ViewState {
                             }));
                         }
                     }
+                    ConflictChoice::KeepBoth => {
+                        unreachable!("keep-both is not offered for undo conflicts")
+                    }
                     ConflictChoice::Skip if apply_to_all => remaining.clear(),
                     ConflictChoice::Skip => {}
                 }
@@ -245,13 +264,13 @@ impl ViewState {
         );
     }
 
-    /// Asks whether one conflicting item should be replaced or skipped.
-    /// Cancelling abandons the whole operation, so `on_choice` never runs.
+    /// Cancelling abandons the whole operation without calling `on_choice`.
     fn confirm_replace_conflict(
         &self,
         name: &str,
         explanation: &str,
         has_more_conflicts: bool,
+        allow_keep_both: bool,
         on_choice: Rc<dyn Fn(ConflictChoice, bool)>,
     ) {
         let Some(ModalHost {
@@ -278,6 +297,10 @@ impl ViewState {
         layout
             .actions
             .insert_child_after(&skip, Some(&layout.cancel));
+        let keep_both = gtk::Button::with_label("Keep Both");
+        keep_both.add_css_class("action-dialog-cancel");
+        keep_both.set_visible(allow_keep_both);
+        layout.actions.insert_child_after(&keep_both, Some(&skip));
         let content = layout.content;
         let cancel = layout.cancel;
         let replace = layout.confirm;
@@ -299,6 +322,7 @@ impl ViewState {
 
         for (button, choice) in [
             (skip.clone(), ConflictChoice::Skip),
+            (keep_both.clone(), ConflictChoice::KeepBoth),
             (replace.clone(), ConflictChoice::Replace),
         ] {
             let chosen_layer = layer.clone();
@@ -317,14 +341,18 @@ impl ViewState {
         let escaped_layer = layer.clone();
         let escaped_overlay = window_overlay;
         let escaped_root = blurred_root;
-        let enter_replace = replace.clone();
+        let enter_buttons = [skip, keep_both, replace.clone(), cancel, layout.close];
         escape.connect_key_pressed(move |_, key, _, _| {
             if key == gtk::gdk::Key::Escape {
                 dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
                 glib::Propagation::Stop
             } else if key == gtk::gdk::Key::Return || key == gtk::gdk::Key::KP_Enter {
-                enter_replace.emit_clicked();
-                glib::Propagation::Stop
+                if let Some(button) = enter_buttons.iter().find(|button| button.has_focus()) {
+                    button.emit_clicked();
+                    glib::Propagation::Stop
+                } else {
+                    glib::Propagation::Proceed
+                }
             } else {
                 glib::Propagation::Proceed
             }

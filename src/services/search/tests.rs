@@ -9,6 +9,8 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+mod scope;
+
 use super::{
     SearchEvent, SearchItem, fuzzy_score_normalized, index_tree, index_trees,
     index_trees_with_budget,
