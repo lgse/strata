@@ -74,9 +74,9 @@ fn prepared_selection_rejects_changed_targets() {
 }
 
 #[test]
-fn preparation_preserves_file_uris_and_rejects_incompatible_or_stale_queries() {
+fn preparation_preserves_uris_and_supports_folders() {
     crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::open_with::preparation_preserves_file_uris_and_rejects_incompatible_or_stale_queries",
+        "ui::browser::context_menu::tests::open_with::preparation_preserves_uris_and_supports_folders",
         || {
             let fixture = tempfile::tempdir().expect("fixture");
             let text = fixture.path().join("alpha.txt");
@@ -98,7 +98,7 @@ fn preparation_preserves_file_uris_and_rejects_incompatible_or_stale_queries() {
                     false,
                     true,
                 ),
-                (vec![Location::local(fixture.path())], false, false),
+                (vec![Location::local(fixture.path())], false, true),
                 (vec![Location::local(&text)], true, false),
                 (
                     vec![Location::local(fixture.path().join("missing"))],
