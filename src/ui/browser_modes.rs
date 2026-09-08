@@ -180,7 +180,7 @@ impl SourceIndexMap {
     }
 }
 
-struct ActiveModeRename {
+pub(in crate::ui) struct ActiveModeRename {
     entry: FileEntry,
     field: gtk::Entry,
     label: gtk::Widget,
@@ -529,8 +529,66 @@ impl ModeViews {
             .map(|rename| rename.field.clone())
     }
 
-    pub(in crate::ui) fn submit_rename(&self, field: &gtk::Entry) {
-        submit_mode_rename(&self.active_rename, &Rc::downgrade(&self.browser), field);
+    pub(in crate::ui) fn take_active_rename(
+        &self,
+        field: &gtk::Entry,
+    ) -> Option<(ActiveModeRename, FileEntry, String)> {
+        let active = self
+            .active_rename
+            .borrow()
+            .as_ref()
+            .filter(|active| active.field == *field && field.is_sensitive())
+            .is_some();
+        if !active {
+            return None;
+        }
+        let rename = self.active_rename.take()?;
+        let entry = rename.entry.clone();
+        let name = field.text().to_string();
+        Some((rename, entry, name))
+    }
+
+    pub(in crate::ui) fn take_rename(&self) -> Option<ActiveModeRename> {
+        self.active_rename.take()
+    }
+
+    pub(super) fn rename_label_widgets(
+        &self,
+        old_location: &Location,
+        new_location: Option<&Location>,
+    ) -> Vec<gtk::Widget> {
+        let mut labels = Vec::new();
+        for pane in self.all_panes() {
+            for section in pane.item_sections() {
+                section.bound_items.borrow_mut().retain(|bound| {
+                    let (Some(item), Some(widget)) = (bound.item.upgrade(), bound.widget.upgrade())
+                    else {
+                        return false;
+                    };
+                    let Some(position) = item
+                        .item()
+                        .and_then(|value| pane.source_index.of_item(&value))
+                    else {
+                        return true;
+                    };
+                    let Some(entry) = self.browser.entry_at(pane.depth, position) else {
+                        return true;
+                    };
+                    if (entry.location == *old_location
+                        || new_location.is_some_and(|location| location == &entry.location))
+                        && let Some(card) = widget.downcast_ref::<gtk::Box>()
+                    {
+                        if let Some((_, label)) = super::icons_cell::parts(card) {
+                            labels.push(label.upcast());
+                        } else if let Some((_, label, _, _, _, _, _)) = list_row_parts(card) {
+                            labels.push(label.upcast());
+                        }
+                    }
+                    true
+                });
+            }
+        }
+        labels
     }
 
     pub fn cancel_rename(&self) -> bool {
@@ -606,6 +664,7 @@ impl ModeViews {
             &field,
             self.active_rename.clone(),
             Rc::downgrade(&self.browser),
+            self.context_state.borrow().clone().unwrap_or_default(),
         );
         field.set_sensitive(true);
         field.remove_css_class("error");
@@ -1172,7 +1231,7 @@ struct ModeClickOptions {
     multiple_selection: Rc<Cell<bool>>,
 }
 
-fn finish_mode_rename(rename: ActiveModeRename) {
+pub(in crate::ui) fn finish_mode_rename(rename: ActiveModeRename) {
     rename.label.set_visible(true);
     rename.field.set_visible(false);
     rename.field.set_sensitive(true);
@@ -1204,6 +1263,7 @@ fn install_mode_rename_handlers(
     field: &gtk::Entry,
     active: Rc<RefCell<Option<ActiveModeRename>>>,
     browser: Weak<Browser>,
+    state: Weak<super::browser::ViewState>,
 ) {
     if field.has_css_class("mode-rename-wired") {
         return;
@@ -1215,17 +1275,22 @@ fn install_mode_rename_handlers(
     let active = Rc::downgrade(&active);
     let submit_active = active.clone();
     let submit_browser = browser.clone();
+    let submit_state = state.clone();
     field.connect_activate(move |field| {
-        if let Some(active) = submit_active.upgrade() {
+        if let Some(state) = submit_state.upgrade() {
+            state.submit_mode_rename(field);
+        } else if let Some(active) = submit_active.upgrade() {
             submit_mode_rename(&active, &submit_browser, field);
         }
     });
     let focus = gtk::EventControllerFocus::new();
     focus.connect_leave(move |controller| {
-        if let Some(active) = active.upgrade()
-            && let Some(field) = controller.widget().and_downcast::<gtk::Entry>()
-        {
-            submit_mode_rename(&active, &browser, &field);
+        if let Some(field) = controller.widget().and_downcast::<gtk::Entry>() {
+            if let Some(state) = state.upgrade() {
+                state.submit_mode_rename(&field);
+            } else if let Some(active) = active.upgrade() {
+                submit_mode_rename(&active, &browser, &field);
+            }
         }
     });
     field.add_controller(focus);
@@ -1661,6 +1726,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
     let cuts_for_bind = context.cuts.clone();
     let thumbnail_size_for_bind = context.thumbnail_size.clone();
     let scrolling_for_bind = context.scrolling.clone();
+    let state_for_bind = context.state.clone();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -1672,6 +1738,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             .item()
             .and_then(|value| source_index_for_bind.of_item(&value));
         let browser = browser_for_bind.upgrade();
+        let state = state_for_bind.as_ref().and_then(Weak::upgrade);
         let entry = browser.as_ref().and_then(|browser| {
             source_position.and_then(|position| browser.entry_at(depth, position))
         });
@@ -1685,6 +1752,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
                 &cuts_for_bind.borrow(),
                 thumbnail_size,
                 scrolling_for_bind.get(),
+                state.as_deref(),
             );
             if !scrolling_for_bind.get()
                 && let Some(position) = metadata_fill_position(source_position, &entry, false)
@@ -2301,6 +2369,7 @@ fn build_list_pane(
     let source_index_for_bind = source_index.clone();
     let cuts_for_bind = cut_locations.clone();
     let scrolling_for_bind = scrolling.clone();
+    let state_for_bind = options.state.clone();
     factory.connect_bind(move |_, item| {
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
@@ -2315,17 +2384,28 @@ fn build_list_pane(
             .item()
             .and_then(|value| source_index_for_bind.of_item(&value));
         let browser = browser_for_bind.upgrade();
+        let state = state_for_bind.as_ref().and_then(Weak::upgrade);
         let entry = browser.as_ref().and_then(|browser| {
             source_position.and_then(|position| browser.entry_at(depth, position))
         });
         if let Some(entry) = entry {
             name.set_visible(true);
             field.set_visible(false);
-            set_label_if_changed(&name, &entry.display_name);
+            let pending_name = state
+                .as_ref()
+                .and_then(|state| state.pending_rename_name(&entry));
+            set_label_if_changed(
+                &name,
+                pending_name.as_deref().unwrap_or(&entry.display_name),
+            );
             set_label_if_changed(&mode, &entry_mode(&entry));
             set_label_if_changed(&size, &entry_size(&entry));
             set_label_if_changed(&kind, entry_type(&entry));
-            super::accessibility::describe_entry(item, &entry.display_name, Some(&entry));
+            super::accessibility::describe_entry(
+                item,
+                pending_name.as_deref().unwrap_or(&entry.display_name),
+                Some(&entry),
+            );
             if scrolling_for_bind.get() {
                 set_label_if_changed(&modified, &crate::util::modified_date(&entry));
             } else {
@@ -3477,6 +3557,7 @@ fn apply_icons_entry(
     cuts: &HashSet<Location>,
     thumbnail_size: i32,
     scrolling: bool,
+    state: Option<&super::browser::ViewState>,
 ) {
     let Some((icon, label)) = super::icons_cell::parts(card) else {
         return;
@@ -3485,8 +3566,10 @@ fn apply_icons_entry(
     if let Some(field) = super::icons_cell::rename_field(card) {
         field.set_visible(false);
     }
-    if label.text().as_deref() != Some(entry.display_name.as_str()) {
-        label.set_text(Some(&entry.display_name));
+    let pending_name = state.and_then(|state| state.pending_rename_name(entry));
+    let shown_name = pending_name.as_deref().unwrap_or(&entry.display_name);
+    if label.text().as_deref() != Some(shown_name) {
+        label.set_text(Some(shown_name));
     }
     if scrolling {
         super::thumbnail::show_fallback_icon(
@@ -3503,6 +3586,10 @@ fn apply_icons_entry(
             thumbnail_size,
         );
         refresh_icons_card_chrome(item, card, &icon, &label, entry, cuts);
+    }
+    if let Some(item) = item.filter(|_| pending_name.is_some()) {
+        label.set_tooltip_text(Some(shown_name));
+        super::accessibility::describe_entry(item, shown_name, Some(entry));
     }
 }
 

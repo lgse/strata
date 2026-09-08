@@ -27,7 +27,12 @@ fn rename_handlers_do_not_keep_the_active_editor_alive_after_the_view_drops() {
                 label: gtk::Label::new(Some("folder")).upcast(),
             })));
             let weak = Rc::downgrade(&active);
-            install_mode_rename_handlers(&field, active.clone(), std::rc::Weak::new());
+            install_mode_rename_handlers(
+                &field,
+                active.clone(),
+                std::rc::Weak::new(),
+                std::rc::Weak::new(),
+            );
             drop(active);
             assert!(weak.upgrade().is_none());
             field.emit_activate();

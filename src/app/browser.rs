@@ -137,7 +137,13 @@ pub enum BrowserEvent {
     OpenRequested {
         location: Location,
     },
-    RenameCompleted,
+    RenameCompleted {
+        request_id: OperationRequestId,
+    },
+    RenameAbandoned {
+        request_id: OperationRequestId,
+    },
+    OperationStarted,
     EntryCreated {
         location: Location,
     },
@@ -490,6 +496,7 @@ pub struct Browser {
     operation_provider: RefCell<Option<Rc<dyn OperationProvider>>>,
     operation_load: RefCell<Option<LoadHandle>>,
     current_operation: Cell<Option<OperationRequestId>>,
+    rename_operation: Cell<Option<OperationRequestId>>,
     transfer_operation: Cell<Option<bool>>,
     deletion_operation: Cell<bool>,
     deletion_permanent: Cell<bool>,
@@ -537,6 +544,7 @@ impl Browser {
             operation_provider: RefCell::new(None),
             operation_load: RefCell::new(None),
             current_operation: Cell::new(None),
+            rename_operation: Cell::new(None),
             transfer_operation: Cell::new(None),
             deletion_operation: Cell::new(false),
             deletion_permanent: Cell::new(false),
@@ -1113,6 +1121,10 @@ impl Browser {
         self.state.borrow().column_preferences(depth)
     }
 
+    pub(crate) fn column_request_id(&self, depth: usize) -> Option<RequestId> {
+        self.state.borrow().request_id_for_depth(depth)
+    }
+
     pub fn column_snapshot(&self, depth: usize) -> Option<BrowserColumnSnapshot> {
         let state = self.state.borrow();
         let column = state.columns.get(depth)?;
@@ -1222,20 +1234,25 @@ impl Browser {
         self.state.borrow().active_child_position(depth)
     }
 
-    pub fn rename(self: &Rc<Self>, entry: FileEntry, new_name: String) {
+    pub fn rename(
+        self: &Rc<Self>,
+        entry: FileEntry,
+        new_name: String,
+    ) -> Option<OperationRequestId> {
         if let Err(message) = validate_basename(&new_name) {
             self.emit(BrowserEvent::RenameFailed {
                 message: message.to_owned(),
             });
-            return;
+            return None;
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::RenameFailed {
                 message: "File operations are unavailable".to_owned(),
             });
-            return;
+            return None;
         };
         let request_id = self.begin_operation();
+        self.rename_operation.set(Some(request_id));
         let refresh_locations = entry.location.parent().into_iter().collect();
         let emit = self.operation_callback(request_id, true, refresh_locations);
         let load = provider.rename(
@@ -1247,6 +1264,7 @@ impl Browser {
             emit,
         );
         self.operation_load.replace(Some(load));
+        Some(request_id)
     }
 
     pub fn create_new_folder(self: &Rc<Self>, parent: Location) {
@@ -1271,7 +1289,7 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_operation();
+        let request_id = self.begin_other_operation();
         let refresh_parent = parent.clone();
         let load = provider.create_directory(
             CreateDirectoryRequest {
@@ -1302,7 +1320,7 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_operation();
+        let request_id = self.begin_other_operation();
         let refresh_parent = parent.clone();
         let load = provider.create_file(
             CreateFileRequest {
@@ -1331,7 +1349,7 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_operation();
+        let request_id = self.begin_other_operation();
         self.transfer_operation.set(Some(move_sources));
         self.transfer_destination.replace(Some(destination.clone()));
         self.emit(BrowserEvent::TransferStarted {
@@ -1367,7 +1385,7 @@ impl Browser {
             return;
         };
         let total = entries.len();
-        let request_id = self.begin_operation();
+        let request_id = self.begin_other_operation();
         self.deletion_operation.set(true);
         self.deletion_permanent.set(permanent);
         self.emit(BrowserEvent::DeletionStarted { total });
@@ -1393,7 +1411,7 @@ impl Browser {
             return;
         };
         let total = entries.len();
-        let request_id = self.begin_operation();
+        let request_id = self.begin_other_operation();
         self.restoration_operation.set(true);
         self.emit(BrowserEvent::RestorationStarted { total });
         let load = provider.restore(
@@ -1450,7 +1468,7 @@ impl Browser {
             return false;
         };
         let total = locations.len();
-        let request_id = self.begin_operation();
+        let request_id = self.begin_other_operation();
         self.restoration_operation.set(true);
         self.undo_claim
             .replace(Some((generation, UndoEntry::Trash(locations.clone()))));
@@ -1494,7 +1512,7 @@ impl Browser {
                 }
             }
         }
-        let request_id = self.begin_operation();
+        let request_id = self.begin_other_operation();
         self.transfer_operation.set(Some(true));
         self.undo_claim.replace(Some((
             generation,
@@ -1537,7 +1555,7 @@ impl Browser {
             .iter()
             .filter_map(|location| location.parent())
             .collect();
-        let request_id = self.begin_operation();
+        let request_id = self.begin_other_operation();
         self.deletion_operation.set(true);
         self.undo_claim
             .replace(Some((generation, UndoEntry::Copy(locations.clone()))));
@@ -1571,7 +1589,7 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_operation();
+        let request_id = self.begin_other_operation();
         self.archive_operation.set(true);
         let load = provider.compress(
             CompressRequest {
@@ -1600,7 +1618,7 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_operation();
+        let request_id = self.begin_other_operation();
         self.archive_operation.set(true);
         let load = provider.extract(
             ExtractRequest {
@@ -1619,7 +1637,14 @@ impl Browser {
     }
 
     fn begin_operation(&self) -> OperationRequestId {
+        let previous_operation = self.current_operation.take();
+        let previous_rename = self.rename_operation.take();
         self.operation_load.borrow_mut().take();
+        if previous_operation == previous_rename
+            && let Some(request_id) = previous_rename
+        {
+            self.emit(BrowserEvent::RenameAbandoned { request_id });
+        }
         if let Some((generation, _)) = self.undo_claim.take() {
             finish_undo(generation, false);
         }
@@ -1634,6 +1659,12 @@ impl Browser {
         self.next_request
             .set(self.next_request.get().saturating_add(1));
         self.current_operation.set(Some(request_id));
+        request_id
+    }
+
+    fn begin_other_operation(&self) -> OperationRequestId {
+        let request_id = self.begin_operation();
+        self.emit(BrowserEvent::OperationStarted);
         request_id
     }
 
@@ -1754,6 +1785,9 @@ impl Browser {
                 return;
             }
             browser.current_operation.set(None);
+            if rename && browser.rename_operation.get() == Some(request_id) {
+                browser.rename_operation.set(None);
+            }
             let moving = browser.transfer_operation.replace(None);
             let deleting = browser.deletion_operation.replace(false);
             let deletion_permanent = browser.deletion_permanent.replace(false);
@@ -1904,6 +1938,9 @@ impl Browser {
                     });
                 }
                 OperationEvent::Cancelled { result, .. } => {
+                    if rename {
+                        browser.emit(BrowserEvent::RenameAbandoned { request_id });
+                    }
                     let mut affected_locations = refresh_locations.clone();
                     affected_locations.extend(result.affected_locations);
                     if archiving {
@@ -1919,11 +1956,12 @@ impl Browser {
                     });
                 }
                 OperationEvent::Renamed { .. } => {
-                    browser.emit(BrowserEvent::RenameCompleted);
+                    browser.emit(BrowserEvent::RenameCompleted { request_id });
+                    // A monitor update can race the operation terminal. Refresh every
+                    // affected open column so the pending UI name has authoritative data
+                    // to reconcile against, including native locations with delayed monitors.
                     for location in &refresh_locations {
-                        if location.native_path().is_none() {
-                            browser.refresh_columns_at(location);
-                        }
+                        browser.refresh_columns_at(location);
                     }
                 }
                 OperationEvent::Compressed { archive_name, .. } => {

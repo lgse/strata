@@ -10,7 +10,7 @@ use crate::ui::browser::clipboard::{copy_locations, register_cut_view};
 use crate::ui::browser::collection::cancel_source;
 use crate::ui::browser::columns::{COLUMN_WIDTH, ColumnView};
 use crate::ui::browser::desktop::selected_terminal_location;
-use crate::ui::browser::inline_edit::{ActiveRename, PendingEntryRename};
+use crate::ui::browser::inline_edit::{ActiveRename, PendingEntryRename, PendingRename};
 use crate::ui::browser::location::{MountCredentials, is_breadcrumb_button_target};
 use crate::ui::browser::paths::{can_pin_entry, is_trash_location};
 use crate::ui::browser::peek::{PeekAnchor, PeekView};
@@ -153,6 +153,8 @@ pub(super) struct ViewState {
     interactive: bool,
     columns_click_activation: Cell<ClickActivation>,
     active_rename: RefCell<Option<ActiveRename>>,
+    pending_rename: RefCell<Option<PendingRename>>,
+    rename_generation: Cell<u64>,
     pending_new_entry: RefCell<Option<Rc<PendingEntryRename>>>,
     file_progress_view: RefCell<Option<FileProgressView>>,
     pending_file_progress: RefCell<Option<glib::SourceId>>,
@@ -338,6 +340,8 @@ impl BrowserView {
             interactive,
             columns_click_activation: Cell::new(ClickActivation::default()),
             active_rename: RefCell::new(None),
+            pending_rename: RefCell::new(None),
+            rename_generation: Cell::new(0),
             pending_new_entry: RefCell::new(None),
             file_progress_view: RefCell::new(None),
             pending_file_progress: RefCell::new(None),
@@ -1272,6 +1276,7 @@ impl ViewState {
             };
             if state.pending_new_entry.borrow().is_some()
                 || state.active_rename.borrow().is_some()
+                || state.rename_operation_pending()
                 || state.mode_views.borrow().rename_is_active()
             {
                 return glib::ControlFlow::Continue;

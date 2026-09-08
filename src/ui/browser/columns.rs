@@ -703,18 +703,20 @@ impl ViewState {
             if query.is_empty() {
                 search_gen_for_changed.set(search_gen_for_changed.get().saturating_add(1));
                 search_handle_for_changed.borrow_mut().take();
+                // Keep the hidden-file filter installed while swapping back to the directory
+                // model; GTK's synchronous model notifications otherwise leave a stale row.
+                apply_filter_query(
+                    &filtered_model_for_search,
+                    &filter,
+                    &filter_query,
+                    text.to_lowercase(),
+                );
                 deactivate_recursive_search(
                     &search_active_for_changed,
                     &search_results_for_changed,
                     &search_model_for_changed,
                     &filtered_model_for_search,
                     &model_for_search,
-                );
-                apply_filter_query(
-                    &filtered_model_for_search,
-                    &filter,
-                    &filter_query,
-                    text.to_lowercase(),
                 );
                 return;
             }

@@ -598,6 +598,54 @@ fn cancellation_refreshes_an_affected_remote_root_and_its_open_descendants() {
 }
 
 #[test]
+fn superseding_rename_emits_a_terminal_abandonment_event() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let cancelled = Rc::new(Cell::new(false));
+    let cancelled_for_handle = cancelled.clone();
+    let request_id = browser.begin_operation();
+    browser.rename_operation.set(Some(request_id));
+    browser
+        .operation_load
+        .replace(Some(LoadHandle::new(move || {
+            cancelled_for_handle.set(true)
+        })));
+
+    let replacement = browser.begin_operation();
+
+    assert!(cancelled.get());
+    assert_eq!(browser.current_operation.get(), Some(replacement));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::RenameAbandoned { request_id: id } if *id == request_id
+    )));
+}
+
+#[test]
+fn cancelled_rename_emits_a_terminal_abandonment_event() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = browser.begin_operation();
+    browser.rename_operation.set(Some(request_id));
+    let emit = browser.operation_callback(request_id, true, HashSet::new());
+
+    emit(OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation::default(),
+    });
+
+    assert_eq!(browser.current_operation.get(), None);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::RenameAbandoned { request_id: id } if *id == request_id
+    )));
+}
+
+#[test]
 fn transfer_failure_reports_moves_completed_before_the_error() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));

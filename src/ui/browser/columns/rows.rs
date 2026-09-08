@@ -544,6 +544,12 @@ pub(super) fn column_rows(
         } else {
             source_position.and_then(|position| browser?.entry_at(depth, position))
         };
+        if let Some(entry) = entry.as_ref() {
+            let pending_name = state
+                .as_ref()
+                .and_then(|state| state.pending_rename_name(entry));
+            label.set_label(pending_name.as_deref().unwrap_or(&entry.display_name));
+        }
         let origin = entry
             .as_ref()
             .filter(|_| searching)
