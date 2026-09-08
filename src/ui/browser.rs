@@ -1227,6 +1227,34 @@ impl BrowserView {
         column.list.grab_focus();
         true
     }
+
+    pub fn open_focused_context_menu(&self) -> bool {
+        let target = if self.view_mode() == BrowserMode::Columns {
+            self.columns_context_menu_target()
+        } else {
+            self.mode_views_context_menu_target()
+        };
+
+        let Some((trigger, x, y)) = target else {
+            return false;
+        };
+        trigger(x, y);
+        true
+    }
+
+    fn columns_context_menu_target(
+        &self,
+    ) -> Option<(Rc<dyn Fn(f64, f64)>, f64, f64)> {
+        let (depth, position, _entry) = self.state.browser.focused_item()?;
+        self.state.columns.borrow().get(depth)?.context_menu_target(Some(position))
+    }
+
+    fn mode_views_context_menu_target(
+        &self,
+    ) -> Option<(Rc<dyn Fn(f64, f64)>, f64, f64)> {
+        let (depth, position, _entry) = self.state.browser.focused_item()?;
+        self.state.mode_views.borrow().context_menu_target(depth, Some(position))
+    }
 }
 
 impl ViewState {
