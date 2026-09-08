@@ -5,9 +5,9 @@ use crate::ui::browser::ViewState;
 use crate::ui::browser::clipboard::install_directory_drop_target;
 use crate::ui::browser::collection::{
     ViewMap, activate_recursive_search_result, apply_filter_query, apply_selection_plan,
-    bind_filter_query, bitset_positions, deactivate_recursive_search, detach_collection_view,
-    recursive_search_activation_key, scroll_collection_when_allocated,
-    search_result_navigation_position,
+    bind_filter_query, bitset_positions, deactivate_recursive_search,
+    defer_collection_bound_correction, detach_collection_view, recursive_search_activation_key,
+    scroll_collection_when_allocated, search_result_navigation_position,
 };
 use crate::ui::browser::context_menu::{install_folder_context_menu, install_item_context_menu};
 use crate::ui::browser::entry::{entry_filter, entry_model_value, format_file_size};
@@ -74,6 +74,7 @@ pub(super) struct ColumnView {
     pub(super) selection: gtk::MultiSelection,
     pub(super) syncing_selection: Rc<Cell<bool>>,
     pub(super) list: gtk::ListView,
+    pub(super) listing_scroll: gtk::ScrolledWindow,
     pub(super) marquee: crate::ui::marquee::Marquee,
     pub(super) bound_rows: Rc<RefCell<Vec<BoundRow>>>,
     pub(super) entry_count: Rc<Cell<usize>>,
@@ -154,6 +155,59 @@ pub(super) fn scroll_column_to(column: &ColumnView, position: u32) {
 
 pub(super) fn scroll_column_into_view(column: &ColumnView, position: u32) {
     scroll_column_to_with(column, position, true);
+}
+
+pub(super) fn column_unobscured_viewport(
+    listing_scroll: &gtk::ScrolledWindow,
+    destination_hint: &gtk::Widget,
+) -> Option<(f32, f32)> {
+    let bottom = destination_hint
+        .compute_bounds(listing_scroll)
+        .map(|bounds| (listing_scroll.height() as f32).min(bounds.y()))?;
+    (bottom > 0.0).then_some((0.0, bottom))
+}
+
+pub(super) fn scroll_column_row_into_unobscured_view(
+    listing_scroll: &gtk::ScrolledWindow,
+    destination_hint: &gtk::Widget,
+    row: &gtk::Widget,
+) {
+    crate::ui::browser::collection::scroll_collection_row_into_view(
+        listing_scroll,
+        Some(destination_hint),
+        row,
+    );
+}
+
+pub(super) fn reveal_column_row(column: &ColumnView, position: u32) {
+    if crate::ui::browser::collection::collection_correction_pending(&column.listing_scroll) {
+        return;
+    }
+    // ListView must perform its native reveal first: before allocation it establishes the
+    // anchor and widget pool needed for a reliable initial scroll position.
+    scroll_column_into_view(column, position);
+    let scroll = column.listing_scroll.clone();
+    let destination_hint = column.destination_hint.clone();
+    let bound_rows = Rc::downgrade(&column.bound_rows);
+    let generation = (
+        column.model_generation.clone(),
+        column.model_generation.get(),
+    );
+    defer_collection_bound_correction(
+        &scroll,
+        Some(destination_hint.upcast_ref()),
+        Some((&generation.0, generation.1)),
+        move || {
+            let bound_rows = bound_rows.upgrade()?;
+            bound_rows.borrow().iter().find_map(|bound| {
+                let item = bound.item.upgrade()?;
+                (item.position() == position)
+                    .then(|| bound.row.upgrade().map(|row| row.upcast::<gtk::Widget>()))
+                    .flatten()
+            })
+        },
+        || {},
+    );
 }
 
 fn scroll_column_to_with(column: &ColumnView, position: u32, reveal: bool) {
@@ -1140,6 +1194,7 @@ impl ViewState {
             selection,
             syncing_selection,
             list,
+            listing_scroll: scroll,
             marquee,
             bound_rows,
             entry_count,

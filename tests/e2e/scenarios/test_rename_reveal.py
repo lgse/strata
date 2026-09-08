@@ -9,6 +9,21 @@ import pytest
 from harness.modes import ALL_MODES
 
 
+def fully_above_footer(node, footer) -> bool:
+    bounds = node.screen_bounds()
+    footer_bounds = footer.screen_bounds()
+    return bounds.height > 0 and bounds.y + bounds.height <= footer_bounds.y
+
+
+def destination_hint(strata):
+    pane = strata.containers()[-1]
+    return strata.wait(
+        lambda: pane.find(role="label", name="Pointer · Paste here")
+        or pane.find(role="label", name="Keyboard · Paste here"),
+        "the Columns destination footer",
+    )
+
+
 def fully_in_pane(node, pane_bounds) -> bool:
     bounds = node.screen_bounds()
     return (
@@ -101,6 +116,47 @@ def test_rename_to_opposite_sorted_edge_reveals_selected_entry(strata, mode):
     assert strata.entry(renamed).screen_bounds() != initial_bounds
     capture_evidence(strata, "after")
     assert destination.is_dir()
+
+
+@pytest.mark.parametrize("kind", ("file", "folder"))
+def test_columns_new_entry_stays_above_footer(strata, kind):
+    strata.switch_view("Columns")
+    for index in range(160):
+        strata.fixture.path(f"b-entry-{index:03d}").mkdir(exist_ok=True)
+
+    strata.keyboard.press("F5")
+    strata.entry("b-entry-000")
+    strata.keyboard.press("Home")
+    if kind == "file":
+        strata.pointer.right_click(strata.pane(), at=strata.folder_context_point())
+        strata.choose_menu_item("New File")
+    else:
+        strata.keyboard.press("ctrl+shift+n")
+    field = strata.editable_field()
+    strata.wait(lambda: field.text == "new " + kind, f"the default new-{kind} name")
+    strata.wait(strata.fixture.path("new " + kind).exists, f"the new {kind} on disk")
+    footer = destination_hint(strata)
+    strata.wait(
+        lambda: fully_above_footer(field, footer),
+        f"the new {kind} rename editor to stay above the Columns footer",
+    )
+    capture_evidence(strata, "before")
+    final_name = "zz-created-" + kind
+    strata.keyboard.type_text(final_name)
+    strata.wait(lambda: field.text == final_name, "the final name in the editor")
+    strata.keyboard.press("Return")
+    strata.wait(strata.fixture.path(final_name).exists, "the renamed item on disk")
+    strata.wait_for_entry_gone("new " + kind)
+    strata.wait_for_selection([final_name])
+    # GTK 4.14 exports extra outer-row padding in ListItem accessibility bounds.
+    # Check the painted file-row content, matching the native GTK fixture.
+    strata.wait(
+        lambda: fully_above_footer(
+            strata.entry(final_name).find(role="panel"), destination_hint(strata)
+        ),
+        "the final selected item content to stay above the Columns footer",
+    )
+    capture_evidence(strata, "after")
 
 
 def capture_evidence(strata, label: str) -> None:

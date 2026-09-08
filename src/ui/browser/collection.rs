@@ -12,8 +12,15 @@ use std::time::Duration;
 
 pub(crate) const FILTER_DEBOUNCE_DELAY: Duration = Duration::from_millis(40);
 
+struct PendingCorrection {
+    view: glib::WeakRef<gtk::Widget>,
+    active: Weak<Cell<bool>>,
+    callback: gtk::TickCallbackId,
+}
+
 thread_local! {
     static PENDING_SCROLLS: RefCell<Vec<(glib::WeakRef<gtk::Widget>, gtk::TickCallbackId)>> = const { RefCell::new(Vec::new()) };
+    static PENDING_CORRECTIONS: RefCell<Vec<PendingCorrection>> = const { RefCell::new(Vec::new()) };
 }
 
 fn take_pending_scroll(view: &gtk::Widget) -> Option<gtk::TickCallbackId> {
@@ -104,6 +111,186 @@ fn apply_collection_scroll(view: &gtk::Widget, position: u32, flags: gtk::ListSc
     {
         grid.scroll_to(position, flags, None);
     }
+}
+
+pub(crate) fn collection_correction_pending(view: &gtk::ScrolledWindow) -> bool {
+    PENDING_CORRECTIONS.with_borrow(|pending| {
+        pending.iter().any(|pending| {
+            pending.view.upgrade().as_ref() == Some(view.upcast_ref())
+                && pending.active.upgrade().is_some_and(|active| active.get())
+        })
+    })
+}
+
+pub(crate) fn cancel_collection_correction(view: &gtk::ScrolledWindow) {
+    if let Some(callback) = PENDING_CORRECTIONS.with_borrow_mut(|pending| {
+        pending.retain(|pending| {
+            pending.view.upgrade().is_some()
+                && pending.active.upgrade().is_some_and(|active| active.get())
+        });
+        let index = pending
+            .iter()
+            .position(|pending| pending.view.upgrade().as_ref() == Some(view.upcast_ref()))?;
+        Some(pending.swap_remove(index).callback)
+    }) {
+        callback.remove();
+    }
+}
+
+fn cleanup_corrections() {
+    PENDING_CORRECTIONS.with_borrow_mut(|pending| {
+        pending.retain(|pending| {
+            pending.view.upgrade().is_some()
+                && pending.active.upgrade().is_some_and(|active| active.get())
+        });
+    });
+}
+
+fn collection_viewport_bottom(
+    scroll: &gtk::ScrolledWindow,
+    obscurer: Option<&gtk::Widget>,
+) -> Option<f32> {
+    let bottom = obscurer
+        .map(|widget| widget.compute_bounds(scroll).map(|bounds| bounds.y()))
+        .unwrap_or(Some(scroll.height() as f32))?;
+    (bottom > 0.0).then_some((scroll.height() as f32).min(bottom))
+}
+
+pub(crate) fn collection_row_is_visible(
+    scroll: &gtk::ScrolledWindow,
+    obscurer: Option<&gtk::Widget>,
+    row: &gtk::Widget,
+) -> Option<bool> {
+    let bounds = row.compute_bounds(scroll)?;
+    let bottom = collection_viewport_bottom(scroll, obscurer)?;
+    Some(row.is_mapped() && bounds.y() >= 0.0 && bounds.y() + bounds.height() <= bottom)
+}
+
+pub(crate) fn scroll_collection_row_into_view(
+    scroll: &gtk::ScrolledWindow,
+    obscurer: Option<&gtk::Widget>,
+    row: &gtk::Widget,
+) {
+    let Some(bounds) = row.compute_bounds(scroll) else {
+        return;
+    };
+    let Some(bottom) = collection_viewport_bottom(scroll, obscurer) else {
+        return;
+    };
+    let delta = if bounds.y() < 0.0 {
+        bounds.y()
+    } else if bounds.y() + bounds.height() > bottom {
+        bounds.y() + bounds.height() - bottom
+    } else {
+        return;
+    };
+    let adjustment = scroll.vadjustment();
+    let max = (adjustment.upper() - adjustment.page_size()).max(adjustment.lower());
+    adjustment.set_value((adjustment.value() + f64::from(delta)).clamp(adjustment.lower(), max));
+}
+
+pub(crate) fn defer_collection_bound_correction(
+    scroll: &gtk::ScrolledWindow,
+    obscurer: Option<&gtk::Widget>,
+    generation: Option<(&Rc<Cell<u64>>, u64)>,
+    find_row: impl Fn() -> Option<gtk::Widget> + 'static,
+    finished: impl Fn() + 'static,
+) {
+    cancel_collection_correction(scroll);
+    let weak_scroll = scroll.upcast_ref::<gtk::Widget>().downgrade();
+    let weak_obscurer = obscurer.map(gtk::Widget::downgrade);
+    let generation = generation.map(|(cell, value)| (cell.clone(), value));
+    let attempts = Cell::new(0u8);
+    let visible_frames = Cell::new(0u8);
+    let active = Rc::new(Cell::new(true));
+    let active_for_callback = active.clone();
+    let weak_scroll_for_callback = weak_scroll.clone();
+    let callback = scroll.add_tick_callback(move |_, _| {
+        let waited = attempts.get().saturating_add(1);
+        attempts.set(waited);
+        let Some(scroll) = weak_scroll_for_callback
+            .upgrade()
+            .and_then(|widget| widget.downcast::<gtk::ScrolledWindow>().ok())
+        else {
+            active_for_callback.set(false);
+            cleanup_corrections();
+            return glib::ControlFlow::Break;
+        };
+        if generation
+            .as_ref()
+            .is_some_and(|(cell, value)| cell.get() != *value)
+        {
+            finished();
+            active_for_callback.set(false);
+            cleanup_corrections();
+            return glib::ControlFlow::Break;
+        }
+        if scroll.height() <= 1 {
+            if waited >= 32 {
+                finished();
+                active_for_callback.set(false);
+                cleanup_corrections();
+                return glib::ControlFlow::Break;
+            }
+            return glib::ControlFlow::Continue;
+        }
+        let obscurer = weak_obscurer.as_ref().and_then(glib::WeakRef::upgrade);
+        if weak_obscurer.is_some() && obscurer.is_none() {
+            if waited >= 32 {
+                finished();
+                active_for_callback.set(false);
+                cleanup_corrections();
+                return glib::ControlFlow::Break;
+            }
+            return glib::ControlFlow::Continue;
+        }
+        let Some(row) = find_row() else {
+            if waited >= 32 {
+                finished();
+                active_for_callback.set(false);
+                cleanup_corrections();
+                return glib::ControlFlow::Break;
+            }
+            return glib::ControlFlow::Continue;
+        };
+        if collection_row_is_visible(
+            &scroll,
+            obscurer.as_ref().map(|widget| widget.upcast_ref()),
+            &row,
+        ) == Some(true)
+        {
+            let stable = visible_frames.get().saturating_add(1);
+            visible_frames.set(stable);
+            if stable >= 3 {
+                finished();
+                active_for_callback.set(false);
+                cleanup_corrections();
+                return glib::ControlFlow::Break;
+            }
+        } else {
+            visible_frames.set(0);
+            scroll_collection_row_into_view(
+                &scroll,
+                obscurer.as_ref().map(|widget| widget.upcast_ref()),
+                &row,
+            );
+        }
+        if waited >= 32 {
+            finished();
+            active_for_callback.set(false);
+            cleanup_corrections();
+            return glib::ControlFlow::Break;
+        }
+        glib::ControlFlow::Continue
+    });
+    cleanup_corrections();
+    PENDING_CORRECTIONS.with_borrow_mut(|pending| {
+        pending.push(PendingCorrection {
+            view: weak_scroll,
+            active: Rc::downgrade(&active),
+            callback,
+        });
+    });
 }
 
 pub(crate) fn detach_collection_view(view: &impl IsA<gtk::Widget>) {

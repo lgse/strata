@@ -186,6 +186,142 @@ fn finish_creation_rename(
 }
 
 #[test]
+fn columns_creation_rename_stays_above_destination_hint_at_the_bottom() {
+    gtk_test(
+        "ui::browser::inline_edit::tests::entries::columns_creation_rename_stays_above_destination_hint_at_the_bottom",
+        || {
+            for height in [240, 300, 420] {
+                for directory in [false, true] {
+                    let fixture = tempfile::tempdir().expect("fixture");
+                    for index in 0..80 {
+                        let path = fixture.path().join(format!("a-entry-{index:03}"));
+                        if directory {
+                            std::fs::create_dir(path).expect("fixture directory");
+                        } else {
+                            std::fs::write(path, b"body").expect("fixture file");
+                        }
+                    }
+                    let view = BrowserView::new(
+                        Rc::new(crate::adapters::LocalFileSource),
+                        PeekBehavior::default(),
+                    );
+                    view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+                    let window = gtk::Window::builder()
+                        .child(&view.widget())
+                        .default_width(800)
+                        .default_height(height)
+                        .resizable(false)
+                        .build();
+                    view.install_inline_edit_dismissal(&window);
+                    window.present();
+                    view.browser().navigate(Location::local(fixture.path()));
+                    wait_until(|| {
+                        view.browser()
+                            .column_snapshot(0)
+                            .is_some_and(|snapshot| !snapshot.loading)
+                    });
+                    view.state
+                        .begin_new_entry(0, Location::local(fixture.path()), directory);
+                    wait_until(|| rename_field(&view).is_some_and(|field| field.is_mapped()));
+                    let field = rename_field(&view).expect("creation rename field");
+                    let column = view.state.columns.borrow()[0].clone();
+                    let root = view.widget();
+                    wait_until(|| {
+                        let Some(hint) = column.destination_hint.compute_bounds(&root) else {
+                            return false;
+                        };
+                        let Some(editor) = field.compute_bounds(&root) else {
+                            return false;
+                        };
+                        editor.y() + editor.height() <= hint.y() + 0.5
+                    });
+                    let hint = column
+                        .destination_hint
+                        .compute_bounds(&root)
+                        .expect("destination hint bounds");
+                    let editor = field.compute_bounds(&root).expect("editor bounds");
+                    let scroll = column.listing_scroll.vadjustment();
+                    assert!(
+                        editor.y() + editor.height() <= hint.y() + 0.5,
+                        "initial {directory} editor must be above destination hint: editor={editor:?}, hint={hint:?}, adjustment={{upper: {}, page: {}, value: {}}}",
+                        scroll.upper(),
+                        scroll.page_size(),
+                        scroll.value(),
+                    );
+                    assert!(view.item_view_has_focus());
+
+                    let final_name = if directory {
+                        "z-created-folder"
+                    } else {
+                        "z-created-file"
+                    };
+                    field.set_text(final_name);
+                    field.emit_activate();
+                    wait_until(|| fixture.path().join(final_name).exists());
+                    wait_until(|| view.browser().focused_item().is_some());
+                    wait_until(|| {
+                        view.browser().column_snapshot(0).is_some_and(|snapshot| {
+                            view.browser()
+                                .with_entries(0, 0..snapshot.count, |entries| {
+                                    entries.iter().any(|entry| {
+                                        entry.location
+                                            == Location::local(fixture.path().join(final_name))
+                                    })
+                                })
+                                .unwrap_or(false)
+                        })
+                    });
+                    let position = view
+                        .browser()
+                        .with_entries(
+                            0,
+                            0..view.browser().column_snapshot(0).expect("column").count,
+                            |entries| {
+                                entries.iter().position(|entry| {
+                                    entry.location
+                                        == Location::local(fixture.path().join(final_name))
+                                })
+                            },
+                        )
+                        .flatten()
+                        .expect("final item in listing");
+                    wait_until(|| view.state.created_entry_is_visible(0, position));
+                    let row = column
+                        .bound_rows
+                        .borrow()
+                        .iter()
+                        .find_map(|bound| {
+                            let item = bound.item.upgrade()?;
+                            (item.position() == position as u32)
+                                .then(|| bound.row.upgrade())
+                                .flatten()
+                        })
+                        .expect("final row");
+                    let hint = column
+                        .destination_hint
+                        .compute_bounds(&root)
+                        .expect("destination hint bounds");
+                    let row_bounds = row.compute_bounds(&root).expect("final row bounds");
+                    let scroll = column.listing_scroll.vadjustment();
+                    assert!(
+                        row_bounds.y() + row_bounds.height() <= hint.y() + 0.5,
+                        "final {directory} item must be above destination hint: row={row_bounds:?}, hint={hint:?}, adjustment={{upper: {}, page: {}, value: {}}}",
+                        scroll.upper(),
+                        scroll.page_size(),
+                        scroll.value(),
+                    );
+                    let max_scroll = (scroll.upper() - scroll.page_size()).max(scroll.lower());
+                    assert!(scroll.value() >= scroll.lower() - 0.5);
+                    assert!(scroll.value() <= max_scroll + 0.5);
+                    assert!(view.item_view_has_focus());
+                    window.destroy();
+                }
+            }
+        },
+    );
+}
+
+#[test]
 fn final_names_keep_created_items_selected_focused_and_visible_in_every_view_mode() {
     gtk_test(
         "ui::browser::inline_edit::tests::entries::final_names_keep_created_items_selected_focused_and_visible_in_every_view_mode",

@@ -262,11 +262,25 @@ impl ViewState {
         field.set_visible(true);
         constrain_rename_to_viewport(&field, &self.scroller);
         let viewport = self.scroller.downgrade();
+        let listing_scroll = column.listing_scroll.downgrade();
+        let destination_hint = column.destination_hint.downgrade();
+        let row = row.downgrade();
         let viewport_tick = field.add_tick_callback(move |field, _| {
             let Some(viewport) = viewport.upgrade() else {
                 return gtk::glib::ControlFlow::Break;
             };
             constrain_rename_to_viewport(field, &viewport);
+            if let (Some(listing_scroll), Some(destination_hint), Some(row)) = (
+                listing_scroll.upgrade(),
+                destination_hint.upgrade(),
+                row.upgrade(),
+            ) {
+                super::columns::scroll_column_row_into_unobscured_view(
+                    &listing_scroll,
+                    destination_hint.upcast_ref(),
+                    row.upcast_ref(),
+                );
+            }
             gtk::glib::ControlFlow::Continue
         });
         field.grab_focus();
@@ -586,7 +600,7 @@ impl ViewState {
             if let Some(column) = self.columns.borrow().get(depth)
                 && let Some(position) = column.map.view_position(source_position)
             {
-                super::columns::scroll_column_into_view(column, position);
+                super::columns::reveal_column_row(column, position);
             }
         } else {
             self.mode_views.borrow().reveal_item(depth, source_position);
@@ -608,12 +622,18 @@ impl ViewState {
                 }) else {
                     return false;
                 };
-                let Some(bounds) = row.compute_bounds(&column.list) else {
+                let Some(row_bounds) = row.compute_bounds(&column.listing_scroll) else {
+                    return false;
+                };
+                let Some((top, unobscured_bottom)) = super::columns::column_unobscured_viewport(
+                    &column.listing_scroll,
+                    column.destination_hint.upcast_ref(),
+                ) else {
                     return false;
                 };
                 row.is_mapped()
-                    && bounds.y() >= 0.0
-                    && bounds.y() + bounds.height() <= column.list.height() as f32
+                    && row_bounds.y() >= top
+                    && row_bounds.y() + row_bounds.height() <= unobscured_bottom
             }
             BrowserMode::Icons | BrowserMode::List => self
                 .mode_views
