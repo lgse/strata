@@ -2552,6 +2552,37 @@ fn a_move_reports_no_created_destination() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
+fn keeping_both_preserves_transfer_noops() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let nested = source.join("nested");
+    fs::create_dir_all(&nested)?;
+    fs::write(source.join("report.txt"), b"original")?;
+
+    for moving in [false, true] {
+        for destination in [&source, &nested] {
+            let created = run_paste_collecting_created(PasteRequest {
+                id: OperationRequestId(77),
+                destination: Location::local(destination),
+                items: vec![PasteItem {
+                    source: Location::local(&source),
+                    conflict: TransferConflict::KeepBoth,
+                }],
+                move_sources: moving,
+            })?;
+            assert!(created.into_iter().flatten().next().is_none());
+            assert_eq!(fs::read_dir(&source)?.count(), 2);
+            assert_eq!(fs::read_dir(&nested)?.count(), 0);
+            assert_eq!(fs::read(source.join("report.txt"))?, b"original");
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn keeping_both_in_a_cross_folder_paste_generates_a_unique_name() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
