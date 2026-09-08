@@ -165,6 +165,7 @@ pub(super) fn column_rows(
         });
         row.add_controller(motion);
 
+        let mut content_drag: Option<gtk::DragSource> = None;
         if weak_state.upgrade().is_some_and(|state| state.interactive) {
             let drag = gtk::DragSource::builder()
                 .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
@@ -209,7 +210,8 @@ pub(super) fn column_rows(
                     slide_out(&row);
                 }
             });
-            row.add_controller(drag);
+            row.add_controller(drag.clone());
+            content_drag = Some(drag);
 
             let drop = gtk::DropTarget::new(
                 gtk::gdk::FileList::static_type(),
@@ -437,7 +439,12 @@ pub(super) fn column_rows(
         selection_click.connect_cancel(move |_, _| {
             pending_activation_for_cancel.take();
         });
-        row.add_controller(selection_click);
+        row.add_controller(selection_click.clone());
+        // Grouping requires both gestures already attached; claiming the modifier-click
+        // on content must not deny the row's drag before it reaches the threshold.
+        if let Some(drag) = &content_drag {
+            drag.group_with(&selection_click);
+        }
         item.set_child(Some(&row));
         let weak_item = glib::WeakRef::new();
         weak_item.set(Some(item));

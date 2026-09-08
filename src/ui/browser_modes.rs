@@ -2006,7 +2006,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             depth,
             Some((source_index_for_setup.clone(), filtered_for_setup.clone())),
         );
-        install_modified_selection_click(
+        let content_click = install_modified_selection_click(
             &card,
             item,
             selection_for_setup.clone(),
@@ -2030,7 +2030,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             transfers_for_setup.clone(),
             depth,
             Some((source_index_for_setup.clone(), filtered_for_setup.clone())),
-            None,
+            (None, &content_click),
         );
         item.set_child(Some(&card));
         if let Some(parent) = card.parent() {
@@ -2722,7 +2722,7 @@ fn build_list_pane(
             depth,
             Some((source_index_for_setup.clone(), view_model_for_setup.clone())),
         );
-        install_modified_selection_click(
+        let content_click = install_modified_selection_click(
             &row,
             item,
             selection_for_setup.clone(),
@@ -2737,7 +2737,7 @@ fn build_list_pane(
             transfers_for_setup.clone(),
             depth,
             Some((source_index_for_setup.clone(), view_model_for_setup.clone())),
-            Some(name.upcast_ref()),
+            (Some(name.upcast_ref()), &content_click),
         );
         item.set_child(Some(&row));
         register_bound_mode_item(&bound_items_for_setup, item, &row);
@@ -3239,8 +3239,9 @@ fn install_list_drag_drop(
     transfer_handler: TransferHandlerSlot,
     depth: usize,
     position_map: Option<(SourceIndexMap, gio::ListModel)>,
-    drag_icon: Option<&gtk::Widget>,
+    drag_icon_and_content_click: (Option<&gtk::Widget>, &gtk::GestureClick),
 ) {
+    let (drag_icon, content_click) = drag_icon_and_content_click;
     if transfer_handler.borrow().is_none() {
         return;
     }
@@ -3301,7 +3302,10 @@ fn install_list_drag_drop(
             row.remove_css_class("dragging");
         }
     });
-    row.add_controller(drag);
+    row.add_controller(drag.clone());
+    // Grouping requires both gestures already attached; claiming the modifier-click
+    // on content must not deny this drag before it reaches the threshold.
+    drag.group_with(content_click);
 
     let drop = gtk::DropTarget::new(
         gtk::gdk::FileList::static_type(),
@@ -3423,7 +3427,7 @@ fn install_modified_selection_click(
     browser: Weak<Browser>,
     depth: usize,
     positions: PanePositions,
-) {
+) -> gtk::GestureClick {
     let click = gtk::GestureClick::new();
     click.set_button(1);
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -3478,7 +3482,8 @@ fn install_modified_selection_click(
             gesture.set_state(gtk::EventSequenceState::Claimed);
         }
     });
-    widget.add_controller(click);
+    widget.add_controller(click.clone());
+    click
 }
 
 fn anchor_at(browser: &Rc<Browser>, depth: usize, positions: &PanePositions, view_position: u32) {
