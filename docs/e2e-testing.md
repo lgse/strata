@@ -389,6 +389,17 @@ required gate, and rerun the **entire workflow** after the warmer completes. Ext
 be solved by adding test shards. Inspect the build logs' `CACHED` entries and the
 critical-path summary rather than raising the time limit.
 
+### Measured fresh-revision run
+
+[CI run 34235908938](https://github.com/lgse/strata/actions/runs/34235908938)
+(`84d8e82`, 2026-09-08) compiled Strata again and passed all 581 cases exactly once
+on 30 runners in **172 seconds**, measured from the initial E2E queue/attempt start
+through the aggregate job's completed timestamp. The internal measurement was
+168.7 seconds before teardown. The runtime archive was cached; the new segmented
+dependency cache missed, so this run exercised the GHA dependency-cache fallback
+while the separate warmer published the new format. This was not an identical
+binary-cache rerun or a completely cold package bootstrap.
+
 ### Reproducing and maintaining shards
 
 To collect the current inventory inside the canonical container:
