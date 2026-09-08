@@ -141,9 +141,9 @@ pub(super) fn show(
     }
 
     let subtitle = if files.len() == 1 {
-        "Choose an application to open this file"
+        "Choose an application to open this item"
     } else {
-        "Choose an application to open these files"
+        "Choose an application to open these items"
     };
     let layout = modal_layout(
         crate::assets::icons::EXTERNAL_LINK,
