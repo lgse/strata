@@ -22,6 +22,15 @@ under `.agents/`.
 
 ## Pre-push checks
 
+For documentation-only changes (README, documentation, or `AGENTS.md`), the full
+local CI suite, `./scripts/quality.sh`, and `./scripts/e2e.sh` are not required.
+Review the complete PR diff to confirm it changes only documentation, check
+relevant links and examples, and run `git diff --check`. This exception does not
+apply to mixed changes involving code, build/package metadata, scripts, or CI
+configuration, and does not bypass required CI checks on GitHub.
+
+For all other changes:
+
 - Do not push until the full local CI suite passes: `cargo fmt --all --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all-targets --all-features`.
 - Run `./scripts/quality.sh` before pushing to exercise formatting, Clippy, and the full Rust suite
   in CI's verified pinned build environment. It reuses the same base as E2E but
