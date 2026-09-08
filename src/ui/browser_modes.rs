@@ -3031,9 +3031,11 @@ fn pane_base(
     header.add_css_class("mode-pane-header");
     let heading_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
     heading_box.set_hexpand(true);
+    heading_box.set_valign(gtk::Align::Center);
     let heading = gtk::Label::new(Some(title));
     heading.set_xalign(0.0);
     let spinner = gtk::Spinner::new();
+    spinner.set_valign(gtk::Align::Center);
     spinner.start();
     let truncated_hint = crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
     truncated_hint.set_tooltip_text(Some(
@@ -3043,11 +3045,13 @@ fn pane_base(
     heading_box.append(&heading);
     heading_box.append(&truncated_hint);
     if let Some(leading) = header_leading {
+        leading.set_valign(gtk::Align::Center);
         header.append(&leading);
     }
     header.append(&heading_box);
     header.append(&spinner);
     if let Some(actions) = header_actions {
+        actions.set_valign(gtk::Align::Center);
         header.append(&actions);
     }
     shell.append(&header);

@@ -70,7 +70,8 @@ paned > separator:focus-visible {
   border: none;
 }
 
-headerbar {
+headerbar,
+.mode-pane-header {
   background: @theme_surface;
   border-bottom: 1px solid alpha(@theme_border, 0.6);
   box-shadow: none;
@@ -3594,12 +3595,9 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .mode-pane-header {
-  background: @theme_surface;
-  border-bottom: 1px solid alpha(@theme_border, 0.6);
   color: @theme_accent;
   font-weight: 700;
-  min-height: 36px;
-  padding: 4px 12px 4px 6px;
+  padding: 0 12px 0 6px;
 }
 
 .file-icons {
