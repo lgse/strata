@@ -45,30 +45,179 @@ jobs:
       - name: Run tests
         run: cargo test --all-targets --all-features
 
-  e2e:
-    name: End-to-end GUI suite
+  e2e-build:
+    name: E2E build and plan
     runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: 'false'
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
-    # A wedged X server or accessibility bus must not hold a pull request open.
-    timeout-minutes: 20
-
+    # Allow cold cache recovery to finish and populate caches; the aggregate
+    # gate still rejects a critical path of 180 seconds or more.
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      uid: ${{ steps.identity.outputs.uid }}
+      gid: ${{ steps.identity.outputs.gid }}
+      image_key: ${{ steps.identity.outputs.image_key }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Run the hardware-aware end-to-end container
+      - name: Container account
+        id: identity
+        run: |
+          echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
+          echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
+          echo "image_key=$(python3 scripts/e2e_bundle.py image-key)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up cached container builder
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build the tested revision once and collect its exact inventory
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: tests/e2e/Dockerfile
+          target: bundle
+          platforms: linux/amd64
+          build-args: |
+            E2E_UID=${{ steps.identity.outputs.uid }}
+            E2E_GID=${{ steps.identity.outputs.gid }}
+            E2E_IMAGE_KEY=${{ steps.identity.outputs.image_key }}
+            STRATA_BUILD_COMMIT=${{ github.sha }}
+          outputs: type=local,dest=target/e2e-bundle
+          cache-from: |
+            type=gha,scope=strata-e2e-v1
+            type=gha,scope=strata-e2e-dependencies-v1
+          cache-to: type=gha,mode=max,scope=strata-e2e-v1
+
+      - name: Generate the runner matrix
+        id: plan
+        run: python3 scripts/e2e_ci.py matrix target/e2e-bundle/plan.json >> "$GITHUB_OUTPUT"
+
+      - name: Share the binary and plan, not Cargo or a toolchain
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-bundle-${{ github.run_attempt }}
+          path: target/e2e-bundle
+          compression-level: 1
+          if-no-files-found: error
+          retention-days: 1
+
+  e2e-shard:
+    name: E2E shard ${{ matrix.shard }}
+    needs: e2e-build
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: 'false'
+    timeout-minutes: 3
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.e2e-build.outputs.matrix) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up cached container builder
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Load the pinned runtime from the shared layer cache
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: tests/e2e/Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          build-args: |
+            E2E_UID=${{ needs.e2e-build.outputs.uid }}
+            E2E_GID=${{ needs.e2e-build.outputs.gid }}
+            E2E_IMAGE_KEY=${{ needs.e2e-build.outputs.image_key }}
+          load: true
+          tags: strata-e2e:ci-runtime
+          cache-from: |
+            type=gha,scope=strata-e2e-v1
+            type=gha,scope=strata-e2e-dependencies-v1
+
+      - name: Download this attempt's binary and complete shard plan
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: e2e-bundle-${{ github.run_attempt }}
+          path: target/e2e-bundle
+
+      - name: Run the assigned scenarios without rebuilding or installing
         env:
-          STRATA_E2E_WORKERS: auto
-        run: ./scripts/e2e.sh -p no:cacheprovider
+          STRATA_E2E_IMAGE: strata-e2e:ci-runtime
+          STRATA_E2E_BUNDLE: target/e2e-bundle
+          STRATA_E2E_WORKERS: '2'
+          SHARD: ${{ matrix.shard }}
+        run: |
+          chmod +x target/e2e-bundle/strata
+          ./scripts/e2e.sh -p no:cacheprovider --timeout=60 \
+            --e2e-plan=target/e2e-bundle/plan.json --e2e-shard="$SHARD" \
+            --e2e-report="target/e2e-reports/shard-$SHARD.json" \
+            --junitxml="target/e2e-reports/shard-$SHARD.xml" --durations=10
+
+      - name: Upload shard results even on failure
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: e2e-report-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: target/e2e-reports
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Upload failure artifacts
         if: ${{ failure() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: e2e-artifacts
+          name: e2e-artifacts-${{ github.run_attempt }}-${{ matrix.shard }}
           path: target/e2e-artifacts
           if-no-files-found: ignore
           retention-days: 7
+
+  e2e:
+    name: End-to-end GUI suite
+    needs: [e2e-build, e2e-shard]
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download the plan
+        if: ${{ needs.e2e-build.result == 'success' }}
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: e2e-bundle-${{ github.run_attempt }}
+          path: target/e2e-bundle
+
+      - name: Download all shard reports
+        if: ${{ !cancelled() && needs.e2e-build.result == 'success' }}
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: e2e-report-${{ github.run_attempt }}-*
+          path: target/e2e-reports
+          merge-multiple: true
+
+      - name: Require every dependency to succeed
+        if: ${{ always() }}
+        env:
+          BUILD_RESULT: ${{ needs.e2e-build.result }}
+          SHARD_RESULT: ${{ needs.e2e-shard.result }}
+        run: test "$BUILD_RESULT" = success && test "$SHARD_RESULT" = success
+
+      - name: Verify exact coverage
+        run: python3 scripts/e2e_ci.py verify target/e2e-bundle/plan.json target/e2e-reports
+
+      - name: Enforce and report the three-minute critical path, including failures
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/e2e_ci.py budget
 
   release-scripts:
     name: Release workflow scripts

@@ -1,0 +1,55 @@
+name: Warm E2E dependencies
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 4 * * *'
+  push:
+    branches: [main]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - tests/e2e/Dockerfile
+      - tests/e2e/requirements.txt
+      - .dockerignore
+      - .github/workflows/e2e-cache.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-cache-warm
+  cancel-in-progress: false
+
+jobs:
+  warm:
+    if: github.ref == 'refs/heads/main'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Container account
+        id: identity
+        run: |
+          echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
+          echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
+          echo "image_key=$(python3 scripts/e2e_bundle.py image-key)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up cached container builder
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Cache pinned packages, Python, Rust, and locked Rust dependencies
+        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: tests/e2e/Dockerfile
+          target: dependencies
+          platforms: linux/amd64
+          build-args: |
+            E2E_UID=${{ steps.identity.outputs.uid }}
+            E2E_GID=${{ steps.identity.outputs.gid }}
+            E2E_IMAGE_KEY=${{ steps.identity.outputs.image_key }}
+          cache-from: type=gha,scope=strata-e2e-dependencies-v1
+          cache-to: type=gha,mode=max,scope=strata-e2e-dependencies-v1

@@ -17,7 +17,9 @@ Docker is required by default. For rootless Podman, set
 `STRATA_CONTAINER_ENGINE=podman`. The script builds and runs the same image
 locally and in CI, using `tests/e2e/Dockerfile`: a digest-pinned Ubuntu 24.04
 base, a dated Ubuntu package snapshot (GTK 4.14 and fonts), Rust 1.98.1, and
-pinned Python dependencies. No host GTK libraries, fonts, desktop sockets, or
+pinned Python dependencies. The Docker build context is the repository root;
+`.dockerignore` excludes host artifacts and configuration. The local runner
+builds the `toolchain` stage; CI shards need only the `runtime` stage. No host GTK libraries, fonts, desktop sockets, or
 Rust binaries are mounted into the container.
 
 The checkout is mounted at `/workspace`; pass test paths relative to the
@@ -175,7 +177,7 @@ def test_something(strata):
 
 `test_inline_renaming.py` checks immediate default-file/folder creation, collision
 numbering, selected default names, valid-name commits on click-away, and retaining
-the original name on Escape or invalid input. It exercises existing and newly
+the original name on Escape or representative invalid input. It exercises existing and newly
 created items in all three views, verifies file contents, and covers repeated
 renames with folder-wide or file-stem selection. `test_entry_management.py` also
 covers reopening invalid edits, inside-field clicks, name conflicts, and empty
@@ -283,9 +285,147 @@ a workflow that does not have a mutation yet.
 
 ## In CI
 
-The `e2e` job in `.github/workflows/ci.yml` invokes `./scripts/e2e.sh`, just
-like a local run. It does not separately install GTK or build a host binary.
-The suite uses the same hardware-aware worker budget as local runs (normally
-2 workers on the 4-vCPU runner), with a per-test and a whole-job timeout.
-The infrastructure start-up is retried once;
-a failed interaction assertion never is. Artifacts are uploaded on failure.
+### Three-minute critical path
+
+`.github/workflows/ci.yml` has three E2E stages:
+
+1. **E2E build and plan** restores BuildKit layers for the pinned native/Python
+   dependencies, Rust toolchain, and compiled `Cargo.lock` dependencies. It
+   compiles the tested revision **once**, without debug information or incremental
+   artifacts, and collects the real pytest inventory (including parameter IDs).
+   Only the binary, checksummed provenance, and complete shard plan are uploaded.
+2. **E2E shard N** jobs start on independent 4-vCPU runners, restore only the
+   runtime layers (no Rust toolchain), download that run's bundle, and invoke
+   `./scripts/e2e.sh` with two isolated xdist workers. There is no host build,
+   Cargo cache restore, or pip installation on the warm path. Every runner uses
+   the same pinned rendering packages and baselines as a local canonical run.
+3. **End-to-end GUI suite** retains the existing required-check name. It requires
+   every dependency to succeed, verifies that all planned node IDs passed setup,
+   call, and teardown exactly once, and enforces **less than 180 seconds** from
+   the build job's start through aggregation. Setup, dependency installation or
+   cache retrieval, compilation, transfers, downstream runner queues, and test
+   execution are included—not just pytest time. Job durations and total elapsed
+   time appear in the Actions summary; five seconds are reserved for final
+   teardown rather than spending the entire budget before the job can finish.
+   The initial queue before any E2E runner
+   starts and final GitHub job teardown are not measurable from inside this gate;
+   use the Actions job timestamps when evaluating the final observed runtime.
+
+The matrix is generated from `harness/sharding.py`, not a fixed runner count or
+file list. Tests are scheduled longest-first using committed setup+call+teardown
+measurements from `tests/e2e/durations.json`, with 25% headroom and a 40-second
+estimated worker budget. New tests automatically receive a conservative five-second
+weight. More tests or longer measured durations add runners. Baselines stay in
+one serial scheduling group. An indivisible group over budget or a plan requiring
+more than GitHub's 256 matrix jobs fails explicitly instead of silently extending
+the gate. There is no `max-parallel` throttle; the runner provider must have enough
+concurrent capacity. A busy runner pool can therefore fail the wall-clock budget.
+
+Shards validate their entire collection against the plan before selecting tests.
+A missing, extra, skipped, failed, or stale result fails the aggregate gate.
+`fail-fast: false` preserves other shards' diagnostics. Worker crashes and failed
+assertions are not retried; only display infrastructure startup retains its one
+retry. CI caps each test at 60 seconds and each shard job at three minutes.
+Reports and JUnit files are uploaded on both success and failure, with distinct
+artifact names per runner and run attempt; screenshots/trees/logs are uploaded on
+failures. The gate never mixes previous attempts into a fresh measurement.
+
+### Cache lifecycle and cold starts
+
+BuildKit's content-addressed cache invalidates on the actual Dockerfile,
+requirements, Rust manifest/lockfile, source, and resource inputs. A stub application
+warms dependencies only; its executable and all Strata fingerprints are removed
+before the real source is copied and compiled. The bundle is tied to the checked-out
+commit, source/resource contents (including local edits), rendering inputs, binary
+checksum, and plan checksum. The runtime image's input label must match too; it cannot be replaced
+by an arbitrary host binary or an artifact from another run.
+
+`Warm E2E dependencies` seeds a separate default-branch cache daily, when image or
+Rust dependency inputs change, and on manual dispatch. The regular build can read
+that cache and the previous application cache. Only the build job writes the
+application cache; shards are read-only consumers. GitHub's cache branch scoping
+allows fork PRs to read the main cache without credentials or registry access and
+prevents PR caches from replacing main's cache. No `pull_request_target` execution
+or package-write permission is needed.
+
+**A completely cold/evicted cache or a newly changed image is not guaranteed to
+install and compile within three minutes.** The build is allowed ten minutes to
+finish and save usable layers, but the aggregate still fails the 180-second budget:
+a cold run is not silently exempted or advertised as a fast pass. Seed the dependency
+cache before enabling the new required gate, and rerun the **entire workflow** after
+cold recovery. External package outages, cache eviction, and runner queues cannot
+be solved by adding test shards. Inspect the build logs' `CACHED` entries and the
+critical-path summary rather than raising the time limit.
+
+### Reproducing and maintaining shards
+
+To collect the current inventory inside the canonical container:
+
+```bash
+./scripts/e2e.sh -n 0 --collect-only --e2e-write-plan=target/e2e-plan.json
+./scripts/e2e.sh --e2e-plan=target/e2e-plan.json --e2e-shard=0 \
+  --e2e-report=target/e2e-reports/shard-0.json
+```
+
+For the exact CI binary, use a disposable checkout at the commit in its metadata
+(a PR normally tests the merge commit). Download `e2e-bundle-<attempt>` into
+`target/e2e-bundle`, build the `runtime` target with the invoking UID/GID, and run
+(use `docker` instead of `podman` if appropriate):
+
+```bash
+podman build --target runtime --tag strata-e2e:ci-runtime \
+  --build-arg E2E_UID="$(id -u)" --build-arg E2E_GID="$(id -g)" \
+  --build-arg E2E_IMAGE_KEY="$(python3 scripts/e2e_bundle.py image-key)" \
+  --file tests/e2e/Dockerfile .
+chmod +x target/e2e-bundle/strata
+STRATA_CONTAINER_ENGINE=podman STRATA_E2E_IMAGE=strata-e2e:ci-runtime \
+  STRATA_E2E_BUNDLE=target/e2e-bundle ./scripts/e2e.sh --e2e-plan=target/e2e-bundle/plan.json --e2e-shard=0
+```
+
+The bundle must be inside the checkout. Without these explicit bundle/image
+variables the local canonical runner still builds the source normally.
+
+After a complete successful CI attempt, download its `e2e-report-<attempt>-*`
+artifacts into an empty `target/e2e-reports` directory and its bundle into
+`target/e2e-bundle`, then refresh timings:
+
+```bash
+python3 scripts/e2e_ci.py durations target/e2e-bundle/plan.json target/e2e-reports \
+  > tests/e2e/durations.json
+```
+
+Review and commit the changes. Reports must cover every test and shard; partial or
+failed runs cannot overwrite scheduling measurements. Durations are scheduling
+hints, never an allowlist: new tests always participate without editing this file.
+
+### Coverage audit (#607)
+
+154 GUI cases were removed from the 729-test inventory (six new harness tests
+exercise collection/sharding/reporting). No workflow was moved into an optional,
+nightly-only, or changed-files-only suite.
+
+| Removed/reduced coverage | Retained owner |
+| --- | --- |
+| Six invalid strings × mode × kind × new/existing × completion, reduced to `bad/name` (120 cases removed) | `src/services/operations/tests.rs::basenames_reject_empty_reserved_nested_absolute_and_nul_names` (no GTK/display requirement); GUI retains every mode/kind/lifecycle and both Enter and real click-away |
+| Four invalid names in correction/reopen workflow, reduced to one (9) | Same validation tests; correction/reopen still runs in all three views |
+| Four accepted-name variants in inside-field click workflow, reduced to ` padded ` (18) | `basenames_accept_single_native_and_unicode_components`; GUI still checks exact untrimmed names for files/folders in every view |
+| Standalone new-folder Escape and existing-file cancellation tests (4) | `test_inline_renaming.py::test_escape_preserves_the_original_name`, covering both lifecycles, kinds, and every view |
+| Standalone invalid rename in dialogs suite (1) | Stronger synchronized `test_invalid_names_retain_the_original`, including filesystem contents and GTK-critical checks |
+| Separate preview metadata/list-preservation launches (2) | Assertions consolidated into `test_space_opens_and_closes_the_quick_preview` in all three views |
+
+All 72 valid rename focus-exit combinations remain: GTK's real in-flight focus walk
+is not covered by emitting a controller signal in Rust. Real drag/XTEST routing,
+caret visibility, clipboard selection/undo, multi-window preferences, accessibility
+semantics, and all six visual baselines also remain. The removed validation vectors
+are covered by unconditional, display-independent Rust tests—not by tests that
+silently return when GTK cannot initialize.
+
+The existing quality job is unchanged. Enabling all its GTK fixtures on Ubuntu
+revealed a pre-existing offscreen new-entry failure tracked in #613; this CI overhaul
+does not delete that fixture, change application scrolling, or hide it behind a new
+skip. Continue running Rust GTK tests on a private display locally as described above.
+
+The existing copy-conflict/undo scenario also waits for dialog dismissal and the
+copied entry's keyboard focus before sending Ctrl+Z. A selected-state notification
+alone was too early for this follow-up keyboard action; the filesystem/undo assertions
+remain unchanged. There are no assertion retries or fixed sleeps.
