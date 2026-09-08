@@ -1,0 +1,128 @@
+min_version = "2026.9.0"
+
+[tools]
+# Keep in lockstep with tests/e2e/Dockerfile (RUSTUP_TOOLCHAIN).
+rust = { version = "1.98.1", components = ["clippy", "rustfmt", "rust-analyzer"] }
+python = "3.12"
+"aqua:EmbarkStudios/cargo-deny" = "0.20.2"
+"aqua:crate-ci/typos" = "1.50.1"
+"aqua:watchexec/cargo-watch" = "8.5.3"
+
+[env]
+CARGO_TERM_COLOR = "always"
+
+[tasks.fmt]
+description = "Check Rust formatting"
+run = "cargo fmt --all --check"
+
+[tasks.compile]
+description = "Type-check all targets"
+run = "cargo check --all-targets --all-features --locked"
+
+[tasks.clippy]
+description = "Lint with Clippy"
+run = "cargo clippy --all-targets --all-features --locked -- -D warnings"
+
+[tasks.test]
+description = "Run Rust tests without a desktop display"
+run = "env -u DISPLAY -u WAYLAND_DISPLAY GDK_BACKEND=x11 cargo test --all-targets --all-features --locked"
+
+[tasks.scripts]
+description = "Run Python unit tests under scripts/"
+run = "python3 -m unittest discover -s scripts -p 'test_*.py'"
+
+[tasks.deny]
+description = "Check advisories, licenses, bans, and sources"
+run = "cargo deny check"
+
+[tasks.typos]
+description = "Check spelling"
+run = "typos"
+
+[tasks.e2e]
+description = "End-to-end GUI suite (Docker)"
+raw_args = true
+run = "./scripts/e2e.sh -p no:cacheprovider --timeout=60 --durations=10"
+
+[tasks.check]
+description = "Local pre-push quality checks"
+depends = ["fmt", "compile", "clippy", "test", "deny", "typos"]
+
+[tasks.start-dev]
+description = "Rebuild and restart as files change"
+run = "./scripts/dev.sh"
+
+[tasks.run-dev]
+description = "Build and launch the main app once"
+run = "cargo run"
+
+[tasks.run-chooser-dev]
+description = "Build and open an isolated file chooser"
+run = "./scripts/run-chooser-dev.sh"
+
+[tasks.build]
+description = "Build the release binary"
+run = "cargo build --release"
+
+[tasks.install-local]
+description = "Install a per-user binary, icon, and desktop entry"
+depends = ["build"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+data_home="${DATA_HOME:-$HOME/.local/share}"
+bin_dir="${BIN_DIR:-$HOME/.local/bin}"
+install -Dm755 target/release/strata "$bin_dir/strata"
+install -Dm644 data/icons/scalable/apps/io.github.lgse.Strata.svg \
+  "$data_home/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg"
+install -d "$data_home/applications"
+sed "s|^Exec=strata |Exec=$bin_dir/strata |" data/io.github.lgse.Strata.desktop \
+  > "$data_home/applications/io.github.lgse.Strata.desktop"
+update-desktop-database "$data_home/applications" 2>/dev/null || true
+gtk-update-icon-cache -qtf "$data_home/icons/hicolor" 2>/dev/null || true
+'''
+
+[tasks.install-file-manager]
+description = "Install the per-user FileManager1 D-Bus service"
+depends = ["build"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+data_home="${DATA_HOME:-$HOME/.local/share}"
+bin_dir="${BIN_DIR:-$HOME/.local/bin}"
+install -d "$data_home/dbus-1/services"
+conflict="$(grep -l '^Name=org\.freedesktop\.FileManager1$' \
+  "$data_home"/dbus-1/services/*.service 2>/dev/null | \
+  grep -v '/io.github.lgse.Strata.FileManager1.service$' | head -n 1 || true)"
+if [[ -n "$conflict" ]]; then
+  echo "Refusing to override the per-user FileManager1 provider: $conflict" >&2
+  exit 1
+fi
+sed "s|^Exec=/usr/bin/strata |Exec=$bin_dir/strata |" \
+  data/io.github.lgse.Strata.FileManager1.service \
+  > "$data_home/dbus-1/services/io.github.lgse.Strata.FileManager1.service"
+'''
+
+[tasks.uninstall-file-manager]
+description = "Remove the per-user FileManager1 D-Bus service"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+data_home="${DATA_HOME:-$HOME/.local/share}"
+rm -f "$data_home/dbus-1/services/io.github.lgse.Strata.FileManager1.service"
+'''
+
+[tasks.uninstall-local]
+description = "Remove the per-user binary, icon, and desktop entry"
+depends = ["uninstall-file-manager"]
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+data_home="${DATA_HOME:-$HOME/.local/share}"
+bin_dir="${BIN_DIR:-$HOME/.local/bin}"
+rm -f "$bin_dir/strata" \
+  "$data_home/applications/io.github.lgse.Strata.desktop" \
+  "$data_home/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg"
+update-desktop-database "$data_home/applications" 2>/dev/null || true
+gtk-update-icon-cache -qtf "$data_home/icons/hicolor" 2>/dev/null || true
+'''
