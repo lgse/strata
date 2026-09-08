@@ -171,8 +171,7 @@ impl Dispatcher {
             self.view.create_new_folder();
             return Some(Propagation::Stop);
         }
-        self.context_menu_command(event)
-            .or_else(|| self.clipboard_command(event))
+        self.clipboard_command(event)
             .or_else(|| self.browser_commands(browser, event))
     }
 
@@ -200,8 +199,9 @@ impl Dispatcher {
         action(&self.view).then_some(Propagation::Stop)
     }
 
-    fn context_menu_command(&self, event: &KeyEvent) -> KeyResult {
+    pub(super) fn context_menu_command(&self, event: &KeyEvent) -> KeyResult {
         if is_context_menu_shortcut(event.key, event.modifiers)
+            && !event.text_has_focus()
             && self.view.open_focused_context_menu()
         {
             return Some(Propagation::Stop);

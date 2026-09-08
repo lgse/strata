@@ -127,6 +127,7 @@ impl Dispatcher {
             .or_else(|| self.sidebar_commands(browser, &event))
             .or_else(|| self.text_input(&event))
             .or_else(|| self.file_commands(browser, &event))
+            .or_else(|| self.context_menu_command(&event))
             .or_else(|| self.focus_navigation(browser, &mut event))
             .or_else(|| self.dismissal(browser, &event))
             .or_else(|| self.item_navigation(browser, &event))
