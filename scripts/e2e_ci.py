@@ -20,22 +20,27 @@ BUDGET_SECONDS = 180
 
 def critical_path(jobs: list[dict], now: datetime) -> tuple[float, str]:
     build = [job for job in jobs if job["name"] == "E2E build and plan"]
-    shards = [job for job in jobs if job["name"].startswith("E2E shard ")]
+    shards = [job for job in jobs if job["name"].startswith("E2E shard ")
+              and job["name"].removeprefix("E2E shard ").isdigit()]
     if len(build) != 1:
         raise ValueError("cannot measure E2E critical path without exactly one build job")
+    if not build[0].get("created_at"):
+        raise ValueError("cannot measure initial E2E queue time without the build creation timestamp")
     parse = lambda value: datetime.fromisoformat(value.replace("Z", "+00:00"))
-    start = parse(build[0]["started_at"])
+    start = parse(build[0]["created_at"])
     elapsed = (now - start).total_seconds()
     if elapsed < 0:
-        raise ValueError("runner clock precedes the build job start")
+        raise ValueError("runner clock precedes the initial E2E queue timestamp")
     lines = ["## E2E critical path", "", f"**{elapsed:.1f}s / <{BUDGET_SECONDS}s**, "
              f"{len(shards)} runners (two isolated GUI workers each).", "",
-             "Includes build-job startup, dependency/cache setup, compilation, artifact transfers, "
-             "downstream runner queues, tests, and aggregation through this measurement.", "",
-             "| Job | Seconds |", "| --- | ---: |"]
+             "Includes the initial E2E queue, build-job startup, dependency/cache setup, compilation, "
+             "artifact transfers, downstream runner queues, tests, and aggregation through this measurement.", "",
+             "| Job | Before start (s) | Run (s) |", "| --- | ---: | ---: |"]
     for job in build + sorted(shards, key=lambda job: job["name"]):
+        started = parse(job["started_at"])
+        queued = (started - parse(job["created_at"])).total_seconds()
         end = parse(job["completed_at"]) if job.get("completed_at") else now
-        lines.append(f"| {job['name']} | {(end - parse(job['started_at'])).total_seconds():.1f} |")
+        lines.append(f"| {job['name']} | {queued:.1f} | {(end - started).total_seconds():.1f} |")
     return elapsed, "\n".join(lines) + "\n"
 
 

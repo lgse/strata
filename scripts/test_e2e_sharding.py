@@ -194,18 +194,19 @@ class CliTests(unittest.TestCase):
 class BudgetTests(unittest.TestCase):
     def test_budget_includes_dependency_setup_transfers_and_downstream_queues(self):
         jobs = [
-            {"name": "E2E build and plan", "started_at": "2026-09-08T00:00:00Z",
-             "completed_at": "2026-09-08T00:01:00Z"},
-            {"name": "E2E shard 0", "started_at": "2026-09-08T00:01:15Z",
-             "completed_at": "2026-09-08T00:02:00Z"},
-            {"name": "E2E shard 1", "started_at": "2026-09-08T00:01:30Z",
-             "completed_at": "2026-09-08T00:02:10Z"},
+            {"name": "E2E build and plan", "created_at": "2026-09-07T23:59:45Z",
+             "started_at": "2026-09-08T00:00:00Z", "completed_at": "2026-09-08T00:01:00Z"},
+            {"name": "E2E shard 0", "created_at": "2026-09-08T00:01:05Z",
+             "started_at": "2026-09-08T00:01:15Z", "completed_at": "2026-09-08T00:02:00Z"},
+            {"name": "E2E shard 1", "created_at": "2026-09-08T00:01:05Z",
+             "started_at": "2026-09-08T00:01:30Z", "completed_at": "2026-09-08T00:02:10Z"},
+            {"name": "E2E shard ${{ matrix.shard }}", "conclusion": "skipped"},
         ]
         elapsed, summary = critical_path(jobs, datetime(2026, 9, 8, 0, 2, 30, tzinfo=timezone.utc))
-        self.assertEqual(elapsed, 150)
+        self.assertEqual(elapsed, 165)
         self.assertIn("2 runners", summary)
-        self.assertIn("| E2E build and plan | 60.0 |", summary)
-        self.assertIn("| E2E shard 1 | 40.0 |", summary)
+        self.assertIn("| E2E build and plan | 15.0 | 60.0 |", summary)
+        self.assertIn("| E2E shard 1 | 25.0 | 40.0 |", summary)
 
     def test_budget_reserves_teardown_time_and_always_writes_the_measurement(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -238,6 +239,9 @@ class BudgetTests(unittest.TestCase):
     def test_missing_job_timestamps_cannot_be_reported_as_a_fast_pass(self):
         with self.assertRaises(ValueError):
             critical_path([], datetime.now(timezone.utc))
+        with self.assertRaisesRegex(ValueError, "initial E2E queue"):
+            critical_path([{"name": "E2E build and plan", "started_at": "2026-09-08T00:00:00Z"}],
+                          datetime.now(timezone.utc))
 
 
 if __name__ == "__main__":

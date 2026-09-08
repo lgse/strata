@@ -302,14 +302,13 @@ a workflow that does not have a mutation yet.
 3. **End-to-end GUI suite** retains the existing required-check name. It requires
    every dependency to succeed, verifies that all planned node IDs passed setup,
    call, and teardown exactly once, and enforces **less than 180 seconds** from
-   the build job's start through aggregation. Setup, dependency installation or
-   cache retrieval, compilation, transfers, downstream runner queues, and test
-   execution are included—not just pytest time. Job durations and total elapsed
-   time appear in the Actions summary; five seconds are reserved for final
-   teardown rather than spending the entire budget before the job can finish.
-   The initial queue before any E2E runner
-   starts and final GitHub job teardown are not measurable from inside this gate;
-   use the Actions job timestamps when evaluating the final observed runtime.
+   the build job's creation through aggregation. The initial E2E queue, setup,
+   dependency installation or cache retrieval, compilation, transfers, downstream
+   runner queues, and test execution are included—not just pytest time. Queue and
+   execution durations appear in the Actions summary; five seconds are reserved
+   for final teardown rather than spending the entire budget before the job can
+   finish. Final GitHub job teardown cannot be measured from inside its own job;
+   use the Actions completion timestamp to verify the final observed runtime.
 
 The matrix is generated from `harness/sharding.py`, not a fixed runner count or
 file list. Tests are scheduled longest-first using committed setup+call+teardown
