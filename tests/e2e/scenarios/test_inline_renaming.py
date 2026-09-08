@@ -4,8 +4,62 @@
 import pytest
 
 from harness.modes import ALL_MODES
+from harness.tree import Atspi
 
 KINDS = ["file", "folder"]
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_long_rename_keeps_caret_visible(strata, mode):
+    name = "synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt"
+    strata.fixture.path(name).write_text("keep\n")
+    strata.keyboard.press("F5")
+    strata.select_entry_with_keyboard(name)
+    bounds = strata.window.window_bounds()
+    width = 420 if mode == "Columns" else 640
+    strata.keyboard.connection.resize_surface(bounds.width, bounds.height, width, 300)
+    strata.wait(lambda: strata.window.window_bounds().width == width, "a narrow window")
+    strata.keyboard.press("F2")
+    field = rename_field(strata)
+    text = Atspi.Accessible.get_text_iface(field.accessible)
+    assert text is not None
+    selection = Atspi.Text.get_selection(text, 0)
+    assert (selection.start_offset, selection.end_offset) == (0, len(name) - 4)
+
+    def assert_editor_constrained():
+        bounds = field.window_bounds()
+        window = strata.window.window_bounds()
+        pane = strata.pane().window_bounds()
+        assert bounds.height > 0 and pane.x <= bounds.x < window.width
+        # GTK 4.14 exports a padded origin with the border-box width. The Rust
+        # fixture checks exact GtkText/caret bounds; here reject oversized editors.
+        assert 0 < bounds.width <= window.width - pane.x
+
+    assert_editor_constrained()
+    strata.keyboard.press("End")
+    strata.wait(lambda: Atspi.Text.get_caret_offset(text) == len(name), "End to reach the extension")
+    assert Atspi.Text.get_n_selections(text) == 0
+    assert_editor_constrained()
+    strata.keyboard.type_text("-final")
+    strata.wait(lambda: field.text == name + "-final", "typing after the extension")
+    strata.wait(lambda: Atspi.Text.get_caret_offset(text) == len(name) + 6, "the caret to follow typing")
+    assert_editor_constrained()
+    strata.keyboard.press_repeatedly("BackSpace", 6)
+    strata.wait(lambda: field.text == name, "Backspace to remove the appended text")
+    strata.keyboard.press("Left")
+    strata.wait(lambda: Atspi.Text.get_caret_offset(text) == len(name) - 1, "Left to move the caret")
+    strata.keyboard.press("Right")
+    strata.wait(lambda: Atspi.Text.get_caret_offset(text) == len(name), "Right to return to the end")
+    assert_editor_constrained()
+    strata.pointer.click(field)
+    strata.wait(lambda: 0 < Atspi.Text.get_caret_offset(text) < len(name), "clicking inside the visible name to move the caret")
+    assert_editor_constrained()
+    strata.keyboard.press("End")
+    strata.wait(lambda: Atspi.Text.get_caret_offset(text) == len(name), "End after clicking")
+    strata.keyboard.press("Return")
+    wait_for_edit_closed(strata)
+    assert strata.fixture.path(name).read_text() == "keep\n"
+    assert not strata.fixture.path(name + "-final").exists()
 
 
 def rename_field(strata):

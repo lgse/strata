@@ -1,0 +1,12 @@
+diff --git a/src/ui/browser/inline_edit.rs b/src/ui/browser/inline_edit.rs
+--- a/src/ui/browser/inline_edit.rs
++++ b/src/ui/browser/inline_edit.rs
+@@ -23,7 +23,7 @@ fn constrain_rename_to_viewport(field: &gtk::Entry, viewport: &gtk::ScrolledWindow)
+     let Some(bounds) = editor.compute_bounds(viewport) else {
+         return;
+     };
+-    if bounds.width() <= 0.0 || viewport.width() <= 0 {
++    if bounds.width() <= 0.0 || viewport.width() <= 0 || field.is_visible() {
+         return;
+     }
+     // Columns can be wider than the viewport. GtkText must scroll within the

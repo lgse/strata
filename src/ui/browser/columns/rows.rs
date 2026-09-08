@@ -89,6 +89,7 @@ pub(super) fn column_rows(
         rename.add_css_class("inline-rename");
         crate::ui::accessibility::set_label(&rename, "Rename");
         rename.set_hexpand(true);
+        rename.set_width_chars(1);
         rename.set_visible(false);
         rename.connect_changed(|field| {
             update_basename_validation(field);
