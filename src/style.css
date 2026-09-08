@@ -79,6 +79,21 @@ headerbar,
   padding: 0;
 }
 
+headerbar {
+  min-height: 40px;
+}
+
+headerbar > windowhandle > box {
+  min-height: 40px;
+  padding: 0;
+}
+
+headerbar button,
+headerbar menubutton {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
 .location-control {
   min-width: 8em;
 }

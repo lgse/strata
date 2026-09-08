@@ -16,12 +16,14 @@ def open_with_app(test_environment):
     launcher.chmod(0o755)
     (applications / "strata-review.desktop").write_text(
         "[Desktop Entry]\nType=Application\nName=Review Text Viewer\n"
-        f"Exec={launcher} %U\nMimeType=text/plain;\nNoDisplay=false\n"
+        f"Exec={launcher} %U\nMimeType=text/plain;inode/directory;\nNoDisplay=false\n"
     )
     associations = test_environment.config_home / "mimeapps.list"
     contents = (
         "[Default Applications]\ntext/plain=strata-review.desktop;\n"
+        "inode/directory=strata-review.desktop;\n"
         "[Added Associations]\ntext/plain=strata-review.desktop;\n"
+        "inode/directory=strata-review.desktop;\n"
     )
     associations.write_text(contents)
     return output, associations, contents
@@ -201,7 +203,21 @@ def test_open_with_incompatible_types_explain_unavailability(incompatible_files,
     assert "Open" not in strata.menu_items()
 
 
-def test_open_with_is_hidden_for_directories(strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_open_with_launches_selected_folder(open_with_app, strata, mode):
+    output, associations, contents = open_with_app
     strata.open_context_menu("documents")
-    assert "Open With…" not in strata.menu_items()
-    strata.dismiss_menu()
+    strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "MIME lookup")
+    strata.choose_menu_item("Open With…")
+    assert "Review Text Viewer" in strata.wait_for_dialog().dump()
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: output.exists() and output.read_text(),
+        "the selected application to receive the folder",
+    )
+    received = output.read_text().splitlines()
+    assert len(received) == 1
+    assert Gio.File.new_for_commandline_arg(received[0]).equal(
+        Gio.File.new_for_path(str(strata.fixture.path("documents")))
+    )
+    assert associations.read_text() == contents

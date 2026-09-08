@@ -37,7 +37,8 @@ def test_keep_both_selects_the_numbered_copy_and_undo_preserves_originals(strata
         "the numbered copy to be selected",
     )
     assert fixture.path("archive/todo (2).txt").read_text() == "todo\n"
-    strata.wait(lambda: strata.dialog() is None, "the conflict dialog to close")
+    # The copy can finish while the dismissing modal still owns keyboard input.
+    strata.wait(lambda: strata.dialog() is None, "the conflict dialog to finish dismissing")
     strata.wait_for_focused_entry("todo (2).txt")
     strata.keyboard.press("ctrl+z")
     strata.wait(lambda: not fixture.path("archive/todo (2).txt").exists(), "copy undo")

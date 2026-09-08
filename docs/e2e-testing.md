@@ -49,6 +49,38 @@ For explicit host-toolkit debugging only, `./scripts/e2e-native.sh` accepts
 `STRATA_BINARY` and `STRATA_E2E_VENV`. It is not the pre-push E2E gate; a native
 pass does not replace `./scripts/e2e.sh`.
 
+### Shared environment for formatting, lint, and Rust tests
+
+`./scripts/quality.sh` runs all three quality phases in the same verified build
+base. Use `./scripts/quality.sh fmt`, `clippy`, or `test` for an individual phase.
+No separate quality image is necessary: the published environment already has
+Rust 1.98.1, rustfmt, Clippy, native development libraries, and Xvfb. Quality now
+uses that pinned compiler rather than moving `stable`.
+
+CI resolves the public environment to a manifest digest, checks its input labels
+and platform, and pulls that exact digest without registry credentials. Each
+phase verifies the loaded image again and runs its immutable image ID. An
+unavailable unchanged environment fails explicitly instead of installing packages.
+For a deliberate recipe-input change relative to the PR base (or previous main
+commit), CI may explicitly build that unpublished candidate from the pinned
+recipe, without publishing it. This lets environment-update PRs pass before the
+trusted-main publisher runs; it does not turn registry outages into repeated
+Ubuntu bootstraps. Locally, environment builds still require the explicit command
+shown above.
+
+Quality's Cargo home and build directory are under `target/quality-container`,
+separate from E2E and native builds. Its Actions cache is keyed by environment,
+Cargo manifests, and source revision, with same-environment/manifest restoration.
+Only successful main pushes save caches; PR consumers cannot populate main's
+cache. Cold quality compilation includes test-only and all-feature dependencies,
+so the E2E application dependency cache is not advertised as a full quality hit.
+
+The Rust suite runs with `--all-targets --all-features --locked` inside private
+Xvfb, with `GTK_A11Y=none`, `NO_AT_BRIDGE=1`, and `STRATA_REQUIRE_GTK_TESTS=1`.
+GTK initialization failures cannot silently skip tests. Formatting, compiler,
+lint, and test failures remain blocking. Lightweight policy/helper jobs retain
+their existing runners rather than downloading a large GUI image unnecessarily.
+
 ### Hardware-aware parallelism
 
 The canonical container and native debugging runner default to isolated
@@ -255,8 +287,8 @@ in the test output, and CI uploads the whole directory. Pass
 
 `tests/e2e/scenarios/test_visual_baselines.py` compares a small set of stable
 states with the images in `tests/e2e/baselines/gtk-4.14`: one canonical fixture
-in each view, a selection with focus, an open context menu, and a confirmation
-dialog. Local and CI runs use this one rendering profile. Other host GTK
+in each view, a hovered Icons tile, a selection with focus, an open context menu,
+and a confirmation dialog. Local and CI runs use this one rendering profile. Other host GTK
 versions do not have separate baselines; native baseline runs fail rather than
 silently accepting a different renderer.
 These scenarios exclusively claim `/tmp/strata-e2e-baseline`, because the
