@@ -18,12 +18,55 @@ fn entry(location: Location) -> FileEntry {
 }
 
 #[test]
+fn common_applications_respect_uri_capability_and_hidden_defaults() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::open_with::common_applications_respect_uri_capability_and_hidden_defaults",
+        || {
+            let applications = glib::user_data_dir().join("applications");
+            std::fs::create_dir_all(&applications).expect("isolated applications");
+            for (id, arguments, extra) in [
+                ("strata-path", "%F", ""),
+                ("strata-uri", "%U", "NoDisplay=true\n"),
+            ] {
+                std::fs::write(applications.join(format!("{id}.desktop")), format!(
+                    "[Desktop Entry]\nType=Application\nName={id}\nExec=/bin/true {arguments}\nMimeType=text/plain;text/markdown;\n{extra}"
+                )).expect("desktop entry");
+            }
+            std::fs::create_dir_all(glib::user_config_dir()).expect("isolated config");
+            std::fs::write(glib::user_config_dir().join("mimeapps.list"),
+                "[Default Applications]\ntext/plain=strata-path.desktop;strata-uri.desktop;\ntext/markdown=strata-path.desktop;strata-uri.desktop;\n[Added Associations]\ntext/plain=strata-path.desktop;strata-uri.desktop;\ntext/markdown=strata-path.desktop;strata-uri.desktop;\n"
+            ).expect("associations");
+            let types = vec!["text/plain".to_owned(), "text/markdown".to_owned()];
+            let (local, default) = common_applications(&types, false);
+            assert_eq!(
+                default.expect("local default").id().as_deref(),
+                Some("strata-path.desktop")
+            );
+            assert!(
+                local
+                    .iter()
+                    .any(|app| app.id().as_deref() == Some("strata-path.desktop"))
+            );
+            let (remote, default) = common_applications(&types, true);
+            assert_eq!(
+                default.expect("URI default").id().as_deref(),
+                Some("strata-uri.desktop")
+            );
+            assert!(remote.iter().all(|app| app.supports_uris()));
+            assert_eq!(remote[0].id().as_deref(), Some("strata-uri.desktop"));
+            assert!(!remote[0].should_show());
+        },
+    );
+}
+
+#[test]
 fn prepared_selection_rejects_changed_targets() {
     let location = Location::local("/fixture/alpha.txt");
     let selection = OpenWithSelection {
         locations: vec![location.clone()],
         files: vec![gio_file_for_location(&location)],
         apps: vec![],
+        default: None,
     };
     assert!(selection.entries_match_target(&[entry(location)]));
     assert!(!selection.entries_match_target(&[]));
@@ -53,7 +96,7 @@ fn preparation_preserves_file_uris_and_rejects_incompatible_or_stale_queries() {
                 (
                     vec![Location::local(&text), Location::local(&image)],
                     false,
-                    false,
+                    true,
                 ),
                 (vec![Location::local(fixture.path())], false, false),
                 (vec![Location::local(&text)], true, false),
@@ -65,6 +108,8 @@ fn preparation_preserves_file_uris_and_rejects_incompatible_or_stale_queries() {
             ] {
                 let single = gtk::Button::new();
                 let multiple = gtk::Button::new();
+                let open = gtk::Button::new();
+                open.set_visible(false);
                 single.set_sensitive(false);
                 multiple.set_sensitive(false);
                 let result = Rc::new(RefCell::new(None));
@@ -73,6 +118,7 @@ fn preparation_preserves_file_uris_and_rejects_incompatible_or_stale_queries() {
                     locations.iter().cloned().map(entry).collect(),
                     &single,
                     &multiple,
+                    &open,
                     &result,
                     &generation,
                     1,
@@ -83,8 +129,22 @@ fn preparation_preserves_file_uris_and_rejects_incompatible_or_stale_queries() {
                     std::thread::sleep(Duration::from_millis(1));
                 }
                 assert_eq!(result.borrow().is_some(), expected, "{locations:?}");
-                assert_eq!(single.is_sensitive(), expected);
-                assert_eq!(multiple.is_sensitive(), expected);
+                let available = result
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|selection| !selection.apps.is_empty());
+                assert_eq!(single.is_sensitive(), available);
+                assert_eq!(multiple.is_sensitive(), available);
+                assert_eq!(
+                    open.is_visible(),
+                    result
+                        .borrow()
+                        .as_ref()
+                        .is_some_and(|selection| selection.default.is_some())
+                );
+                if expected && !available {
+                    assert!(multiple.tooltip_text().is_some());
+                }
                 if let Some(selection) = result.borrow().as_ref() {
                     for (file, location) in selection.files.iter().zip(&locations) {
                         assert!(file.equal(&gio_file_for_location(location)));

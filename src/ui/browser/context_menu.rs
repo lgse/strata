@@ -459,6 +459,7 @@ pub(in crate::ui) fn install_item_context_menu(
     content.append(&single);
 
     let multiple = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let open_multiple = item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open", "Enter");
     let open_with_multiple =
         item_context_option(crate::assets::icons::EXTERNAL_LINK, "Open With…", "");
     let restore_multiple = item_context_option(crate::assets::icons::FOLDER, "Restore items", "");
@@ -483,6 +484,7 @@ pub(in crate::ui) fn install_item_context_menu(
     permanent_delete_multiple.add_css_class("danger");
     let compress_multiple =
         item_context_option(crate::assets::icons::FILE_ARCHIVE, "Compress…", "");
+    multiple.append(&open_multiple);
     multiple.append(&open_with_multiple);
     multiple.append(&restore_multiple);
     multiple.append(&cut_multiple);
@@ -529,6 +531,35 @@ pub(in crate::ui) fn install_item_context_menu(
             } else {
                 state.browser.activate_in_place(depth, position);
             }
+        }
+    });
+    let open_multiple_target = target.clone();
+    let open_multiple_state = Rc::downgrade(state);
+    let open_multiple_popover = popover.downgrade();
+    let open_multiple_selection = open_with_selection.clone();
+    open_multiple.connect_clicked(move |_| {
+        if let Some(popover) = open_multiple_popover.upgrade() {
+            popover.popdown();
+        }
+        let Some(state) = open_multiple_state.upgrade() else {
+            return;
+        };
+        let Some(selection) = open_multiple_selection.borrow().clone() else {
+            return;
+        };
+        if !selection.entries_match_target(&context_entries(&state, &open_multiple_target)) {
+            return;
+        }
+        let Some(app) = selection.default else {
+            return;
+        };
+        let context = state.overlay.display().app_launch_context();
+        if let Err(error) = crate::ui::open_with::launch(&app, &selection.files, Some(&context)) {
+            crate::ui::modal::show_error_dialog(
+                &state.overlay,
+                "Unable to open file",
+                error.message(),
+            );
         }
     });
     let open_with_target = target.clone();
@@ -813,8 +844,11 @@ pub(in crate::ui) fn install_item_context_menu(
             open_with_entries.len() > 1
                 && open_with_entries.iter().all(|entry| !entry.is_directory()),
         );
-        open_with.set_sensitive(false);
-        open_with_multiple.set_sensitive(false);
+        open_multiple.set_visible(false);
+        for button in [&open_with, &open_with_multiple] {
+            button.set_sensitive(false);
+            set_open_with_explanation(button, Some("Looking for compatible applications…"));
+        }
         open_with_selection.replace(None);
         let generation = open_with_generation.get().wrapping_add(1);
         open_with_generation.set(generation);
@@ -822,6 +856,7 @@ pub(in crate::ui) fn install_item_context_menu(
             open_with_entries,
             &open_with,
             &open_with_multiple,
+            &open_multiple,
             &open_with_selection,
             &open_with_generation,
             generation,
@@ -1067,6 +1102,7 @@ struct OpenWithSelection {
     locations: Vec<Location>,
     files: Vec<gio::File>,
     apps: Vec<gio::AppInfo>,
+    default: Option<gio::AppInfo>,
 }
 
 impl OpenWithSelection {
@@ -1080,10 +1116,18 @@ impl OpenWithSelection {
     }
 }
 
+fn set_open_with_explanation(button: &gtk::Button, explanation: Option<&str>) {
+    button.set_tooltip_text(explanation);
+    button.update_property(&[gtk::accessible::Property::Description(
+        explanation.unwrap_or(""),
+    )]);
+}
+
 fn prepare_open_with(
     entries: Vec<FileEntry>,
     single_button: &gtk::Button,
     multiple_button: &gtk::Button,
+    open_button: &gtk::Button,
     result: &Rc<RefCell<Option<OpenWithSelection>>>,
     generation: &Rc<Cell<u64>>,
     expected_generation: u64,
@@ -1101,56 +1145,97 @@ fn prepare_open_with(
         .collect::<Vec<_>>();
     let single_button = single_button.clone();
     let multiple_button = multiple_button.clone();
+    let open_button = open_button.clone();
     let result = result.clone();
     let generation = generation.clone();
     glib::MainContext::default().spawn_local(async move {
-        let mut content_type = None::<String>;
+        let unavailable = |reason: &str| {
+            for button in [&single_button, &multiple_button] {
+                button.set_sensitive(false);
+                set_open_with_explanation(button, Some(reason));
+            }
+        };
+        let mut content_types = Vec::<String>::new();
         for file in &files {
             if generation.get() != expected_generation {
                 return;
             }
-            let Ok(info) = file
+            let info = file
                 .query_info_future(
                     "standard::type,standard::content-type",
                     gio::FileQueryInfoFlags::NONE,
                     glib::Priority::DEFAULT,
                 )
-                .await
-            else {
-                return;
-            };
+                .await;
             if generation.get() != expected_generation {
                 return;
             }
+            let Ok(info) = info else {
+                unavailable("Unable to read the selected file type");
+                return;
+            };
             if info.file_type() == gio::FileType::Directory {
+                unavailable("Open With is unavailable for folders");
+                return;
+            }
+            if info.file_type() == gio::FileType::SymbolicLink {
+                unavailable("Broken symbolic links cannot be opened with an application");
                 return;
             }
             let Some(next_type) = info.content_type().map(|value| value.to_string()) else {
+                unavailable("Unable to determine the selected file type");
                 return;
             };
-            if let Some(current_type) = content_type.as_deref()
-                && !gio::content_type_equals(current_type, &next_type)
+            if !content_types
+                .iter()
+                .any(|value| gio::content_type_equals(value, &next_type))
             {
-                return;
+                content_types.push(next_type);
             }
-            content_type = Some(next_type);
         }
-        let Some(content_type) = content_type else {
-            return;
-        };
         if generation.get() != expected_generation {
             return;
         }
         let requires_uris = files.iter().any(|file| !file.is_native());
-        let apps = crate::ui::open_with::compatible_apps(&content_type, requires_uris);
+        let (apps, default) = common_applications(&content_types, requires_uris);
+        let available = !apps.is_empty();
+        let explanation = if available {
+            None
+        } else if content_types.len() > 1 {
+            Some("No application can open all selected file types")
+        } else {
+            Some("No compatible applications were found")
+        };
+        open_button.set_visible(default.is_some());
         result.replace(Some(OpenWithSelection {
             locations,
             files,
             apps,
+            default,
         }));
-        single_button.set_sensitive(true);
-        multiple_button.set_sensitive(true);
+        for button in [&single_button, &multiple_button] {
+            button.set_sensitive(available);
+            set_open_with_explanation(button, explanation);
+        }
     });
+}
+
+fn common_applications(
+    content_types: &[String],
+    requires_uris: bool,
+) -> (Vec<gio::AppInfo>, Option<gio::AppInfo>) {
+    let Some(first) = content_types.first() else {
+        return (vec![], None);
+    };
+    let mut apps = crate::ui::open_with::compatible_apps(first, requires_uris);
+    let mut default = gio::AppInfo::default_for_type(first, requires_uris);
+    for content_type in &content_types[1..] {
+        let next = crate::ui::open_with::compatible_apps(content_type, requires_uris);
+        apps.retain(|app| next.iter().any(|candidate| candidate.equal(app)));
+        let next_default = gio::AppInfo::default_for_type(content_type, requires_uris);
+        default = default.filter(|app| next_default.as_ref().is_some_and(|next| next.equal(app)));
+    }
+    (apps, default)
 }
 
 #[cfg(test)]
