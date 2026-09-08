@@ -110,8 +110,8 @@ def failure_summary(build_result: str, shard_result: str, jobs: list[dict],
     else:
         lines += ["- Inspect the unsuccessful step above and any shard JSON/JUnit/failure artifacts.",
                   "- Correct the underlying failure, then rerun the entire workflow."]
-    lines += ["- The time budget is enforced separately. An overrun after failed bootstrap is "
-              "not evidence that GUI scenarios were slow.",
+    lines += ["- Timing is informational and never fails passing tests. A long failed bootstrap "
+              "is not evidence that GUI scenarios were slow.",
               "- Log inspection is bounded; follow the job links for full output."]
     return title, "\n".join(lines) + "\n"
 

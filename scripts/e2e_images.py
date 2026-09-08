@@ -26,7 +26,8 @@ def references(repository, image_inputs, dependencies, uid, gid):
     return {"runtime": f"{prefix}-runtime:{image_inputs}-{profile}",
             "build": f"{prefix}-build:{dependencies}-{profile}",
             "cache": f"{prefix}-build:cache-{dependencies}-{profile}",
-            "environment_cache": f"{prefix}-build:environment-{image_inputs}-{profile}"}
+            "environment_cache": f"{prefix}-build:environment-{image_inputs}-{profile}",
+            "environment_image": f"{prefix}-build:base-{image_inputs}-{profile}"}
 
 
 def check_image_labels(document, expected):
@@ -92,6 +93,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("references")
+    sub.add_parser("environment")
     bases = sub.add_parser("bases")
     bases.add_argument("--require-published", action="store_true")
     cache = sub.add_parser("cache")
@@ -99,7 +101,14 @@ def main():
     cache.add_argument("--environment")
     args = parser.parse_args()
     try:
-        if args.command in ("references", "bases"):
+        if args.command == "environment":
+            inputs = image_key()
+            refs = references(os.environ["GITHUB_REPOSITORY"], inputs, dependency_key(), os.getuid(), os.getgid())
+            pinned = resolve(refs["environment_image"], expected_labels={"org.strata.e2e.inputs": inputs})
+            if not pinned:
+                raise ValueError("the published local-development base is unavailable anonymously")
+            print(f"environment_image={pinned}")
+        elif args.command in ("references", "bases"):
             refs = references(os.environ["GITHUB_REPOSITORY"], image_key(),
                               dependency_key(), os.getuid(), os.getgid())
             outputs = refs if args.command == "references" else discover_bases(refs, image_key(), dependency_key())
@@ -128,7 +137,7 @@ def main():
                       "registry unreachable). Falling back to verified dependency/index caches "
                       "and source bootstrap. Publish the trusted main-branch images and make "
                       "both GHCR packages public for anonymous fork access.", file=sys.stderr)
-    except (OSError, ValueError, KeyError) as error:
+    except (OSError, ValueError, KeyError, subprocess.TimeoutExpired) as error:
         parser.exit(1, f"E2E images: {error}\n")
 
 

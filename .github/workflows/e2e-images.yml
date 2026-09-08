@@ -62,9 +62,10 @@ jobs:
           BUILD_REF: ${{ steps.identity.outputs.build }}
           CACHE_REF: ${{ steps.identity.outputs.cache }}
           ENVIRONMENT_CACHE_REF: ${{ steps.identity.outputs.environment_cache }}
+          ENVIRONMENT_IMAGE_REF: ${{ steps.identity.outputs.environment_image }}
         shell: bash
         run: |
-          for kind in runtime build cache environment_cache; do
+          for kind in runtime build cache environment_cache environment_image; do
             variable="${kind^^}_REF"
             if docker buildx imagetools inspect "${!variable}" >/dev/null 2>&1; then
               echo "$kind=true" >> "$GITHUB_OUTPUT"
@@ -74,7 +75,7 @@ jobs:
           done
 
       - name: Restore trusted default-branch dependency layers
-        if: steps.existing.outputs.build != 'true' || steps.existing.outputs.cache != 'true' || steps.existing.outputs.environment_cache != 'true' || steps.existing.outputs.runtime != 'true'
+        if: steps.existing.outputs.build != 'true' || steps.existing.outputs.cache != 'true' || steps.existing.outputs.environment_cache != 'true' || steps.existing.outputs.runtime != 'true' || steps.existing.outputs.environment_image != 'true'
         id: dependency-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -82,7 +83,7 @@ jobs:
           key: strata-e2e-dependencies-local-v1-${{ steps.identity.outputs.image_key }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.dockerignore') }}-${{ steps.identity.outputs.uid }}-${{ steps.identity.outputs.gid }}
 
       - name: Publish the build environment and its complete dependency cache
-        if: steps.existing.outputs.build != 'true' || steps.existing.outputs.cache != 'true' || steps.existing.outputs.environment_cache != 'true'
+        if: steps.existing.outputs.build != 'true' || steps.existing.outputs.cache != 'true' || steps.existing.outputs.environment_cache != 'true' || steps.existing.outputs.environment_image != 'true'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -97,7 +98,9 @@ jobs:
             org.opencontainers.image.revision=${{ github.sha }}
             org.strata.e2e.inputs=${{ steps.identity.outputs.image_key }}
             org.strata.e2e.dependencies=${{ steps.identity.outputs.dependency_key }}
-          tags: ${{ steps.identity.outputs.build }}
+          tags: |
+            ${{ steps.identity.outputs.build }}
+            ${{ steps.existing.outputs.environment_image != 'true' && steps.identity.outputs.environment_image || '' }}
           push: true
           cache-from: |
             ${{ steps.dependency-cache.outputs.cache-hit == 'true' && 'type=local,src=target/e2e-dependency-cache' || 'type=gha,scope=strata-e2e-dependencies-v1' }}
@@ -150,8 +153,9 @@ jobs:
             echo '::error title=Published E2E bases failed anonymous verification::Make both GHCR packages public after their first publication, then rerun this publisher. If they are already public, inspect the logged registry/provenance error. Do not give fork PRs package-write credentials.'
             exit 1
           fi
+          python3 scripts/e2e_images.py environment >> "$RUNNER_TEMP/e2e-public-bases.txt"
           while IFS= read -r reference; do
             case "$reference" in
-              dependencies_image=*|runtime_image=*) printf '\nVerified: `%s`\n' "$reference" >> "$GITHUB_STEP_SUMMARY" ;;
+              dependencies_image=*|runtime_image=*|environment_image=*) printf '\nVerified: `%s`\n' "$reference" >> "$GITHUB_STEP_SUMMARY" ;;
             esac
           done < "$RUNNER_TEMP/e2e-public-bases.txt"

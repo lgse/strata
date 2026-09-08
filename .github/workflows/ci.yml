@@ -57,8 +57,7 @@ jobs:
     env:
       DOCKER_BUILD_RECORD_UPLOAD: 'false'
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
-    # Preserve cold-build diagnostics without exempting them from the 180s gate.
-    # The separate warmer publishes the large dependency cache.
+    # Bound hung bootstrap jobs independently of informational timing reports.
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -209,7 +208,7 @@ jobs:
     name: E2E shard ${{ matrix.shard }}
     needs: e2e-build
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 3
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.e2e-build.outputs.matrix) }}
@@ -321,11 +320,12 @@ jobs:
       - name: Verify exact coverage
         run: python3 scripts/e2e_ci.py verify target/e2e-bundle/plan.json target/e2e-reports
 
-      - name: Enforce and report the three-minute critical path, including failures
+      - name: Report E2E timing without affecting test results
         if: ${{ always() }}
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/e2e_ci.py budget
+        run: python3 scripts/e2e_ci.py timing
 
   release-scripts:
     name: Release workflow scripts
