@@ -10,7 +10,7 @@ use crate::ui::browser::clipboard::{copy_locations, register_cut_view};
 use crate::ui::browser::collection::cancel_source;
 use crate::ui::browser::columns::{COLUMN_WIDTH, ColumnView};
 use crate::ui::browser::desktop::selected_terminal_location;
-use crate::ui::browser::inline_edit::{ActiveRename, PendingEntryRename};
+use crate::ui::browser::inline_edit::{ActiveRename, CreatedEntryRename, PendingEntryRename};
 use crate::ui::browser::location::{MountCredentials, is_breadcrumb_button_target};
 use crate::ui::browser::paths::{can_pin_entry, is_trash_location};
 use crate::ui::browser::peek::{PeekAnchor, PeekView};
@@ -52,7 +52,8 @@ pub(crate) use crate::ui::browser::collection::{
     activate_recursive_search_result, bind_filter_query, debounce_filter_entry,
     detach_collection_view, focus_collection_item_when_allocated, focus_filter_entry,
     notify_filter_query, prepare_collection_inline_edit, recursive_search_activation_key,
-    scroll_collection_when_allocated, search_result_entry, search_result_navigation_position,
+    scroll_collection_into_view, scroll_collection_when_allocated, search_result_entry,
+    search_result_navigation_position,
 };
 pub(super) use crate::ui::browser::columns::max_child_natural_width;
 pub(super) use crate::ui::browser::context_menu::{
@@ -154,6 +155,8 @@ pub(super) struct ViewState {
     columns_click_activation: Cell<ClickActivation>,
     active_rename: RefCell<Option<ActiveRename>>,
     pending_new_entry: RefCell<Option<Rc<PendingEntryRename>>>,
+    pending_created_rename: RefCell<Option<Rc<CreatedEntryRename>>>,
+    suppress_created_focus_scroll: Cell<bool>,
     file_progress_view: RefCell<Option<FileProgressView>>,
     pending_file_progress: RefCell<Option<glib::SourceId>>,
     file_operation_progress: Cell<(usize, usize)>,
@@ -339,6 +342,8 @@ impl BrowserView {
             columns_click_activation: Cell::new(ClickActivation::default()),
             active_rename: RefCell::new(None),
             pending_new_entry: RefCell::new(None),
+            pending_created_rename: RefCell::new(None),
+            suppress_created_focus_scroll: Cell::new(false),
             file_progress_view: RefCell::new(None),
             pending_file_progress: RefCell::new(None),
             file_operation_progress: Cell::new((0, 0)),
@@ -566,6 +571,8 @@ impl BrowserView {
         if mode == previous {
             return;
         }
+        self.state.cancel_new_entry();
+        self.state.cancel_rename();
         self.state.mode_views.borrow().show_mode(mode);
         self.state.mode_views.borrow_mut().prepare_mode(mode);
         if mode == BrowserMode::Columns {
@@ -1142,6 +1149,7 @@ impl BrowserView {
                 focused.as_ref().is_some_and(|focused| {
                     focused == column.presentation.stack.upcast_ref::<gtk::Widget>()
                         || focused == column.list.upcast_ref::<gtk::Widget>()
+                        || column.list.is_ancestor(focused)
                         || focused.is_ancestor(&column.list)
                 })
             })
@@ -1271,6 +1279,7 @@ impl ViewState {
                 return glib::ControlFlow::Break;
             };
             if state.pending_new_entry.borrow().is_some()
+                || state.pending_created_rename.borrow().is_some()
                 || state.active_rename.borrow().is_some()
                 || state.mode_views.borrow().rename_is_active()
             {

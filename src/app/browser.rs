@@ -137,7 +137,9 @@ pub enum BrowserEvent {
     OpenRequested {
         location: Location,
     },
-    RenameCompleted,
+    RenameCompleted {
+        location: Option<Location>,
+    },
     EntryCreated {
         location: Location,
     },
@@ -647,6 +649,14 @@ impl Browser {
         self.state.borrow().location_at(depth)
     }
 
+    fn location_is_open(&self, location: &Location) -> bool {
+        self.state
+            .borrow()
+            .columns
+            .iter()
+            .any(|column| &column.location == location)
+    }
+
     pub fn can_trash_at(&self, depth: usize) -> Option<bool> {
         self.state.borrow().can_trash_at(depth)
     }
@@ -1043,10 +1053,11 @@ impl Browser {
             })
         };
         self.notify_preferences_observers();
+        // The sort task is complete; staged publication still gates the settled state.
+        self.pending_sort.set(None);
         if let Some(plan) = result {
             self.publish_staged(depth, plan);
         } else {
-            self.pending_sort.set(None);
             self.emit(BrowserEvent::SortingFinished { depth });
         }
     }
@@ -1113,6 +1124,23 @@ impl Browser {
         self.state.borrow().column_preferences(depth)
     }
 
+    pub(crate) fn column_is_settled(&self, depth: usize) -> bool {
+        let Some(snapshot) = self.column_snapshot(depth) else {
+            return false;
+        };
+        !snapshot.loading
+            && snapshot.error.is_none()
+            && !self.staging.borrow().contains_key(&depth)
+            && !self.sorting.borrow().contains_key(&depth)
+            && !self.staged_publishes.borrow().contains_key(&depth)
+            && !self.coalesce_pending.borrow().contains_key(&depth)
+            && !self.remote_terminals.borrow().contains_key(&depth)
+            && !self
+                .pending_sort
+                .get()
+                .is_some_and(|(_, pending_depth)| pending_depth == depth)
+    }
+
     pub fn column_snapshot(&self, depth: usize) -> Option<BrowserColumnSnapshot> {
         let state = self.state.borrow();
         let column = state.columns.get(depth)?;
@@ -1131,6 +1159,10 @@ impl Browser {
 
     pub fn focused_item(&self) -> Option<(usize, usize, FileEntry)> {
         self.state.borrow().focused_entry()
+    }
+
+    fn retarget_renamed_selection(&self, from: &Location, to: &Location) {
+        self.state.borrow_mut().retarget_selection(from, to);
     }
 
     pub fn rename_item(&self) -> Option<(usize, usize, FileEntry)> {
@@ -1237,7 +1269,17 @@ impl Browser {
         };
         let request_id = self.begin_operation();
         let refresh_locations = entry.location.parent().into_iter().collect();
-        let emit = self.operation_callback(request_id, true, refresh_locations);
+        let rename_target = entry.location.parent().and_then(|parent| {
+            parent
+                .child(std::ffi::OsStr::new(&new_name))
+                .map(|target| (entry.location.clone(), target))
+        });
+        let emit = self.operation_callback_with_rename_target(
+            request_id,
+            true,
+            rename_target,
+            refresh_locations,
+        );
         let load = provider.rename(
             RenameRequest {
                 id: request_id,
@@ -1643,6 +1685,16 @@ impl Browser {
         rename: bool,
         refresh_locations: HashSet<Location>,
     ) -> Rc<dyn Fn(OperationEvent)> {
+        self.operation_callback_with_rename_target(request_id, rename, None, refresh_locations)
+    }
+
+    fn operation_callback_with_rename_target(
+        self: &Rc<Self>,
+        request_id: OperationRequestId,
+        rename: bool,
+        rename_target: Option<(Location, Location)>,
+        refresh_locations: HashSet<Location>,
+    ) -> Rc<dyn Fn(OperationEvent)> {
         let navigation_generation = self.validation_generation.get();
         let origin = self.active_location();
         let weak = Rc::downgrade(self);
@@ -1919,11 +1971,25 @@ impl Browser {
                     });
                 }
                 OperationEvent::Renamed { .. } => {
-                    browser.emit(BrowserEvent::RenameCompleted);
-                    for location in &refresh_locations {
-                        if location.native_path().is_none() {
-                            browser.refresh_columns_at(location);
+                    if let Some((source, target)) = rename_target.as_ref() {
+                        let still_active = browser.validation_generation.get()
+                            == navigation_generation
+                            && target
+                                .parent()
+                                .is_some_and(|parent| browser.location_is_open(&parent));
+                        if still_active {
+                            browser.retarget_renamed_selection(source, target);
                         }
+                        for location in &refresh_locations {
+                            if location.native_path().is_none() {
+                                browser.refresh_columns_at(location);
+                            }
+                        }
+                        browser.emit(BrowserEvent::RenameCompleted {
+                            location: still_active.then(|| target.clone()),
+                        });
+                    } else {
+                        browser.emit(BrowserEvent::RenameCompleted { location: None });
                     }
                 }
                 OperationEvent::Compressed { archive_name, .. } => {

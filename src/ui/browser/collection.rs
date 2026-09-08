@@ -40,6 +40,10 @@ pub(crate) fn scroll_collection_when_allocated(view: &gtk::Widget, position: u32
     scroll_collection_when_allocated_with(view, position, gtk::ListScrollFlags::FOCUS);
 }
 
+pub(crate) fn scroll_collection_into_view(view: &gtk::Widget, position: u32) {
+    scroll_collection_when_allocated_with(view, position, gtk::ListScrollFlags::NONE);
+}
+
 /// SELECT would collapse the multi-selection already applied by the caller.
 pub(crate) fn focus_collection_item_when_allocated(view: &gtk::Widget, position: u32) {
     scroll_collection_when_allocated_with(view, position, gtk::ListScrollFlags::FOCUS);

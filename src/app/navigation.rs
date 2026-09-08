@@ -491,10 +491,12 @@ impl NavigationState {
 
     pub fn reload_column(&mut self, depth: usize, request_id: RequestId) -> Option<Location> {
         let column = self.columns.get_mut(depth)?;
-        column.selection_target = column
-            .selected
-            .and_then(|position| column.entries.get(position))
-            .map(|entry| entry.location.clone());
+        if column.selection_target.is_none() {
+            column.selection_target = column
+                .selected
+                .and_then(|position| column.entries.get(position))
+                .map(|entry| entry.location.clone());
+        }
         column.entries.clear();
         column.selected = None;
         column.load_state = LoadState::Loading;
@@ -503,6 +505,30 @@ impl NavigationState {
         column.can_delete = None;
         column.request_id = request_id;
         Some(column.location.clone())
+    }
+
+    /// Keeps a selected item selected while a successful rename changes its sorted location.
+    /// The target is also retained for a reload that starts before its monitor event arrives.
+    pub fn retarget_selection(&mut self, from: &Location, to: &Location) {
+        for column in &mut self.columns {
+            let focused = column
+                .selected
+                .and_then(|position| column.entries.get(position))
+                .is_some_and(|entry| &entry.location == from);
+            let selected = column.selected_locations.remove(from);
+            if !focused && !selected {
+                continue;
+            }
+            if selected {
+                column.selected_locations.insert(to.clone());
+            }
+            if focused || selected {
+                column.selection_target = Some(to.clone());
+            }
+            if column.selection_anchor.as_ref() == Some(from) {
+                column.selection_anchor = Some(to.clone());
+            }
+        }
     }
 
     pub fn set_show_hidden(&mut self, show_hidden: bool) {

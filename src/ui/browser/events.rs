@@ -32,11 +32,15 @@ impl ViewState {
         match event {
             BrowserEvent::Reset => {
                 self.pending_new_entry.take();
+                self.clear_created_entry_rename();
+                self.suppress_created_focus_scroll.set(false);
                 self.pending_location_credentials.take();
                 self.truncate(0);
             }
             BrowserEvent::ColumnsTruncated { len } => {
                 self.pending_new_entry.take();
+                self.clear_created_entry_rename();
+                self.suppress_created_focus_scroll.set(false);
                 self.truncate(*len);
                 self.sync_active_location();
             }
@@ -347,9 +351,11 @@ impl ViewState {
                     set_column_selections(column, &filtered_positions);
                     // A background batch delivered for a column that already has a
                     // selection re-fires this event; don't let it steal focus from
-                    // an in-progress rename (visible for slow network directories
-                    // that stream many batches). A pending creation still needs to scroll.
-                    if self.active_rename.borrow().is_none() {
+                    // an in-progress or just-submitted rename (visible for slow
+                    // network directories that stream many batches).
+                    if self.active_rename.borrow().is_none()
+                        && self.pending_created_rename.borrow().is_none()
+                    {
                         if (*take_focus || self.focused_column_depth() == Some(*depth))
                             && let Some(focused) = column.map.view_position(*focused)
                         {
@@ -362,6 +368,11 @@ impl ViewState {
                 }
             }
             BrowserEvent::FocusChanged { depth, position } => {
+                // Keep this suppression alive until the created rename settles. A native
+                // monitor can emit an interim focus event before its refreshed snapshot;
+                // consuming the one-shot flag here would let that event scroll the old row.
+                let suppress_created_scroll = self.pending_created_rename.borrow().is_some()
+                    || self.suppress_created_focus_scroll.replace(false);
                 if let Some(column) = self.columns.borrow().get(*depth) {
                     let editing = self.active_rename.borrow().is_some();
                     if let Some(filtered_position) =
@@ -374,7 +385,7 @@ impl ViewState {
                             .filter_map(|position| column.map.view_position(position))
                             .collect();
                         set_column_selections(column, &positions);
-                        if !editing {
+                        if !editing && !suppress_created_scroll {
                             scroll_column_to(column, filtered_position);
                         }
                     }
@@ -395,8 +406,27 @@ impl ViewState {
             BrowserEvent::EntryCreated { location } => {
                 self.rename_created_entry(location);
             }
-            BrowserEvent::RenameCompleted => {}
+            BrowserEvent::RenameCompleted { location } => {
+                if let Some(location) = location {
+                    let created = self.preserve_created_entry_scroll(location);
+                    if created {
+                        self.suppress_created_entry_scroll();
+                        // Native monitors do not consistently report a display-name
+                        // rename. A creation-only refresh also gives the final sort
+                        // a single authoritative snapshot to reveal.
+                        if location.native_path().is_some()
+                            && let Some(parent) = location.parent()
+                        {
+                            self.browser.refresh_columns_at(&parent);
+                        }
+                        self.finish_created_entry_rename(location);
+                    }
+                } else {
+                    self.clear_created_entry_rename();
+                }
+            }
             BrowserEvent::RenameFailed { message } => {
+                self.clear_created_entry_rename();
                 show_error_dialog(&self.overlay, "Unable to rename item", message);
             }
             BrowserEvent::TransferStarted { total, moving } => {
@@ -461,6 +491,7 @@ impl ViewState {
             BrowserEvent::RestorationFinished => self.dismiss_file_operation_progress(),
             BrowserEvent::OperationFailed { message } => {
                 self.pending_new_entry.take();
+                self.clear_created_entry_rename();
                 self.dismiss_file_operation_progress();
                 let retry = self.pending_extract_retry.take();
                 if let Some((entry, dest)) = retry {
@@ -504,6 +535,8 @@ impl ViewState {
                 not_attempted,
                 affected_locations,
             } => {
+                self.pending_new_entry.take();
+                self.clear_created_entry_rename();
                 let message = format!(
                     "{} completed, {} failed, and {} not attempted.\n\nCompleted changes were not reverted.",
                     item_count_label(*completed),

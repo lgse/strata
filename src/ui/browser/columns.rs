@@ -149,10 +149,22 @@ pub(super) fn touch_source_model(column: &ColumnView) {
 }
 
 pub(super) fn scroll_column_to(column: &ColumnView, position: u32) {
+    scroll_column_to_with(column, position, false);
+}
+
+pub(super) fn scroll_column_into_view(column: &ColumnView, position: u32) {
+    scroll_column_to_with(column, position, true);
+}
+
+fn scroll_column_to_with(column: &ColumnView, position: u32, reveal: bool) {
     if position >= column.selection.n_items() {
         return;
     }
-    scroll_collection_when_allocated(column.list.upcast_ref(), position);
+    if reveal {
+        super::collection::scroll_collection_into_view(column.list.upcast_ref(), position);
+    } else {
+        scroll_collection_when_allocated(column.list.upcast_ref(), position);
+    }
 }
 
 pub(super) fn set_column_selection(column: &ColumnView, position: u32) {

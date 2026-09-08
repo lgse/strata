@@ -77,6 +77,41 @@ fn focusing_a_column_preserves_selection_and_descendants() {
 }
 
 #[test]
+fn renamed_selection_survives_a_reload_at_its_new_sorted_location() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/fixture"), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/fixture/old", "old"),
+            named_entry("/fixture/other", "other"),
+        ],
+    );
+    assert!(state.select(0, 0));
+
+    state.retarget_selection(&location("/fixture/old"), &location("/fixture/new"));
+    assert!(state.selected_positions(0).is_empty());
+    assert_eq!(
+        state.focused_entry().map(|(_, _, entry)| entry.location),
+        Some(location("/fixture/old"))
+    );
+
+    state.reload_column(0, RequestId(2));
+    state.install_snapshot(
+        RequestId(2),
+        vec![
+            named_entry("/fixture/new", "new"),
+            named_entry("/fixture/other", "other"),
+        ],
+    );
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(
+        state.focused_entry().map(|(_, _, entry)| entry.location),
+        Some(location("/fixture/new"))
+    );
+}
+
+#[test]
 fn empty_selection_sync_preserves_the_keyboard_cursor() {
     let mut state = NavigationState::default();
     state.navigate(location("/fixture"), RequestId(1));

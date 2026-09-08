@@ -529,6 +529,13 @@ impl ModeViews {
             .map(|rename| rename.field.clone())
     }
 
+    pub(in crate::ui) fn active_rename_entry(&self) -> Option<FileEntry> {
+        self.active_rename
+            .borrow()
+            .as_ref()
+            .map(|rename| rename.entry.clone())
+    }
+
     pub(in crate::ui) fn submit_rename(&self, field: &gtk::Entry) {
         submit_mode_rename(&self.active_rename, &Rc::downgrade(&self.browser), field);
     }
@@ -604,8 +611,7 @@ impl ModeViews {
         label.set_visible(false);
         install_mode_rename_handlers(
             &field,
-            self.active_rename.clone(),
-            Rc::downgrade(&self.browser),
+            self.context_state.borrow().clone().unwrap_or_default(),
         );
         field.set_sensitive(true);
         field.remove_css_class("error");
@@ -918,8 +924,53 @@ impl ModeViews {
             .collect()
     }
 
+    pub(in crate::ui) fn bound_item_is_visible(
+        &self,
+        depth: usize,
+        source_position: usize,
+    ) -> Option<bool> {
+        let pane = self
+            .visible_panes()
+            .into_iter()
+            .find(|pane| pane.depth == depth)?;
+        let (widget, viewport) = pane.item_sections().into_iter().find_map(|section| {
+            let view_position =
+                view_position_for_source(&pane.model, Some(&section.view_model), source_position)?;
+            section.bound_items.borrow().iter().find_map(|bound| {
+                let item = bound.item.upgrade()?;
+                (item.position() == view_position).then(|| {
+                    bound
+                        .widget
+                        .upgrade()
+                        .map(|widget| (widget, section.view.clone()))
+                })?
+            })
+        })?;
+        let bounds = widget.compute_bounds(&viewport)?;
+        Some(
+            widget.is_mapped()
+                && bounds.y() >= 0.0
+                && bounds.y() + bounds.height() <= viewport.height() as f32,
+        )
+    }
+
     pub fn suppress_focus_scroll(&self) {
         self.suppress_focus_scroll.set(true);
+    }
+
+    pub fn clear_focus_scroll_suppression(&self) {
+        self.suppress_focus_scroll.set(false);
+    }
+
+    pub(in crate::ui) fn reveal_item(&self, depth: usize, source_position: usize) {
+        let Some(pane) = self
+            .visible_panes()
+            .into_iter()
+            .find(|pane| pane.depth == depth)
+        else {
+            return;
+        };
+        reveal_pane_to_source(pane, source_position);
     }
 
     pub fn focus_visible_pane(&self, depth: usize) {
@@ -1200,11 +1251,7 @@ fn submit_mode_rename(
     }
 }
 
-fn install_mode_rename_handlers(
-    field: &gtk::Entry,
-    active: Rc<RefCell<Option<ActiveModeRename>>>,
-    browser: Weak<Browser>,
-) {
+fn install_mode_rename_handlers(field: &gtk::Entry, state: Weak<super::browser::ViewState>) {
     if field.has_css_class("mode-rename-wired") {
         return;
     }
@@ -1212,20 +1259,18 @@ fn install_mode_rename_handlers(
     field.connect_changed(|field| {
         super::browser::update_basename_validation(field);
     });
-    let active = Rc::downgrade(&active);
-    let submit_active = active.clone();
-    let submit_browser = browser.clone();
+    let submit_state = state.clone();
     field.connect_activate(move |field| {
-        if let Some(active) = submit_active.upgrade() {
-            submit_mode_rename(&active, &submit_browser, field);
+        if let Some(state) = submit_state.upgrade() {
+            state.submit_rename(field);
         }
     });
     let focus = gtk::EventControllerFocus::new();
     focus.connect_leave(move |controller| {
-        if let Some(active) = active.upgrade()
+        if let Some(state) = state.upgrade()
             && let Some(field) = controller.widget().and_downcast::<gtk::Entry>()
         {
-            submit_mode_rename(&active, &browser, &field);
+            state.submit_rename(&field);
         }
     });
     field.add_controller(focus);
@@ -3241,6 +3286,20 @@ fn scroll_pane_to_source(pane: &Pane, source_position: usize) {
 
 fn scroll_collection_to(view: &gtk::Widget, position: u32) {
     super::browser::scroll_collection_when_allocated(view, position);
+}
+
+fn reveal_pane_to_source(pane: &Pane, source_position: usize) {
+    for section in pane.item_sections() {
+        let Some(position) =
+            view_position_for_source(&pane.model, Some(&section.view_model), source_position)
+        else {
+            continue;
+        };
+        if position < section.view_model.n_items() {
+            super::browser::scroll_collection_into_view(&section.view, position);
+            return;
+        }
+    }
 }
 
 fn focus_collection_item(view: &gtk::Widget, position: u32) {

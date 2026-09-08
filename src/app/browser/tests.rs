@@ -1523,6 +1523,81 @@ fn failed_and_partial_undo_operations_can_be_retried() {
 }
 
 #[test]
+fn column_settled_waits_for_coalesced_batches_and_remote_terminals() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser
+        .state
+        .borrow_mut()
+        .navigate(Location::local("/fixture"), RequestId(1));
+    browser
+        .state
+        .borrow_mut()
+        .apply_batch(RequestId(1), vec![fixture_entry("/fixture/entry")]);
+    browser
+        .state
+        .borrow_mut()
+        .finish(RequestId(1), false, None, None);
+    assert!(browser.column_is_settled(0));
+
+    browser
+        .coalesce_pending
+        .borrow_mut()
+        .insert(0, (RequestId(1), Vec::new()));
+    assert!(!browser.column_is_settled(0));
+    browser.coalesce_pending.borrow_mut().remove(&0);
+
+    browser.remote_terminals.borrow_mut().insert(
+        0,
+        RemoteTerminal::Finished {
+            request_id: RequestId(1),
+            completion: LoadCompletion {
+                truncated: false,
+                can_trash: None,
+                can_delete: None,
+            },
+        },
+    );
+    assert!(!browser.column_is_settled(0));
+}
+
+#[test]
+fn successful_rename_reports_its_final_location_and_retargets_selection() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser
+        .state
+        .borrow_mut()
+        .navigate(Location::local("/fixture"), RequestId(1));
+    browser.state.borrow_mut().apply_batch(
+        RequestId(1),
+        vec![FileEntry {
+            location: Location::local("/fixture/old-name.txt"),
+            native_name: OsString::from("old-name.txt"),
+            thumbnail_path: None,
+            display_name: "old-name.txt".into(),
+            kind: EntryKind::File,
+            size: MetadataValue::Known(1),
+            modified_unix_seconds: MetadataValue::Unknown,
+            is_hidden: false,
+            mode: MetadataValue::Unknown,
+        }],
+    );
+    let entry = browser.state.borrow().columns[0].entries[0].clone();
+    browser.state.borrow_mut().select(0, 0);
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    browser.rename(entry, "new-name.txt".to_owned());
+
+    let target = Location::local("/fixture/new-name.txt");
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::RenameCompleted { location: Some(location) } if location == &target
+    )));
+}
+
+#[test]
 fn creating_a_directory_on_a_remote_location_refreshes_the_open_column() {
     let enumerate_calls = Rc::new(Cell::new(0));
     let source = CountingFileSource {
