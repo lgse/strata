@@ -31,10 +31,12 @@ impl ViewState {
     pub(super) fn handle(self: &Rc<Self>, event: &BrowserEvent) {
         match event {
             BrowserEvent::Reset => {
+                self.pending_new_entry.take();
                 self.pending_location_credentials.take();
                 self.truncate(0);
             }
             BrowserEvent::ColumnsTruncated { len } => {
+                self.pending_new_entry.take();
                 self.truncate(*len);
                 self.sync_active_location();
             }
@@ -345,11 +347,9 @@ impl ViewState {
                     set_column_selections(column, &filtered_positions);
                     // A background batch delivered for a column that already has a
                     // selection re-fires this event; don't let it steal focus from
-                    // an in-progress New Folder/File prompt or rename (visible for
-                    // slow network directories that stream many batches).
-                    if self.active_rename.borrow().is_none()
-                        && self.active_new_entry.borrow().is_none()
-                    {
+                    // an in-progress rename (visible for slow network directories
+                    // that stream many batches). A pending creation still needs to scroll.
+                    if self.active_rename.borrow().is_none() {
                         if (*take_focus || self.focused_column_depth() == Some(*depth))
                             && let Some(focused) = column.map.view_position(*focused)
                         {
@@ -363,8 +363,7 @@ impl ViewState {
             }
             BrowserEvent::FocusChanged { depth, position } => {
                 if let Some(column) = self.columns.borrow().get(*depth) {
-                    let editing = self.active_rename.borrow().is_some()
-                        || self.active_new_entry.borrow().is_some();
+                    let editing = self.active_rename.borrow().is_some();
                     if let Some(filtered_position) =
                         position.and_then(|position| column.map.view_position(position))
                     {
@@ -393,17 +392,12 @@ impl ViewState {
                     open_location(location, &self.overlay);
                 }
             }
-            BrowserEvent::RenameCompleted => {
-                self.cancel_rename();
-                self.browser.focus_active();
+            BrowserEvent::EntryCreated { location } => {
+                self.rename_created_entry(location);
             }
+            BrowserEvent::RenameCompleted => {}
             BrowserEvent::RenameFailed { message } => {
-                if let Some(rename) = self.active_rename.borrow().as_ref() {
-                    rename.field.set_sensitive(true);
-                    rename.field.add_css_class("error");
-                    rename.field.set_tooltip_text(Some(message));
-                    rename.field.grab_focus();
-                }
+                show_error_dialog(&self.overlay, "Unable to rename item", message);
             }
             BrowserEvent::TransferStarted { total, moving } => {
                 let browser = self.browser.clone();
@@ -466,6 +460,7 @@ impl ViewState {
             }
             BrowserEvent::RestorationFinished => self.dismiss_file_operation_progress(),
             BrowserEvent::OperationFailed { message } => {
+                self.pending_new_entry.take();
                 self.dismiss_file_operation_progress();
                 let retry = self.pending_extract_retry.take();
                 if let Some((entry, dest)) = retry {

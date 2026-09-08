@@ -16,19 +16,12 @@ pub(super) struct ActiveRename {
     pub(super) size: gtk::Label,
 }
 
-pub(super) struct ActiveNewEntry {
-    pub(super) location: Location,
-    pub(super) is_directory: bool,
-    pub(super) row: gtk::Box,
-    pub(super) field: gtk::Entry,
+pub(super) struct PendingEntryRename {
+    depth: usize,
+    parent: Location,
 }
 
-/// Whether a name currently typed into a field should be visually flagged as
-/// an error. An empty name is left unstyled: it's the normal starting state
-/// (opening, cancelling, or succeeding a prompt all clear the field) rather
-/// than a mistake the user made, even though it still can't be submitted.
-/// Kept separate from `update_basename_validation` so it can be unit tested
-/// without constructing a real GTK widget.
+// Empty fields are an ordinary editing state, although they cannot be submitted.
 fn basename_field_error(name: &str) -> Option<&'static str> {
     if name.is_empty() {
         None
@@ -37,8 +30,6 @@ fn basename_field_error(name: &str) -> Option<&'static str> {
     }
 }
 
-/// Validates a name field live as it changes, including the programmatic
-/// clears that happen when a prompt opens, cancels, or succeeds.
 pub(in crate::ui) fn update_basename_validation(field: &gtk::Entry) -> bool {
     let text = field.text();
     match basename_field_error(text.as_str()) {
@@ -63,7 +54,113 @@ pub(in crate::ui) fn rename_stem_end(name: &str) -> i32 {
     name[..end].chars().count().min(i32::MAX as usize) as i32
 }
 
+impl super::BrowserView {
+    pub(in crate::ui) fn install_inline_edit_dismissal(&self, root: &impl IsA<gtk::Widget>) {
+        let click = gtk::GestureClick::new();
+        click.set_button(0);
+        click.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak = Rc::downgrade(&self.state);
+        click.connect_pressed(move |gesture, _, x, y| {
+            let Some(state) = weak.upgrade() else { return };
+            state.pending_new_entry.take();
+            let target = gesture
+                .widget()
+                .and_then(|root| root.pick(x, y, gtk::PickFlags::DEFAULT));
+            let field = state
+                .active_rename
+                .borrow()
+                .as_ref()
+                .map(|active| active.field.clone())
+                .or_else(|| state.mode_views.borrow().active_rename_field());
+            if let Some(field) = field
+                && !target
+                    .as_ref()
+                    .is_some_and(|target| target == &field || target.is_ancestor(&field))
+            {
+                state.submit_rename(&field);
+            }
+        });
+        root.add_controller(click);
+    }
+}
+
+pub(in crate::ui) fn queue_rename(
+    browser: &Rc<crate::app::Browser>,
+    entry: FileEntry,
+    name: String,
+) {
+    if name == entry.display_name || validate_basename(&name).is_err() {
+        return;
+    }
+    // A rename can synchronously refresh models; dispatch after GTK's focus walk.
+    let browser = Rc::downgrade(browser);
+    gtk::glib::idle_add_local_once(move || {
+        if let Some(browser) = browser.upgrade() {
+            browser.rename(entry, name);
+        }
+    });
+}
+
 impl ViewState {
+    pub(super) fn rename_created_entry(self: &Rc<Self>, location: &Location) {
+        let Some(pending) = self
+            .pending_new_entry
+            .borrow()
+            .clone()
+            .filter(|pending| Some(pending.parent.clone()) == location.parent())
+        else {
+            return;
+        };
+        let location = location.clone();
+        let weak = Rc::downgrade(self);
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let selected = std::cell::Cell::new(false);
+        // Wait for the refreshed listing and the virtualized row to be allocated.
+        self.overlay.add_tick_callback(move |_, _| {
+            let Some(state) = weak.upgrade() else {
+                return gtk::glib::ControlFlow::Break;
+            };
+            if !state
+                .pending_new_entry
+                .borrow()
+                .as_ref()
+                .is_some_and(|current| Rc::ptr_eq(current, &pending))
+            {
+                return gtk::glib::ControlFlow::Break;
+            }
+            if std::time::Instant::now() >= deadline
+                || state.browser.location_at(pending.depth).as_ref() != Some(&pending.parent)
+            {
+                state.pending_new_entry.take();
+                return gtk::glib::ControlFlow::Break;
+            }
+            let Some(snapshot) = state
+                .browser
+                .column_snapshot(pending.depth)
+                .filter(|snapshot| !snapshot.loading)
+            else {
+                return gtk::glib::ControlFlow::Continue;
+            };
+            let position = state
+                .browser
+                .with_entries(pending.depth, 0..snapshot.count, |entries| {
+                    entries.iter().position(|entry| entry.location == location)
+                })
+                .flatten();
+            if let Some(position) = position {
+                if !selected.replace(true) {
+                    state.browser.select(pending.depth, position);
+                } else if let Some(entry) = state.browser.entry_at(pending.depth, position)
+                    && state.begin_rename_item(pending.depth, position, entry)
+                {
+                    state.pending_new_entry.take();
+                    return gtk::glib::ControlFlow::Break;
+                }
+            }
+            gtk::glib::ControlFlow::Continue
+        });
+    }
+
     pub(super) fn begin_new_entry(
         self: &Rc<Self>,
         depth: usize,
@@ -73,73 +170,26 @@ impl ViewState {
         if is_trash_location(&location) {
             return;
         }
-        if self.mode_views.borrow().mode() != BrowserMode::Columns {
-            self.cancel_new_entry();
-            self.mode_views
-                .borrow()
-                .begin_new_entry(depth, is_directory);
-            return;
-        }
         self.cancel_new_entry();
         self.cancel_rename();
-        let columns = self.columns.borrow();
-        let Some(column) = columns.get(depth) else {
-            return;
-        };
-        let icon_name = if is_directory {
-            crate::assets::icons::FOLDER
-        } else {
-            crate::assets::icons::DOCUMENTS
-        };
-        crate::assets::set_primary_icon(&column.new_entry_icon, icon_name);
-        column.new_entry_entry.set_text("");
-        column.new_entry_entry.remove_css_class("error");
-        column.new_entry_entry.set_tooltip_text(None);
-        column.new_entry_row.set_visible(true);
-        self.active_new_entry.replace(Some(ActiveNewEntry {
-            location,
-            is_directory,
-            row: column.new_entry_row.clone(),
-            field: column.new_entry_entry.clone(),
-        }));
-        column.new_entry_entry.grab_focus();
-    }
-
-    pub(super) fn submit_new_entry(self: &Rc<Self>, field: &gtk::Entry) {
-        if !self
-            .active_new_entry
-            .borrow()
-            .as_ref()
-            .is_some_and(|active| active.field == *field)
-        {
-            return;
+        if let Some(column) = self.columns.borrow().get(depth) {
+            column.filter_entry.set_text("");
         }
-        let name = field.text().to_string();
-        if !update_basename_validation(field) {
-            field.grab_focus();
-            return;
-        }
-        let Some(active) = self.active_new_entry.take() else {
-            return;
-        };
-        active.row.set_visible(false);
-        field.set_text("");
-        if active.is_directory {
-            self.browser.create_directory(active.location, name);
+        self.mode_views.borrow().clear_filter(depth);
+        self.pending_new_entry
+            .replace(Some(Rc::new(PendingEntryRename {
+                depth,
+                parent: location.clone(),
+            })));
+        if is_directory {
+            self.browser.create_new_folder(location);
         } else {
-            self.browser.create_file(active.location, name);
+            self.browser.create_new_file(location);
         }
     }
 
     pub(super) fn cancel_new_entry(&self) -> bool {
-        let Some(active) = self.active_new_entry.take() else {
-            return false;
-        };
-        active.field.set_text("");
-        active.field.remove_css_class("error");
-        active.field.set_tooltip_text(None);
-        active.row.set_visible(false);
-        true
+        self.pending_new_entry.take().is_some()
     }
 
     pub(super) fn begin_rename(self: &Rc<Self>) -> bool {
@@ -148,6 +198,15 @@ impl ViewState {
         let Some((depth, source_position, entry)) = self.browser.rename_item() else {
             return false;
         };
+        self.begin_rename_item(depth, source_position, entry)
+    }
+
+    fn begin_rename_item(
+        self: &Rc<Self>,
+        depth: usize,
+        source_position: usize,
+        entry: FileEntry,
+    ) -> bool {
         if is_trash_location(&entry.location) {
             return false;
         }
@@ -169,9 +228,11 @@ impl ViewState {
             let item = bound.item.upgrade()?;
             (item.position() == filtered_position).then(|| bound.row.upgrade())?
         });
-        let Some(row) = row else {
+        let Some(row) = row else { return false };
+        if !row.is_mapped() || row.width() <= 0 || column.presentation.stack.is_transition_running()
+        {
             return false;
-        };
+        }
         let Some(icon) = row.first_child() else {
             return false;
         };
@@ -197,6 +258,7 @@ impl ViewState {
         let Some(size) = middle.last_child().and_downcast::<gtk::Label>() else {
             return false;
         };
+        super::prepare_collection_inline_edit(column.list.upcast_ref(), filtered_position);
         field.remove_css_class("error");
         field.set_tooltip_text(None);
         field.set_sensitive(true);
@@ -206,7 +268,14 @@ impl ViewState {
         size.set_visible(false);
         field.set_visible(true);
         field.grab_focus();
-        field.select_region(0, rename_stem_end(&entry.display_name));
+        field.select_region(
+            0,
+            if entry.is_directory() {
+                -1
+            } else {
+                rename_stem_end(&entry.display_name)
+            },
+        );
         self.active_rename.replace(Some(ActiveRename {
             entry,
             field,
@@ -235,26 +304,20 @@ impl ViewState {
     }
 
     pub(super) fn submit_rename(self: &Rc<Self>, field: &gtk::Entry) {
-        // `Browser::rename` rejects an invalid basename by emitting `RenameFailed` before it
-        // returns, and that handler reads `active_rename` to flag the field, so the borrow
-        // taken to read the entry must be released first.
-        let entry = {
-            let active = self.active_rename.borrow();
-            let Some(rename) = active.as_ref().filter(|rename| rename.field == *field) else {
-                return;
-            };
-            rename.entry.clone()
-        };
-        let new_name = field.text().to_string();
-        if new_name == entry.display_name {
-            self.cancel_rename();
-            self.browser.focus_active();
+        if self.mode_views.borrow().active_rename_field().as_ref() == Some(field) {
+            self.mode_views.borrow().submit_rename(field);
             return;
         }
-        field.remove_css_class("error");
-        field.set_tooltip_text(None);
-        field.set_sensitive(false);
-        self.browser.rename(entry, new_name);
+        let entry = self
+            .active_rename
+            .borrow()
+            .as_ref()
+            .filter(|active| active.field == *field)
+            .map(|active| active.entry.clone());
+        let Some(entry) = entry else { return };
+        let name = field.text().to_string();
+        self.cancel_rename();
+        queue_rename(&self.browser, entry, name);
     }
 }
 

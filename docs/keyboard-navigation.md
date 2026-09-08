@@ -31,6 +31,45 @@ Copy/cut use the selection in the focused column, never a hovered row. In Column
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 
+## Creating files and folders
+
+In Columns, List, and Icons, **Ctrl+Shift+N** or background menu → **New Folder**
+immediately creates `new folder`. Background menu → **New File** immediately
+creates an empty `new file`. If the default name is occupied by any item, creation
+tries `new folder (1)` / `new file (1)`, then `(2)`, and so on without overwriting
+anything. The pane filter is cleared and the entire allocated default name is
+selected: one Backspace clears it, and typing replaces it.
+
+For **any file or folder rename**, Enter, clicking outside the field (even empty
+pane space), or moving keyboard focus away commits a valid name. Escape keeps
+the original name. Finishing with an empty or invalid name also keeps the
+original. Cancelling the initial rename does **not** delete the new item: it
+remains under its allocated default name. File contents are preserved.
+
+Clicking inside the field continues editing. Existing files retain extension-aware
+selection (the stem is selected); folder names containing dots are selected in full.
+
+Names containing `/` or NUL, `.`/`..`, and whitespace-only names (including
+Unicode whitespace) are invalid. Valid names are used exactly as typed,
+including spaces around a nonblank name, hidden-file prefixes, and Unicode.
+Name conflicts, filesystem-specific limits, and permission errors retain the
+original item and report an error.
+
+Click-away results: Columns ([file](screenshots/566/columns-new-file-rename.png),
+[folder](screenshots/566/columns-new-folder-rename.png)),
+List ([file](screenshots/566/list-new-file-rename.png),
+[folder](screenshots/566/list-new-folder-rename.png)), and
+Icons ([file](screenshots/566/icons-new-file-rename.png),
+[folder](screenshots/566/icons-new-folder-rename.png)).
+
+## Preview while filtering
+
+In the browser and file chooser, **Space** toggles quick preview for the highlighted recursive filter result in Columns, Icons, and List. The query, selection, and current directory stay intact. This also works when Up/Down highlights a result while keyboard focus remains in the query field.
+
+With no result selected, Space still types into the query. **Shift+Space** inserts a space in the query even with a result selected. Folders and unsupported files do not open a preview.
+
+[Filtered selection](screenshots/472/before.png) · [Preview with the query intact](screenshots/472/after.png)
+
 ## Shortcut footer
 
 Every mode has a compact, single-line footer with its navigation hints and common file shortcuts. **Settings → Keybindings → Show keybinding hints** controls its visibility (on by default). The preference is saved and updates all open windows immediately. F1 still opens the reference with hints disabled; closing it hides the footer again. The summary truncates rather than wrapping in narrow windows; **F1 · Shortcuts** always remains available to open the complete, mode-specific reference. F1 or Escape closes it. The reference blocks file-operation shortcuts while it is open.

@@ -108,6 +108,14 @@ Generic modal hosting, animation and dismissal live in `ui/modal.rs`, not in a b
 unblurring and must leave it enabled while another visible modal remains. Dialog-specific cancel,
 close, backdrop and submission policies remain with the dialog.
 
+New File and New Folder allocate real entries through `app::Browser` and the operation provider.
+`adapters/local_operations/create_entry.rs` shares atomic conflict retries for files and directories
+and closes an empty file before reporting its creation. `EntryCreated` carries the allocated
+location, which `inline_edit.rs` uses to select the real row and start a normal rename. A pending
+request identity prevents late focus after cancellation or navigation. There are no temporary
+creation rows; both new and existing items use the same validation and deferred rename dispatch
+outside GTK's focus walk.
+
 Filesystem work for Trash lives in `adapters/trash.rs`. Measurement shares one entry/time budget
 across root and descendant batches; depth truncation and unreadable descendants remain branch-local.
 Deleting Trash streams its own batches, independently of any incomplete measurement. Native path
@@ -151,6 +159,21 @@ publication/metadata orchestration, native transfer security and the settings wo
 refactored independently of browser composition. Investigation and scope decisions are recorded in
 [issue #397](https://github.com/lgse/strata/issues/397).
 
+### Browser directory-event routing
+
+`app/browser/loading.rs` dispatches provider events through an owned open-load target:
+native batches stage for sorting/publication, while remote batches keep the first-batch
+and coalesced-tail paths. Completion carries truncation and both filesystem capabilities
+together. Requests outside the open-load gate retain their existing peek/failure handling;
+stale work is still checked against the owning directory or peek request.
+
+`loading/metadata.rs` separates full-sort fills, applied by location, from viewport fills,
+validated against directory identity and row-position/location tokens. Metadata chunks
+never complete a sort; `MetadataFinished` retains that responsibility. Both modules release
+state and routing borrows before synchronous observer dispatch, allowing observers to
+navigate safely. Sorting, publication budgets, timers, and cancellation remain in the
+browser controller; this extraction does not change those policies.
+
 ### Window composition
 
 `ui/window.rs::present_target` owns the startup sequence: prepare theme/styles, compose
@@ -166,6 +189,15 @@ at dispatch. `settings` owns update notices and a single lazily created Settings
 per window; both Settings entry points reuse it and the process-wide install guard.
 Preferences take effect before Settings opens. Destruction disconnects the clipboard
 subscription, browser observers, and sidebar monitors.
+
+`ui/window/sidebar.rs` assembles the sidebar shell and connects its preferences,
+browser events, and device monitors. Shared place-row bindings retain explicit direct
+versus validated navigation; file drops still exclude virtual locations. Typed device
+signals share a weak rebuild callback and retain their disconnect handles. Standard,
+pinned, and device rows are separate rendering stages, with the chooser's local-only
+filter preserved. Initial construction builds static places; device rows retain their
+existing deferred rebuild timing. Bookmark storage, Trash, and media-release policies
+remain in `window.rs` rather than changing alongside assembly.
 
 ### Window keyboard routing
 

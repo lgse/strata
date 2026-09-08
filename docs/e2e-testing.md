@@ -171,6 +171,29 @@ def test_something(strata):
     ...
 ```
 
+### Inline new-entry focus regressions
+
+`test_inline_renaming.py` checks immediate default-file/folder creation, collision
+numbering, selected default names, valid-name commits on click-away, and retaining
+the original name on Escape or invalid input. It exercises existing and newly
+created items in all three views, verifies file contents, and covers repeated
+renames with folder-wide or file-stem selection. `test_entry_management.py` also
+covers reopening invalid edits, inside-field clicks, name conflicts, and empty
+directories.
+
+```bash
+./scripts/e2e.sh tests/e2e/scenarios/test_inline_renaming.py tests/e2e/scenarios/test_entry_management.py
+```
+
+Keep these as real XTEST pointer interactions: emitting a focus controller's
+`leave` signal in a Rust test checks the handler, not GTK's in-flight focus walk
+(#566). Rename dispatch must wait until that walk returns because an operation
+can refresh the row model. Creation now uses real entries rather than temporary
+placeholder rows; the same rename path handles new and existing items. Rust
+tests cover atomic naming collisions, Unicode validation, editor lifetimes,
+cancellation/navigation before the created entry becomes visible, and scrolling
+to new entries beyond the initial viewport in large directories.
+
 ### Accessible names are product surface
 
 The harness finds an entry because Strata names it. Those names live in
@@ -242,7 +265,7 @@ workflow fail:
 ```
 
 Each patch breaks a single critical workflow — drag and drop, clipboard,
-keyboard navigation, click modes, view switching. The unmodified scenarios
+keyboard navigation, click modes, view switching, filtered quick preview. The unmodified scenarios
 must pass first; only a failed scenario assertion in the mutated run counts as
 detection, not a startup/collection error or killed process. Logs and JUnit
 reports are saved in `target/e2e-mutations`. The script restores source changes

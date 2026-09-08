@@ -10,7 +10,7 @@ use crate::model::{FileEntry, Location};
 use super::LoadHandle;
 
 pub fn validate_basename(name: &str) -> Result<(), &'static str> {
-    if name.is_empty() {
+    if name.trim().is_empty() {
         Err("Enter a name")
     } else if name.contains('/') {
         Err("Names cannot contain /")
@@ -38,6 +38,7 @@ pub struct CreateDirectoryRequest {
     pub id: OperationRequestId,
     pub parent: Location,
     pub name: String,
+    pub unique_name: bool,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -82,6 +83,7 @@ pub struct CreateFileRequest {
     pub id: OperationRequestId,
     pub parent: Location,
     pub name: String,
+    pub unique_name: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -183,6 +185,10 @@ pub enum OperationEvent {
     },
     Created {
         request_id: OperationRequestId,
+    },
+    EntryCreated {
+        request_id: OperationRequestId,
+        location: Location,
     },
     Pasted {
         request_id: OperationRequestId,

@@ -1,0 +1,12 @@
+diff --git a/src/ui/window/keyboard/commands.rs b/src/ui/window/keyboard/commands.rs
+--- a/src/ui/window/keyboard/commands.rs
++++ b/src/ui/window/keyboard/commands.rs
+@@ -59,7 +59,7 @@ impl Dispatcher {
+     }
+ 
+     pub(super) fn filter_and_location_commands(&self, event: &KeyEvent) -> KeyResult {
+-        if event.key == Key::space
++        if event.key == Key::F35
+             && event.without(
+                 Modifiers::CONTROL_MASK
+                     | Modifiers::ALT_MASK

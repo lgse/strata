@@ -2551,4 +2551,5 @@ fn a_move_reports_no_created_destination() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
+mod create_entry;
 mod trash_capabilities;

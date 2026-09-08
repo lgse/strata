@@ -18,6 +18,8 @@ declare -A SCENARIOS=(
   [keyboard-navigation]="tests/e2e/scenarios/test_keyboard_navigation.py"
   [click-modes]="tests/e2e/scenarios/test_click_modes.py"
   [view-switching]="tests/e2e/scenarios/test_view_switching.py"
+  [quick-preview]="tests/e2e/scenarios/test_quick_preview.py"
+  [popover-scrolling]="tests/e2e/scenarios/test_popover_scrolling.py"
 )
 
 selected=("$@")

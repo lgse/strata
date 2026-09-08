@@ -30,6 +30,10 @@ use super::{
 mod composition;
 mod devices;
 mod keyboard;
+mod sidebar;
+
+use sidebar::PlaceNavigation;
+pub(super) use sidebar::build_sidebar;
 
 pub(super) const SIDEBAR_WIDTH: i32 = 208;
 pub(super) const MIN_SIDEBAR_WIDTH: i32 = 176;
@@ -508,6 +512,7 @@ pub(super) fn build_appearance_menu(
         .position(gtk::PositionType::Bottom)
         .build();
     popover.add_css_class("appearance-popover");
+    super::scrolling::popover::dismiss_on_outside_scroll(&popover);
     let button = gtk::MenuButton::builder()
         .tooltip_text("Appearance")
         .popover(&popover)
@@ -864,7 +869,11 @@ impl SidebarState {
             );
         }
         self.append_separator();
+        self.append_standard_places();
+        self.append_pinned_places();
+    }
 
+    fn append_standard_places(self: &Rc<Self>) {
         for place in self.place_order.borrow().clone() {
             if let Some((icon, name, directory)) = standard_place(place)
                 && let Some(path) = glib::user_special_dir(directory)
@@ -877,7 +886,9 @@ impl SidebarState {
                 }
             }
         }
+    }
 
+    fn append_pinned_places(self: &Rc<Self>) {
         let pinned = self
             .pinned_places
             .borrow()
@@ -902,8 +913,25 @@ impl SidebarState {
 
     fn append_devices(self: &Rc<Self>) {
         let volumes = self.volume_monitor.volumes();
-        let mounts: Vec<_> = self
-            .volume_monitor
+        let mounts = self.mounts_without_volumes(&volumes);
+        if volumes.is_empty() && mounts.is_empty() {
+            return;
+        }
+        self.append_separator();
+        self.append_heading("DEVICES");
+        for volume in volumes {
+            self.append_volume(volume);
+        }
+        for (name, location, mount) in mounts {
+            self.append_mount(&name, location, mount);
+        }
+    }
+
+    fn mounts_without_volumes(
+        &self,
+        volumes: &[gio::Volume],
+    ) -> Vec<(String, Location, gio::Mount)> {
+        self.volume_monitor
             .mounts()
             .into_iter()
             .filter(|mount| !mount.is_shadowed())
@@ -920,43 +948,31 @@ impl SidebarState {
                 }
                 Some((name, location, mount))
             })
-            .collect();
-        if !volumes.is_empty() || !mounts.is_empty() {
-            self.append_separator();
-            self.append_heading("DEVICES");
-            for volume in volumes {
-                self.append_volume(volume);
-            }
-            for (name, location, mount) in mounts {
-                if is_smb_location(&location) {
-                    self.append_smb_mount(&name, location, mount);
-                } else {
-                    let action = mount_release_action(mount.can_eject(), mount.can_unmount());
-                    let release = action.map(|action| {
-                        let release_mount = mount.clone();
-                        let release_browser = self.browser.clone();
-                        let release_parent = self.view.widget();
-                        let release_in_flight = Rc::new(Cell::new(false));
-                        let on_release: Rc<dyn Fn()> = Rc::new(move || {
-                            release_device_mount(
-                                &release_mount,
-                                action,
-                                &release_parent,
-                                &release_browser,
-                                &release_in_flight,
-                            );
-                        });
-                        (action, on_release)
-                    });
-                    self.append_device_place(
-                        crate::assets::icons::HARD_DRIVE,
-                        &name,
-                        location,
-                        release,
-                    );
-                }
-            }
+            .collect()
+    }
+
+    fn append_mount(self: &Rc<Self>, name: &str, location: Location, mount: gio::Mount) {
+        if is_smb_location(&location) {
+            self.append_smb_mount(name, location, mount);
+            return;
         }
+        let action = mount_release_action(mount.can_eject(), mount.can_unmount());
+        let release = action.map(|action| {
+            let release_browser = self.browser.clone();
+            let release_parent = self.view.widget();
+            let release_in_flight = Rc::new(Cell::new(false));
+            let on_release: Rc<dyn Fn()> = Rc::new(move || {
+                release_device_mount(
+                    &mount,
+                    action,
+                    &release_parent,
+                    &release_browser,
+                    &release_in_flight,
+                );
+            });
+            (action, on_release)
+        });
+        self.append_device_place(crate::assets::icons::HARD_DRIVE, name, location, release);
     }
 
     fn pin_location(self: &Rc<Self>, location: Location, name: String) {
@@ -1082,18 +1098,7 @@ impl SidebarState {
         let location = Location::uri("trash:///");
         let row = sidebar_button(crate::assets::icons::TRASH, "Trash");
         row.set_tooltip_text(Some("trash:///"));
-        self.place_rows
-            .borrow_mut()
-            .push((location.clone(), row.clone()));
-        let weak_browser = Rc::downgrade(&self.browser);
-        let sidebar = self.widget.clone();
-        let selected_row = row.clone();
-        row.connect_clicked(move |_| {
-            select_sidebar_row(&sidebar, &selected_row);
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.navigate(location.clone());
-            }
-        });
+        self.bind_place_row(&row, location, PlaceNavigation::Direct);
 
         let menu = super::accessibility::menu_box();
         menu.add_css_class("folder-context-menu");
@@ -1218,19 +1223,7 @@ impl SidebarState {
     ) {
         let row = sidebar_button(icon, name);
         row.set_tooltip_text(Some(&location.display_path()));
-        self.place_rows
-            .borrow_mut()
-            .push((location.clone(), row.clone()));
-        install_sidebar_file_drop(&self.view, &row, location.clone());
-        let weak_browser = Rc::downgrade(&self.browser);
-        let sidebar = self.widget.clone();
-        let selected_row = row.clone();
-        row.connect_clicked(move |_| {
-            select_sidebar_row(&sidebar, &selected_row);
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.navigate(location.clone());
-            }
-        });
+        self.bind_place_row(&row, location, PlaceNavigation::Direct);
 
         self.make_reorderable(
             &row,
@@ -1497,19 +1490,7 @@ impl SidebarState {
     ) -> gtk::Button {
         let row = sidebar_button(icon, name);
         row.set_tooltip_text(Some(&location.display_path()));
-        self.place_rows
-            .borrow_mut()
-            .push((location.clone(), row.clone()));
-        install_sidebar_file_drop(&self.view, &row, location.clone());
-        let weak_browser = Rc::downgrade(&self.browser);
-        let sidebar = self.widget.clone();
-        let selected_row = row.clone();
-        row.connect_clicked(move |_| {
-            select_sidebar_row(&sidebar, &selected_row);
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.navigate_location(location.clone());
-            }
-        });
+        self.bind_place_row(&row, location, PlaceNavigation::Validate);
         match release {
             Some((action, on_release)) => {
                 let eject = sidebar_eject_button(action, {
@@ -2039,160 +2020,6 @@ fn sidebar_update_label(release: &ReleaseMetadata) -> String {
         format!("v{} available", release.version)
     } else {
         format!("v{} ({}) available", release.version, release.kind.label())
-    }
-}
-
-pub(super) fn build_sidebar(
-    view: BrowserView,
-    theme_manager: Rc<super::theme::ThemeManager>,
-    local_only: bool,
-) -> SidebarView {
-    let widget = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    widget.add_css_class("sidebar");
-    let scroller = gtk::ScrolledWindow::builder()
-        .child(&widget)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .width_request(SIDEBAR_WIDTH)
-        .vexpand(true)
-        .build();
-    scroller.add_css_class("sidebar-scroll");
-    scroller.add_css_class("fixed-scrollbar");
-
-    let update_content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let dot = gtk::Label::new(Some("●"));
-    dot.add_css_class("sidebar-update-dot");
-    let update_label = gtk::Label::new(None);
-    update_label.add_css_class("sidebar-update-label");
-    update_label.set_xalign(0.0);
-    update_label.set_hexpand(true);
-    update_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    update_content.append(&dot);
-    update_content.append(&update_label);
-    update_content.append(&crate::assets::primary_icon(
-        crate::assets::icons::DOWNLOADS,
-        17,
-    ));
-    let update_notice = gtk::Button::builder().child(&update_content).build();
-    update_notice.add_css_class("sidebar-update");
-    let update_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-    update_separator.add_css_class("sidebar-separator");
-    update_separator.add_css_class("sidebar-update-separator");
-    let update_area = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    update_area.set_visible(false);
-    update_area.append(&update_separator);
-    update_area.append(&update_notice);
-
-    let shell = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    shell.add_css_class("sidebar-shell");
-    shell.append(&scroller);
-    shell.append(&update_area);
-    let volume_monitor = gio::VolumeMonitor::get();
-    let place_order = resolve_place_order(&theme_manager.sidebar_order());
-    let state = Rc::new(SidebarState {
-        widget,
-        browser: view.browser(),
-        view,
-        volume_monitor,
-        mount_monitor: gio_unix::MountMonitor::get(),
-        theme_manager,
-        place_order: RefCell::new(place_order),
-        pinned_places: Rc::new(RefCell::new(load_pinned_places())),
-        place_rows: RefCell::new(Vec::new()),
-        trash_contents: Cell::new(TrashContents::Unknown),
-        trash_menu_rows: RefCell::new(None),
-        trash_monitor: RefCell::new(None),
-        trash_probe_running: Cell::new(false),
-        trash_probe_pending: Cell::new(false),
-        local_only,
-    });
-
-    let weak = Rc::downgrade(&state);
-    state.theme_manager.bind_preference(
-        &state.widget,
-        ThemeManager::sidebar_order,
-        move |_, order| {
-            if let Some(state) = weak.upgrade() {
-                let order = resolve_place_order(&order);
-                if *state.place_order.borrow() != order {
-                    state.place_order.replace(order);
-                    state.rebuild();
-                }
-            }
-        },
-    );
-
-    let weak = Rc::downgrade(&state);
-    state.browser.observe(move |event| {
-        let changes_active_place = SidebarState::event_changes_active_place(event);
-        let changes_trash = event_changes_trash_contents(event);
-        if !changes_active_place && !changes_trash {
-            return;
-        }
-        let Some(state) = weak.upgrade() else {
-            return;
-        };
-        if changes_active_place {
-            state.sync_active_place();
-        }
-        if changes_trash {
-            state.refresh_trash_contents();
-        }
-    });
-
-    let mut handlers = Vec::new();
-    let weak = Rc::downgrade(&state);
-    handlers.push(state.volume_monitor.connect_mount_added(move |_, _| {
-        if let Some(state) = weak.upgrade() {
-            state.rebuild();
-        }
-    }));
-    let weak = Rc::downgrade(&state);
-    handlers.push(state.volume_monitor.connect_mount_removed(move |_, _| {
-        if let Some(state) = weak.upgrade() {
-            state.rebuild();
-        }
-    }));
-    let weak = Rc::downgrade(&state);
-    handlers.push(state.volume_monitor.connect_mount_changed(move |_, _| {
-        if let Some(state) = weak.upgrade() {
-            state.rebuild();
-        }
-    }));
-    let weak = Rc::downgrade(&state);
-    handlers.push(state.volume_monitor.connect_volume_added(move |_, _| {
-        if let Some(state) = weak.upgrade() {
-            state.rebuild();
-        }
-    }));
-    let weak = Rc::downgrade(&state);
-    handlers.push(state.volume_monitor.connect_volume_removed(move |_, _| {
-        if let Some(state) = weak.upgrade() {
-            state.rebuild();
-        }
-    }));
-    let weak = Rc::downgrade(&state);
-    handlers.push(state.volume_monitor.connect_volume_changed(move |_, _| {
-        if let Some(state) = weak.upgrade() {
-            state.rebuild();
-        }
-    }));
-    let weak = Rc::downgrade(&state);
-    let mount_handler = state.mount_monitor.connect_mounts_changed(move |_| {
-        if let Some(state) = weak.upgrade() {
-            state.rebuild();
-        }
-    });
-    state.append_static_places();
-    state.sync_active_place();
-    SidebarView {
-        widget: shell.upcast(),
-        state,
-        update_notice,
-        update_area,
-        update_label,
-        handlers: RefCell::new(handlers),
-        mount_handler: RefCell::new(Some(mount_handler)),
     }
 }
 

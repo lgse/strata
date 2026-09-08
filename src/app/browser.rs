@@ -13,13 +13,17 @@ use crate::{
     model::{FileEntry, Location, SortDirection, SortKey, ViewPreferences},
     services::{
         ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
-        DirectoryChange, DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
+        DirectoryChange, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord, OperationEvent,
         OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRequest, RequestId,
         RestoreRequest, RestoreSource, TransferConflict, UndoCopyRequest, UndoMoveItem,
         UndoMoveRequest, validate_basename, validate_uri_credentials,
     },
 };
+
+mod loading;
+
+use loading::{LoadCompletion, RemoteTerminal};
 
 /// Caps a normal directory load at this project's own documented performance baseline for
 /// 100,000 entries (docs/performance-baseline.md: 3,755 ms, 286 MiB) -- past this, per-batch
@@ -132,6 +136,9 @@ pub enum BrowserEvent {
         location: Location,
     },
     RenameCompleted,
+    EntryCreated {
+        location: Location,
+    },
     RenameFailed {
         message: String,
     },
@@ -466,19 +473,6 @@ enum PublishTerminal {
         retry_metadata: bool,
     },
     SortingFinished,
-}
-
-enum RemoteTerminal {
-    Finished {
-        request_id: RequestId,
-        truncated: bool,
-        can_trash: Option<bool>,
-        can_delete: Option<bool>,
-    },
-    Failed {
-        request_id: RequestId,
-        message: String,
-    },
 }
 
 /// A staged publication streaming to the UI: the prefix is already in the model,
@@ -1283,7 +1277,16 @@ impl Browser {
         self.operation_load.replace(Some(load));
     }
 
-    pub fn create_directory(self: &Rc<Self>, parent: Location, name: String) {
+    pub fn create_new_folder(self: &Rc<Self>, parent: Location) {
+        self.create_directory_with_naming(parent, "new folder".to_owned(), true);
+    }
+
+    fn create_directory_with_naming(
+        self: &Rc<Self>,
+        parent: Location,
+        name: String,
+        unique_name: bool,
+    ) {
         if let Err(message) = validate_basename(&name) {
             self.emit(BrowserEvent::OperationFailed {
                 message: message.to_owned(),
@@ -1303,13 +1306,18 @@ impl Browser {
                 id: request_id,
                 parent,
                 name,
+                unique_name,
             },
             self.operation_callback(request_id, false, HashSet::from([refresh_parent])),
         );
         self.operation_load.replace(Some(load));
     }
 
-    pub fn create_file(self: &Rc<Self>, parent: Location, name: String) {
+    pub fn create_new_file(self: &Rc<Self>, parent: Location) {
+        self.create_file_with_naming(parent, "new file".to_owned(), true);
+    }
+
+    fn create_file_with_naming(self: &Rc<Self>, parent: Location, name: String, unique_name: bool) {
         if let Err(message) = validate_basename(&name) {
             self.emit(BrowserEvent::OperationFailed {
                 message: message.to_owned(),
@@ -1329,6 +1337,7 @@ impl Browser {
                 id: request_id,
                 parent,
                 name,
+                unique_name,
             },
             self.operation_callback(request_id, false, HashSet::from([refresh_parent])),
         );
@@ -1672,6 +1681,7 @@ impl Browser {
             let event_id = match &event {
                 OperationEvent::Renamed { request_id }
                 | OperationEvent::Created { request_id }
+                | OperationEvent::EntryCreated { request_id, .. }
                 | OperationEvent::Pasted { request_id, .. }
                 | OperationEvent::TransferFailed { request_id, .. }
                 | OperationEvent::TransferProgress { request_id, .. }
@@ -1972,6 +1982,16 @@ impl Browser {
                         });
                     }
                     browser.emit(BrowserEvent::TransferCompleted);
+                }
+                OperationEvent::EntryCreated { location, .. } => {
+                    if browser.validation_generation.get() == navigation_generation {
+                        browser.emit(BrowserEvent::EntryCreated { location });
+                    }
+                    for location in &refresh_locations {
+                        if location.native_path().is_none() {
+                            browser.refresh_columns_at(location);
+                        }
+                    }
                 }
                 OperationEvent::Created { .. } => {
                     for location in &refresh_locations {
@@ -2335,9 +2355,12 @@ impl Browser {
         match terminal {
             RemoteTerminal::Finished {
                 request_id,
-                truncated,
-                can_trash,
-                can_delete,
+                completion:
+                    LoadCompletion {
+                        truncated,
+                        can_trash,
+                        can_delete,
+                    },
             } => {
                 let finished = self
                     .state
@@ -2381,10 +2404,13 @@ impl Browser {
         self: &Rc<Self>,
         depth: usize,
         request_id: RequestId,
-        truncated: bool,
-        can_trash: Option<bool>,
-        can_delete: Option<bool>,
+        completion: LoadCompletion,
     ) {
+        let LoadCompletion {
+            truncated,
+            can_trash,
+            can_delete,
+        } = completion;
         let staging = self.staging.borrow_mut().remove(&depth);
         let Some(staging) = staging.filter(|staged| staged.request_id == request_id) else {
             return;
@@ -3341,13 +3367,6 @@ impl Browser {
         });
     }
 
-    fn load_target(&self, request_id: RequestId) -> Option<(usize, bool)> {
-        let state = self.state.borrow();
-        let depth = state.depth_for_request(request_id)?;
-        let native = state.location_at(depth)?.native_path().is_some();
-        Some((depth, native))
-    }
-
     fn handle_directory_change(
         self: &Rc<Self>,
         depth: usize,
@@ -3420,209 +3439,6 @@ impl Browser {
         }
     }
 
-    fn handle_directory_event(self: &Rc<Self>, event: DirectoryEvent) {
-        match event {
-            DirectoryEvent::Batch {
-                request_id,
-                entries,
-            } => {
-                let target = self.load_target(request_id);
-                let open = self.state.borrow().open_load_depth(request_id);
-                match (target, open) {
-                    (Some((depth, true)), Some(_)) => {
-                        self.stage_batch(request_id, depth, entries);
-                    }
-                    (Some((depth, false)), Some(_)) => {
-                        let entry_count = self
-                            .state
-                            .borrow()
-                            .loading_column(request_id)
-                            .map(|(_, count)| count)
-                            .unwrap_or(0);
-                        if entry_count == 0 {
-                            self.apply_owned_batch(request_id, entries);
-                        } else {
-                            self.accumulate_batch(request_id, depth, entries);
-                        }
-                    }
-                    _ => {
-                        let peek_entries: Vec<_> = if self.preferences.get().show_hidden {
-                            entries
-                        } else {
-                            entries
-                                .into_iter()
-                                .filter(|entry| !entry.is_hidden)
-                                .collect()
-                        };
-                        let mut state = self.state.borrow_mut();
-                        if state.apply_peek_batch(request_id, &peek_entries) {
-                            drop(state);
-                            self.emit(BrowserEvent::PeekEntriesAdded {
-                                entries: peek_entries,
-                            });
-                        }
-                    }
-                }
-            }
-
-            DirectoryEvent::Finished {
-                request_id,
-                truncated,
-                can_trash,
-                can_delete,
-            } => {
-                // Bound to a variable first: an if-let scrutinee borrow would stay live
-                // across the flush and panic inside it.
-                let target = self.load_target(request_id);
-                let open = self.state.borrow().open_load_depth(request_id);
-                match (target, open) {
-                    (Some((depth, true)), Some(_)) => {
-                        self.stage_batch(request_id, depth, Vec::new());
-                        self.finish_staged_load(
-                            depth, request_id, truncated, can_trash, can_delete,
-                        );
-                    }
-                    (Some((depth, _)), Some(_)) => {
-                        self.remote_terminals.borrow_mut().insert(
-                            depth,
-                            RemoteTerminal::Finished {
-                                request_id,
-                                truncated,
-                                can_trash,
-                                can_delete,
-                            },
-                        );
-                        self.flush_coalesced_capped(Some(depth));
-                    }
-                    _ => {
-                        let mut state = self.state.borrow_mut();
-                        if state.finish_peek(request_id) {
-                            drop(state);
-                            self.emit(BrowserEvent::PeekFinished);
-                        }
-                    }
-                }
-            }
-            DirectoryEvent::MetadataIncomplete { request_id } => {
-                let target = self.load_target(request_id);
-                let open = self.state.borrow().open_load_depth(request_id);
-                if let Some((depth, true)) = target.filter(|_| open.is_some()) {
-                    self.stage_batch(request_id, depth, Vec::new());
-                    if let Some(staging) = self.staging.borrow_mut().get_mut(&depth) {
-                        staging.metadata_incomplete = true;
-                    }
-                }
-            }
-            DirectoryEvent::Failed {
-                request_id,
-                message,
-            } => {
-                let target = self.load_target(request_id);
-                let open = self.state.borrow().open_load_depth(request_id);
-                if let Some((depth, true)) = target.filter(|_| open.is_some()) {
-                    self.staging.borrow_mut().remove(&depth);
-                    self.sorting.borrow_mut().remove(&depth);
-                    self.cancel_publish(depth);
-                } else if let Some((depth, false)) = target.filter(|_| open.is_some()) {
-                    self.remote_terminals.borrow_mut().insert(
-                        depth,
-                        RemoteTerminal::Failed {
-                            request_id,
-                            message,
-                        },
-                    );
-                    self.flush_coalesced_capped(Some(depth));
-                    return;
-                }
-                let mut state = self.state.borrow_mut();
-                if let Some(depth) = state.fail(request_id, message.clone()) {
-                    drop(state);
-                    self.emit(BrowserEvent::LoadFailed { depth, message });
-                } else if state.fail_peek(request_id, message.clone()) {
-                    drop(state);
-                    self.emit(BrowserEvent::PeekFailed { message });
-                }
-            }
-            DirectoryEvent::MetadataFilled {
-                request_id,
-                updates,
-            } => {
-                // Full sort fills apply by location: positional tokens would only add
-                // validation churn to an already O(n log n) path.
-                let awaiting_sort = self
-                    .sort_awaiting_fill
-                    .borrow()
-                    .as_ref()
-                    .copied()
-                    .filter(|fill| fill.fill_request == request_id);
-                if let Some(awaiting) = awaiting_sort {
-                    let mut state = self.state.borrow_mut();
-                    if let Some((depth, positions)) =
-                        state.apply_metadata(awaiting.directory_request, updates)
-                    {
-                        let filled = filled_entries(&state, depth, &positions);
-                        tracing::debug!(
-                            request_id = request_id.0,
-                            depth,
-                            filled = positions.len(),
-                            "metadata fill applied"
-                        );
-                        drop(state);
-                        self.emit(BrowserEvent::MetadataFilled {
-                            depth,
-                            updates: filled,
-                        });
-                    }
-                    return;
-                }
-                let fill = self
-                    .fill_tokens
-                    .borrow()
-                    .get(&request_id)
-                    .map(|fill| (fill.directory_request, fill.tokens.clone()));
-                let Some((directory_request, tokens)) = fill else {
-                    return;
-                };
-                let token_positions: HashMap<&Location, usize> = tokens
-                    .iter()
-                    .map(|(position, location)| (location, *position))
-                    .collect();
-                let mut positioned = Vec::with_capacity(updates.len());
-                for update in &updates {
-                    if let Some(position) = token_positions.get(&update.location) {
-                        positioned.push((*position, update.clone()));
-                    }
-                }
-                let mut state = self.state.borrow_mut();
-                if let Some((depth, positions, stale)) =
-                    state.apply_positioned_metadata(directory_request, positioned)
-                {
-                    let filled = filled_entries(&state, depth, &positions);
-                    tracing::debug!(
-                        request_id = request_id.0,
-                        depth,
-                        filled = positions.len(),
-                        stale = stale.len(),
-                        "metadata fill applied"
-                    );
-                    drop(state);
-                    if !filled.is_empty() {
-                        self.emit(BrowserEvent::MetadataFilled {
-                            depth,
-                            updates: filled,
-                        });
-                    }
-                }
-            }
-            DirectoryEvent::MetadataFinished {
-                request_id,
-                outcome,
-            } => {
-                self.handle_metadata_finished(request_id, outcome);
-            }
-        }
-    }
-
     fn emit(&self, event: BrowserEvent) {
         let observers = self.observers.borrow().clone();
         for observer in &observers {
@@ -3635,20 +3451,6 @@ impl Browser {
         self.next_request.set(id.saturating_add(1));
         RequestId(id)
     }
-}
-
-fn filled_entries(
-    state: &NavigationState,
-    depth: usize,
-    positions: &[usize],
-) -> Vec<(usize, FileEntry)> {
-    positions
-        .iter()
-        .filter_map(|position| {
-            let entry = state.columns.get(depth)?.entries.get(*position)?.clone();
-            Some((*position, entry))
-        })
-        .collect()
 }
 
 fn location_or_ancestor_is_affected(location: &Location, roots: &HashSet<Location>) -> bool {

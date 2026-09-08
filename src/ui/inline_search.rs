@@ -26,15 +26,46 @@ struct State {
     generation: Cell<u64>,
 }
 
+#[derive(Clone)]
+pub(super) struct InlineSearch {
+    pub widget: gtk::Widget,
+    state: Option<Rc<State>>,
+}
+
+impl InlineSearch {
+    pub fn selected_entry(&self) -> Option<crate::model::FileEntry> {
+        let state = self.state.as_ref()?;
+        let focused = self.widget.root()?.focus()?;
+        let entry = state.entry.upgrade()?;
+        if state.stack.visible_child_name().as_deref() != Some("search")
+            || !(focused.is_ancestor(&entry)
+                || focused == entry.upcast::<gtk::Widget>()
+                || focused.is_ancestor(&state.list)
+                || focused == state.list.clone().upcast::<gtk::Widget>())
+        {
+            return None;
+        }
+        let row = state.list.selected_row()?;
+        state
+            .items
+            .borrow()
+            .get(row.index() as usize)
+            .map(super::browser::search_result_entry)
+    }
+}
+
 /// Keeps the view's normal presentation intact when the recursive query is dismissed.
 pub(super) fn wrap(
     content: &impl IsA<gtk::Widget>,
     entry: &gtk::Entry,
     root: Option<PathBuf>,
     browser: &Rc<Browser>,
-) -> gtk::Widget {
+) -> InlineSearch {
     let Some(root) = root else {
-        return content.clone().upcast();
+        return InlineSearch {
+            widget: content.clone().upcast(),
+            state: None,
+        };
     };
     let stack = gtk::Stack::builder().hexpand(true).vexpand(true).build();
     stack.add_named(content, Some("files"));
@@ -117,6 +148,10 @@ pub(super) fn wrap(
     });
     entry.add_controller(keys);
     let weak_browser = Rc::downgrade(browser);
+    let search = InlineSearch {
+        widget: stack.clone().upcast(),
+        state: Some(state.clone()),
+    };
     super::browser::debounce_filter_entry(entry, move |text| {
         let query = text.trim();
         if query.is_empty() {
@@ -233,7 +268,7 @@ pub(super) fn wrap(
             glib::ControlFlow::Continue
         });
     });
-    stack.upcast()
+    search
 }
 
 fn clear_rows(list: &gtk::ListBox) {

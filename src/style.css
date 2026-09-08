@@ -70,7 +70,8 @@ paned > separator:focus-visible {
   border: none;
 }
 
-headerbar {
+headerbar,
+.mode-pane-header {
   background: @theme_surface;
   border-bottom: 1px solid alpha(@theme_border, 0.6);
   box-shadow: none;
@@ -2923,18 +2924,6 @@ colorchooser colorswatch overlay {
   outline-color: @theme_accent;
 }
 
-.new-entry-row {
-  background: alpha(@theme_muted, 0.24);
-  border-radius: 6px;
-  color: @theme_text;
-  margin: 1px 8px;
-  padding: 4px;
-}
-
-.new-entry-row .file-icon {
-  color: @theme_accent;
-}
-
 .file-list {
   background: @theme_bg;
   color: @theme_text;
@@ -3594,12 +3583,10 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .mode-pane-header {
-  background: @theme_surface;
-  border-bottom: 1px solid alpha(@theme_border, 0.6);
   color: @theme_accent;
   font-weight: 700;
-  min-height: 36px;
-  padding: 4px 12px 4px 6px;
+  min-height: 40px;
+  padding: 0 6px;
 }
 
 .file-icons {
@@ -3635,10 +3622,6 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 .file-icons > child:focus-visible .icons-card {
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
-}
-
-.file-icons.creating-entry > child:focus-visible .icons-card {
-  outline: none;
 }
 
 .icons-card {

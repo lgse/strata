@@ -74,7 +74,7 @@ impl KeyboardFixture {
         });
         view.browser().select(0, 0);
         view.browser().focus_active();
-        wait_until(|| view.item_view_has_focus());
+        wait_until(|| view.item_view_has_focus() && rendered_name(&view.widget(), "a.txt"));
         Self {
             window,
             overlay,
@@ -102,6 +102,31 @@ impl Drop for KeyboardFixture {
         self.sidebar.disconnect();
         self.window.destroy();
     }
+}
+
+fn rendered_name(widget: &gtk::Widget, name: &str) -> bool {
+    if !widget.is_mapped()
+        || widget.width() <= 0
+        || widget
+            .downcast_ref::<gtk::Stack>()
+            .is_some_and(|stack| stack.is_transition_running())
+    {
+        return false;
+    }
+    if widget
+        .downcast_ref::<gtk::Label>()
+        .is_some_and(|label| label.label() == name)
+    {
+        return true;
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if rendered_name(&widget, name) {
+            return true;
+        }
+        child = widget.next_sibling();
+    }
+    false
 }
 
 fn wait_until(condition: impl Fn() -> bool) {

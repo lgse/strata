@@ -41,7 +41,8 @@ def test_dropping_a_file_on_itself_changes_nothing(strata):
     )
 
 
-def test_dropping_a_folder_into_itself_changes_nothing(strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_dropping_a_folder_into_itself_changes_nothing(strata, mode):
     fixture = strata.fixture
     before = fixture.listing()
     source = strata.select_entry("documents")

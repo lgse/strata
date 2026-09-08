@@ -4,6 +4,7 @@
 mod tests;
 
 mod archive;
+mod create_entry;
 
 use std::{
     cell::Cell,
@@ -2185,70 +2186,14 @@ impl OperationProvider for LocalOperationProvider {
         request: CreateDirectoryRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle {
-        let cancellable = gio::Cancellable::new();
-        let operation_cancellable = cancellable.clone();
-        let _task = glib::MainContext::default().spawn_local(async move {
-            let parent = gio_file_for_location(&request.parent);
-            let folder = match validated_child(&parent, &request.name) {
-                Ok(folder) => folder,
-                Err(message) => {
-                    emit(OperationEvent::Failed {
-                        request_id: request.id,
-                        message: message.to_owned(),
-                    });
-                    return;
-                }
-            };
-            let Some(item) = location_for_file(&folder) else {
-                emit(OperationEvent::Failed {
-                    request_id: request.id,
-                    message: "The new folder has an invalid URI".to_owned(),
-                });
-                return;
-            };
-            let affected_locations = HashSet::from([request.parent.clone()]);
-            if operation_cancellable.is_cancelled() {
-                emit(cancelled_event(
-                    request.id,
-                    Vec::new(),
-                    Vec::new(),
-                    vec![item],
-                    affected_locations,
-                ));
-                return;
-            }
-            match await_cancellable(
-                &folder,
-                &operation_cancellable,
-                |folder, cancellable, result| {
-                    folder.make_directory_async(
-                        glib::Priority::DEFAULT,
-                        Some(cancellable),
-                        move |output| result.resolve(output),
-                    );
-                },
-            )
-            .await
-            {
-                Ok(()) => emit(OperationEvent::Created {
-                    request_id: request.id,
-                }),
-                Err(error) if was_cancelled(&error) => {
-                    emit(cancelled_event(
-                        request.id,
-                        Vec::new(),
-                        vec![item],
-                        Vec::new(),
-                        affected_locations,
-                    ));
-                }
-                Err(error) => emit(OperationEvent::Failed {
-                    request_id: request.id,
-                    message: error.to_string(),
-                }),
-            }
-        });
-        cancellation_handle(cancellable)
+        create_entry::start(
+            request.id,
+            request.parent,
+            request.name,
+            request.unique_name,
+            true,
+            emit,
+        )
     }
 
     fn create_file(
@@ -2256,71 +2201,14 @@ impl OperationProvider for LocalOperationProvider {
         request: CreateFileRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle {
-        let cancellable = gio::Cancellable::new();
-        let operation_cancellable = cancellable.clone();
-        let _task = glib::MainContext::default().spawn_local(async move {
-            let parent = gio_file_for_location(&request.parent);
-            let file = match validated_child(&parent, &request.name) {
-                Ok(file) => file,
-                Err(message) => {
-                    emit(OperationEvent::Failed {
-                        request_id: request.id,
-                        message: message.to_owned(),
-                    });
-                    return;
-                }
-            };
-            let Some(item) = location_for_file(&file) else {
-                emit(OperationEvent::Failed {
-                    request_id: request.id,
-                    message: "The new file has an invalid URI".to_owned(),
-                });
-                return;
-            };
-            let affected_locations = HashSet::from([request.parent.clone()]);
-            if operation_cancellable.is_cancelled() {
-                emit(cancelled_event(
-                    request.id,
-                    Vec::new(),
-                    Vec::new(),
-                    vec![item],
-                    affected_locations,
-                ));
-                return;
-            }
-            match await_cancellable(
-                &file,
-                &operation_cancellable,
-                |file, cancellable, result| {
-                    file.create_async(
-                        gio::FileCreateFlags::NONE,
-                        glib::Priority::DEFAULT,
-                        Some(cancellable),
-                        move |output| result.resolve(output),
-                    );
-                },
-            )
-            .await
-            {
-                Ok(_) => emit(OperationEvent::Created {
-                    request_id: request.id,
-                }),
-                Err(error) if was_cancelled(&error) => {
-                    emit(cancelled_event(
-                        request.id,
-                        Vec::new(),
-                        vec![item],
-                        Vec::new(),
-                        affected_locations,
-                    ));
-                }
-                Err(error) => emit(OperationEvent::Failed {
-                    request_id: request.id,
-                    message: error.to_string(),
-                }),
-            }
-        });
-        cancellation_handle(cancellable)
+        create_entry::start(
+            request.id,
+            request.parent,
+            request.name,
+            request.unique_name,
+            false,
+            emit,
+        )
     }
 
     fn paste(&self, request: PasteRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {

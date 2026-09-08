@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use gtk::prelude::FileExt;
 use std::{cell::Cell, ffi::OsString};
 
 use super::*;
 use crate::{
     model::{EntryKind, MetadataValue},
     services::{
-        CancelledOperation, CompressRequest, ExtractRequest, LoadHandle, MetadataOutcome,
-        MetadataRequest, MetadataUpdate, UndoCopyRequest, UndoMoveRequest,
+        CancelledOperation, CompressRequest, DirectoryEvent, ExtractRequest, LoadHandle,
+        MetadataOutcome, MetadataRequest, MetadataUpdate, UndoCopyRequest, UndoMoveRequest,
     },
 };
 
@@ -33,19 +34,44 @@ fn deleted_trash_entries_refresh_the_trash_root() {
 
 #[test]
 fn invalid_new_folder_names_are_rejected_before_an_operation_starts() {
-    assert_invalid_creation_is_rejected(|browser| {
-        browser.create_directory(Location::local("/fixture"), "../escaped".to_owned());
-    });
+    for name in [
+        "../escaped",
+        "",
+        "   ",
+        "\u{00a0}\u{2003}",
+        ".",
+        "..",
+        "nul\0name",
+    ] {
+        assert_invalid_creation_is_rejected(name, |browser| {
+            browser.create_directory_with_naming(
+                Location::local("/fixture"),
+                name.to_owned(),
+                false,
+            );
+        });
+    }
 }
 
 #[test]
 fn invalid_new_file_names_are_rejected_before_an_operation_starts() {
-    assert_invalid_creation_is_rejected(|browser| {
-        browser.create_file(Location::local("/fixture"), "../escaped".to_owned());
-    });
+    for name in [
+        "../escaped",
+        "",
+        "   ",
+        "\u{00a0}\u{2003}",
+        ".",
+        "..",
+        "nul\0name",
+    ] {
+        assert_invalid_creation_is_rejected(name, |browser| {
+            browser.create_file_with_naming(Location::local("/fixture"), name.to_owned(), false);
+        });
+    }
 }
 
-fn assert_invalid_creation_is_rejected(create: impl FnOnce(&Rc<Browser>)) {
+fn assert_invalid_creation_is_rejected(name: &str, create: impl FnOnce(&Rc<Browser>)) {
+    let expected = validate_basename(name).expect_err("invalid fixture name");
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
     let observed = events.clone();
@@ -57,8 +83,26 @@ fn assert_invalid_creation_is_rejected(create: impl FnOnce(&Rc<Browser>)) {
     assert!(browser.operation_load.borrow().is_none());
     assert!(matches!(
         events.borrow().as_slice(),
-        [BrowserEvent::OperationFailed { message }] if message == "Names cannot contain /"
+        [BrowserEvent::OperationFailed { message }] if message == expected
     ));
+}
+
+#[test]
+fn new_files_and_folders_request_unique_naming_and_report_the_created_location() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    browser.create_new_folder(Location::local("/fixture"));
+    assert!(events.borrow().iter().any(|event| matches!(event,
+        BrowserEvent::EntryCreated { location } if location == &Location::local("/fixture/new folder")
+    )));
+    browser.create_new_file(Location::local("/fixture"));
+    assert!(events.borrow().iter().any(|event| matches!(event,
+        BrowserEvent::EntryCreated { location } if location == &Location::local("/fixture/new file")
+    )));
+    assert!(browser.current_operation.get().is_none());
 }
 
 #[test]
@@ -601,9 +645,18 @@ impl OperationProvider for ImmediateOperationProvider {
         request: CreateDirectoryRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle {
-        emit(OperationEvent::Created {
-            request_id: request.id,
-        });
+        if request.unique_name {
+            let child =
+                crate::adapters::gio_file_for_location(&request.parent).child(&request.name);
+            emit(OperationEvent::EntryCreated {
+                request_id: request.id,
+                location: crate::adapters::location_for_file(&child).expect("created location"),
+            });
+        } else {
+            emit(OperationEvent::Created {
+                request_id: request.id,
+            });
+        }
         LoadHandle::new(|| {})
     }
 
@@ -612,9 +665,18 @@ impl OperationProvider for ImmediateOperationProvider {
         request: CreateFileRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle {
-        emit(OperationEvent::Created {
-            request_id: request.id,
-        });
+        if request.unique_name {
+            let child =
+                crate::adapters::gio_file_for_location(&request.parent).child(&request.name);
+            emit(OperationEvent::EntryCreated {
+                request_id: request.id,
+                location: crate::adapters::location_for_file(&child).expect("created location"),
+            });
+        } else {
+            emit(OperationEvent::Created {
+                request_id: request.id,
+            });
+        }
         LoadHandle::new(|| {})
     }
 
@@ -1471,7 +1533,11 @@ fn creating_a_directory_on_a_remote_location_refreshes_the_open_column() {
     browser.navigate(Location::uri("smb://host/share"));
     assert_eq!(enumerate_calls.get(), 1);
 
-    browser.create_directory(Location::uri("smb://host/share"), "New Folder".to_owned());
+    browser.create_directory_with_naming(
+        Location::uri("smb://host/share"),
+        "New Folder".to_owned(),
+        false,
+    );
 
     assert_eq!(
         enumerate_calls.get(),
@@ -1519,7 +1585,11 @@ fn creating_a_directory_locally_does_not_trigger_a_redundant_refresh() {
     browser.navigate(Location::local("/fixture"));
     assert_eq!(enumerate_calls.get(), 1);
 
-    browser.create_directory(Location::local("/fixture"), "New Folder".to_owned());
+    browser.create_directory_with_naming(
+        Location::local("/fixture"),
+        "New Folder".to_owned(),
+        false,
+    );
 
     assert_eq!(
         enumerate_calls.get(),

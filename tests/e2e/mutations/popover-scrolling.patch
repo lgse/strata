@@ -1,0 +1,12 @@
+diff --git a/src/ui/scrolling/popover.rs b/src/ui/scrolling/popover.rs
+--- a/src/ui/scrolling/popover.rs
++++ b/src/ui/scrolling/popover.rs
+@@ -36,7 +36,7 @@ fn wheel_controller(popover: &gtk::Popover) -> gtk::EventControllerScroll {
+         let Some(popover) = weak_popover.upgrade() else {
+             return glib::Propagation::Proceed;
+         };
+-        if !popover.is_visible() || pointer_over_widget(&popover) {
++        if popover.is_visible() || pointer_over_widget(&popover) {
+             return glib::Propagation::Proceed;
+         }
+         let scroll = popover.root().and_then(|root| {
