@@ -6,7 +6,7 @@ diff --git a/src/ui/browser/inline_edit.rs b/src/ui/browser/inline_edit.rs
          return;
      };
 -    if bounds.width() <= 0.0 || viewport.width() <= 0 {
-+    if bounds.width() <= 0.0 || viewport.width() <= 0 || field.is_visible() {
++    if bounds.width() <= 0.0 || viewport.width() <= 0 || gtk::prelude::WidgetExt::is_visible(field) {
          return;
      }
      // Columns can be wider than the viewport. GtkText must scroll within the
