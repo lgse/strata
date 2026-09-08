@@ -105,12 +105,13 @@ impl ColumnView {
                 (item.position() as usize == position).then(|| bound.row.upgrade())?
             })
         {
-            let bounds = row.compute_bounds(&self.list)?;
-            return Some((
-                self.item_context_trigger.clone(),
-                f64::from(bounds.center().x()),
-                f64::from(bounds.center().y()),
-            ));
+            if let Some(bounds) = row.compute_bounds(&self.list) {
+                return Some((
+                    self.item_context_trigger.clone(),
+                    f64::from(bounds.center().x()),
+                    f64::from(bounds.center().y()),
+                ));
+            }
         }
         let width = f64::from(self.presentation.stack.width());
         let height = f64::from(self.presentation.stack.height());
