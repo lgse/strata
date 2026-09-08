@@ -1,0 +1,161 @@
+name: Publish pinned E2E environments
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - tests/e2e/Dockerfile
+      - tests/e2e/requirements.txt
+      - tests/e2e/install-packages.sh
+      - scripts/e2e_bundle.py
+      - scripts/e2e_images.py
+      - .dockerignore
+      - .github/workflows/e2e-images.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-image-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      DOCKER_BUILD_RECORD_UPLOAD: 'false'
+    steps:
+      - name: Check out trusted main
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Identify the pinned environment inputs
+        id: identity
+        run: |
+          python3 scripts/e2e_images.py references >> "$GITHUB_OUTPUT"
+          echo "image_key=$(python3 scripts/e2e_bundle.py image-key)" >> "$GITHUB_OUTPUT"
+          echo "dependency_key=$(python3 scripts/e2e_bundle.py dependency-key)" >> "$GITHUB_OUTPUT"
+          echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
+          echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
+
+      - name: Authenticate only the trusted publisher
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Set up the publisher's container builder
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Check which input-addressed images already exist
+        id: existing
+        env:
+          RUNTIME_REF: ${{ steps.identity.outputs.runtime }}
+          BUILD_REF: ${{ steps.identity.outputs.build }}
+          CACHE_REF: ${{ steps.identity.outputs.cache }}
+          ENVIRONMENT_CACHE_REF: ${{ steps.identity.outputs.environment_cache }}
+          ENVIRONMENT_IMAGE_REF: ${{ steps.identity.outputs.environment_image }}
+        shell: bash
+        run: |
+          for kind in runtime build cache environment_cache environment_image; do
+            variable="${kind^^}_REF"
+            if docker buildx imagetools inspect "${!variable}" >/dev/null 2>&1; then
+              echo "$kind=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$kind=false" >> "$GITHUB_OUTPUT"
+            fi
+          done
+
+      - name: Restore trusted default-branch dependency layers
+        if: steps.existing.outputs.build != 'true' || steps.existing.outputs.cache != 'true' || steps.existing.outputs.environment_cache != 'true' || steps.existing.outputs.runtime != 'true' || steps.existing.outputs.environment_image != 'true'
+        id: dependency-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/e2e-dependency-cache
+          key: strata-e2e-dependencies-local-v1-${{ steps.identity.outputs.image_key }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', '.dockerignore') }}-${{ steps.identity.outputs.uid }}-${{ steps.identity.outputs.gid }}
+
+      - name: Publish the build environment and its complete dependency cache
+        if: steps.existing.outputs.build != 'true' || steps.existing.outputs.cache != 'true' || steps.existing.outputs.environment_cache != 'true' || steps.existing.outputs.environment_image != 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: tests/e2e/Dockerfile
+          target: dependencies
+          platforms: linux/amd64
+          build-args: |
+            E2E_UID=${{ steps.identity.outputs.uid }}
+            E2E_GID=${{ steps.identity.outputs.gid }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.strata.e2e.inputs=${{ steps.identity.outputs.image_key }}
+            org.strata.e2e.dependencies=${{ steps.identity.outputs.dependency_key }}
+          tags: |
+            ${{ steps.identity.outputs.build }}
+            ${{ steps.existing.outputs.environment_image != 'true' && steps.identity.outputs.environment_image || '' }}
+          push: true
+          cache-from: |
+            ${{ steps.dependency-cache.outputs.cache-hit == 'true' && 'type=local,src=target/e2e-dependency-cache' || 'type=gha,scope=strata-e2e-dependencies-v1' }}
+            type=gha,scope=strata-e2e-indexes-v1
+            type=registry,ref=${{ steps.identity.outputs.environment_cache }}
+          cache-to: |
+            type=registry,ref=${{ steps.identity.outputs.cache }},mode=max
+            ${{ steps.existing.outputs.environment_cache != 'true' && format('type=registry,ref={0},mode=max', steps.identity.outputs.environment_cache) || '' }}
+
+      - name: Publish the runtime without Rust or Cargo
+        if: steps.existing.outputs.runtime != 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          file: tests/e2e/Dockerfile
+          target: runtime
+          platforms: linux/amd64
+          build-args: |
+            E2E_UID=${{ steps.identity.outputs.uid }}
+            E2E_GID=${{ steps.identity.outputs.gid }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.strata.e2e.inputs=${{ steps.identity.outputs.image_key }}
+          tags: ${{ steps.identity.outputs.runtime }}
+          push: true
+          cache-from: type=registry,ref=${{ steps.identity.outputs.cache }}
+
+      - name: Report published references and anonymous-access setup
+        env:
+          RUNTIME_REF: ${{ steps.identity.outputs.runtime }}
+          BUILD_REF: ${{ steps.identity.outputs.build }}
+          CACHE_REF: ${{ steps.identity.outputs.cache }}
+        run: |
+          {
+            echo '## Pinned E2E environments'
+            echo
+            echo "Runtime: \`$RUNTIME_REF\`"
+            echo "Build environment: \`$BUILD_REF\`"
+            echo "BuildKit cache: \`$CACHE_REF\`"
+            echo
+            echo 'Make both GHCR packages public in package settings for anonymous CI/fork pulls.'
+            echo 'CI resolves matching base/cache tags to OCI digests before use; it never consumes latest.'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Require anonymous access and matching provenance for ordinary CI and fork PRs
+        run: |
+          docker logout ghcr.io
+          if ! python3 scripts/e2e_images.py bases --require-published > "$RUNNER_TEMP/e2e-public-bases.txt"; then
+            echo '::error title=Published E2E bases failed anonymous verification::Make both GHCR packages public after their first publication, then rerun this publisher. If they are already public, inspect the logged registry/provenance error. Do not give fork PRs package-write credentials.'
+            exit 1
+          fi
+          python3 scripts/e2e_images.py environment >> "$RUNNER_TEMP/e2e-public-bases.txt"
+          while IFS= read -r reference; do
+            case "$reference" in
+              dependencies_image=*|runtime_image=*|environment_image=*) printf '\nVerified: `%s`\n' "$reference" >> "$GITHUB_STEP_SUMMARY" ;;
+            esac
+          done < "$RUNNER_TEMP/e2e-public-bases.txt"

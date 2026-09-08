@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 
 import os
 import signal
@@ -16,12 +16,45 @@ from harness.tree import Bounds, Node
 from harness.environment import process_environment
 from harness.fixtures import FixtureTree
 from harness.process import ManagedProcess, terminate
+from tests.e2e.scenarios.test_marquee_scrolling import _entry_bounds, _entry_name
 
 
 @pytest.mark.parametrize("reported", ["button", "push button"])
 def test_button_role_is_stable_across_atspi_versions(reported):
     node = Node(Mock(get_role_name=lambda: reported))
     assert node.role == "button"
+
+
+def test_marquee_uses_rendered_child_bounds_for_virtualized_cells():
+    row = Mock(name="row")
+    row.name = "565.txt"
+    row.find.return_value = Mock(
+        name="recycled-label",
+        screen_bounds=lambda: Bounds(233, 96, 153, 36),
+    )
+    row.screen_bounds.return_value = Bounds(217, 7, 191, 145)
+
+    assert _entry_bounds(row) == Bounds(233, 96, 153, 36)
+    row.find.assert_called_once_with(role="label")
+
+
+def test_marquee_uses_rendered_child_identity_for_recycled_cells():
+    row = Mock(name="row")
+    row.name = "092.txt"
+    label = Mock(name="label")
+    label.name = "575.txt"
+    row.find.return_value = label
+
+    assert _entry_name(row) == "575.txt"
+
+
+def test_marquee_falls_back_to_cell_bounds_when_no_label_is_rendered():
+    row = Mock(name="row")
+    row.find.return_value = None
+    row.screen_bounds.return_value = Bounds(217, 7, 191, 145)
+
+    assert _entry_bounds(row) == Bounds(217, 7, 191, 145)
+    row.find.assert_called_once_with(role="label")
 
 
 @pytest.mark.parametrize("anchor", [(0, 0), (1074, 6), (500, 200)])

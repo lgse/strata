@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{
     BoundRow, PendingPointerActivation, column_size_text, set_active_path_style,

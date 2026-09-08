@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Subprocess bookkeeping shared by the display and the application."""
 
 from __future__ import annotations

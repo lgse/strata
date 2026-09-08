@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 //! Alternate browser presentations.
 //!
@@ -25,6 +25,9 @@ use crate::{
 };
 
 mod events;
+mod list_factory;
+
+use list_factory::{ListFactory, refresh_list_section};
 
 const LIST_COLUMN_WIDTHS: [i32; 5] = [160, 160, 90, 120, 150];
 const LIST_COLUMN_MIN_WIDTHS: [i32; 5] = [160, 80, 70, 80, 110];
@@ -2262,143 +2265,25 @@ fn build_list_pane(
 
     let headings = list_headings(&browser, depth, columns.clone());
 
-    let factory = gtk::SignalListItemFactory::new();
-    let bound_items: Rc<RefCell<Vec<BoundModeItem>>> = Rc::new(RefCell::new(Vec::new()));
-    let bound_items_for_setup = bound_items.clone();
-    let selection_for_setup = selection.clone();
-    let browser_for_setup = Rc::downgrade(&browser);
-    let previews_for_setup = click_options.previews;
-    let activation_for_setup = click_options.activation;
-    let transfers_for_setup = transfer_handler.clone();
-    let source_index_for_setup = source_index.clone();
-    let view_model_for_setup = view_model_object.clone();
-    let positions_for_setup = PanePositions {
-        index: source_index_for_setup.clone(),
-        view: view_model_for_setup.clone(),
-    };
+    let bound_items = Rc::new(RefCell::new(Vec::new()));
     let scrolling = Rc::new(Cell::new(false));
-    let scrolling_for_setup = scrolling.clone();
-    factory.connect_setup(move |_, item| {
-        let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
-            return;
-        };
-        let row = assemble_list_row();
-        if !scrolling_for_setup.get() {
-            row.add_css_class("file-appear");
-            let weak_row = row.downgrade();
-            glib::idle_add_local_once(move || {
-                if let Some(row) = weak_row.upgrade() {
-                    row.remove_css_class("file-appear");
-                }
-            });
-        }
-        let Some((_, name, _, mode, size, kind, modified)) = list_row_parts(&row) else {
-            return;
-        };
-        let Some(name_cell) = row.first_child() else {
-            return;
-        };
-        for (index, widget) in [
-            name_cell,
-            mode.upcast(),
-            size.upcast(),
-            kind.upcast(),
-            modified.upcast(),
-        ]
-        .into_iter()
-        .enumerate()
-        {
-            register_list_column_cell(&columns, index, &widget);
-        }
-        install_preview_click(
-            &row,
-            item,
-            browser_for_setup.clone(),
-            previews_for_setup.clone(),
-            activation_for_setup.clone(),
-            depth,
-            Some((source_index_for_setup.clone(), view_model_for_setup.clone())),
-        );
-        install_modified_selection_click(
-            &row,
-            item,
-            selection_for_setup.clone(),
-            browser_for_setup.clone(),
-            depth,
-            positions_for_setup.clone(),
-        );
-        install_list_drag_drop(
-            &row,
-            item,
-            browser_for_setup.clone(),
-            transfers_for_setup.clone(),
-            depth,
-            Some((source_index_for_setup.clone(), view_model_for_setup.clone())),
-            Some(name.upcast_ref()),
-        );
-        item.set_child(Some(&row));
-        register_bound_mode_item(&bound_items_for_setup, item, &row);
-    });
-    let browser_for_bind = Rc::downgrade(&browser);
-    let source_index_for_bind = source_index.clone();
-    let cuts_for_bind = cut_locations.clone();
-    let scrolling_for_bind = scrolling.clone();
-    factory.connect_bind(move |_, item| {
-        let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
-            return;
-        };
-        let Some(row) = item.child().and_downcast::<gtk::Box>() else {
-            return;
-        };
-        let Some((icon, name, field, mode, size, kind, modified)) = list_row_parts(&row) else {
-            return;
-        };
-        let source_position = item
-            .item()
-            .and_then(|value| source_index_for_bind.of_item(&value));
-        let browser = browser_for_bind.upgrade();
-        let entry = browser.as_ref().and_then(|browser| {
-            source_position.and_then(|position| browser.entry_at(depth, position))
-        });
-        if let Some(entry) = entry {
-            name.set_visible(true);
-            field.set_visible(false);
-            set_label_if_changed(&name, &entry.display_name);
-            set_label_if_changed(&mode, &entry_mode(&entry));
-            set_label_if_changed(&size, &entry_size(&entry));
-            set_label_if_changed(&kind, entry_type(&entry));
-            super::accessibility::describe_entry(item, &entry.display_name, Some(&entry));
-            if scrolling_for_bind.get() {
-                set_label_if_changed(&modified, &crate::util::modified_date(&entry));
-            } else {
-                set_mode_cut_style(&row, cuts_for_bind.borrow().contains(&entry.location));
-                super::thumbnail::set_thumbnail_or_icon(
-                    &icon,
-                    &entry,
-                    super::browser::entry_icon(&entry),
-                    18,
-                    18,
-                );
-                if let Some(position) = metadata_fill_position(source_position, &entry, true)
-                    && let Some(browser) = browser.as_ref()
-                {
-                    browser.request_metadata_fill(depth, position, entry.location.clone());
-                }
-                crate::util::set_modified_date(&modified, Some(&entry), "—");
-            }
-        } else {
-            row.remove_css_class("cut-item");
-            crate::ui::thumbnail::show_fallback_icon(&icon, crate::assets::icons::DOCUMENTS, 18);
-            name.set_label("");
-            name.set_visible(true);
-            field.set_visible(false);
-            mode.set_label("");
-            size.set_label("");
-            kind.set_label("");
-            crate::util::set_modified_date(&modified, None, "");
-        }
-    });
-    factory.connect_unbind(|_, item| super::thumbnail::cancel_list_item_thumbnails(item));
+    let factory = ListFactory {
+        browser: Rc::downgrade(&browser),
+        depth,
+        positions: PanePositions {
+            index: source_index.clone(),
+            view: view_model_object.clone(),
+        },
+        selection: selection.clone(),
+        previews: click_options.previews,
+        activation: click_options.activation,
+        transfers: transfer_handler.clone(),
+        cuts: cut_locations.clone(),
+        columns,
+        scrolling: scrolling.clone(),
+        bound_items: bound_items.clone(),
+    }
+    .build();
     let view = gtk::ListView::new(Some(selection.clone()), Some(factory));
     view.add_css_class("file-list-mode");
     super::accessibility::describe_entry_container(&view, &pane_directory_name(&browser, depth));
@@ -3600,44 +3485,6 @@ fn refresh_icons_section(
         if let Some(position) = metadata_fill_position(Some(position), &entry, false) {
             browser.request_metadata_fill(depth, position, entry.location.clone());
         }
-    });
-}
-
-fn refresh_list_section(
-    browser: &Rc<Browser>,
-    depth: usize,
-    source_index: &SourceIndexMap,
-    section: &PaneSection,
-    cuts: &HashSet<Location>,
-) {
-    section.bound_items.borrow().iter().for_each(|bound| {
-        let Some(row) = bound.widget.upgrade().and_downcast::<gtk::Box>() else {
-            return;
-        };
-        let Some((icon, _, _, _, _, _, modified)) = list_row_parts(&row) else {
-            return;
-        };
-        let Some(item) = bound.item.upgrade() else {
-            return;
-        };
-        let Some(position) = item.item().and_then(|value| source_index.of_item(&value)) else {
-            return;
-        };
-        let Some(entry) = browser.entry_at(depth, position) else {
-            return;
-        };
-        set_mode_cut_style(&row, cuts.contains(&entry.location));
-        super::thumbnail::set_thumbnail_or_icon(
-            &icon,
-            &entry,
-            super::browser::entry_icon(&entry),
-            18,
-            18,
-        );
-        if let Some(position) = metadata_fill_position(Some(position), &entry, true) {
-            browser.request_metadata_fill(depth, position, entry.location.clone());
-        }
-        crate::util::set_modified_date(&modified, Some(&entry), "—");
     });
 }
 

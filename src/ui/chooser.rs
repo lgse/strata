@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 #[cfg(test)]
 mod tests;
@@ -800,8 +800,9 @@ fn build_chooser(
         .active(true)
         .tooltip_text("Toggle sidebar (Ctrl+B)")
         .build();
-    sidebar_toggle.set_child(Some(&crate::assets::chrome_icon(
+    sidebar_toggle.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::PANEL_LEFT,
+        17,
     )));
     sidebar_toggle.add_css_class("sidebar-toggle");
     let location = view.location_widget();
