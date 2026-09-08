@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::adapters::directory_summary::summarize_directory_with_progress;
 use crate::adapters::gio_file_for_location;

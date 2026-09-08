@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 //! Freedesktop shared thumbnail cache (`$XDG_CACHE_HOME/thumbnails/large`).
 //!

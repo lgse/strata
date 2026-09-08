@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 //! Exhaustive browser event dispatch. Shared effects and column publication run before alternate
 //! presentations consume the event; preserve that order when adding a feature handler.

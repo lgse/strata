@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Session and per-scenario fixtures for the end-to-end suite."""
 
 from __future__ import annotations

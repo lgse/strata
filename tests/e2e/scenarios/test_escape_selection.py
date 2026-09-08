@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Escape dismisses transient UI before clearing the active pane selection."""
 
 import pytest

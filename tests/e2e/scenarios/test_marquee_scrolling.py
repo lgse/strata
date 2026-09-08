@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Scrolling must extend a held marquee, not move its anchor or lose earlier hits."""
 
 import pytest

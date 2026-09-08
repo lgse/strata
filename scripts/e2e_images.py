@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Input-addressed public E2E images and digest-pinned registry cache discovery."""
 
 import argparse

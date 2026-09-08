@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{ensure_rename_field, icons_card_extent, new_card, parts, rename_field, set_slot};
 use crate::test_support::gtk_test;
