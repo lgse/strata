@@ -65,9 +65,18 @@ fn icon_and_list_subheaders_preserve_compact_hierarchy() {
                         .expect("main header bounds");
                     assert_eq!(
                         pane_bounds.height(),
-                        main_bounds.height() - 6.0,
+                        main_bounds.height(),
                         "{size:?}, {mode:?}"
                     );
+                    assert_eq!(main_bounds.height(), 41.0, "compact header: {size:?}");
+                    let toggle_icon = fixture
+                        .content
+                        .header
+                        .sidebar_toggle
+                        .child()
+                        .expect("toggle icon");
+                    let toggle_image = toggle_icon.downcast::<gtk::Image>().expect("toggle image");
+                    assert_eq!(toggle_image.pixel_size(), 17);
                     let main_button = fixture
                         .content
                         .header
