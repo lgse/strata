@@ -918,6 +918,29 @@ impl ModeViews {
             .collect()
     }
 
+    pub fn reveal_selected_entry(&self, depth: usize, source_position: usize) {
+        for pane in self
+            .visible_panes()
+            .into_iter()
+            .filter(|pane| pane.depth == depth)
+        {
+            for section in pane.item_sections() {
+                if let Some(position) = view_position_for_source(
+                    &pane.model,
+                    Some(&section.view_model),
+                    source_position,
+                ) {
+                    super::browser::reveal_collection_after_layout(
+                        &section.view,
+                        position,
+                        section.visit.clone(),
+                    );
+                    return;
+                }
+            }
+        }
+    }
+
     pub fn suppress_focus_scroll(&self) {
         self.suppress_focus_scroll.set(true);
     }

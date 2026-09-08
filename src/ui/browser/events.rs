@@ -33,6 +33,7 @@ impl ViewState {
             BrowserEvent::Reset => {
                 self.pending_new_entry.take();
                 self.pending_location_credentials.take();
+                self.pending_archive_destination.take();
                 self.truncate(0);
             }
             BrowserEvent::ColumnsTruncated { len } => {
@@ -282,6 +283,7 @@ impl ViewState {
                                 } else {
                                     state.browser.select_entries_by_location(&locations);
                                 }
+                                state.reveal_focused_entry();
                                 if properties && let Some(entry) = state.browser.focused_entry() {
                                     state.show_entry_properties(entry);
                                 }
@@ -462,6 +464,7 @@ impl ViewState {
             BrowserEvent::OperationFailed { message } => {
                 self.pending_new_entry.take();
                 self.dismiss_file_operation_progress();
+                self.pending_archive_destination.take();
                 let retry = self.pending_extract_retry.take();
                 if let Some((entry, dest)) = retry {
                     let lower = message.to_lowercase();
@@ -568,11 +571,16 @@ impl ViewState {
             BrowserEvent::ArchiveCompleted { select_name, .. } => {
                 self.dismiss_file_operation_progress();
                 self.pending_extract_retry.replace(None);
+                let archive_destination = self.pending_archive_destination.take();
                 if !select_name.is_empty() {
                     self.pending_select.borrow_mut().push(select_name.clone());
                 }
                 if let Some(dest) = self.pending_navigate.take() {
                     self.browser.navigate(dest);
+                } else if !select_name.is_empty()
+                    && let Some(destination) = archive_destination
+                {
+                    self.reload_archive_destination(destination);
                 } else {
                     self.browser.reload_active();
                 }
@@ -616,6 +624,58 @@ impl ViewState {
             self.refresh_active_path_rows();
         }
         self.mode_views.borrow_mut().handle(event);
+    }
+
+    fn reload_archive_destination(&self, destination: crate::model::Location) {
+        if self.mode_views.borrow().mode() == BrowserMode::Columns {
+            let depth = (0..self.columns.borrow().len())
+                .find(|depth| self.browser.location_at(*depth).as_ref() == Some(&destination));
+            if let Some(depth) = depth {
+                self.browser.set_active_column(depth);
+                self.browser.retry_column(depth);
+            } else {
+                self.browser.navigate(destination);
+            }
+        } else if self.browser.active_location().as_ref() == Some(&destination) {
+            self.browser.reload_active();
+        } else {
+            self.browser.navigate(destination);
+        }
+    }
+
+    fn reveal_focused_entry(self: &Rc<Self>) {
+        let Some((depth, position, _)) = self.browser.focused_item() else {
+            return;
+        };
+        if self.mode_views.borrow().mode() == BrowserMode::Columns {
+            let column = self.columns.borrow().get(depth).cloned();
+            let Some(column) = column else {
+                return;
+            };
+            if let Some(position) = column.map.view_position(position) {
+                let rows = column.bound_rows.clone();
+                super::collection::reveal_collection_after_layout(
+                    column.list.upcast_ref(),
+                    position,
+                    Rc::new(move |visit| {
+                        rows.borrow_mut().retain(|bound| {
+                            let (Some(item), Some(row)) =
+                                (bound.item.upgrade(), bound.row.upgrade())
+                            else {
+                                return false;
+                            };
+                            visit(item.position(), row.upcast_ref());
+                            true
+                        });
+                    }),
+                );
+                self.reveal_column(column.shell);
+            }
+        } else {
+            self.mode_views
+                .borrow()
+                .reveal_selected_entry(depth, position);
+        }
     }
 
     fn event_refreshes_active_path(event: &BrowserEvent) -> bool {

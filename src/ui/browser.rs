@@ -52,7 +52,8 @@ pub(crate) use crate::ui::browser::collection::{
     activate_recursive_search_result, bind_filter_query, debounce_filter_entry,
     detach_collection_view, focus_collection_item_when_allocated, focus_filter_entry,
     notify_filter_query, prepare_collection_inline_edit, recursive_search_activation_key,
-    scroll_collection_when_allocated, search_result_entry, search_result_navigation_position,
+    reveal_collection_after_layout, scroll_collection_when_allocated, search_result_entry,
+    search_result_navigation_position,
 };
 pub(super) use crate::ui::browser::columns::max_child_natural_width;
 pub(super) use crate::ui::browser::context_menu::{
@@ -168,6 +169,7 @@ pub(super) struct ViewState {
     /// dialog opens once the entry it describes is actually loaded.
     pending_select_properties: Cell<bool>,
     pending_extract_retry: RefCell<Option<(FileEntry, Location)>>,
+    pending_archive_destination: RefCell<Option<Location>>,
     /// The entries a just-dispatched, non-permanent delete requested,
     /// snapshotted so a `CompletedWithErrors` response naming entries that
     /// failed only because the location doesn't support Trash can offer a
@@ -351,6 +353,7 @@ impl BrowserView {
             pending_transfer_selection: RefCell::new(None),
             pending_select_properties: Cell::new(false),
             pending_extract_retry: RefCell::new(None),
+            pending_archive_destination: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
             pending_navigate: RefCell::new(None),
             pending_location_credentials: RefCell::new(None),
