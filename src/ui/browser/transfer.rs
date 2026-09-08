@@ -32,16 +32,30 @@ fn location_exists(location: &Location) -> bool {
     gio_file_for_location(location).query_exists(None::<&gio::Cancellable>)
 }
 
-fn transfer_has_collision(source: &Location, destination: &Location) -> bool {
+fn transfer_target(source: &Location, destination: &Location) -> Option<gio::File> {
     let source = gio_file_for_location(source);
-    let destination = gio_file_for_location(destination);
-    let Some(name) = source.basename() else {
+    let name = source.basename()?;
+    Some(gio_file_for_location(destination).child(name))
+}
+
+/// Whether dropping `source` onto `destination` would transfer it onto
+/// itself, its current location, or one of its own descendants.
+fn transfer_is_noop(source: &Location, destination: &Location) -> bool {
+    let Some(target) = transfer_target(source, destination) else {
         return false;
     };
-    let target = destination.child(name);
-    if source.equal(&target) || source.equal(&destination) || destination.has_prefix(&source) {
+    let source = gio_file_for_location(source);
+    let destination = gio_file_for_location(destination);
+    source.equal(&target) || source.equal(&destination) || destination.has_prefix(&source)
+}
+
+fn transfer_has_collision(source: &Location, destination: &Location) -> bool {
+    if transfer_is_noop(source, destination) {
         return false;
     }
+    let Some(target) = transfer_target(source, destination) else {
+        return false;
+    };
     target.query_exists(None::<&gio::Cancellable>)
 }
 
@@ -68,6 +82,13 @@ impl ViewState {
         if is_trash_location(&destination)
             || (move_sources && sources.iter().any(|source| !can_remove_location(source)))
         {
+            return;
+        }
+        let sources: Vec<Location> = sources
+            .into_iter()
+            .filter(|source| !transfer_is_noop(source, &destination))
+            .collect();
+        if sources.is_empty() {
             return;
         }
         let mut accepted = Vec::new();

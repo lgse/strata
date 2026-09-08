@@ -70,3 +70,39 @@ fn transfer_collisions_detect_existing_destination_items() -> Result<(), Box<dyn
     std::fs::remove_dir_all(root)?;
     Ok(())
 }
+
+#[test]
+fn transfer_is_noop_rejects_dropping_a_folder_onto_itself_or_its_own_tree()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = std::env::temp_dir().join(format!("strata-noop-test-{}", std::process::id()));
+    let _ignored = std::fs::remove_dir_all(&root);
+    let source_dir = root.join("source");
+    let nested = source_dir.join("nested");
+    let unrelated = root.join("unrelated");
+    std::fs::create_dir_all(&nested)?;
+    std::fs::create_dir_all(&unrelated)?;
+
+    // Dropped onto itself.
+    assert!(transfer_is_noop(
+        &Location::local(&source_dir),
+        &Location::local(&source_dir)
+    ));
+    // Dropped back onto its own parent (already there).
+    assert!(transfer_is_noop(
+        &Location::local(&source_dir),
+        &Location::local(&root)
+    ));
+    // Dropped onto one of its own descendants.
+    assert!(transfer_is_noop(
+        &Location::local(&source_dir),
+        &Location::local(&nested)
+    ));
+    // A real move to an unrelated destination is not a no-op.
+    assert!(!transfer_is_noop(
+        &Location::local(&source_dir),
+        &Location::local(&unrelated)
+    ));
+
+    std::fs::remove_dir_all(root)?;
+    Ok(())
+}
