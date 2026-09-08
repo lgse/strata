@@ -33,8 +33,8 @@ if [[ -n "$(git -C "$repository" status --porcelain -- src)" ]]; then
   exit 1
 fi
 
-if [[ -n "${STRATA_BINARY:-}" ]]; then
-  echo "STRATA_BINARY must be unset so mutations exercise the rebuilt binary" >&2
+if [[ -n "${STRATA_BINARY:-}" || -n "${STRATA_E2E_BUNDLE:-}" ]]; then
+  echo "STRATA_BINARY and STRATA_E2E_BUNDLE must be unset so mutations exercise the rebuilt binary" >&2
   exit 1
 fi
 
