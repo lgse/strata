@@ -15,9 +15,9 @@ use crate::{
         browser::BrowserView,
         window::{
             apply_browser_mode, browser_mode_for_digit, is_browser_navigation_key,
-            is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut,
-            is_sidebar_focus_shortcut, is_toggle_hidden_shortcut, is_undo_shortcut,
-            type_to_search_query,
+            is_context_menu_shortcut, is_open_terminal_shortcut, is_refresh_shortcut,
+            is_rename_shortcut, is_sidebar_focus_shortcut, is_toggle_hidden_shortcut,
+            is_undo_shortcut, type_to_search_query,
         },
     },
 };
@@ -171,7 +171,8 @@ impl Dispatcher {
             self.view.create_new_folder();
             return Some(Propagation::Stop);
         }
-        self.clipboard_command(event)
+        self.context_menu_command(event)
+            .or_else(|| self.clipboard_command(event))
             .or_else(|| self.browser_commands(browser, event))
     }
 
@@ -197,6 +198,15 @@ impl Dispatcher {
             return Some(Propagation::Proceed);
         }
         action(&self.view).then_some(Propagation::Stop)
+    }
+
+    fn context_menu_command(&self, event: &KeyEvent) -> KeyResult {
+        if is_context_menu_shortcut(event.key, event.modifiers)
+            && self.view.open_focused_context_menu()
+        {
+            return Some(Propagation::Stop);
+        }
+        None
     }
 
     fn browser_commands(&self, browser: &Rc<Browser>, event: &KeyEvent) -> KeyResult {

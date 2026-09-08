@@ -435,6 +435,22 @@ pub(super) fn is_sidebar_focus_shortcut(
         && matches!(key, gtk::gdk::Key::b | gtk::gdk::Key::B)
 }
 
+pub(super) fn is_context_menu_shortcut(
+    key: gtk::gdk::Key,
+    modifiers: gtk::gdk::ModifierType,
+) -> bool {
+    match key {
+        gtk::gdk::Key::Menu => modifiers.is_empty(),
+        gtk::gdk::Key::F10 => {
+            modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK)
+                && !modifiers.intersects(
+                    gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK,
+                )
+        },
+        _ => false,
+    }
+}
+
 fn sidebar_focus_direction(key: gtk::gdk::Key) -> Option<gtk::DirectionType> {
     match key {
         gtk::gdk::Key::Left => Some(gtk::DirectionType::Left),

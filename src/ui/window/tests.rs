@@ -20,9 +20,9 @@ use super::{
     DEFAULT_ACCELS, MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, TrashContents,
     TrashMenuVisibility, TypeToSearchQuery, accepts_sidebar_reorder_payload, begin_media_release,
     browser_for_window, browser_mode_for_digit, event_changes_trash_contents,
-    is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
-    is_smb_location, is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut,
-    jump_direction, media_release_label, mount_release_action, mouse_history_action,
+    is_context_menu_shortcut, is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut,
+    is_sidebar_focus_shortcut, is_smb_location, is_standard_place_location, is_toggle_hidden_shortcut,
+    is_undo_shortcut, jump_direction, media_release_label, mount_release_action, mouse_history_action,
     page_direction, parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
     reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
     should_show_standard_place, sidebar_accepts_file_drop, sidebar_update_label, standard_place,
@@ -285,6 +285,24 @@ fn sidebar_focus_shortcut_requires_control_and_shift() {
     assert!(is_sidebar_focus_shortcut(gtk::gdk::Key::b, control | shift));
     assert!(is_sidebar_focus_shortcut(gtk::gdk::Key::B, control | shift));
     assert!(!is_sidebar_focus_shortcut(gtk::gdk::Key::b, control));
+}
+
+#[test]
+fn context_menu_shortcut_accepts_menu_key_alone_and_shift_f10() {
+    let shift = gtk::gdk::ModifierType::SHIFT_MASK;
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+    let alt = gtk::gdk::ModifierType::ALT_MASK;
+
+    assert!(is_context_menu_shortcut(
+        gtk::gdk::Key::Menu,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(is_context_menu_shortcut(gtk::gdk::Key::F10, shift));
+    assert!(!is_context_menu_shortcut(gtk::gdk::Key::Menu, shift));
+    assert!(!is_context_menu_shortcut(gtk::gdk::Key::Menu, control));
+    assert!(!is_context_menu_shortcut(gtk::gdk::Key::F10, gtk::gdk::ModifierType::empty()));
+    assert!(!is_context_menu_shortcut(gtk::gdk::Key::F10, shift | control));
+    assert!(!is_context_menu_shortcut(gtk::gdk::Key::F10, shift | alt));
 }
 
 #[test]
