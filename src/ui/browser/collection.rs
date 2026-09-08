@@ -14,7 +14,8 @@ pub(crate) const FILTER_DEBOUNCE_DELAY: Duration = Duration::from_millis(40);
 
 struct PendingCorrection {
     view: glib::WeakRef<gtk::Widget>,
-    active: Weak<Cell<bool>>,
+    target: Option<(Location, u64)>,
+    active: Rc<Cell<bool>>,
     callback: gtk::TickCallbackId,
 }
 
@@ -113,25 +114,15 @@ fn apply_collection_scroll(view: &gtk::Widget, position: u32, flags: gtk::ListSc
     }
 }
 
-pub(crate) fn collection_correction_pending(view: &gtk::ScrolledWindow) -> bool {
-    PENDING_CORRECTIONS.with_borrow(|pending| {
-        pending.iter().any(|pending| {
-            pending.view.upgrade().as_ref() == Some(view.upcast_ref())
-                && pending.active.upgrade().is_some_and(|active| active.get())
-        })
-    })
-}
-
 pub(crate) fn cancel_collection_correction(view: &gtk::ScrolledWindow) {
     if let Some(callback) = PENDING_CORRECTIONS.with_borrow_mut(|pending| {
-        pending.retain(|pending| {
-            pending.view.upgrade().is_some()
-                && pending.active.upgrade().is_some_and(|active| active.get())
-        });
+        pending.retain(|pending| pending.view.upgrade().is_some() && pending.active.get());
         let index = pending
             .iter()
             .position(|pending| pending.view.upgrade().as_ref() == Some(view.upcast_ref()))?;
-        Some(pending.swap_remove(index).callback)
+        let pending = pending.swap_remove(index);
+        pending.active.set(false);
+        Some(pending.callback)
     }) {
         callback.remove();
     }
@@ -139,10 +130,7 @@ pub(crate) fn cancel_collection_correction(view: &gtk::ScrolledWindow) {
 
 fn cleanup_corrections() {
     PENDING_CORRECTIONS.with_borrow_mut(|pending| {
-        pending.retain(|pending| {
-            pending.view.upgrade().is_some()
-                && pending.active.upgrade().is_some_and(|active| active.get())
-        });
+        pending.retain(|pending| pending.view.upgrade().is_some() && pending.active.get());
     });
 }
 
@@ -191,17 +179,34 @@ pub(crate) fn scroll_collection_row_into_view(
 
 pub(crate) fn defer_collection_bound_correction(
     scroll: &gtk::ScrolledWindow,
-    obscurer: Option<&gtk::Widget>,
+    obscurer: impl Fn() -> Option<gtk::Widget> + 'static,
     generation: Option<(&Rc<Cell<u64>>, u64)>,
+    target: Option<&Location>,
     find_row: impl Fn() -> Option<gtk::Widget> + 'static,
     finished: impl Fn() + 'static,
 ) {
+    let target = target.map(|location| {
+        (
+            location.clone(),
+            generation.as_ref().map_or(0, |(_, value)| *value),
+        )
+    });
+    let same_request = PENDING_CORRECTIONS.with_borrow(|pending| {
+        pending.iter().any(|pending| {
+            pending.active.get()
+                && pending.view.upgrade().as_ref() == Some(scroll.upcast_ref())
+                && pending.target == target
+        })
+    });
+    if same_request {
+        return;
+    }
     cancel_collection_correction(scroll);
     let weak_scroll = scroll.upcast_ref::<gtk::Widget>().downgrade();
-    let weak_obscurer = obscurer.map(gtk::Widget::downgrade);
     let generation = generation.map(|(cell, value)| (cell.clone(), value));
     let attempts = Cell::new(0u8);
     let visible_frames = Cell::new(0u8);
+    let last_visible_geometry = Cell::new(None::<(f32, f32, f32)>);
     let active = Rc::new(Cell::new(true));
     let active_for_callback = active.clone();
     let weak_scroll_for_callback = weak_scroll.clone();
@@ -234,8 +239,8 @@ pub(crate) fn defer_collection_bound_correction(
             }
             return glib::ControlFlow::Continue;
         }
-        let obscurer = weak_obscurer.as_ref().and_then(glib::WeakRef::upgrade);
-        if weak_obscurer.is_some() && obscurer.is_none() {
+        let obscurer = obscurer();
+        if obscurer.is_none() {
             if waited >= 32 {
                 finished();
                 active_for_callback.set(false);
@@ -259,7 +264,26 @@ pub(crate) fn defer_collection_bound_correction(
             &row,
         ) == Some(true)
         {
-            let stable = visible_frames.get().saturating_add(1);
+            let Some(bounds) = row.compute_bounds(&scroll) else {
+                visible_frames.set(0);
+                last_visible_geometry.set(None);
+                return glib::ControlFlow::Continue;
+            };
+            let Some(bottom) = collection_viewport_bottom(
+                &scroll,
+                obscurer.as_ref().map(|widget| widget.upcast_ref()),
+            ) else {
+                visible_frames.set(0);
+                last_visible_geometry.set(None);
+                return glib::ControlFlow::Continue;
+            };
+            let geometry = (bounds.y(), bounds.height(), bottom);
+            let stable = if last_visible_geometry.get() == Some(geometry) {
+                visible_frames.get().saturating_add(1)
+            } else {
+                last_visible_geometry.set(Some(geometry));
+                1
+            };
             visible_frames.set(stable);
             if stable >= 3 {
                 finished();
@@ -269,6 +293,7 @@ pub(crate) fn defer_collection_bound_correction(
             }
         } else {
             visible_frames.set(0);
+            last_visible_geometry.set(None);
             scroll_collection_row_into_view(
                 &scroll,
                 obscurer.as_ref().map(|widget| widget.upcast_ref()),
@@ -287,7 +312,8 @@ pub(crate) fn defer_collection_bound_correction(
     PENDING_CORRECTIONS.with_borrow_mut(|pending| {
         pending.push(PendingCorrection {
             view: weak_scroll,
-            active: Rc::downgrade(&active),
+            target,
+            active,
             callback,
         });
     });
@@ -295,6 +321,12 @@ pub(crate) fn defer_collection_bound_correction(
 
 pub(crate) fn detach_collection_view(view: &impl IsA<gtk::Widget>) {
     let view = view.as_ref();
+    if let Some(scroll) = view
+        .ancestor(gtk::ScrolledWindow::static_type())
+        .and_downcast::<gtk::ScrolledWindow>()
+    {
+        cancel_collection_correction(&scroll);
+    }
     if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
         list.set_factory(None::<&gtk::ListItemFactory>);
         list.set_model(None::<&gtk::SelectionModel>);

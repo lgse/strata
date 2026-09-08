@@ -180,7 +180,10 @@ fn finish_creation_rename(
         .expect("final name in sorted listing");
     assert_eq!(browser.selected_positions(0), vec![position], "{mode:?}");
     wait_until(|| view.item_view_has_focus());
-    wait_until(|| view.state.created_entry_is_visible(0, position));
+    wait_until(|| {
+        view.state
+            .created_entry_is_visible(0, position, &Location::local(path.join(final_name)))
+    });
     assert!(path.join(original).exists() == (original == final_name));
     wait_until(|| view.state.pending_created_rename.borrow().is_none());
 }
@@ -285,7 +288,40 @@ fn columns_creation_rename_stays_above_destination_hint_at_the_bottom() {
                         )
                         .flatten()
                         .expect("final item in listing");
-                    wait_until(|| view.state.created_entry_is_visible(0, position));
+                    let target = Location::local(fixture.path().join(final_name));
+                    wait_until_stable(|| {
+                        if view
+                            .browser()
+                            .entry_at(0, position)
+                            .as_ref()
+                            .is_none_or(|entry| {
+                                entry.location != target || entry.display_name != final_name
+                            })
+                            || view.browser().selected_positions(0) != vec![position]
+                        {
+                            return false;
+                        }
+                        let Some(row) = column.bound_rows.borrow().iter().find_map(|bound| {
+                            if bound.location.borrow().as_ref() != Some(&target) {
+                                return None;
+                            }
+                            let item = bound.item.upgrade()?;
+                            (column.map.source_position(item.position()) == Some(position))
+                                .then(|| bound.row.upgrade())
+                                .flatten()
+                        }) else {
+                            return false;
+                        };
+                        let Some(hint) = column.destination_hint.compute_bounds(&root) else {
+                            return false;
+                        };
+                        let Some(row_bounds) = row.compute_bounds(&root) else {
+                            return false;
+                        };
+                        row.is_mapped()
+                            && row_bounds.height() > 0.0
+                            && row_bounds.y() + row_bounds.height() <= hint.y() + 0.5
+                    });
                     let row = column
                         .bound_rows
                         .borrow()

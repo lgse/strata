@@ -30,13 +30,25 @@ fn inline_rename_selects_the_stem_but_keeps_the_extension() {
     assert_eq!(rename_stem_end(".gitignore"), 10);
 }
 
-fn wait_until(condition: impl Fn() -> bool) {
+fn wait_until(mut condition: impl FnMut() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
         assert!(Instant::now() < deadline, "rename fixture did not settle");
         glib::MainContext::default().iteration(false);
         std::thread::sleep(Duration::from_millis(2));
     }
+}
+
+fn wait_until_stable(condition: impl Fn() -> bool) {
+    let mut stable = 0;
+    wait_until(|| {
+        if condition() {
+            stable += 1;
+        } else {
+            stable = 0;
+        }
+        stable >= 3
+    });
 }
 
 fn icon_card_bounds(root: &gtk::Widget) -> Vec<(i32, i32, i32, i32)> {

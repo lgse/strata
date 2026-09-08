@@ -36,6 +36,7 @@ const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
 pub(super) struct BoundRow {
     pub(super) item: glib::WeakRef<gtk::ListItem>,
     pub(super) row: glib::WeakRef<gtk::Box>,
+    pub(super) location: Rc<RefCell<Option<Location>>>,
 }
 
 struct PendingPointerActivation {
@@ -179,31 +180,34 @@ pub(super) fn scroll_column_row_into_unobscured_view(
     );
 }
 
-pub(super) fn reveal_column_row(column: &ColumnView, position: u32) {
-    if crate::ui::browser::collection::collection_correction_pending(&column.listing_scroll) {
-        return;
-    }
+pub(super) fn reveal_column_row(column: &ColumnView, position: u32, location: Location) {
     // ListView must perform its native reveal first: before allocation it establishes the
     // anchor and widget pool needed for a reliable initial scroll position.
     scroll_column_into_view(column, position);
     let scroll = column.listing_scroll.clone();
-    let destination_hint = column.destination_hint.clone();
+    let destination_hint = column.destination_hint.downgrade();
     let bound_rows = Rc::downgrade(&column.bound_rows);
+    let target = location.clone();
     let generation = (
         column.model_generation.clone(),
         column.model_generation.get(),
     );
     defer_collection_bound_correction(
         &scroll,
-        Some(destination_hint.upcast_ref()),
+        move || {
+            destination_hint
+                .upgrade()
+                .map(|hint| hint.upcast::<gtk::Widget>())
+        },
         Some((&generation.0, generation.1)),
+        Some(&target),
         move || {
             let bound_rows = bound_rows.upgrade()?;
             bound_rows.borrow().iter().find_map(|bound| {
-                let item = bound.item.upgrade()?;
-                (item.position() == position)
-                    .then(|| bound.row.upgrade().map(|row| row.upcast::<gtk::Widget>()))
-                    .flatten()
+                if bound.location.borrow().as_ref() != Some(&location) {
+                    return None;
+                }
+                bound.row.upgrade().map(|row| row.upcast::<gtk::Widget>())
             })
         },
         || {},

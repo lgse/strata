@@ -427,9 +427,9 @@ impl ViewState {
                 if !selected.replace(true) {
                     state.browser.select(pending.depth, position);
                 }
-                if !state.created_entry_is_visible(pending.depth, position) {
+                if !state.created_entry_is_visible(pending.depth, position, &location) {
                     // GTK can replace a scroll request while allocating a refreshed row.
-                    state.reveal_created_entry(pending.depth, position);
+                    state.reveal_created_entry(pending.depth, position, &location);
                     return gtk::glib::ControlFlow::Continue;
                 }
                 if let Some(entry) = state.browser.entry_at(pending.depth, position) {
@@ -491,6 +491,7 @@ impl ViewState {
         let restored_scroll = std::cell::Cell::new(false);
         let selection_applied = std::cell::Cell::new(false);
         let focus_requested = std::cell::Cell::new(false);
+        let visible_frames = std::cell::Cell::new(0u8);
         self.overlay.add_tick_callback(move |_, _| {
             let Some(state) = weak.upgrade() else {
                 return gtk::glib::ControlFlow::Break;
@@ -533,11 +534,17 @@ impl ViewState {
                     }
                     return gtk::glib::ControlFlow::Continue;
                 }
-                let visible = state.created_entry_is_visible(pending.depth, position);
+                let visible = state.created_entry_is_visible(pending.depth, position, &location);
                 if !visible {
+                    visible_frames.set(0);
                     state.suppress_created_focus_scroll.set(false);
                     state.mode_views.borrow().clear_focus_scroll_suppression();
-                    state.reveal_created_entry(pending.depth, position);
+                    state.reveal_created_entry(pending.depth, position, &location);
+                    return gtk::glib::ControlFlow::Continue;
+                }
+                let stable = visible_frames.get().saturating_add(1);
+                visible_frames.set(stable);
+                if stable < 3 {
                     return gtk::glib::ControlFlow::Continue;
                 }
                 if !selection_applied.replace(true) {
@@ -557,7 +564,7 @@ impl ViewState {
                         depth == pending.depth && entry.location == location
                     })
                     && state.item_view_has_focus();
-                if focused && state.created_entry_is_visible(pending.depth, position) {
+                if focused && state.created_entry_is_visible(pending.depth, position, &location) {
                     state.clear_created_entry_rename();
                     return gtk::glib::ControlFlow::Break;
                 }
@@ -595,30 +602,45 @@ impl ViewState {
             })
     }
 
-    fn reveal_created_entry(&self, depth: usize, source_position: usize) {
+    fn reveal_created_entry(&self, depth: usize, source_position: usize, location: &Location) {
         if self.mode_views.borrow().mode() == BrowserMode::Columns {
             if let Some(column) = self.columns.borrow().get(depth)
                 && let Some(position) = column.map.view_position(source_position)
             {
-                super::columns::reveal_column_row(column, position);
+                super::columns::reveal_column_row(column, position, location.clone());
             }
         } else {
             self.mode_views.borrow().reveal_item(depth, source_position);
         }
     }
 
-    fn created_entry_is_visible(&self, depth: usize, source_position: usize) -> bool {
+    fn created_entry_is_visible(
+        &self,
+        depth: usize,
+        source_position: usize,
+        location: &Location,
+    ) -> bool {
         match self.mode_views.borrow().mode() {
             BrowserMode::Columns => {
                 let columns = self.columns.borrow();
                 let Some(column) = columns.get(depth) else {
                     return false;
                 };
+                if self
+                    .browser
+                    .entry_at(depth, source_position)
+                    .as_ref()
+                    .map(|entry| &entry.location)
+                    != Some(location)
+                {
+                    return false;
+                }
                 let Some(row) = column.bound_rows.borrow().iter().find_map(|bound| {
                     let item = bound.item.upgrade()?;
-                    (column.map.source_position(item.position()) == Some(source_position))
-                        .then(|| bound.row.upgrade())
-                        .flatten()
+                    (bound.location.borrow().as_ref() == Some(location)
+                        && column.map.source_position(item.position()) == Some(source_position))
+                    .then(|| bound.row.upgrade())
+                    .flatten()
                 }) else {
                     return false;
                 };
@@ -635,11 +657,17 @@ impl ViewState {
                     && row_bounds.y() >= top
                     && row_bounds.y() + row_bounds.height() <= unobscured_bottom
             }
-            BrowserMode::Icons | BrowserMode::List => self
-                .mode_views
-                .borrow()
-                .bound_item_is_visible(depth, source_position)
-                .unwrap_or(false),
+            BrowserMode::Icons | BrowserMode::List => {
+                self.browser
+                    .entry_at(depth, source_position)
+                    .as_ref()
+                    .is_some_and(|entry| &entry.location == location)
+                    && self
+                        .mode_views
+                        .borrow()
+                        .bound_item_is_visible(depth, source_position)
+                        .unwrap_or(false)
+            }
         }
     }
 

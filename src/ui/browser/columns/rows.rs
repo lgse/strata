@@ -464,9 +464,11 @@ pub(super) fn column_rows(
         rows_for_setup.borrow_mut().push(BoundRow {
             item: weak_item,
             row: weak_row,
+            location: Rc::new(RefCell::new(None)),
         });
     });
     let map_for_bind = map.clone();
+    let bound_rows_for_bind = bound_rows.clone();
     let weak_state_for_bind = Rc::downgrade(state);
     let search_active_for_bind = recursive_search_active.clone();
     let search_results_for_bind = search_results.clone();
@@ -544,6 +546,16 @@ pub(super) fn column_rows(
         } else {
             source_position.and_then(|position| browser?.entry_at(depth, position))
         };
+        if let Some(bound) = bound_rows_for_bind.borrow().iter().find(|bound| {
+            bound
+                .item
+                .upgrade()
+                .is_some_and(|bound_item| bound_item == *item)
+        }) {
+            bound
+                .location
+                .replace(entry.as_ref().map(|entry| entry.location.clone()));
+        }
         let origin = entry
             .as_ref()
             .filter(|_| searching)
@@ -613,7 +625,18 @@ pub(super) fn column_rows(
         size.set_visible(!size_text.is_empty());
         crate::ui::accessibility::describe_entry(item, &label.label(), entry.as_ref());
     });
-    factory.connect_unbind(|_, item| crate::ui::thumbnail::cancel_list_item_thumbnails(item));
+    let bound_rows_for_unbind = bound_rows.clone();
+    factory.connect_unbind(move |_, item| {
+        crate::ui::thumbnail::cancel_list_item_thumbnails(item);
+        if let Some(bound) = bound_rows_for_unbind.borrow().iter().find(|bound| {
+            bound
+                .item
+                .upgrade()
+                .is_some_and(|bound_item| bound_item == *item)
+        }) {
+            bound.location.take();
+        }
+    });
     ColumnRows {
         factory,
         bound_rows,

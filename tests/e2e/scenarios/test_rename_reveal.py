@@ -15,13 +15,53 @@ def fully_above_footer(node, footer) -> bool:
     return bounds.height > 0 and bounds.y + bounds.height <= footer_bounds.y
 
 
-def destination_hint(strata):
-    pane = strata.containers()[-1]
-    return strata.wait(
-        lambda: pane.find(role="label", name="Pointer · Paste here")
-        or pane.find(role="label", name="Keyboard · Paste here"),
-        "the Columns destination footer",
-    )
+def destination_hint(strata, directory: str | None = None):
+    def current_hint():
+        pane = strata._pane_or_none(directory)
+        if pane is None:
+            return None
+        return pane.find(role="label", name_matches="Paste here")
+
+    return strata.wait(current_hint, "the Columns destination footer")
+
+
+def wait_for_stable_selected_entry(strata, name: str, directory: str | None = None):
+    stable = {"identity": None, "count": 0}
+
+    def check():
+        pane = strata._pane_or_none(directory)
+        if pane is None:
+            stable["count"] = 0
+            return False
+        entry = pane.find(role="list item", name=name)
+        footer = pane.find(role="label", name_matches="Paste here")
+        if entry is None or footer is None:
+            stable["count"] = 0
+            return False
+        panel = entry.find(role="panel")
+        label = entry.find(role="label", name=name)
+        if panel is None or label is None:
+            stable["count"] = 0
+            return False
+        bounds = panel.screen_bounds()
+        label_bounds = label.screen_bounds()
+        footer_bounds = footer.screen_bounds()
+        pane_bounds = pane.screen_bounds()
+        geometry = (bounds, label_bounds, footer_bounds)
+        visible = (
+            fully_in_pane(panel, pane_bounds)
+            and fully_above_footer(panel, footer)
+            and fully_above_footer(label, footer)
+            and entry.has_state("selected")
+        )
+        if visible and geometry == stable["identity"]:
+            stable["count"] += 1
+        else:
+            stable["identity"] = geometry
+            stable["count"] = 0
+        return stable["count"] >= 10
+
+    strata.wait(check, f"{name} to remain stable above the footer")
 
 
 def fully_in_pane(node, pane_bounds) -> bool:
@@ -118,6 +158,71 @@ def test_rename_to_opposite_sorted_edge_reveals_selected_entry(strata, mode):
     assert destination.is_dir()
 
 
+@pytest.mark.parametrize("height", (300, 420))
+def test_columns_last_sorted_entry_stays_painted_above_footer_after_rename(strata, height):
+    strata.switch_view("Columns")
+    bounds = strata.window.window_bounds()
+    strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 420, height)
+    strata.wait(lambda: strata.window.window_bounds().height == height, f"a {height}px window")
+    for index in range(240):
+        strata.fixture.path(f"m-file-{index:04d}.txt").write_text("body\\n")
+        strata.fixture.path(f"m-folder-{index:04d}").mkdir()
+
+    strata.keyboard.press("F5")
+    strata.wait(strata.fixture.path("m-file-0000.txt").exists, "the long listing")
+    strata.entry("archive")
+    strata.keyboard.press("Home")
+    strata.pointer.right_click(strata.pane(), at=strata.folder_context_point())
+    strata.choose_menu_item("New File")
+    field = strata.wait(
+        lambda: strata.window.find(role="text", name="Rename", states={"editable", "focused"}),
+        "the focused new-entry rename editor",
+    )
+    strata.wait(lambda: field.text == "new file", "the default new-file name")
+    strata.keyboard.type_text("zzzzzz")
+    strata.wait(lambda: field.text == "zzzzzz", "the final name in the editor")
+    strata.keyboard.press("Return")
+    strata.wait(strata.fixture.path("zzzzzz").exists, "the renamed final entry on disk")
+    strata.wait_for_entry_gone("new file")
+    strata.wait_for_selection(["zzzzzz"])
+    assert strata.fixture.names()[-1] == "zzzzzz"
+
+    footer = destination_hint(strata)
+    stable = {"last": None, "count": 0}
+
+    def painted_and_stable():
+        entry = strata.entry("zzzzzz")
+        panel = entry.find(role="panel")
+        name_bounds = entry.find(role="label", name="zzzzzz").screen_bounds()
+        entry_bounds = panel.screen_bounds()
+        footer_bounds = footer.screen_bounds()
+        current = (
+            entry_bounds.x,
+            entry_bounds.y,
+            entry_bounds.width,
+            entry_bounds.height,
+            name_bounds.x,
+            name_bounds.y,
+            name_bounds.width,
+            name_bounds.height,
+        )
+        fully_painted = (
+            entry_bounds.height > 0
+            and entry_bounds.y + entry_bounds.height <= footer_bounds.y
+            and name_bounds.height > 0
+            and name_bounds.y + name_bounds.height <= footer_bounds.y
+        )
+        if current == stable["last"] and fully_painted and strata.selected_names() == ["zzzzzz"]:
+            stable["count"] += 1
+        else:
+            stable["last"] = current
+            stable["count"] = 0
+        return stable["count"] >= 10
+
+    strata.wait(painted_and_stable, f"zzzzzz to remain painted above the footer at {height}px")
+    assert strata.selected_names() == ["zzzzzz"]
+
+
 @pytest.mark.parametrize("kind", ("file", "folder"))
 def test_columns_new_entry_stays_above_footer(strata, kind):
     strata.switch_view("Columns")
@@ -157,6 +262,46 @@ def test_columns_new_entry_stays_above_footer(strata, kind):
         "the final selected item content to stay above the Columns footer",
     )
     capture_evidence(strata, "after")
+
+
+@pytest.mark.preferences(reduce_motion=False)
+def test_columns_realistic_tall_listing_collision_and_navigation(strata):
+    """Exercise the reported path without manually scrolling after creation."""
+    strata.switch_view("Columns")
+    bounds = strata.window.window_bounds()
+    strata.keyboard.connection.resize_surface(bounds.width, bounds.height, 1000, 850)
+    strata.wait(lambda: strata.window.window_bounds().height == 850, "a tall window")
+
+    strata.fixture.path("navigation/staging/target").mkdir(parents=True)
+    target = strata.fixture.path("navigation/staging/target")
+    for index in range(11):
+        target.joinpath("new file" if index == 0 else f"new file ({index})").write_text("")
+    for index in range(60):
+        target.joinpath(f"b-entry-{index:03d}").write_text("")
+    target.joinpath("y").write_text("")
+    target.joinpath("yy").write_text("")
+    target.joinpath("existing").write_text("")
+
+    strata.keyboard.press("F5")
+    strata.open_directory("navigation")
+    strata.open_directory("staging")
+    strata.open_directory("target")
+    strata.wait(lambda: len(strata.fixture.names("navigation/staging/target")) == 74, "the realistic listing")
+
+    strata.pointer.right_click(strata.pane(), at=strata.folder_context_point())
+    strata.choose_menu_item("New File")
+    field = strata.editable_field()
+    strata.wait(lambda: field.text == "new file (11)", "the next collision-free default name")
+    strata.pointer.move_to(*field.screen_bounds().center)
+    strata.wait(target.joinpath("new file (11)").exists, "the created file")
+    strata.keyboard.type_text("zzz")
+    strata.wait(lambda: field.text == "zzz", "the replacement name")
+    strata.keyboard.press("Return")
+    strata.wait(target.joinpath("zzz").exists, "the renamed file")
+    strata.wait_for_entry_gone("new file (11)")
+    strata.wait_for_selection(["zzz"])
+
+    wait_for_stable_selected_entry(strata, "zzz", "target")
 
 
 def capture_evidence(strata, label: str) -> None:
