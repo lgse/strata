@@ -166,6 +166,27 @@ def test_preview_closes_on_a_folder_and_stays_closed_when_selection_moves(strata
     assert strata.preview() is None, "selection must not open a closed preview"
 
 
+def test_preview_closes_on_shift_range_folder_focus(strata):
+    strata.switch_view("List")
+    strata.select_entry_with_keyboard("notes.txt")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "the file preview")
+
+    strata.keyboard.press("shift+Up")
+    strata.wait_for_selection(["data.csv", "notes.txt"])
+    strata.wait(lambda: strata.focused_name() == "data.csv", "the focused upper file")
+    strata.wait(lambda: strata.preview_shows("alpha"), "the upper file preview")
+
+    strata.keyboard.press("shift+Up")
+    strata.wait_for_selection(["folder", "data.csv", "notes.txt"])
+    strata.wait(lambda: strata.focused_name() == "folder", "the focused folder")
+    strata.wait(lambda: strata.preview() is None, "the focused folder to dismiss the preview")
+
+    strata.keyboard.press("shift+Down")
+    strata.wait_for_selection(["data.csv", "notes.txt"])
+    assert strata.preview() is None
+
+
 def test_preview_renders_markdown(strata):
     strata.select_entry_with_keyboard("page.md")
     strata.keyboard.press("space")

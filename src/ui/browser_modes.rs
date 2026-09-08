@@ -3060,6 +3060,8 @@ fn connect_selection(
     });
     section.view.add_controller(commit);
     let syncing = section.syncing.clone();
+    let weak_view = section.view.downgrade();
+    let weak_bound_items = Rc::downgrade(&section.bound_items);
     let view_model = section.view_model.clone();
     let browser = Rc::downgrade(browser);
     section
@@ -3092,9 +3094,29 @@ fn connect_selection(
                     }
                 }
             }
-            let focused = selected_source_positions(&source_index, &view_model, selection)
-                .last()
-                .copied();
+            let selected_positions =
+                selected_source_positions(&source_index, &view_model, selection);
+            let native_focus = weak_view
+                .upgrade()
+                .and_then(|view| view.root())
+                .and_then(|root| root.focus())
+                .and_then(|focused| {
+                    let bound_items = weak_bound_items.upgrade()?;
+                    bound_items.borrow().iter().find_map(|bound| {
+                        let widget = bound.widget.upgrade()?;
+                        let owns_focus = widget == focused
+                            || focused.is_ancestor(&widget)
+                            || widget.parent().as_ref() == Some(&focused);
+                        owns_focus
+                            .then(|| bound.item.upgrade().map(|item| item.position()))
+                            .flatten()
+                    })
+                })
+                .and_then(|position| {
+                    source_position_for_view(&source_index, Some(&view_model), position)
+                })
+                .filter(|position| selected_positions.contains(position));
+            let focused = native_focus.or_else(|| selected_positions.last().copied());
             sync_browser_selection(&sections, &browser, depth, &source_index, focused);
         });
 }
