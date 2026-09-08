@@ -62,6 +62,109 @@ fn icon_card_bounds(root: &gtk::Widget) -> Vec<(i32, i32, i32, i32)> {
     bounds
 }
 
+/// Asserts the blinking caret sits within the field's own visible width, using
+/// `GtkText`'s scroll-adjusted cursor extents rather than a CSS/geometry proxy.
+/// A caret at `x < 0` or past the allocation is scrolled out of view, which is
+/// exactly the defect https://github.com/lgse/strata/issues/394 reported.
+fn assert_caret_visible(context: &str, field: &gtk::Entry, text: &gtk::Text) {
+    let position = field.position();
+    let (strong, _weak) = text.compute_cursor_extents(position.max(0) as usize);
+    assert!(
+        strong.x() >= 0.0 && strong.x() <= field.width() as f32,
+        "{context}: caret at x={} is outside the visible field (width={})",
+        strong.x(),
+        field.width()
+    );
+}
+
+#[test]
+fn long_filenames_keep_the_rename_caret_visible_in_every_view_mode() {
+    gtk_test(
+        "ui::browser::inline_edit::tests::long_filenames_keep_the_rename_caret_visible_in_every_view_mode",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            let name = "synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt";
+            std::fs::write(fixture.path().join(name), b"body").expect("fixture file");
+
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                let view = BrowserView::new(
+                    Rc::new(crate::adapters::LocalFileSource),
+                    PeekBehavior::default(),
+                );
+                view.set_view_mode(mode);
+                let window = gtk::Window::builder()
+                    .child(&view.widget())
+                    .default_width(420)
+                    .default_height(300)
+                    .build();
+                window.present();
+                let browser = view.browser();
+                browser.navigate(Location::local(fixture.path()));
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|snapshot| !snapshot.loading && snapshot.count == 1)
+                });
+                browser.select(0, 0);
+                wait_until(|| view.state.begin_rename());
+                let field = view
+                    .state
+                    .active_rename
+                    .borrow()
+                    .as_ref()
+                    .map(|rename| rename.field.clone())
+                    .or_else(|| view.state.mode_views.borrow().active_rename_field())
+                    .unwrap_or_else(|| panic!("{mode:?} did not open an inline rename field"));
+                wait_until(|| field.is_mapped());
+                // Let the initial scroll-into-view settle before measuring it.
+                for _ in 0..20 {
+                    glib::MainContext::default().iteration(false);
+                }
+
+                let text = field
+                    .delegate()
+                    .unwrap_or_else(|| panic!("{mode:?} rename field has no editable delegate"))
+                    .downcast::<gtk::Text>()
+                    .unwrap_or_else(|_| panic!("{mode:?} rename field delegate is not GtkText"));
+
+                assert_caret_visible(&format!("{mode:?} after opening rename"), &field, &text);
+
+                field.set_position(-1);
+                for _ in 0..20 {
+                    glib::MainContext::default().iteration(false);
+                }
+                assert_caret_visible(&format!("{mode:?} after End"), &field, &text);
+
+                let mut position = field.position();
+                field.insert_text(" (final)", &mut position);
+                for _ in 0..20 {
+                    glib::MainContext::default().iteration(false);
+                }
+                assert_caret_visible(&format!("{mode:?} after typing"), &field, &text);
+
+                field.delete_text(position - 4, position);
+                for _ in 0..20 {
+                    glib::MainContext::default().iteration(false);
+                }
+                assert_caret_visible(&format!("{mode:?} after deleting"), &field, &text);
+
+                field.set_position(20);
+                for _ in 0..20 {
+                    glib::MainContext::default().iteration(false);
+                }
+                assert_caret_visible(
+                    &format!("{mode:?} after clicking inside the name"),
+                    &field,
+                    &text,
+                );
+
+                browser.clear_observer();
+                window.destroy();
+            }
+        },
+    );
+}
+
 #[test]
 fn columns_rename_hides_and_restores_the_size_badge() {
     gtk_test(
