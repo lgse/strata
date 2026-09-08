@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Context menus, dialogs, Escape handling, and invalid operations."""
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 //! Scrolling shared by collection views: middle-click autoscroll, page-sized
 //! keyboard navigation, and wheel routing for transient browser panels.

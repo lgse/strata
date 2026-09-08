@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Keyboard-only movement, activation, and multi-selection."""
 
 from __future__ import annotations

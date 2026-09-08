@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{
     BrowserDensity, BrowserMode, ClickActivation, ClickCount, LIST_COLUMN_MIN_WIDTHS,
@@ -548,7 +548,7 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
                 is_hidden: false,
             };
             let card = crate::ui::icons_cell::new_card(64);
-            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, true);
+            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, true, None);
             assert!(crate::ui::icons_cell::rename_field(&card).is_none());
             let (icon, label) = crate::ui::icons_cell::parts(&card).expect("icons card");
             assert!(label.tooltip_text().is_none());

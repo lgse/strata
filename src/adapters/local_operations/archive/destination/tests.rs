@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{ExtractNameResolver, ExtractionDestination, validated_archive_path};
 use std::{

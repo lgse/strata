@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Moving entries by dragging them between folders."""
 
 from __future__ import annotations

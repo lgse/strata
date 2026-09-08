@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{
     await_cancellable, cancellation_handle, cancelled_event, validated_child, was_cancelled,

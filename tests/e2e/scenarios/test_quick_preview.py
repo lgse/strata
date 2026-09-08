@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Opening, reading, and closing the quick preview."""
 
 from __future__ import annotations
