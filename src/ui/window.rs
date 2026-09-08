@@ -446,7 +446,7 @@ pub(super) fn is_context_menu_shortcut(
                 && !modifiers.intersects(
                     gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK,
                 )
-        },
+        }
         _ => false,
     }
 }

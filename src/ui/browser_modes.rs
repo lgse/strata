@@ -1060,7 +1060,7 @@ impl ModeViews {
         &self,
         depth: usize,
         position: Option<usize>,
-    ) -> Option<(Rc<dyn Fn(f64, f64)>, f64, f64)> {
+    ) -> Option<crate::ui::browser::ContextMenuTarget> {
         let pane = self.panes_at(depth).into_iter().next()?;
         if let Some(position) = position {
             for section in std::iter::once(&pane.section).chain(pane.sections.borrow().iter()) {

@@ -98,20 +98,19 @@ impl ColumnView {
     pub(super) fn context_menu_target(
         &self,
         position: Option<usize>,
-    ) -> Option<(Rc<dyn Fn(f64, f64)>, f64, f64)> {
+    ) -> Option<crate::ui::browser::ContextMenuTarget> {
         if let Some(position) = position
             && let Some(row) = self.bound_rows.borrow().iter().find_map(|bound| {
                 let item = bound.item.upgrade()?;
                 (item.position() as usize == position).then(|| bound.row.upgrade())?
             })
+            && let Some(bounds) = row.compute_bounds(&self.list)
         {
-            if let Some(bounds) = row.compute_bounds(&self.list) {
-                return Some((
-                    self.item_context_trigger.clone(),
-                    f64::from(bounds.center().x()),
-                    f64::from(bounds.center().y()),
-                ));
-            }
+            return Some((
+                self.item_context_trigger.clone(),
+                f64::from(bounds.center().x()),
+                f64::from(bounds.center().y()),
+            ));
         }
         let width = f64::from(self.presentation.stack.width());
         let height = f64::from(self.presentation.stack.height());

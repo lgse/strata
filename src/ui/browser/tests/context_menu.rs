@@ -75,9 +75,9 @@ fn open_focused_context_menu_in_icons_mode() {
 }
 
 #[test]
-fn open_focused_context_menu_returns_false_when_no_item_focused() {
+fn open_focused_context_menu_opens_background_menu_when_no_item_focused() {
     crate::test_support::gtk_test(
-        "ui::browser::tests::context_menu::open_focused_context_menu_returns_false_when_no_item_focused",
+        "ui::browser::tests::context_menu::open_focused_context_menu_opens_background_menu_when_no_item_focused",
         || {
             let fixture = tempfile::tempdir().expect("directory fixture");
             let view = BrowserView::new(
@@ -93,6 +93,36 @@ fn open_focused_context_menu_returns_false_when_no_item_focused() {
             window.present();
             browser.navigate(Location::local(fixture.path()));
             wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            let column = view.state.columns.borrow()[0].clone();
+            wait_until(|| {
+                column.presentation.stack.width() > 0 && column.presentation.stack.height() > 0
+            });
+            // No item selected/focused: the active pane's background menu should
+            // still open, anchored via `Browser::active_depth()`.
+            assert!(view.open_focused_context_menu());
+            view.browser().clear_observer();
+            window.close();
+        },
+    );
+}
+
+#[test]
+fn open_focused_context_menu_returns_false_with_no_active_pane() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::context_menu::open_focused_context_menu_returns_false_with_no_active_pane",
+        || {
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(900)
+                .default_height(500)
+                .build();
+            window.present();
+            // Never navigated: no column exists yet, so there is no focused item
+            // and no active depth to fall back to.
             assert!(!view.open_focused_context_menu());
             view.browser().clear_observer();
             window.close();

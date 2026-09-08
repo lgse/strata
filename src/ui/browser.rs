@@ -56,7 +56,7 @@ pub(crate) use crate::ui::browser::collection::{
 };
 pub(super) use crate::ui::browser::columns::max_child_natural_width;
 pub(super) use crate::ui::browser::context_menu::{
-    install_folder_context_menu, install_item_context_menu,
+    ContextMenuTarget, install_folder_context_menu, install_item_context_menu,
 };
 pub(super) use crate::ui::browser::desktop::{launch_terminal, open_location};
 pub(super) use crate::ui::browser::entry::{
@@ -1229,10 +1229,20 @@ impl BrowserView {
     }
 
     pub(super) fn open_focused_context_menu(&self) -> bool {
+        let focused = self.state.browser.focused_item();
+        let depth = focused
+            .as_ref()
+            .map(|(depth, ..)| *depth)
+            .or_else(|| self.state.browser.active_depth());
+        let Some(depth) = depth else {
+            return false;
+        };
+        let position = focused.map(|(_, position, _)| position);
+
         let target = if self.view_mode() == BrowserMode::Columns {
-            self.columns_context_menu_target()
+            self.columns_context_menu_target(depth, position)
         } else {
-            self.mode_views_context_menu_target()
+            self.mode_views_context_menu_target(depth, position)
         };
 
         let Some((trigger, x, y)) = target else {
@@ -1244,16 +1254,25 @@ impl BrowserView {
 
     fn columns_context_menu_target(
         &self,
-    ) -> Option<(Rc<dyn Fn(f64, f64)>, f64, f64)> {
-        let (depth, position, _entry) = self.state.browser.focused_item()?;
-        self.state.columns.borrow().get(depth)?.context_menu_target(Some(position))
+        depth: usize,
+        position: Option<usize>,
+    ) -> Option<ContextMenuTarget> {
+        self.state
+            .columns
+            .borrow()
+            .get(depth)?
+            .context_menu_target(position)
     }
 
     fn mode_views_context_menu_target(
         &self,
-    ) -> Option<(Rc<dyn Fn(f64, f64)>, f64, f64)> {
-        let (depth, position, _entry) = self.state.browser.focused_item()?;
-        self.state.mode_views.borrow().context_menu_target(depth, Some(position))
+        depth: usize,
+        position: Option<usize>,
+    ) -> Option<ContextMenuTarget> {
+        self.state
+            .mode_views
+            .borrow()
+            .context_menu_target(depth, position)
     }
 }
 

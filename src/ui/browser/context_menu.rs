@@ -354,6 +354,9 @@ pub(in crate::ui) type ContextPickPosition = Rc<dyn Fn(&gtk::Widget) -> Option<u
 
 pub(in crate::ui) type ContextSourcePosition = Rc<dyn Fn(u32) -> Option<usize>>;
 
+/// A context-menu open-trigger and the local `(x, y)` point to invoke it at.
+pub(in crate::ui) type ContextMenuTarget = (Rc<dyn Fn(f64, f64)>, f64, f64);
+
 const ITEM_CONTEXT_SUMMARY_MAX_CHARS: i32 = 60;
 
 pub(in crate::ui) fn install_item_context_menu(
