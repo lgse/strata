@@ -914,6 +914,24 @@ fn the_bundled_stylesheet_only_uses_at_rules_gtk_parses() {
 }
 
 #[test]
+fn theme_color_picker_swatch_shares_the_buttons_corner_radius() {
+    // GTK's default theme zeroes the swatch's radius, relying on the
+    // button's own padding to hide the square corners. We zero that padding
+    // to let the fill go edge-to-edge, so the swatch and its overlay must
+    // carry the same radius as the button or the corners show as seams
+    // (issue #539).
+    let css = include_str!("../../style.css");
+    assert!(
+        css.contains(".theme-color-picker button {\n  background: transparent;\n  border: 1px solid alpha(@theme_border, 0.7);\n  border-radius: 6px;"),
+        "the theme-color-picker button must set an explicit border-radius"
+    );
+    assert!(
+        css.contains(".theme-color-picker colorswatch,\n.theme-color-picker colorswatch:only-child,\n.theme-color-picker colorswatch overlay {\n  border-radius: 6px;"),
+        "the color swatch and its overlay must match the button's border-radius"
+    );
+}
+
+#[test]
 fn chrome_stylesheet_requests_header_bar_icon_size() {
     let css = include_str!("../../style.css");
     assert!(

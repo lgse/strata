@@ -3411,6 +3411,7 @@ entry.theme-search {
 .theme-color-picker button {
   background: transparent;
   border: 1px solid alpha(@theme_border, 0.7);
+  border-radius: 6px;
   box-shadow: none;
   padding: 0;
   transition: transform 160ms ease-out, border-color 160ms ease-out;
@@ -3430,6 +3431,16 @@ entry.theme-search {
   box-shadow: none;
   padding: 0;
   transform: scale(0.97);
+}
+
+/* GTK's default theme forces radius 0 here, assuming the button's own 4px
+   padding hides the swatch's square corners; we zero that padding above, so
+   the fill must carry the same radius as the button to avoid corner seams. */
+.theme-color-picker colorswatch,
+.theme-color-picker colorswatch:only-child,
+.theme-color-picker colorswatch overlay {
+  border-radius: 6px;
+  box-shadow: none;
 }
 
 .theme-editor-error {
