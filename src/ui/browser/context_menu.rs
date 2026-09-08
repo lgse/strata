@@ -816,21 +816,24 @@ pub(in crate::ui) fn install_item_context_menu(
     let popover_for_trigger = popover.clone();
     let scroll_for_trigger = scroll.clone();
     let selection_for_trigger = selection.clone();
-    let open_at: Rc<dyn Fn(f64, f64)> = Rc::new(move |x: f64, y: f64| {
+    // Returns whether the point resolved to a real item, so the click handler
+    // below can claim the gesture only on a genuine hit (matches pre-refactor
+    // behavior; empty ListView space must fall through to the ancestor gesture).
+    let open_at_resolved: Rc<dyn Fn(f64, f64) -> bool> = Rc::new(move |x: f64, y: f64| {
         let Some(picked) = widget_for_trigger.pick(x, y, gtk::PickFlags::DEFAULT) else {
-            return;
+            return false;
         };
         let Some(filtered_position) = pick_position(&picked) else {
-            return;
+            return false;
         };
         let Some(resolved_position) = source_position(filtered_position) else {
-            return;
+            return false;
         };
         let Some(state) = weak_state.upgrade() else {
-            return;
+            return false;
         };
         let Some(entry) = state.browser.entry_at(depth, resolved_position) else {
-            return;
+            return false;
         };
         state.browser.set_active_column(depth);
         if !selection_for_trigger.is_selected(filtered_position) {
@@ -921,14 +924,20 @@ pub(in crate::ui) fn install_item_context_menu(
         }
         focus_context_column(&state, depth);
         show_context_popover(&popover_for_trigger, &scroll_for_trigger, &widget_for_trigger, x, y);
+        true
+    });
+
+    let open_for_trigger = open_at_resolved.clone();
+    let open_at: Rc<dyn Fn(f64, f64)> = Rc::new(move |x, y| {
+        open_for_trigger(x, y);
     });
 
     let click = gtk::GestureClick::new();
     click.set_button(3);
-    let open_for_click = open_at.clone();
     click.connect_pressed(move |gesture, _, x, y| {
-        gesture.set_state(gtk::EventSequenceState::Claimed);
-        open_for_click(x, y);
+        if open_at_resolved(x, y) {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+        }
     });
     widget.add_controller(click);
     open_at
