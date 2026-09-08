@@ -234,6 +234,7 @@ pub(super) fn wrap(
                         .ellipsize(gtk::pango::EllipsizeMode::Middle)
                         .build();
                     origin.add_css_class("file-search-path");
+                    origin.set_visible(recursive);
                     labels.append(&name);
                     labels.append(&origin);
                     row.set_tooltip_text(Some(&path));

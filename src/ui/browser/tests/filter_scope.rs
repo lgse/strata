@@ -31,6 +31,16 @@ fn visible_matches(widget: &gtk::Widget) -> Vec<String> {
     names
 }
 
+fn visible_path_count(widget: &gtk::Widget) -> usize {
+    let mut count = usize::from(widget.has_css_class("file-search-path") && widget.is_mapped());
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        count += visible_path_count(&widget);
+        child = widget.next_sibling();
+    }
+    count
+}
+
 fn assert_matches(views: &[BrowserView], recursive: bool) {
     let expected = if recursive {
         vec!["needle-folder", "needle-nested.txt", "needle.txt"]
@@ -42,6 +52,14 @@ fn assert_matches(views: &[BrowserView], recursive: bool) {
             .iter()
             .all(|view| visible_matches(&view.widget()) == expected)
     });
+    for view in views {
+        assert_eq!(
+            visible_path_count(&view.widget()),
+            if recursive { expected.len() } else { 0 },
+            "path subtitles must only appear in recursive results ({:?})",
+            view.view_mode(),
+        );
+    }
 }
 
 #[test]

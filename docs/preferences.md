@@ -58,8 +58,9 @@ in-process binding mechanism. External edits are read on the next launch.
 ## Filter scope
 
 In **Settings → General → Browsing**, **Include subfolders when filtering** is
-on by default. Turn it off to match only immediate files and folders. The choice
-applies to pane filtering in Columns, Icons, and List views, not global search.
+on by default. Turn it off to match only immediate files and folders, without
+redundant path subtitles. The choice applies to pane filtering in Columns, Icons,
+and List views, not global search.
 Changing it refreshes active filters across windows and is saved for next launch.
 
 Default recursive results:
