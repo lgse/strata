@@ -10,6 +10,52 @@ use super::{
     controls::modal_layout,
 };
 
+pub(super) fn compatible_apps(content_type: &str, requires_uris: bool) -> Vec<gio::AppInfo> {
+    let default = gio::AppInfo::default_for_type(content_type, requires_uris);
+    filter_apps(
+        gio::AppInfo::all_for_type(content_type),
+        default,
+        requires_uris,
+    )
+}
+
+fn filter_apps(
+    apps: Vec<gio::AppInfo>,
+    default: Option<gio::AppInfo>,
+    requires_uris: bool,
+) -> Vec<gio::AppInfo> {
+    let mut apps = apps
+        .into_iter()
+        .filter(|app| app.should_show() && (!requires_uris || app.supports_uris()))
+        .collect::<Vec<_>>();
+    apps.sort_by_cached_key(|app| app.display_name().to_lowercase());
+    let mut unique = Vec::with_capacity(apps.len());
+    if let Some(default) = default.filter(|app| !requires_uris || app.supports_uris()) {
+        unique.push(default);
+    }
+    for app in apps {
+        if !unique.iter().any(|existing| existing.equal(&app)) {
+            unique.push(app);
+        }
+    }
+    unique
+}
+
+pub(super) fn launch(
+    app: &gio::AppInfo,
+    files: &[gio::File],
+    context: Option<&impl IsA<gio::AppLaunchContext>>,
+) -> Result<(), glib::Error> {
+    // GIO can silently drop non-native files when expanding %f/%F.
+    if !app.supports_uris() && files.iter().any(|file| !file.is_native()) {
+        return Err(glib::Error::new(
+            gio::IOErrorEnum::NotSupported,
+            "This application cannot open files at this location",
+        ));
+    }
+    app.launch(files, context)
+}
+
 pub(super) fn show(
     parent: &impl IsA<gtk::Widget>,
     files: Vec<gio::File>,
@@ -149,7 +195,7 @@ pub(super) fn show(
             return;
         };
         let context = list.display().app_launch_context();
-        if let Err(error) = app.launch(&open_files, Some(&context)) {
+        if let Err(error) = launch(app, &open_files, Some(&context)) {
             let detail = error.to_string();
             open_dismiss();
             let open_parent = open_parent.clone();

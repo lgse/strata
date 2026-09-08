@@ -3,6 +3,103 @@
 use super::*;
 use std::time::Instant;
 
+fn desktop_app(name: &str, arguments: &str, extra: &str) -> gio::AppInfo {
+    let key = glib::KeyFile::new();
+    key.load_from_data(
+        &format!(
+            "[Desktop Entry]\nType=Application\nName={name}\nExec=/bin/true {arguments}\n{extra}\n"
+        ),
+        glib::KeyFileFlags::NONE,
+    )
+    .expect("desktop entry");
+    gio_unix::DesktopAppInfo::from_keyfile(&key)
+        .expect("application")
+        .upcast()
+}
+
+#[test]
+fn compatible_handlers_include_hidden_defaults_but_require_uri_support() {
+    let path = desktop_app("Path", "%F", "");
+    let uri = desktop_app("URI", "%U", "");
+    let hidden = desktop_app("Hidden", "%U", "NoDisplay=true");
+    let other_desktop = desktop_app("Other desktop", "%U", "OnlyShowIn=StrataTestDesktop;");
+    let apps = vec![
+        path.clone(),
+        uri.clone(),
+        hidden.clone(),
+        other_desktop.clone(),
+    ];
+    assert_eq!(filter_apps(apps.clone(), None, false).len(), 2);
+    let remote = filter_apps(apps.clone(), Some(hidden.clone()), true);
+    assert_eq!(remote.len(), 2);
+    assert!(remote[0].equal(&hidden));
+    assert!(remote[1].equal(&uri));
+    assert_eq!(filter_apps(apps.clone(), Some(path), true).len(), 1);
+    let other_default = filter_apps(apps, Some(other_desktop.clone()), false);
+    assert!(other_default[0].equal(&other_desktop));
+}
+
+#[test]
+fn path_only_launch_rejects_non_native_files_before_spawning() {
+    let app = desktop_app("Path", "%F", "");
+    let local = gio::File::for_path("/tmp/local.txt");
+    let remote = gio::File::for_uri("trash:///remote.txt");
+    let error =
+        launch(&app, &[local, remote], None::<&gio::AppLaunchContext>).expect_err("URI guard");
+    assert!(error.matches(gio::IOErrorEnum::NotSupported));
+    assert!(
+        error
+            .message()
+            .contains("cannot open files at this location")
+    );
+}
+
+#[test]
+fn uri_capable_launch_preserves_every_remote_argument() {
+    use std::os::unix::fs::PermissionsExt;
+    let fixture = tempfile::tempdir().expect("fixture");
+    let recorder = fixture.path().join("record");
+    let output = fixture.path().join("arguments");
+    std::fs::write(
+        &recorder,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > '{}'\n",
+            output.display()
+        ),
+    )
+    .expect("recorder");
+    std::fs::set_permissions(&recorder, std::fs::Permissions::from_mode(0o755))
+        .expect("permissions");
+    let app = gio::AppInfo::create_from_commandline(
+        format!("{} %U", recorder.display()),
+        Some("URI recorder"),
+        gio::AppInfoCreateFlags::SUPPORTS_URIS,
+    )
+    .expect("application");
+    let files = [
+        gio::File::for_uri("trash:///alpha%20file.txt"),
+        gio::File::for_uri("sftp://example.invalid/beta.txt"),
+    ];
+    launch(&app, &files, None::<&gio::AppLaunchContext>).expect("URI launch");
+    let deadline = Instant::now() + Duration::from_secs(3);
+    let received = loop {
+        if let Ok(contents) = std::fs::read_to_string(&output) {
+            let received = contents.lines().map(gio::File::for_uri).collect::<Vec<_>>();
+            if received.len() == files.len() {
+                break received;
+            }
+        }
+        assert!(Instant::now() < deadline, "recorder output");
+        std::thread::sleep(Duration::from_millis(1));
+    };
+    assert!(
+        received
+            .iter()
+            .zip(&files)
+            .all(|(actual, expected)| actual.equal(expected))
+    );
+}
+
 #[test]
 fn empty_chooser_disables_open_and_restores_focus_after_backdrop_dismissal() {
     crate::test_support::gtk_test(

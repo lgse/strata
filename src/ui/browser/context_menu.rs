@@ -1141,27 +1141,8 @@ fn prepare_open_with(
         if generation.get() != expected_generation {
             return;
         }
-        let default =
-            gio::AppInfo::default_for_type(&content_type, false).filter(|app| app.should_show());
-        let mut apps = gio::AppInfo::all_for_type(&content_type)
-            .into_iter()
-            .filter(|app| app.should_show())
-            .collect::<Vec<_>>();
-        apps.sort_by_cached_key(|app| app.display_name().to_lowercase());
-        let mut unique = Vec::with_capacity(apps.len());
-        for app in apps {
-            if !unique
-                .iter()
-                .any(|existing: &gio::AppInfo| existing.equal(&app))
-            {
-                unique.push(app);
-            }
-        }
-        let mut apps = unique;
-        if let Some(default) = default {
-            apps.retain(|app| !app.equal(&default));
-            apps.insert(0, default);
-        }
+        let requires_uris = files.iter().any(|file| !file.is_native());
+        let apps = crate::ui::open_with::compatible_apps(&content_type, requires_uris);
         result.replace(Some(OpenWithSelection {
             locations,
             files,
