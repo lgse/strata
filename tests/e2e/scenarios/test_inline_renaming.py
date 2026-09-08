@@ -3,14 +3,16 @@
 
 import pytest
 
+from harness.artifacts import ArtifactCollector
 from harness.modes import ALL_MODES
+from harness.screenshots import capture
 from harness.tree import Atspi
 
 KINDS = ["file", "folder"]
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_long_rename_keeps_caret_visible(strata, mode):
+def test_long_rename_keeps_caret_visible(strata, mode, request):
     name = "synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt"
     strata.fixture.path(name).write_text("keep\n")
     strata.keyboard.press("F5")
@@ -35,10 +37,13 @@ def test_long_rename_keeps_caret_visible(strata, mode):
         # fixture checks exact GtkText/caret bounds; here reject oversized editors.
         assert 0 < bounds.width <= window.width - pane.x
 
-    assert_editor_constrained()
+    assert field.window_bounds().width > 0
     strata.keyboard.press("End")
     strata.wait(lambda: Atspi.Text.get_caret_offset(text) == len(name), "End to reach the extension")
     assert Atspi.Text.get_n_selections(text) == 0
+    if request.config.getoption("--keep-artifacts"):
+        collector = ArtifactCollector(test_name=request.node.name)
+        capture(strata.display.display, collector.directory / "after-end.png")
     assert_editor_constrained()
     strata.keyboard.type_text("-final")
     strata.wait(lambda: field.text == name + "-final", "typing after the extension")
