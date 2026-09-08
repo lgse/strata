@@ -11,7 +11,7 @@ use gtk::{glib, prelude::*};
 
 use crate::{
     app::Browser,
-    services::{SearchEvent, SearchHandle, SearchItem, index_tree},
+    services::{SearchEvent, SearchHandle, SearchItem, index_filter},
 };
 
 pub(super) const SEARCH_RESULTS_LABEL: &str = "Search results";
@@ -26,15 +26,46 @@ struct State {
     generation: Cell<u64>,
 }
 
+#[derive(Clone)]
+pub(super) struct InlineSearch {
+    pub widget: gtk::Widget,
+    state: Option<Rc<State>>,
+}
+
+impl InlineSearch {
+    pub fn selected_entry(&self) -> Option<crate::model::FileEntry> {
+        let state = self.state.as_ref()?;
+        let focused = self.widget.root()?.focus()?;
+        let entry = state.entry.upgrade()?;
+        if state.stack.visible_child_name().as_deref() != Some("search")
+            || !(focused.is_ancestor(&entry)
+                || focused == entry.upcast::<gtk::Widget>()
+                || focused.is_ancestor(&state.list)
+                || focused == state.list.clone().upcast::<gtk::Widget>())
+        {
+            return None;
+        }
+        let row = state.list.selected_row()?;
+        state
+            .items
+            .borrow()
+            .get(row.index() as usize)
+            .map(super::browser::search_result_entry)
+    }
+}
+
 /// Keeps the view's normal presentation intact when the recursive query is dismissed.
 pub(super) fn wrap(
     content: &impl IsA<gtk::Widget>,
     entry: &gtk::Entry,
     root: Option<PathBuf>,
     browser: &Rc<Browser>,
-) -> gtk::Widget {
+) -> InlineSearch {
     let Some(root) = root else {
-        return content.clone().upcast();
+        return InlineSearch {
+            widget: content.clone().upcast(),
+            state: None,
+        };
     };
     let stack = gtk::Stack::builder().hexpand(true).vexpand(true).build();
     stack.add_named(content, Some("files"));
@@ -117,18 +148,26 @@ pub(super) fn wrap(
     });
     entry.add_controller(keys);
     let weak_browser = Rc::downgrade(browser);
-    super::browser::debounce_filter_entry(entry, move |text| {
+    let search = InlineSearch {
+        widget: stack.clone().upcast(),
+        state: Some(state.clone()),
+    };
+    super::browser::bind_filter_query(entry, move |text, recursive, restart| {
+        if restart {
+            state.generation.set(state.generation.get().wrapping_add(1));
+            state.handle.borrow_mut().take();
+        }
         let query = text.trim();
         if query.is_empty() {
             state.generation.set(state.generation.get().wrapping_add(1));
             state.handle.borrow_mut().take();
             state.items.borrow_mut().clear();
-            state.list.remove_all();
+            clear_rows(&state.list);
             state.stack.set_visible_child_name("files");
             return;
         }
         state.stack.set_visible_child_name("search");
-        state.list.remove_all();
+        clear_rows(&state.list);
         state.items.borrow_mut().clear();
         state.status.set_text("Searching…");
         state.status.set_visible(true);
@@ -140,7 +179,7 @@ pub(super) fn wrap(
         let show_hidden = weak_browser
             .upgrade()
             .is_some_and(|browser| browser.preferences().show_hidden);
-        let (handle, receiver) = index_tree(root.clone(), show_hidden);
+        let (handle, receiver) = index_filter(root.clone(), show_hidden, recursive);
         handle.query(query);
         state.handle.replace(Some(handle));
         let weak = Rc::downgrade(&state);
@@ -168,7 +207,7 @@ pub(super) fn wrap(
                 && !returned.is_empty()
                 && returned == entry.text().trim()
             {
-                state.list.remove_all();
+                clear_rows(&state.list);
                 for item in &items {
                     let row = gtk::ListBoxRow::new();
                     // Keep keyboard focus in the query, away from file-operation shortcuts.
@@ -176,14 +215,8 @@ pub(super) fn wrap(
                     super::accessibility::set_label(&row, &item.name);
                     let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
                     line.add_css_class("file-row");
-                    line.append(&crate::assets::primary_icon(
-                        if item.is_directory {
-                            crate::assets::icons::FOLDER
-                        } else {
-                            crate::assets::icons::DOCUMENTS
-                        },
-                        17,
-                    ));
+                    let icon = super::thumbnail::ThumbnailSlot::new(17);
+                    line.append(&icon);
                     let labels = gtk::Box::new(gtk::Orientation::Vertical, 2);
                     labels.set_hexpand(true);
                     let name = gtk::Label::builder()
@@ -201,12 +234,29 @@ pub(super) fn wrap(
                         .ellipsize(gtk::pango::EllipsizeMode::Middle)
                         .build();
                     origin.add_css_class("file-search-path");
+                    origin.set_visible(recursive);
                     labels.append(&name);
                     labels.append(&origin);
                     row.set_tooltip_text(Some(&path));
                     line.append(&labels);
                     row.set_child(Some(&line));
                     state.list.append(&row);
+                    if item.is_directory {
+                        super::thumbnail::show_customized_icon(
+                            &icon,
+                            &item.path,
+                            crate::assets::icons::FOLDER,
+                            17,
+                        );
+                    } else {
+                        super::thumbnail::set_thumbnail_or_icon_for_path(
+                            &icon,
+                            &item.path,
+                            crate::assets::icons::DOCUMENTS,
+                            17,
+                            17,
+                        );
+                    }
                 }
                 state
                     .status
@@ -223,7 +273,12 @@ pub(super) fn wrap(
             glib::ControlFlow::Continue
         });
     });
-    stack.upcast()
+    search
+}
+
+fn clear_rows(list: &gtk::ListBox) {
+    super::thumbnail::cancel_thumbnails_in(list.upcast_ref());
+    list.remove_all();
 }
 
 fn relative_result_path(root: &Path, path: &Path) -> String {

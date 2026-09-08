@@ -58,6 +58,28 @@ def test_filtering_a_pane_narrows_the_listing(strata, mode, root):
     )
 
 
+@pytest.mark.preferences(filter_include_subfolders=False)
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_directory_only_filter_matches_immediate_files_and_folders(strata, mode, root):
+    strata.select_entry("readme.md", directory=root)
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    for query, expected in [
+        ("txt", ["todo.txt"]),
+        ("photo", []),
+        ("archive", ["archive"]),
+    ]:
+        strata.keyboard.press("ctrl+a")
+        strata.keyboard.type_text(query)
+        strata.wait(lambda: field.text == query, "the filter query to be typed")
+        strata.wait(
+            lambda: strata.matches(root) == expected,
+            f"directory-only matches for {query}",
+        )
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.entry_names(root) == ROOT_ENTRIES, "the listing to return")
+
+
 def test_dismissing_a_filter_keeps_hidden_files_hidden(strata, root):
     """A cleared query must not also clear the dotfile filter."""
 

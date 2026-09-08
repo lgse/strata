@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::adapters::directory_summary::summarize_directory_with_progress;
 use crate::adapters::gio_file_for_location;
-use crate::adapters::trash::summarize_trash;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::clipboard::copy_path_text;
 use crate::ui::browser::desktop::open_location;
@@ -14,8 +14,39 @@ use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::cell::Cell;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
+
+const SIZE_PROGRESS_INTERVAL: Duration = Duration::from_millis(150);
+
+#[derive(Default)]
+struct SizeProgressThrottle {
+    last_update: Cell<Option<Instant>>,
+}
+
+impl SizeProgressThrottle {
+    fn should_update(&self, now: Instant) -> bool {
+        if self
+            .last_update
+            .get()
+            .is_some_and(|last| now.duration_since(last) < SIZE_PROGRESS_INTERVAL)
+        {
+            return false;
+        }
+        self.last_update.set(Some(now));
+        true
+    }
+}
 
 fn properties_row(parent: &gtk::Box, label: &str, value: &str) -> gtk::Label {
+    properties_row_with_suffix(parent, label, value, None)
+}
+
+fn properties_row_with_suffix(
+    parent: &gtk::Box,
+    label: &str,
+    value: &str,
+    suffix: Option<&gtk::Widget>,
+) -> gtk::Label {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     row.add_css_class("properties-row");
     let label = gtk::Label::new(Some(label));
@@ -29,8 +60,20 @@ fn properties_row(parent: &gtk::Box, label: &str, value: &str) -> gtk::Label {
     value.set_xalign(0.0);
     row.append(&label);
     row.append(&value);
+    if let Some(suffix) = suffix {
+        row.append(suffix);
+    }
     parent.append(&row);
     value
+}
+
+fn properties_size_row(parent: &gtk::Box, value: &str, spinner: &gtk::Spinner) -> gtk::Label {
+    spinner.set_halign(gtk::Align::End);
+    let size = properties_row_with_suffix(parent, "SIZE", value, Some(spinner.upcast_ref()));
+    size.add_css_class("properties-size-value");
+    size.set_width_chars(16);
+    size.set_max_width_chars(16);
+    size
 }
 
 #[derive(Clone)]
@@ -251,8 +294,9 @@ impl ViewState {
         let location_value = properties_row(&details, "LOCATION", &compact_display_path(&location));
         location_value.set_tooltip_text(Some(&location.display_path()));
         let trash_root = is_trash_root(&location);
-        let initial_size = if trash_root {
-            "Calculating…".to_owned()
+        let measuring_directory = is_directory || trash_root;
+        let initial_size = if measuring_directory {
+            format_file_size(0)
         } else {
             entry
                 .as_ref()
@@ -263,7 +307,14 @@ impl ViewState {
                 })
                 .unwrap_or_else(|| "—".to_owned())
         };
-        let size = properties_row(&details, "SIZE", &initial_size);
+        let size_spinner = gtk::Spinner::new();
+        size_spinner.add_css_class("properties-size-spinner");
+        size_spinner.set_valign(gtk::Align::Center);
+        size_spinner.set_tooltip_text(Some("Calculating folder size…"));
+        crate::ui::accessibility::set_label(&size_spinner, "Calculating folder size");
+        size_spinner.set_spinning(measuring_directory);
+        size_spinner.set_visible(measuring_directory);
+        let size = properties_size_row(&details, &initial_size, &size_spinner);
         let modified = properties_row(&details, "MODIFIED", "—");
         crate::util::set_modified_date(&modified, entry.as_ref(), "—");
         let opens_with = properties_row(&details, "OPENS WITH", "—");
@@ -459,10 +510,26 @@ impl ViewState {
         layer.add_controller(escape);
         layer.grab_focus();
 
-        if trash_root {
+        if measuring_directory {
             let weak_size = size.downgrade();
-            glib::MainContext::default().spawn_local(async move {
-                let summary = summarize_trash(&gio::File::for_uri("trash:///")).await;
+            let weak_spinner = size_spinner.downgrade();
+            let directory = gio_file_for_location(&location);
+            let task = glib::MainContext::default().spawn_local(async move {
+                let progress_size = weak_size.clone();
+                let progress_throttle = SizeProgressThrottle::default();
+                let summary = summarize_directory_with_progress(&directory, move |total| {
+                    if total > 0
+                        && progress_throttle.should_update(Instant::now())
+                        && let Some(size) = progress_size.upgrade()
+                    {
+                        size.set_text(&format_file_size(total));
+                    }
+                })
+                .await;
+                if let Some(spinner) = weak_spinner.upgrade() {
+                    spinner.stop();
+                    spinner.set_visible(false);
+                }
                 let Some(size) = weak_size.upgrade() else {
                     return;
                 };
@@ -478,6 +545,7 @@ impl ViewState {
                     Err(_) => size.set_text("Unavailable"),
                 }
             });
+            layer.connect_unrealize(move |_| task.abort());
         }
 
         let file = gio_file_for_location(&location);

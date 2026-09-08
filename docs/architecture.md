@@ -65,6 +65,20 @@ policy live behind the UI presentation boundary (`ui/browser_modes.rs`); shared 
 the application layer. A future mode should therefore add a renderer rather than add mode checks to
 filesystem, navigation, or operation code.
 
+`ui/browser_modes/events.rs` applies alternate-mode events on the same `ModeViews`.
+Structural events rebuild the active presentation; row, loading, and selection handlers
+keep their effects separate. Only panes belonging to the active mode and event depth
+receive incremental updates. Shared browser effects in `ui/browser/events.rs` still run
+before alternate-mode dispatch.
+
+Pane helpers share string-model splicing, but authoritative entry borrows end before GTK
+notifications. Reload detaches selection/filter models without detaching the collection
+views; completion or failure reconnects them. Teardown retains its stronger detachment.
+Busy insertions/publication, replacement, and splices keep their distinct count/spinner
+rules. Selection restoration captures existing pane focus before applying the selection
+and preserves explicit focus requests and empty-selection behavior. Renderer construction,
+rename, pointer policy, and preference ownership remain separate responsibilities.
+
 Pointer intent is shared through `ui/pointer.rs` and `ui/marquee.rs`. In all three modes,
 thumbnail slots, rendered row text/metadata, and Icons' caption region are item drag targets;
 unused label allocation and the gutters beside thumbnails are marquee origins. Both paths use
@@ -108,11 +122,43 @@ Generic modal hosting, animation and dismissal live in `ui/modal.rs`, not in a b
 unblurring and must leave it enabled while another visible modal remains. Dialog-specific cancel,
 close, backdrop and submission policies remain with the dialog.
 
+New File and New Folder allocate real entries through `app::Browser` and the operation provider.
+`adapters/local_operations/create_entry.rs` shares atomic conflict retries for files and directories
+and closes an empty file before reporting its creation. `EntryCreated` carries the allocated
+location, which `inline_edit.rs` uses to select the real row and start a normal rename. A pending
+request identity prevents late focus after cancellation or navigation. There are no temporary
+creation rows; both new and existing items use the same validation and deferred rename dispatch
+outside GTK's focus walk.
+
 Filesystem work for Trash lives in `adapters/trash.rs`. Measurement shares one entry/time budget
 across root and descendant batches; depth truncation and unreadable descendants remain branch-local.
 Deleting Trash streams its own batches, independently of any incomplete measurement. Native path
 and GIO URI conversion lives in `adapters/gio_location.rs`, shared by files, operations, preview and
 browser presentation. It preserves native bytes and sanitizes credentials on inbound GIO locations.
+
+Local archive operations live under `adapters/local_operations/archive/`:
+
+| Responsibility | Owner |
+| --- | --- |
+| Operation entry points, worker lifecycle and progress events | `archive.rs` in the parent directory |
+| Staged publication, source traversal and compression writers | `compression.rs` |
+| Per-operation extraction state, copying, cleanup and outcomes | `extraction.rs` |
+| Confined destination writes, path validation and conflict naming | `destination.rs` |
+| ZIP, TAR/gzip and 7z member enumeration, passwords and decoder errors | `decoders.rs` |
+
+Every decoder feeds one `ExtractionSession` per operation. The session has no codec or widget
+API dependencies; decoders lend it member streams and provide already-known pending names on
+cancellation. Member identity tracking stays inside each decoder rather than assuming unique names
+or matching header/callback order. The session validates pending names and applies established
+root renames without filesystem probes or name reservations; final leaf conflicts remain unknown
+until a member is attempted. Sequential formats do not scan unread content to complete that list.
+
+The private member boundary currently retains legacy lossy TAR-name conversion and regular-file
+output for non-directory entries, including links. It is not a complete archive-entry model;
+native names and entry-type semantics belong in the decoder compatibility evaluation. Format
+libraries and compression behavior remain unchanged. Archive unit tests sit in each module's
+adjacent `tests.rs`; provider-level tests remain in `archive/tests.rs`, with shared test-only builders
+in `fixtures.rs`.
 
 Feature unit tests sit beside their implementations. Cross-feature browser tests remain in
 `ui/browser/tests/`; GTK tests that need independent initialization can use
@@ -126,6 +172,75 @@ application/adapter boundaries in focused follow-ups. Likewise, alternate render
 publication/metadata orchestration, native transfer security and the settings workspace should be
 refactored independently of browser composition. Investigation and scope decisions are recorded in
 [issue #397](https://github.com/lgse/strata/issues/397).
+
+### Browser directory-event routing
+
+`app/browser/loading.rs` dispatches provider events through an owned open-load target:
+native batches stage for sorting/publication, while remote batches keep the first-batch
+and coalesced-tail paths. Completion carries truncation and both filesystem capabilities
+together. Requests outside the open-load gate retain their existing peek/failure handling;
+stale work is still checked against the owning directory or peek request.
+
+`loading/metadata.rs` separates full-sort fills, applied by location, from viewport fills,
+validated against directory identity and row-position/location tokens. Metadata chunks
+never complete a sort; `MetadataFinished` retains that responsibility. Both modules release
+state and routing borrows before synchronous observer dispatch, allowing observers to
+navigate safely. Sorting, metadata scheduling, and cancellation remain in the browser
+controller; event routing does not change those policies.
+
+### Browser staged publication
+
+`app/browser/publication.rs` owns staged row publication on the same `Browser`, not a
+second controller. A `PublicationPlan` captures request identity, row count, selection,
+and terminal payload; only the separate progress cursor advances while tails stream.
+Sort paths capture the plan before notifying preference observers.
+
+Inline publication, idle completion, and synchronous draining share selection/terminal
+dispatch. Selection follows the final rows; a load's metadata retry follows its load
+completion event. Idle tails reject superseded directory requests and respect both the
+captured total and current model length. Draining instead publishes the entire remaining
+current model before mutations that require convergence. Borrows end before synchronous
+observer calls, including cancellation from a tail observer.
+
+Inline thresholds, prefix/chunk sizes, idle priority, and the cooperative time budget
+are unchanged. Queue ownership and cancellation/truncation remain on `Browser`; sort
+workers, remote coalescing, and operation callbacks are separate responsibilities.
+
+### Window composition
+
+`ui/window.rs::present_target` owns the startup sequence: prepare theme/styles, compose
+and bind the window, arm first-paint work and destruction cleanup, present, then schedule
+initial navigation, portal integration, and the due update check. Reveal selection is
+queued before navigation. Sidebar discovery remains deferred until after the first paint.
+
+`ui/window/composition.rs` coordinates the window's components. Its private `layout`
+module assembles the header, sidebar/browser/preview splits, and live shortcut footer;
+`input` installs pointer history and edit-cancellation gestures. `search` shares one
+toggle/dismissal path between the header button and window action, reading preferences
+at dispatch. `settings` owns update notices and a single lazily created Settings layer
+per window; both Settings entry points reuse it and the process-wide install guard.
+Preferences take effect before Settings opens. Destruction disconnects the clipboard
+subscription, browser observers, and sidebar monitors.
+
+`ui/window/sidebar.rs` assembles the sidebar shell and connects its preferences,
+browser events, and device monitors. Shared place-row bindings retain explicit direct
+versus validated navigation; file drops still exclude virtual locations. Typed device
+signals share a weak rebuild callback and retain their disconnect handles. Standard,
+pinned, and device rows are separate rendering stages, with the chooser's local-only
+filter preserved. Initial construction builds static places; device rows retain their
+existing deferred rebuild timing. Bookmark storage, Trash, and media-release policies
+remain in `window.rs` rather than changing alongside assembly.
+
+### Window keyboard routing
+
+`ui/window/keyboard.rs` owns the window's capture-phase keyboard dispatcher. Its ordered
+stages preserve shortcut precedence: modal and editing ownership, window/file commands,
+focus traversal, transient dismissal, then item/directory navigation. The private
+`commands.rs`, `focus.rs`, and `items.rs` modules implement those responsibilities without
+introducing another browser controller. A stage returning `None` continues through Strata's
+handlers; `Some(Propagation::Proceed)` ends dispatch and leaves the event to GTK. In
+particular, editable controls and native single-pane selection must not fall through to
+browser commands. The file chooser retains its separate, restricted keyboard policy.
 
 ## Capability boundaries
 

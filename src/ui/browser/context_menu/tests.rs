@@ -2,6 +2,7 @@
 
 mod actions;
 mod menus;
+mod open_with;
 
 use super::*;
 use crate::model::{FileEntry, Location};

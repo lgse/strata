@@ -26,6 +26,14 @@ fn take_pending_scroll(view: &gtk::Widget) -> Option<gtk::TickCallbackId> {
     })
 }
 
+pub(crate) fn prepare_collection_inline_edit(view: &gtk::Widget, position: u32) {
+    if let Some(pending) = take_pending_scroll(view) {
+        pending.remove();
+    }
+    // Replace deferred row focus before moving focus into its editor.
+    apply_collection_scroll(view, position, gtk::ListScrollFlags::NONE);
+}
+
 /// `scroll_to` before the view has a real height leaves ListView/GridView with a
 /// one-row widget pool, so scrolling after a mode switch stays janky.
 pub(crate) fn scroll_collection_when_allocated(view: &gtk::Widget, position: u32) {
@@ -129,6 +137,47 @@ pub(crate) fn debounce_filter_entry(entry: &gtk::Entry, on_settled: impl Fn(Stri
             move || {
                 slot.borrow_mut().take();
                 callback(text);
+            },
+        ));
+    });
+}
+
+/// Scope changes bypass typing's debounce and cancel queued old-scope queries.
+pub(crate) fn bind_filter_query(
+    entry: &gtk::Entry,
+    on_query: impl Fn(String, bool, bool) + 'static,
+) {
+    let pending = Rc::new(RefCell::new(None));
+    let callback = Rc::new(on_query);
+    let scope = Rc::new(Cell::new(true));
+    let weak_callback = Rc::downgrade(&callback);
+    let pending_for_binding = pending.clone();
+    let scope_for_binding = scope.clone();
+    crate::ui::theme::ThemeManager::shared().bind_preference(
+        entry,
+        crate::ui::theme::ThemeManager::filter_include_subfolders,
+        move |entry, recursive| {
+            scope_for_binding.set(recursive);
+            cancel_source(&pending_for_binding);
+            if let Some(callback) = weak_callback.upgrade() {
+                let entry = entry
+                    .downcast_ref::<gtk::Entry>()
+                    .expect("filter entry anchor");
+                callback(entry.text().to_string(), recursive, true);
+            }
+        },
+    );
+    entry.connect_changed(move |entry| {
+        cancel_source(&pending);
+        let slot = pending.clone();
+        let callback = callback.clone();
+        let text = entry.text().to_string();
+        let recursive = scope.get();
+        *pending.borrow_mut() = Some(glib::timeout_add_local_once(
+            FILTER_DEBOUNCE_DELAY,
+            move || {
+                slot.borrow_mut().take();
+                callback(text, recursive, false);
             },
         ));
     });
@@ -314,6 +363,25 @@ impl ViewMap {
                     .map(|source| (*position, source))
             })
             .collect()
+    }
+}
+
+pub(crate) fn search_result_entry(item: &crate::services::SearchItem) -> crate::model::FileEntry {
+    use crate::model::{EntryKind, FileEntry, MetadataValue};
+    FileEntry {
+        location: Location::local(item.path.clone()),
+        native_name: item.path.file_name().unwrap_or_default().to_os_string(),
+        thumbnail_path: None,
+        display_name: item.name.clone(),
+        kind: if item.is_directory {
+            EntryKind::Directory
+        } else {
+            EntryKind::File
+        },
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
     }
 }
 

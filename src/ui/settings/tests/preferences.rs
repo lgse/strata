@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::super::*;
+use crate::sandbox::MediaPreviewBackend;
 use crate::test_support::gtk_test;
+use crate::ui::theme::TextSize;
 
 fn descendants<T: IsA<gtk::Widget> + Clone>(root: &gtk::Widget) -> Vec<T> {
     let mut widgets = Vec::new();
@@ -55,7 +57,7 @@ fn every_general_control_stays_in_sync_without_initializing_browser_behavior() {
             );
             assert_eq!(
                 active_switches(&first),
-                vec![false, false, true, false, false, true]
+                vec![false, false, true, false, false, false, true]
             );
             assert_eq!(active_switches(&first), active_switches(&second));
             assert_eq!(active_choices(&first), active_choices(&second));

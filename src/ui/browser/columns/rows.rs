@@ -22,10 +22,7 @@ use crate::ui::{
     browser_modes::BrowserMode,
     modal::{slide_in_down, slide_out},
 };
-use crate::{
-    model::{EntryKind, FileEntry, Location},
-    services::SearchItem,
-};
+use crate::{model::FileEntry, services::SearchItem};
 use gtk::{glib, prelude::*};
 use std::{
     cell::{Cell, RefCell},
@@ -92,6 +89,7 @@ pub(super) fn column_rows(
         rename.add_css_class("inline-rename");
         crate::ui::accessibility::set_label(&rename, "Rename");
         rename.set_hexpand(true);
+        rename.set_width_chars(1);
         rename.set_visible(false);
         rename.connect_changed(|field| {
             update_basename_validation(field);
@@ -102,6 +100,16 @@ pub(super) fn column_rows(
                 state.submit_rename(field);
             }
         });
+        let focus = gtk::EventControllerFocus::new();
+        let weak_state_for_leave = weak_state.clone();
+        focus.connect_leave(move |controller| {
+            if let Some(state) = weak_state_for_leave.upgrade()
+                && let Some(field) = controller.widget().and_downcast::<gtk::Entry>()
+            {
+                state.submit_rename(&field);
+            }
+        });
+        rename.add_controller(focus);
         let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         spacer.add_css_class("file-row-spacer");
         let editor = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -311,6 +319,13 @@ pub(super) fn column_rows(
         let pending_activation_for_cancel = pending_activation;
         selection_click.connect_pressed(move |gesture, press_count, x, y| {
             pending_activation_for_press.take();
+            if gesture
+                .widget()
+                .and_then(|row| row.pick(x, y, gtk::PickFlags::DEFAULT))
+                .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
+            {
+                return;
+            }
             let Some(clicked_item) = clicked_item.upgrade() else {
                 return;
             };
@@ -525,21 +540,7 @@ pub(super) fn column_rows(
             search_results_for_bind
                 .borrow()
                 .get(item.position() as usize)
-                .map(|item| FileEntry {
-                    location: Location::local(item.path.clone()),
-                    native_name: item.path.file_name().unwrap_or_default().to_os_string(),
-                    thumbnail_path: None,
-                    display_name: item.name.clone(),
-                    kind: if item.is_directory {
-                        EntryKind::Directory
-                    } else {
-                        EntryKind::File
-                    },
-                    size: crate::model::MetadataValue::Unknown,
-                    modified_unix_seconds: crate::model::MetadataValue::Unknown,
-                    is_hidden: false,
-                    mode: crate::model::MetadataValue::Unknown,
-                })
+                .map(crate::ui::browser::search_result_entry)
         } else {
             source_position.and_then(|position| browser?.entry_at(depth, position))
         };
@@ -548,7 +549,10 @@ pub(super) fn column_rows(
             .filter(|_| searching)
             .map(|entry| entry.location.display_path());
         path.set_label(origin.as_deref().unwrap_or_default());
-        path.set_visible(origin.is_some());
+        path.set_visible(
+            origin.is_some()
+                && crate::ui::theme::ThemeManager::shared().filter_include_subfolders(),
+        );
         row.set_tooltip_text(origin.as_deref());
         let active = entry.as_ref().is_some_and(|entry| {
             browser
@@ -568,7 +572,16 @@ pub(super) fn column_rows(
             let mode_active = state
                 .as_ref()
                 .is_some_and(|state| state.mode_views.borrow().mode() == BrowserMode::Columns);
-            if entry.is_directory() || mode_active {
+            if searching && mode_active && !entry.is_directory() {
+                // Search results have no directory metadata-fill producer.
+                crate::ui::thumbnail::set_thumbnail_or_icon_for_path(
+                    &icon,
+                    entry.local_thumbnail_path().expect("local search result"),
+                    entry_icon(entry),
+                    17,
+                    17,
+                );
+            } else if entry.is_directory() || mode_active {
                 crate::ui::thumbnail::set_thumbnail_or_icon(
                     &icon,
                     entry,

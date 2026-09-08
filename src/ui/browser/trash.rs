@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::adapters::trash::{EmptyTrashOutcome, TrashSummary, empty_trash, summarize_trash};
+use crate::adapters::directory_summary::{DirectorySummary, summarize_directory};
+use crate::adapters::trash::{EmptyTrashOutcome, empty_trash};
 use crate::model::{FileEntry, Location};
 use crate::services::LoadHandle;
 use crate::ui::blur::BlurBin;
@@ -103,7 +104,7 @@ impl ViewState {
             // immediately ready for long stretches on a fast local trash backend.
             glib::timeout_future(Duration::from_millis(16)).await;
             let trash = gio::File::for_uri("trash:///");
-            match summarize_trash(&trash).await {
+            match summarize_directory(&trash).await {
                 Ok(summary) if summary.item_count > 0 => {
                     if summary.truncated {
                         tracing::warn!(
@@ -225,7 +226,7 @@ impl ViewState {
         self.dismiss_trash_loading();
     }
 
-    fn show_empty_trash_confirmation(self: &Rc<Self>, summary: TrashSummary) {
+    fn show_empty_trash_confirmation(self: &Rc<Self>, summary: DirectorySummary) {
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,

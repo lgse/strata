@@ -130,3 +130,97 @@ fn paste_reveals_and_selects_completed_items_in_every_mode() {
         },
     );
 }
+
+fn descendant_buttons(widget: &gtk::Widget) -> Vec<gtk::Button> {
+    let mut buttons = Vec::new();
+    if let Some(button) = widget.downcast_ref::<gtk::Button>() {
+        buttons.push(button.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(child_widget) = child {
+        buttons.extend(descendant_buttons(&child_widget));
+        child = child_widget.next_sibling();
+    }
+    buttons
+}
+
+#[test]
+fn keep_both_is_offered_only_when_copying_into_a_collision() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::paste::keep_both_is_offered_only_when_copying_into_a_collision",
+        || {
+            for moving in [false, true] {
+                let fixture = tempfile::tempdir().expect("paste fixture");
+                let destination_dir = fixture.path().join("dest");
+                std::fs::create_dir(&destination_dir).expect("destination folder");
+                std::fs::write(fixture.path().join("report.txt"), "source").expect("source file");
+                std::fs::write(destination_dir.join("report.txt"), "existing")
+                    .expect("colliding file");
+
+                let view = BrowserView::new(
+                    Rc::new(crate::adapters::LocalFileSource),
+                    PeekBehavior::default(),
+                );
+                view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+                view.set_view_mode(BrowserMode::List);
+                let browser = view.browser();
+                let window = gtk::Window::builder()
+                    .child(&view.widget())
+                    .default_width(800)
+                    .default_height(600)
+                    .build();
+                window.present();
+                browser.navigate(Location::local(fixture.path()));
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|s| !s.loading && s.count == 2)
+                });
+                view.keyboard_navigation();
+                browser.select_entries_by_name(&["report.txt".to_owned()]);
+                assert!(if moving {
+                    view.cut_selection()
+                } else {
+                    view.copy_selection()
+                });
+                let clipboard = gtk::gdk::Display::default()
+                    .expect("default display")
+                    .clipboard();
+                wait_until(|| {
+                    clipboard
+                        .formats()
+                        .contains_type(gtk::gdk::FileList::static_type())
+                });
+                browser.navigate(Location::local(&destination_dir));
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|s| !s.loading && s.count == 1)
+                });
+                view.paste();
+
+                let root_widget = view.widget().upcast::<gtk::Widget>();
+                wait_until(|| {
+                    descendant_buttons(&root_widget)
+                        .iter()
+                        .any(|button| button.label().as_deref() == Some("Skip"))
+                });
+
+                let buttons = descendant_buttons(&root_widget);
+                let has_keep_both = buttons.iter().any(|button| {
+                    button.label().as_deref() == Some("Keep Both") && button.is_visible()
+                });
+                assert_eq!(has_keep_both, !moving, "moving={moving}");
+
+                let cancel = buttons
+                    .iter()
+                    .find(|button| button.label().as_deref() == Some("Cancel"))
+                    .expect("cancel button on the conflict dialog");
+                cancel.emit_clicked();
+
+                window.destroy();
+                browser.clear_observer();
+            }
+        },
+    );
+}

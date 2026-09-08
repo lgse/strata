@@ -3,6 +3,111 @@
 use super::*;
 
 #[test]
+fn vim_keys_normalize_only_without_typing_or_modifiers() {
+    for (letter, arrow) in [
+        (gdk::Key::h, gdk::Key::Left),
+        (gdk::Key::j, gdk::Key::Down),
+        (gdk::Key::k, gdk::Key::Up),
+        (gdk::Key::l, gdk::Key::Right),
+    ] {
+        assert_eq!(
+            navigation_key(letter, gdk::ModifierType::empty(), false, None),
+            arrow
+        );
+        assert_eq!(
+            navigation_key(letter, gdk::ModifierType::empty(), true, None),
+            letter
+        );
+        for modifier in [
+            gdk::ModifierType::SHIFT_MASK,
+            gdk::ModifierType::CONTROL_MASK,
+            gdk::ModifierType::ALT_MASK,
+            gdk::ModifierType::SUPER_MASK,
+        ] {
+            assert_eq!(navigation_key(letter, modifier, false, None), letter);
+        }
+    }
+}
+
+#[test]
+fn native_arrow_aliases_use_gtk_spatial_selection() {
+    crate::test_support::gtk_test(
+        "ui::focus_navigation::tests::native_arrow_aliases_use_gtk_spatial_selection",
+        || {
+            let entry = gtk::Entry::new();
+            assert_eq!(
+                navigation_key(
+                    gdk::Key::j,
+                    gdk::ModifierType::empty(),
+                    false,
+                    Some(entry.upcast_ref())
+                ),
+                gdk::Key::j
+            );
+            let popover = gtk::Popover::new();
+            let button = gtk::Button::with_label("Option");
+            popover.set_child(Some(&button));
+            assert_eq!(
+                navigation_key(
+                    gdk::Key::l,
+                    gdk::ModifierType::empty(),
+                    false,
+                    Some(button.upcast_ref())
+                ),
+                gdk::Key::l
+            );
+            for grid in [false, true] {
+                let model = gtk::StringList::new(&["a", "b", "c", "d", "e", "f", "g", "h", "i"]);
+                let selection = gtk::SingleSelection::new(Some(model));
+                let factory = gtk::SignalListItemFactory::new();
+                factory.connect_setup(|_, object| {
+                    let item = object.downcast_ref::<gtk::ListItem>().expect("list item");
+                    let label = gtk::Label::new(Some("Item"));
+                    label.set_size_request(80, 40);
+                    item.set_child(Some(&label));
+                });
+                let collection: gtk::Widget = if grid {
+                    gtk::GridView::builder()
+                        .model(&selection)
+                        .factory(&factory)
+                        .min_columns(3)
+                        .max_columns(3)
+                        .build()
+                        .upcast()
+                } else {
+                    gtk::ListView::new(Some(selection.clone()), Some(factory)).upcast()
+                };
+                let scroll = gtk::ScrolledWindow::builder().child(&collection).build();
+                let window = gtk::Window::builder()
+                    .child(&scroll)
+                    .default_width(400)
+                    .default_height(500)
+                    .build();
+                window.present();
+                let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+                while collection.width() == 0 {
+                    glib::MainContext::default().iteration(false);
+                    assert!(std::time::Instant::now() < deadline);
+                }
+                assert!(collection.grab_focus());
+                assert_eq!(selection.selected(), 0);
+                assert!(activate_native_arrow(&window, gdk::Key::Down));
+                assert_eq!(selection.selected(), if grid { 3 } else { 1 });
+                assert!(activate_native_arrow(&window, gdk::Key::Up));
+                assert_eq!(selection.selected(), 0);
+                if grid {
+                    assert!(activate_native_arrow(&window, gdk::Key::Right));
+                    assert_eq!(selection.selected(), 1);
+                    assert!(activate_native_arrow(&window, gdk::Key::Left));
+                    assert_eq!(selection.selected(), 0);
+                }
+                window.close();
+            }
+        },
+    );
+}
+
+#[test]
 fn directional_neighbors_prefer_aligned_controls_and_exclude_the_opposite_direction() {
     let origin = gtk::graphene::Rect::new(100.0, 100.0, 40.0, 30.0);
     let right = gtk::graphene::Rect::new(160.0, 100.0, 40.0, 30.0);
