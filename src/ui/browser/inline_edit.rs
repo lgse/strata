@@ -52,6 +52,32 @@ fn constrain_rename_to_viewport(field: &gtk::Entry, viewport: &gtk::ScrolledWind
     field.set_margin_end(end.min(editor.width().saturating_sub(start + 1).max(0)));
 }
 
+fn reveal_row_above_footer(
+    row: &impl IsA<gtk::Widget>,
+    scroll: &gtk::ScrolledWindow,
+    footer: &impl IsA<gtk::Widget>,
+) -> Option<(f32, f32, f32, f64)> {
+    if row.height() <= 0 || row.width() <= 0 || scroll.height() <= 0 {
+        return None;
+    }
+    let bounds = row.compute_bounds(scroll)?;
+    let bottom = (scroll.height() as f32).min(footer.compute_bounds(scroll)?.y());
+    if bottom <= 0.0 {
+        return None;
+    }
+    let delta = if bounds.y() < 0.0 {
+        bounds.y()
+    } else {
+        (bounds.y() + bounds.height() - bottom).max(0.0)
+    };
+    let adjustment = scroll.vadjustment();
+    if delta != 0.0 {
+        adjustment.set_value(adjustment.value() + f64::from(delta));
+        return None;
+    }
+    Some((bounds.y(), bounds.height(), bottom, adjustment.value()))
+}
+
 pub(super) struct PendingEntryRename {
     depth: usize,
     parent: Location,
@@ -368,7 +394,7 @@ impl ViewState {
         }
     }
 
-    pub(super) fn complete_pending_rename(&self, operation_id: OperationRequestId) {
+    pub(super) fn complete_pending_rename(self: &Rc<Self>, operation_id: OperationRequestId) {
         let Some((old_location, new_location, new_name)) = self
             .pending_rename
             .borrow_mut()
@@ -395,6 +421,9 @@ impl ViewState {
             return;
         };
         self.update_rename_labels(&old_location, new_location.as_ref(), &new_name);
+        if let Some(location) = new_location {
+            self.reveal_completed_rename(old_location, location);
+        }
         let observed = self
             .pending_rename
             .borrow()
@@ -405,6 +434,100 @@ impl ViewState {
         } else {
             self.reconcile_pending_rename();
         }
+    }
+
+    fn reveal_completed_rename(self: &Rc<Self>, old: Location, target: Location) {
+        let Some(depth) = self.browser.active_depth() else {
+            return;
+        };
+        let Some(column) = self.columns.borrow().get(depth).cloned() else {
+            return;
+        };
+        let weak = Rc::downgrade(self);
+        let generation = self.rename_generation.get();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        let scrolled = std::cell::Cell::new(false);
+        let settled_bounds = std::cell::Cell::new(None);
+        column.list.clone().add_tick_callback(move |list, _| {
+            let Some(state) = weak.upgrade() else {
+                return gtk::glib::ControlFlow::Break;
+            };
+            let selected = state.browser.selected_entries();
+            if std::time::Instant::now() >= deadline
+                || state.rename_generation.get() != generation
+                || state.browser.active_depth() != Some(depth)
+                || selected.len() != 1
+                || (selected[0].location != old && selected[0].location != target)
+                || !state
+                    .columns
+                    .borrow()
+                    .get(depth)
+                    .is_some_and(|current| current.list == *list)
+            {
+                return gtk::glib::ControlFlow::Break;
+            }
+            let column = state.columns.borrow()[depth].clone();
+            let Some(snapshot) = state.browser.column_snapshot(depth) else {
+                return gtk::glib::ControlFlow::Break;
+            };
+            if snapshot.location != target.parent().unwrap_or_else(|| target.clone()) {
+                return gtk::glib::ControlFlow::Break;
+            }
+            let position = (0..snapshot.count).find(|position| {
+                state
+                    .browser
+                    .entry_at(depth, *position)
+                    .is_some_and(|entry| entry.location == target)
+            });
+            let Some(position) = position else {
+                return gtk::glib::ControlFlow::Continue;
+            };
+            let Some(position) = column.map.view_position(position) else {
+                return gtk::glib::ControlFlow::Break;
+            };
+            if snapshot.loading || list.height() <= 1 {
+                return gtk::glib::ControlFlow::Continue;
+            }
+            if !scrolled.get() {
+                let flags = list
+                    .root()
+                    .and_then(|root| root.focus())
+                    .filter(|focus| focus == list || focus.is_ancestor(list))
+                    .map_or(gtk::ListScrollFlags::NONE, |_| gtk::ListScrollFlags::FOCUS);
+                list.scroll_to(position, flags, None);
+                scrolled.set(true);
+                return gtk::glib::ControlFlow::Continue;
+            }
+            let row = column.bound_rows.borrow().iter().find_map(|bound| {
+                (bound.item.upgrade()?.position() == position)
+                    .then(|| bound.row.upgrade())
+                    .flatten()
+            });
+            let Some(row) = row else {
+                return gtk::glib::ControlFlow::Continue;
+            };
+            // A newly rebound item can have CSS bounds but no allocation. Focusing it
+            // then gives GTK a zero-origin scroll anchor and sends the column to the top.
+            if row.height() <= 0 || row.width() <= 0 {
+                list.scroll_to(position, gtk::ListScrollFlags::NONE, None);
+                return gtk::glib::ControlFlow::Continue;
+            }
+            // Focus the native item, not ListView's stale pre-sort keyboard cursor.
+            if let Some(focus) = list.root().and_then(|root| root.focus())
+                && (focus == *list || focus.is_ancestor(list))
+                && let Some(cursor) = row.parent()
+            {
+                cursor.grab_focus();
+            }
+            let allocated =
+                reveal_row_above_footer(&row, &column.listing_scroll, &column.destination_hint);
+            if allocated.is_some() && settled_bounds.get() == allocated {
+                return gtk::glib::ControlFlow::Break;
+            }
+            settled_bounds.set(allocated);
+            // Tick callbacks precede allocation; confirm visibility after GTK's anchor update.
+            gtk::glib::ControlFlow::Continue
+        });
     }
 
     pub(super) fn fail_pending_rename(&self) {
@@ -539,6 +662,14 @@ impl ViewState {
                     state.pending_new_entry.take();
                     return gtk::glib::ControlFlow::Break;
                 }
+                if state.mode_views.borrow().mode() == BrowserMode::Columns
+                    && let Some(column) = state.columns.borrow().get(pending.depth)
+                    && let Some(position) = column.map.view_position(position)
+                {
+                    column
+                        .list
+                        .scroll_to(position, gtk::ListScrollFlags::NONE, None);
+                }
             }
             gtk::glib::ControlFlow::Continue
         });
@@ -655,11 +786,19 @@ impl ViewState {
         field.set_visible(true);
         constrain_rename_to_viewport(&field, &self.scroller);
         let viewport = self.scroller.downgrade();
+        let row = row.downgrade();
+        let scroll = column.listing_scroll.downgrade();
+        let footer = column.destination_hint.downgrade();
         let viewport_tick = field.add_tick_callback(move |field, _| {
             let Some(viewport) = viewport.upgrade() else {
                 return gtk::glib::ControlFlow::Break;
             };
             constrain_rename_to_viewport(field, &viewport);
+            if let (Some(row), Some(scroll), Some(footer)) =
+                (row.upgrade(), scroll.upgrade(), footer.upgrade())
+            {
+                reveal_row_above_footer(&row, &scroll, &footer);
+            }
             gtk::glib::ControlFlow::Continue
         });
         field.grab_focus();
