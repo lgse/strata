@@ -38,19 +38,33 @@ fn transfer_target(source: &Location, destination: &Location) -> Option<gio::Fil
     Some(gio_file_for_location(destination).child(name))
 }
 
-/// Whether dropping `source` onto `destination` would transfer it onto
-/// itself, its current location, or one of its own descendants.
-fn transfer_is_noop(source: &Location, destination: &Location) -> bool {
-    let Some(target) = transfer_target(source, destination) else {
-        return false;
-    };
+/// Whether `source` would already be at `destination` once transferred there.
+fn transfer_shares_target(source: &Location, destination: &Location) -> bool {
+    transfer_target(source, destination)
+        .is_some_and(|target| gio_file_for_location(source).equal(&target))
+}
+
+/// Whether dropping `source` onto `destination` would nest it inside
+/// itself: dropped onto itself, or onto one of its own descendants.
+fn transfer_targets_itself(source: &Location, destination: &Location) -> bool {
     let source = gio_file_for_location(source);
     let destination = gio_file_for_location(destination);
-    source.equal(&target) || source.equal(&destination) || destination.has_prefix(&source)
+    source.equal(&destination) || destination.has_prefix(&source)
+}
+
+/// Whether dropping `source` onto `destination` is a genuine no-op: nested
+/// onto itself or a descendant (always), or already at `destination` and
+/// being moved rather than copied. A same-folder copy becomes a duplicate
+/// rename instead (Ctrl+D, paste or Copy-to the current folder, Ctrl-drop
+/// onto the parent/background), matching the adapter's `is_duplicate`
+/// carve-out.
+fn transfer_is_noop(source: &Location, destination: &Location, move_sources: bool) -> bool {
+    transfer_targets_itself(source, destination)
+        || (move_sources && transfer_shares_target(source, destination))
 }
 
 fn transfer_has_collision(source: &Location, destination: &Location) -> bool {
-    if transfer_is_noop(source, destination) {
+    if transfer_targets_itself(source, destination) || transfer_shares_target(source, destination) {
         return false;
     }
     let Some(target) = transfer_target(source, destination) else {
@@ -86,7 +100,7 @@ impl ViewState {
         }
         let sources: Vec<Location> = sources
             .into_iter()
-            .filter(|source| !transfer_is_noop(source, &destination))
+            .filter(|source| !transfer_is_noop(source, &destination, move_sources))
             .collect();
         if sources.is_empty() {
             return;

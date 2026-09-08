@@ -81,27 +81,30 @@ fn transfer_is_noop_rejects_dropping_a_folder_onto_itself_or_its_own_tree()
     let unrelated = root.join("unrelated");
     std::fs::create_dir_all(&nested)?;
     std::fs::create_dir_all(&unrelated)?;
+    let source = Location::local(&source_dir);
 
-    // Dropped onto itself.
-    assert!(transfer_is_noop(
-        &Location::local(&source_dir),
-        &Location::local(&source_dir)
-    ));
-    // Dropped back onto its own parent (already there).
-    assert!(transfer_is_noop(
-        &Location::local(&source_dir),
-        &Location::local(&root)
-    ));
-    // Dropped onto one of its own descendants.
-    assert!(transfer_is_noop(
-        &Location::local(&source_dir),
-        &Location::local(&nested)
-    ));
-    // A real move to an unrelated destination is not a no-op.
-    assert!(!transfer_is_noop(
-        &Location::local(&source_dir),
-        &Location::local(&unrelated)
-    ));
+    for move_sources in [true, false] {
+        // Dropped onto itself is a no-op whether moving or copying.
+        assert!(transfer_is_noop(&source, &source, move_sources));
+        // Dropped onto one of its own descendants, likewise.
+        assert!(transfer_is_noop(
+            &source,
+            &Location::local(&nested),
+            move_sources
+        ));
+        // A real transfer to an unrelated destination is never a no-op.
+        assert!(!transfer_is_noop(
+            &source,
+            &Location::local(&unrelated),
+            move_sources
+        ));
+    }
+
+    // Dropped back onto its own parent (already there) is a no-op only for
+    // a move; a copy becomes a duplicate rename instead (Ctrl+D, paste or
+    // Copy-to the current folder, Ctrl-drop onto the parent/background).
+    assert!(transfer_is_noop(&source, &Location::local(&root), true));
+    assert!(!transfer_is_noop(&source, &Location::local(&root), false));
 
     std::fs::remove_dir_all(root)?;
     Ok(())
