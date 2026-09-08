@@ -13,20 +13,35 @@ checks both what the window reports and what happened on disk.
 ./scripts/e2e.sh -k "clipboard and columns"
 ```
 
-Docker is required by default. For rootless Podman, set
-`STRATA_CONTAINER_ENGINE=podman`. The script builds and runs the same image
-locally and in CI, using `tests/e2e/Dockerfile`: a digest-pinned Ubuntu 24.04
-base, a dated Ubuntu package snapshot (GTK 4.14 and fonts), Rust 1.98.1, and
-pinned Python dependencies. The Docker build context is the repository root;
-`.dockerignore` excludes host artifacts and configuration. The local runner
-builds the `toolchain` stage; CI shards need only the `runtime` stage. No host GTK libraries, fonts, desktop sockets, or
-Rust binaries are mounted into the container.
+The runner prefers Podman when available; select an engine explicitly with
+`STRATA_CONTAINER_ENGINE=podman` or `docker`. CI explicitly selects Docker to match
+its runtime archive loader; an image in one engine's store is not visible to the
+other. Normal runs verify and reuse the
+local base image. If missing, they pull the published environment once, verify
+its input label and platform, and record it locally. They **never automatically
+build images or fetch Ubuntu packages**. A missing publication fails with an
+actionable message rather than silently bootstrapping.
+
+When intentionally updating the environment, or before its first publication,
+explicitly build the local base once:
+
+```bash
+STRATA_CONTAINER_ENGINE=podman python3 scripts/e2e_base.py build
+./scripts/e2e.sh
+```
+
+The recipe remains `tests/e2e/Dockerfile`: digest-pinned Ubuntu 24.04, a dated
+package snapshot (GTK 4.14 and fonts), Rust 1.98.1, and pinned Python dependencies.
+Changing those inputs selects a new base; application edits do not. The normal
+runner still compiles the checked-out application and retains Cargo's worktree
+cache. No host GTK libraries, fonts, desktop sockets, or Rust binaries are mounted.
 
 The checkout is mounted at `/workspace`; pass test paths relative to the
 repository. Build and Cargo caches live in `target/e2e-container`, separately
 from native builds. Artifacts remain in `target/e2e-artifacts` and are owned by
-the invoking user. The image adds an account for the invoking UID/GID because
-D-Bus requires an account entry; this does not change the rendering packages.
+the invoking user. Minimal generated passwd/group files provide the invoking
+UID/GID to D-Bus, so one published environment works across local user IDs without
+rebuilding it or mounting the host's account database.
 Updating the image inputs is an intentional rendering
 environment change and requires reviewing the visual baselines.
 
@@ -303,13 +318,14 @@ a workflow that does not have a mutation yet.
    the same pinned rendering packages and baselines as a local canonical run.
 3. **End-to-end GUI suite** retains the existing required-check name. It requires
    every dependency to succeed, verifies that all planned node IDs passed setup,
-   call, and teardown exactly once, and enforces **less than 180 seconds** from
-   the build job's creation through aggregation. The initial E2E queue, setup,
+   call, and teardown exactly once. Timing is **informational**, with a three-minute
+   performance target—not a pass/fail condition. From build-job creation through
+   aggregation, the initial E2E queue, setup,
    dependency installation or cache retrieval, compilation, transfers, downstream
    runner queues, and test execution are included—not just pytest time. Queue and
-   execution durations appear in the Actions summary; five seconds are reserved
-   for final teardown rather than spending the entire budget before the job can
-   finish. Final GitHub job teardown cannot be measured from inside its own job;
+   execution durations appear in the Actions summary. Slow runs and unavailable
+   timing telemetry do not fail passing tests. Final teardown cannot be measured
+   from inside its own job;
    use the Actions completion timestamp to verify the final observed runtime.
 
 The matrix is generated from `harness/sharding.py`, not a fixed runner count or
@@ -320,16 +336,26 @@ weight. More tests or longer measured durations add runners. Baselines stay in
 one serial scheduling group. An indivisible group over budget or a plan requiring
 more than GitHub's 256 matrix jobs fails explicitly instead of silently extending
 the gate. There is no `max-parallel` throttle; the runner provider must have enough
-concurrent capacity. A busy runner pool can therefore fail the wall-clock budget.
+concurrent capacity. Runner queues affect reported timing, not test correctness.
 
 Shards validate their entire collection against the plan before selecting tests.
 A missing, extra, skipped, failed, or stale result fails the aggregate gate.
 `fail-fast: false` preserves other shards' diagnostics. Worker crashes and failed
 assertions are not retried; only display infrastructure startup retains its one
-retry. CI caps each test at 60 seconds and each shard job at three minutes.
+retry. CI caps each test at 60 seconds and each shard job at ten minutes to stop
+hung execution, independently of the informational three-minute overall target.
 Reports and JUnit files are uploaded on both success and failure, with distinct
 artifact names per runner and run attempt; screenshots/trees/logs are uploaded on
 failures. The gate never mixes previous attempts into a fresh measurement.
+
+### Understanding a failed gate
+
+The prerequisite check reports whether bootstrap or shard execution failed, links
+unsuccessful jobs and steps, and inspects a bounded amount of their logs. Confirmed
+Ubuntu Snapshot HTTP errors, compiler diagnostics, and provenance failures are
+identified separately. When bootstrap fails, it explicitly says that no scenarios
+ran. Timing is reported separately and never changes the test result. If logs
+cannot be retrieved or classified, it says so rather than guessing the cause.
 
 ### Cache lifecycle and cold starts
 
@@ -338,9 +364,20 @@ installer, requirements, Rust manifest/lockfile, source, and resource inputs.
 `install-packages.sh` downloads from the official archive using byte-identical,
 signed snapshot indexes, then installs against the original snapshot sources.
 It never refreshes indexes from the moving archive: versions and APT checksum
-verification stay pinned. Superseded packages unavailable on the archive fall back
-to the snapshot; failed maintainer scripts are not retried. This avoids making every
+verification stay pinned. For superseded packages missing from the archive,
+Launchpad's primary archive is tried using the exact filename and mandatory SHA256
+from the signed snapshot metadata. Downloads use APT's sandboxed partial directory;
+APT verifies them again when installing against the original snapshot sources.
+The snapshot remains the final fallback; failed maintainer scripts are not retried. This avoids making every
 package download wait on the slower snapshot service during cold recovery.
+
+The `package-indexes` stage fetches and authenticates the dated APT indexes once.
+Runtime and toolchain installation reuse them through read-only build mounts;
+neither downloads a second copy, and the lists are removed before each install
+layer is committed. The warmer publishes the index-stage cache **before** package
+and compiler bootstrap, so a later failure does not discard a successful index
+fetch. Source builds attach the public input digest as an output image label, not
+an environment variable or secret-looking build argument.
 
 A stub application
 warms dependencies only; its executable and all Strata fingerprints are removed
@@ -355,7 +392,8 @@ and PRs, and on manual dispatch. PRs warm only their own branch-scoped cache.
 The timed build restores a BuildKit local-cache directory through the cache action's
 segmented transfer path, keyed by image inputs, manifests, ignore rules, and UID/GID.
 BuildKit still validates content-addressed dependency records before reusing them.
-A missing local cache falls back to the shared GHA dependency cache; the old
+A missing local cache first looks for published environments, then falls back to
+the shared GHA dependency cache; the old
 `strata-e2e-v1` cache remains a read-only migration source. The warmer publishes both
 formats and replaces its local export directory so obsolete blobs do not accumulate.
 
@@ -369,7 +407,7 @@ The runtime archive uses a separate exact-key cache; shards restore it without
 starting BuildKit. Only the producer exports or saves a missing archive. It confirms
 that publication succeeded before telling shards to use the cache. If publication
 is unavailable (including read-only fork caches), it instead uploads an explicit
-attempt-scoped `e2e-runtime-<attempt>` artifact; the same strict time budget applies.
+attempt-scoped `e2e-runtime-<attempt>` artifact; transfer time remains in the timing report.
 This avoids repeatedly uploading and unzipping a large unchanged runtime on ordinary
 source revisions without making cache-write permission a prerequisite for testing.
 
@@ -377,17 +415,92 @@ Node-24-native actions verify artifact download digests; the runner also checks
 bundle provenance and the loaded image's input label. GitHub's cache branch scoping
 allows fork PRs to read the main cache without credentials or registry access and
 prevents PR caches from replacing main's cache. No `pull_request_target` execution
-or package-write permission is needed.
+or package-write permission is needed. Main cannot restore a PR-scoped cache:
+a successful PR run does not seed main's first bootstrap after merging a new
+workflow. Run the trusted default-branch warmer to populate main's own caches;
+do not promote untrusted PR build caches into main. These caches are evictable,
+not permanent package storage. Published environments provide the durable fallback
+below; upstream outages can still block the first publication of new inputs.
 
-**A completely cold/evicted cache or a newly changed image is not guaranteed to
+### Persistent published environments
+
+`Publish pinned E2E environments` publishes two GHCR packages from trusted main:
+
+- `ghcr.io/lgse/strata-e2e-runtime`: the pinned GUI/Python/font environment.
+- `ghcr.io/lgse/strata-e2e-build`: Rust plus the runtime and compiled locked Cargo
+  dependencies. The stub application and its fingerprints are removed; no tested
+  application binary is published here.
+
+Tags include SHA256 input identifiers, architecture, UID, and GID. Runtime inputs
+are independent of application source; the build identifier additionally includes
+`Cargo.toml`, `Cargo.lock`, and `.dockerignore`. Publication runs on input changes
+or manual dispatch, not ordinary application commits. Existing publications are
+checked before rebuilding. A separate `base-<environment-inputs>-linux-amd64-1001-1001`
+tag in the build package provides a reusable local environment independent of
+application manifests. It is published once per environment input set and is not
+retagged on ordinary Cargo changes. GHCR storage is independent of Actions cache eviction;
+retain tags needed by supported revisions rather than treating them as disposable
+per-run artifacts.
+
+On a fast dependency-cache miss, CI resolves matching image tags to **OCI digests**,
+checks their platform and input labels, and uses them directly as application and
+runtime bases. Published labels are preserved, not overwritten to match a checkout. Those builds do not
+execute Ubuntu/Python/Rust bootstrap stages, even with an empty BuildKit cache.
+The application still compiles for the tested revision, and the base's Cargo
+manifests must match the checkout. A fresh runner still transfers image layers;
+this avoids package-server requests and dependency compilation, not all network I/O.
+
+The build package also stores complete BuildKit caches. An environment-only cache
+identifier lets new Cargo inputs reuse unchanged GTK/Rust dependencies. The warmer
+can import these persistent caches to refill the faster segmented GitHub caches.
+If an image is absent or inaccessible, CI reports that fact and falls back to
+verified cache/source building; it never substitutes `latest`, another dependency
+version, or an unverified bundle.
+
+Only the main-only publisher has `packages: write` and registry login credentials.
+PR CI and warmers pull anonymously and cannot publish shared images. After the
+first publication, **make both packages public in GHCR package settings** and rerun
+the publisher. Its anonymous-access check fails descriptively until they are
+readable without credentials. Do not give fork PRs package-write credentials.
+
+To exercise the registry path, manually dispatch **CI** with
+`require_published_environments` enabled. This bypasses the fast dependency cache
+and fails if matching public bases are unavailable; it cannot silently benchmark a
+source-build fallback. All scenarios and the same informational timing report still apply. The
+runtime archive cache remains enabled, so this is not a completely cold transport
+benchmark.
+
+New environment inputs still require an initial trusted publication; a PR cannot
+seed main by publishing its own build. The three-minute target is informational
+for both warm and cold runs.
+
+**New inputs without published images or cached bootstrap are not guaranteed to
 install and compile within three minutes.** The timed build retains a ten-minute
-limit for cold-build diagnostics, but the aggregate still fails the 180-second
-budget: a cold run is not silently exempted or advertised as a fast pass. Large
+limit to stop hung bootstrap jobs; elapsed time alone never fails the aggregate.
+Cold and warm durations are reported honestly rather than conflated. Large
 cache publication no longer blocks binary handoff or races that ten-minute limit;
 the separate warmer owns it. Seed the dependency cache before enabling the new
 required gate, and rerun the **entire workflow** after the warmer completes. External package outages, cache eviction, and runner queues cannot
 be solved by adding test shards. Inspect the build logs' `CACHED` entries and the
 critical-path summary rather than raising the time limit.
+
+### Measured fresh-revision run
+
+[CI run 34235908938](https://github.com/lgse/strata/actions/runs/34235908938)
+(`84d8e82`, 2026-09-08) compiled Strata again and passed all 581 cases exactly once
+on 30 runners in **172 seconds**, measured from the initial E2E queue/attempt start
+through the aggregate job's completed timestamp. The internal measurement was
+168.7 seconds before teardown. The runtime archive was cached; the new segmented
+dependency cache missed, so this run exercised the GHA dependency-cache fallback
+while the separate warmer published the new format. This was not an identical
+binary-cache rerun or a completely cold package bootstrap.
+
+Attempt 2 of the same run restored both segmented caches and **recompiled Strata
+in 7.51 seconds**. All 581 cases passed exactly once: **139 seconds** from initial
+E2E queue to completion, **141 seconds** from attempt start, and 137.4 seconds at
+the internal measurement. This is same-revision recompilation, not a second new
+revision or a binary-cache shortcut. These measurements predate persistent GHCR
+base images; they are not a benchmark of the registry-only cold-runner path.
 
 ### Reproducing and maintaining shards
 
@@ -407,7 +520,7 @@ For the exact CI binary, use a disposable checkout at the commit in its metadata
 ```bash
 podman build --target runtime --tag strata-e2e:ci-runtime \
   --build-arg E2E_UID="$(id -u)" --build-arg E2E_GID="$(id -g)" \
-  --build-arg E2E_IMAGE_KEY="$(python3 scripts/e2e_bundle.py image-key)" \
+  --label org.strata.e2e.inputs="$(python3 scripts/e2e_bundle.py image-key)" \
   --file tests/e2e/Dockerfile .
 chmod +x target/e2e-bundle/strata
 STRATA_CONTAINER_ENGINE=podman STRATA_E2E_IMAGE=strata-e2e:ci-runtime \
@@ -415,10 +528,10 @@ STRATA_CONTAINER_ENGINE=podman STRATA_E2E_IMAGE=strata-e2e:ci-runtime \
 ```
 
 The bundle must be inside the checkout. Without these explicit bundle/image
-variables the local canonical runner still builds the source normally.
+variables the local canonical runner reuses its verified base and compiles the
+checked-out application normally; it does not rebuild the base.
 
-After a complete CI attempt with every test passing (even if its wall-clock gate
-failed), download its `e2e-report-<attempt>-*` artifacts into an empty
+After a complete CI attempt with every test passing, download its `e2e-report-<attempt>-*` artifacts into an empty
 `target/e2e-reports` directory and its `e2e-plan-<attempt>` into
 `target/e2e-bundle`, then refresh timings:
 

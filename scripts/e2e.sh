@@ -3,7 +3,10 @@ set -euo pipefail
 
 unset DISPLAY WAYLAND_DISPLAY NOTIFY_SOCKET
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-engine="${STRATA_CONTAINER_ENGINE:-docker}"
+engine="${STRATA_CONTAINER_ENGINE:-}"
+if [[ -z "$engine" ]]; then
+  if command -v podman >/dev/null 2>&1; then engine=podman; else engine=docker; fi
+fi
 if ! command -v "$engine" >/dev/null 2>&1; then
   echo "E2E tests require Docker or Podman; see docs/e2e-testing.md" >&2
   exit 1
@@ -36,11 +39,20 @@ if [[ -n "${STRATA_E2E_BUNDLE:-}" ]]; then
   fi
 fi
 if [[ -z "$image" ]]; then
-  image="strata-e2e:${image_key:0:16}-$user_id-$group_id"
-  "$engine" build --platform=linux/amd64 --target toolchain --tag "$image" \
-    --build-arg "E2E_UID=$user_id" --build-arg "E2E_GID=$group_id" \
-    --build-arg "E2E_IMAGE_KEY=$image_key" \
-    --file "$repository/tests/e2e/Dockerfile" "$repository"
+  image="$(python3 "$repository/scripts/e2e_base.py" ensure --engine "$engine")"
+elif [[ -z "$bundle" ]]; then
+  image="$(python3 "$repository/scripts/e2e_base.py" verify "$image" --engine "$engine")"
+fi
+
+accounts="$repository/target/e2e-container/accounts-$user_id-$group_id"
+mkdir -p "$accounts"
+printf 'root:x:0:0:root:/root:/bin/sh\n' > "$accounts/passwd"
+printf 'root:x:0:\n' > "$accounts/group"
+if [[ "$user_id" != 0 ]]; then
+  printf 'strata-e2e:x:%s:%s:E2E:/tmp/strata-build-home:/bin/sh\n' "$user_id" "$group_id" >> "$accounts/passwd"
+fi
+if [[ "$group_id" != 0 ]]; then
+  printf 'strata-e2e:x:%s:\n' "$group_id" >> "$accounts/group"
 fi
 
 options=(--rm --platform=linux/amd64 --user "$user_id:$group_id" --shm-size=512m)
@@ -49,10 +61,13 @@ if [[ "$(basename "$engine")" == podman ]]; then
 fi
 exec "$engine" run "${options[@]}" \
   --mount "type=bind,source=$repository,target=/workspace" \
+  --mount "type=bind,source=$accounts/passwd,target=/etc/passwd,readonly" \
+  --mount "type=bind,source=$accounts/group,target=/etc/group,readonly" \
   --workdir /workspace \
   --env HOME=/tmp/strata-build-home \
   --env CARGO_HOME=/workspace/target/e2e-container/cargo \
   --env CARGO_TARGET_DIR=/workspace/target/e2e-container/build \
+  --env CARGO_PROFILE_DEV_DEBUG=0 --env CARGO_INCREMENTAL=0 \
   --env "STRATA_E2E_UPDATE_BASELINES=${STRATA_E2E_UPDATE_BASELINES:-0}" \
   --env "STRATA_E2E_WORKERS=${STRATA_E2E_WORKERS:-auto}" \
   --env "STRATA_E2E_BUNDLE=${bundle:+/workspace/$bundle}" \
