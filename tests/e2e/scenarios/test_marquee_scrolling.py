@@ -15,10 +15,17 @@ def _viewport(strata):
     raise AssertionError("the collection should have a scroll viewport")
 
 
+def _entry_bounds(row):
+    """Use the stable rendered child, not a virtualized cell's stale extents."""
+
+    label = row.find(role="label")
+    return label.screen_bounds() if label is not None else row.screen_bounds()
+
+
 def _visible_entries(strata, viewport):
     visible = []
     for row in strata.entries():
-        bounds = row.screen_bounds()
+        bounds = _entry_bounds(row)
         if (
             bounds.height > 0
             and bounds.y >= viewport.y
@@ -72,7 +79,7 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
         def visible_band_is_selected():
             rows = []
             for row in _visible_entries(strata, viewport):
-                bounds = row.screen_bounds()
+                bounds = _entry_bounds(row)
                 if (
                     bounds.y + bounds.height <= end[1]
                     and bounds.x < end[0]
