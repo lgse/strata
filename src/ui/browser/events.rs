@@ -30,6 +30,7 @@ use std::time::Instant;
 impl ViewState {
     pub(super) fn handle(self: &Rc<Self>, event: &BrowserEvent) {
         match event {
+            BrowserEvent::SelectionSynced { .. } => return,
             BrowserEvent::Reset => {
                 self.pending_new_entry.take();
                 self.pending_location_credentials.take();

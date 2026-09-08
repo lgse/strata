@@ -2476,6 +2476,35 @@ fn preview_and_open_are_distinct_file_actions() {
 }
 
 #[test]
+fn native_selection_notifies_observers_after_state_is_available() {
+    let browser = Browser::new(Rc::new(FilePreviewSource));
+    browser.navigate(Location::local("/fixture"));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    let weak_browser = Rc::downgrade(&browser);
+    browser.observe(move |event| {
+        let BrowserEvent::SelectionSynced { depth, focused } = event else {
+            panic!("native selection must not request focus or reapply view selection: {event:?}");
+        };
+        let browser = weak_browser.upgrade().expect("browser");
+        observed
+            .borrow_mut()
+            .push((*depth, *focused, browser.selected_positions(*depth)));
+    });
+
+    browser.set_selection(0, &[0], Some(0));
+    browser.set_selection(0, &[], None);
+    browser.set_selection(0, &[1], Some(1));
+    browser.set_selection(1, &[0], Some(0));
+
+    assert_eq!(
+        *events.borrow(),
+        vec![(0, Some(0), vec![0]), (0, None, vec![])],
+        "invalid selections must not notify observers"
+    );
+}
+
+#[test]
 fn directory_navigation_does_not_open_or_preview_files() {
     let browser = Browser::new(Rc::new(FilePreviewSource));
     let events = Rc::new(RefCell::new(Vec::new()));
