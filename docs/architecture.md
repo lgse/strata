@@ -151,6 +151,21 @@ publication/metadata orchestration, native transfer security and the settings wo
 refactored independently of browser composition. Investigation and scope decisions are recorded in
 [issue #397](https://github.com/lgse/strata/issues/397).
 
+### Browser directory-event routing
+
+`app/browser/loading.rs` dispatches provider events through an owned open-load target:
+native batches stage for sorting/publication, while remote batches keep the first-batch
+and coalesced-tail paths. Completion carries truncation and both filesystem capabilities
+together. Requests outside the open-load gate retain their existing peek/failure handling;
+stale work is still checked against the owning directory or peek request.
+
+`loading/metadata.rs` separates full-sort fills, applied by location, from viewport fills,
+validated against directory identity and row-position/location tokens. Metadata chunks
+never complete a sort; `MetadataFinished` retains that responsibility. Both modules release
+state and routing borrows before synchronous observer dispatch, allowing observers to
+navigate safely. Sorting, publication budgets, timers, and cancellation remain in the
+browser controller; this extraction does not change those policies.
+
 ### Window composition
 
 `ui/window.rs::present_target` owns the startup sequence: prepare theme/styles, compose
