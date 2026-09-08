@@ -30,11 +30,15 @@ def test_same_folder_copy_creates_a_numbered_duplicate(strata, mode, source, dup
     strata.entry(duplicate, directory=fixture.root.name)
     assert fixture.path(source).exists()
     if source == "documents":
-        assert fixture.path(f"{duplicate}/notes.txt").read_bytes() == fixture.path(
-            "documents/notes.txt"
-        ).read_bytes()
+        copied_file = fixture.path(f"{duplicate}/notes.txt")
+        expected = fixture.path("documents/notes.txt").read_bytes()
     else:
-        assert fixture.path(duplicate).read_text() == "todo\n"
+        copied_file = fixture.path(duplicate)
+        expected = b"todo\n"
+    strata.wait(
+        lambda: copied_file.is_file() and copied_file.read_bytes() == expected,
+        "the numbered copy's contents to finish copying",
+    )
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
