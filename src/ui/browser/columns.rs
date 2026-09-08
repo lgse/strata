@@ -11,7 +11,6 @@ use crate::ui::browser::collection::{
 };
 use crate::ui::browser::context_menu::{install_folder_context_menu, install_item_context_menu};
 use crate::ui::browser::entry::{entry_filter, entry_model_value, format_file_size};
-use crate::ui::browser::inline_edit::update_basename_validation;
 use crate::ui::browser::pane_header::{
     column_sort_direction_toggle, column_sort_menu, empty_trash_button, pane_new_folder_button,
     pane_refresh_button,
@@ -82,9 +81,6 @@ pub(super) struct ColumnView {
     pub(super) spinner_delay: Rc<RefCell<Option<glib::SourceId>>>,
     pub(super) truncated_hint: gtk::Image,
     pub(super) empty_trash_button: Option<gtk::Button>,
-    pub(super) new_entry_row: gtk::Box,
-    pub(super) new_entry_icon: gtk::Image,
-    pub(super) new_entry_entry: gtk::Entry,
     pub(super) show_hidden: Rc<Cell<bool>>,
     pub(super) filter: gtk::CustomFilter,
     pub(super) search_results: Rc<RefCell<Vec<crate::services::SearchItem>>>,
@@ -908,6 +904,7 @@ impl ViewState {
             .vexpand(true)
             .build();
         scroll.add_css_class("fixed-scrollbar");
+        scroll.add_css_class("browser-listing-scroll");
         crate::ui::scrolling::install_autoscroll(&scroll, &self.overlay);
         let retry = gtk::Button::with_label("Retry");
         retry.add_css_class("retry-button");
@@ -958,37 +955,6 @@ impl ViewState {
             }),
         });
         marquee.add_origin_surface(&header);
-
-        let new_entry_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        new_entry_row.add_css_class("file-row");
-        new_entry_row.add_css_class("new-entry-row");
-        new_entry_row.set_visible(false);
-        let new_entry_icon = crate::assets::primary_icon(crate::assets::icons::FOLDER, 17);
-        new_entry_icon.add_css_class("file-icon");
-        let new_entry_entry = gtk::Entry::new();
-        new_entry_entry.add_css_class("inline-rename");
-        crate::ui::accessibility::set_label(&new_entry_entry, "New item name");
-        new_entry_entry.set_hexpand(true);
-        new_entry_entry.connect_changed(|field| {
-            update_basename_validation(field);
-        });
-        new_entry_row.append(&new_entry_icon);
-        new_entry_row.append(&new_entry_entry);
-        let weak_state = Rc::downgrade(self);
-        new_entry_entry.connect_activate(move |field| {
-            if let Some(state) = weak_state.upgrade() {
-                state.submit_new_entry(field);
-            }
-        });
-        let new_entry_focus = gtk::EventControllerFocus::new();
-        let weak_state = Rc::downgrade(self);
-        let field = new_entry_entry.clone();
-        new_entry_focus.connect_leave(move |_| {
-            if let Some(state) = weak_state.upgrade() {
-                state.submit_new_entry(&field);
-            }
-        });
-        new_entry_entry.add_controller(new_entry_focus);
 
         presentation.stack.set_focusable(true);
         let focus = gtk::EventControllerFocus::new();
@@ -1054,7 +1020,6 @@ impl ViewState {
                 depth,
             );
         }
-        column.append(&new_entry_row);
         column.append(&presentation.stack);
         let destination_hint = gtk::Label::new(None);
         destination_hint.add_css_class("column-destination-hint");
@@ -1164,9 +1129,6 @@ impl ViewState {
             spinner_delay: Rc::new(RefCell::new(None)),
             truncated_hint,
             empty_trash_button: is_trash.then_some(empty_trash),
-            new_entry_row,
-            new_entry_icon,
-            new_entry_entry,
             show_hidden,
             filter: filter_for_column,
             search_results,

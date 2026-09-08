@@ -63,7 +63,7 @@ def test_escape_only_clears_the_active_column(strata):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("surface", ["menu", "properties", "rename", "new-folder", "location", "filter", "preview"])
+@pytest.mark.parametrize("surface", ["menu", "properties", "rename", "new-folder", "new-file", "location", "filter", "preview"])
 @pytest.mark.preferences(single_click_previews=False)
 def test_escape_dismisses_transient_before_selection(strata, mode, surface):
     root = strata.fixture.root.name
@@ -73,6 +73,10 @@ def test_escape_dismisses_transient_before_selection(strata, mode, surface):
         if surface == "properties":
             strata.choose_menu_item("Properties")
             strata.wait_for_dialog()
+    elif surface == "new-file":
+        strata.pointer.right_click(strata.pane(), at=strata.background_point())
+        strata.choose_menu_item("New File")
+        strata.editable_field()
     elif surface == "preview":
         strata.keyboard.press("space")
         strata.wait(strata.preview, "preview to open")
@@ -89,7 +93,10 @@ def test_escape_dismisses_transient_before_selection(strata, mode, surface):
         strata.wait(lambda: strata.dialog() is None, "properties to close")
     elif surface == "preview":
         strata.wait(lambda: strata.preview() is None, "preview to close")
-    strata.wait_for_selection(["readme.md"], root)
+    expected = {"new-folder": "new folder", "new-file": "new file"}.get(surface, "readme.md")
+    strata.wait_for_selection([expected], root)
+    if surface in ("new-folder", "new-file"):
+        assert strata.fixture.path(expected).exists()
     strata.keyboard.press("Escape")
     strata.wait_for_selection([], root)
     assert strata.pane_names() == [root]

@@ -4,8 +4,8 @@ use super::{
     BrowserDensity, BrowserMode, ClickActivation, ClickCount, LIST_COLUMN_MIN_WIDTHS,
     LIST_COLUMN_WIDTHS, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, SourceIndexMap,
     compare_type_groups, icons_card_extent, icons_card_icon_slot, list_column_width,
-    metadata_fill_position, scroll_delta_for_unit, should_activate_pointer_click,
-    type_group_sorter, type_groups_of, value_type_group,
+    metadata_fill_position, should_activate_pointer_click, type_group_sorter, type_groups_of,
+    value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use crate::test_support::gtk_test;
@@ -281,21 +281,6 @@ fn first_row_columns(view: &impl IsA<gtk::Widget>) -> usize {
 }
 
 #[test]
-fn icons_scroll_maps_a_wheel_notch_from_page_size() {
-    let wheel = scroll_delta_for_unit(1.0, 1000.0, gtk::gdk::ScrollUnit::Wheel);
-    assert!((wheel - 100.0).abs() < 1e-9);
-    assert!(scroll_delta_for_unit(1.0, 8000.0, gtk::gdk::ScrollUnit::Wheel) > wheel);
-    assert_eq!(
-        scroll_delta_for_unit(4.0, 100.0, gtk::gdk::ScrollUnit::Surface),
-        10.0
-    );
-    assert_eq!(
-        scroll_delta_for_unit(1.0, 50.0, gtk::gdk::ScrollUnit::Surface),
-        scroll_delta_for_unit(1.0, 999.0, gtk::gdk::ScrollUnit::Surface)
-    );
-}
-
-#[test]
 fn folders_lead_the_groups_and_the_rest_are_alphabetical() {
     let mut groups = vec!["Zip archive", "Folder", "JSON document", "audio"];
     groups.sort_by(|left, right| compare_type_groups(left, right));
@@ -304,7 +289,7 @@ fn folders_lead_the_groups_and_the_rest_are_alphabetical() {
 }
 
 #[test]
-fn the_inline_new_entry_row_sorts_ahead_of_every_group() {
+fn empty_model_values_sort_before_known_groups() {
     assert!(compare_type_groups("", "Folder").is_lt());
     assert!(compare_type_groups("", "JSON document").is_lt());
     assert_eq!(value_type_group(""), "");
@@ -379,7 +364,7 @@ fn type_group_sorter_clusters_mime_types_and_keeps_source_order_inside_a_group()
 
 const GTK_CHILD: &str = "STRATA_SOURCE_INDEX_MAP_GTK_CHILD";
 const SOURCE_INDEX_TEST: &str =
-    "ui::browser_modes::tests::source_index_map_tracks_filter_sort_and_placeholder";
+    "ui::browser_modes::tests::source_index_map_tracks_filter_sort_and_non_source_items";
 const LIST_ROW_GTK_CHILD: &str = "STRATA_LIST_ROW_GTK_CHILD";
 const LIST_ROW_TEST: &str = "ui::browser_modes::tests::list_bind_can_read_the_rename_field";
 
@@ -437,14 +422,14 @@ fn run_source_index_map_checks() {
     );
     assert_eq!(map.of_view_position(&sorted, 0), mapped);
 
-    let placeholder = gtk::StringList::new(&["creating"]);
+    let prefix = gtk::StringList::new(&["decoration"]);
     let stacked = gio::ListStore::new::<gio::ListModel>();
-    stacked.append(&placeholder.clone().upcast::<gio::ListModel>());
+    stacked.append(&prefix.clone().upcast::<gio::ListModel>());
     stacked.append(&source.clone().upcast::<gio::ListModel>());
     let flattened = gtk::FlattenListModel::new(Some(stacked));
     assert!(
         map.of_view_position(&flattened, 0).is_none(),
-        "the inline placeholder is not a source entry"
+        "the synthetic prefix is not a source entry"
     );
     assert_eq!(map.of_view_position(&flattened, 1), Some(0));
 
@@ -471,7 +456,7 @@ fn run_source_index_map_checks() {
     assert_eq!(
         positions(flattened.upcast_ref()).view_position(0),
         Some(1),
-        "a leading placeholder shifts every row by one"
+        "a leading non-source item shifts every row by one"
     );
     assert_eq!(positions(visible.upcast_ref()).view_position(3), Some(2));
     assert_eq!(
@@ -526,7 +511,7 @@ fn list_bind_can_read_the_rename_field() {
 }
 
 #[test]
-fn source_index_map_tracks_filter_sort_and_placeholder() {
+fn source_index_map_tracks_filter_sort_and_non_source_items() {
     if std::env::var_os(GTK_CHILD).is_some() {
         if gtk::init().is_err() {
             return;
@@ -604,3 +589,4 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
 }
 
 mod column_widths;
+mod rename;

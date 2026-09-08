@@ -108,6 +108,14 @@ Generic modal hosting, animation and dismissal live in `ui/modal.rs`, not in a b
 unblurring and must leave it enabled while another visible modal remains. Dialog-specific cancel,
 close, backdrop and submission policies remain with the dialog.
 
+New File and New Folder allocate real entries through `app::Browser` and the operation provider.
+`adapters/local_operations/create_entry.rs` shares atomic conflict retries for files and directories
+and closes an empty file before reporting its creation. `EntryCreated` carries the allocated
+location, which `inline_edit.rs` uses to select the real row and start a normal rename. A pending
+request identity prevents late focus after cancellation or navigation. There are no temporary
+creation rows; both new and existing items use the same validation and deferred rename dispatch
+outside GTK's focus walk.
+
 Filesystem work for Trash lives in `adapters/trash.rs`. Measurement shares one entry/time budget
 across root and descendant batches; depth truncation and unreadable descendants remain branch-local.
 Deleting Trash streams its own batches, independently of any incomplete measurement. Native path
@@ -150,6 +158,21 @@ application/adapter boundaries in focused follow-ups. Likewise, alternate render
 publication/metadata orchestration, native transfer security and the settings workspace should be
 refactored independently of browser composition. Investigation and scope decisions are recorded in
 [issue #397](https://github.com/lgse/strata/issues/397).
+
+### Browser directory-event routing
+
+`app/browser/loading.rs` dispatches provider events through an owned open-load target:
+native batches stage for sorting/publication, while remote batches keep the first-batch
+and coalesced-tail paths. Completion carries truncation and both filesystem capabilities
+together. Requests outside the open-load gate retain their existing peek/failure handling;
+stale work is still checked against the owning directory or peek request.
+
+`loading/metadata.rs` separates full-sort fills, applied by location, from viewport fills,
+validated against directory identity and row-position/location tokens. Metadata chunks
+never complete a sort; `MetadataFinished` retains that responsibility. Both modules release
+state and routing borrows before synchronous observer dispatch, allowing observers to
+navigate safely. Sorting, publication budgets, timers, and cancellation remain in the
+browser controller; this extraction does not change those policies.
 
 ### Window composition
 

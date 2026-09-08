@@ -2684,4 +2684,5 @@ fn mixed_conflict_choices_apply_independently_across_a_multi_item_paste()
     Ok(())
 }
 
+mod create_entry;
 mod trash_capabilities;

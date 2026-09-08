@@ -28,30 +28,8 @@ pub(super) fn install_mouse_history(root: &gtk::Box, view: &BrowserView) {
 }
 
 pub(super) fn install_edit_cancellation(window: &gtk::ApplicationWindow, browser: &BrowserView) {
-    install_rename_cancellation(window, browser);
+    browser.install_inline_edit_dismissal(window);
     install_location_cancellation(window, browser);
-}
-
-fn install_rename_cancellation(window: &gtk::ApplicationWindow, browser: &BrowserView) {
-    let view = browser.clone();
-    let gesture = gtk::GestureClick::new();
-    gesture.set_propagation_phase(gtk::PropagationPhase::Capture);
-    gesture.connect_pressed(move |gesture, _, x, y| {
-        if !view.rename_is_active() {
-            return;
-        }
-        let on_entry = gesture
-            .widget()
-            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
-            .is_some_and(|target| {
-                target.has_css_class("inline-rename")
-                    || target.ancestor(gtk::Entry::static_type()).is_some()
-            });
-        if !on_entry {
-            view.cancel_rename();
-        }
-    });
-    window.add_controller(gesture);
 }
 
 fn install_location_cancellation(window: &gtk::ApplicationWindow, browser: &BrowserView) {

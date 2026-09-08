@@ -33,6 +33,17 @@ fn location_exists(location: &Location) -> bool {
     gio_file_for_location(location).query_exists(None::<&gio::Cancellable>)
 }
 
+fn transfer_is_noop(source: &Location, destination: &Location, move_sources: bool) -> bool {
+    let source = gio_file_for_location(source);
+    let destination = gio_file_for_location(destination);
+    source.equal(&destination)
+        || destination.has_prefix(&source)
+        || (move_sources
+            && source
+                .parent()
+                .is_some_and(|parent| parent.equal(&destination)))
+}
+
 fn transfer_has_collision(source: &Location, destination: &Location) -> bool {
     let source = gio_file_for_location(source);
     let destination = gio_file_for_location(destination);
@@ -69,6 +80,13 @@ impl ViewState {
         if is_trash_location(&destination)
             || (move_sources && sources.iter().any(|source| !can_remove_location(source)))
         {
+            return;
+        }
+        let sources: Vec<Location> = sources
+            .into_iter()
+            .filter(|source| !transfer_is_noop(source, &destination, move_sources))
+            .collect();
+        if sources.is_empty() {
             return;
         }
         let mut accepted = Vec::new();

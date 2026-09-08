@@ -994,6 +994,7 @@ fn build_chooser(
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&blurred_root));
     window.set_child(Some(&overlay));
+    view.install_inline_edit_dismissal(&window);
     install_modal_focus_trap(&window);
     window.set_default_widget(Some(&accept));
 

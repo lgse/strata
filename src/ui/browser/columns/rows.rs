@@ -99,6 +99,16 @@ pub(super) fn column_rows(
                 state.submit_rename(field);
             }
         });
+        let focus = gtk::EventControllerFocus::new();
+        let weak_state_for_leave = weak_state.clone();
+        focus.connect_leave(move |controller| {
+            if let Some(state) = weak_state_for_leave.upgrade()
+                && let Some(field) = controller.widget().and_downcast::<gtk::Entry>()
+            {
+                state.submit_rename(&field);
+            }
+        });
+        rename.add_controller(focus);
         let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         spacer.add_css_class("file-row-spacer");
         let editor = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -308,6 +318,13 @@ pub(super) fn column_rows(
         let pending_activation_for_cancel = pending_activation;
         selection_click.connect_pressed(move |gesture, press_count, x, y| {
             pending_activation_for_press.take();
+            if gesture
+                .widget()
+                .and_then(|row| row.pick(x, y, gtk::PickFlags::DEFAULT))
+                .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
+            {
+                return;
+            }
             let Some(clicked_item) = clicked_item.upgrade() else {
                 return;
             };

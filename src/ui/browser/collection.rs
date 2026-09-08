@@ -26,6 +26,14 @@ fn take_pending_scroll(view: &gtk::Widget) -> Option<gtk::TickCallbackId> {
     })
 }
 
+pub(crate) fn prepare_collection_inline_edit(view: &gtk::Widget, position: u32) {
+    if let Some(pending) = take_pending_scroll(view) {
+        pending.remove();
+    }
+    // Replace deferred row focus before moving focus into its editor.
+    apply_collection_scroll(view, position, gtk::ListScrollFlags::NONE);
+}
+
 /// `scroll_to` before the view has a real height leaves ListView/GridView with a
 /// one-row widget pool, so scrolling after a mode switch stays janky.
 pub(crate) fn scroll_collection_when_allocated(view: &gtk::Widget, position: u32) {

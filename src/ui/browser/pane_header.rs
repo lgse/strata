@@ -64,6 +64,7 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
         .position(gtk::PositionType::Bottom)
         .build();
     popover.add_css_class("column-popover");
+    crate::ui::scrolling::popover::dismiss_on_outside_scroll(&popover);
     let popover_weak = popover.downgrade();
     for (label, key) in [
         ("Name", SortKey::Name),
