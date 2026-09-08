@@ -189,6 +189,7 @@ pub(in crate::ui) struct ActiveModeRename {
 struct BoundModeItem {
     item: glib::WeakRef<gtk::ListItem>,
     widget: glib::WeakRef<gtk::Widget>,
+    rename_label: glib::WeakRef<gtk::Widget>,
 }
 
 /// One collection view inside a pane. Icons and List each keep a single section.
@@ -552,7 +553,7 @@ impl ModeViews {
         self.active_rename.take()
     }
 
-    pub(super) fn rename_label_widgets(
+    pub(in crate::ui) fn rename_label_widgets(
         &self,
         old_location: &Location,
         new_location: Option<&Location>,
@@ -561,7 +562,8 @@ impl ModeViews {
         for pane in self.all_panes() {
             for section in pane.item_sections() {
                 section.bound_items.borrow_mut().retain(|bound| {
-                    let (Some(item), Some(widget)) = (bound.item.upgrade(), bound.widget.upgrade())
+                    let (Some(item), Some(_widget)) =
+                        (bound.item.upgrade(), bound.widget.upgrade())
                     else {
                         return false;
                     };
@@ -576,13 +578,9 @@ impl ModeViews {
                     };
                     if (entry.location == *old_location
                         || new_location.is_some_and(|location| location == &entry.location))
-                        && let Some(card) = widget.downcast_ref::<gtk::Box>()
+                        && let Some(label) = bound.rename_label.upgrade()
                     {
-                        if let Some((_, label)) = super::icons_cell::parts(card) {
-                            labels.push(label.upcast());
-                        } else if let Some((_, label, _, _, _, _, _)) = list_row_parts(card) {
-                            labels.push(label.upcast());
-                        }
+                        labels.push(label);
                     }
                     true
                 });
@@ -1679,6 +1677,9 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
         };
         let thumbnail_size = icons_card_icon_slot(thumbnail_size_for_setup.get());
         let card = super::icons_cell::new_card(thumbnail_size);
+        let Some((_, rename_label)) = super::icons_cell::parts(&card) else {
+            return;
+        };
         install_preview_click(
             &card,
             item,
@@ -1719,7 +1720,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             parent.set_halign(gtk::Align::Center);
             parent.set_valign(gtk::Align::Start);
         }
-        register_bound_mode_item(&bound_items_for_setup, item, &card);
+        register_bound_mode_item(&bound_items_for_setup, item, &card, &rename_label);
     });
     let browser_for_bind = Rc::downgrade(&context.browser);
     let source_index_for_bind = context.source_index.clone();
@@ -2363,7 +2364,7 @@ fn build_list_pane(
             Some(name.upcast_ref()),
         );
         item.set_child(Some(&row));
-        register_bound_mode_item(&bound_items_for_setup, item, &row);
+        register_bound_mode_item(&bound_items_for_setup, item, &row, &name);
     });
     let browser_for_bind = Rc::downgrade(&browser);
     let source_index_for_bind = source_index.clone();
@@ -2733,14 +2734,18 @@ fn register_bound_mode_item(
     items: &Rc<RefCell<Vec<BoundModeItem>>>,
     item: &gtk::ListItem,
     widget: &impl IsA<gtk::Widget>,
+    rename_label: &impl IsA<gtk::Widget>,
 ) {
     let weak_item = glib::WeakRef::new();
     weak_item.set(Some(item));
     let weak_widget = glib::WeakRef::new();
     weak_widget.set(Some(widget.upcast_ref()));
+    let weak_rename_label = glib::WeakRef::new();
+    weak_rename_label.set(Some(rename_label.upcast_ref()));
     items.borrow_mut().push(BoundModeItem {
         item: weak_item,
         widget: weak_widget,
+        rename_label: weak_rename_label,
     });
 }
 

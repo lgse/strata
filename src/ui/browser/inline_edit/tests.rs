@@ -2,9 +2,13 @@
 
 use super::*;
 use crate::{
-    app::BrowserEvent,
     model::{EntryKind, MetadataValue},
-    services::{DirectoryEvent, DirectoryRequest, FileSource, LoadHandle, LocationValidationError},
+    services::{
+        CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest, DirectoryEvent,
+        DirectoryRequest, ExtractRequest, FileSource, LoadHandle, LocationValidationError,
+        OperationEvent, OperationProvider, OperationRequestId, PasteRequest, RenameRequest,
+        RestoreRequest, UndoCopyRequest, UndoMoveRequest,
+    },
     test_support::gtk_test,
     ui::{
         browser::{BrowserView, PeekBehavior},
@@ -12,8 +16,9 @@ use crate::{
     },
 };
 use std::{
-    cell::Cell,
+    cell::{Cell, RefCell},
     ffi::OsString,
+    path::Path,
     rc::Rc,
     time::{Duration, Instant},
 };
@@ -47,13 +52,6 @@ fn wait_until(condition: impl Fn() -> bool) {
     }
 }
 
-fn active_rename_label(field: &gtk::Entry) -> gtk::Widget {
-    field
-        .prev_sibling()
-        .or_else(|| field.parent().and_then(|parent| parent.first_child()))
-        .expect("active rename label")
-}
-
 fn label_text(label: &gtk::Widget) -> Option<String> {
     label
         .downcast_ref::<gtk::Label>()
@@ -65,7 +63,58 @@ fn label_text(label: &gtk::Widget) -> Option<String> {
         })
 }
 
+fn wait_for_current_rename_label(view: &BrowserView, mode: BrowserMode) -> gtk::Widget {
+    let labels = Rc::new(RefCell::new(Vec::new()));
+    let labels_for_wait = labels.clone();
+    wait_until(|| {
+        let mut candidates = Vec::new();
+        fn visit(widget: &gtk::Widget, mode: BrowserMode, candidates: &mut Vec<gtk::Widget>) {
+            if widget.is_mapped() && widget.is_visible() {
+                let is_name = match mode {
+                    BrowserMode::Columns => {
+                        widget.downcast_ref::<gtk::Label>().is_some_and(|label| {
+                            label
+                                .next_sibling()
+                                .and_then(|sibling| sibling.downcast::<gtk::Entry>().ok())
+                                .is_some()
+                                && !widget.has_css_class("alternate-rename-label")
+                        })
+                    }
+                    BrowserMode::List | BrowserMode::Icons => {
+                        widget.has_css_class("alternate-rename-label")
+                    }
+                };
+                if is_name {
+                    candidates.push(widget.clone());
+                }
+            }
+            let mut child = widget.first_child();
+            while let Some(current) = child {
+                child = current.next_sibling();
+                visit(&current, mode, candidates);
+            }
+        }
+        visit(&view.widget(), mode, &mut candidates);
+        labels_for_wait.replace(candidates);
+        labels_for_wait.borrow().len() == 1
+    });
+    let labels = labels.borrow_mut().split_off(0);
+    assert_eq!(labels.len(), 1, "exactly one live row name widget");
+    let label = labels
+        .into_iter()
+        .next()
+        .expect("one mapped row-name widget");
+    match mode {
+        BrowserMode::Icons => assert!(label.downcast_ref::<gtk::Inscription>().is_some()),
+        BrowserMode::Columns | BrowserMode::List => {
+            assert!(label.downcast_ref::<gtk::Label>().is_some())
+        }
+    }
+    label
+}
+
 fn click_away(window: &gtk::Window) {
+    // This emits the dismissal controller directly; real pointer coverage remains in E2E.
     let controllers = window.observe_controllers();
     let click = (0..controllers.n_items())
         .filter_map(|index| controllers.item(index).and_downcast::<gtk::GestureClick>())
@@ -88,29 +137,65 @@ fn fixture_entry(name: &str) -> FileEntry {
     }
 }
 
-struct RefreshSource {
+struct PendingDirectoryLoad {
+    request_id: crate::services::RequestId,
+    emit: Rc<dyn Fn(DirectoryEvent)>,
+}
+
+struct ControlledRenameSource {
+    initial: FileEntry,
+    reloads: RefCell<Vec<PendingDirectoryLoad>>,
     loads: Cell<usize>,
-    refresh_behavior: RefreshBehavior,
 }
 
-#[derive(Clone, Copy)]
-enum RefreshBehavior {
-    Fail,
-    AbandonOnce,
+impl ControlledRenameSource {
+    fn pending_count(&self) -> usize {
+        self.reloads.borrow().len()
+    }
+
+    fn request_ids(&self) -> Vec<crate::services::RequestId> {
+        self.reloads
+            .borrow()
+            .iter()
+            .map(|load| load.request_id)
+            .collect()
+    }
+
+    fn respond(&self, index: usize, entries: Option<Vec<FileEntry>>) -> crate::services::RequestId {
+        let load = self.reloads.borrow_mut().remove(index);
+        let request_id = load.request_id;
+        if let Some(entries) = entries {
+            (load.emit)(DirectoryEvent::Batch {
+                request_id,
+                entries,
+            });
+            (load.emit)(DirectoryEvent::Finished {
+                request_id,
+                truncated: false,
+                can_trash: None,
+                can_delete: None,
+            });
+        } else {
+            (load.emit)(DirectoryEvent::Failed {
+                request_id,
+                message: "refresh failed".to_owned(),
+            });
+        }
+        request_id
+    }
 }
 
-impl FileSource for RefreshSource {
+impl FileSource for ControlledRenameSource {
     fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
         Ok(())
     }
 
     fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
-        let load = self.loads.get();
-        self.loads.set(load + 1);
-        if load == 0 {
+        if self.loads.get() == 0 {
+            self.loads.set(1);
             emit(DirectoryEvent::Batch {
                 request_id: request.id,
-                entries: vec![fixture_entry("original.txt")],
+                entries: vec![self.initial.clone()],
             });
             emit(DirectoryEvent::Finished {
                 request_id: request.id,
@@ -118,20 +203,102 @@ impl FileSource for RefreshSource {
                 can_trash: None,
                 can_delete: None,
             });
-        } else if matches!(self.refresh_behavior, RefreshBehavior::Fail) {
-            emit(DirectoryEvent::Failed {
+        } else {
+            self.reloads.borrow_mut().push(PendingDirectoryLoad {
                 request_id: request.id,
-                message: "refresh failed".to_owned(),
-            });
-        } else if load > 1 {
-            emit(DirectoryEvent::Finished {
-                request_id: request.id,
-                truncated: false,
-                can_trash: None,
-                can_delete: None,
+                emit,
             });
         }
         LoadHandle::new(|| {})
+    }
+}
+
+type OperationEmit = Rc<dyn Fn(OperationEvent)>;
+
+struct DelayedRenameProvider {
+    request: RefCell<Option<RenameRequest>>,
+    emit: RefCell<Option<OperationEmit>>,
+    complete_immediately: bool,
+    cancel_immediately: bool,
+}
+
+impl DelayedRenameProvider {
+    fn request_id(&self) -> OperationRequestId {
+        self.request
+            .borrow()
+            .as_ref()
+            .map(|request| request.id)
+            .expect("rename request")
+    }
+
+    fn succeed(&self) {
+        let request_id = self.request_id();
+        (self.emit.borrow().as_ref().expect("rename callback"))(OperationEvent::Renamed {
+            request_id,
+        });
+    }
+
+    fn fail(&self) {
+        let request_id = self.request_id();
+        (self.emit.borrow().as_ref().expect("rename callback"))(OperationEvent::Failed {
+            request_id,
+            message: "rename failed".to_owned(),
+        });
+    }
+}
+
+macro_rules! unsupported_operation {
+    ($method:ident, $request:ty) => {
+        fn $method(&self, _request: $request, _emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+            panic!("rename fixture does not support {}", stringify!($method))
+        }
+    };
+}
+
+impl OperationProvider for DelayedRenameProvider {
+    fn rename(&self, request: RenameRequest, emit: Rc<dyn Fn(OperationEvent)>) -> LoadHandle {
+        let request_id = request.id;
+        self.request.replace(Some(request));
+        self.emit.replace(Some(emit));
+        if self.complete_immediately {
+            (self.emit.borrow().as_ref().expect("rename callback"))(OperationEvent::Renamed {
+                request_id,
+            });
+        } else if self.cancel_immediately {
+            (self.emit.borrow().as_ref().expect("rename callback"))(OperationEvent::Cancelled {
+                request_id,
+                result: Default::default(),
+            });
+        }
+        LoadHandle::new(|| {})
+    }
+
+    unsupported_operation!(create_directory, CreateDirectoryRequest);
+    unsupported_operation!(create_file, CreateFileRequest);
+    unsupported_operation!(paste, PasteRequest);
+    unsupported_operation!(undo_move, UndoMoveRequest);
+    unsupported_operation!(undo_copy, UndoCopyRequest);
+    unsupported_operation!(delete, DeleteRequest);
+    unsupported_operation!(restore, RestoreRequest);
+    unsupported_operation!(compress, CompressRequest);
+    unsupported_operation!(extract, ExtractRequest);
+}
+
+fn entry_at(parent: &Path, name: &str, directory: bool) -> FileEntry {
+    FileEntry {
+        location: Location::local(parent.join(name)),
+        native_name: OsString::from(name),
+        display_name: name.to_owned(),
+        kind: if directory {
+            EntryKind::Directory
+        } else {
+            EntryKind::File
+        },
+        thumbnail_path: None,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
     }
 }
 
@@ -212,100 +379,175 @@ fn columns_rename_hides_and_restores_the_size_badge() {
     );
 }
 
+#[derive(Clone, Copy)]
+enum DelayedRenameResult {
+    Success,
+    Failure,
+    RefreshFailure,
+    Replacement,
+    SynchronousSuccess,
+    SynchronousCancellation,
+}
+
+fn run_delayed_rename_handler(mode: BrowserMode, directory: bool, result: DelayedRenameResult) {
+    let fixture = tempfile::tempdir().expect("directory fixture");
+    let original = if directory {
+        "original"
+    } else {
+        "original.txt"
+    };
+    let replacement = if directory { "renamed" } else { "renamed.txt" };
+    let initial = entry_at(fixture.path(), original, directory);
+    let renamed = entry_at(fixture.path(), replacement, directory);
+    let source = Rc::new(ControlledRenameSource {
+        initial: initial.clone(),
+        reloads: RefCell::new(Vec::new()),
+        loads: Cell::new(0),
+    });
+    let provider = Rc::new(DelayedRenameProvider {
+        request: RefCell::new(None),
+        emit: RefCell::new(None),
+        complete_immediately: matches!(result, DelayedRenameResult::SynchronousSuccess),
+        cancel_immediately: matches!(result, DelayedRenameResult::SynchronousCancellation),
+    });
+    let view = BrowserView::new(source.clone(), PeekBehavior::default());
+    view.set_operation_provider(provider.clone());
+    view.set_view_mode(mode);
+    let window = gtk::Window::builder()
+        .child(&view.widget())
+        .default_width(800)
+        .default_height(600)
+        .build();
+    view.install_inline_edit_dismissal(&window);
+    window.present();
+    let browser = view.browser();
+    browser.navigate(Location::local(fixture.path()));
+    wait_until(|| {
+        browser
+            .column_snapshot(0)
+            .is_some_and(|snapshot| !snapshot.loading && snapshot.count == 1)
+    });
+    browser.select(0, 0);
+    wait_until(|| view.state.begin_rename());
+    let field = view
+        .state
+        .active_rename
+        .borrow()
+        .as_ref()
+        .map(|rename| rename.field.clone())
+        .or_else(|| view.state.mode_views.borrow().active_rename_field())
+        .expect("rename field");
+    field.set_text(replacement);
+    click_away(&window);
+
+    wait_until(|| provider.request.borrow().is_some());
+    let operation_id = provider.request_id();
+    assert_eq!(
+        provider
+            .request
+            .borrow()
+            .as_ref()
+            .expect("rename request")
+            .new_name,
+        replacement
+    );
+
+    if matches!(result, DelayedRenameResult::SynchronousCancellation) {
+        wait_until(|| !view.state.rename_operation_pending());
+        assert!(!browser.is_current_operation(provider.request_id()));
+        browser.clear_observer();
+        window.destroy();
+        return;
+    }
+
+    view.state
+        .complete_pending_rename(OperationRequestId(operation_id.0 + 1));
+    assert!(view.state.rename_operation_pending());
+    if matches!(result, DelayedRenameResult::SynchronousSuccess) {
+        wait_until(|| source.pending_count() == 1);
+        source.respond(0, Some(vec![renamed]));
+        wait_until(|| !view.state.rename_operation_pending());
+        let current = wait_for_current_rename_label(&view, mode);
+        assert_eq!(label_text(&current).as_deref(), Some(replacement));
+        browser.clear_observer();
+        window.destroy();
+        return;
+    }
+
+    // Rebind while the provider is still holding the operation. The assertion below
+    // deliberately looks up the current bound row after the rebind, not the old widget.
+    browser.reload_active();
+    assert_eq!(source.pending_count(), 1);
+    source.respond(
+        0,
+        Some(vec![entry_at(fixture.path(), "unrelated", directory)]),
+    );
+    browser.reload_active();
+    wait_until(|| source.pending_count() == 1);
+    source.respond(0, Some(vec![initial]));
+    let current = wait_for_current_rename_label(&view, mode);
+    assert_eq!(label_text(&current).as_deref(), Some(replacement));
+
+    match result {
+        DelayedRenameResult::Failure => {
+            provider.fail();
+            wait_until(|| !view.state.rename_operation_pending());
+            let current = wait_for_current_rename_label(&view, mode);
+            assert_eq!(label_text(&current).as_deref(), Some(original));
+        }
+        DelayedRenameResult::Success => {
+            provider.succeed();
+            wait_until(|| source.pending_count() == 1);
+            source.respond(0, Some(vec![renamed]));
+            wait_until(|| !view.state.rename_operation_pending());
+            let current = wait_for_current_rename_label(&view, mode);
+            assert_eq!(label_text(&current).as_deref(), Some(replacement));
+        }
+        DelayedRenameResult::RefreshFailure => {
+            provider.succeed();
+            wait_until(|| source.pending_count() == 1);
+            source.respond(0, None);
+            wait_until(|| !view.state.rename_operation_pending());
+            assert!(
+                browser.column_snapshot(0).is_some_and(|snapshot| {
+                    snapshot.error.as_deref() == Some("refresh failed")
+                })
+            );
+        }
+        DelayedRenameResult::Replacement => {
+            provider.succeed();
+            wait_until(|| source.pending_count() == 1);
+            let first_refresh = source.request_ids()[0];
+            browser.reload_active();
+            wait_until(|| source.pending_count() == 2);
+            let second_refresh = source.request_ids()[1];
+            assert_ne!(first_refresh, second_refresh);
+
+            assert_eq!(source.respond(0, None), first_refresh);
+            assert!(view.state.rename_operation_pending());
+            assert_eq!(source.respond(0, Some(vec![renamed])), second_refresh);
+            wait_until(|| !view.state.rename_operation_pending());
+            let current = wait_for_current_rename_label(&view, mode);
+            assert_eq!(label_text(&current).as_deref(), Some(replacement));
+        }
+        DelayedRenameResult::SynchronousSuccess | DelayedRenameResult::SynchronousCancellation => {
+            unreachable!()
+        }
+    }
+
+    browser.clear_observer();
+    window.destroy();
+}
+
 #[test]
-fn click_away_rename_keeps_the_requested_name_through_rebind_and_rolls_back_on_failure() {
+fn click_away_rename_handler_preserves_current_bound_label_through_delayed_callbacks() {
     gtk_test(
-        "ui::browser::inline_edit::tests::click_away_rename_keeps_the_requested_name_through_rebind_and_rolls_back_on_failure",
+        "ui::browser::inline_edit::tests::click_away_rename_handler_preserves_current_bound_label_through_delayed_callbacks",
         || {
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
-                for (directory, original, replacement) in [
-                    (false, "original.txt", "renamed.txt"),
-                    (true, "original", "renamed"),
-                ] {
-                    let fixture = tempfile::tempdir().expect("directory fixture");
-                    let path = fixture.path().join(original);
-                    if directory {
-                        std::fs::create_dir(&path).expect("fixture directory");
-                    } else {
-                        std::fs::write(&path, b"body").expect("fixture file");
-                    }
-                    let view = BrowserView::new(
-                        Rc::new(crate::adapters::LocalFileSource),
-                        PeekBehavior::default(),
-                    );
-                    view.set_view_mode(mode);
-                    let window = gtk::Window::builder()
-                        .child(&view.widget())
-                        .default_width(800)
-                        .default_height(600)
-                        .build();
-                    view.install_inline_edit_dismissal(&window);
-                    window.present();
-                    let browser = view.browser();
-                    browser.navigate(Location::local(fixture.path()));
-                    wait_until(|| {
-                        browser
-                            .column_snapshot(0)
-                            .is_some_and(|snapshot| !snapshot.loading && snapshot.count == 1)
-                    });
-                    browser.select(0, 0);
-                    wait_until(|| view.state.begin_rename());
-                    let field = view
-                        .state
-                        .active_rename
-                        .borrow()
-                        .as_ref()
-                        .map(|rename| rename.field.clone())
-                        .or_else(|| view.state.mode_views.borrow().active_rename_field())
-                        .expect("rename field");
-                    let label = active_rename_label(&field);
-                    field.set_text(replacement);
-                    click_away(&window);
-
-                    assert!(view.state.rename_operation_pending());
-                    assert_eq!(label_text(&label).as_deref(), Some(replacement));
-
-                    assert!(view.state.cancel_rename());
-                    assert_eq!(
-                        label_text(&label).as_deref(),
-                        Some(original),
-                        "{mode:?} must restore the original label after failure"
-                    );
-
-                    assert!(view.state.begin_rename());
-                    let field = view
-                        .state
-                        .active_rename
-                        .borrow()
-                        .as_ref()
-                        .map(|rename| rename.field.clone())
-                        .or_else(|| view.state.mode_views.borrow().active_rename_field())
-                        .expect("rename field");
-                    let label = active_rename_label(&field);
-                    field.set_text(replacement);
-                    click_away(&window);
-                    view.state
-                        .complete_pending_rename(crate::services::OperationRequestId(0));
-                    assert!(
-                        view.state.rename_operation_pending(),
-                        "the optimistic label must remain protected until refreshed data arrives"
-                    );
-                    view.state
-                        .handle(&BrowserEvent::EntriesReplaced { depth: 0, count: 1 });
-                    assert_eq!(
-                        label_text(&label).as_deref(),
-                        Some(replacement),
-                        "{mode:?} must not rebind the old label while rename is pending"
-                    );
-                    assert!(view.state.cancel_rename());
-                    assert!(
-                        view.state.rename_operation_pending(),
-                        "navigation or a click must not cancel a committed rename"
-                    );
-                    view.state.fail_pending_rename();
-                    assert!(!view.state.rename_operation_pending());
-                    browser.clear_observer();
-                    window.destroy();
+                for directory in [false, true] {
+                    run_delayed_rename_handler(mode, directory, DelayedRenameResult::Failure);
+                    run_delayed_rename_handler(mode, directory, DelayedRenameResult::Success);
                 }
             }
         },
@@ -313,9 +555,72 @@ fn click_away_rename_keeps_the_requested_name_through_rebind_and_rolls_back_on_f
 }
 
 #[test]
-fn successful_click_away_renames_clear_pending_state_after_the_refreshed_entry() {
+fn rename_callbacks_only_affect_their_owned_operation() {
     gtk_test(
-        "ui::browser::inline_edit::tests::successful_click_away_renames_clear_pending_state_after_the_refreshed_entry",
+        "ui::browser::inline_edit::tests::rename_callbacks_only_affect_their_owned_operation",
+        || {
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let first = fixture_entry("first.txt");
+            let second = fixture_entry("second.txt");
+            let first_id = OperationRequestId(41);
+            let second_id = OperationRequestId(42);
+            view.state.pending_rename.replace(Some(PendingRename {
+                old_location: first.location.clone(),
+                new_location: None,
+                old_name: first.display_name.clone(),
+                new_name: "first-renamed.txt".to_owned(),
+                generation: 1,
+                state: PendingRenameState::Running(first_id),
+            }));
+            view.state.complete_pending_rename(OperationRequestId(99));
+            assert_eq!(
+                view.state.pending_rename_name(&first),
+                Some("first-renamed.txt".to_owned())
+            );
+
+            view.state.pending_rename.replace(Some(PendingRename {
+                old_location: second.location.clone(),
+                new_location: None,
+                old_name: second.display_name.clone(),
+                new_name: "second-renamed.txt".to_owned(),
+                generation: 2,
+                state: PendingRenameState::Running(second_id),
+            }));
+            view.state.complete_pending_rename(first_id);
+            view.state.fail_pending_rename_from_browser(Some(first_id));
+            assert_eq!(
+                view.state.pending_rename_name(&second),
+                Some("second-renamed.txt".to_owned())
+            );
+        },
+    );
+}
+
+#[test]
+fn synchronous_rename_handler_completion_enters_the_refresh_lifecycle() {
+    gtk_test(
+        "ui::browser::inline_edit::tests::synchronous_rename_handler_completion_enters_the_refresh_lifecycle",
+        || {
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                for directory in [false, true] {
+                    run_delayed_rename_handler(
+                        mode,
+                        directory,
+                        DelayedRenameResult::SynchronousSuccess,
+                    );
+                }
+            }
+        },
+    );
+}
+
+#[test]
+fn successful_rename_handler_clears_pending_state_after_the_refreshed_entry() {
+    gtk_test(
+        "ui::browser::inline_edit::tests::successful_rename_handler_clears_pending_state_after_the_refreshed_entry",
         || {
             for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
                 for (directory, original, replacement) in [
@@ -361,10 +666,10 @@ fn successful_click_away_renames_clear_pending_state_after_the_refreshed_entry()
                         .map(|rename| rename.field.clone())
                         .or_else(|| view.state.mode_views.borrow().active_rename_field())
                         .expect("rename field");
-                    let label = active_rename_label(&field);
                     field.set_text(replacement);
                     click_away(&window);
-                    assert_eq!(label_text(&label).as_deref(), Some(replacement));
+                    let current = wait_for_current_rename_label(&view, mode);
+                    assert_eq!(label_text(&current).as_deref(), Some(replacement));
 
                     wait_until(|| {
                         replacement_path.exists() && !view.state.rename_operation_pending()
@@ -389,74 +694,61 @@ fn another_operation_abandons_a_queued_rename() {
                 PeekBehavior::default(),
             );
             view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            let entry = fixture_entry("original.txt");
+            let generation = view
+                .state
+                .start_pending_rename(&entry, "renamed.txt".to_owned());
             view.state
-                .start_pending_rename(&fixture_entry("original.txt"), "renamed.txt".to_owned());
+                .queue_pending_rename(entry, "renamed.txt".to_owned(), generation);
 
             view.browser().create_new_file(Location::local("/fixture"));
-
-            assert!(!view.state.rename_operation_pending());
+            wait_until(|| !view.state.rename_operation_pending());
         },
     );
 }
 
 #[test]
-fn completed_rename_is_reconciled_when_its_refresh_fails() {
+fn synchronous_cancellation_abandons_dispatching_rename() {
     gtk_test(
-        "ui::browser::inline_edit::tests::completed_rename_is_reconciled_when_its_refresh_fails",
+        "ui::browser::inline_edit::tests::synchronous_cancellation_abandons_dispatching_rename",
         || {
-            let view = BrowserView::new(
-                Rc::new(RefreshSource {
-                    loads: Cell::new(0),
-                    refresh_behavior: RefreshBehavior::Fail,
-                }),
-                PeekBehavior::default(),
-            );
-            let browser = view.browser();
-            browser.navigate(Location::local("/fixture"));
-            let entry = browser.entry_at(0, 0).expect("initial entry");
-            view.state
-                .start_pending_rename(&entry, "renamed.txt".to_owned());
-            view.state
-                .complete_pending_rename(crate::services::OperationRequestId(0));
-            assert!(view.state.rename_operation_pending());
-
-            browser.reload_active();
-
-            assert!(!view.state.rename_operation_pending());
-            assert!(
-                browser
-                    .column_snapshot(0)
-                    .is_some_and(|snapshot| snapshot.error.as_deref() == Some("refresh failed"))
-            );
+            run_delayed_rename_handler(
+                BrowserMode::Columns,
+                false,
+                DelayedRenameResult::SynchronousCancellation,
+            )
         },
     );
 }
 
 #[test]
-fn completed_rename_uses_the_replacement_refresh_after_the_first_is_abandoned() {
+fn completed_rename_reconciles_a_real_refresh_failure() {
     gtk_test(
-        "ui::browser::inline_edit::tests::completed_rename_uses_the_replacement_refresh_after_the_first_is_abandoned",
+        "ui::browser::inline_edit::tests::completed_rename_reconciles_a_real_refresh_failure",
         || {
-            let view = BrowserView::new(
-                Rc::new(RefreshSource {
-                    loads: Cell::new(0),
-                    refresh_behavior: RefreshBehavior::AbandonOnce,
-                }),
-                PeekBehavior::default(),
-            );
-            let browser = view.browser();
-            browser.navigate(Location::local("/fixture"));
-            let entry = browser.entry_at(0, 0).expect("initial entry");
-            view.state
-                .start_pending_rename(&entry, "renamed.txt".to_owned());
-            view.state
-                .complete_pending_rename(crate::services::OperationRequestId(0));
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                for directory in [false, true] {
+                    run_delayed_rename_handler(
+                        mode,
+                        directory,
+                        DelayedRenameResult::RefreshFailure,
+                    );
+                }
+            }
+        },
+    );
+}
 
-            browser.reload_active();
-            assert!(view.state.rename_operation_pending());
-            browser.reload_active();
-
-            assert!(!view.state.rename_operation_pending());
+#[test]
+fn completed_rename_uses_the_real_replacement_refresh_after_supersession() {
+    gtk_test(
+        "ui::browser::inline_edit::tests::completed_rename_uses_the_real_replacement_refresh_after_supersession",
+        || {
+            for mode in [BrowserMode::Columns, BrowserMode::List, BrowserMode::Icons] {
+                for directory in [false, true] {
+                    run_delayed_rename_handler(mode, directory, DelayedRenameResult::Replacement);
+                }
+            }
         },
     );
 }

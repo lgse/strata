@@ -17,16 +17,20 @@ pub(super) struct ActiveRename {
     viewport_tick: gtk::TickCallbackId,
 }
 
+enum PendingRenameState {
+    Queued,
+    Dispatching,
+    Running(OperationRequestId),
+    AwaitingRefresh { requests: Vec<(usize, RequestId)> },
+}
+
 pub(super) struct PendingRename {
     old_location: Location,
     new_location: Option<Location>,
     old_name: String,
     new_name: String,
     generation: u64,
-    operation_id: Option<OperationRequestId>,
-    refresh_requests: Vec<(usize, RequestId)>,
-    dispatched: bool,
-    completed: bool,
+    state: PendingRenameState,
 }
 
 fn constrain_rename_to_viewport(field: &gtk::Entry, viewport: &gtk::ScrolledWindow) {
@@ -61,6 +65,14 @@ fn basename_field_error(name: &str) -> Option<&'static str> {
     }
 }
 
+pub(in crate::ui) fn set_rename_label(label: &gtk::Widget, name: &str) {
+    if let Some(label) = label.downcast_ref::<gtk::Inscription>() {
+        label.set_text(Some(name));
+    } else if let Some(label) = label.downcast_ref::<gtk::Label>() {
+        label.set_label(name);
+    }
+}
+
 pub(in crate::ui) fn update_basename_validation(field: &gtk::Entry) -> bool {
     let text = field.text();
     match basename_field_error(text.as_str()) {
@@ -87,7 +99,7 @@ pub(in crate::ui) fn rename_stem_end(name: &str) -> i32 {
 
 fn pending_rename_matches(pending: &PendingRename, location: &Location) -> bool {
     pending.old_location == *location
-        || (pending.completed
+        || (matches!(&pending.state, PendingRenameState::AwaitingRefresh { .. })
             && pending
                 .new_location
                 .as_ref()
@@ -167,30 +179,42 @@ impl ViewState {
             old_name: entry.display_name.clone(),
             new_name,
             generation,
-            operation_id: None,
-            refresh_requests: Vec::new(),
-            dispatched: false,
-            completed: false,
+            state: PendingRenameState::Queued,
         }));
         generation
     }
 
     fn queue_pending_rename(self: &Rc<Self>, entry: FileEntry, name: String, generation: u64) {
+        let browser = self.browser.clone();
+        let operation_at_queue = browser.last_started_operation();
         let weak = Rc::downgrade(self);
         gtk::glib::idle_add_local_once(move || {
             let Some(state) = weak.upgrade() else {
                 return;
             };
+            if state.browser.last_started_operation() != operation_at_queue {
+                let abandoned = state
+                    .pending_rename
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|pending| pending.generation == generation);
+                if abandoned {
+                    state.fail_pending_rename();
+                }
+                return;
+            }
             let dispatch = state
                 .pending_rename
                 .borrow_mut()
                 .as_mut()
                 .filter(|pending| pending.generation == generation)
-                .map(|pending| {
-                    pending.dispatched = true;
+                .is_some_and(|pending| {
+                    if !matches!(&pending.state, PendingRenameState::Queued) {
+                        return false;
+                    }
+                    pending.state = PendingRenameState::Dispatching;
                     true
-                })
-                .unwrap_or(false);
+                });
             if dispatch {
                 let operation_id = state.browser.rename(entry, name);
                 if let Some(operation_id) = operation_id
@@ -199,8 +223,9 @@ impl ViewState {
                         .borrow_mut()
                         .as_mut()
                         .filter(|pending| pending.generation == generation)
+                    && matches!(&pending.state, PendingRenameState::Dispatching)
                 {
-                    pending.operation_id = Some(operation_id);
+                    pending.state = PendingRenameState::Running(operation_id);
                 }
             }
         });
@@ -220,7 +245,10 @@ impl ViewState {
             .pending_rename
             .borrow()
             .as_ref()
-            .is_some_and(|pending| pending.completed && !self.rename_parent_is_visible(pending));
+            .is_some_and(|pending| {
+                matches!(&pending.state, PendingRenameState::AwaitingRefresh { .. })
+                    && !self.rename_parent_is_visible(pending)
+            });
         if abandoned {
             self.pending_rename.take();
         }
@@ -245,13 +273,14 @@ impl ViewState {
             return;
         }
         let mut pending = self.pending_rename.borrow_mut();
-        let Some(pending) = pending.as_mut().filter(|pending| pending.completed) else {
+        let Some(pending) = pending.as_mut() else {
             return;
         };
-        pending
-            .refresh_requests
-            .retain(|(pending_depth, _)| *pending_depth != depth);
-        pending.refresh_requests.push((depth, request_id));
+        let PendingRenameState::AwaitingRefresh { requests } = &mut pending.state else {
+            return;
+        };
+        requests.retain(|(pending_depth, _)| *pending_depth != depth);
+        requests.push((depth, request_id));
     }
 
     pub(super) fn reconcile_pending_rename_after_load(&self, depth: usize) {
@@ -266,25 +295,22 @@ impl ViewState {
         };
         let finished = {
             let mut pending = self.pending_rename.borrow_mut();
-            let Some(pending) = pending.as_mut().filter(|pending| pending.completed) else {
+            let Some(pending) = pending.as_mut() else {
                 return;
             };
-            let expected =
-                pending
-                    .refresh_requests
-                    .iter()
-                    .position(|(pending_depth, pending_request)| {
-                        *pending_depth == depth && *pending_request == request_id
-                    });
-            let failed_without_owner =
-                snapshot.error.is_some() && pending.refresh_requests.is_empty();
-            if expected.is_none() && !failed_without_owner {
+            let PendingRenameState::AwaitingRefresh { requests } = &mut pending.state else {
                 return;
-            }
-            if let Some(index) = expected {
-                pending.refresh_requests.remove(index);
-            }
-            pending.refresh_requests.is_empty()
+            };
+            let expected = requests
+                .iter()
+                .position(|(pending_depth, pending_request)| {
+                    *pending_depth == depth && *pending_request == request_id
+                });
+            let Some(index) = expected else {
+                return;
+            };
+            requests.remove(index);
+            requests.is_empty()
         };
         if finished {
             self.pending_rename.take();
@@ -297,20 +323,13 @@ impl ViewState {
             .borrow()
             .as_ref()
             .is_some_and(|pending| {
-                pending.operation_id == Some(operation_id) && !pending.completed
+                matches!(
+                    &pending.state,
+                    PendingRenameState::Running(id) if *id == operation_id
+                ) || (matches!(&pending.state, PendingRenameState::Dispatching)
+                    && self.browser.last_started_operation() == Some(operation_id))
             });
         if owned {
-            self.fail_pending_rename();
-        }
-    }
-
-    pub(super) fn abandon_uncommitted_rename(&self) {
-        let uncommitted = self
-            .pending_rename
-            .borrow()
-            .as_ref()
-            .is_some_and(|pending| !pending.completed);
-        if uncommitted {
             self.fail_pending_rename();
         }
     }
@@ -321,12 +340,17 @@ impl ViewState {
             .borrow_mut()
             .as_mut()
             .filter(|pending| {
-                pending
-                    .operation_id
-                    .is_none_or(|pending_id| pending_id == operation_id)
+                (matches!(&pending.state, PendingRenameState::Dispatching)
+                    && self.browser.last_started_operation() == Some(operation_id))
+                    || matches!(
+                        &pending.state,
+                        PendingRenameState::Running(id) if *id == operation_id
+                    )
             })
             .map(|pending| {
-                pending.completed = true;
+                pending.state = PendingRenameState::AwaitingRefresh {
+                    requests: Vec::new(),
+                };
                 (
                     pending.old_location.clone(),
                     pending.new_location.clone(),
@@ -347,18 +371,39 @@ impl ViewState {
         self.update_rename_labels(&pending.old_location, None, &pending.old_name);
     }
 
-    fn update_rename_labels(
+    pub(super) fn fail_pending_rename_from_browser(
+        &self,
+        operation_id: Option<OperationRequestId>,
+    ) {
+        let owned =
+            self.pending_rename
+                .borrow()
+                .as_ref()
+                .is_some_and(|pending| match (&pending.state, operation_id) {
+                    (PendingRenameState::Queued, None)
+                    | (PendingRenameState::Dispatching, None) => true,
+                    (PendingRenameState::Dispatching, Some(actual)) => {
+                        self.browser.last_started_operation() == Some(actual)
+                    }
+                    (PendingRenameState::Running(expected), Some(actual)) => *expected == actual,
+                    _ => false,
+                });
+        if owned {
+            self.fail_pending_rename();
+        }
+    }
+
+    pub(in crate::ui) fn rename_label_widgets(
         &self,
         old_location: &Location,
         new_location: Option<&Location>,
-        name: &str,
-    ) {
-        let column_labels = {
+    ) -> Vec<gtk::Widget> {
+        let mut labels = Vec::new();
+        {
             let columns = self.columns.borrow();
-            let mut labels = Vec::new();
             for (depth, column) in columns.iter().enumerate() {
                 column.bound_rows.borrow_mut().retain(|bound| {
-                    let (Some(item), Some(row)) = (bound.item.upgrade(), bound.row.upgrade())
+                    let (Some(item), Some(_row)) = (bound.item.upgrade(), bound.row.upgrade())
                     else {
                         return false;
                     };
@@ -370,35 +415,30 @@ impl ViewState {
                     };
                     if (entry.location == *old_location
                         || new_location.is_some_and(|location| location == &entry.location))
-                        && let Some(label) = row
-                            .first_child()
-                            .and_then(|icon| icon.next_sibling())
-                            .and_then(|middle| middle.downcast::<gtk::Overlay>().ok())
-                            .and_then(|middle| middle.child())
-                            .and_then(|content| content.first_child())
-                            .and_then(|editor| editor.first_child())
-                            .and_downcast::<gtk::Label>()
+                        && let Some(label) = bound.rename_label.upgrade()
                     {
-                        labels.push(label);
+                        labels.push(label.upcast());
                     }
                     true
                 });
             }
-            labels
-        };
-        let mode_labels = {
-            let mode_views = self.mode_views.borrow();
-            mode_views.rename_label_widgets(old_location, new_location)
-        };
-        for label in column_labels {
-            label.set_label(name);
         }
-        for label in mode_labels {
-            if let Some(label) = label.downcast_ref::<gtk::Inscription>() {
-                label.set_text(Some(name));
-            } else if let Some(label) = label.downcast_ref::<gtk::Label>() {
-                label.set_label(name);
-            }
+        labels.extend(
+            self.mode_views
+                .borrow()
+                .rename_label_widgets(old_location, new_location),
+        );
+        labels
+    }
+
+    fn update_rename_labels(
+        &self,
+        old_location: &Location,
+        new_location: Option<&Location>,
+        name: &str,
+    ) {
+        for label in self.rename_label_widgets(old_location, new_location) {
+            set_rename_label(&label, name);
         }
     }
 
@@ -606,20 +646,22 @@ impl ViewState {
             return true;
         }
         if self.rename_operation_pending() {
-            if self
+            let awaiting_refresh = self
                 .pending_rename
                 .borrow()
                 .as_ref()
-                .is_some_and(|pending| pending.completed)
-            {
+                .is_some_and(|pending| {
+                    matches!(&pending.state, PendingRenameState::AwaitingRefresh { .. })
+                });
+            if awaiting_refresh {
                 return true;
             }
-            if self
+            let running = self
                 .pending_rename
                 .borrow()
                 .as_ref()
-                .is_some_and(|pending| pending.dispatched)
-            {
+                .is_some_and(|pending| matches!(&pending.state, PendingRenameState::Running(_)));
+            if running {
                 self.browser.cancel_file_operation();
             }
             self.fail_pending_rename();

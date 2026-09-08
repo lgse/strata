@@ -143,11 +143,12 @@ pub enum BrowserEvent {
     RenameAbandoned {
         request_id: OperationRequestId,
     },
-    OperationStarted,
     EntryCreated {
         location: Location,
     },
+    /// `None` means the request was rejected before an operation was allocated.
     RenameFailed {
+        request_id: Option<OperationRequestId>,
         message: String,
     },
     TransferStarted {
@@ -496,6 +497,7 @@ pub struct Browser {
     operation_provider: RefCell<Option<Rc<dyn OperationProvider>>>,
     operation_load: RefCell<Option<LoadHandle>>,
     current_operation: Cell<Option<OperationRequestId>>,
+    last_started_operation: Cell<Option<OperationRequestId>>,
     rename_operation: Cell<Option<OperationRequestId>>,
     transfer_operation: Cell<Option<bool>>,
     deletion_operation: Cell<bool>,
@@ -544,6 +546,7 @@ impl Browser {
             operation_provider: RefCell::new(None),
             operation_load: RefCell::new(None),
             current_operation: Cell::new(None),
+            last_started_operation: Cell::new(None),
             rename_operation: Cell::new(None),
             transfer_operation: Cell::new(None),
             deletion_operation: Cell::new(false),
@@ -1241,12 +1244,14 @@ impl Browser {
     ) -> Option<OperationRequestId> {
         if let Err(message) = validate_basename(&new_name) {
             self.emit(BrowserEvent::RenameFailed {
+                request_id: None,
                 message: message.to_owned(),
             });
             return None;
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::RenameFailed {
+                request_id: None,
                 message: "File operations are unavailable".to_owned(),
             });
             return None;
@@ -1263,7 +1268,7 @@ impl Browser {
             },
             emit,
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
         Some(request_id)
     }
 
@@ -1289,7 +1294,7 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_other_operation();
+        let request_id = self.begin_operation();
         let refresh_parent = parent.clone();
         let load = provider.create_directory(
             CreateDirectoryRequest {
@@ -1300,7 +1305,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, HashSet::from([refresh_parent])),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
     }
 
     pub fn create_new_file(self: &Rc<Self>, parent: Location) {
@@ -1320,7 +1325,7 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_other_operation();
+        let request_id = self.begin_operation();
         let refresh_parent = parent.clone();
         let load = provider.create_file(
             CreateFileRequest {
@@ -1331,7 +1336,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, HashSet::from([refresh_parent])),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
     }
 
     pub fn transfer(
@@ -1349,7 +1354,7 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_other_operation();
+        let request_id = self.begin_operation();
         self.transfer_operation.set(Some(move_sources));
         self.transfer_destination.replace(Some(destination.clone()));
         self.emit(BrowserEvent::TransferStarted {
@@ -1371,7 +1376,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, refresh_locations),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
     }
 
     pub fn delete(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
@@ -1385,7 +1390,7 @@ impl Browser {
             return;
         };
         let total = entries.len();
-        let request_id = self.begin_other_operation();
+        let request_id = self.begin_operation();
         self.deletion_operation.set(true);
         self.deletion_permanent.set(permanent);
         self.emit(BrowserEvent::DeletionStarted { total });
@@ -1397,7 +1402,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, HashSet::new()),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
     }
 
     pub fn restore(self: &Rc<Self>, entries: Vec<FileEntry>) {
@@ -1411,7 +1416,7 @@ impl Browser {
             return;
         };
         let total = entries.len();
-        let request_id = self.begin_other_operation();
+        let request_id = self.begin_operation();
         self.restoration_operation.set(true);
         self.emit(BrowserEvent::RestorationStarted { total });
         let load = provider.restore(
@@ -1421,7 +1426,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, HashSet::new()),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
     }
 
     /// The pending move undo, if the latest reversible operation was a move.
@@ -1468,7 +1473,7 @@ impl Browser {
             return false;
         };
         let total = locations.len();
-        let request_id = self.begin_other_operation();
+        let request_id = self.begin_operation();
         self.restoration_operation.set(true);
         self.undo_claim
             .replace(Some((generation, UndoEntry::Trash(locations.clone()))));
@@ -1480,7 +1485,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, HashSet::new()),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
         true
     }
 
@@ -1512,7 +1517,7 @@ impl Browser {
                 }
             }
         }
-        let request_id = self.begin_other_operation();
+        let request_id = self.begin_operation();
         self.transfer_operation.set(Some(true));
         self.undo_claim.replace(Some((
             generation,
@@ -1529,7 +1534,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, refresh_locations),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
         true
     }
 
@@ -1555,7 +1560,7 @@ impl Browser {
             .iter()
             .filter_map(|location| location.parent())
             .collect();
-        let request_id = self.begin_other_operation();
+        let request_id = self.begin_operation();
         self.deletion_operation.set(true);
         self.undo_claim
             .replace(Some((generation, UndoEntry::Copy(locations.clone()))));
@@ -1567,7 +1572,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, refresh_locations),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
         true
     }
 
@@ -1589,7 +1594,7 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_other_operation();
+        let request_id = self.begin_operation();
         self.archive_operation.set(true);
         let load = provider.compress(
             CompressRequest {
@@ -1603,7 +1608,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, HashSet::new()),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
     }
 
     pub fn extract(
@@ -1618,7 +1623,7 @@ impl Browser {
             });
             return;
         };
-        let request_id = self.begin_other_operation();
+        let request_id = self.begin_operation();
         self.archive_operation.set(true);
         let load = provider.extract(
             ExtractRequest {
@@ -1629,14 +1634,26 @@ impl Browser {
             },
             self.operation_callback(request_id, false, HashSet::new()),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
     }
 
     pub fn cancel_file_operation(&self) {
         self.operation_load.borrow_mut().take();
     }
 
+    pub(crate) fn is_current_operation(&self, request_id: OperationRequestId) -> bool {
+        self.current_operation.get() == Some(request_id)
+    }
+
+    pub(crate) fn last_started_operation(&self) -> Option<OperationRequestId> {
+        self.last_started_operation.get()
+    }
+
     fn begin_operation(&self) -> OperationRequestId {
+        let request_id = OperationRequestId(self.next_request.get());
+        self.next_request
+            .set(self.next_request.get().saturating_add(1));
+        self.last_started_operation.set(Some(request_id));
         let previous_operation = self.current_operation.take();
         let previous_rename = self.rename_operation.take();
         self.operation_load.borrow_mut().take();
@@ -1655,17 +1672,14 @@ impl Browser {
         self.deletion_permanent.set(false);
         self.restoration_operation.set(false);
         self.archive_operation.set(false);
-        let request_id = OperationRequestId(self.next_request.get());
-        self.next_request
-            .set(self.next_request.get().saturating_add(1));
         self.current_operation.set(Some(request_id));
         request_id
     }
 
-    fn begin_other_operation(&self) -> OperationRequestId {
-        let request_id = self.begin_operation();
-        self.emit(BrowserEvent::OperationStarted);
-        request_id
+    fn install_operation_load(&self, request_id: OperationRequestId, load: LoadHandle) {
+        if self.is_current_operation(request_id) {
+            self.operation_load.replace(Some(load));
+        }
     }
 
     fn operation_callback(
@@ -1896,7 +1910,10 @@ impl Browser {
             browser.operation_load.borrow_mut().take();
             match event {
                 OperationEvent::Failed { message, .. } if rename => {
-                    browser.emit(BrowserEvent::RenameFailed { message });
+                    browser.emit(BrowserEvent::RenameFailed {
+                        request_id: Some(request_id),
+                        message,
+                    });
                 }
                 OperationEvent::Failed { message, .. } => {
                     browser.emit(BrowserEvent::OperationFailed { message });

@@ -36,6 +36,7 @@ const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
 pub(super) struct BoundRow {
     pub(super) item: glib::WeakRef<gtk::ListItem>,
     pub(super) row: glib::WeakRef<gtk::Box>,
+    pub(super) rename_label: glib::WeakRef<gtk::Label>,
 }
 
 struct PendingPointerActivation {

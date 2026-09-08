@@ -461,9 +461,12 @@ pub(super) fn column_rows(
         weak_item.set(Some(item));
         let weak_row = glib::WeakRef::new();
         weak_row.set(Some(&row));
+        let weak_rename_label = glib::WeakRef::new();
+        weak_rename_label.set(Some(&label));
         rows_for_setup.borrow_mut().push(BoundRow {
             item: weak_item,
             row: weak_row,
+            rename_label: weak_rename_label,
         });
     });
     let map_for_bind = map.clone();

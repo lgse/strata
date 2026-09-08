@@ -401,11 +401,11 @@ impl ViewState {
             BrowserEvent::RenameAbandoned { request_id } => {
                 self.abandon_pending_rename(*request_id);
             }
-            BrowserEvent::OperationStarted => {
-                self.abandon_uncommitted_rename();
-            }
-            BrowserEvent::RenameFailed { message } => {
-                self.fail_pending_rename();
+            BrowserEvent::RenameFailed {
+                request_id,
+                message,
+            } => {
+                self.fail_pending_rename_from_browser(*request_id);
                 show_error_dialog(&self.overlay, "Unable to rename item", message);
             }
             BrowserEvent::TransferStarted { total, moving } => {
