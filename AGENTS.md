@@ -37,6 +37,26 @@ under `.agents/`.
   do not substitute for this gate. See `docs/e2e-testing.md`.
 - Fix failures before pushing rather than relying on CI for feedback. Keep tests portable across supported environments and avoid assertions that depend on platform-specific URI normalization or other incidental system behavior.
 
+## E2E base-image reuse
+
+- Run `./scripts/e2e.sh` for normal local testing. It verifies and reuses the local
+  pinned base, or pulls the published base once if missing. It must not rebuild
+  images or fetch Ubuntu packages during ordinary test runs.
+- Prefer rootless Podman and keep the task's isolated configuration, storage, and
+  runtime directories across commands. Do not create a fresh container store for
+  every invocation, prune other sessions' images, or bypass image-input checks.
+- Only when intentionally changing environment inputs, or when an unpublished
+  environment must be bootstrapped, run explicitly:
+  `STRATA_CONTAINER_ENGINE=podman python3 scripts/e2e_base.py build`.
+  Run this once, then return to `./scripts/e2e.sh`. Do not habitually rebuild bases
+  as a pre-test step. Preserve `target/e2e-container` so Cargo can reuse its cache.
+- Published bases are updated by the trusted-main publisher when environment
+  inputs change. Application edits do not require rebuilding the base. Different
+  local UID/GID values are handled by generated container account files.
+- The three-minute CI duration is a performance target, not a merge requirement.
+  Timing is informational; test failures, incomplete coverage, and invalid
+  provenance still fail CI. See `docs/e2e-testing.md`.
+
 ## Issues and pull requests
 
 - Automated agents must follow the same issue-first workflow and pull request template as human contributors; do not remove or bypass template sections.
