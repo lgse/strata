@@ -11,8 +11,8 @@ use crate::{
     adapters::local_operations::LocalOperationProvider,
     model::Location,
     services::{
-        ArchiveFormat, CompressRequest, ExtractRequest, OperationEvent, OperationProvider,
-        OperationRequestId, TransferConflict,
+        ArchiveFormat, CompressRequest, ExtractRequest, LoadHandle, OperationEvent,
+        OperationProvider, OperationRequestId, TransferConflict,
     },
     test_support::ASYNC_MAIN_CONTEXT_DEFAULT,
 };
@@ -295,7 +295,7 @@ fn copy_with_big_buf_stops_when_cancelled() {
 }
 
 #[test]
-fn cancelling_extraction_waits_for_the_worker_and_reports_incomplete_output()
+fn cancelling_extraction_from_started_waits_for_the_worker_and_reports_pending_output()
 -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -304,14 +304,15 @@ fn cancelling_extraction_waits_for_the_worker_and_reports_incomplete_output()
     let destination = root.path().join("destination");
     fs::create_dir(&destination)?;
     let archive_path = root.path().join("content.zip");
-    let first = vec![0x3c_u8; 2 * 1024 * 1024];
     write_zip_stored(
         &archive_path,
-        &[("first.bin", first.as_slice()), ("second.txt", b"late")],
+        &[("first.bin", b"early"), ("second.txt", b"late")],
     )?;
 
     let events = Rc::new(RefCell::new(Vec::new()));
     let emitted = events.clone();
+    let operation = Rc::new(RefCell::new(None::<LoadHandle>));
+    let cancel_on_started = operation.clone();
     let handle = LocalOperationProvider.extract(
         ExtractRequest {
             id: OperationRequestId(11),
@@ -319,16 +320,21 @@ fn cancelling_extraction_waits_for_the_worker_and_reports_incomplete_output()
             destination: Location::local(&destination),
             password: None,
         },
-        Rc::new(move |event| emitted.borrow_mut().push(event)),
+        Rc::new(move |event| {
+            if matches!(event, OperationEvent::ArchiveStarted { .. }) {
+                // Cancel before dispatching the worker, not after a main-context
+                // iteration that may also finish extracting a small archive.
+                drop(
+                    cancel_on_started
+                        .borrow_mut()
+                        .take()
+                        .expect("extraction handle"),
+                );
+            }
+            emitted.borrow_mut().push(event);
+        }),
     );
-    while !events
-        .borrow()
-        .iter()
-        .any(|event| matches!(event, OperationEvent::ArchiveStarted { .. }))
-    {
-        glib::MainContext::default().iteration(true);
-    }
-    drop(handle);
+    operation.replace(Some(handle));
     while !events.borrow().iter().any(|event| {
         matches!(
             event,
@@ -367,6 +373,16 @@ fn cancelling_extraction_waits_for_the_worker_and_reports_incomplete_output()
             .affected_locations
             .contains(&Location::local(&destination))
     );
-    assert!(!destination.join("second.txt").exists());
+    assert!(result.completed.is_empty());
+    assert!(result.failed.is_empty());
+    assert_eq!(
+        result.not_attempted,
+        [
+            Location::local(destination.join("first.bin")),
+            Location::local(destination.join("second.txt")),
+        ]
+    );
+    assert!(destination.read_dir()?.next().is_none());
+    assert!(operation.borrow().is_none());
     Ok(())
 }
