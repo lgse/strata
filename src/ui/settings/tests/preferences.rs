@@ -57,7 +57,7 @@ fn every_general_control_stays_in_sync_without_initializing_browser_behavior() {
             );
             assert_eq!(
                 active_switches(&first),
-                vec![false, false, true, false, false, true]
+                vec![false, false, true, false, false, false, true]
             );
             assert_eq!(active_switches(&first), active_switches(&second));
             assert_eq!(active_choices(&first), active_choices(&second));

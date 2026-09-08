@@ -92,6 +92,12 @@ fn append_browsing_options(content: &gtk::Box, manager: &Rc<ThemeManager>) {
             read: ThemeManager::type_to_search,
             write: ThemeManager::set_type_to_search,
         },
+        PreferenceSwitch {
+            title: "Include subfolders when filtering",
+            description: "Search nested folders as well as the current folder when filtering a pane.",
+            read: ThemeManager::filter_include_subfolders,
+            write: ThemeManager::set_filter_include_subfolders,
+        },
     ] {
         append_preference_switch(content, manager, switch);
     }

@@ -5,7 +5,7 @@ use crate::ui::browser::ViewState;
 use crate::ui::browser::clipboard::install_directory_drop_target;
 use crate::ui::browser::collection::{
     ViewMap, activate_recursive_search_result, apply_filter_query, apply_selection_plan,
-    bitset_positions, deactivate_recursive_search, debounce_filter_entry, detach_collection_view,
+    bind_filter_query, bitset_positions, deactivate_recursive_search, detach_collection_view,
     recursive_search_activation_key, scroll_collection_when_allocated,
     search_result_navigation_position,
 };
@@ -692,7 +692,13 @@ impl ViewState {
         let search_gen_for_changed = search_generation.clone();
         let search_active_for_changed = recursive_search_active.clone();
         let weak_filter_entry = filter_entry.downgrade();
-        debounce_filter_entry(&filter_entry, move |text| {
+        bind_filter_query(&filter_entry, move |text, recursive, restart| {
+            if restart {
+                search_gen_for_changed.set(search_gen_for_changed.get().saturating_add(1));
+                search_handle_for_changed.borrow_mut().take();
+                search_results_for_changed.borrow_mut().clear();
+                search_model_for_changed.splice(0, search_model_for_changed.n_items(), &[]);
+            }
             let query = text.trim().to_string();
             if query.is_empty() {
                 search_gen_for_changed.set(search_gen_for_changed.get().saturating_add(1));
@@ -739,7 +745,7 @@ impl ViewState {
                     .column_preferences(depth_for_search)
                     .unwrap_or_else(|| state.browser.preferences())
                     .show_hidden;
-                let (h, receiver) = crate::services::index_tree(path, show_hidden);
+                let (h, receiver) = crate::services::index_filter(path, show_hidden, recursive);
                 handle.replace(Some(h));
                 filtered.set_filter(None::<&gtk::CustomFilter>);
                 filtered.set_model(Some(&sm));
