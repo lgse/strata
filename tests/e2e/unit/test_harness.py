@@ -16,7 +16,7 @@ from harness.tree import Bounds, Node
 from harness.environment import process_environment
 from harness.fixtures import FixtureTree
 from harness.process import ManagedProcess, terminate
-from tests.e2e.scenarios.test_marquee_scrolling import _entry_bounds
+from tests.e2e.scenarios.test_marquee_scrolling import _entry_bounds, _entry_name
 
 
 @pytest.mark.parametrize("reported", ["button", "push button"])
@@ -36,6 +36,16 @@ def test_marquee_uses_rendered_child_bounds_for_virtualized_cells():
 
     assert _entry_bounds(row) == Bounds(233, 96, 153, 36)
     row.find.assert_called_once_with(role="label")
+
+
+def test_marquee_uses_rendered_child_identity_for_recycled_cells():
+    row = Mock(name="row")
+    row.name = "092.txt"
+    label = Mock(name="label")
+    label.name = "575.txt"
+    row.find.return_value = label
+
+    assert _entry_name(row) == "575.txt"
 
 
 def test_marquee_falls_back_to_cell_bounds_when_no_label_is_rendered():
