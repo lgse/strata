@@ -74,7 +74,7 @@ impl ListFactory {
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),
         );
-        install_modified_selection_click(
+        let content_click = install_modified_selection_click(
             &row.widget,
             item,
             self.selection.clone(),
@@ -89,7 +89,7 @@ impl ListFactory {
             self.transfers.clone(),
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),
-            Some(row.name.upcast_ref()),
+            (Some(row.name.upcast_ref()), &content_click),
         );
     }
 
