@@ -167,6 +167,15 @@ per window; both Settings entry points reuse it and the process-wide install gua
 Preferences take effect before Settings opens. Destruction disconnects the clipboard
 subscription, browser observers, and sidebar monitors.
 
+`ui/window/sidebar.rs` assembles the sidebar shell and connects its preferences,
+browser events, and device monitors. Shared place-row bindings retain explicit direct
+versus validated navigation; file drops still exclude virtual locations. Typed device
+signals share a weak rebuild callback and retain their disconnect handles. Standard,
+pinned, and device rows are separate rendering stages, with the chooser's local-only
+filter preserved. Initial construction builds static places; device rows retain their
+existing deferred rebuild timing. Bookmark storage, Trash, and media-release policies
+remain in `window.rs` rather than changing alongside assembly.
+
 ### Window keyboard routing
 
 `ui/window/keyboard.rs` owns the window's capture-phase keyboard dispatcher. Its ordered
