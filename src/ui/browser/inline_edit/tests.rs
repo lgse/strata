@@ -25,6 +25,7 @@ use std::{
 
 mod caret;
 mod entries;
+mod visibility;
 
 #[test]
 fn an_empty_name_is_not_flagged_as_an_error() {
@@ -528,6 +529,12 @@ fn run_delayed_rename_handler(mode: BrowserMode, directory: bool, result: Delaye
         wait_until(|| source.pending_count() == 1);
         source.respond(0, Some(vec![renamed.clone()]));
         wait_until(|| !view.state.rename_operation_pending());
+        let current = wait_for_current_rename_label(&view, BrowserMode::List);
+        assert_eq!(label_text(&current).as_deref(), Some(replacement));
+        assert_model_contains_only(&browser, &initial.location, &renamed.location);
+        provider.fail();
+        let current = wait_for_current_rename_label(&view, BrowserMode::List);
+        assert_eq!(label_text(&current).as_deref(), Some(replacement));
         browser.clear_observer();
         window.destroy();
         return;
@@ -692,6 +699,9 @@ fn rename_callbacks_only_affect_their_owned_operation() {
                 new_name: "first-renamed.txt".to_owned(),
                 generation: 1,
                 monitor_has_new_location: false,
+                reveal_generation: 0,
+                source_position: None,
+                scroll_value: None,
                 state: PendingRenameState::Running(first_id),
             }));
             view.state.complete_pending_rename(OperationRequestId(99));
@@ -707,6 +717,9 @@ fn rename_callbacks_only_affect_their_owned_operation() {
                 new_name: "second-renamed.txt".to_owned(),
                 generation: 2,
                 monitor_has_new_location: false,
+                reveal_generation: 0,
+                source_position: None,
+                scroll_value: None,
                 state: PendingRenameState::Running(second_id),
             }));
             view.state.complete_pending_rename(first_id);

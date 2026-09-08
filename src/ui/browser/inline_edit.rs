@@ -31,6 +31,9 @@ pub(super) struct PendingRename {
     new_name: String,
     generation: u64,
     monitor_has_new_location: bool,
+    reveal_generation: u64,
+    scroll_value: Option<f64>,
+    source_position: Option<usize>,
     state: PendingRenameState,
 }
 
@@ -52,16 +55,18 @@ fn constrain_rename_to_viewport(field: &gtk::Entry, viewport: &gtk::ScrolledWind
     field.set_margin_end(end.min(editor.width().saturating_sub(start + 1).max(0)));
 }
 
-fn reveal_row_above_footer(
+pub(in crate::ui) fn reveal_rename_row(
     row: &impl IsA<gtk::Widget>,
     scroll: &gtk::ScrolledWindow,
-    footer: &impl IsA<gtk::Widget>,
+    footer: Option<&gtk::Widget>,
 ) -> Option<(f32, f32, f32, f64)> {
     if row.height() <= 0 || row.width() <= 0 || scroll.height() <= 0 {
         return None;
     }
     let bounds = row.compute_bounds(scroll)?;
-    let bottom = (scroll.height() as f32).min(footer.compute_bounds(scroll)?.y());
+    let bottom = footer.map_or(Some(scroll.height() as f32), |footer| {
+        Some((scroll.height() as f32).min(footer.compute_bounds(scroll)?.y()))
+    })?;
     if bottom <= 0.0 {
         return None;
     }
@@ -81,6 +86,7 @@ fn reveal_row_above_footer(
 pub(super) struct PendingEntryRename {
     depth: usize,
     parent: Location,
+    reveal_generation: u64,
 }
 
 // Empty fields are an ordinary editing state, although they cannot be submitted.
@@ -158,8 +164,19 @@ impl super::BrowserView {
             {
                 state.submit_rename(&field);
             }
+            state.yield_rename_reveal();
         });
         root.add_controller(click);
+        let scroll = gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
+        scroll.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let weak = Rc::downgrade(&self.state);
+        scroll.connect_scroll(move |_, _, _| {
+            if let Some(state) = weak.upgrade() {
+                state.yield_rename_reveal();
+            }
+            gtk::glib::Propagation::Proceed
+        });
+        root.add_controller(scroll);
     }
 }
 
@@ -181,6 +198,15 @@ pub(in crate::ui) fn queue_rename(
 }
 
 impl ViewState {
+    pub(in crate::ui) fn rename_reveal_generation(&self) -> u64 {
+        self.rename_reveal_generation.get()
+    }
+
+    fn yield_rename_reveal(&self) {
+        self.rename_reveal_generation
+            .set(self.rename_reveal_generation.get().wrapping_add(1));
+    }
+
     pub(super) fn rename_operation_pending(&self) -> bool {
         self.pending_rename.borrow().is_some()
     }
@@ -207,6 +233,22 @@ impl ViewState {
             new_name,
             generation,
             monitor_has_new_location: false,
+            reveal_generation: self.rename_reveal_generation.get(),
+            source_position: self.browser.rename_item().map(|(_, position, _)| position),
+            scroll_value: self.browser.active_depth().and_then(|depth| {
+                let view = match self.mode_views.borrow().mode() {
+                    BrowserMode::Columns => self
+                        .columns
+                        .borrow()
+                        .get(depth)
+                        .map(|column| column.list.clone()),
+                    BrowserMode::List => self.mode_views.borrow().list_rename_view(depth),
+                    BrowserMode::Icons => None,
+                }?;
+                view.ancestor(gtk::ScrolledWindow::static_type())
+                    .and_downcast::<gtk::ScrolledWindow>()
+                    .map(|scroll| scroll.vadjustment().value())
+            }),
             state: PendingRenameState::Queued,
         }));
         generation
@@ -421,7 +463,15 @@ impl ViewState {
             return;
         };
         self.update_rename_labels(&old_location, new_location.as_ref(), &new_name);
-        if let Some(location) = new_location {
+        if let Some(location) = new_location
+            && self
+                .pending_rename
+                .borrow()
+                .as_ref()
+                .is_some_and(|pending| {
+                    pending.reveal_generation == self.rename_reveal_generation.get()
+                })
+        {
             self.reveal_completed_rename(old_location, location);
         }
         let observed = self
@@ -440,33 +490,65 @@ impl ViewState {
         let Some(depth) = self.browser.active_depth() else {
             return;
         };
-        let Some(column) = self.columns.borrow().get(depth).cloned() else {
+        let mode = self.mode_views.borrow().mode();
+        let view = match mode {
+            BrowserMode::Columns => self
+                .columns
+                .borrow()
+                .get(depth)
+                .map(|column| column.list.clone()),
+            BrowserMode::List => self.mode_views.borrow().list_rename_view(depth),
+            BrowserMode::Icons => None,
+        };
+        let Some(view) = view else { return };
+        let Some(scroll) = view
+            .ancestor(gtk::ScrolledWindow::static_type())
+            .and_downcast::<gtk::ScrolledWindow>()
+        else {
             return;
         };
         let weak = Rc::downgrade(self);
         let generation = self.rename_generation.get();
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        let scrolled = std::cell::Cell::new(false);
+        let reveal_generation = self.rename_reveal_generation.get();
+        let scroll_value = std::cell::Cell::new(
+            self.pending_rename
+                .borrow()
+                .as_ref()
+                .and_then(|pending| pending.scroll_value),
+        );
+        let source_position = self
+            .pending_rename
+            .borrow()
+            .as_ref()
+            .and_then(|pending| pending.source_position);
         let settled_bounds = std::cell::Cell::new(None);
-        column.list.clone().add_tick_callback(move |list, _| {
+        view.add_tick_callback(move |list, _| {
             let Some(state) = weak.upgrade() else {
                 return gtk::glib::ControlFlow::Break;
             };
             let selected = state.browser.selected_entries();
             if std::time::Instant::now() >= deadline
                 || state.rename_generation.get() != generation
+                || state.rename_reveal_generation.get() != reveal_generation
                 || state.browser.active_depth() != Some(depth)
                 || selected.len() != 1
                 || (selected[0].location != old && selected[0].location != target)
-                || !state
-                    .columns
-                    .borrow()
-                    .get(depth)
-                    .is_some_and(|current| current.list == *list)
+                || state.mode_views.borrow().mode() != mode
+                || match mode {
+                    BrowserMode::Columns => !state
+                        .columns
+                        .borrow()
+                        .get(depth)
+                        .is_some_and(|current| current.list == *list),
+                    BrowserMode::List => {
+                        state.mode_views.borrow().list_rename_view(depth).as_ref() != Some(list)
+                    }
+                    BrowserMode::Icons => true,
+                }
             {
                 return gtk::glib::ControlFlow::Break;
             }
-            let column = state.columns.borrow()[depth].clone();
             let Some(snapshot) = state.browser.column_snapshot(depth) else {
                 return gtk::glib::ControlFlow::Break;
             };
@@ -482,28 +564,37 @@ impl ViewState {
             let Some(position) = position else {
                 return gtk::glib::ControlFlow::Continue;
             };
-            let Some(position) = column.map.view_position(position) else {
-                return gtk::glib::ControlFlow::Break;
+            if source_position != Some(position) {
+                scroll_value.set(None);
+            }
+            let (position, row, footer) = if mode == BrowserMode::Columns {
+                let column = state.columns.borrow()[depth].clone();
+                let Some(position) = column.map.view_position(position) else {
+                    return gtk::glib::ControlFlow::Break;
+                };
+                let row = column.bound_rows.borrow().iter().find_map(|bound| {
+                    (bound.item.upgrade()?.position() == position)
+                        .then(|| bound.row.upgrade().map(|row| row.upcast::<gtk::Widget>()))
+                        .flatten()
+                });
+                (
+                    position,
+                    row,
+                    Some(column.destination_hint.clone().upcast::<gtk::Widget>()),
+                )
+            } else {
+                let Some((position, row)) =
+                    state.mode_views.borrow().list_rename_row(depth, position)
+                else {
+                    return gtk::glib::ControlFlow::Break;
+                };
+                (position, row, None)
             };
             if snapshot.loading || list.height() <= 1 {
                 return gtk::glib::ControlFlow::Continue;
             }
-            if !scrolled.get() {
-                let flags = list
-                    .root()
-                    .and_then(|root| root.focus())
-                    .filter(|focus| focus == list || focus.is_ancestor(list))
-                    .map_or(gtk::ListScrollFlags::NONE, |_| gtk::ListScrollFlags::FOCUS);
-                list.scroll_to(position, flags, None);
-                scrolled.set(true);
-                return gtk::glib::ControlFlow::Continue;
-            }
-            let row = column.bound_rows.borrow().iter().find_map(|bound| {
-                (bound.item.upgrade()?.position() == position)
-                    .then(|| bound.row.upgrade())
-                    .flatten()
-            });
             let Some(row) = row else {
+                list.scroll_to(position, gtk::ListScrollFlags::NONE, None);
                 return gtk::glib::ControlFlow::Continue;
             };
             // A newly rebound item can have CSS bounds but no allocation. Focusing it
@@ -512,15 +603,25 @@ impl ViewState {
                 list.scroll_to(position, gtk::ListScrollFlags::NONE, None);
                 return gtk::glib::ControlFlow::Continue;
             }
+            // Model splices may replace GTK's scroll anchor even when the rename
+            // stays in place. Reveal from the pre-refresh viewport instead.
+            if let Some(value) = scroll_value.get() {
+                scroll.vadjustment().set_value(value);
+            }
             // Focus the native item, not ListView's stale pre-sort keyboard cursor.
             if let Some(focus) = list.root().and_then(|root| root.focus())
                 && (focus == *list || focus.is_ancestor(list))
                 && let Some(cursor) = row.parent()
             {
+                let adjustment = scroll.vadjustment();
+                let value = adjustment.value();
                 cursor.grab_focus();
+                adjustment.set_value(value);
             }
-            let allocated =
-                reveal_row_above_footer(&row, &column.listing_scroll, &column.destination_hint);
+            let allocated = reveal_rename_row(&row, &scroll, footer.as_ref());
+            if scroll_value.get().is_some() {
+                scroll_value.set(Some(scroll.vadjustment().value()));
+            }
             if allocated.is_some() && settled_bounds.get() == allocated {
                 return gtk::glib::ControlFlow::Break;
             }
@@ -635,6 +736,7 @@ impl ViewState {
                 return gtk::glib::ControlFlow::Break;
             }
             if std::time::Instant::now() >= deadline
+                || state.rename_reveal_generation.get() != pending.reveal_generation
                 || state.browser.location_at(pending.depth).as_ref() != Some(&pending.parent)
             {
                 state.pending_new_entry.take();
@@ -694,6 +796,7 @@ impl ViewState {
             .replace(Some(Rc::new(PendingEntryRename {
                 depth,
                 parent: location.clone(),
+                reveal_generation: self.rename_reveal_generation.get(),
             })));
         if is_directory {
             self.browser.create_new_folder(location);
@@ -789,15 +892,23 @@ impl ViewState {
         let row = row.downgrade();
         let scroll = column.listing_scroll.downgrade();
         let footer = column.destination_hint.downgrade();
+        let weak = Rc::downgrade(self);
+        let reveal_generation = self.rename_reveal_generation.get();
         let viewport_tick = field.add_tick_callback(move |field, _| {
             let Some(viewport) = viewport.upgrade() else {
                 return gtk::glib::ControlFlow::Break;
             };
             constrain_rename_to_viewport(field, &viewport);
+            if !weak
+                .upgrade()
+                .is_some_and(|state| state.rename_reveal_generation.get() == reveal_generation)
+            {
+                return gtk::glib::ControlFlow::Continue;
+            }
             if let (Some(row), Some(scroll), Some(footer)) =
                 (row.upgrade(), scroll.upgrade(), footer.upgrade())
             {
-                reveal_row_above_footer(&row, &scroll, &footer);
+                reveal_rename_row(&row, &scroll, Some(footer.upcast_ref()));
             }
             gtk::glib::ControlFlow::Continue
         });

@@ -64,7 +64,7 @@ pub(super) use crate::ui::browser::entry::{
     metadata_needs_fill, model_type_group,
 };
 pub(super) use crate::ui::browser::inline_edit::{
-    queue_rename, rename_stem_end, update_basename_validation,
+    queue_rename, rename_stem_end, reveal_rename_row, update_basename_validation,
 };
 pub(super) use crate::ui::browser::pane_header::{
     column_sort_direction_toggle, column_sort_menu, empty_trash_button, pane_new_folder_button,
@@ -155,6 +155,7 @@ pub(super) struct ViewState {
     active_rename: RefCell<Option<ActiveRename>>,
     pending_rename: RefCell<Option<PendingRename>>,
     rename_generation: Cell<u64>,
+    rename_reveal_generation: Cell<u64>,
     pending_new_entry: RefCell<Option<Rc<PendingEntryRename>>>,
     file_progress_view: RefCell<Option<FileProgressView>>,
     pending_file_progress: RefCell<Option<glib::SourceId>>,
@@ -342,6 +343,7 @@ impl BrowserView {
             active_rename: RefCell::new(None),
             pending_rename: RefCell::new(None),
             rename_generation: Cell::new(0),
+            rename_reveal_generation: Cell::new(0),
             pending_new_entry: RefCell::new(None),
             file_progress_view: RefCell::new(None),
             pending_file_progress: RefCell::new(None),

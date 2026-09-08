@@ -187,6 +187,7 @@ pub(in crate::ui) struct ActiveModeRename {
     entry: FileEntry,
     field: gtk::Entry,
     label: gtk::Widget,
+    viewport_tick: Option<gtk::TickCallbackId>,
 }
 
 struct BoundModeItem {
@@ -613,6 +614,34 @@ impl ModeViews {
         }
     }
 
+    pub(in crate::ui) fn list_rename_view(&self, depth: usize) -> Option<gtk::ListView> {
+        self.list_pane
+            .as_ref()
+            .filter(|pane| self.mode == BrowserMode::List && pane.depth == depth)?
+            .section
+            .view
+            .clone()
+            .downcast()
+            .ok()
+    }
+
+    pub(in crate::ui) fn list_rename_row(
+        &self,
+        depth: usize,
+        source_position: usize,
+    ) -> Option<(u32, Option<gtk::Widget>)> {
+        let pane = self.list_pane.as_ref().filter(|pane| pane.depth == depth)?;
+        let section = &pane.section;
+        let position =
+            view_position_for_source(&pane.model, Some(&section.view_model), source_position)?;
+        let row = section.bound_items.borrow().iter().find_map(|bound| {
+            (bound.item.upgrade()?.position() == position)
+                .then(|| bound.widget.upgrade())
+                .flatten()
+        });
+        Some((position, row))
+    }
+
     pub fn begin_rename(&self, depth: usize, source_position: usize, entry: &FileEntry) -> bool {
         self.cancel_rename();
         let pane = match self.mode {
@@ -670,10 +699,38 @@ impl ModeViews {
         field.set_sensitive(true);
         field.remove_css_class("error");
         field.set_tooltip_text(None);
+        let viewport_tick = (self.mode == BrowserMode::List).then(|| {
+            let state = self.context_state.borrow().clone().unwrap_or_default();
+            let generation = state
+                .upgrade()
+                .map(|state| state.rename_reveal_generation());
+            let row = widget.downgrade();
+            let scroll = collection
+                .ancestor(gtk::ScrolledWindow::static_type())
+                .and_downcast::<gtk::ScrolledWindow>()
+                .map(|scroll| scroll.downgrade());
+            field.add_tick_callback(move |_, _| {
+                if state
+                    .upgrade()
+                    .map(|state| state.rename_reveal_generation())
+                    != generation
+                {
+                    return glib::ControlFlow::Continue;
+                }
+                if let (Some(row), Some(scroll)) = (
+                    row.upgrade(),
+                    scroll.as_ref().and_then(|scroll| scroll.upgrade()),
+                ) {
+                    super::browser::reveal_rename_row(&row, &scroll, None);
+                }
+                glib::ControlFlow::Continue
+            })
+        });
         self.active_rename.replace(Some(ActiveModeRename {
             entry: entry.clone(),
             field: field.clone(),
             label,
+            viewport_tick,
         }));
         field.grab_focus();
         field.select_region(
@@ -1233,6 +1290,9 @@ struct ModeClickOptions {
 }
 
 pub(in crate::ui) fn finish_mode_rename(rename: ActiveModeRename) {
+    if let Some(tick) = rename.viewport_tick {
+        tick.remove();
+    }
     rename.label.set_visible(true);
     rename.field.set_visible(false);
     rename.field.set_sensitive(true);
