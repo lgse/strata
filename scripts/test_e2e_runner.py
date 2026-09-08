@@ -63,6 +63,8 @@ class ContainerRunnerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         build, run = [call["args"] for call in calls]
         self.assertEqual(build[0], "build")
+        from e2e_bundle import image_key
+        self.assertIn(f"org.strata.e2e.inputs={image_key()}", build)
         image = build[build.index("--tag") + 1]
         self.assertIn(image, run)
         self.assertEqual(run[-2:], ["-k", "columns and baseline"])

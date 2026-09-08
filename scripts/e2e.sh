@@ -39,7 +39,7 @@ if [[ -z "$image" ]]; then
   image="strata-e2e:${image_key:0:16}-$user_id-$group_id"
   "$engine" build --platform=linux/amd64 --target toolchain --tag "$image" \
     --build-arg "E2E_UID=$user_id" --build-arg "E2E_GID=$group_id" \
-    --build-arg "E2E_IMAGE_KEY=$image_key" \
+    --label "org.strata.e2e.inputs=$image_key" \
     --file "$repository/tests/e2e/Dockerfile" "$repository"
 fi
 

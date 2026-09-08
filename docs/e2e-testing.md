@@ -331,6 +331,15 @@ Reports and JUnit files are uploaded on both success and failure, with distinct
 artifact names per runner and run attempt; screenshots/trees/logs are uploaded on
 failures. The gate never mixes previous attempts into a fresh measurement.
 
+### Understanding a failed gate
+
+The prerequisite check reports whether bootstrap or shard execution failed, links
+unsuccessful jobs and steps, and inspects a bounded amount of their logs. Confirmed
+Ubuntu Snapshot HTTP errors, compiler diagnostics, and provenance failures are
+identified separately. When bootstrap fails, it explicitly says that no scenarios
+ran; a subsequent time-budget failure is not presented as slow GUI tests. If logs
+cannot be retrieved or classified, it says so rather than guessing the cause.
+
 ### Cache lifecycle and cold starts
 
 BuildKit's content-addressed cache invalidates on the actual Dockerfile, package
@@ -338,9 +347,20 @@ installer, requirements, Rust manifest/lockfile, source, and resource inputs.
 `install-packages.sh` downloads from the official archive using byte-identical,
 signed snapshot indexes, then installs against the original snapshot sources.
 It never refreshes indexes from the moving archive: versions and APT checksum
-verification stay pinned. Superseded packages unavailable on the archive fall back
-to the snapshot; failed maintainer scripts are not retried. This avoids making every
+verification stay pinned. For superseded packages missing from the archive,
+Launchpad's primary archive is tried using the exact filename and mandatory SHA256
+from the signed snapshot metadata. Downloads use APT's sandboxed partial directory;
+APT verifies them again when installing against the original snapshot sources.
+The snapshot remains the final fallback; failed maintainer scripts are not retried. This avoids making every
 package download wait on the slower snapshot service during cold recovery.
+
+The `package-indexes` stage fetches and authenticates the dated APT indexes once.
+Runtime and toolchain installation reuse them through read-only build mounts;
+neither downloads a second copy, and the lists are removed before each install
+layer is committed. The warmer publishes the index-stage cache **before** package
+and compiler bootstrap, so a later failure does not discard a successful index
+fetch. Source builds attach the public input digest as an output image label, not
+an environment variable or secret-looking build argument.
 
 A stub application
 warms dependencies only; its executable and all Strata fingerprints are removed
@@ -355,7 +375,8 @@ and PRs, and on manual dispatch. PRs warm only their own branch-scoped cache.
 The timed build restores a BuildKit local-cache directory through the cache action's
 segmented transfer path, keyed by image inputs, manifests, ignore rules, and UID/GID.
 BuildKit still validates content-addressed dependency records before reusing them.
-A missing local cache falls back to the shared GHA dependency cache; the old
+A missing local cache first looks for published environments, then falls back to
+the shared GHA dependency cache; the old
 `strata-e2e-v1` cache remains a read-only migration source. The warmer publishes both
 formats and replaces its local export directory so obsolete blobs do not accumulate.
 
@@ -377,9 +398,63 @@ Node-24-native actions verify artifact download digests; the runner also checks
 bundle provenance and the loaded image's input label. GitHub's cache branch scoping
 allows fork PRs to read the main cache without credentials or registry access and
 prevents PR caches from replacing main's cache. No `pull_request_target` execution
-or package-write permission is needed.
+or package-write permission is needed. Main cannot restore a PR-scoped cache:
+a successful PR run does not seed main's first bootstrap after merging a new
+workflow. Run the trusted default-branch warmer to populate main's own caches;
+do not promote untrusted PR build caches into main. These caches are evictable,
+not permanent package storage. Published environments provide the durable fallback
+below; upstream outages can still block the first publication of new inputs.
 
-**A completely cold/evicted cache or a newly changed image is not guaranteed to
+### Persistent published environments
+
+`Publish pinned E2E environments` publishes two GHCR packages from trusted main:
+
+- `ghcr.io/lgse/strata-e2e-runtime`: the pinned GUI/Python/font environment.
+- `ghcr.io/lgse/strata-e2e-build`: Rust plus the runtime and compiled locked Cargo
+  dependencies. The stub application and its fingerprints are removed; no tested
+  application binary is published here.
+
+Tags include SHA256 input identifiers, architecture, UID, and GID. Runtime inputs
+are independent of application source; the build identifier additionally includes
+`Cargo.toml`, `Cargo.lock`, and `.dockerignore`. Publication runs on input changes
+or manual dispatch, not ordinary application commits. Existing publications are
+checked before rebuilding. GHCR storage is independent of Actions cache eviction;
+retain tags needed by supported revisions rather than treating them as disposable
+per-run artifacts.
+
+On a fast dependency-cache miss, CI resolves matching image tags to **OCI digests**,
+checks their platform and input labels, and uses them directly as application and
+runtime bases. Published labels are preserved, not overwritten to match a checkout. Those builds do not
+execute Ubuntu/Python/Rust bootstrap stages, even with an empty BuildKit cache.
+The application still compiles for the tested revision, and the base's Cargo
+manifests must match the checkout. A fresh runner still transfers image layers;
+this avoids package-server requests and dependency compilation, not all network I/O.
+
+The build package also stores complete BuildKit caches. An environment-only cache
+identifier lets new Cargo inputs reuse unchanged GTK/Rust dependencies. The warmer
+can import these persistent caches to refill the faster segmented GitHub caches.
+If an image is absent or inaccessible, CI reports that fact and falls back to
+verified cache/source building; it never substitutes `latest`, another dependency
+version, or an unverified bundle.
+
+Only the main-only publisher has `packages: write` and registry login credentials.
+PR CI and warmers pull anonymously and cannot publish shared images. After the
+first publication, **make both packages public in GHCR package settings** and rerun
+the publisher. Its anonymous-access check fails descriptively until they are
+readable without credentials. Do not give fork PRs package-write credentials.
+
+To exercise the registry path, manually dispatch **CI** with
+`require_published_environments` enabled. This bypasses the fast dependency cache
+and fails if matching public bases are unavailable; it cannot silently benchmark a
+source-build fallback. All scenarios and the same time budget still apply. The
+runtime archive cache remains enabled, so this is not a completely cold transport
+benchmark.
+
+New environment inputs still require an initial trusted publication; a PR cannot
+seed main by publishing its own build. No cold-start exemption has been added to
+the three-minute gate.
+
+**New inputs without published images or cached bootstrap are not guaranteed to
 install and compile within three minutes.** The timed build retains a ten-minute
 limit for cold-build diagnostics, but the aggregate still fails the 180-second
 budget: a cold run is not silently exempted or advertised as a fast pass. Large
@@ -400,6 +475,13 @@ dependency cache missed, so this run exercised the GHA dependency-cache fallback
 while the separate warmer published the new format. This was not an identical
 binary-cache rerun or a completely cold package bootstrap.
 
+Attempt 2 of the same run restored both segmented caches and **recompiled Strata
+in 7.51 seconds**. All 581 cases passed exactly once: **139 seconds** from initial
+E2E queue to completion, **141 seconds** from attempt start, and 137.4 seconds at
+the internal measurement. This is same-revision recompilation, not a second new
+revision or a binary-cache shortcut. These measurements predate persistent GHCR
+base images; they are not a benchmark of the registry-only cold-runner path.
+
 ### Reproducing and maintaining shards
 
 To collect the current inventory inside the canonical container:
@@ -418,7 +500,7 @@ For the exact CI binary, use a disposable checkout at the commit in its metadata
 ```bash
 podman build --target runtime --tag strata-e2e:ci-runtime \
   --build-arg E2E_UID="$(id -u)" --build-arg E2E_GID="$(id -g)" \
-  --build-arg E2E_IMAGE_KEY="$(python3 scripts/e2e_bundle.py image-key)" \
+  --label org.strata.e2e.inputs="$(python3 scripts/e2e_bundle.py image-key)" \
   --file tests/e2e/Dockerfile .
 chmod +x target/e2e-bundle/strata
 STRATA_CONTAINER_ENGINE=podman STRATA_E2E_IMAGE=strata-e2e:ci-runtime \

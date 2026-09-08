@@ -1,6 +1,12 @@
 name: CI
 
 on:
+  workflow_dispatch:
+    inputs:
+      require_published_environments:
+        description: Bypass the fast dependency cache and require verified published base images
+        type: boolean
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -10,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.require_published_environments && 'published' || 'normal' }}
   cancel-in-progress: true
 
 jobs:
@@ -80,6 +86,7 @@ jobs:
           lookup-only: true
 
       - name: Restore the compiled dependency layers with segmented cache transfers
+        if: ${{ !inputs.require_published_environments }}
         id: dependency-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -88,6 +95,18 @@ jobs:
 
       - name: Set up cached container builder
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Resolve trusted published base images to OCI digests
+        if: steps.dependency-cache.outputs.cache-hit != 'true'
+        id: registry
+        env:
+          REQUIRE_PUBLISHED: ${{ inputs.require_published_environments }}
+        run: |
+          if [ "$REQUIRE_PUBLISHED" = true ]; then
+            python3 scripts/e2e_images.py bases --require-published >> "$GITHUB_OUTPUT"
+          else
+            python3 scripts/e2e_images.py bases >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build the tested revision once and collect its exact inventory
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -99,12 +118,15 @@ jobs:
           build-args: |
             E2E_UID=${{ steps.identity.outputs.uid }}
             E2E_GID=${{ steps.identity.outputs.gid }}
-            E2E_IMAGE_KEY=${{ steps.identity.outputs.image_key }}
             STRATA_BUILD_COMMIT=${{ github.sha }}
+            E2E_DEPENDENCIES_IMAGE=${{ steps.registry.outputs.dependencies_image || 'dependencies' }}
           outputs: type=local,dest=target/e2e-bundle
           cache-from: |
-            ${{ steps.dependency-cache.outputs.cache-hit == 'true' && 'type=local,src=target/e2e-dependency-cache' || 'type=gha,scope=strata-e2e-dependencies-v1' }}
-            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && 'type=gha,scope=strata-e2e-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit == 'true' && 'type=local,src=target/e2e-dependency-cache' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.dependencies_image == 'dependencies' && 'type=gha,scope=strata-e2e-dependencies-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.dependencies_image == 'dependencies' && 'type=gha,scope=strata-e2e-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.dependencies_image == 'dependencies' && 'type=gha,scope=strata-e2e-indexes-v1' || '' }}
+            ${{ steps.registry.outputs.dependencies_image == 'dependencies' && steps.registry.outputs.cache_from || '' }}
 
       - name: Prepare a runtime archive on cache miss
         if: steps.runtime-cache.outputs.cache-hit != 'true'
@@ -116,17 +138,21 @@ jobs:
         with:
           context: .
           file: tests/e2e/Dockerfile
-          target: runtime
+          target: ci-runtime
           platforms: linux/amd64
           build-args: |
             E2E_UID=${{ steps.identity.outputs.uid }}
             E2E_GID=${{ steps.identity.outputs.gid }}
-            E2E_IMAGE_KEY=${{ steps.identity.outputs.image_key }}
+            E2E_RUNTIME_IMAGE=${{ steps.registry.outputs.runtime_image || 'runtime' }}
+          labels: ${{ (steps.registry.outputs.runtime_image == '' || steps.registry.outputs.runtime_image == 'runtime') && format('org.strata.e2e.inputs={0}', steps.identity.outputs.image_key) || '' }}
           tags: strata-e2e:ci-runtime
           outputs: type=docker,dest=target/e2e-runtime/runtime.tar
           cache-from: |
-            ${{ steps.dependency-cache.outputs.cache-hit == 'true' && 'type=local,src=target/e2e-dependency-cache' || 'type=gha,scope=strata-e2e-dependencies-v1' }}
-            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && 'type=gha,scope=strata-e2e-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit == 'true' && 'type=local,src=target/e2e-dependency-cache' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.runtime_image == 'runtime' && 'type=gha,scope=strata-e2e-dependencies-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.runtime_image == 'runtime' && 'type=gha,scope=strata-e2e-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.runtime_image == 'runtime' && 'type=gha,scope=strata-e2e-indexes-v1' || '' }}
+            ${{ steps.registry.outputs.runtime_image == 'runtime' && steps.registry.outputs.cache_from || '' }}
 
       - name: Compress the runtime without another image load or build
         if: steps.runtime-cache.outputs.cache-hit != 'true'
@@ -310,7 +336,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Test release version calculation
+      - name: Test CI and release helpers
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
   repository-policy:
