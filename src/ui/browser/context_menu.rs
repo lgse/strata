@@ -140,10 +140,10 @@ pub(in crate::ui) fn install_folder_context_menu(
     is_item_target: Rc<dyn Fn(&gtk::Widget) -> bool>,
     depth: usize,
     location: Location,
-) {
+) -> Rc<dyn Fn(f64, f64)> {
     if !state.interactive {
-        chooser_context::install_folder(state, parent, is_item_target, depth, location);
-        return;
+        let _ = chooser_context::install_folder(state, parent, is_item_target, depth, location);
+        return Rc::new(|_, _| {});
     }
     let content = crate::ui::accessibility::menu_box();
     content.add_css_class("folder-context-menu");
@@ -291,21 +291,13 @@ pub(in crate::ui) fn install_folder_context_menu(
         }
     });
 
-    let menu_click = gtk::GestureClick::new();
-    menu_click.set_button(3);
-    let popover_for_click = popover.clone();
-    let browser_for_click = state.browser.clone();
-    let scroll_for_click = scroll.clone();
+    let popover_for_trigger = popover.clone();
+    let browser_for_trigger = state.browser.clone();
+    let scroll_for_trigger = scroll.clone();
     let weak_state = Rc::downgrade(state);
-    menu_click.connect_pressed(move |gesture, _, x, y| {
-        let over_item = gesture
-            .widget()
-            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
-            .is_some_and(|picked| is_item_target(&picked));
-        if over_item {
-            return;
-        }
-        gesture.set_state(gtk::EventSequenceState::Claimed);
+    let parent_for_trigger = parent.clone();
+    let location_for_trigger = location.clone();
+    let open_at: Rc<dyn Fn(f64, f64)> = Rc::new(move |x: f64, y: f64| {
         paste.set_sensitive(gtk::gdk::Display::default().is_some_and(|display| {
             display
                 .clipboard()
@@ -313,8 +305,8 @@ pub(in crate::ui) fn install_folder_context_menu(
                 .contains_type(gtk::gdk::FileList::static_type())
         }));
         select_all.set_sensitive(has_entries());
-        open_terminal.set_sensitive(can_open_terminal(&location));
-        let hidden_files_shown = browser_for_click.preferences().show_hidden;
+        open_terminal.set_sensitive(can_open_terminal(&location_for_trigger));
+        let hidden_files_shown = browser_for_trigger.preferences().show_hidden;
         toggle_hidden_label.set_text(if hidden_files_shown {
             "Hide Hidden Files"
         } else {
@@ -328,14 +320,28 @@ pub(in crate::ui) fn install_folder_context_menu(
                 crate::assets::icons::EYE_OFF
             },
         );
-        if let Some(anchor) = gesture.widget()
-            && let Some(state) = weak_state.upgrade()
-        {
+        if let Some(state) = weak_state.upgrade() {
             focus_context_column(&state, depth);
-            show_context_popover(&popover_for_click, &scroll_for_click, &anchor, x, y);
+            show_context_popover(&popover_for_trigger, &scroll_for_trigger, &parent_for_trigger, x, y);
         }
     });
+
+    let menu_click = gtk::GestureClick::new();
+    menu_click.set_button(3);
+    let open_for_click = open_at.clone();
+    menu_click.connect_pressed(move |gesture, _, x, y| {
+        let over_item = gesture
+            .widget()
+            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
+            .is_some_and(|picked| is_item_target(&picked));
+        if over_item {
+            return;
+        }
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        open_for_click(x, y);
+    });
     parent.add_controller(menu_click);
+    open_at
 }
 
 pub(in crate::ui) type ContextPickPosition = Rc<dyn Fn(&gtk::Widget) -> Option<u32>>;
@@ -352,9 +358,9 @@ pub(in crate::ui) fn install_item_context_menu(
     source_position: ContextSourcePosition,
     clear_other_selections: Rc<dyn Fn()>,
     depth: usize,
-) {
+) -> Rc<dyn Fn(f64, f64)> {
     if !state.interactive {
-        chooser_context::install_item(
+        let _ = chooser_context::install_item(
             state,
             widget,
             selection,
@@ -363,7 +369,7 @@ pub(in crate::ui) fn install_item_context_menu(
             clear_other_selections,
             depth,
         );
-        return;
+        return Rc::new(|_, _| {});
     }
     let in_trash = state
         .browser
@@ -805,17 +811,13 @@ pub(in crate::ui) fn install_item_context_menu(
         );
     });
 
-    let click = gtk::GestureClick::new();
-    click.set_button(3);
+    let widget_for_trigger = widget.clone();
     let weak_state = Rc::downgrade(state);
-    let popover_for_reveal = popover.clone();
-    let scroll_for_reveal = scroll.clone();
-    let selection = selection.clone();
-    click.connect_pressed(move |gesture, _, x, y| {
-        let Some(picked) = gesture
-            .widget()
-            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
-        else {
+    let popover_for_trigger = popover.clone();
+    let scroll_for_trigger = scroll.clone();
+    let selection_for_trigger = selection.clone();
+    let open_at: Rc<dyn Fn(f64, f64)> = Rc::new(move |x: f64, y: f64| {
+        let Some(picked) = widget_for_trigger.pick(x, y, gtk::PickFlags::DEFAULT) else {
             return;
         };
         let Some(filtered_position) = pick_position(&picked) else {
@@ -830,11 +832,10 @@ pub(in crate::ui) fn install_item_context_menu(
         let Some(entry) = state.browser.entry_at(depth, resolved_position) else {
             return;
         };
-        gesture.set_state(gtk::EventSequenceState::Claimed);
         state.browser.set_active_column(depth);
-        if !selection.is_selected(filtered_position) {
+        if !selection_for_trigger.is_selected(filtered_position) {
             clear_other_selections();
-            selection.select_item(filtered_position, true);
+            selection_for_trigger.select_item(filtered_position, true);
         }
         target.replace(Some((resolved_position, entry.clone())));
         let entries = context_entries(&state, &target);
@@ -918,13 +919,19 @@ pub(in crate::ui) fn install_item_context_menu(
             single.set_visible(true);
             multiple.set_visible(false);
         }
-        let Some(anchor) = gesture.widget() else {
-            return;
-        };
         focus_context_column(&state, depth);
-        show_context_popover(&popover_for_reveal, &scroll_for_reveal, &anchor, x, y);
+        show_context_popover(&popover_for_trigger, &scroll_for_trigger, &widget_for_trigger, x, y);
+    });
+
+    let click = gtk::GestureClick::new();
+    click.set_button(3);
+    let open_for_click = open_at.clone();
+    click.connect_pressed(move |gesture, _, x, y| {
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+        open_for_click(x, y);
     });
     widget.add_controller(click);
+    open_at
 }
 
 fn selected_items_summary(entries: &[FileEntry]) -> String {
