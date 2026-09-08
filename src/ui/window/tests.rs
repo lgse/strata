@@ -19,15 +19,16 @@ use crate::{
 use super::{
     DEFAULT_ACCELS, MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, TrashContents,
     TrashMenuVisibility, TypeToSearchQuery, accepts_sidebar_reorder_payload, begin_media_release,
-    browser_for_window, browser_mode_for_digit, event_changes_trash_contents,
+    browser_for_window, browser_mode_for_digit, build_sidebar, event_changes_trash_contents,
     is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
     is_smb_location, is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut,
-    jump_direction, media_release_label, mount_release_action, mouse_history_action,
-    page_direction, parse_pinned_drag_source, parse_pinned_places, pin_status, remove_pinned_place,
-    reorder_pinned_places, reorder_places, resolve_place_order, serialize_pinned_places,
-    should_show_standard_place, sidebar_accepts_file_drop, sidebar_update_label, standard_place,
-    trash_contents_from_probe, trash_has_entries, trash_menu_visibility, type_to_search_query,
-    vim_focus_direction, volume_release_action,
+    jump_direction, load_pinned_places, media_release_label, mount_release_action,
+    mouse_history_action, page_direction, parse_pinned_drag_source, parse_pinned_places,
+    pin_status, pinned_places_path, remove_pinned_place, reorder_pinned_places, reorder_places,
+    resolve_place_order, serialize_pinned_places, should_show_standard_place,
+    sidebar_accepts_file_drop, sidebar_update_label, standard_place, trash_contents_from_probe,
+    trash_has_entries, trash_menu_visibility, type_to_search_query, vim_focus_direction,
+    volume_release_action,
 };
 
 #[test]
@@ -968,6 +969,39 @@ fn refresh_shortcut_keeps_f5_and_releases_control_r() {
         gtk::gdk::Key::r,
         gtk::gdk::ModifierType::CONTROL_MASK
     ));
+}
+
+#[test]
+fn pinned_place_changes_merge_with_the_shared_bookmarks_file() {
+    gtk_test(
+        "ui::window::tests::pinned_place_changes_merge_with_the_shared_bookmarks_file",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            let path = pinned_places_path();
+            std::fs::create_dir_all(path.parent().expect("bookmarks parent"))
+                .expect("isolated config directory");
+            std::fs::write(&path, "file:///tmp/existing Existing\n").expect("seeded bookmarks");
+            let preferences = ThemeManager::shared();
+            let first = build_sidebar(browser_for_window(), preferences.clone(), true);
+            let second = build_sidebar(browser_for_window(), preferences, true);
+
+            first
+                .state
+                .pin_location(Location::local("/tmp/pinned"), "Pinned".into());
+            second
+                .state
+                .unpin_location(&Location::local("/tmp/existing"));
+
+            let saved: Vec<_> = load_pinned_places()
+                .into_iter()
+                .map(|(location, _)| location)
+                .collect();
+            assert_eq!(saved, vec![Location::local("/tmp/pinned")]);
+            assert_eq!(second.state.pinned_places.borrow().len(), 1);
+            first.disconnect();
+            second.disconnect();
+        },
+    );
 }
 
 #[test]

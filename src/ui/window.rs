@@ -975,20 +975,26 @@ impl SidebarState {
         self.append_device_place(crate::assets::icons::HARD_DRIVE, name, location, release);
     }
 
+    // The bookmarks file is shared with every other Strata window and every
+    // GTK application, so each change re-reads it and merges rather than
+    // writing back this window's snapshot.
     fn pin_location(self: &Rc<Self>, location: Location, name: String) {
-        if pin_status(&self.pinned_places.borrow(), &location) != PinStatus::Available {
-            return;
+        let mut places = load_pinned_places();
+        if pin_status(&places, &location) == PinStatus::Available {
+            places.push((location, name));
+            save_pinned_places(&places);
         }
-        self.pinned_places.borrow_mut().push((location, name));
-        save_pinned_places(&self.pinned_places.borrow());
+        self.pinned_places.replace(places);
         self.rebuild();
     }
 
     fn unpin_location(self: &Rc<Self>, location: &Location) {
-        if remove_pinned_place(&mut self.pinned_places.borrow_mut(), location) {
-            save_pinned_places(&self.pinned_places.borrow());
-            self.rebuild();
+        let mut places = load_pinned_places();
+        if remove_pinned_place(&mut places, location) {
+            save_pinned_places(&places);
         }
+        self.pinned_places.replace(places);
+        self.rebuild();
     }
     fn event_changes_active_place(event: &BrowserEvent) -> bool {
         matches!(
@@ -1256,12 +1262,27 @@ impl SidebarState {
     }
 
     fn reorder_pinned_place(self: &Rc<Self>, source: usize, target: usize, after: bool) {
-        let changed =
-            reorder_pinned_places(&mut self.pinned_places.borrow_mut(), source, target, after);
+        let (source_location, target_location) = {
+            let places = self.pinned_places.borrow();
+            match (places.get(source), places.get(target)) {
+                (Some(source), Some(target)) => (source.0.clone(), target.0.clone()),
+                _ => return,
+            }
+        };
+        let mut places = load_pinned_places();
+        let position =
+            |location: &Location| places.iter().position(|(pinned, _)| pinned == location);
+        let changed = match (position(&source_location), position(&target_location)) {
+            (Some(source), Some(target)) => {
+                reorder_pinned_places(&mut places, source, target, after)
+            }
+            _ => false,
+        };
         if changed {
-            save_pinned_places(&self.pinned_places.borrow());
-            self.rebuild();
+            save_pinned_places(&places);
         }
+        self.pinned_places.replace(places);
+        self.rebuild();
     }
 
     fn append_separator(&self) {
