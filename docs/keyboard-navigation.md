@@ -31,6 +31,14 @@ Copy/cut use the selection in the focused column, never a hovered row. In Column
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 
+## Preview while filtering
+
+In the browser and file chooser, **Space** toggles quick preview for the highlighted recursive filter result in Columns, Icons, and List. The query, selection, and current directory stay intact. This also works when Up/Down highlights a result while keyboard focus remains in the query field.
+
+With no result selected, Space still types into the query. **Shift+Space** inserts a space in the query even with a result selected. Folders and unsupported files do not open a preview.
+
+[Filtered selection](screenshots/472/before.png) · [Preview with the query intact](screenshots/472/after.png)
+
 ## Shortcut footer
 
 Every mode has a compact, single-line footer with its navigation hints and common file shortcuts. **Settings → Keybindings → Show keybinding hints** controls its visibility (on by default). The preference is saved and updates all open windows immediately. F1 still opens the reference with hints disabled; closing it hides the footer again. The summary truncates rather than wrapping in narrow windows; **F1 · Shortcuts** always remains available to open the complete, mode-specific reference. F1 or Escape closes it. The reference blocks file-operation shortcuts while it is open.

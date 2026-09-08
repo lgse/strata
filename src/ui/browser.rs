@@ -51,7 +51,7 @@ pub(crate) use crate::ui::browser::clipboard::{file_drop_action, locations_from_
 pub(crate) use crate::ui::browser::collection::{
     activate_recursive_search_result, debounce_filter_entry, detach_collection_view,
     focus_collection_item_when_allocated, focus_filter_entry, notify_filter_query,
-    recursive_search_activation_key, scroll_collection_when_allocated,
+    recursive_search_activation_key, scroll_collection_when_allocated, search_result_entry,
     search_result_navigation_position,
 };
 pub(super) use crate::ui::browser::columns::max_child_natural_width;
@@ -1104,6 +1104,34 @@ impl BrowserView {
                             || focused.is_ancestor(&column.filter_entry)
                     })
             })
+    }
+
+    /// Recursive results have their own selection, independent of the directory's selection.
+    pub fn selected_search_result(&self) -> Option<FileEntry> {
+        if self.view_mode() != BrowserMode::Columns {
+            return self.state.mode_views.borrow().selected_search_result();
+        }
+        let focused = self.state.overlay.root()?.focus()?;
+        self.state.columns.borrow().iter().find_map(|column| {
+            if column.search_handle.borrow().is_none()
+                || !(focused.is_ancestor(&column.filter_entry)
+                    || focused == column.filter_entry.clone().upcast::<gtk::Widget>()
+                    || focused.is_ancestor(&column.list)
+                    || focused == column.list.clone().upcast::<gtk::Widget>())
+            {
+                return None;
+            }
+            let selected = column.selection.selection();
+            if selected.is_empty() {
+                return None;
+            }
+            let position = selected.maximum();
+            column
+                .search_results
+                .borrow()
+                .get(position as usize)
+                .map(search_result_entry)
+        })
     }
 
     pub fn item_view_has_focus(&self) -> bool {

@@ -22,10 +22,7 @@ use crate::ui::{
     browser_modes::BrowserMode,
     modal::{slide_in_down, slide_out},
 };
-use crate::{
-    model::{EntryKind, FileEntry, Location},
-    services::SearchItem,
-};
+use crate::{model::FileEntry, services::SearchItem};
 use gtk::{glib, prelude::*};
 use std::{
     cell::{Cell, RefCell},
@@ -525,21 +522,7 @@ pub(super) fn column_rows(
             search_results_for_bind
                 .borrow()
                 .get(item.position() as usize)
-                .map(|item| FileEntry {
-                    location: Location::local(item.path.clone()),
-                    native_name: item.path.file_name().unwrap_or_default().to_os_string(),
-                    thumbnail_path: None,
-                    display_name: item.name.clone(),
-                    kind: if item.is_directory {
-                        EntryKind::Directory
-                    } else {
-                        EntryKind::File
-                    },
-                    size: crate::model::MetadataValue::Unknown,
-                    modified_unix_seconds: crate::model::MetadataValue::Unknown,
-                    is_hidden: false,
-                    mode: crate::model::MetadataValue::Unknown,
-                })
+                .map(crate::ui::browser::search_result_entry)
         } else {
             source_position.and_then(|position| browser?.entry_at(depth, position))
         };

@@ -82,7 +82,7 @@ fn alternate_view_search_finds_descendants_and_restores_the_original_view() {
     let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
     let entry = gtk::Entry::new();
     let original = gtk::Label::new(Some("Original view"));
-    let widget = wrap(&original, &entry, Some(root.clone()), &browser);
+    let widget = wrap(&original, &entry, Some(root.clone()), &browser).widget;
     let stack = widget
         .clone()
         .downcast::<gtk::Stack>()

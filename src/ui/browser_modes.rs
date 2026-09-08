@@ -228,6 +228,7 @@ struct Pane {
     spinner: gtk::Spinner,
     truncated_hint: gtk::Image,
     marquee: super::marquee::Marquee,
+    search: super::inline_search::InlineSearch,
     filter_entry: Option<gtk::Entry>,
     filter_button: Option<gtk::ToggleButton>,
     empty_trash_button: Option<gtk::Button>,
@@ -695,6 +696,13 @@ impl ModeViews {
             .chain(self.list_pane.iter())
             .filter_map(|pane| pane.filter_entry.as_ref())
             .any(|entry| widget_has_focus(entry, focused.as_ref()))
+    }
+
+    pub fn selected_search_result(&self) -> Option<FileEntry> {
+        self.icons_panes
+            .iter()
+            .chain(self.list_pane.iter())
+            .find_map(|pane| pane.search.selected_entry())
     }
 
     pub fn item_view_has_focus(&self) -> bool {
@@ -1912,7 +1920,7 @@ fn build_icons_pane(
     });
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
     let (collection, marquee) = collection_with_marquee(&root, scroll, targets.clone());
-    content.append(&super::inline_search::wrap(
+    let search = super::inline_search::wrap(
         &collection,
         &controls.filter_entry,
         context
@@ -1920,7 +1928,8 @@ fn build_icons_pane(
             .location_at(depth)
             .and_then(|location| location.native_path().map(std::path::Path::to_path_buf)),
         &context.browser,
-    ));
+    );
+    content.append(&search.widget);
     marquee.add_origin_surface(&header);
     let pane = Pane {
         depth,
@@ -1939,6 +1948,7 @@ fn build_icons_pane(
         spinner,
         truncated_hint,
         marquee,
+        search,
         filter_entry: Some(controls.filter_entry),
         filter_button: Some(controls.filter_button),
         empty_trash_button: controls.empty_trash_button,
@@ -2884,14 +2894,15 @@ fn build_list_pane(
         .vexpand(true)
         .build();
     table_scroll.add_css_class("fixed-scrollbar");
-    content.append(&super::inline_search::wrap(
+    let search = super::inline_search::wrap(
         &table_scroll,
         &filter_entry,
         browser
             .location_at(depth)
             .and_then(|location| location.native_path().map(std::path::Path::to_path_buf)),
         &browser,
-    ));
+    );
+    content.append(&search.widget);
     let pane = Pane {
         depth,
         shell,
@@ -2909,6 +2920,7 @@ fn build_list_pane(
         spinner,
         truncated_hint,
         marquee,
+        search,
         filter_entry: Some(filter_entry),
         filter_button: Some(filter_button),
         empty_trash_button: is_trash.then_some(empty_trash),
