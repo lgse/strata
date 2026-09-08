@@ -293,11 +293,11 @@ a workflow that does not have a mutation yet.
    dependencies, Rust toolchain, and compiled `Cargo.lock` dependencies. It
    compiles the tested revision **once**, without debug information or incremental
    artifacts, and collects the real pytest inventory (including parameter IDs).
-   It exports the runtime once as a Zstandard-compressed Docker archive and uploads
-   it with the binary, checksummed provenance, and complete shard plan. A separate
-   small plan artifact lets aggregation avoid downloading the runtime or binary.
-2. **E2E shard N** jobs start on independent 4-vCPU runners, download that attempt's
-   bundle, load its runtime archive, and invoke `./scripts/e2e.sh` with two isolated
+   It caches a Zstandard-compressed runtime archive by rendering inputs and UID/GID,
+   independently of source revisions, and uploads the binary, checksummed provenance,
+   and complete shard plan. A separate small plan artifact keeps aggregation small.
+2. **E2E shard N** jobs start on independent 4-vCPU runners, restore that exact runtime
+   archive, download the attempt's binary bundle, and invoke `./scripts/e2e.sh` with two isolated
    xdist workers. Shards do not start BuildKit, contact a registry, restore Cargo
    caches, compile, or install packages. Every runner uses
    the same pinned rendering packages and baselines as a local canonical run.
@@ -357,7 +357,14 @@ The timed build reads that cache but exports only the small final bundle cache
 cache remains a read-only migration source; the new bundle cache has a separate
 scope so it cannot replace an existing full dependency index.
 
-Shards consume only the current attempt's artifact, including the runtime archive.
+The runtime archive uses a separate exact-key cache; shards restore it without
+starting BuildKit. Only the producer exports or saves a missing archive. It confirms
+that publication succeeded before telling shards to use the cache. If publication
+is unavailable (including read-only fork caches), it instead uploads an explicit
+attempt-scoped `e2e-runtime-<attempt>` artifact; the same strict time budget applies.
+This avoids repeatedly uploading and unzipping a large unchanged runtime on ordinary
+source revisions without making cache-write permission a prerequisite for testing.
+
 Node-24-native actions verify artifact download digests; the runner also checks
 bundle provenance and the loaded image's input label. GitHub's cache branch scoping
 allows fork PRs to read the main cache without credentials or registry access and

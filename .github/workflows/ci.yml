@@ -56,6 +56,8 @@ jobs:
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
+      runtime_key: ${{ steps.identity.outputs.runtime_key }}
+      runtime_cached: ${{ steps.runtime-cache.outputs.cache-hit == 'true' || steps.runtime-ready.outputs.cache-hit == 'true' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -65,7 +67,17 @@ jobs:
         run: |
           echo "uid=$(id -u)" >> "$GITHUB_OUTPUT"
           echo "gid=$(id -g)" >> "$GITHUB_OUTPUT"
-          echo "image_key=$(python3 scripts/e2e_bundle.py image-key)" >> "$GITHUB_OUTPUT"
+          image_key=$(python3 scripts/e2e_bundle.py image-key)
+          echo "image_key=$image_key" >> "$GITHUB_OUTPUT"
+          echo "runtime_key=strata-e2e-runtime-v1-$image_key-$(id -u)-$(id -g)" >> "$GITHUB_OUTPUT"
+
+      - name: Look up the immutable runtime archive without downloading it
+        id: runtime-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/e2e-runtime/runtime.tar.zst
+          key: ${{ steps.identity.outputs.runtime_key }}
+          lookup-only: true
 
       - name: Set up cached container builder
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
@@ -89,7 +101,12 @@ jobs:
             type=gha,scope=strata-e2e-v1
           cache-to: type=gha,mode=min,scope=strata-e2e-bundle-v1
 
+      - name: Prepare a runtime archive on cache miss
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        run: mkdir -p target/e2e-runtime
+
       - name: Export the pinned runtime once for every shard
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -101,19 +118,46 @@ jobs:
             E2E_GID=${{ steps.identity.outputs.gid }}
             E2E_IMAGE_KEY=${{ steps.identity.outputs.image_key }}
           tags: strata-e2e:ci-runtime
-          outputs: type=docker,dest=target/e2e-bundle/runtime.tar
+          outputs: type=docker,dest=target/e2e-runtime/runtime.tar
           cache-from: |
             type=gha,scope=strata-e2e-dependencies-v1
             type=gha,scope=strata-e2e-v1
 
       - name: Compress the runtime without another image load or build
-        run: zstd -T0 -1 --rm target/e2e-bundle/runtime.tar
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        run: zstd -T0 -1 --rm target/e2e-runtime/runtime.tar
+
+      - name: Cache the immutable runtime independently of source revisions
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/e2e-runtime/runtime.tar.zst
+          key: ${{ steps.identity.outputs.runtime_key }}
+
+      - name: Confirm publication before choosing the shard transport
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        id: runtime-ready
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/e2e-runtime/runtime.tar.zst
+          key: ${{ steps.identity.outputs.runtime_key }}
+          lookup-only: true
+
+      - name: Share the runtime when cache publication is unavailable or read-only
+        if: steps.runtime-cache.outputs.cache-hit != 'true' && steps.runtime-ready.outputs.cache-hit != 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: e2e-runtime-${{ github.run_attempt }}
+          path: target/e2e-runtime/runtime.tar.zst
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Generate the runner matrix
         id: plan
         run: python3 scripts/e2e_ci.py matrix target/e2e-bundle/plan.json >> "$GITHUB_OUTPUT"
 
-      - name: Share the binary, plan, and runtime, not Cargo or a toolchain
+      - name: Share the binary and plan, not Cargo or a toolchain
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: e2e-bundle-${{ github.run_attempt }}
@@ -142,7 +186,23 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Download this attempt's binary, runtime, and complete shard plan
+      - name: Restore only the exact pinned runtime archive
+        if: needs.e2e-build.outputs.runtime_cached == 'true'
+        id: runtime-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/e2e-runtime/runtime.tar.zst
+          key: ${{ needs.e2e-build.outputs.runtime_key }}
+          fail-on-cache-miss: true
+
+      - name: Download the runtime artifact when the cache is unavailable
+        if: needs.e2e-build.outputs.runtime_cached != 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: e2e-runtime-${{ github.run_attempt }}
+          path: target/e2e-runtime
+
+      - name: Download this attempt's binary and complete shard plan
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: e2e-bundle-${{ github.run_attempt }}
@@ -150,7 +210,15 @@ jobs:
 
       - name: Load the shared runtime without BuildKit or registry access
         shell: bash
-        run: zstd -dc target/e2e-bundle/runtime.tar.zst | docker load
+        env:
+          RUNTIME_CACHED: ${{ needs.e2e-build.outputs.runtime_cached }}
+          RUNTIME_CACHE_HIT: ${{ steps.runtime-restore.outputs.cache-hit }}
+        run: |
+          if [[ "$RUNTIME_CACHED" == true && "$RUNTIME_CACHE_HIT" != true ]]; then
+            echo "::error::Runtime cache did not match the exact pinned key"
+            exit 1
+          fi
+          zstd -dc target/e2e-runtime/runtime.tar.zst | docker load
 
       - name: Run the assigned scenarios without rebuilding or installing
         env:
