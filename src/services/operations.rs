@@ -45,7 +45,6 @@ pub struct CreateDirectoryRequest {
 pub enum TransferConflict {
     FailIfExists,
     ReplaceExisting,
-    /// Keep the existing item and give the incoming one a generated unique name.
     KeepBoth,
 }
 

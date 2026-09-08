@@ -144,8 +144,6 @@ fn descendant_buttons(widget: &gtk::Widget) -> Vec<gtk::Button> {
     buttons
 }
 
-/// Keep Both is copy-only: undo/reveal for moves assume a move never renames its
-/// target (see `Location::transfer_target`), so a move must not offer it.
 #[test]
 fn keep_both_is_offered_only_when_copying_into_a_collision() {
     crate::test_support::gtk_test(
@@ -185,9 +183,6 @@ fn keep_both_is_offered_only_when_copying_into_a_collision() {
                 } else {
                     view.copy_selection()
                 });
-                // The clipboard content provider publishes asynchronously; wait for it
-                // to land before pasting, or `paste_into`'s read can race and see the
-                // previous iteration's stale clipboard contents.
                 let clipboard = gtk::gdk::Display::default()
                     .expect("default display")
                     .clipboard();
