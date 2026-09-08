@@ -333,6 +333,12 @@ class Strata:
         y = min(bounds.y + bounds.height - 6, max(lowest + 12, bounds.y + 6))
         return bounds.x + bounds.width // 2, y
 
+    def folder_context_point(self, directory: str | None = None) -> tuple[int, int]:
+        """Aim at the list's permanent left gutter, outside virtualized rows."""
+
+        bounds = self.pane(directory).screen_bounds()
+        return bounds.x + 7, bounds.y + bounds.height // 2
+
     def hover_pane(self, directory: str | None = None) -> Node:
         """Point at a pane so pointer-targeted actions apply to it."""
 

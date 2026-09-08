@@ -86,7 +86,7 @@ fn new_entries_scroll_into_view_when_the_default_name_sorts_past_the_initial_vie
                             .expect("fixture directory");
                     }
                     with_new_entry_at(mode, directory, fixture.path(), |view, path, original| {
-                        wait_until(|| rename_field(view).is_some());
+                        wait_until(|| rename_field(view).is_some_and(|field| field.is_mapped()));
                         let field = rename_field(view).expect("offscreen item editor");
                         assert!(field.is_mapped());
                         assert_eq!(field.text(), original);

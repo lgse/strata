@@ -378,7 +378,6 @@ impl ViewState {
         let weak = Rc::downgrade(self);
         let deadline = Instant::now() + Duration::from_secs(5);
         let selected = std::cell::Cell::new(false);
-        let reveal_requested = std::cell::Cell::new(false);
         // Wait for the refreshed listing and the virtualized row to be allocated.
         self.overlay.add_tick_callback(move |_, _| {
             let Some(state) = weak.upgrade() else {
@@ -415,9 +414,8 @@ impl ViewState {
                     state.browser.select(pending.depth, position);
                 }
                 if !state.created_entry_is_visible(pending.depth, position) {
-                    if !reveal_requested.replace(true) {
-                        state.reveal_created_entry(pending.depth, position);
-                    }
+                    // GTK can replace a scroll request while allocating a refreshed row.
+                    state.reveal_created_entry(pending.depth, position);
                     return gtk::glib::ControlFlow::Continue;
                 }
                 if let Some(entry) = state.browser.entry_at(pending.depth, position) {

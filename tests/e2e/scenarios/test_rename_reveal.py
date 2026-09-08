@@ -22,6 +22,42 @@ def fully_in_pane(node, pane_bounds) -> bool:
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("kind", ("file", "folder"))
+def test_new_entries_focus_and_reveal_the_editor_in_a_long_listing(strata, mode, kind):
+    strata.switch_view(mode)
+    for index in range(160):
+        strata.fixture.path(f"b-entry-{index:03d}").mkdir(exist_ok=True)
+
+    strata.keyboard.press("F5")
+    strata.entry("b-entry-000")
+    strata.keyboard.press("Home")
+
+    if kind == "file":
+        # The permanent list gutter is outside virtualized rows, unlike the
+        # bottom edge used by background_point when the viewport is full.
+        strata.pointer.right_click(strata.pane(), at=strata.folder_context_point())
+        strata.choose_menu_item("New File")
+    else:
+        strata.keyboard.press("ctrl+shift+n")
+    field = strata.editable_field()
+    original = "new " + kind
+    strata.wait(lambda: field.text == original, f"the default new-{kind} name")
+    strata.wait(strata.fixture.path(original).exists, f"the new {kind} on disk")
+    pane_bounds = strata.containers()[-1].screen_bounds()
+    strata.wait(
+        lambda: fully_in_pane(field, pane_bounds),
+        f"the new {kind} rename editor to be fully visible",
+    )
+    strata.keyboard.type_text("typed-name")
+    strata.wait(lambda: field.text == "typed-name", "typing to replace the selected default name")
+    strata.keyboard.press("Escape")
+    strata.wait(
+        lambda: strata.window.find(role="text", name="Rename", states={"editable"}) is None,
+        f"the {kind} rename editor to close",
+    )
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
 def test_rename_to_opposite_sorted_edge_reveals_selected_entry(strata, mode):
     strata.switch_view(mode)
     original = "new folder"
@@ -43,10 +79,10 @@ def test_rename_to_opposite_sorted_edge_reveals_selected_entry(strata, mode):
     strata.wait(strata.fixture.path(original).exists, "the new folder on disk")
     initial = strata.entry(original)
     initial_bounds = initial.screen_bounds()
-    pane_bounds = strata.pane().screen_bounds()
+    pane_bounds = strata.containers()[-1].screen_bounds()
     strata.wait(
-        lambda: fully_in_pane(strata.entry(original), pane_bounds),
-        "the initial new folder to remain fully visible",
+        lambda: fully_in_pane(field, pane_bounds),
+        "the initial rename editor to remain fully visible",
     )
     capture_evidence(strata, "before")
 
@@ -59,7 +95,7 @@ def test_rename_to_opposite_sorted_edge_reveals_selected_entry(strata, mode):
     strata.wait_for_entry_gone(original)
     strata.wait_for_selection([renamed])
     strata.wait(
-        lambda: fully_in_pane(strata.entry(renamed), strata.pane().screen_bounds()),
+        lambda: fully_in_pane(strata.entry(renamed), strata.containers()[-1].screen_bounds()),
         "the renamed folder to be revealed fully in the pane",
     )
     assert strata.entry(renamed).screen_bounds() != initial_bounds
