@@ -26,6 +26,7 @@ use std::rc::Rc;
 enum ConflictChoice {
     Replace,
     Skip,
+    KeepBoth,
 }
 
 fn location_exists(location: &Location) -> bool {
@@ -103,10 +104,13 @@ impl ViewState {
             compact_display_path(&destination)
         );
         let state = self.clone();
+        // Keep Both is copy-only: undo/reveal for moves assume `transfer_target`'s
+        // unrenamed destination, which a renamed move target would violate.
         self.confirm_replace_conflict(
             &name,
             &explanation,
             !collisions.is_empty(),
+            !move_sources,
             Rc::new(move |choice, apply_to_all| {
                 let mut accepted = accepted.clone();
                 let mut remaining = collisions.clone();
@@ -120,6 +124,18 @@ impl ViewState {
                             accepted.extend(remaining.drain(..).map(|source| PasteItem {
                                 source,
                                 conflict: TransferConflict::ReplaceExisting,
+                            }));
+                        }
+                    }
+                    ConflictChoice::KeepBoth => {
+                        accepted.push(PasteItem {
+                            source: source.clone(),
+                            conflict: TransferConflict::KeepBoth,
+                        });
+                        if apply_to_all {
+                            accepted.extend(remaining.drain(..).map(|source| PasteItem {
+                                source,
+                                conflict: TransferConflict::KeepBoth,
                             }));
                         }
                     }
@@ -203,6 +219,7 @@ impl ViewState {
             &name,
             &explanation,
             !collisions.is_empty(),
+            false,
             Rc::new(move |choice, apply_to_all| {
                 let mut accepted = accepted.clone();
                 let mut remaining = collisions.clone();
@@ -219,6 +236,9 @@ impl ViewState {
                             }));
                         }
                     }
+                    ConflictChoice::KeepBoth => {
+                        unreachable!("keep-both is not offered for undo conflicts")
+                    }
                     ConflictChoice::Skip if apply_to_all => remaining.clear(),
                     ConflictChoice::Skip => {}
                 }
@@ -234,6 +254,7 @@ impl ViewState {
         name: &str,
         explanation: &str,
         has_more_conflicts: bool,
+        allow_keep_both: bool,
         on_choice: Rc<dyn Fn(ConflictChoice, bool)>,
     ) {
         let Some(ModalHost {
@@ -260,6 +281,10 @@ impl ViewState {
         layout
             .actions
             .insert_child_after(&skip, Some(&layout.cancel));
+        let keep_both = gtk::Button::with_label("Keep Both");
+        keep_both.add_css_class("action-dialog-cancel");
+        keep_both.set_visible(allow_keep_both);
+        layout.actions.insert_child_after(&keep_both, Some(&skip));
         let content = layout.content;
         let cancel = layout.cancel;
         let replace = layout.confirm;
@@ -281,6 +306,7 @@ impl ViewState {
 
         for (button, choice) in [
             (skip.clone(), ConflictChoice::Skip),
+            (keep_both.clone(), ConflictChoice::KeepBoth),
             (replace.clone(), ConflictChoice::Replace),
         ] {
             let chosen_layer = layer.clone();
