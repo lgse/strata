@@ -79,6 +79,18 @@ rules. Selection restoration captures existing pane focus before applying the se
 and preserves explicit focus requests and empty-selection behavior. Renderer construction,
 rename, pointer policy, and preference ownership remain separate responsibilities.
 
+`ui/browser_modes/list_factory.rs` owns List item setup, binding, and thumbnail
+cancellation on unbind. Its context retains the existing shared column widths, click
+controls, source-position mapping, and weak browser ownership. A typed row view names
+widget parts without changing their layout. An owned binding snapshot resolves the
+source entry before updating GTK or requesting metadata.
+
+Fast-scroll binds update labels/accessibility while deferring cut styling, thumbnails,
+and metadata work. Ordinary binds and scroll settling share detail refresh; settling
+never resets the name label or an active rename editor. Missing bindings retain the
+existing fallback path. Pane assembly, headers, grouping/filtering, and Icons factories
+remain in the composition module rather than changing alongside this lifecycle boundary.
+
 Pointer intent is shared through `ui/pointer.rs` and `ui/marquee.rs`. In all three modes,
 thumbnail slots, rendered row text/metadata, and Icons' caption region are item drag targets;
 unused label allocation and the gutters beside thumbnails are marquee origins. Both paths use

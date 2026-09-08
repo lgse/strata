@@ -19,6 +19,9 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
     card.set_valign(gtk::Align::Start);
 
     let icon = super::thumbnail::ThumbnailSlot::new(slot);
+    // Match the spare half-line around a centered single-line filename without
+    // changing the fixed slot measurement used by grid scrolling.
+    icon.set_content_inset(ICONS_CARD_LABEL_LINE_PX / 2);
     icon.add_css_class("icons-card-icon");
     icon.set_halign(gtk::Align::Center);
     icon.set_valign(gtk::Align::Start);
@@ -110,7 +113,7 @@ fn configure_label(label: &gtk::Inscription) {
     label.set_min_lines(lines);
     label.set_nat_lines(lines);
     label.set_xalign(0.5);
-    label.set_yalign(0.0);
+    label.set_yalign(0.5);
     label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     label.set_text_overflow(gtk::InscriptionOverflow::EllipsizeEnd);
 }
