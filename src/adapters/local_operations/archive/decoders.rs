@@ -41,6 +41,9 @@ pub(super) fn extract_zip_from_archive(
     cancelled: &AtomicBool,
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let mut session = ExtractionSession::open(dest_dir, progress, cancelled)?;
+    if let Some(claimed) = archive.decompressed_size() {
+        session.preflight_claimed_size(claimed)?;
+    }
     let pw_bytes = password.map(str::as_bytes);
     let mut next_index = 0;
     let result = (|| {
@@ -54,10 +57,11 @@ pub(super) fn extract_zip_from_archive(
             entry
                 .enclosed_name()
                 .ok_or_else(|| format!("Refusing unsafe ZIP path: {name}"))?;
+            let declared_size = entry.size();
             let content = if entry.is_dir() {
                 MemberContent::Directory
             } else {
-                MemberContent::File(&mut entry)
+                MemberContent::File(&mut entry, Some(declared_size))
             };
             next_index = index + 1;
             session.extract_member(&name, content)?;
@@ -106,11 +110,12 @@ pub(super) fn extract_tar(
             if directory && name == Path::new(".") {
                 continue;
             }
+            let declared_size = entry.size();
             let name = name.to_string_lossy().into_owned();
             let content = if directory {
                 MemberContent::Directory
             } else {
-                MemberContent::File(&mut entry)
+                MemberContent::File(&mut entry, Some(declared_size))
             };
             session.extract_member(&name, content)?;
         }
@@ -128,6 +133,16 @@ pub(super) fn extract_7z_from_reader(
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let mut session = ExtractionSession::open(dest_dir, progress, cancelled)?;
     let mut archive = sevenz_rust2::ArchiveReader::new(reader, password).map_err(archive_failed)?;
+    let claimed = archive
+        .archive()
+        .files
+        .iter()
+        .try_fold(0u128, |total, entry| {
+            total
+                .checked_add(u128::from(entry.size))
+                .ok_or_else(|| archive_failed("Archive declared size overflows"))
+        })?;
+    session.preflight_claimed_size(claimed)?;
     // for_each_entries lends elements of the unchanged header vector, but visits
     // them out of order. Addresses identify even duplicate names; never dereference
     // these keys, and keep them local to this reader invocation.
@@ -149,7 +164,7 @@ pub(super) fn extract_7z_from_reader(
         let content = if entry.is_directory {
             MemberContent::Directory
         } else {
-            MemberContent::File(reader)
+            MemberContent::File(reader, Some(entry.size))
         };
         submitted[index] = true;
         session

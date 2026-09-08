@@ -128,7 +128,7 @@ Local archive operations live under `adapters/local_operations/archive/`:
 | --- | --- |
 | Operation entry points, worker lifecycle and progress events | `archive.rs` in the parent directory |
 | Staged publication, source traversal and compression writers | `compression.rs` |
-| Per-operation extraction state, copying, cleanup and outcomes | `extraction.rs` |
+| Per-operation extraction state, copying, cleanup, size preflight and outcomes | `extraction.rs` |
 | Confined destination writes, path validation and conflict naming | `destination.rs` |
 | ZIP, TAR/gzip and 7z member enumeration, passwords and decoder errors | `decoders.rs` |
 
@@ -138,6 +138,9 @@ cancellation. Member identity tracking stays inside each decoder rather than ass
 or matching header/callback order. The session validates pending names and applies established
 root renames without filesystem probes or name reservations; final leaf conflicts remain unknown
 until a member is attempted. Sequential formats do not scan unread content to complete that list.
+Before writing, the session checks claimed uncompressed size against destination free space from
+`fstatvfs` on the pinned root, and it refuses a member whose extracted size does not match the
+size declared by the archive header.
 
 The private member boundary currently retains legacy lossy TAR-name conversion and regular-file
 output for non-directory entries, including links. It is not a complete archive-entry model;

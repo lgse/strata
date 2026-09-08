@@ -89,6 +89,28 @@ impl ExtractionDestination {
         Ok(Self { root })
     }
 
+    /// Unprivileged free space on the filesystem that holds this destination.
+    ///
+    /// Uses [`fstatvfs`] on the pinned root so a swapped path cannot redirect
+    /// the query. Fragment size falls back to block size when `f_frsize` is 0.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the destination filesystem cannot be queried.
+    ///
+    /// [`fstatvfs`]: rustix::fs::fstatvfs
+    pub(super) fn available_bytes(&self) -> Result<u64, String> {
+        let stat = rustix::fs::fstatvfs(&self.root).map_err(|error| {
+            format!("Could not inspect free space at the extraction destination: {error}")
+        })?;
+        let block = if stat.f_frsize > 0 {
+            stat.f_frsize
+        } else {
+            stat.f_bsize.max(1)
+        };
+        Ok(stat.f_bavail.saturating_mul(block))
+    }
+
     /// Finds a name in `directory` that does not already exist.
     ///
     /// Tries `name`, then [`suffixed_name`] with increasing indexes. Existing
