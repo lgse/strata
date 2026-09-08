@@ -65,6 +65,20 @@ policy live behind the UI presentation boundary (`ui/browser_modes.rs`); shared 
 the application layer. A future mode should therefore add a renderer rather than add mode checks to
 filesystem, navigation, or operation code.
 
+`ui/browser_modes/events.rs` applies alternate-mode events on the same `ModeViews`.
+Structural events rebuild the active presentation; row, loading, and selection handlers
+keep their effects separate. Only panes belonging to the active mode and event depth
+receive incremental updates. Shared browser effects in `ui/browser/events.rs` still run
+before alternate-mode dispatch.
+
+Pane helpers share string-model splicing, but authoritative entry borrows end before GTK
+notifications. Reload detaches selection/filter models without detaching the collection
+views; completion or failure reconnects them. Teardown retains its stronger detachment.
+Busy insertions/publication, replacement, and splices keep their distinct count/spinner
+rules. Selection restoration captures existing pane focus before applying the selection
+and preserves explicit focus requests and empty-selection behavior. Renderer construction,
+rename, pointer policy, and preference ownership remain separate responsibilities.
+
 Pointer intent is shared through `ui/pointer.rs` and `ui/marquee.rs`. In all three modes,
 thumbnail slots, rendered row text/metadata, and Icons' caption region are item drag targets;
 unused label allocation and the gutters beside thumbnails are marquee origins. Both paths use
