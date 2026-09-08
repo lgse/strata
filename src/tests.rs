@@ -1,11 +1,51 @@
 // SPDX-License-Identifier: MIT
 
-use std::ffi::OsString;
+use std::{ffi::OsString, os::unix::ffi::OsStringExt, path::Path};
+
+use gtk::gio;
 
 use super::{
-    GIO_FALLBACK_BACKENDS, encode_daemon_pids, gvfs_daemon_pids, gvfs_probe_marker_is_fresh_at,
-    gvfs_probe_marker_path_in,
+    GIO_FALLBACK_BACKENDS, LaunchMode, encode_daemon_pids, gvfs_daemon_pids,
+    gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, launch_mode, open_locations,
 };
+
+#[test]
+fn launch_mode_treats_non_utf8_arguments_as_an_ordinary_launch() {
+    let program = OsString::from("strata");
+    let non_utf8 = OsString::from_vec(b"/tmp/\xff".to_vec());
+
+    assert_eq!(
+        launch_mode(&[program.clone(), non_utf8]),
+        LaunchMode::Application
+    );
+    assert_eq!(
+        launch_mode(&[program.clone(), OsString::from("--portal")]),
+        LaunchMode::Portal
+    );
+    assert_eq!(launch_mode(&[program]), LaunchMode::Application);
+}
+
+#[test]
+fn every_opened_argument_becomes_a_location() {
+    let files = [
+        gio::File::for_uri("smb://host/share"),
+        gio::File::for_path("/tmp/first"),
+        gio::File::for_path("/tmp/second"),
+    ];
+
+    let locations = open_locations(&files);
+
+    assert_eq!(locations.len(), 3);
+    assert!(
+        locations[0]
+            .uri_value()
+            .is_some_and(|uri| uri.starts_with("smb://host/share")),
+        "{:?}",
+        locations[0]
+    );
+    assert_eq!(locations[1].native_path(), Some(Path::new("/tmp/first")));
+    assert_eq!(locations[2].native_path(), Some(Path::new("/tmp/second")));
+}
 
 fn fake_proc(label: &str, processes: &[(&str, &str)]) -> std::path::PathBuf {
     let root = std::env::temp_dir().join(format!(

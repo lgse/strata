@@ -83,13 +83,8 @@ pub fn present(application: &gtk::Application) {
     present_target(application, None, Vec::new(), false);
 }
 
-pub fn present_location(application: &gtk::Application, location: Option<PathBuf>) {
-    present_target(
-        application,
-        location.map(Location::local),
-        Vec::new(),
-        false,
-    );
+pub fn present_location(application: &gtk::Application, location: Option<Location>) {
+    present_target(application, location, Vec::new(), false);
 }
 
 /// Opens the window an `org.freedesktop.FileManager1` caller asked for: the
