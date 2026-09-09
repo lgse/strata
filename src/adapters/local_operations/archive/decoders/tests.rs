@@ -956,3 +956,42 @@ fn highly_compressible_archives_extract_in_every_format() -> Result<(), Box<dyn 
     }
     Ok(())
 }
+
+#[test]
+fn tar_extraction_skips_pax_global_headers() -> Result<(), Box<dyn Error>> {
+    for gzip in [false, true] {
+        let root = tempfile::tempdir()?;
+        let destination = root.path().join("destination");
+        fs::create_dir_all(&destination)?;
+        let archive = root.path().join("project.tar");
+        write_tar_entries(
+            &archive,
+            &[
+                (
+                    tar::EntryType::XGlobalHeader,
+                    "pax_global_header",
+                    b"52 comment=0123456789abcdef0123456789abcdef01234567\n".as_slice(),
+                ),
+                (tar::EntryType::Directory, "project/", b"".as_slice()),
+                (tar::EntryType::Regular, "project/README", b"hello"),
+            ],
+            gzip,
+        )?;
+        let progress = Arc::new(AtomicUsize::new(0));
+        assert_eq!(
+            completed_extract(extract_tar(
+                &archive,
+                &destination,
+                gzip,
+                &progress,
+                &never_cancelled(),
+            )?)?,
+            Some("project".to_owned()),
+        );
+        assert_eq!(progress.load(Ordering::Relaxed), 2);
+        assert!(!destination.join("pax_global_header").exists());
+        assert_eq!(fs::read(destination.join("project/README"))?, b"hello");
+        assert_eq!(fs::read_dir(&destination)?.count(), 1);
+    }
+    Ok(())
+}
