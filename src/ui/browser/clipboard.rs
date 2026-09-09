@@ -133,6 +133,17 @@ pub(super) fn copy_locations(entries: &[FileEntry]) {
     }
 }
 
+pub(super) fn copy_names(entries: &[FileEntry]) {
+    let text = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if let Some(display) = gtk::gdk::Display::default() {
+        display.clipboard().set_text(&text);
+    }
+}
+
 pub(super) fn copy_path_text(location: &Location, is_directory: bool) -> String {
     match location.native_path() {
         Some(path) => {

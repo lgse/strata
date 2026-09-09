@@ -4,7 +4,7 @@ use super::chooser_context;
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::services::ArchiveFormat;
-use crate::ui::browser::clipboard::{copy_locations, locations_equal};
+use crate::ui::browser::clipboard::{copy_locations, copy_names, locations_equal};
 use crate::ui::browser::customization::show_customize_modal;
 use crate::ui::browser::desktop::{can_open_terminal, launch_terminal};
 use crate::ui::browser::entry::{entry_icon, entry_supports_printing};
@@ -442,6 +442,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let pin = item_context_option(crate::assets::icons::PIN, "Pin to sidebar", "P");
     let copy = item_context_option(crate::assets::icons::COPY, "Copy", "Ctrl+C");
     let copy_path = item_context_option(crate::assets::icons::COPY, "Copy path", "Y");
+    let copy_name = item_context_option(crate::assets::icons::COPY, "Copy name", "");
     let move_to = item_context_option(crate::assets::icons::FOLDER, "Move to…", "");
     let copy_to = item_context_option(crate::assets::icons::COPY, "Copy to…", "");
     let rename = item_context_option(crate::assets::icons::PENCIL, "Rename", "F2 / Ctrl+R");
@@ -482,6 +483,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     single.append(&cut);
     single.append(&copy);
     single.append(&copy_path);
+    single.append(&copy_name);
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     single.append(&move_to);
     single.append(&copy_to);
@@ -506,6 +508,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     restore_multiple.set_visible(in_trash);
     let copy_multiple = item_context_option(crate::assets::icons::COPY, "Copy", "Ctrl+C");
     let copy_paths = item_context_option(crate::assets::icons::COPY, "Copy paths", "Y");
+    let copy_names_button = item_context_option(crate::assets::icons::COPY, "Copy names", "");
     let move_multiple = item_context_option(crate::assets::icons::FOLDER, "Move to…", "");
     let copy_to_multiple = item_context_option(crate::assets::icons::COPY, "Copy to…", "");
     let cut_multiple = item_context_option(crate::assets::icons::SCISSORS, "Cut", "Ctrl+X");
@@ -530,6 +533,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     multiple.append(&cut_multiple);
     multiple.append(&copy_multiple);
     multiple.append(&copy_paths);
+    multiple.append(&copy_names_button);
     multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&move_multiple);
     multiple.append(&copy_to_multiple);
@@ -743,6 +747,20 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         }
     });
     let weak = Rc::downgrade(state);
+    let copy_name_target = target.clone();
+    let copy_name_popover = popover.downgrade();
+    copy_name.connect_clicked(move |_| {
+        if let Some(popover) = copy_name_popover.upgrade() {
+            popover.popdown();
+        }
+        let Some((_, entry)) = copy_name_target.borrow().clone() else {
+            return;
+        };
+        if weak.upgrade().is_some() {
+            copy_names(&[entry]);
+        }
+    });
+    let weak = Rc::downgrade(state);
     let rename_target = target.clone();
     let rename_popover = popover.downgrade();
     rename.connect_clicked(move |_| {
@@ -824,6 +842,17 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         }
         if let Some(state) = weak.upgrade() {
             copy_locations(&context_entries(&state, &paths_target));
+        }
+    });
+    let weak = Rc::downgrade(state);
+    let names_target = target.clone();
+    let names_popover = popover.downgrade();
+    copy_names_button.connect_clicked(move |_| {
+        if let Some(popover) = names_popover.upgrade() {
+            popover.popdown();
+        }
+        if let Some(state) = weak.upgrade() {
+            copy_names(&context_entries(&state, &names_target));
         }
     });
     let weak = Rc::downgrade(state);
