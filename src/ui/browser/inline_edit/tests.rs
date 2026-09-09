@@ -26,6 +26,7 @@ use std::{
 mod caret;
 mod entries;
 mod lifecycle;
+mod setup;
 mod visibility;
 
 #[test]

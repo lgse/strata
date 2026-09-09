@@ -17,6 +17,16 @@ pub(super) struct ActiveRename {
     viewport_tick: gtk::TickCallbackId,
 }
 
+struct ColumnsRenameTarget {
+    row: gtk::Box,
+    field: gtk::Entry,
+    label: gtk::Label,
+    spacer: gtk::Box,
+    size: gtk::Label,
+    scroll: gtk::ScrolledWindow,
+    footer: gtk::Label,
+}
+
 enum PendingRenameState {
     Queued,
     Dispatching,
@@ -940,50 +950,63 @@ impl ViewState {
                 .begin_rename(depth, source_position, &entry);
         }
         self.cancel_rename();
+        let Some(target) = self.resolve_columns_rename_target(depth, source_position) else {
+            return false;
+        };
+        self.activate_columns_rename(target, entry);
+        true
+    }
+
+    fn resolve_columns_rename_target(
+        &self,
+        depth: usize,
+        source_position: usize,
+    ) -> Option<ColumnsRenameTarget> {
         let columns = self.columns.borrow();
-        let Some(column) = columns.get(depth) else {
-            return false;
-        };
-        let Some(filtered_position) = column.map.view_position(source_position) else {
-            return false;
-        };
-        // GTK 4.14 can bind an inserted row without allocating it after the first
-        // scroll request. Let the creation tick reveal it before requiring a field.
+        let column = columns.get(depth)?;
+        let filtered_position = column.map.view_position(source_position)?;
+        // Prepare before checking allocation: it cancels deferred scrolling and lets GTK bind
+        // the row needed by the editor.
         super::prepare_collection_inline_edit(column.list.upcast_ref(), filtered_position);
         let row = column.bound_rows.borrow().iter().find_map(|bound| {
             let item = bound.item.upgrade()?;
             (item.position() == filtered_position).then(|| bound.row.upgrade())?
-        });
-        let Some(row) = row else { return false };
+        })?;
         if !row.is_mapped() || row.width() <= 0 || column.presentation.stack.is_transition_running()
         {
-            return false;
+            return None;
         }
-        let Some(icon) = row.first_child() else {
-            return false;
-        };
-        let Some(middle) = icon.next_sibling().and_downcast::<gtk::Overlay>() else {
-            return false;
-        };
-        let Some(editor) = middle
+        let icon = row.first_child()?;
+        let middle = icon.next_sibling().and_downcast::<gtk::Overlay>()?;
+        let editor = middle
             .child()
             .and_then(|content| content.first_child())
-            .and_downcast::<gtk::Box>()
-        else {
-            return false;
-        };
-        let Some(label) = editor.first_child().and_downcast::<gtk::Label>() else {
-            return false;
-        };
-        let Some(field) = label.next_sibling().and_downcast::<gtk::Entry>() else {
-            return false;
-        };
-        let Some(spacer) = field.next_sibling().and_downcast::<gtk::Box>() else {
-            return false;
-        };
-        let Some(size) = middle.last_child().and_downcast::<gtk::Label>() else {
-            return false;
-        };
+            .and_downcast::<gtk::Box>()?;
+        let label = editor.first_child().and_downcast::<gtk::Label>()?;
+        let field = label.next_sibling().and_downcast::<gtk::Entry>()?;
+        let spacer = field.next_sibling().and_downcast::<gtk::Box>()?;
+        let size = middle.last_child().and_downcast::<gtk::Label>()?;
+        Some(ColumnsRenameTarget {
+            row,
+            field,
+            label,
+            spacer,
+            size,
+            scroll: column.listing_scroll.clone(),
+            footer: column.destination_hint.clone(),
+        })
+    }
+
+    fn activate_columns_rename(self: &Rc<Self>, target: ColumnsRenameTarget, entry: FileEntry) {
+        let ColumnsRenameTarget {
+            row,
+            field,
+            label,
+            spacer,
+            size,
+            scroll,
+            footer,
+        } = target;
         field.remove_css_class("error");
         field.set_tooltip_text(None);
         field.set_sensitive(true);
@@ -995,8 +1018,8 @@ impl ViewState {
         constrain_rename_to_viewport(&field, &self.scroller);
         let viewport = self.scroller.downgrade();
         let row = row.downgrade();
-        let scroll = column.listing_scroll.downgrade();
-        let footer = column.destination_hint.downgrade();
+        let scroll = scroll.downgrade();
+        let footer = footer.downgrade();
         let weak = Rc::downgrade(self);
         let reveal_generation = self.rename_reveal_generation.get();
         let viewport_tick = field.add_tick_callback(move |field, _| {
@@ -1034,7 +1057,6 @@ impl ViewState {
             size,
             viewport_tick,
         }));
-        true
     }
 
     pub(super) fn cancel_rename(&self) -> bool {
