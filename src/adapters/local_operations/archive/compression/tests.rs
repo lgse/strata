@@ -471,7 +471,7 @@ fn zip_and_seven_z_refuse_non_utf8_names_instead_of_mangling_them() -> Result<()
     let root = tempfile::tempdir()?;
     let source = root
         .path()
-        .join(OsString::from_vec(b"caf\xe9.txt".to_vec()));
+        .join(OsString::from_vec(b"name-\xff.txt".to_vec()));
     fs::write(&source, b"contents")?;
     for format in [ArchiveFormat::Zip, ArchiveFormat::SevenZ] {
         let archive = root.path().join("archive.out");
