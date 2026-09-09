@@ -20,12 +20,14 @@ def test_multiple_arguments_include_non_utf8_directory_and_file(strata):
     file_argument = root + b"/reveal-me.txt"
     with open(file_argument, "wb") as stream:
         stream.write(b"reveal regression\n")
+    broken_link = root + b"/broken-link.txt"
+    os.symlink(root + b"/missing-target.txt", broken_link)
 
     variables = process_environment()
     variables.update(strata.environment.variables())
     variables.update(strata.display.environment)
     subprocess.run(
-        [os.fsencode(binary_path()), *directories, file_argument],
+        [os.fsencode(binary_path()), *directories, file_argument, broken_link],
         env=variables,
         cwd=strata.fixture.root,
         check=True,
@@ -35,18 +37,21 @@ def test_multiple_arguments_include_non_utf8_directory_and_file(strata):
 
     def requested_windows_exist():
         windows = strata.application.application_node.find_all(role="frame", name="Strata")
-        if len(windows) != 4:
+        if len(windows) != 5:
             return False
         return all(
             any(window.find(name=marker) is not None for window in windows)
             for marker in markers
-        ) and any(
-            node.has_state("selected")
-            for window in windows
-            for node in window.find_all(name="reveal-me.txt")
+        ) and all(
+            any(
+                node.has_state("selected")
+                for window in windows
+                for node in window.find_all(name=name)
+            )
+            for name in ["reveal-me.txt", "broken-link.txt"]
         )
 
     strata.wait(
         requested_windows_exist,
-        "one populated window per argument, with the file selected in its parent",
+        "one window per argument, with the file and broken symlink revealed",
     )

@@ -109,11 +109,17 @@ fn open_requests_reveal_local_files_but_open_directories() {
     std::fs::write(&file, "hello").expect("create file");
     let link = directory.join("linked.txt");
     std::os::unix::fs::symlink(&file, &link).expect("create symlink");
+    let missing = directory.join("missing.txt");
+    let broken_link = directory.join("broken.txt");
+    std::os::unix::fs::symlink(&missing, &broken_link).expect("create broken symlink");
+    let directory_link = root.path().join("linked-directory");
+    std::os::unix::fs::symlink(&directory, &directory_link).expect("create directory symlink");
     let files = [
         gio::File::for_path(&directory),
         gio::File::for_path(&file),
         gio::File::for_uri(gio::File::for_path(&file).uri().as_str()),
         gio::File::for_path(&link),
+        gio::File::for_path(&broken_link),
     ];
 
     let requests = open_requests(&files);
@@ -124,10 +130,17 @@ fn open_requests_reveal_local_files_but_open_directories() {
         vec!["open me.txt"],
         vec!["open me.txt"],
         vec!["linked.txt"],
+        vec!["broken.txt"],
     ]) {
         assert_eq!(request.directory.native_path(), Some(directory.as_path()));
         assert_eq!(request.selection, selection);
         assert!(!request.properties);
+    }
+    for path in [&directory_link, &missing] {
+        let requests = open_requests(&[gio::File::for_path(path)]);
+        assert_eq!(requests.len(), 1);
+        assert_eq!(requests[0].directory.native_path(), Some(path.as_path()));
+        assert!(requests[0].selection.is_empty());
     }
 }
 

@@ -58,7 +58,13 @@ fn open_requests(files: &[gio::File]) -> Vec<adapters::RevealRequest> {
         .iter()
         .filter_map(|file| {
             // Do not probe remote URIs synchronously during startup.
-            let reveal = file.is_native() && file.path().is_some_and(|path| path.is_file());
+            let reveal = file.is_native()
+                && file
+                    .path()
+                    .is_some_and(|path| match std::fs::metadata(&path) {
+                        Ok(metadata) => metadata.is_file(),
+                        Err(_) => path.is_symlink(),
+                    });
             let (directory, name) = match reveal.then(|| file.parent()).flatten() {
                 Some(parent) => (parent, file.basename()),
                 None => (file.clone(), None),
