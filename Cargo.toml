@@ -13,6 +13,7 @@ categories = ["filesystem", "gui"]
 ashpd = { version = "=0.13.13", default-features = false, features = ["backend", "file_chooser", "async-io", "tracing"] }
 async-io = "2.6.0"
 cairo-rs = { version = "0.22.9", features = ["pdf", "png"] }
+calamine = "0.36.1"
 csv = "1.4.0"
 flate2 = "1.1.10"
 fontconfig-sys = { package = "yeslogic-fontconfig-sys", version = "6.0.1" }

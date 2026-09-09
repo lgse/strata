@@ -9,8 +9,8 @@ use crate::{
     sandbox::{Cancellation, MediaPreviewBackend, ParseOperation},
     services::{
         LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
-        content_family, has_csv_extension, has_plain_text_extension,
-        is_non_executable_extensionless_dotfile, parse_csv_table,
+        content_family, has_csv_extension, has_excel_extension, has_plain_text_extension,
+        is_non_executable_extensionless_dotfile, parse_csv_table, parse_excel_table,
     },
 };
 
@@ -145,6 +145,33 @@ impl PreviewProvider for LocalPreviewProvider {
                         });
                         return;
                     }
+                };
+            } else if matches!(content, PreviewContent::Table { .. })
+                && has_excel_extension(&entry.native_name)
+            {
+                let Some(path) = entry.location.native_path().map(ToOwned::to_owned) else {
+                    emit(PreviewEvent::Failed {
+                        request_id,
+                        entry,
+                        message: "Only local files can be previewed safely".to_owned(),
+                    });
+                    return;
+                };
+                content = match gio::spawn_blocking(move || parse_excel_table(&path)).await {
+                    Ok(Ok((headers, rows, truncated))) => PreviewContent::Table {
+                        headers,
+                        rows,
+                        truncated,
+                    },
+                    Ok(Err(message)) => {
+                        emit(PreviewEvent::Failed {
+                            request_id,
+                            entry,
+                            message,
+                        });
+                        return;
+                    }
+                    Err(_) => return,
                 };
             } else if matches!(content, PreviewContent::Table { .. }) {
                 content = match read_text(&file, request.text_byte_limit).await {
