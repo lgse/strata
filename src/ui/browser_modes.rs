@@ -1780,6 +1780,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             transfers_for_setup.clone(),
             depth,
             Some((source_index_for_setup.clone(), filtered_for_setup.clone())),
+            peek_for_setup.clone(),
             (None, Some(icon.upcast_ref()), &content_click, false),
         );
         item.set_child(Some(&card));
@@ -2821,6 +2822,10 @@ fn install_mode_directory_drop_target(
     widget.add_controller(drop);
 }
 
+#[expect(
+    clippy::too_many_arguments,
+    reason = "drag setup wires every GTK signal it needs"
+)]
 fn install_list_drag_drop(
     row: &impl IsA<gtk::Widget>,
     item: &gtk::ListItem,
@@ -2828,6 +2833,7 @@ fn install_list_drag_drop(
     transfer_handler: TransferHandlerSlot,
     depth: usize,
     position_map: Option<(SourceIndexMap, gio::ListModel)>,
+    state: Option<Weak<super::browser::ViewState>>,
     drag_icon_and_content_click: (
         Option<&gtk::Widget>,
         Option<&gtk::Widget>,
@@ -2907,16 +2913,24 @@ fn install_list_drag_drop(
         super::browser::file_drag_content(&entries)
     });
     let dragged_row = row.downgrade();
+    let weak_state_for_begin = state.clone();
     drag.connect_drag_begin(move |_, _| {
         if let Some(row) = dragged_row.upgrade() {
             row.add_css_class("dragging");
         }
+        if let Some(state) = weak_state_for_begin.as_ref().and_then(Weak::upgrade) {
+            state.cancel_peek();
+        }
     });
     let dragged_row = row.downgrade();
+    let weak_state_for_end = state;
     drag.connect_drag_end(move |source, _, _| {
         source.set_actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE);
         if let Some(row) = dragged_row.upgrade() {
             row.remove_css_class("dragging");
+        }
+        if let Some(state) = weak_state_for_end.as_ref().and_then(Weak::upgrade) {
+            state.cancel_peek();
         }
     });
     row.add_controller(drag.clone());

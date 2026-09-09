@@ -188,3 +188,27 @@ def test_dragging_from_row_padding_moves_the_file(strata, mode, edge):
 @pytest.mark.parametrize("edge", ["top", "bottom"])
 def test_dragging_from_airy_row_padding_moves_the_file(strata, mode, edge):
     drag_from_row_padding(strata, edge)
+
+
+@pytest.mark.preferences(folder_peeking=True, browser_mode="icons")
+def test_starting_a_drag_cancels_a_folder_peek(strata):
+    """#621: a drag beginning must cancel any open folder peek in Icons view."""
+
+    pane = strata.pane()
+    pane_bounds = pane.screen_bounds()
+    strata.pointer.move_to(pane_bounds.x + 20, pane_bounds.y + pane_bounds.height - 20)
+
+    folder = strata.entry("archive")
+    start = strata.pointer.drag_origin(folder)
+    strata.pointer.move_to(*start)
+    strata.wait(lambda: strata.peek() is not None, "the folder peek to open on hover")
+
+    target = strata.entry("documents")
+    strata.pointer.drag_points(start, target.screen_bounds().center, release=False)
+    try:
+        strata.wait(
+            lambda: strata.peek() is None,
+            "the peek to close when the drag starts",
+        )
+    finally:
+        strata.pointer.connection.button(1, False)
