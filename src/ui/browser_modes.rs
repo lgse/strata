@@ -656,6 +656,7 @@ impl ModeViews {
         let widget = pane.item_sections().iter().find_map(|section| {
             let position =
                 view_position_for_source(&pane.model, Some(&section.view_model), source_position)?;
+            super::browser::prepare_collection_inline_edit(&section.view, position);
             section.bound_items.borrow().iter().find_map(|bound| {
                 let item = bound.item.upgrade()?;
                 (item.position() == position).then(|| {
@@ -666,7 +667,7 @@ impl ModeViews {
                 })?
             })
         });
-        let Some((widget, collection, position)) = widget else {
+        let Some((widget, collection, _)) = widget else {
             return false;
         };
         if !widget.is_mapped() || widget.width() <= 0 || pane.stack.is_transition_running() {
@@ -687,7 +688,6 @@ impl ModeViews {
         let Some(field) = field else {
             return false;
         };
-        super::browser::prepare_collection_inline_edit(&collection, position);
         field.set_text(&entry.display_name);
         field.set_visible(true);
         label.set_visible(false);
