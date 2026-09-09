@@ -306,6 +306,7 @@ impl BrowserView {
 
         let preferences = super::theme::ThemeManager::shared();
         let browser = Browser::with_preferences(source, preferences.sort_preferences());
+        browser.set_chooser_mode(!interactive);
         let preferences_for_sorting = preferences.clone();
         browser.observe_preferences(move |sorting| {
             preferences_for_sorting.set_sort_preferences(sorting);

@@ -128,6 +128,7 @@ pub(super) fn wrap(
         handle: RefCell::new(None),
         generation: Cell::new(0),
     });
+    let suppress_row_activation = Rc::new(Cell::new(false));
     let weak = Rc::downgrade(&state);
     state.list.set_sort_func(move |left, right| {
         let Some(state) = weak.upgrade() else {
@@ -138,7 +139,11 @@ pub(super) fn wrap(
     });
     let weak = Rc::downgrade(&state);
     let weak_browser = Rc::downgrade(browser);
+    let suppress_for_row_activation = suppress_row_activation.clone();
     state.list.connect_row_activated(move |_, row| {
+        if suppress_for_row_activation.replace(false) {
+            return;
+        }
         if let Some(state) = weak.upgrade() {
             super::browser::activate_recursive_search_result(
                 &weak_browser,
@@ -147,6 +152,48 @@ pub(super) fn wrap(
             );
         }
     });
+    let click = gtk::GestureClick::new();
+    click.set_button(1);
+    let weak = Rc::downgrade(&state);
+    let weak_browser = Rc::downgrade(browser);
+    click.connect_released(move |gesture, press_count, _x, y| {
+        if press_count != 1
+            || gesture.current_event_state().intersects(
+                gtk::gdk::ModifierType::CONTROL_MASK
+                    | gtk::gdk::ModifierType::SHIFT_MASK
+                    | gtk::gdk::ModifierType::ALT_MASK
+                    | gtk::gdk::ModifierType::SUPER_MASK,
+            )
+        {
+            return;
+        }
+        let Some(state) = weak.upgrade() else { return };
+        let Some(row) = state.list.row_at_y(y as i32) else {
+            return;
+        };
+        let Some(browser) = weak_browser.upgrade() else {
+            return;
+        };
+        let Some(item) = state.items.borrow().get(row.index() as usize).cloned() else {
+            return;
+        };
+        if browser.is_chooser_mode() {
+            if item.is_directory {
+                browser.navigate(crate::model::Location::local(item.path));
+            } else {
+                browser.set_chooser_location(crate::model::Location::local(item.path));
+            }
+        } else if super::browser::activate_recursive_search_result(
+            &Rc::downgrade(&browser),
+            &state.items,
+            row.index() as u32,
+        ) {
+            suppress_row_activation.set(true);
+            let suppress = suppress_row_activation.clone();
+            glib::idle_add_local_once(move || suppress.set(false));
+        }
+    });
+    state.list.add_controller(click);
     let keys = gtk::EventControllerKey::new();
     keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak = Rc::downgrade(&state);

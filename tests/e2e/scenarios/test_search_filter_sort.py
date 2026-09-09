@@ -10,6 +10,16 @@ from harness.modes import ALL_MODES
 ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
 # Folders stay grouped first, so descending is not simply the reverse.
 ROOT_ENTRIES_DESCENDING = ["pictures", "documents", "archive", "todo.txt", "readme.md"]
+DOUBLE_CLICK_PREFERENCES = {
+    "list_folder_clicks": 2,
+    "list_file_clicks": 2,
+    "grid_folder_clicks": 2,
+    "grid_file_clicks": 2,
+    "explorer_folder_clicks": 2,
+    "explorer_file_clicks": 2,
+    "single_click_previews": True,
+}
+DOUBLE_CLICK = pytest.mark.preferences(**DOUBLE_CLICK_PREFERENCES)
 
 
 @pytest.fixture
@@ -56,6 +66,42 @@ def test_filtering_a_pane_narrows_the_listing(strata, mode, root):
         lambda: strata.entry_names(root) == ROOT_ENTRIES,
         "Escape to restore the full listing",
     )
+
+
+def assert_filtered_result_opens(strata, activation):
+    strata.select_entry("documents")
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    strata.keyboard.type_text("documents")
+    strata.wait(lambda: field.text == "documents", "the filter query")
+    result = strata.wait(
+        lambda: strata.window.find(role="list item", name="documents"),
+        "the filtered folder result",
+    )
+
+    if activation == "click":
+        strata.pointer.click(result)
+    else:
+        strata.keyboard.press("Down")
+        strata.keyboard.press("Return")
+
+    strata.wait_for_directory("documents")
+
+
+@pytest.mark.preferences(
+    **DOUBLE_CLICK_PREFERENCES, filter_include_subfolders=False
+)
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("activation", ["click", "enter"])
+def test_local_filtered_results_open_with_one_activation(strata, mode, activation):
+    assert_filtered_result_opens(strata, activation)
+
+
+@DOUBLE_CLICK
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("activation", ["click", "enter"])
+def test_recursive_filtered_results_open_with_one_activation(strata, mode, activation):
+    assert_filtered_result_opens(strata, activation)
 
 
 @pytest.mark.preferences(filter_include_subfolders=False)

@@ -483,6 +483,19 @@ impl ChooserState {
                 multiple,
             } => {
                 let browser = self.view.browser();
+                if !directory && let Some(location) = browser.chooser_location() {
+                    let Some(path) = location.native_path() else {
+                        self.show_error("Choose a local file");
+                        return;
+                    };
+                    self.complete_paths(
+                        vec![path.to_path_buf()],
+                        self.read_only
+                            .as_ref()
+                            .map(|read_only| writable_from_read_only(read_only.is_active())),
+                    );
+                    return;
+                }
                 let Some(current) = browser.active_location() else {
                     self.show_error("Choose an accessible local folder");
                     return;
@@ -643,7 +656,18 @@ impl ChooserState {
         match &self.request.kind {
             ChooserKind::Open {
                 directory: false, ..
-            } => self.accept(),
+            } => {
+                let Some(path) = location.native_path() else {
+                    self.show_error("Choose a local file");
+                    return;
+                };
+                self.complete_paths(
+                    vec![path.to_path_buf()],
+                    self.read_only
+                        .as_ref()
+                        .map(|read_only| writable_from_read_only(read_only.is_active())),
+                );
+            }
             ChooserKind::SaveFile { .. } => {
                 let Some((folder, name)) = location
                     .native_path()

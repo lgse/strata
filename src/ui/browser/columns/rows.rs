@@ -12,7 +12,7 @@ use crate::ui::{
             drag_actions_for_modifiers, file_drag_content, file_drop_action, locations_equal,
             locations_from_file_list_value, shared_cut_locations,
         },
-        collection::{ViewMap, cancel_source},
+        collection::{ViewMap, activate_recursive_search_result, cancel_source},
         entry::{
             entry_icon, entry_responds_to_preview_click, metadata_needs_fill, model_display_name,
         },
@@ -22,7 +22,10 @@ use crate::ui::{
     browser_modes::BrowserMode,
     modal::{slide_in_down, slide_out},
 };
-use crate::{model::FileEntry, services::SearchItem};
+use crate::{
+    model::{FileEntry, Location},
+    services::SearchItem,
+};
 use gtk::{glib, prelude::*};
 use std::{
     cell::{Cell, RefCell},
@@ -59,6 +62,8 @@ pub(super) fn column_rows(
     let factory = gtk::SignalListItemFactory::new();
     let bound_rows: Rc<RefCell<Vec<BoundRow>>> = Rc::new(RefCell::new(Vec::new()));
     let rows_for_setup = bound_rows.clone();
+    let search_active_for_factory = recursive_search_active.clone();
+    let search_results_for_factory = search_results.clone();
     let weak_state = Rc::downgrade(state);
     let modified_selection_for_rows = modified_selection.clone();
     let selection_for_rows = selection.clone();
@@ -316,6 +321,8 @@ pub(super) fn column_rows(
         let selection_for_click = selection_for_rows.clone();
         let modified_for_click = modified_selection_for_rows.clone();
         let map_for_click = map_for_hover.clone();
+        let search_active_for_click = search_active_for_factory.clone();
+        let search_results_for_click = search_results_for_factory.clone();
         // Open on release so a press-and-move can start a drag first.
         let pending_activation = Rc::new(RefCell::new(None::<PendingPointerActivation>));
         let pending_activation_for_press = pending_activation.clone();
@@ -377,6 +384,55 @@ pub(super) fn column_rows(
                 gesture.set_state(gtk::EventSequenceState::Claimed);
             }
             modified_for_click.set(false);
+
+            let filtered = search_active_for_click.get() || map_for_click.has_query();
+            if filtered {
+                if press_count == 1
+                    && !control
+                    && !shift
+                    && let Some(state) = weak_state_for_click.upgrade()
+                {
+                    let activated = if search_active_for_click.get() {
+                        if state.browser.is_chooser_mode() {
+                            search_results_for_click
+                                .borrow()
+                                .get(position as usize)
+                                .map(|item| {
+                                    if item.is_directory {
+                                        state.browser.navigate(Location::local(item.path.clone()));
+                                    } else {
+                                        state.browser.set_chooser_location(Location::local(
+                                            item.path.clone(),
+                                        ));
+                                    }
+                                    true
+                                })
+                                .unwrap_or(false)
+                        } else {
+                            activate_recursive_search_result(
+                                &Rc::downgrade(&state.browser),
+                                &search_results_for_click,
+                                position,
+                            )
+                        }
+                    } else {
+                        map_for_click
+                            .source_position(position)
+                            .map(|source_position| {
+                                state.browser.select(depth, source_position);
+                                if !state.browser.is_chooser_mode() {
+                                    state.browser.activate_in_place(depth, source_position);
+                                }
+                                true
+                            })
+                            .is_some()
+                    };
+                    if activated {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                    }
+                }
+                return;
+            }
 
             let source_position = map_for_click.source_position(position);
             if let (Some(state), Some(source_position)) =

@@ -515,6 +515,8 @@ pub struct Browser {
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
     preferences: Cell<ViewPreferences>,
+    chooser_mode: Cell<bool>,
+    chooser_location: RefCell<Option<Location>>,
     observers: RefCell<Vec<Observer>>,
     preferences_observers: RefCell<Vec<PreferencesObserver>>,
 }
@@ -562,6 +564,8 @@ impl Browser {
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
             preferences: Cell::new(preferences),
+            chooser_mode: Cell::new(false),
+            chooser_location: RefCell::new(None),
             observers: RefCell::new(Vec::new()),
             preferences_observers: RefCell::new(Vec::new()),
         })
@@ -569,6 +573,22 @@ impl Browser {
 
     pub fn observe(&self, observer: impl Fn(&BrowserEvent) + 'static) {
         self.observers.borrow_mut().push(Rc::new(observer));
+    }
+
+    pub fn set_chooser_mode(&self, chooser: bool) {
+        self.chooser_mode.set(chooser);
+    }
+
+    pub fn is_chooser_mode(&self) -> bool {
+        self.chooser_mode.get()
+    }
+
+    pub fn set_chooser_location(&self, location: Location) {
+        self.chooser_location.replace(Some(location));
+    }
+
+    pub fn chooser_location(&self) -> Option<Location> {
+        self.chooser_location.borrow().clone()
     }
 
     pub fn clear_observer(&self) {
@@ -706,6 +726,7 @@ impl Browser {
     }
 
     pub fn navigate(self: &Rc<Self>, location: Location) {
+        self.chooser_location.replace(None);
         self.validation_generation
             .set(self.validation_generation.get().saturating_add(1));
         self.validation_load.borrow_mut().take();
@@ -1099,6 +1120,7 @@ impl Browser {
     }
 
     pub fn select(&self, depth: usize, position: usize) {
+        self.chooser_location.replace(None);
         let selected = self.state.borrow_mut().select(depth, position);
         if selected {
             self.emit(BrowserEvent::FocusChanged {
