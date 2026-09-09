@@ -56,8 +56,7 @@ def test_shift_click_revisits_a_file_after_opening_a_folder(strata, root, target
     strata.wait_for_selection(["todo.txt"], root)
     click("documents")
     strata.wait_for_directory("documents")
-    strata.wait_for_selection(["notes.txt"], "documents")
-    strata.wait_for_focused_entry("notes.txt")
+    strata.wait_for_selection([], "documents")
     click("todo.txt", ("shift",))
     strata.wait_for_focused_entry("todo.txt")
     names = [entry.name for entry in strata.entries(root)]
@@ -161,7 +160,9 @@ def test_selecting_a_second_entry_replaces_the_first(strata, mode, root):
 @pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("target", ["content", "row-space"])
 def test_shift_click_ranges_from_the_entry_a_fresh_listing_selected(strata, mode, root, target):
-    strata.open_directory("documents", directory=root)
+    strata.select_entry_with_keyboard("documents")
+    strata.keyboard.press("Return")
+    strata.wait_for_directory("documents")
 
     entry = strata.entry("spreadsheet.csv", "documents")
     point = None

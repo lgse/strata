@@ -720,7 +720,7 @@ impl Browser {
     }
 
     pub fn navigate(self: &Rc<Self>, location: Location) {
-        self.navigate_with_selection(location, false);
+        self.navigate_with_selection(location, true);
     }
 
     fn navigate_with_selection(self: &Rc<Self>, location: Location, select_first: bool) {
@@ -2253,8 +2253,11 @@ impl Browser {
             .borrow_mut()
             .restore(path, loads.iter().map(|(_, request_id)| *request_id));
 
-        self.emit(BrowserEvent::Reset);
         let active_depth = loads.len().checked_sub(1);
+        if let Some(depth) = active_depth {
+            self.select_first_on_load(depth);
+        }
+        self.emit(BrowserEvent::Reset);
         for (depth, (location, request_id)) in loads.into_iter().enumerate() {
             self.emit(BrowserEvent::ColumnAdded {
                 depth,

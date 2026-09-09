@@ -1689,7 +1689,7 @@ fn restored_sorting_applies_to_the_initial_navigation_load() {
     browser.navigate(Location::local("/fixture"));
 
     let snapshot = browser.column_snapshot(0).expect("initial column");
-    assert_eq!(snapshot.selected_positions, Vec::<usize>::new());
+    assert_eq!(snapshot.selected_positions, vec![0]);
     let names: Vec<_> = browser.state.borrow().columns[0]
         .entries
         .iter()
@@ -2741,7 +2741,6 @@ fn escape_clears_only_the_active_selection_and_preserves_the_cursor() {
         source.dirs = vec!["child"];
         let browser = Browser::new(Rc::new(source));
         browser.navigate(Location::local("/fixture"));
-        browser.move_selection(1);
         browser.activate_focused();
         if multiple {
             browser.select_all(1);
