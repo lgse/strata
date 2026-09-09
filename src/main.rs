@@ -64,11 +64,7 @@ fn main() -> gtk::glib::ExitCode {
     let arguments: Vec<OsString> = std::env::args_os().collect();
     match launch_mode(&arguments) {
         LaunchMode::PreviewHelper => {
-            let helper_arguments: Vec<String> = arguments[2..]
-                .iter()
-                .map(|argument| argument.to_string_lossy().into_owned())
-                .collect();
-            if let Err(error) = sandbox_helper::run(&helper_arguments) {
+            if let Err(error) = run_preview_helper(&arguments[2..]) {
                 eprintln!("Preview helper failed: {error}");
                 return gtk::glib::ExitCode::FAILURE;
             }
@@ -135,6 +131,19 @@ fn main() -> gtk::glib::ExitCode {
         }
     });
     application.run()
+}
+
+fn run_preview_helper(arguments: &[OsString]) -> Result<(), String> {
+    let arguments = arguments
+        .iter()
+        .map(|argument| {
+            argument
+                .to_str()
+                .map(str::to_owned)
+                .ok_or_else(|| "Invalid UTF-8 in preview helper arguments".to_owned())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    sandbox_helper::run(&arguments)
 }
 
 fn finish_portal_setup(result: Result<String, String>) -> gtk::glib::ExitCode {
