@@ -621,7 +621,7 @@ impl Browser {
             .active_location()
             .filter(|current| current.display_path() == input)
         {
-            self.navigate_validated(current);
+            self.navigate_validated(current, true);
             return Ok(());
         }
         let location = location_from_input(input)?;
@@ -632,12 +632,12 @@ impl Browser {
             self.source.validate_location(&location)?;
             self.navigate(location);
         } else {
-            self.navigate_validated(location);
+            self.navigate_validated(location, true);
         }
         Ok(())
     }
 
-    fn navigate_validated(self: &Rc<Self>, location: Location) {
+    fn navigate_validated(self: &Rc<Self>, location: Location, select_first: bool) {
         let generation = self.validation_generation.get().saturating_add(1);
         self.validation_generation.set(generation);
         self.validation_load.borrow_mut().take();
@@ -651,7 +651,9 @@ impl Browser {
                 return;
             }
             match result {
-                Ok(()) => browser.navigate(pending_location.clone()),
+                Ok(()) => {
+                    browser.navigate_with_selection(pending_location.clone(), select_first);
+                }
                 Err(error) => browser.emit(BrowserEvent::LocationNavigationRejected { error }),
             }
         });
@@ -711,11 +713,11 @@ impl Browser {
 
     /// Navigates directly for native paths and validates URI locations first so mountable
     /// locations can be mounted by the UI before loading them.
-    pub(crate) fn navigate_location(self: &Rc<Self>, location: Location) {
+    pub(crate) fn navigate_location(self: &Rc<Self>, location: Location, select_first: bool) {
         if location.native_path().is_some() {
-            self.navigate(location);
+            self.navigate_with_selection(location, select_first);
         } else {
-            self.navigate_validated(location);
+            self.navigate_validated(location, select_first);
         }
     }
 
@@ -723,7 +725,7 @@ impl Browser {
         self.navigate_with_selection(location, true);
     }
 
-    fn navigate_with_selection(self: &Rc<Self>, location: Location, select_first: bool) {
+    pub(crate) fn navigate_with_selection(self: &Rc<Self>, location: Location, select_first: bool) {
         self.validation_generation
             .set(self.validation_generation.get().saturating_add(1));
         self.validation_load.borrow_mut().take();

@@ -26,13 +26,14 @@ def test_shift_click_ranges_from_the_initial_listing(strata, mode, root):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_sidebar_navigation_initializes_the_range_anchor(strata, mode):
+def test_keyboard_selection_after_sidebar_navigation_initializes_the_range_anchor(strata, mode):
     home = strata.environment.home
     names = ["a.txt", "b.txt", "c.txt"]
     for name in names:
         (home / name).write_text(name)
     strata.pointer.click(strata.sidebar_button("Home"))
     strata.wait_for_directory(home.name)
+    strata.keyboard.press("Home")
     strata.wait_for_selection(["a.txt"], home.name)
     strata.click_entry_with("c.txt", ["shift"], directory=home.name)
     strata.wait_for_selection(names, home.name)
