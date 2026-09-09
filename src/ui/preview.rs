@@ -1870,11 +1870,17 @@ fn file_extension(entry: &FileEntry) -> &str {
 }
 
 fn format_file_size(bytes: u64) -> String {
-    let (value, unit) = super::browser::rounded_size_and_unit(bytes, &["B", "kB", "MB", "GB"]);
-    if value >= 10.0 {
-        format!("{value:.0} {unit}")
+    let units = ["B", "kB", "MB", "GB"];
+    let (value, unit) = super::browser::rounded_size_and_unit(bytes, &units);
+    if unit == 0 || value >= 10.0 {
+        let displayed = value.round();
+        if displayed >= 1_000.0 && unit + 1 < units.len() {
+            format!("{:.1} {}", displayed / 1_000.0, units[unit + 1])
+        } else {
+            format!("{displayed:.0} {}", units[unit])
+        }
     } else {
-        format!("{value:.1} {unit}")
+        format!("{value:.1} {}", units[unit])
     }
 }
 

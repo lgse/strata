@@ -83,6 +83,14 @@ fn preview_file_sizes_round_before_choosing_the_unit() {
 }
 
 #[test]
+fn preview_file_sizes_keep_bytes_whole_and_promote_displayed_overflow() {
+    assert_eq!(format_file_size(0), "0 B");
+    assert_eq!(format_file_size(5), "5 B");
+    assert_eq!(format_file_size(999_450), "1.0 MB");
+    assert_eq!(format_file_size(999_449), "999 kB");
+}
+
+#[test]
 fn media_errors_explain_missing_runtime_plugins() {
     let (title, detail, command) =
         media_error_feedback("Your GStreamer installation is missing a plug-in.");
