@@ -3,6 +3,7 @@
 
 import pytest
 
+from harness.browser import ENTRY_ROLES
 from harness.modes import ALL_MODES
 
 
@@ -15,28 +16,34 @@ def _viewport(container):
     raise AssertionError("the collection should have a scroll viewport")
 
 
+def _entry_label(row):
+    return next((node for _, node in row.walk() if node.role == "label"), None)
+
+
 def _entry_bounds(row):
-    label = row.find(role="label")
+    label = _entry_label(row)
     return label.screen_bounds() if label is not None else row.screen_bounds()
 
 
 def _entry_name(row):
-    label = row.find(role="label")
+    label = _entry_label(row)
     return label.name if label is not None and label.name else row.name
 
 
-def _visible_entries(strata, viewport):
+def _visible_entries(container, viewport):
     viewport = viewport.screen_bounds()
-    visible = []
-    for row in strata.entries():
+    # Inspect live collection children lazily: full-window scans race recycled rows
+    # while the held pointer keeps edge scrolling active.
+    for row in container.children:
+        if row.role not in ENTRY_ROLES:
+            continue
         bounds = _entry_bounds(row)
         if (
             bounds.height > 0
             and bounds.y >= viewport.y
             and bounds.y + bounds.height <= viewport.y + viewport.height
         ):
-            visible.append(row)
-    return visible
+            yield row
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -76,7 +83,7 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
             strata.pointer.scroll(at=end, clicks=32)
         strata.wait(
             lambda: any(
-                _entry_name(row) >= "060.txt" for row in _visible_entries(strata, viewport)
+                _entry_name(row) >= "060.txt" for row in _visible_entries(container, viewport)
             ),
             f"scrolling to carry the anchor above the viewport {viewport_bounds}",
         )
@@ -84,11 +91,11 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
         if scrolling == "edge":
             end = (end[0], viewport_bounds.y + viewport_bounds.height - 40)
             strata.pointer.move_to(*end)
-        strata.settle(_visible_entries(strata, viewport)[0])
+        strata.settle(next(_visible_entries(container, viewport)))
 
         def visible_band_is_selected():
             rows = []
-            for row in _visible_entries(strata, viewport):
+            for row in _visible_entries(container, viewport):
                 bounds = _entry_bounds(row)
                 if (
                     bounds.y + bounds.height <= end[1]
@@ -106,11 +113,11 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
         strata.pointer.connection.button(1, False)
 
     for _ in range(40):
-        if any(_entry_name(row) == "000.txt" for row in _visible_entries(strata, viewport)):
+        if any(_entry_name(row) == "000.txt" for row in _visible_entries(container, viewport)):
             break
         strata.pointer.scroll(at=viewport_bounds.center, clicks=20, down=False)
     strata.wait(
-        lambda: any(_entry_name(row) == "000.txt" for row in _visible_entries(strata, viewport)),
+        lambda: any(_entry_name(row) == "000.txt" for row in _visible_entries(container, viewport)),
         "the beginning of the directory to scroll back into view",
     )
     assert strata.entry("010.txt").has_state("selected"), (
