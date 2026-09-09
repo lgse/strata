@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 #[cfg(test)]
 mod tests;
@@ -91,14 +91,20 @@ impl FileChooserInterface {
     async fn open_file(
         &self,
         handle: OwnedObjectPath,
-        _app_id: Optional<MaybeAppID>,
+        app_id: Optional<MaybeAppID>,
         parent: Optional<WindowIdentifierType>,
         title: String,
         options: OpenFileOptions,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> ashpd::backend::Result<Response<SelectedFiles>> {
         let tracked = self.begin(connection, &handle).await?;
+        let size_hint =
+            super::window_geometry::parent_size_hint(app_id.as_ref(), parent.as_ref()).await;
         let request = super::open_request(handle.to_string(), parent.into(), &title, options).await;
+        let request = request.map(|mut request| {
+            request.parent_size_hint = size_hint;
+            request
+        });
         self.finish(connection, &handle, tracked, request).await
     }
 
@@ -106,15 +112,21 @@ impl FileChooserInterface {
     async fn save_file(
         &self,
         handle: OwnedObjectPath,
-        _app_id: Optional<MaybeAppID>,
+        app_id: Optional<MaybeAppID>,
         parent: Optional<WindowIdentifierType>,
         title: String,
         options: SaveFileOptions,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> ashpd::backend::Result<Response<SelectedFiles>> {
         let tracked = self.begin(connection, &handle).await?;
+        let size_hint =
+            super::window_geometry::parent_size_hint(app_id.as_ref(), parent.as_ref()).await;
         let request =
             super::save_file_request(handle.to_string(), parent.into(), &title, options).await;
+        let request = request.map(|mut request| {
+            request.parent_size_hint = size_hint;
+            request
+        });
         self.finish(connection, &handle, tracked, request).await
     }
 
@@ -122,15 +134,21 @@ impl FileChooserInterface {
     async fn save_files(
         &self,
         handle: OwnedObjectPath,
-        _app_id: Optional<MaybeAppID>,
+        app_id: Optional<MaybeAppID>,
         parent: Optional<WindowIdentifierType>,
         title: String,
         options: SaveFilesOptions,
         #[zbus(connection)] connection: &zbus::Connection,
     ) -> ashpd::backend::Result<Response<SelectedFiles>> {
         let tracked = self.begin(connection, &handle).await?;
+        let size_hint =
+            super::window_geometry::parent_size_hint(app_id.as_ref(), parent.as_ref()).await;
         let request =
             super::save_files_request(handle.to_string(), parent.into(), &title, options).await;
+        let request = request.map(|mut request| {
+            request.parent_size_hint = size_hint;
+            request
+        });
         self.finish(connection, &handle, tracked, request).await
     }
 }

@@ -6,4 +6,6 @@ pluggy==1.6.0
 pygments==2.21.0
 pytest==9.1.1
 pytest-timeout==2.5.0
+pytest-xdist==3.8.0
+execnet==2.1.2
 pillow==12.3.0

@@ -1,13 +1,14 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
+use gtk::prelude::FileExt;
 use std::{cell::Cell, ffi::OsString};
 
 use super::*;
 use crate::{
     model::{EntryKind, MetadataValue},
     services::{
-        CancelledOperation, CompressRequest, ExtractRequest, LoadHandle, MetadataOutcome,
-        MetadataRequest, MetadataUpdate, UndoCopyRequest, UndoMoveRequest,
+        CancelledOperation, CompressRequest, DirectoryEvent, ExtractRequest, LoadHandle,
+        MetadataOutcome, MetadataRequest, MetadataUpdate, UndoCopyRequest, UndoMoveRequest,
     },
 };
 
@@ -33,19 +34,44 @@ fn deleted_trash_entries_refresh_the_trash_root() {
 
 #[test]
 fn invalid_new_folder_names_are_rejected_before_an_operation_starts() {
-    assert_invalid_creation_is_rejected(|browser| {
-        browser.create_directory(Location::local("/fixture"), "../escaped".to_owned());
-    });
+    for name in [
+        "../escaped",
+        "",
+        "   ",
+        "\u{00a0}\u{2003}",
+        ".",
+        "..",
+        "nul\0name",
+    ] {
+        assert_invalid_creation_is_rejected(name, |browser| {
+            browser.create_directory_with_naming(
+                Location::local("/fixture"),
+                name.to_owned(),
+                false,
+            );
+        });
+    }
 }
 
 #[test]
 fn invalid_new_file_names_are_rejected_before_an_operation_starts() {
-    assert_invalid_creation_is_rejected(|browser| {
-        browser.create_file(Location::local("/fixture"), "../escaped".to_owned());
-    });
+    for name in [
+        "../escaped",
+        "",
+        "   ",
+        "\u{00a0}\u{2003}",
+        ".",
+        "..",
+        "nul\0name",
+    ] {
+        assert_invalid_creation_is_rejected(name, |browser| {
+            browser.create_file_with_naming(Location::local("/fixture"), name.to_owned(), false);
+        });
+    }
 }
 
-fn assert_invalid_creation_is_rejected(create: impl FnOnce(&Rc<Browser>)) {
+fn assert_invalid_creation_is_rejected(name: &str, create: impl FnOnce(&Rc<Browser>)) {
+    let expected = validate_basename(name).expect_err("invalid fixture name");
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
     let observed = events.clone();
@@ -57,8 +83,49 @@ fn assert_invalid_creation_is_rejected(create: impl FnOnce(&Rc<Browser>)) {
     assert!(browser.operation_load.borrow().is_none());
     assert!(matches!(
         events.borrow().as_slice(),
-        [BrowserEvent::OperationFailed { message }] if message == "Names cannot contain /"
+        [BrowserEvent::OperationFailed { message }] if message == expected
     ));
+}
+
+#[test]
+fn new_files_and_folders_request_unique_naming_and_report_the_created_location() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    browser.create_new_folder(Location::local("/fixture"));
+    assert!(events.borrow().iter().any(|event| matches!(event,
+        BrowserEvent::EntryCreated { location } if location == &Location::local("/fixture/new folder")
+    )));
+    browser.create_new_file(Location::local("/fixture"));
+    assert!(events.borrow().iter().any(|event| matches!(event,
+        BrowserEvent::EntryCreated { location } if location == &Location::local("/fixture/new file")
+    )));
+    assert!(browser.current_operation.get().is_none());
+}
+
+#[test]
+fn delayed_sort_cannot_restore_stale_hidden_file_preferences() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser
+        .state
+        .borrow_mut()
+        .navigate(Location::local("/fixture"), RequestId(1));
+    let pending = browser.preferences();
+    browser.pending_sort.set(Some((1, 0)));
+    browser.apply_default_preferences(ViewPreferences {
+        show_hidden: true,
+        ..pending
+    });
+    browser.finish_awaited_sort(0, 1, pending);
+    assert!(browser.preferences().show_hidden);
+    assert!(
+        browser
+            .column_preferences(0)
+            .expect("existing column")
+            .show_hidden
+    );
 }
 
 struct FakeFileSource;
@@ -531,6 +598,54 @@ fn cancellation_refreshes_an_affected_remote_root_and_its_open_descendants() {
 }
 
 #[test]
+fn superseding_rename_emits_a_terminal_abandonment_event() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let cancelled = Rc::new(Cell::new(false));
+    let cancelled_for_handle = cancelled.clone();
+    let request_id = browser.begin_operation();
+    browser.rename_operation.set(Some(request_id));
+    browser
+        .operation_load
+        .replace(Some(LoadHandle::new(move || {
+            cancelled_for_handle.set(true)
+        })));
+
+    let replacement = browser.begin_operation();
+
+    assert!(cancelled.get());
+    assert_eq!(browser.current_operation.get(), Some(replacement));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::RenameAbandoned { request_id: id } if *id == request_id
+    )));
+}
+
+#[test]
+fn cancelled_rename_emits_a_terminal_abandonment_event() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = browser.begin_operation();
+    browser.rename_operation.set(Some(request_id));
+    let emit = browser.operation_callback(request_id, true, HashSet::new());
+
+    emit(OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation::default(),
+    });
+
+    assert_eq!(browser.current_operation.get(), None);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::RenameAbandoned { request_id: id } if *id == request_id
+    )));
+}
+
+#[test]
 fn transfer_failure_reports_moves_completed_before_the_error() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
@@ -578,9 +693,18 @@ impl OperationProvider for ImmediateOperationProvider {
         request: CreateDirectoryRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle {
-        emit(OperationEvent::Created {
-            request_id: request.id,
-        });
+        if request.unique_name {
+            let child =
+                crate::adapters::gio_file_for_location(&request.parent).child(&request.name);
+            emit(OperationEvent::EntryCreated {
+                request_id: request.id,
+                location: crate::adapters::location_for_file(&child).expect("created location"),
+            });
+        } else {
+            emit(OperationEvent::Created {
+                request_id: request.id,
+            });
+        }
         LoadHandle::new(|| {})
     }
 
@@ -589,9 +713,18 @@ impl OperationProvider for ImmediateOperationProvider {
         request: CreateFileRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle {
-        emit(OperationEvent::Created {
-            request_id: request.id,
-        });
+        if request.unique_name {
+            let child =
+                crate::adapters::gio_file_for_location(&request.parent).child(&request.name);
+            emit(OperationEvent::EntryCreated {
+                request_id: request.id,
+                location: crate::adapters::location_for_file(&child).expect("created location"),
+            });
+        } else {
+            emit(OperationEvent::Created {
+                request_id: request.id,
+            });
+        }
         LoadHandle::new(|| {})
     }
 
@@ -1448,7 +1581,11 @@ fn creating_a_directory_on_a_remote_location_refreshes_the_open_column() {
     browser.navigate(Location::uri("smb://host/share"));
     assert_eq!(enumerate_calls.get(), 1);
 
-    browser.create_directory(Location::uri("smb://host/share"), "New Folder".to_owned());
+    browser.create_directory_with_naming(
+        Location::uri("smb://host/share"),
+        "New Folder".to_owned(),
+        false,
+    );
 
     assert_eq!(
         enumerate_calls.get(),
@@ -1496,13 +1633,46 @@ fn creating_a_directory_locally_does_not_trigger_a_redundant_refresh() {
     browser.navigate(Location::local("/fixture"));
     assert_eq!(enumerate_calls.get(), 1);
 
-    browser.create_directory(Location::local("/fixture"), "New Folder".to_owned());
+    browser.create_directory_with_naming(
+        Location::local("/fixture"),
+        "New Folder".to_owned(),
+        false,
+    );
 
     assert_eq!(
         enumerate_calls.get(),
         1,
         "a local column already has a live file monitor; no extra refresh is needed"
     );
+}
+
+#[test]
+fn renaming_locally_does_not_trigger_a_redundant_refresh() {
+    let enumerate_calls = Rc::new(Cell::new(0));
+    let source = CountingFileSource {
+        enumerate_calls: enumerate_calls.clone(),
+    };
+    let browser = Browser::new(Rc::new(source));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::local("/fixture"));
+    assert_eq!(enumerate_calls.get(), 1);
+
+    browser.rename(
+        FileEntry {
+            location: Location::local("/fixture/old-name.txt"),
+            native_name: "old-name.txt".into(),
+            thumbnail_path: None,
+            display_name: "old-name.txt".to_owned(),
+            kind: EntryKind::File,
+            size: MetadataValue::Known(1),
+            modified_unix_seconds: MetadataValue::Unknown,
+            is_hidden: false,
+            mode: MetadataValue::Unknown,
+        },
+        "new-name.txt".to_owned(),
+    );
+
+    assert_eq!(enumerate_calls.get(), 1);
 }
 
 #[test]
@@ -1519,7 +1689,7 @@ fn restored_sorting_applies_to_the_initial_navigation_load() {
     browser.navigate(Location::local("/fixture"));
 
     let snapshot = browser.column_snapshot(0).expect("initial column");
-    assert_eq!(snapshot.selected_positions, Vec::<usize>::new());
+    assert_eq!(snapshot.selected_positions, vec![0]);
     let names: Vec<_> = browser.state.borrow().columns[0]
         .entries
         .iter()
@@ -1608,6 +1778,12 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
         mode: MetadataValue::Unknown,
     }));
 
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::FocusChanged { depth: 0, .. }))
+    );
     assert!(events.borrow().iter().any(|event| matches!(
         event,
         BrowserEvent::EntriesSpliced { depth: 0, splices, .. }
@@ -1626,6 +1802,54 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
             .borrow()
             .iter()
             .any(|event| matches!(event, BrowserEvent::ColumnReloaded { .. }))
+    );
+}
+
+#[test]
+fn background_directory_removal_does_not_request_focus() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let parent = Location::local("/fixture");
+    browser.navigate(parent.clone());
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("moved")));
+    browser.preview(0, 0);
+    assert_eq!(browser.active_depth(), Some(1));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    browser.handle_directory_change(
+        0,
+        &parent,
+        DirectoryChange::Remove(Location::local("/fixture/moved")),
+    );
+
+    assert_eq!(browser.active_depth(), Some(1));
+    assert_eq!(
+        browser
+            .column_snapshot(0)
+            .expect("parent column")
+            .selected_positions,
+        [0]
+    );
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::EntriesSpliced { depth: 0, .. }))
+    );
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::SelectionSetChanged {
+            depth: 0,
+            take_focus: false,
+            ..
+        }
+    )));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::FocusChanged { .. }))
     );
 }
 
@@ -1892,7 +2116,7 @@ fn sidebar_location_navigation_validates_uris_but_navigates_native_paths_directl
     remote_browser.observe(move |event| observed.borrow_mut().push(event.clone()));
 
     let remote = Location::uri("smb://host/share");
-    remote_browser.navigate_location(remote.clone());
+    remote_browser.navigate_location(remote.clone(), true);
 
     assert!(events.borrow().iter().any(|event| matches!(
         event,
@@ -1904,7 +2128,7 @@ fn sidebar_location_navigation_validates_uris_but_navigates_native_paths_directl
 
     let native_browser = Browser::new(Rc::new(RejectingFileSource));
     let native = Location::local("/saved/bookmark");
-    native_browser.navigate_location(native.clone());
+    native_browser.navigate_location(native.clone(), true);
 
     assert_eq!(native_browser.active_location(), Some(native));
 }
@@ -2329,6 +2553,35 @@ fn preview_and_open_are_distinct_file_actions() {
 }
 
 #[test]
+fn native_selection_notifies_observers_after_state_is_available() {
+    let browser = Browser::new(Rc::new(FilePreviewSource));
+    browser.navigate(Location::local("/fixture"));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    let weak_browser = Rc::downgrade(&browser);
+    browser.observe(move |event| {
+        let BrowserEvent::SelectionSynced { depth, focused } = event else {
+            panic!("native selection must not request focus or reapply view selection: {event:?}");
+        };
+        let browser = weak_browser.upgrade().expect("browser");
+        observed
+            .borrow_mut()
+            .push((*depth, *focused, browser.selected_positions(*depth)));
+    });
+
+    browser.set_selection(0, &[0], Some(0));
+    browser.set_selection(0, &[], None);
+    browser.set_selection(0, &[1], Some(1));
+    browser.set_selection(1, &[0], Some(0));
+
+    assert_eq!(
+        *events.borrow(),
+        vec![(0, Some(0), vec![0]), (0, None, vec![])],
+        "invalid selections must not notify observers"
+    );
+}
+
+#[test]
 fn directory_navigation_does_not_open_or_preview_files() {
     let browser = Browser::new(Rc::new(FilePreviewSource));
     let events = Rc::new(RefCell::new(Vec::new()));
@@ -2436,7 +2689,7 @@ fn keyboard_selection_and_activation_descend_without_the_ui() {
 }
 
 #[test]
-fn escape_closes_a_peek_before_the_deepest_column() {
+fn escape_closes_a_peek_before_clearing_selection_and_closing_the_deepest_column() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
     let observed = events.clone();
@@ -2462,6 +2715,16 @@ fn escape_closes_a_peek_before_the_deepest_column() {
     );
 
     events.borrow_mut().clear();
+    let location = browser.active_location();
+    browser.escape();
+    assert!(browser.selected_positions(1).is_empty());
+    assert_eq!(browser.active_location(), location);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::SelectionSetChanged { depth: 1, positions, .. } if positions.is_empty()
+    )));
+
+    events.borrow_mut().clear();
     browser.escape();
     assert!(
         events
@@ -2469,6 +2732,37 @@ fn escape_closes_a_peek_before_the_deepest_column() {
             .iter()
             .any(|event| matches!(event, BrowserEvent::ColumnsTruncated { len: 1 }))
     );
+}
+
+#[test]
+fn escape_clears_only_the_active_selection_and_preserves_the_cursor() {
+    for multiple in [false, true] {
+        let mut source = ScriptedSource::scripted(vec!["a.txt", "b.txt"], Vec::new());
+        source.dirs = vec!["child"];
+        let browser = Browser::new(Rc::new(source));
+        browser.navigate(Location::local("/fixture"));
+        browser.activate_focused();
+        if multiple {
+            browser.select_all(1);
+        }
+        let parent_selection = browser.selected_positions(0);
+        let focused = browser.focused_item();
+        let location = browser.active_location();
+        assert_eq!(
+            browser.selected_positions(1).len(),
+            if multiple { 3 } else { 1 }
+        );
+
+        browser.escape();
+
+        assert!(browser.selected_positions(1).is_empty());
+        assert_eq!(browser.selected_positions(0), parent_selection);
+        assert_eq!(browser.focused_item(), focused);
+        assert_eq!(browser.active_location(), location);
+        assert!(!browser.selection_is_load_cursor());
+        browser.move_selection(1);
+        assert!(!browser.selected_positions(1).is_empty());
+    }
 }
 
 type CapturedLoad = Rc<RefCell<Option<(RequestId, Rc<dyn Fn(DirectoryEvent)>)>>>;

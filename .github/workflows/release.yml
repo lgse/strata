@@ -209,8 +209,9 @@ jobs:
           PY
 
       - name: Install native development libraries
-        run: >-
-          sudo apt-get update &&
+        run: |
+          sudo rm -f /etc/apt/sources.list.d/google-chrome.list /etc/apt/sources.list.d/google-chrome.sources
+          sudo apt-get update
           sudo apt-get install --yes libfontconfig1-dev libgtk-4-dev libgtksourceview-5-dev libpoppler-glib-dev
 
       - name: Install Rust

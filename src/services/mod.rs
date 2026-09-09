@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 mod file_source;
 mod install_source;
@@ -43,7 +43,7 @@ pub(crate) use transfer_action::{
 // reachable from UI code.
 pub(crate) use release_channel::{BuildKind, Channel, Version};
 pub(crate) use search::{
-    SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_tree, index_trees,
+    SearchCoverage, SearchEvent, SearchHandle, SearchItem, index_filter, index_tree, index_trees,
 };
 pub(crate) use update_check::{
     ReleaseMetadata, ReleaseNoteBlock, ReleaseNotes, UpdateCheck, check_for_updates,

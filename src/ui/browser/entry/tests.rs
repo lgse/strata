@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
 
@@ -32,6 +32,14 @@ fn file_sizes_use_compact_decimal_units() {
     assert_eq!(format_file_size(1_200), "1.2 kB");
     assert_eq!(format_file_size(1_000_000), "1 MB");
     assert_eq!(format_file_size(2_500_000_000), "2.5 GB");
+}
+
+#[test]
+fn file_sizes_round_before_choosing_the_unit() {
+    assert_eq!(format_file_size(999_950), "1 MB");
+    assert_eq!(format_file_size(999_950_000), "1 GB");
+    assert_eq!(format_file_size(9_949), "9.9 kB");
+    assert_eq!(format_file_size(9_950), "10 kB");
 }
 
 #[test]

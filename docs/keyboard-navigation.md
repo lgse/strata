@@ -25,11 +25,50 @@ Keyboard navigation suppresses stale row-hover effects and pending folder peeks 
 
 ## Focus without selection changes
 
-Clicking blank column content focuses that directory, including empty directories, without clearing its selection or closing descendants. Row clicks, controls, scrollbars, context menus, and marquee selection keep their own interactions. Returning to a column preserves a multi-selection; Ctrl+A selects the focused column, not the deepest open column.
+Pressing blank column content focuses that directory, including empty directories, without closing descendants. Releasing a plain click on empty space clears file selections across columns. When returning to an inactive column, it also selects that column's first visible entry as the range anchor. Holding or dragging does not clear selections before marquee intent is resolved. Row clicks, controls, scrollbars, context menus, and marquee selection keep their own interactions. Returning to a column by keyboard preserves a multi-selection; Ctrl+A selects the focused column, not the deepest open column.
 
 Copy/cut use the selection in the focused column, never a hovered row. In Columns, Delete/Shift+Delete with no selected items does nothing: an open parent-path marker is not an implicit deletion target. The separate List/Icons parent-deletion fallback is tracked in #300.
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
+
+## Creating files and folders
+
+In Columns, List, and Icons, **Ctrl+Shift+N** or background menu → **New Folder**
+immediately creates `new folder`. Background menu → **New File** immediately
+creates an empty `new file`. If the default name is occupied by any item, creation
+tries `new folder (1)` / `new file (1)`, then `(2)`, and so on without overwriting
+anything. The pane filter is cleared and the entire allocated default name is
+selected: one Backspace clears it, and typing replaces it.
+
+For **any file or folder rename**, Enter, clicking outside the field (even empty
+pane space), or moving keyboard focus away commits a valid name. Escape keeps
+the original name. Finishing with an empty or invalid name also keeps the
+original. Cancelling the initial rename does **not** delete the new item: it
+remains under its allocated default name. File contents are preserved.
+
+Clicking inside the field continues editing. Existing files retain extension-aware
+selection (the stem is selected); folder names containing dots are selected in full.
+
+Names containing `/` or NUL, `.`/`..`, and whitespace-only names (including
+Unicode whitespace) are invalid. Valid names are used exactly as typed,
+including spaces around a nonblank name, hidden-file prefixes, and Unicode.
+Name conflicts, filesystem-specific limits, and permission errors retain the
+original item and report an error.
+
+Click-away results: Columns ([file](screenshots/566/columns-new-file-rename.png),
+[folder](screenshots/566/columns-new-folder-rename.png)),
+List ([file](screenshots/566/list-new-file-rename.png),
+[folder](screenshots/566/list-new-folder-rename.png)), and
+Icons ([file](screenshots/566/icons-new-file-rename.png),
+[folder](screenshots/566/icons-new-folder-rename.png)).
+
+## Preview while filtering
+
+In the browser and file chooser, **Space** toggles quick preview for the highlighted recursive filter result in Columns, Icons, and List. The query, selection, and current directory stay intact. This also works when Up/Down highlights a result while keyboard focus remains in the query field.
+
+With no result selected, Space still types into the query. **Shift+Space** inserts a space in the query even with a result selected. Folders and unsupported files do not open a preview.
+
+[Filtered selection](screenshots/472/before.png) · [Preview with the query intact](screenshots/472/after.png)
 
 ## Shortcut footer
 

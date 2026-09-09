@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::RefCell,
@@ -44,7 +44,6 @@ pub mod icons {
     pub const ICONS: &str = "strata-icons";
     pub const HOME: &str = "strata-house";
     pub const LIST: &str = "strata-list";
-    pub const LIST_ACTIVE: &str = "strata-list-active";
     pub const LIST_CHECKS: &str = "strata-list-checks";
     pub const KEY: &str = "strata-key";
     pub const KEYBOARD: &str = "strata-keyboard";
@@ -229,6 +228,22 @@ pub fn set_emoji_icon(image: &gtk::Image, emoji: &str) {
     }
 }
 
+pub fn primary_icon_paintable(name: &str) -> Option<gdk::Texture> {
+    primary_icon_texture(name, &primary_icon_color())
+}
+
+pub fn custom_colored_icon_paintable(name: &str, color: &str) -> Option<gdk::Texture> {
+    primary_icon_texture(name, color)
+}
+
+pub fn folder_decoration_paintable(decoration: &str, color: &str) -> Option<gdk::Texture> {
+    folder_decoration_texture(decoration, color)
+}
+
+pub fn emoji_icon_paintable(emoji: &str) -> Option<gdk::Texture> {
+    emoji_texture(emoji)
+}
+
 pub fn primary_icon_color() -> String {
     PRIMARY_ICON_COLOR.with(|color| color.borrow().clone())
 }
@@ -297,7 +312,6 @@ fn texture_px_for_pixel_size(pixel_size: i32) -> i32 {
     }
 }
 
-#[cfg(test)]
 fn primary_icon_texture(name: &str, color: &str) -> Option<gdk::Texture> {
     primary_icon_texture_at(name, color, ICON_TEXTURE_PX)
 }

@@ -1,12 +1,11 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use gtk::prelude::*;
 
 #[derive(Clone)]
 pub(super) struct LoadPresentation {
     pub(super) stack: gtk::Stack,
-    skeleton: gtk::Box,
-    feedback: gtk::Box,
+    loading: crate::ui::loading_skeleton::DelayedLoading,
     message: gtk::Label,
     retry: Option<gtk::Button>,
 }
@@ -38,28 +37,25 @@ impl LoadPresentation {
         stack.add_named(content, Some("content"));
         stack.add_named(&skeleton, Some("loading"));
         stack.add_named(&feedback, Some("feedback"));
-        stack.set_visible_child_name("loading");
+        let loading = crate::ui::loading_skeleton::DelayedLoading::new(&stack);
 
         Self {
             stack,
-            skeleton,
-            feedback,
+            loading,
             message,
             retry,
         }
     }
 
     pub(super) fn show_loading(&self) {
-        self.skeleton.set_visible(true);
-        self.feedback.set_visible(true);
         if let Some(retry) = self.retry.as_ref() {
             retry.set_visible(false);
         }
-        self.stack.set_visible_child_name("loading");
+        self.loading.start();
     }
 
     pub(super) fn show_content(&self) {
-        self.stack.set_visible_child_name("content");
+        self.loading.show("content");
     }
 
     pub(super) fn show_empty(&self) {
@@ -68,7 +64,7 @@ impl LoadPresentation {
         if let Some(retry) = self.retry.as_ref() {
             retry.set_visible(false);
         }
-        self.stack.set_visible_child_name("feedback");
+        self.loading.show("feedback");
     }
 
     pub(super) fn show_error(&self, message: &str) {
@@ -77,6 +73,6 @@ impl LoadPresentation {
         if let Some(retry) = self.retry.as_ref() {
             retry.set_visible(true);
         }
-        self.stack.set_visible_child_name("feedback");
+        self.loading.show("feedback");
     }
 }

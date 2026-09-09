@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cmp::Reverse,
@@ -50,6 +50,15 @@ pub struct SearchItem {
 }
 
 impl SearchItem {
+    #[cfg(test)]
+    pub(crate) fn for_test(path: PathBuf, is_directory: bool) -> Self {
+        Self::new(
+            path.clone(),
+            path.parent().unwrap_or(Path::new("/")),
+            is_directory,
+        )
+    }
+
     fn new(path: PathBuf, root: &Path, is_directory: bool) -> Self {
         let name = path
             .file_name()
@@ -228,7 +237,9 @@ impl SharedIndex {
     }
 }
 
-type IndexRegistry = HashMap<(Vec<PathBuf>, bool), Weak<SharedIndex>>;
+mod directory;
+
+type IndexRegistry = HashMap<(Vec<PathBuf>, bool, bool), Weak<SharedIndex>>;
 static SHARED_INDEXES: OnceLock<Mutex<IndexRegistry>> = OnceLock::new();
 
 pub struct SearchHandle {
@@ -259,18 +270,34 @@ pub fn index_tree(root: PathBuf, show_hidden: bool) -> (SearchHandle, Receiver<S
     index_trees(vec![root], show_hidden)
 }
 
+pub fn index_filter(
+    root: PathBuf,
+    show_hidden: bool,
+    include_subfolders: bool,
+) -> (SearchHandle, Receiver<SearchEvent>) {
+    index_scoped(vec![root], show_hidden, include_subfolders)
+}
+
 /// Concurrent sessions share a snapshot until the last handle is dropped.
 /// Indexing and scoring run off the GTK thread.
 pub fn index_trees(
     roots: Vec<PathBuf>,
     show_hidden: bool,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
+    index_scoped(roots, show_hidden, true)
+}
+
+fn index_scoped(
+    roots: Vec<PathBuf>,
+    show_hidden: bool,
+    recursive: bool,
+) -> (SearchHandle, Receiver<SearchEvent>) {
     let mut seen = HashSet::new();
     let roots: Vec<_> = roots
         .into_iter()
         .filter(|root| seen.insert(root.clone()))
         .collect();
-    let key = (roots.clone(), show_hidden);
+    let key = (roots.clone(), show_hidden, recursive);
     let registry = SHARED_INDEXES.get_or_init(|| Mutex::new(HashMap::new()));
     let mut registry = registry
         .lock()
@@ -292,6 +319,7 @@ pub fn index_trees(
             MAX_INDEX_ENTRIES,
             MAX_INDEX_DEPTH,
             INDEX_TIME_BUDGET,
+            recursive,
         );
         index
     };
@@ -315,6 +343,7 @@ fn index_trees_with_budget(
         max_entries,
         max_depth,
         time_budget,
+        true,
     );
     start_search_session(index)
 }
@@ -411,19 +440,24 @@ fn start_indexer(
     max_entries: usize,
     max_depth: usize,
     time_budget: Duration,
+    recursive: bool,
 ) {
     let worker_index = index.clone();
     let worker = std::thread::Builder::new()
         .name("strata-search-index".into())
         .spawn(move || {
-            build_index(
-                &worker_index,
-                roots,
-                show_hidden,
-                max_entries,
-                max_depth,
-                time_budget,
-            );
+            if recursive {
+                build_index(
+                    &worker_index,
+                    roots,
+                    show_hidden,
+                    max_entries,
+                    max_depth,
+                    time_budget,
+                );
+            } else {
+                directory::build_index(&worker_index, roots, show_hidden, max_entries, time_budget);
+            }
         });
     if let Err(error) = worker {
         tracing::error!(%error, "search index worker failed to start");

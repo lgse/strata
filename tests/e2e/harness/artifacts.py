@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Failure evidence: screenshot, accessibility tree, logs, and fixture state."""
 
 from __future__ import annotations
@@ -15,6 +15,9 @@ from . import screenshots
 def artifact_root() -> Path:
     configured = os.environ.get("STRATA_E2E_ARTIFACTS")
     base = Path(configured) if configured else _default_root()
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if worker:
+        base = base / worker
     base.mkdir(parents=True, exist_ok=True)
     return base
 

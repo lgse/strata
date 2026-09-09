@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -11,29 +11,29 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
-    adapters::{
-        LocalFileSource, LocalOperationProvider, LocalPreviewProvider, RevealRequest,
-        location_for_file,
-    },
+    adapters::{LocalFileSource, LocalOperationProvider, RevealRequest, location_for_file},
     app::{Browser, BrowserEvent},
-    model::{EntryKind, FileEntry, Location, MetadataValue},
+    model::Location,
     services::{BuildKind, ReleaseMetadata, sanitize_uri_credentials},
 };
 
 use super::{
-    blur::BlurBin,
     browser::{
         BrowserView, PeekBehavior, PinStatus, PreparedFileDrop, file_drop_action, file_drop_commit,
         locations_from_file_list_value, prepare_file_drop_target, show_error_dialog,
     },
     browser_modes::{BrowserDensity, BrowserMode},
     motion::{animations_enabled, emphasized_deceleration},
-    preview::{PreviewDrawer, preview_target},
-    search::SearchDialog,
     theme::ThemeManager,
 };
 
+mod composition;
 mod devices;
+mod keyboard;
+mod sidebar;
+
+use sidebar::PlaceNavigation;
+pub(super) use sidebar::build_sidebar;
 
 pub(super) const SIDEBAR_WIDTH: i32 = 208;
 pub(super) const MIN_SIDEBAR_WIDTH: i32 = 176;
@@ -83,13 +83,8 @@ pub fn present(application: &gtk::Application) {
     present_target(application, None, Vec::new(), false);
 }
 
-pub fn present_location(application: &gtk::Application, location: Option<PathBuf>) {
-    present_target(
-        application,
-        location.map(Location::local),
-        Vec::new(),
-        false,
-    );
+pub fn present_location(application: &gtk::Application, location: Option<Location>) {
+    present_target(application, location, Vec::new(), false);
 }
 
 /// Opens the window an `org.freedesktop.FileManager1` caller asked for: the
@@ -103,15 +98,29 @@ pub fn present_reveal(application: &gtk::Application, request: RevealRequest) {
     );
 }
 
-fn browser_for_window(theme_manager: &ThemeManager) -> BrowserView {
+fn bind_update_notice_preferences(
+    anchor: &impl IsA<gtk::Widget>,
+    manager: &ThemeManager,
+    notice: &super::settings::UpdateNoticeHandler,
+) {
+    let initial = Cell::new(true);
+    let notice = Rc::downgrade(notice);
+    manager.bind_preference(
+        anchor,
+        |manager| (manager.checks_for_updates(), manager.release_channel()),
+        move |_, _| {
+            if !initial.replace(false)
+                && let Some(notice) = notice.upgrade()
+            {
+                notice(None);
+            }
+        },
+    );
+}
+
+fn browser_for_window() -> BrowserView {
     let browser = BrowserView::new(Rc::new(LocalFileSource), PeekBehavior::default());
-    browser.set_view_mode(theme_manager.browser_mode());
-    browser.set_density(theme_manager.browser_density());
-    browser.set_group_by_type(theme_manager.group_by_type());
-    apply_click_activation(&browser, theme_manager);
     browser.set_operation_provider(Rc::new(LocalOperationProvider));
-    browser.set_auto_refresh_interval(theme_manager.auto_refresh_interval());
-    browser.set_single_click_previews(theme_manager.single_click_previews());
     browser
 }
 
@@ -137,432 +146,11 @@ fn present_target(
         .default_height(760)
         .build();
 
-    let browser = browser_for_window(&theme_manager);
-    let controller = browser.browser();
-
-    let preview_preferences = theme_manager.clone();
-    let preview = PreviewDrawer::new(
-        Rc::new(LocalPreviewProvider::new(Rc::new(move || {
-            preview_preferences.media_preview_backend()
-        }))),
-        true,
-    );
-    preview.observe_browser(&controller);
-
-    let header = gtk::HeaderBar::new();
-    header.set_show_title_buttons(false);
-    let sidebar_toggle = gtk::ToggleButton::builder()
-        .active(true)
-        .tooltip_text("Toggle sidebar (Ctrl+B)")
-        .build();
-    sidebar_toggle.set_child(Some(&crate::assets::chrome_icon(
-        crate::assets::icons::PANEL_LEFT,
-    )));
-    sidebar_toggle.add_css_class("sidebar-toggle");
-    let location_widget = browser.location_widget();
-    location_widget.set_hexpand(true);
-    let search_button = gtk::Button::builder()
-        .tooltip_text("Search (Ctrl+K)")
-        .build();
-    search_button.set_child(Some(&crate::assets::chrome_icon(
-        crate::assets::icons::SEARCH,
-    )));
-    search_button.add_css_class("header-action");
-    let appearance = build_appearance_menu(&browser, &controller, theme_manager.clone());
-    let settings = gtk::Button::builder().tooltip_text("Settings").build();
-    settings.set_child(Some(&crate::assets::chrome_icon(
-        crate::assets::icons::SETTINGS,
-    )));
-    settings.add_css_class("header-action");
-    let close_window = gtk::Button::builder().tooltip_text("Close window").build();
-    close_window.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
-    close_window.add_css_class("header-action");
-    let closing_window = window.clone();
-    close_window.connect_clicked(move |_| closing_window.close());
-    let header_actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    header_actions.add_css_class("header-actions");
-    header_actions.append(&search_button);
-    header_actions.append(&appearance);
-    header_actions.append(&settings);
-    header_actions.append(&close_window);
-    let header_content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    header_content.set_hexpand(true);
-    header_content.set_valign(gtk::Align::Center);
-    header_content.append(&sidebar_toggle);
-    header_content.append(&location_widget);
-    header_content.append(&header_actions);
-    header.set_title_widget(Some(&header_content));
-
-    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    root.append(&header);
-
-    let content = gtk::Paned::new(gtk::Orientation::Horizontal);
-    content.set_wide_handle(false);
-    content.set_shrink_start_child(false);
-    content.set_resize_start_child(false);
-    content.set_position(SIDEBAR_WIDTH);
-    content.set_vexpand(true);
-    let sidebar = build_sidebar(browser.clone(), theme_manager.clone(), false);
-    let weak_sidebar = Rc::downgrade(&sidebar.state);
-    let weak_unpin_sidebar = Rc::downgrade(&sidebar.state);
-    let pinned_places = sidebar.state.pinned_places.clone();
-    browser.set_pin_handlers(
-        Rc::new(move |location, name| {
-            if let Some(sidebar) = weak_sidebar.upgrade() {
-                sidebar.pin_location(location, name);
-            }
-        }),
-        Rc::new(move |location| {
-            if let Some(sidebar) = weak_unpin_sidebar.upgrade() {
-                sidebar.unpin_location(location);
-            }
-        }),
-        Rc::new(move |location| pin_status(&pinned_places.borrow(), location)),
-    );
-    let preview_for_print = preview.clone();
-    browser.set_print_handler(Rc::new(move |entry| preview_for_print.print_entry(entry)));
-    sidebar.widget.set_size_request(MIN_SIDEBAR_WIDTH, -1);
-    browser.add_marquee_origin(&sidebar.widget);
-    content.set_start_child(Some(&sidebar.widget));
-    content.set_end_child(Some(&browser.widget()));
-    let animation_generation = Rc::new(Cell::new(0));
-    let sidebar_animating = Rc::new(Cell::new(false));
-    let constrained_content = content.clone();
-    let constrained_toggle = sidebar_toggle.clone();
-    let constrained_animation = sidebar_animating.clone();
-    content.connect_position_notify(move |_| {
-        if constrained_toggle.is_active()
-            && !constrained_animation.get()
-            && constrained_content.position() < MIN_SIDEBAR_WIDTH
-        {
-            constrained_content.set_position(MIN_SIDEBAR_WIDTH);
-        }
-    });
-    let animated_content = content.clone();
-    let animated_sidebar = sidebar.widget.clone();
-    sidebar_toggle.connect_toggled(move |toggle| {
-        animate_sidebar(
-            &animated_content,
-            &animated_sidebar,
-            &animation_generation,
-            &sidebar_animating,
-            toggle.is_active(),
-        );
-    });
-    let preview_split = gtk::Paned::new(gtk::Orientation::Horizontal);
-    preview_split.add_css_class("preview-split");
-    preview_split.set_wide_handle(false);
-    preview_split.set_resize_start_child(true);
-    preview_split.set_resize_end_child(false);
-    preview_split.set_shrink_start_child(false);
-    preview_split.set_shrink_end_child(true);
-    preview_split.set_start_child(Some(&content));
-    preview_split.set_end_child(Some(&preview.widget()));
-    preview_split.set_position(i32::MAX);
-    preview_split.set_vexpand(true);
-    let measured_content = content.clone();
-    let measured_browser = browser.clone();
-    preview.attach_split(
-        &preview_split,
-        Rc::new(move || measured_content.position() + measured_browser.preview_occupied_width()),
-    );
-    root.append(&preview_split);
-    let shortcuts = super::shortcut_footer::ShortcutFooter::new(browser.view_mode());
-    shortcuts.bind_preferences(&theme_manager);
-    let clipboard = window.clipboard();
-    let clipboard_handler = RefCell::new(Some(shortcuts.connect_clipboard(&clipboard)));
-    root.append(shortcuts.widget());
-    let updated_shortcuts = shortcuts.clone();
-    browser.connect_view_mode_changed(move |mode| updated_shortcuts.set_mode(mode));
-
-    let mouse_history = gtk::GestureClick::new();
-    mouse_history.set_button(0);
-    mouse_history.set_propagation_phase(gtk::PropagationPhase::Bubble);
-    let weak_controller = Rc::downgrade(&controller);
-    mouse_history.connect_pressed(move |gesture, _, _, _| {
-        let Some(browser) = weak_controller.upgrade() else {
-            return;
-        };
-        match mouse_history_action(gesture.current_button()) {
-            Some(MouseHistoryAction::Back) if browser.can_go_back() => browser.back(),
-            Some(MouseHistoryAction::Forward) if browser.can_go_forward() => browser.forward(),
-            _ => return,
-        }
-        gesture.set_state(gtk::EventSequenceState::Claimed);
-    });
-    root.add_controller(mouse_history);
-    super::scrolling::install_autoscroll_stop(&root);
-
-    let window_overlay = gtk::Overlay::new();
-    let blurred_root = BlurBin::new(&root);
-    window_overlay.set_child(Some(&blurred_root));
-
-    let search_controller = controller.clone();
-    let search_preview = preview.clone();
-    let search_preferences = theme_manager.clone();
-    let activate_search_result = Rc::new(move |item: crate::services::SearchItem| {
-        let location = Location::local(item.path.clone());
-        if item.is_directory {
-            search_preview.close();
-            search_controller.navigate(location);
-            return;
-        }
-        if let Some(parent) = item.path.parent() {
-            search_controller.navigate(Location::local(parent));
-        }
-        if search_preferences.search_open_files_directly() {
-            search_controller.open_location(location);
-        } else {
-            search_preview.show(FileEntry {
-                location,
-                native_name: item.path.file_name().unwrap_or_default().to_os_string(),
-                thumbnail_path: None,
-                display_name: item.name,
-                kind: EntryKind::File,
-                size: MetadataValue::Unknown,
-                modified_unix_seconds: MetadataValue::Unknown,
-                is_hidden: false,
-                mode: MetadataValue::Unknown,
-            });
-        }
-    });
-    let dismissed_search_root = blurred_root.clone();
-    let dismissed_search_button = search_button.clone();
-    let dismiss_search = Rc::new(move || {
-        dismissed_search_root.set_blurred(false);
-        dismissed_search_button.remove_css_class("active");
-    });
-    let search_dialog = SearchDialog::new(activate_search_result, dismiss_search);
-    window_overlay.add_overlay(&search_dialog.widget());
-    let shown_search = search_dialog.clone();
-    let search_blurred_root = blurred_root.clone();
-    let search_preferences = theme_manager.clone();
-    search_button.connect_clicked(move |button| {
-        if shown_search.is_visible() {
-            shown_search.hide();
-            return;
-        }
-        let roots = devices::global_search_roots();
-        button.add_css_class("active");
-        search_blurred_root.set_blurred(true);
-        shown_search.show(roots, search_preferences.sort_preferences().show_hidden);
-    });
-    let search_action = gio::SimpleAction::new("search", None);
-    let shortcut_search = search_dialog.clone();
-    let shortcut_search_button = search_button.clone();
-    let shortcut_search_root = blurred_root.clone();
-    let shortcut_search_preferences = theme_manager.clone();
-    search_action.connect_activate(move |_, _| {
-        if shortcut_search.is_visible() {
-            shortcut_search.hide();
-        } else {
-            let roots = devices::global_search_roots();
-            shortcut_search_button.add_css_class("active");
-            shortcut_search_root.set_blurred(true);
-            shortcut_search.show(
-                roots,
-                shortcut_search_preferences.sort_preferences().show_hidden,
-            );
-        }
-    });
-    window.add_action(&search_action);
-
-    let terminal_view = browser.clone();
-    let terminal_action = gio::SimpleAction::new("open-terminal", None);
-    terminal_action.connect_activate(move |_, _| {
-        terminal_view.open_terminal();
-    });
-    window.add_action(&terminal_action);
-
-    let refresh_view = browser.clone();
-    let refresh_action = gio::SimpleAction::new("refresh", None);
-    refresh_action.connect_activate(move |_, _| {
-        refresh_view.refresh();
-    });
-    window.add_action(&refresh_action);
-    for (action, accels) in DEFAULT_ACCELS {
-        application.set_accels_for_action(action, accels);
-    }
-
-    let update_button = sidebar.update_notice.clone();
-    let update_area = sidebar.update_area.clone();
-    let update_label = sidebar.update_label.clone();
-    let available_update = Rc::new(RefCell::new(
-        None::<(
-            crate::services::ReleaseMetadata,
-            String,
-            crate::services::UpdateMethod,
-        )>,
-    ));
-    // Process-wide, not per-window: shared across the settings page's
-    // update/rollback rows, this dialog, and every other open window, so at
-    // most one install ever runs at a time -- see
-    // `settings::install_guard`.
-    let install_guard = super::settings::install_guard();
-    let available_for_click = available_update.clone();
-    let update_parent = window.clone().upcast::<gtk::Window>();
-    let install_guard_for_dialog = install_guard.clone();
-    update_button.connect_clicked(move |_| {
-        let Some((release, download_url, update_method)) = available_for_click.borrow().clone()
-        else {
-            return;
-        };
-        super::settings::show_update_dialog(
-            &update_parent,
-            &release,
-            download_url,
-            install_guard_for_dialog.clone(),
-            update_method,
-        );
-    });
-    let available_for_notice = available_update.clone();
-    let update_notice: super::settings::UpdateNoticeHandler = Rc::new(move |release| {
-        if let Some((release, download_url, update_method)) = release {
-            let tooltip = match update_method {
-                crate::services::UpdateMethod::InPlace => {
-                    format!("Install Strata v{}", release.version)
-                }
-                crate::services::UpdateMethod::Aur => format!(
-                    "Strata v{} is available through {}",
-                    release.version,
-                    crate::services::InstallSource::detect()
-                        .managed()
-                        .map(crate::services::ManagedInstall::manager)
-                        .unwrap_or("your package manager")
-                ),
-                crate::services::UpdateMethod::Omarchy => {
-                    format!("Strata v{} is available through Omarchy", release.version)
-                }
-                crate::services::UpdateMethod::Pacman => {
-                    format!("Strata v{} is available through pacman", release.version)
-                }
-            };
-            update_button.set_tooltip_text(Some(&tooltip));
-            update_label.set_text(&sidebar_update_label(&release));
-            if release.kind == BuildKind::Stable {
-                update_button.remove_css_class("preview");
-            } else {
-                update_button.add_css_class("preview");
-            }
-            *available_for_notice.borrow_mut() = Some((release, download_url, update_method));
-            update_area.set_visible(true);
-        } else {
-            available_for_notice.borrow_mut().take();
-            update_area.set_visible(false);
-        }
-    });
-    let settings_layer: Rc<RefCell<Option<gtk::Box>>> = Rc::new(RefCell::new(None));
-    let ensure_settings_layer = {
-        let browser = browser.clone();
-        let settings_button = settings.clone();
-        let blurred = blurred_root.clone();
-        let themes = theme_manager.clone();
-        let notice = update_notice.clone();
-        let guard = install_guard.clone();
-        let overlay = window_overlay.clone();
-        let layers = settings_layer.clone();
-        Rc::new(move || {
-            if let Some(layer) = layers.borrow().clone() {
-                return layer;
-            }
-            let layer = super::settings::build_layer(
-                &browser,
-                &settings_button,
-                &blurred,
-                themes.clone(),
-                notice.clone(),
-                guard.clone(),
-            );
-            overlay.add_overlay(&layer);
-            layers.borrow_mut().replace(layer.clone());
-            layer
-        })
-    };
-    let shown_settings = ensure_settings_layer.clone();
-    let settings_button = settings.clone();
-    let settings_blurred_root = blurred_root.clone();
-    settings.connect_clicked(move |_| {
-        let layer = shown_settings();
-        show_settings(&layer, &settings_button, &settings_blurred_root);
-    });
-    let settings_shortcut = gtk::EventControllerKey::new();
-    let shown_settings = ensure_settings_layer.clone();
-    let settings_button = settings.clone();
-    let shortcut_blurred_root = blurred_root.clone();
-    settings_shortcut.connect_key_pressed(move |_, key, _, modifiers| {
-        if key != gtk::gdk::Key::comma || !modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK)
-        {
-            return glib::Propagation::Proceed;
-        }
-        let layer = shown_settings();
-        show_settings(&layer, &settings_button, &shortcut_blurred_root);
-        glib::Propagation::Stop
-    });
-    window.add_controller(settings_shortcut);
-    window.set_child(Some(&window_overlay));
-    let rename_cancel_view = browser.clone();
-    let rename_cancel = gtk::GestureClick::new();
-    rename_cancel.set_propagation_phase(gtk::PropagationPhase::Capture);
-    rename_cancel.connect_pressed(move |gesture, _, x, y| {
-        if !rename_cancel_view.rename_is_active() {
-            return;
-        }
-        let on_entry = gesture
-            .widget()
-            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
-            .is_some_and(|target| {
-                target.has_css_class("inline-rename")
-                    || target.ancestor(gtk::Entry::static_type()).is_some()
-            });
-        if !on_entry {
-            rename_cancel_view.cancel_rename();
-        }
-    });
-    window.add_controller(rename_cancel);
-    let location_cancel_view = browser.clone();
-    let location_cancel = gtk::GestureClick::new();
-    location_cancel.set_propagation_phase(gtk::PropagationPhase::Capture);
-    location_cancel.connect_pressed(move |gesture, _, x, y| {
-        if !location_cancel_view.location_edit_is_active() {
-            return;
-        }
-        let on_location_edit = gesture
-            .widget()
-            .and_then(|widget| widget.pick(x, y, gtk::PickFlags::DEFAULT))
-            .is_some_and(|target| location_cancel_view.location_edit_contains(&target));
-        if !on_location_edit {
-            location_cancel_view.cancel_location_edit();
-        }
-    });
-    window.add_controller(location_cancel);
-    install_modal_focus_trap(&window);
-    let type_to_search = TypeToSearch {
-        view: browser.clone(),
-        preferences: theme_manager.clone(),
-    };
-    let top_bar = super::top_bar_navigation::TopBarNavigation::new(
-        &header_content,
-        &sidebar.widget,
-        &sidebar_toggle,
-    );
-    install_keyboard_navigation(
-        &window,
-        &browser,
-        &sidebar,
-        &top_bar,
-        &preview,
-        &type_to_search,
-        &shortcuts,
-    );
-    let browser_controller = browser.browser();
-    schedule_after_first_paint(&window, &sidebar);
-    window.connect_destroy(move |_| {
-        if let Some(handler) = clipboard_handler.borrow_mut().take() {
-            clipboard.disconnect(handler);
-        }
-        browser_controller.clear_observer();
-        sidebar.disconnect();
-    });
+    let content = composition::WindowContent::new(&window, &theme_manager);
+    let update_notice = content.bind(&window, &theme_manager);
+    let browser = content.browser.clone();
+    schedule_after_first_paint(&window, &content.sidebar);
+    content.connect_cleanup(&window);
     window.present();
     crate::metrics::mark_window_presented();
     let pending_location = location.unwrap_or_else(|| Location::local(home_directory()));
@@ -673,464 +261,6 @@ fn animate_sidebar(
             glib::ControlFlow::Continue
         }
     });
-}
-
-/// Apply saved activation before Settings is opened, including in the file chooser.
-pub(super) fn apply_click_activation(view: &BrowserView, preferences: &super::theme::ThemeManager) {
-    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
-        view.set_click_activation(mode, preferences.click_activation(mode));
-    }
-}
-
-fn install_keyboard_navigation(
-    window: &gtk::ApplicationWindow,
-    view: &BrowserView,
-    sidebar: &SidebarView,
-    top_bar: &super::top_bar_navigation::TopBarNavigation,
-    preview: &PreviewDrawer,
-    type_to_search: &TypeToSearch,
-    shortcuts: &super::shortcut_footer::ShortcutFooter,
-) {
-    let shortcuts = shortcuts.clone();
-    let keys = gtk::EventControllerKey::new();
-    keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let view = view.clone();
-    let sidebar_state = sidebar.state.clone();
-    let sidebar_widget = sidebar.widget.clone();
-    let sidebar_toggle = top_bar.sidebar_toggle().clone();
-    let top_bar = top_bar.clone();
-    let preview = preview.clone();
-    let type_to_search = type_to_search.clone();
-    let dialog_parent = window.clone();
-    let focus_before_sidebar = Rc::new(RefCell::new(None::<gtk::Widget>));
-    let weak_browser = Rc::downgrade(&view.browser());
-    keys.connect_key_pressed(move |_, key, _, modifiers| {
-        let Some(browser) = weak_browser.upgrade() else {
-            return glib::Propagation::Proceed;
-        };
-        if let Some(layer) = visible_modal_layer(&dialog_parent) {
-            let focus_is_inside = gtk::prelude::RootExt::focus(&dialog_parent)
-                .is_some_and(|focus| focus == layer || focus.is_ancestor(&layer));
-            if !focus_is_inside {
-                layer.grab_focus();
-                return glib::Propagation::Stop;
-            }
-            return glib::Propagation::Proceed;
-        }
-        if !view.rename_is_active()
-            && !view.new_entry_is_active()
-            && let Some(result) = shortcuts.handle_key(key, modifiers)
-        {
-            return result;
-        }
-        if key == gtk::gdk::Key::Escape && super::scrolling::stop_autoscroll() {
-            return glib::Propagation::Stop;
-        }
-        let alt = modifiers.contains(gtk::gdk::ModifierType::ALT_MASK);
-        let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
-        let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
-        let focused = gtk::prelude::RootExt::focus(&dialog_parent);
-        let sidebar_has_focus = focused.as_ref().is_some_and(|focused| {
-            focused == &sidebar_widget || focused.is_ancestor(&sidebar_widget)
-        });
-        if control
-            && !shift
-            && !alt
-            && let Some(mode) = browser_mode_for_digit(key)
-        {
-            apply_browser_mode(&view, &super::theme::ThemeManager::shared(), mode);
-            return glib::Propagation::Stop;
-        }
-        if control && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::K) {
-            if let Err(error) =
-                gtk::prelude::WidgetExt::activate_action(&dialog_parent, "win.search", None)
-            {
-                tracing::warn!(%error, "unable to activate global search shortcut");
-            }
-            return glib::Propagation::Stop;
-        }
-        if is_rename_shortcut(key, modifiers)
-            && !focused
-                .as_ref()
-                .is_some_and(super::focus_navigation::editable)
-            && view.begin_rename()
-        {
-            return glib::Propagation::Stop;
-        }
-        if key == gtk::gdk::Key::Escape && view.cancel_new_entry() {
-            return glib::Propagation::Stop;
-        }
-        if key == gtk::gdk::Key::Escape && view.cancel_rename() {
-            return glib::Propagation::Stop;
-        }
-        if view.rename_is_active() || view.new_entry_is_active() {
-            return glib::Propagation::Proceed;
-        }
-        if key == gtk::gdk::Key::Escape && view.dismiss_focused_filter() {
-            return glib::Propagation::Stop;
-        }
-        if control
-            && !shift
-            && !alt
-            && matches!(key, gtk::gdk::Key::f | gtk::gdk::Key::F)
-            && view.show_filter()
-        {
-            return glib::Propagation::Stop;
-        }
-        if control && key == gtk::gdk::Key::l {
-            view.begin_location_edit();
-            return glib::Propagation::Stop;
-        }
-        let text_has_focus = focused.as_ref().is_some_and(|w| {
-            w.is::<gtk::Text>() || w.is::<gtk::TextView>() || w.is::<gtk::Entry>()
-        });
-        if preview.has_video()
-            && !sidebar_has_focus
-            && !top_bar.has_focus()
-            && !text_has_focus
-            && !alt
-            && !control
-            && !shift
-            && matches!(
-                key,
-                gtk::gdk::Key::space
-                    | gtk::gdk::Key::Up
-                    | gtk::gdk::Key::Down
-                    | gtk::gdk::Key::Left
-                    | gtk::gdk::Key::Right
-                    | gtk::gdk::Key::m
-                    | gtk::gdk::Key::M
-            )
-        {
-            preview.handle_video_key(key);
-            return glib::Propagation::Stop;
-        }
-        if is_sidebar_focus_shortcut(key, modifiers) {
-            view.keyboard_navigation();
-            if sidebar_has_focus {
-                let restored = focus_before_sidebar
-                    .borrow_mut()
-                    .take()
-                    .is_some_and(|widget| widget.grab_focus());
-                if !restored {
-                    browser.focus_active();
-                }
-            } else {
-                focus_before_sidebar.replace(focused.clone());
-                if !sidebar_toggle.is_active() {
-                    sidebar_toggle.set_active(true);
-                }
-                let sidebar = sidebar_state.clone();
-                glib::idle_add_local_once(move || {
-                    sidebar.focus_active_place();
-                });
-            }
-            return glib::Propagation::Stop;
-        }
-        if control && !shift && matches!(key, gtk::gdk::Key::b | gtk::gdk::Key::B) {
-            sidebar_toggle.set_active(!sidebar_toggle.is_active());
-            return glib::Propagation::Stop;
-        }
-        if view.location_has_focus() {
-            if key == gtk::gdk::Key::Escape {
-                view.cancel_location_edit();
-                return glib::Propagation::Stop;
-            }
-            return glib::Propagation::Proceed;
-        }
-        if !text_has_focus && is_undo_shortcut(key, modifiers) && view.undo_last_operation() {
-            return glib::Propagation::Stop;
-        }
-        if view.item_view_has_focus()
-            && let Some(query) = type_to_search_query(key, modifiers)
-            && type_to_search.show(query)
-        {
-            return glib::Propagation::Stop;
-        }
-        if !text_has_focus && is_browser_navigation_key(key, modifiers) {
-            view.keyboard_navigation();
-        }
-        if alt
-            && !control
-            && !shift
-            && matches!(key, gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter)
-            && view.show_focused_properties()
-        {
-            return glib::Propagation::Stop;
-        }
-        if control && shift && matches!(key, gtk::gdk::Key::n | gtk::gdk::Key::N) {
-            view.create_new_folder();
-            return glib::Propagation::Stop;
-        }
-        if control && !shift && key == gtk::gdk::Key::v {
-            if view.filter_has_focus() {
-                return glib::Propagation::Proceed;
-            }
-            view.paste();
-            return glib::Propagation::Stop;
-        }
-        if control && !shift && key == gtk::gdk::Key::c {
-            if view.filter_has_focus() {
-                return glib::Propagation::Proceed;
-            }
-            if view.copy_selection() {
-                return glib::Propagation::Stop;
-            }
-        }
-        if control && !shift && matches!(key, gtk::gdk::Key::d | gtk::gdk::Key::D) {
-            if view.filter_has_focus() {
-                return glib::Propagation::Proceed;
-            }
-            if view.duplicate_selection() {
-                return glib::Propagation::Stop;
-            }
-        }
-        if control && !shift && key == gtk::gdk::Key::x {
-            if view.filter_has_focus() {
-                return glib::Propagation::Proceed;
-            }
-            if view.cut_selection() {
-                return glib::Propagation::Stop;
-            }
-        }
-        if control && !shift && key == gtk::gdk::Key::a {
-            if view.filter_has_focus() {
-                return glib::Propagation::Proceed;
-            }
-            view.select_all();
-            return glib::Propagation::Stop;
-        }
-        if is_toggle_hidden_shortcut(key, modifiers) {
-            browser.toggle_hidden();
-            return glib::Propagation::Stop;
-        }
-        if is_open_terminal_shortcut(key, modifiers) {
-            view.open_terminal();
-            return glib::Propagation::Stop;
-        }
-        if is_refresh_shortcut(key) {
-            view.refresh();
-            return glib::Propagation::Stop;
-        }
-        let popover = focused
-            .as_ref()
-            .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
-            .and_downcast::<gtk::Popover>();
-        if let Some(popover) = popover
-            && !control
-            && !alt
-        {
-            if popover.has_css_class("column-popover")
-                && let Some(direction) = vim_focus_direction(key)
-            {
-                popover.child_focus(direction);
-                return glib::Propagation::Stop;
-            }
-            return glib::Propagation::Proceed;
-        }
-        if top_bar.has_focus() && !text_has_focus && !control && !alt && !shift {
-            match key {
-                gtk::gdk::Key::Left | gtk::gdk::Key::Right => {
-                    top_bar.move_focus(if key == gtk::gdk::Key::Left {
-                        gtk::DirectionType::Left
-                    } else {
-                        gtk::DirectionType::Right
-                    });
-                    return glib::Propagation::Stop;
-                }
-                gtk::gdk::Key::Down => {
-                    if !top_bar.return_to_sidebar() {
-                        browser.focus_active();
-                    }
-                    return glib::Propagation::Stop;
-                }
-                gtk::gdk::Key::Up => return glib::Propagation::Stop,
-                _ => {}
-            }
-        }
-        let mut header_left_boundary = false;
-        if view.header_actions_have_focus() && !control && !alt {
-            match key {
-                gtk::gdk::Key::h | gtk::gdk::Key::Left => {
-                    if view.move_header_focus(gtk::DirectionType::Left) {
-                        return glib::Propagation::Stop;
-                    }
-                    if view.view_mode() != BrowserMode::Columns {
-                        if sidebar_toggle.is_active() {
-                            focus_before_sidebar.replace(focused.clone());
-                            sidebar_state.focus_active_place();
-                        }
-                        return glib::Propagation::Stop;
-                    }
-                    header_left_boundary = true;
-                }
-                gtk::gdk::Key::l | gtk::gdk::Key::Right => {
-                    view.move_header_focus(gtk::DirectionType::Right);
-                    return glib::Propagation::Stop;
-                }
-                gtk::gdk::Key::j | gtk::gdk::Key::Down => {
-                    view.focus_items_from_header();
-                    return glib::Propagation::Stop;
-                }
-                _ => {}
-            }
-        }
-        if sidebar_has_focus
-            && !control
-            && !alt
-            && let Some(direction) = sidebar_focus_direction(key)
-        {
-            if direction == gtk::DirectionType::Right {
-                let restored = focus_before_sidebar
-                    .borrow_mut()
-                    .take()
-                    .is_some_and(|widget| widget.is_mapped() && widget.grab_focus());
-                if !restored {
-                    browser.focus_active();
-                }
-            } else if direction == gtk::DirectionType::Up && !shift {
-                top_bar.move_up_from_sidebar();
-            } else {
-                sidebar_widget.child_focus(direction);
-            }
-            return glib::Propagation::Stop;
-        }
-        if key == gtk::gdk::Key::BackSpace
-            && !control
-            && !alt
-            && view.dismiss_empty_focused_filter()
-        {
-            return glib::Propagation::Stop;
-        }
-        if key == gtk::gdk::Key::Delete && !view.filter_has_focus() && view.confirm_delete(shift) {
-            return glib::Propagation::Stop;
-        }
-        if !control && !alt && !view.item_view_has_focus() && !header_left_boundary {
-            return glib::Propagation::Proceed;
-        }
-        if let Some(direction) = jump_direction(key, modifiers)
-            && view.jump_selection(direction)
-        {
-            return glib::Propagation::Stop;
-        }
-        if view.item_view_has_focus()
-            && let Some(action) = single_pane_arrow_action(
-                view.view_mode(),
-                key,
-                modifiers,
-                view.at_left_edge(),
-                sidebar_toggle.is_active(),
-            )
-        {
-            return match action {
-                SinglePaneArrow::Native => {
-                    if !control
-                        && !shift
-                        && key == gtk::gdk::Key::Up
-                        && view.focus_header_from_top_item()
-                    {
-                        return glib::Propagation::Stop;
-                    }
-                    view.commit_selection();
-                    if !control
-                        && !shift
-                        && let Some(direction) = sidebar_focus_direction(key)
-                        && view.cross_type_group(direction, false)
-                    {
-                        glib::Propagation::Stop
-                    } else {
-                        glib::Propagation::Proceed
-                    }
-                }
-                SinglePaneArrow::Stay => glib::Propagation::Stop,
-                SinglePaneArrow::Sidebar => {
-                    focus_before_sidebar.replace(focused.clone());
-                    sidebar_state.focus_active_place();
-                    glib::Propagation::Stop
-                }
-            };
-        }
-        if view.item_view_has_focus()
-            && !control
-            && !alt
-            && matches!(key, gtk::gdk::Key::Home | gtk::gdk::Key::End)
-        {
-            view.commit_selection();
-        }
-        if !control
-            && !alt
-            && let Some(direction) = page_direction(key)
-            && view.page_selection(direction)
-        {
-            return glib::Propagation::Stop;
-        }
-        if !control && !alt && matches!(key, gtk::gdk::Key::y | gtk::gdk::Key::Y) {
-            view.copy_path();
-            return glib::Propagation::Stop;
-        }
-        if !control && !alt && matches!(key, gtk::gdk::Key::p | gtk::gdk::Key::P) {
-            view.pin_focused();
-            return glib::Propagation::Stop;
-        }
-        if key == gtk::gdk::Key::space && !alt && !control {
-            preview.toggle(preview_target(browser.focused_entry()));
-            return glib::Propagation::Stop;
-        }
-        if key == gtk::gdk::Key::Escape && preview.is_open() {
-            preview.close();
-            return glib::Propagation::Stop;
-        }
-        if key == gtk::gdk::Key::BackSpace && !control && !alt {
-            view.navigate_up();
-            return glib::Propagation::Stop;
-        }
-        if shift && key == gtk::gdk::Key::Up {
-            browser.extend_selection(-1);
-            return glib::Propagation::Stop;
-        }
-        if shift && key == gtk::gdk::Key::Down {
-            browser.extend_selection(1);
-            return glib::Propagation::Stop;
-        }
-        if !shift
-            && !alt
-            && matches!(key, gtk::gdk::Key::k | gtk::gdk::Key::Up)
-            && view.focus_header_from_top_item()
-        {
-            return glib::Propagation::Stop;
-        }
-
-        if control || modifiers.contains(gtk::gdk::ModifierType::SUPER_MASK) {
-            return glib::Propagation::Proceed;
-        }
-        match (key, alt) {
-            (gtk::gdk::Key::Left, true) => browser.back(),
-            (gtk::gdk::Key::Right, true) => browser.forward(),
-            (gtk::gdk::Key::Up, true) => browser.parent(),
-            (gtk::gdk::Key::Home, true) => {
-                browser.navigate(Location::local(home_directory()));
-            }
-            (gtk::gdk::Key::j | gtk::gdk::Key::Down, false) => browser.move_selection(1),
-            (gtk::gdk::Key::k | gtk::gdk::Key::Up, false) => browser.move_selection(-1),
-            (gtk::gdk::Key::h | gtk::gdk::Key::Left, false)
-                if !control && view.first_column_has_focus() && sidebar_toggle.is_active() =>
-            {
-                focus_before_sidebar.replace(focused.clone());
-                sidebar_state.focus_active_place();
-            }
-            (gtk::gdk::Key::h | gtk::gdk::Key::Left, false) => view.navigate_left(),
-            (gtk::gdk::Key::Right, false) if view.view_mode() == BrowserMode::Columns => {
-                browser.enter_focused_directory();
-            }
-            (gtk::gdk::Key::l | gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter, false) => {
-                view.activate_focused();
-            }
-            (gtk::gdk::Key::Escape, false) => browser.escape(),
-            _ => return glib::Propagation::Proceed,
-        }
-        glib::Propagation::Stop
-    });
-    window.add_controller(keys);
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1377,6 +507,7 @@ pub(super) fn build_appearance_menu(
         .position(gtk::PositionType::Bottom)
         .build();
     popover.add_css_class("appearance-popover");
+    super::scrolling::popover::dismiss_on_outside_scroll(&popover);
     let button = gtk::MenuButton::builder()
         .tooltip_text("Appearance")
         .popover(&popover)
@@ -1387,6 +518,7 @@ pub(super) fn build_appearance_menu(
     let popover_weak = popover.downgrade();
     append_menu_heading(&content, "VIEW");
     let current_mode = view.view_mode();
+    let button_icon = crate::assets::chrome_icon(browser_mode_icon(current_mode));
     let (columns, columns_check, _) = appearance_option(
         crate::assets::icons::COLUMNS,
         "Columns",
@@ -1413,17 +545,16 @@ pub(super) fn build_appearance_menu(
         current_mode.supports_type_grouping(),
     );
     group_by_type.set_tooltip_text(Some("Group List entries under file-type headings"));
+    preferences.bind_preference(
+        &group_check,
+        ThemeManager::group_by_type,
+        |widget, enabled| widget.set_visible(enabled),
+    );
     {
-        let view = view.clone();
         let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
-        let grouped = Cell::new(grouped);
         group_by_type.connect_clicked(move |_| {
-            let enabled = !grouped.get();
-            grouped.set(enabled);
-            view.set_group_by_type(enabled);
-            preferences.set_group_by_type(enabled);
-            group_check.set_visible(enabled);
+            preferences.set_group_by_type(!preferences.group_by_type());
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
@@ -1451,11 +582,13 @@ pub(super) fn build_appearance_menu(
         let icons_check = icons_check.clone();
         let list_check = list_check.clone();
         let group_by_type = group_by_type.clone();
+        let button_icon = button_icon.clone();
         view.connect_view_mode_changed(move |mode| {
             columns_check.set_visible(mode == BrowserMode::Columns);
             icons_check.set_visible(mode == BrowserMode::Icons);
             list_check.set_visible(mode == BrowserMode::List);
             group_by_type.set_sensitive(mode.supports_type_grouping());
+            crate::assets::set_primary_icon(&button_icon, browser_mode_icon(mode));
         });
     }
     content.append(&columns);
@@ -1478,30 +611,31 @@ pub(super) fn build_appearance_menu(
         current_density == BrowserDensity::Airy,
         true,
     );
+    preferences.bind_preference(
+        &compact_check,
+        ThemeManager::browser_density,
+        |widget, density| widget.set_visible(density == BrowserDensity::Compact),
+    );
+    preferences.bind_preference(
+        &airy_check,
+        ThemeManager::browser_density,
+        |widget, density| widget.set_visible(density == BrowserDensity::Airy),
+    );
     {
-        let view = view.clone();
-        let compact_check = compact_check.clone();
-        let airy_check = airy_check.clone();
         let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
         compact.connect_clicked(move |_| {
-            view.set_density(BrowserDensity::Compact);
             preferences.set_browser_density(BrowserDensity::Compact);
-            compact_check.set_visible(true);
-            airy_check.set_visible(false);
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
         });
     }
     {
-        let view = view.clone();
+        let preferences = preferences.clone();
         let popover_weak = popover_weak.clone();
         airy.connect_clicked(move |_| {
-            view.set_density(BrowserDensity::Airy);
             preferences.set_browser_density(BrowserDensity::Airy);
-            compact_check.set_visible(false);
-            airy_check.set_visible(true);
             if let Some(popover) = popover_weak.upgrade() {
                 popover.popdown();
             }
@@ -1549,20 +683,17 @@ pub(super) fn build_appearance_menu(
     content.append(&hidden);
 
     popover.set_child(Some(&content));
-    let icon = crate::assets::chrome_icon(crate::assets::icons::LIST);
-    button.set_child(Some(&icon));
+    button.set_child(Some(&button_icon));
     button.add_css_class("header-action");
-    button.connect_active_notify(move |button| {
-        crate::assets::set_primary_icon(
-            &icon,
-            if button.is_active() {
-                crate::assets::icons::LIST_ACTIVE
-            } else {
-                crate::assets::icons::LIST
-            },
-        );
-    });
     button
+}
+
+fn browser_mode_icon(mode: BrowserMode) -> &'static str {
+    match mode {
+        BrowserMode::Columns => crate::assets::icons::COLUMNS,
+        BrowserMode::Icons => crate::assets::icons::ICONS,
+        BrowserMode::List => crate::assets::icons::LIST,
+    }
 }
 
 fn appearance_option(
@@ -1603,14 +734,6 @@ fn appearance_option_with_shortcut(
     button.add_css_class("appearance-option");
     button.set_has_frame(false);
     (button, check, option)
-}
-
-fn show_settings(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin) {
-    root.set_blurred(true);
-    layer.set_visible(true);
-    layer.grab_focus();
-    button.add_css_class("active");
-    super::browser::animate_in(layer);
 }
 
 fn append_menu_heading(container: &gtk::Box, text: &str) {
@@ -1741,7 +864,11 @@ impl SidebarState {
             );
         }
         self.append_separator();
+        self.append_standard_places();
+        self.append_pinned_places();
+    }
 
+    fn append_standard_places(self: &Rc<Self>) {
         for place in self.place_order.borrow().clone() {
             if let Some((icon, name, directory)) = standard_place(place)
                 && let Some(path) = glib::user_special_dir(directory)
@@ -1754,7 +881,9 @@ impl SidebarState {
                 }
             }
         }
+    }
 
+    fn append_pinned_places(self: &Rc<Self>) {
         let pinned = self
             .pinned_places
             .borrow()
@@ -1779,16 +908,25 @@ impl SidebarState {
 
     fn append_devices(self: &Rc<Self>) {
         let volumes = self.volume_monitor.volumes();
-        let represented = self
-            .volume_monitor
-            .mounts()
-            .into_iter()
-            .chain(volumes.iter().filter_map(|volume| volume.get_mount()))
-            .filter_map(|mount| mount.root().path());
-        let fallback =
-            devices::unrepresented_devices(devices::system_mounted_devices(), represented);
-        let mounts: Vec<_> = self
-            .volume_monitor
+        let mounts = self.mounts_without_volumes(&volumes);
+        if volumes.is_empty() && mounts.is_empty() {
+            return;
+        }
+        self.append_separator();
+        self.append_heading("DEVICES");
+        for volume in volumes {
+            self.append_volume(volume);
+        }
+        for (name, location, mount) in mounts {
+            self.append_mount(&name, location, mount);
+        }
+    }
+
+    fn mounts_without_volumes(
+        &self,
+        volumes: &[gio::Volume],
+    ) -> Vec<(String, Location, gio::Mount)> {
+        self.volume_monitor
             .mounts()
             .into_iter()
             .filter(|mount| !mount.is_shadowed())
@@ -1805,66 +943,68 @@ impl SidebarState {
                 }
                 Some((name, location, mount))
             })
-            .collect();
-        if !volumes.is_empty() || !mounts.is_empty() || !fallback.is_empty() {
-            self.append_separator();
-            self.append_heading("DEVICES");
-            for volume in volumes {
-                self.append_volume(volume);
-            }
-            for device in fallback {
-                self.append_device_place(
-                    crate::assets::icons::HARD_DRIVE,
-                    &device.name,
-                    Location::local(device.root),
-                    None,
-                );
-            }
-            for (name, location, mount) in mounts {
-                if is_smb_location(&location) {
-                    self.append_smb_mount(&name, location, mount);
-                } else {
-                    let action = mount_release_action(mount.can_eject(), mount.can_unmount());
-                    let release = action.map(|action| {
-                        let release_mount = mount.clone();
-                        let release_browser = self.browser.clone();
-                        let release_parent = self.view.widget();
-                        let release_in_flight = Rc::new(Cell::new(false));
-                        let on_release: Rc<dyn Fn()> = Rc::new(move || {
-                            release_device_mount(
-                                &release_mount,
-                                action,
-                                &release_parent,
-                                &release_browser,
-                                &release_in_flight,
-                            );
-                        });
-                        (action, on_release)
-                    });
-                    self.append_device_place(
-                        crate::assets::icons::HARD_DRIVE,
-                        &name,
-                        location,
-                        release,
-                    );
-                }
-            }
+            .collect()
+    }
+
+    fn append_mount(self: &Rc<Self>, name: &str, location: Location, mount: gio::Mount) {
+        if is_smb_location(&location) {
+            self.append_smb_mount(name, location, mount);
+            return;
         }
+        let action = mount_release_action(mount.can_eject(), mount.can_unmount());
+        let release = action.map(|action| {
+            let release_browser = self.browser.clone();
+            let release_parent = self.view.widget();
+            let release_in_flight = Rc::new(Cell::new(false));
+            let on_release: Rc<dyn Fn()> = Rc::new(move || {
+                release_device_mount(
+                    &mount,
+                    action,
+                    &release_parent,
+                    &release_browser,
+                    &release_in_flight,
+                );
+            });
+            (action, on_release)
+        });
+        self.append_device_place(crate::assets::icons::HARD_DRIVE, name, location, release);
     }
 
     fn pin_location(self: &Rc<Self>, location: Location, name: String) {
-        if pin_status(&self.pinned_places.borrow(), &location) != PinStatus::Available {
-            return;
-        }
-        self.pinned_places.borrow_mut().push((location, name));
-        save_pinned_places(&self.pinned_places.borrow());
-        self.rebuild();
+        self.update_pinned_places(|places| {
+            if pin_status(places, &location) != PinStatus::Available {
+                return false;
+            }
+            places.push((location, name));
+            true
+        });
     }
 
     fn unpin_location(self: &Rc<Self>, location: &Location) {
-        if remove_pinned_place(&mut self.pinned_places.borrow_mut(), location) {
-            save_pinned_places(&self.pinned_places.borrow());
-            self.rebuild();
+        self.update_pinned_places(|places| remove_pinned_place(places, location));
+    }
+
+    fn update_pinned_places(
+        self: &Rc<Self>,
+        change: impl FnOnce(&mut Vec<(Location, String)>) -> bool,
+    ) {
+        // Merge into the shared file, never this window's stale snapshot.
+        let result = load_pinned_places().and_then(|mut places| {
+            if change(&mut places) {
+                save_pinned_places(&places)?;
+            }
+            Ok(places)
+        });
+        match result {
+            Ok(places) => {
+                self.pinned_places.replace(places);
+                self.rebuild();
+            }
+            Err(error) => show_error_dialog(
+                &self.view.widget(),
+                "Unable to update pinned folders",
+                &error.to_string(),
+            ),
         }
     }
     fn event_changes_active_place(event: &BrowserEvent) -> bool {
@@ -1975,18 +1115,7 @@ impl SidebarState {
         let location = Location::uri("trash:///");
         let row = sidebar_button(crate::assets::icons::TRASH, "Trash");
         row.set_tooltip_text(Some("trash:///"));
-        self.place_rows
-            .borrow_mut()
-            .push((location.clone(), row.clone()));
-        let weak_browser = Rc::downgrade(&self.browser);
-        let sidebar = self.widget.clone();
-        let selected_row = row.clone();
-        row.connect_clicked(move |_| {
-            select_sidebar_row(&sidebar, &selected_row);
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.navigate(location.clone());
-            }
-        });
+        self.bind_place_row(&row, location, PlaceNavigation::Direct);
 
         let menu = super::accessibility::menu_box();
         menu.add_css_class("folder-context-menu");
@@ -2111,19 +1240,7 @@ impl SidebarState {
     ) {
         let row = sidebar_button(icon, name);
         row.set_tooltip_text(Some(&location.display_path()));
-        self.place_rows
-            .borrow_mut()
-            .push((location.clone(), row.clone()));
-        install_sidebar_file_drop(&self.view, &row, location.clone());
-        let weak_browser = Rc::downgrade(&self.browser);
-        let sidebar = self.widget.clone();
-        let selected_row = row.clone();
-        row.connect_clicked(move |_| {
-            select_sidebar_row(&sidebar, &selected_row);
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.navigate(location.clone());
-            }
-        });
+        self.bind_place_row(&row, location, PlaceNavigation::Direct);
 
         self.make_reorderable(
             &row,
@@ -2156,12 +1273,23 @@ impl SidebarState {
     }
 
     fn reorder_pinned_place(self: &Rc<Self>, source: usize, target: usize, after: bool) {
-        let changed =
-            reorder_pinned_places(&mut self.pinned_places.borrow_mut(), source, target, after);
-        if changed {
-            save_pinned_places(&self.pinned_places.borrow());
-            self.rebuild();
-        }
+        let (source, target) = {
+            let places = self.pinned_places.borrow();
+            match (places.get(source), places.get(target)) {
+                (Some(source), Some(target)) => (source.0.clone(), target.0.clone()),
+                _ => return,
+            }
+        };
+        self.update_pinned_places(|places| {
+            let position =
+                |location: &Location| places.iter().position(|(pinned, _)| pinned == location);
+            match (position(&source), position(&target)) {
+                (Some(source), Some(target)) => {
+                    reorder_pinned_places(places, source, target, after)
+                }
+                _ => false,
+            }
+        });
     }
 
     fn append_separator(&self) {
@@ -2390,19 +1518,7 @@ impl SidebarState {
     ) -> gtk::Button {
         let row = sidebar_button(icon, name);
         row.set_tooltip_text(Some(&location.display_path()));
-        self.place_rows
-            .borrow_mut()
-            .push((location.clone(), row.clone()));
-        install_sidebar_file_drop(&self.view, &row, location.clone());
-        let weak_browser = Rc::downgrade(&self.browser);
-        let sidebar = self.widget.clone();
-        let selected_row = row.clone();
-        row.connect_clicked(move |_| {
-            select_sidebar_row(&sidebar, &selected_row);
-            if let Some(browser) = weak_browser.upgrade() {
-                browser.navigate_location(location.clone());
-            }
-        });
+        self.bind_place_row(&row, location, PlaceNavigation::Validate);
         match release {
             Some((action, on_release)) => {
                 let eject = sidebar_eject_button(action, {
@@ -2940,153 +2056,16 @@ fn sidebar_update_label(release: &ReleaseMetadata) -> String {
     }
 }
 
-pub(super) fn build_sidebar(
-    view: BrowserView,
-    theme_manager: Rc<super::theme::ThemeManager>,
-    local_only: bool,
-) -> SidebarView {
-    let widget = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    widget.add_css_class("sidebar");
-    let scroller = gtk::ScrolledWindow::builder()
-        .child(&widget)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .width_request(SIDEBAR_WIDTH)
-        .vexpand(true)
-        .build();
-    scroller.add_css_class("sidebar-scroll");
-    scroller.add_css_class("fixed-scrollbar");
-
-    let update_content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let dot = gtk::Label::new(Some("●"));
-    dot.add_css_class("sidebar-update-dot");
-    let update_label = gtk::Label::new(None);
-    update_label.add_css_class("sidebar-update-label");
-    update_label.set_xalign(0.0);
-    update_label.set_hexpand(true);
-    update_label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    update_content.append(&dot);
-    update_content.append(&update_label);
-    update_content.append(&crate::assets::primary_icon(
-        crate::assets::icons::DOWNLOADS,
-        17,
-    ));
-    let update_notice = gtk::Button::builder().child(&update_content).build();
-    update_notice.add_css_class("sidebar-update");
-    let update_separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-    update_separator.add_css_class("sidebar-separator");
-    update_separator.add_css_class("sidebar-update-separator");
-    let update_area = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    update_area.set_visible(false);
-    update_area.append(&update_separator);
-    update_area.append(&update_notice);
-
-    let shell = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    shell.add_css_class("sidebar-shell");
-    shell.append(&scroller);
-    shell.append(&update_area);
-    let volume_monitor = gio::VolumeMonitor::get();
-    let place_order = resolve_place_order(&theme_manager.sidebar_order());
-    let state = Rc::new(SidebarState {
-        widget,
-        browser: view.browser(),
-        view,
-        volume_monitor,
-        mount_monitor: gio_unix::MountMonitor::get(),
-        theme_manager,
-        place_order: RefCell::new(place_order),
-        pinned_places: Rc::new(RefCell::new(load_pinned_places())),
-        place_rows: RefCell::new(Vec::new()),
-        trash_contents: Cell::new(TrashContents::Unknown),
-        trash_menu_rows: RefCell::new(None),
-        trash_monitor: RefCell::new(None),
-        trash_probe_running: Cell::new(false),
-        trash_probe_pending: Cell::new(false),
-        local_only,
-    });
-
-    let weak = Rc::downgrade(&state);
-    state.browser.observe(move |event| {
-        let changes_active_place = SidebarState::event_changes_active_place(event);
-        let changes_trash = event_changes_trash_contents(event);
-        if !changes_active_place && !changes_trash {
-            return;
-        }
-        let Some(state) = weak.upgrade() else {
-            return;
-        };
-        if changes_active_place {
-            state.sync_active_place();
-        }
-        if changes_trash {
-            state.refresh_trash_contents();
-        }
-    });
-
-    let mut handlers = Vec::new();
-    let weak = Rc::downgrade(&state);
-    handlers.push(state.volume_monitor.connect_mount_added(move |_, _| {
-        if let Some(state) = weak.upgrade() {
-            state.rebuild();
-        }
-    }));
-    let weak = Rc::downgrade(&state);
-    handlers.push(state.volume_monitor.connect_mount_removed(move |_, _| {
-        if let Some(state) = weak.upgrade() {
-            state.rebuild();
-        }
-    }));
-    let weak = Rc::downgrade(&state);
-    handlers.push(state.volume_monitor.connect_mount_changed(move |_, _| {
-        if let Some(state) = weak.upgrade() {
-            state.rebuild();
-        }
-    }));
-    let weak = Rc::downgrade(&state);
-    handlers.push(state.volume_monitor.connect_volume_added(move |_, _| {
-        if let Some(state) = weak.upgrade() {
-            state.rebuild();
-        }
-    }));
-    let weak = Rc::downgrade(&state);
-    handlers.push(state.volume_monitor.connect_volume_removed(move |_, _| {
-        if let Some(state) = weak.upgrade() {
-            state.rebuild();
-        }
-    }));
-    let weak = Rc::downgrade(&state);
-    handlers.push(state.volume_monitor.connect_volume_changed(move |_, _| {
-        if let Some(state) = weak.upgrade() {
-            state.rebuild();
-        }
-    }));
-    let weak = Rc::downgrade(&state);
-    let mount_handler = state.mount_monitor.connect_mounts_changed(move |_| {
-        if let Some(state) = weak.upgrade() {
-            state.rebuild();
-        }
-    });
-    state.append_static_places();
-    state.sync_active_place();
-    SidebarView {
-        widget: shell.upcast(),
-        state,
-        update_notice,
-        update_area,
-        update_label,
-        handlers: RefCell::new(handlers),
-        mount_handler: RefCell::new(Some(mount_handler)),
-    }
-}
-
 fn pinned_places_path() -> PathBuf {
     glib::user_config_dir().join("gtk-3.0/bookmarks")
 }
 
-fn load_pinned_places() -> Vec<(Location, String)> {
-    std::fs::read_to_string(pinned_places_path())
-        .map(|contents| parse_pinned_places(&contents))
-        .unwrap_or_default()
+fn load_pinned_places() -> std::io::Result<Vec<(Location, String)>> {
+    match std::fs::read_to_string(pinned_places_path()) {
+        Ok(contents) => Ok(parse_pinned_places(&contents)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(error) => Err(error),
+    }
 }
 
 fn parse_pinned_places(contents: &str) -> Vec<(Location, String)> {
@@ -3117,16 +2096,13 @@ fn parse_pinned_places(contents: &str) -> Vec<(Location, String)> {
     places
 }
 
-fn save_pinned_places(places: &[(Location, String)]) {
+fn save_pinned_places(places: &[(Location, String)]) -> std::io::Result<()> {
     let path = pinned_places_path();
-    let Some(parent) = path.parent() else {
-        return;
-    };
-    if std::fs::create_dir_all(parent).is_err() {
-        return;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
     }
     let contents = serialize_pinned_places(places);
-    let _result = crate::storage::atomic_write(&path, contents.as_bytes());
+    crate::storage::atomic_write(&path, contents.as_bytes())
 }
 
 fn serialize_pinned_places(places: &[(Location, String)]) -> String {

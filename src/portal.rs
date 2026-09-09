@@ -1,6 +1,7 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 mod dbus;
+mod window_geometry;
 
 #[cfg(test)]
 mod tests;
@@ -30,12 +31,13 @@ use gio::prelude::*;
 use crate::model::{FileEntry, Location};
 
 const BACKEND_NAME: &str = "org.freedesktop.impl.portal.desktop.strata";
+pub(crate) const CHOOSER_APPLICATION_ID: &str = "io.github.lgse.Strata.FileChooser";
 pub(crate) const FILE_CHOOSER_VERSION: u32 = 4;
 const MAX_ACTIVE_REQUESTS: usize = 16;
 const MAX_CHOICES: usize = 16;
 const MAX_CHOICE_OPTIONS: usize = 32;
 const MAX_TOTAL_CHOICE_OPTIONS: usize = 128;
-const MAX_FILTERS: usize = 32;
+const FILTER_COUNT_WARNING_THRESHOLD: usize = 128;
 const FILTER_RULE_WARNING_THRESHOLD: usize = 1024;
 const MAX_GLOB_BYTES: usize = 256;
 const MAX_GLOB_STAR_RUNS: usize = 2;
@@ -58,6 +60,7 @@ pub(crate) struct ChooserRequest {
     pub accept_label: String,
     pub modal: bool,
     pub parent: Option<WindowIdentifierType>,
+    pub parent_size_hint: Option<(i32, i32)>,
     pub initial_directory: PathBuf,
     pub kind: ChooserKind,
     pub filters: Vec<FileFilter>,
@@ -144,6 +147,9 @@ impl FileChooserBackend {
         tracked: &TrackedRequest,
         request: ChooserRequest,
     ) -> ashpd::backend::Result<SelectedFiles> {
+        if !tracked.cancelled.load(Ordering::SeqCst) {
+            window_geometry::prepare_chooser_placement().await;
+        }
         let token = request.token.clone();
         let cancelled = tracked.cancelled.clone();
         let (send, receive) = oneshot::channel();
@@ -161,7 +167,7 @@ impl FileChooserBackend {
 }
 
 pub(crate) fn run() -> glib::ExitCode {
-    glib::set_prgname(Some("strata"));
+    glib::set_prgname(Some(CHOOSER_APPLICATION_ID));
     glib::set_application_name("Strata");
 
     // Keep worker-thread invocations queued until GTK is ready on this thread.
@@ -249,6 +255,7 @@ async fn open_request(
     .await?;
     Ok(ChooserRequest {
         token,
+        parent_size_hint: None,
         title: request_title(title, "Open Files"),
         accept_label: options.accept_label().unwrap_or("Open").to_owned(),
         modal: options.modal().unwrap_or(true),
@@ -297,6 +304,7 @@ async fn save_file_request(
     .await?;
     Ok(ChooserRequest {
         token,
+        parent_size_hint: None,
         title: request_title(title, "Save File"),
         accept_label: options.accept_label().unwrap_or("Save").to_owned(),
         modal: options.modal().unwrap_or(true),
@@ -339,6 +347,7 @@ async fn save_files_request(
     .await?;
     Ok(ChooserRequest {
         token,
+        parent_size_hint: None,
         title: request_title(title, "Save Files"),
         accept_label: options.accept_label().unwrap_or("Save").to_owned(),
         modal: options.modal().unwrap_or(true),
@@ -379,11 +388,6 @@ fn validate_filters(
     filters: &[FileFilter],
     current: Option<&FileFilter>,
 ) -> ashpd::backend::Result<()> {
-    if filters.len() > MAX_FILTERS
-        || current.is_some_and(|current| !filters.contains(current) && filters.len() == MAX_FILTERS)
-    {
-        return invalid_argument("too many file filters");
-    }
     let mut total_rules = 0usize;
     for filter in filters
         .iter()
@@ -400,6 +404,13 @@ fn validate_filters(
         for mimetype in mimetypes {
             validate_string(mimetype, MAX_STRING_BYTES, "MIME filter rule")?;
         }
+    }
+    let count = filters.len();
+    if count > FILTER_COUNT_WARNING_THRESHOLD {
+        tracing::warn!(
+            filters = count,
+            "file filter list exceeded the count budget and was accepted untrimmed"
+        );
     }
     if total_rules > FILTER_RULE_WARNING_THRESHOLD {
         tracing::warn!(
@@ -545,20 +556,23 @@ async fn resolve_save_file_suggestion(
     current_name: Option<String>,
 ) -> (PathBuf, Option<OsString>) {
     if let Some(file) = current_file {
-        let file_type = if file.is_absolute() {
-            gio::File::for_path(&file)
+        let valid_save_target = if file.is_absolute() {
+            match gio::File::for_path(&file)
                 .query_info_future(
                     gio::FILE_ATTRIBUTE_STANDARD_TYPE,
                     gio::FileQueryInfoFlags::NONE,
                     glib::Priority::DEFAULT,
                 )
                 .await
-                .ok()
-                .map(|info| info.file_type())
+            {
+                Ok(info) => info.file_type() == gio::FileType::Regular,
+                // Qt also supplies current_file for a destination that is new.
+                Err(error) => error.matches(gio::IOErrorEnum::NotFound),
+            }
         } else {
-            None
+            false
         };
-        if file_type == Some(gio::FileType::Regular)
+        if valid_save_target
             && let (Some(parent), Some(name)) = (file.parent(), file.file_name())
             && safe_filename(name)
             && directory_is_accessible(parent).await

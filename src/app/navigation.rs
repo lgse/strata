@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cmp::Ordering,
@@ -536,6 +536,11 @@ impl NavigationState {
         }
     }
 
+    /// Existing columns retain their local sort; new columns inherit the shared defaults.
+    pub fn set_default_preferences(&mut self, preferences: ViewPreferences) {
+        self.preferences = preferences;
+    }
+
     pub fn column_preferences(&self, depth: usize) -> Option<ViewPreferences> {
         self.columns.get(depth).map(|column| column.preferences)
     }
@@ -721,7 +726,7 @@ impl NavigationState {
             .collect();
         let commit = std::mem::take(&mut self.selection_commit);
         adopt_selected_locations(column, locations, commit);
-        column.selected = focused.filter(|position| positions.contains(position));
+        column.selected = focused.or(column.selected);
         if column.selection_anchor.is_none() {
             column.selection_anchor = column
                 .selected
@@ -730,6 +735,17 @@ impl NavigationState {
         }
         self.active_column = Some(depth);
         true
+    }
+
+    pub fn clear_active_selection(&mut self) -> Option<(usize, usize)> {
+        let depth = self.active_depth()?;
+        let column = self.columns.get_mut(depth)?;
+        if column.selected_locations.is_empty() {
+            return None;
+        }
+        let focused = column.selected.unwrap_or(0);
+        adopt_selected_locations(column, HashSet::new(), true);
+        Some((depth, focused))
     }
 
     pub fn extend_selection(&mut self, direction: i32) -> Option<(usize, usize, Vec<usize>)> {
@@ -832,6 +848,26 @@ impl NavigationState {
         column.selected = Some(focused);
         self.active_column = Some(depth);
         Some(positions)
+    }
+
+    pub fn selection_anchor_position(&self, depth: usize) -> Option<usize> {
+        let column = self.columns.get(depth)?;
+        let anchor = column.selection_anchor.as_ref()?;
+        column
+            .entries
+            .iter()
+            .position(|entry| &entry.location == anchor)
+    }
+
+    pub fn set_selection_anchor(&mut self, depth: usize, position: usize) -> bool {
+        let Some(column) = self.columns.get_mut(depth) else {
+            return false;
+        };
+        let Some(entry) = column.entries.get(position) else {
+            return false;
+        };
+        column.selection_anchor = Some(entry.location.clone());
+        true
     }
 
     pub fn selected_positions(&self, depth: usize) -> Vec<usize> {
@@ -960,8 +996,14 @@ impl NavigationState {
     }
 
     /// Moves the focus `page` visible entries at a time, clamped to the first and
-    /// last visible entry, for page-sized keyboard navigation.
-    pub fn page_selection(&mut self, direction: i32, page: usize) -> Option<(usize, usize)> {
+    /// last visible entry, for page-sized keyboard navigation. `order` is the
+    /// displayed source indices when the view is not in source order.
+    pub fn page_along(
+        &mut self,
+        direction: i32,
+        page: usize,
+        order: Option<&[usize]>,
+    ) -> Option<(usize, usize)> {
         if direction == 0 {
             return None;
         }
@@ -969,19 +1011,27 @@ impl NavigationState {
             .active_column
             .or_else(|| self.columns.len().checked_sub(1))?;
         let column = self.columns.get_mut(depth)?;
-        let show_hidden = column.preferences.show_hidden;
-        let visible: Vec<usize> = column
-            .entries
-            .iter()
-            .enumerate()
-            .filter(|(_, entry)| show_hidden || !entry.is_hidden)
-            .map(|(position, _)| position)
-            .collect();
+        let visible: Vec<usize> = match order {
+            Some(order) if !order.is_empty() => order.to_vec(),
+            _ => {
+                let show_hidden = column.preferences.show_hidden;
+                column
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| show_hidden || !entry.is_hidden)
+                    .map(|(position, _)| position)
+                    .collect()
+            }
+        };
         let last = visible.len().checked_sub(1)?;
         let steps = page.max(1);
-        let current = column
-            .selected
-            .and_then(|selected| visible.iter().position(|position| *position >= selected));
+        let current = column.selected.and_then(|selected| {
+            visible
+                .iter()
+                .position(|position| *position == selected)
+                .or_else(|| visible.iter().position(|position| *position >= selected))
+        });
         let target = match (current, direction < 0) {
             (None, true) => last,
             (None, false) => 0,

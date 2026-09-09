@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Exercise FileChooser v4, optionally on a private bus without installing a portal.
 
 Requires PyGObject (Gio), dbus-daemon, and a graphical session. This client calls
@@ -54,11 +54,18 @@ def request(connection, args, folder):
         options["directory"] = GLib.Variant("b", True)
         options["accept_label"] = GLib.Variant("s", "Select Folder")
     if args.case in ("filters", "save"):
-        options["filters"] = GLib.Variant("a(sa(us))", [
-            ("Text files", [(0, "*.txt"), (0, "*.md")]),
-            ("Images", [(1, "image/png"), (1, "image/jpeg")]),
-            ("All files", [(0, "*")]),
-        ])
+        if args.filter_count:
+            filters = [
+                (f"Filter {index:02d}", [(1, f"application/x-upload-{index}")])
+                for index in range(1, args.filter_count + 1)
+            ]
+        else:
+            filters = [
+                ("Text files", [(0, "*.txt"), (0, "*.md")]),
+                ("Images", [(1, "image/png"), (1, "image/jpeg")]),
+                ("All files", [(0, "*")]),
+            ]
+        options["filters"] = GLib.Variant("a(sa(us))", filters)
     if args.case == "save":
         method = "SaveFile"
         options["current_name"] = GLib.Variant("s", "strata-portal-demo.txt")
@@ -111,6 +118,8 @@ def main():
     parser.add_argument("--view", choices=["columns", "icons", "list"], default="list")
     parser.add_argument("--theme", default="tokyo-night", help="Built-in theme for the isolated backend")
     parser.add_argument("--group-by-type", action="store_true")
+    parser.add_argument("--filter-count", type=int, metavar="N",
+                        help="Send N generated filters instead of the three-filter fixture")
     args = parser.parse_args()
     if not args.binary and (args.theme != "tokyo-night" or args.view != "list" or args.group_by_type):
         parser.error("Theme and view overrides require --binary; existing user settings are never modified")

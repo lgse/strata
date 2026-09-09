@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Accessibility semantics the rest of the suite — and screen readers — rely on."""
 
 from __future__ import annotations
@@ -104,7 +104,17 @@ def test_inline_fields_are_named(strata):
 
     strata.keyboard.press("ctrl+shift+n")
     field = strata.editable_field()
-    assert field.name == "New item name"
+    assert field.name == "Rename"
+    assert field.text == "new folder"
+    assert strata.fixture.path("new folder").is_dir()
+    strata.keyboard.press("Escape")
+
+    strata.pointer.right_click(strata.pane(), at=strata.background_point())
+    strata.choose_menu_item("New File")
+    field = strata.editable_field()
+    assert field.name == "Rename"
+    assert field.text == "new file"
+    assert strata.fixture.path("new file").is_file()
     strata.keyboard.press("Escape")
 
 

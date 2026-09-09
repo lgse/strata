@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Golden screenshots for a small set of deliberately stable states.
 
 Interaction assertions are the primary gate; these catch rendering
@@ -11,11 +11,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from harness.fixtures import FixtureTree
 
 BASELINE_FIXTURE = {
-    "documents": {"notes.txt": "notes\n", "report.md": "# Report\n"},
+    "documents": {
+        "notes.txt": "notes\n",
+        "projects": {"release": {"summary.md": "# Release\n"}},
+        "report.md": "# Report\n",
+    },
     "pictures": {},
     "readme.md": "# Fixture\n",
     "todo.txt": "todo\n",
@@ -47,10 +52,41 @@ def test_columns_view_baseline(strata, baseline):
     baseline(strata, "columns-view")
 
 
+@pytest.mark.preferences(browser_mode="columns")
+def test_columns_overflow_baseline(strata, baseline, tmp_path):
+    strata.open_directory("documents")
+    strata.open_directory("projects", "documents")
+    strata.open_directory("release", "projects")
+    _settle(strata, ["summary.md"])
+
+    capture = strata.screenshot(tmp_path / "columns-overflow.png")
+    sidebar = strata.sidebar_button("Home").parent
+    assert sidebar is not None
+    sidebar_bounds = sidebar.screen_bounds()
+    pane_bounds = strata.pane("release").screen_bounds()
+    leading_edge = sidebar_bounds.x + sidebar_bounds.width
+    scrollbar_y = pane_bounds.y + pane_bounds.height + 7
+    with Image.open(capture) as image:
+        pixels = image.convert("RGB")
+        assert pixels.getpixel((leading_edge, scrollbar_y)) == pixels.getpixel(
+            (leading_edge + 20, scrollbar_y)
+        ), "the horizontal scrollbar background should be continuous at its leading edge"
+
+    baseline(strata, "columns-overflow")
+
+
 @pytest.mark.preferences(browser_mode="icons")
 def test_icons_view_baseline(strata, baseline):
     _settle(strata)
     baseline(strata, "icons-view")
+
+
+@pytest.mark.preferences(browser_mode="icons")
+def test_icons_hover_baseline(strata, baseline):
+    _settle(strata)
+    strata.pointer.move_to(*strata.entry("todo.txt").screen_bounds().center)
+    strata.settle(strata.pane())
+    baseline(strata, "icons-hover")
 
 
 @pytest.mark.preferences(browser_mode="list")
@@ -89,13 +125,13 @@ def test_delete_confirmation_baseline(strata, baseline):
     baseline(strata, "delete-confirmation")
 
 
-def _settle(strata) -> None:
+def _settle(strata, entries=BASELINE_ENTRIES) -> None:
     """Park the pointer and wait for the listing before capturing."""
 
     strata.park_pointer()
     strata.wait(
         lambda: strata.entry_names()
-        == BASELINE_ENTRIES,
+        == entries,
         "the fixture listing to be complete",
     )
     strata.settle(strata.pane())

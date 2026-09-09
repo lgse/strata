@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 #[cfg(test)]
 mod tests;
@@ -202,6 +202,29 @@ enum ChoiceControl {
 
 type SelectionChanged = Box<dyn Fn(usize)>;
 
+const DROPDOWN_EDGE_MARGIN: i32 = 24;
+const MIN_DROPDOWN_CONTENT_HEIGHT: i32 = 120;
+
+// Popovers use separate surfaces, so the window does not constrain their content height.
+fn dropdown_placement(
+    available_height: i32,
+    anchor_top: i32,
+    anchor_bottom: i32,
+) -> (gtk::PositionType, i32) {
+    let below = available_height.saturating_sub(anchor_bottom).max(0);
+    let above = anchor_top.max(0);
+    let (position, room) = if below >= above {
+        (gtk::PositionType::Bottom, below)
+    } else {
+        (gtk::PositionType::Top, above)
+    };
+    (
+        position,
+        room.saturating_sub(DROPDOWN_EDGE_MARGIN)
+            .max(MIN_DROPDOWN_CONTENT_HEIGHT),
+    )
+}
+
 struct ChooserDropdown {
     button: gtk::MenuButton,
     popover: gtk::Popover,
@@ -215,8 +238,15 @@ impl ChooserDropdown {
         let current = labels.get(selected).copied().unwrap_or_default();
         let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
         content.add_css_class("column-menu");
-        let popover = gtk::Popover::builder()
+        let scroll = gtk::ScrolledWindow::builder()
             .child(&content)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .propagate_natural_height(true)
+            .build();
+        scroll.add_css_class("context-menu-scroll");
+        let popover = gtk::Popover::builder()
+            .child(&scroll)
             .has_arrow(false)
             .position(gtk::PositionType::Bottom)
             .build();
@@ -235,6 +265,24 @@ impl ChooserDropdown {
         button.add_css_class("form-control");
         button.add_css_class("chooser-dropdown");
         button.set_halign(gtk::Align::Start);
+
+        let scroll_for_show = scroll.clone();
+        let button_for_show = button.downgrade();
+        popover.connect_show(move |popover| {
+            let (Some(root), Some(button)) = (popover.root(), button_for_show.upgrade()) else {
+                return;
+            };
+            let anchor_top = button
+                .compute_point(&root, &gtk::graphene::Point::new(0.0, 0.0))
+                .map_or(0, |point| point.y().round() as i32);
+            let (position, max_content_height) = dropdown_placement(
+                root.height(),
+                anchor_top,
+                anchor_top.saturating_add(button.height()),
+            );
+            popover.set_position(position);
+            scroll_for_show.set_max_content_height(max_content_height);
+        });
 
         let selected = Rc::new(Cell::new(selected));
         let changed = Rc::new(RefCell::new(None::<SelectionChanged>));
@@ -439,7 +487,11 @@ impl ChooserState {
                     self.show_error("Choose an accessible local folder");
                     return;
                 };
-                let entries = eligible_open_entries(browser.selected_entries(), *directory);
+                let entries = self
+                    .view
+                    .selected_search_results()
+                    .unwrap_or_else(|| browser.selected_entries());
+                let entries = eligible_open_entries(entries, *directory);
                 match open_selection(&entries, &current, *directory, *multiple) {
                     Ok(paths) => self.complete_paths(
                         paths,
@@ -595,7 +647,18 @@ impl ChooserState {
         match &self.request.kind {
             ChooserKind::Open {
                 directory: false, ..
-            } => self.accept(),
+            } => {
+                let Some(path) = location.native_path() else {
+                    self.show_error("Choose a local file");
+                    return;
+                };
+                self.complete_paths(
+                    vec![path.to_path_buf()],
+                    self.read_only
+                        .as_ref()
+                        .map(|read_only| writable_from_read_only(read_only.is_active())),
+                );
+            }
             ChooserKind::SaveFile { .. } => {
                 let Some((folder, name)) = location
                     .native_path()
@@ -641,6 +704,22 @@ fn chooser_default_dimensions_for_monitor(monitor_width: i32, monitor_height: i3
         .clamp(MIN_CHOOSER_HEIGHT.min(monitor_height), MAX_CHOOSER_HEIGHT);
 
     (target_width, target_height)
+}
+
+fn chooser_initial_dimensions(
+    monitor: Option<(i32, i32)>,
+    parent_size_hint: Option<(i32, i32)>,
+) -> (i32, i32) {
+    let monitor = monitor.filter(|(width, height)| *width > 0 && *height > 0);
+    let parent = parent_size_hint.filter(|(width, height)| *width > 0 && *height > 0);
+    let bounds = match (monitor, parent) {
+        (Some((mw, mh)), Some((pw, ph))) => Some((mw.min(pw), mh.min(ph))),
+        (monitor, parent) => parent.or(monitor),
+    };
+    bounds.map_or(
+        (FALLBACK_CHOOSER_WIDTH, FALLBACK_CHOOSER_HEIGHT),
+        |(width, height)| chooser_default_dimensions_for_monitor(width, height),
+    )
 }
 
 fn detect_monitor_geometry(
@@ -709,13 +788,6 @@ fn build_chooser(
     let multiple = matches!(&request.kind, ChooserKind::Open { multiple: true, .. });
     let view = BrowserView::new_chooser(source.clone(), multiple);
     let theme = ThemeManager::shared();
-    view.set_view_mode(theme.browser_mode());
-    view.set_density(theme.browser_density());
-    view.set_group_by_type(theme.group_by_type());
-    super::window::apply_click_activation(&view, &theme);
-    view.set_auto_refresh_interval(theme.auto_refresh_interval());
-    view.set_peek_enabled(false);
-    view.set_single_click_previews(theme.single_click_previews());
     view.set_operation_provider(Rc::new(LocalOperationProvider));
     let browser = view.browser();
     let preview_preferences = theme.clone();
@@ -726,9 +798,9 @@ fn build_chooser(
         false,
     );
 
-    let (initial_width, initial_height) = detect_monitor_geometry(None, None).map_or(
-        (FALLBACK_CHOOSER_WIDTH, FALLBACK_CHOOSER_HEIGHT),
-        |(w, h)| chooser_default_dimensions_for_monitor(w, h),
+    let (initial_width, initial_height) = chooser_initial_dimensions(
+        detect_monitor_geometry(None, None),
+        request.parent_size_hint,
     );
 
     let window = gtk::Window::builder()
@@ -743,8 +815,9 @@ fn build_chooser(
         .active(true)
         .tooltip_text("Toggle sidebar (Ctrl+B)")
         .build();
-    sidebar_toggle.set_child(Some(&crate::assets::chrome_icon(
+    sidebar_toggle.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::PANEL_LEFT,
+        17,
     )));
     sidebar_toggle.add_css_class("sidebar-toggle");
     let location = view.location_widget();
@@ -937,6 +1010,7 @@ fn build_chooser(
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&blurred_root));
     window.set_child(Some(&overlay));
+    view.install_inline_edit_dismissal(&window);
     install_modal_focus_trap(&window);
     window.set_default_widget(Some(&accept));
 
@@ -1022,22 +1096,11 @@ fn build_chooser(
 
     gtk::prelude::WidgetExt::realize(&window);
     apply_external_parent(&window, state.request.parent.as_ref());
-    if let Some(surface) = window.surface() {
-        let weak_window = window.downgrade();
-        surface.connect_enter_monitor(move |_, monitor| {
-            let Some(window) = weak_window.upgrade() else {
-                return;
-            };
-            let geometry = monitor.geometry();
-            let dimensions =
-                chooser_default_dimensions_for_monitor(geometry.width(), geometry.height());
-            window.set_default_size(dimensions.0, dimensions.1);
-        });
-    }
-    if let Some((width, height)) = detect_monitor_geometry(None, Some(&window)) {
-        let dimensions = chooser_default_dimensions_for_monitor(width, height);
-        window.set_default_size(dimensions.0, dimensions.1);
-    }
+    let dimensions = chooser_initial_dimensions(
+        detect_monitor_geometry(None, Some(&window)),
+        state.request.parent_size_hint,
+    );
+    window.set_default_size(dimensions.0, dimensions.1);
     browser.navigate(Location::local(&state.request.initial_directory));
     window.present();
     if let Some(filename) = state.filename.as_ref() {
@@ -1232,6 +1295,14 @@ fn install_shortcuts(
         let alt = modifiers.contains(gtk::gdk::ModifierType::ALT_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
         let focused = gtk::prelude::RootExt::focus(&state.window);
+        let original_key = key;
+        let key = super::focus_navigation::navigation_key(
+            key,
+            modifiers,
+            ThemeManager::shared().type_to_search(),
+            focused.as_ref(),
+        );
+        let vim_navigation = key != original_key;
         if !focused
             .as_ref()
             .is_some_and(super::focus_navigation::in_popover)
@@ -1317,6 +1388,18 @@ fn install_shortcuts(
         }
         if state.view.new_entry_is_active() || state.view.rename_is_active() {
             return glib::Propagation::Proceed;
+        }
+        if key == gtk::gdk::Key::space
+            && !modifiers.intersects(
+                gtk::gdk::ModifierType::CONTROL_MASK
+                    | gtk::gdk::ModifierType::ALT_MASK
+                    | gtk::gdk::ModifierType::SUPER_MASK
+                    | gtk::gdk::ModifierType::SHIFT_MASK,
+            )
+            && let Some(entry) = state.view.selected_search_result()
+        {
+            preview.toggle(preview_target(Some(entry)));
+            return glib::Propagation::Stop;
         }
         if control
             && !shift
@@ -1555,8 +1638,7 @@ fn install_shortcuts(
             if !shift && key == gtk::gdk::Key::Up && state.view.focus_header_from_top_item() {
                 return glib::Propagation::Stop;
             }
-            // Keep GTK's spatial movement, then reconcile selection in visual order
-            // across the independent collection views used for type groups.
+            // Keep GTK's spatial movement, then reconcile selection in visual order.
             let weak = Rc::downgrade(&state);
             glib::idle_add_local_once(move || {
                 let Some(state) = weak.upgrade() else {
@@ -1567,6 +1649,10 @@ fn install_shortcuts(
                 }
                 state.view.synchronize_native_selection(extend);
             });
+            if vim_navigation {
+                super::focus_navigation::activate_native_arrow(&state.window, key);
+                return glib::Propagation::Stop;
+            }
             return glib::Propagation::Proceed;
         }
         if shift

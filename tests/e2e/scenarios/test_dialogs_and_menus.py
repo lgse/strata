@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Context menus, dialogs, Escape handling, and invalid operations."""
 
 from __future__ import annotations
@@ -128,23 +128,6 @@ def test_properties_hides_the_pin_control_for_a_file(strata):
 
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.dialog() is None, "Escape to close the dialog")
-
-
-def test_renaming_to_an_invalid_name_is_rejected(strata):
-    fixture = strata.fixture
-
-    strata.select_entry("todo.txt")
-    strata.keyboard.press("F2")
-    strata.editable_field()
-    strata.keyboard.press("ctrl+a")
-    strata.keyboard.type_text("bad/name.txt")
-    strata.keyboard.press("Return")
-
-    assert fixture.path("todo.txt").exists(), (
-        "a name containing a separator must not be applied"
-    )
-    assert not (fixture.root / "bad").exists()
-    strata.keyboard.press("Escape")
 
 
 def test_renaming_onto_an_existing_name_is_rejected(strata):

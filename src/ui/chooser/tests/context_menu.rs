@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{
     keyboard::{focus_window, focused, key, selected, settle},
@@ -122,6 +122,7 @@ fn chooser_context_menus_and_rename_work_in_every_view() {
                 accept_label: "Open".into(),
                 modal: false,
                 parent: None,
+                parent_size_hint: None,
                 initial_directory: root.path().into(),
                 kind: ChooserKind::Open {
                     directory: false,

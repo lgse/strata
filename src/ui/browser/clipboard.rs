@@ -11,12 +11,165 @@ use crate::services::{
 use crate::ui::browser::ViewState;
 use crate::ui::browser::columns::set_cut_path_style;
 use crate::ui::browser::paths::{can_remove_location, is_trash_location};
-use gtk::glib;
+use gtk::{glib, graphene};
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::path::Path;
 use std::rc::{Rc, Weak};
+
+const DRAG_PROXY_MAX_SIZE: f64 = 72.0;
+const DRAG_PROXY_MIN_SIZE: f64 = 32.0;
+const DRAG_PROXY_PADDING: f64 = 3.0;
+const DRAG_PROXY_STACK_OFFSET: f64 = 5.0;
+
+/// Renders a compact Finder-style file pile and returns its pointer hotspot.
+#[expect(
+    deprecated,
+    reason = "lookup_color is the only way to read custom named CSS colors"
+)]
+pub(in crate::ui) fn drag_icon_with_count(
+    base: &gtk::Widget,
+    count: usize,
+) -> Option<(gtk::gdk::Texture, i32, i32)> {
+    if count <= 1 {
+        return None;
+    }
+
+    let source_w = f64::from(base.width()).max(1.0);
+    let source_h = f64::from(base.height()).max(1.0);
+    let source_size = source_w.max(source_h);
+    let scale = if source_size < DRAG_PROXY_MIN_SIZE {
+        DRAG_PROXY_MIN_SIZE / source_size
+    } else {
+        (DRAG_PROXY_MAX_SIZE / source_size).min(1.0)
+    };
+    let icon_w = source_w * scale;
+    let icon_h = source_h * scale;
+    let front_x = DRAG_PROXY_PADDING;
+    let front_y = DRAG_PROXY_PADDING;
+    let paintable = gtk::WidgetPaintable::new(Some(base));
+
+    let style = base.style_context();
+    let accent = style.lookup_color("theme_accent")?;
+    let surface = style
+        .lookup_color("theme_surface")
+        .or_else(|| style.lookup_color("theme_bg"))?;
+    let text = style.lookup_color("theme_text")?;
+    let badge_text = contrasting_badge_text(&accent, &text, &surface);
+
+    let label = count.to_string();
+    let layout = base.create_pango_layout(Some(&label));
+    if let Some(mut font) = layout.font_description() {
+        font.set_weight(gtk::pango::Weight::Semibold);
+        layout.set_font_description(Some(&font));
+    }
+    let (ink, _) = layout.pixel_extents();
+    let (badge_w, badge_h) = badge_dimensions(f64::from(ink.width()), f64::from(ink.height()));
+    let badge_x = front_x + icon_w - badge_w * 0.4;
+    let badge_y = front_y + icon_h - badge_h * 0.4;
+    let rear_extent = DRAG_PROXY_STACK_OFFSET + DRAG_PROXY_PADDING;
+    let canvas_w = (badge_x + badge_w).max(front_x + icon_w) + DRAG_PROXY_PADDING;
+    let canvas_h = (badge_y + badge_h).max(front_y + icon_h) + DRAG_PROXY_PADDING;
+    let canvas_w = canvas_w.max(icon_w + rear_extent + DRAG_PROXY_PADDING);
+    let canvas_h = canvas_h.max(icon_h + rear_extent + DRAG_PROXY_PADDING);
+
+    let snapshot = gtk::Snapshot::new();
+    let transparent = gtk::gdk::RGBA::new(0.0, 0.0, 0.0, 0.0);
+    snapshot.append_color(
+        &transparent,
+        &graphene::Rect::new(0.0, 0.0, canvas_w as f32, canvas_h as f32),
+    );
+
+    for (offset, opacity) in [(DRAG_PROXY_STACK_OFFSET, 0.32), (2.5, 0.6)] {
+        snapshot.push_opacity(opacity);
+        snapshot.save();
+        snapshot.translate(&graphene::Point::new(
+            (front_x + offset) as f32,
+            (front_y + offset) as f32,
+        ));
+        paintable.snapshot(&snapshot, icon_w, icon_h);
+        snapshot.restore();
+        snapshot.pop();
+    }
+
+    let mut shadow_color = text;
+    shadow_color.set_alpha(0.34);
+    snapshot.push_shadow(&[gtk::gsk::Shadow::new(shadow_color, 0.0, 1.0, 3.0)]);
+    snapshot.save();
+    snapshot.translate(&graphene::Point::new(front_x as f32, front_y as f32));
+    paintable.snapshot(&snapshot, icon_w, icon_h);
+    snapshot.restore();
+    snapshot.pop();
+
+    let badge_rect = gtk::gsk::RoundedRect::from_rect(
+        graphene::Rect::new(
+            badge_x as f32,
+            badge_y as f32,
+            badge_w as f32,
+            badge_h as f32,
+        ),
+        (badge_h / 2.0) as f32,
+    );
+    snapshot.push_rounded_clip(&badge_rect);
+    snapshot.append_color(&accent, badge_rect.bounds());
+    snapshot.pop();
+    snapshot.append_border(
+        &badge_rect,
+        &[1.0; 4],
+        &[surface, surface, surface, surface],
+    );
+    let tx = badge_x + (badge_w - f64::from(ink.width())) / 2.0 - f64::from(ink.x());
+    let ty = badge_y + (badge_h - f64::from(ink.height())) / 2.0 - f64::from(ink.y());
+    snapshot.save();
+    snapshot.translate(&graphene::Point::new(tx as f32, ty as f32));
+    snapshot.append_layout(&layout, &badge_text);
+    snapshot.restore();
+
+    let renderer = base.native().and_then(|native| native.renderer())?;
+    let node = snapshot.to_node()?;
+    let texture = renderer.render_texture(&node, None);
+    Some((
+        texture,
+        (front_x + icon_w / 2.0).round() as i32,
+        (front_y + icon_h / 2.0).round() as i32,
+    ))
+}
+
+fn badge_dimensions(text_width: f64, text_height: f64) -> (f64, f64) {
+    let height = (text_height + 6.0).max(20.0);
+    ((text_width + 10.0).max(height), height)
+}
+
+fn contrasting_badge_text(
+    fill: &gtk::gdk::RGBA,
+    text: &gtk::gdk::RGBA,
+    surface: &gtk::gdk::RGBA,
+) -> gtk::gdk::RGBA {
+    if contrast_ratio(fill, text) >= contrast_ratio(fill, surface) {
+        *text
+    } else {
+        *surface
+    }
+}
+
+fn contrast_ratio(first: &gtk::gdk::RGBA, second: &gtk::gdk::RGBA) -> f64 {
+    let first = relative_luminance(first);
+    let second = relative_luminance(second);
+    (first.max(second) + 0.05) / (first.min(second) + 0.05)
+}
+
+fn relative_luminance(color: &gtk::gdk::RGBA) -> f64 {
+    let linear = |channel: f32| {
+        let channel = f64::from(channel);
+        if channel <= 0.03928 {
+            channel / 12.92
+        } else {
+            ((channel + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * linear(color.red()) + 0.7152 * linear(color.green()) + 0.0722 * linear(color.blue())
+}
 
 pub(crate) struct PreparedFileDrop {
     pub target: gtk::DropTarget,
@@ -238,6 +391,18 @@ fn transfer_dropped_files(
     true
 }
 
+pub(crate) fn drag_actions_for_modifiers(
+    modifiers: gtk::gdk::ModifierType,
+) -> gtk::gdk::DragAction {
+    if modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
+        gtk::gdk::DragAction::COPY
+    } else if modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK) {
+        gtk::gdk::DragAction::MOVE
+    } else {
+        gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE
+    }
+}
+
 pub(crate) fn file_drop_action(
     target: &gtk::DropTarget,
     state: &Rc<FileDropState>,
@@ -438,6 +603,17 @@ pub(super) fn copy_locations(entries: &[FileEntry]) {
     let text = entries
         .iter()
         .map(|entry| copy_path_text(&entry.location, entry.is_directory()))
+        .collect::<Vec<_>>()
+        .join("\n");
+    if let Some(display) = gtk::gdk::Display::default() {
+        display.clipboard().set_text(&text);
+    }
+}
+
+pub(super) fn copy_names(entries: &[FileEntry]) {
+    let text = entries
+        .iter()
+        .map(|entry| entry.display_name.as_str())
         .collect::<Vec<_>>()
         .join("\n");
     if let Some(display) = gtk::gdk::Display::default() {

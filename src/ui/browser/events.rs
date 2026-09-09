@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 //! Exhaustive browser event dispatch. Shared effects and column publication run before alternate
 //! presentations consume the event; preserve that order when adding a feature handler.
@@ -30,11 +30,15 @@ use std::time::Instant;
 impl ViewState {
     pub(super) fn handle(self: &Rc<Self>, event: &BrowserEvent) {
         match event {
+            BrowserEvent::SelectionSynced { .. } => return,
             BrowserEvent::Reset => {
+                self.pending_new_entry.take();
                 self.pending_location_credentials.take();
+                self.pending_archive_destination.take();
                 self.truncate(0);
             }
             BrowserEvent::ColumnsTruncated { len } => {
+                self.pending_new_entry.take();
                 self.truncate(*len);
                 self.sync_active_location();
             }
@@ -42,17 +46,6 @@ impl ViewState {
                 self.set_location(location);
                 if self.mode_views.borrow().mode() == BrowserMode::Columns {
                     self.append_column(*depth, location);
-                    // A pointer click that opens a folder leaves the mouse on
-                    // the parent column, so paste would target the folder's
-                    // parent instead of the folder itself. Follow the newly
-                    // opened column while the pointer owns navigation.
-                    if self.input_ownership.borrow().last_navigation
-                        == super::super::input_ownership::NavigationInput::Pointer
-                        && self.hovered_column.get() == depth.checked_sub(1)
-                    {
-                        self.hovered_column.set(Some(*depth));
-                        self.refresh_destination_style();
-                    }
                 }
             }
             BrowserEvent::EntriesInserted { depth, insertions } => {
@@ -146,7 +139,7 @@ impl ViewState {
                                 && let Some(&entry) = filled.get(&position)
                                 && let Some(size) = row
                                     .first_child()
-                                    .and_downcast::<gtk::Image>()
+                                    .and_downcast::<crate::ui::thumbnail::ThumbnailSlot>()
                                     .and_then(|icon| icon.next_sibling())
                                     .and_then(|middle| middle.downcast::<gtk::Overlay>().ok())
                                     .and_then(|middle| middle.last_child())
@@ -217,6 +210,16 @@ impl ViewState {
                     set_column_busy(column, false);
                     update_empty_trash_sensitivity(column, count);
                 }
+                self.note_pending_rename_splices(*depth, splices);
+                if self.pending_archive_destination.borrow().is_some() {
+                    let weak = Rc::downgrade(self);
+                    let depth = *depth;
+                    glib::idle_add_local_once(move || {
+                        if let Some(state) = weak.upgrade() {
+                            state.reveal_pending_archive_at(depth);
+                        }
+                    });
+                }
             }
             BrowserEvent::ColumnReloaded { depth } => {
                 if let Some(column) = self.columns.borrow().get(*depth) {
@@ -251,6 +254,19 @@ impl ViewState {
                 self.mode_views.borrow().set_show_hidden(*show_hidden);
             }
             BrowserEvent::LoadFinished { depth, truncated } => {
+                let archive_destination_loaded = !self.pending_select.borrow().is_empty()
+                    && self
+                        .pending_archive_destination
+                        .borrow()
+                        .as_ref()
+                        .is_some_and(|destination| {
+                            self.browser.location_at(*depth).as_ref() == Some(destination)
+                        });
+                if archive_destination_loaded
+                    && self.mode_views.borrow().mode() == BrowserMode::Columns
+                {
+                    self.browser.set_active_column(*depth);
+                }
                 if let Some(column) = self.columns.borrow().get(*depth) {
                     if column.selection.model().is_none() {
                         column.filtered_model.set_model(Some(&column.model));
@@ -268,7 +284,31 @@ impl ViewState {
                     set_column_busy(column, false);
                     update_empty_trash_sensitivity(column, count);
                 }
-                if self.browser.active_depth() == Some(*depth) {
+                if archive_destination_loaded {
+                    let names = self.pending_select.take();
+                    if !names.is_empty() {
+                        let weak = Rc::downgrade(self);
+                        let depth = *depth;
+                        let destination = self.browser.location_at(depth);
+                        glib::idle_add_local_once(move || {
+                            if let Some(state) = weak.upgrade()
+                                && state.browser.location_at(depth) == destination
+                                && state.pending_archive_destination.borrow().as_ref()
+                                    == destination.as_ref()
+                            {
+                                if state.browser.select_entries_by_name_at(depth, &names) {
+                                    state.reveal_focused_entry();
+                                    state.pending_archive_destination.take();
+                                } else {
+                                    state.pending_select.borrow_mut().extend(names);
+                                }
+                            }
+                        });
+                    }
+                } else if self.browser.active_depth() == Some(*depth)
+                    && (self.mode_views.borrow().mode() != BrowserMode::Columns
+                        || self.pending_archive_destination.borrow().is_none())
+                {
                     let names = self.pending_select.take();
                     let properties = self.pending_select_properties.replace(false);
                     let locations = self
@@ -291,6 +331,18 @@ impl ViewState {
                                 } else {
                                     state.browser.select_entries_by_location(&locations);
                                 }
+                                if state
+                                    .pending_archive_destination
+                                    .borrow()
+                                    .as_ref()
+                                    .is_some_and(|destination| {
+                                        state.browser.active_location().as_ref()
+                                            == Some(destination)
+                                    })
+                                {
+                                    state.pending_archive_destination.take();
+                                }
+                                state.reveal_focused_entry();
                                 if properties && let Some(entry) = state.browser.focused_entry() {
                                     state.show_entry_properties(entry);
                                 }
@@ -356,11 +408,9 @@ impl ViewState {
                     set_column_selections(column, &filtered_positions);
                     // A background batch delivered for a column that already has a
                     // selection re-fires this event; don't let it steal focus from
-                    // an in-progress New Folder/File prompt or rename (visible for
-                    // slow network directories that stream many batches).
-                    if self.active_rename.borrow().is_none()
-                        && self.active_new_entry.borrow().is_none()
-                    {
+                    // an in-progress rename (visible for slow network directories
+                    // that stream many batches). A pending creation still needs to scroll.
+                    if self.active_rename.borrow().is_none() {
                         if (*take_focus || self.focused_column_depth() == Some(*depth))
                             && let Some(focused) = column.map.view_position(*focused)
                         {
@@ -374,8 +424,7 @@ impl ViewState {
             }
             BrowserEvent::FocusChanged { depth, position } => {
                 if let Some(column) = self.columns.borrow().get(*depth) {
-                    let editing = self.active_rename.borrow().is_some()
-                        || self.active_new_entry.borrow().is_some();
+                    let editing = self.active_rename.borrow().is_some();
                     if let Some(filtered_position) =
                         position.and_then(|position| column.map.view_position(position))
                     {
@@ -404,17 +453,21 @@ impl ViewState {
                     open_location(location, &self.overlay);
                 }
             }
-            BrowserEvent::RenameCompleted => {
-                self.cancel_rename();
-                self.browser.focus_active();
+            BrowserEvent::EntryCreated { location } => {
+                self.rename_created_entry(location);
             }
-            BrowserEvent::RenameFailed { message } => {
-                if let Some(rename) = self.active_rename.borrow().as_ref() {
-                    rename.field.set_sensitive(true);
-                    rename.field.add_css_class("error");
-                    rename.field.set_tooltip_text(Some(message));
-                    rename.field.grab_focus();
-                }
+            BrowserEvent::RenameCompleted { request_id } => {
+                self.complete_pending_rename(*request_id);
+            }
+            BrowserEvent::RenameAbandoned { request_id } => {
+                self.abandon_pending_rename(*request_id);
+            }
+            BrowserEvent::RenameFailed {
+                request_id,
+                message,
+            } => {
+                self.fail_pending_rename_from_browser(*request_id);
+                show_error_dialog(&self.overlay, "Unable to rename item", message);
             }
             BrowserEvent::TransferStarted { total, moving } => {
                 let browser = self.browser.clone();
@@ -477,7 +530,9 @@ impl ViewState {
             }
             BrowserEvent::RestorationFinished => self.dismiss_file_operation_progress(),
             BrowserEvent::OperationFailed { message } => {
+                self.pending_new_entry.take();
                 self.dismiss_file_operation_progress();
+                self.pending_archive_destination.take();
                 let retry = self.pending_extract_retry.take();
                 if let Some((entry, dest)) = retry {
                     let lower = message.to_lowercase();
@@ -493,6 +548,7 @@ impl ViewState {
                 retryable_locations,
                 has_non_retryable_failures,
             } => {
+                self.pending_archive_destination.take();
                 let retryable_entries = retryable_delete_entries(
                     self.pending_delete_entries.take(),
                     retryable_locations,
@@ -520,6 +576,7 @@ impl ViewState {
                 not_attempted,
                 affected_locations,
             } => {
+                self.pending_archive_destination.take();
                 let message = format!(
                     "{} completed, {} failed, and {} not attempted.\n\nCompleted changes were not reverted.",
                     item_count_label(*completed),
@@ -582,21 +639,78 @@ impl ViewState {
                 self.update_archive_progress(*completed, *total);
             }
             BrowserEvent::ArchiveCompleted { select_name, .. } => {
-                self.dismiss_file_operation_progress();
                 self.pending_extract_retry.replace(None);
-                if !select_name.is_empty() {
-                    self.pending_select.borrow_mut().push(select_name.clone());
+                if select_name.is_empty() {
+                    self.pending_archive_destination.take();
                 }
-                if let Some(dest) = self.pending_navigate.take() {
-                    self.browser.navigate(dest);
+                if let Some(destination) = self.pending_navigate.take() {
+                    let weak = Rc::downgrade(self);
+                    let select_name = select_name.clone();
+                    let navigation_generation = self.browser.navigation_generation();
+                    self.dismiss_file_operation_progress_then(move || {
+                        if let Some(state) = weak.upgrade()
+                            && state.browser.navigation_generation() == navigation_generation
+                        {
+                            if !select_name.is_empty() {
+                                state.pending_select.borrow_mut().push(select_name);
+                            }
+                            state.browser.navigate(destination);
+                        }
+                    });
+                } else if !select_name.is_empty()
+                    && let Some(destination) = self.pending_archive_destination.borrow().clone()
+                {
+                    let weak = Rc::downgrade(self);
+                    let select_name = select_name.clone();
+                    self.dismiss_file_operation_progress_then(move || {
+                        glib::idle_add_local_once(move || {
+                            let Some(state) = weak.upgrade() else {
+                                return;
+                            };
+                            if state.pending_archive_destination.borrow().as_ref()
+                                != Some(&destination)
+                            {
+                                return;
+                            }
+                            state.pending_select.borrow_mut().push(select_name);
+                            let depth = if state.mode_views.borrow().mode() == BrowserMode::Columns
+                            {
+                                (0..state.columns.borrow().len()).find(|depth| {
+                                    state.browser.location_at(*depth).as_ref() == Some(&destination)
+                                })
+                            } else {
+                                state.browser.active_depth().filter(|depth| {
+                                    state.browser.location_at(*depth).as_ref() == Some(&destination)
+                                })
+                            };
+                            if let Some(depth) = depth {
+                                state.reveal_pending_archive_at(depth);
+                            } else {
+                                state.reload_archive_destination(destination);
+                            }
+                        });
+                    });
                 } else {
-                    self.browser.reload_active();
+                    let weak = Rc::downgrade(self);
+                    let select_name = select_name.clone();
+                    let navigation_generation = self.browser.navigation_generation();
+                    self.dismiss_file_operation_progress_then(move || {
+                        if let Some(state) = weak.upgrade()
+                            && state.browser.navigation_generation() == navigation_generation
+                        {
+                            if !select_name.is_empty() {
+                                state.pending_select.borrow_mut().push(select_name);
+                            }
+                            state.browser.reload_active();
+                        }
+                    });
                 }
             }
             BrowserEvent::TransferReveal {
                 destination,
                 locations,
             } => {
+                self.pending_archive_destination.take();
                 self.pending_navigate.take();
                 self.pending_select.take();
                 self.pending_select_properties.set(false);
@@ -632,6 +746,100 @@ impl ViewState {
             self.refresh_active_path_rows();
         }
         self.mode_views.borrow_mut().handle(event);
+        self.reconcile_pending_rename();
+        match event {
+            BrowserEvent::ColumnAdded { depth, .. } | BrowserEvent::ColumnReloaded { depth } => {
+                self.note_pending_rename_refresh(*depth);
+            }
+            _ => {}
+        }
+        if matches!(
+            event,
+            BrowserEvent::LoadFinished { .. } | BrowserEvent::LoadFailed { .. }
+        ) {
+            let depth = match event {
+                BrowserEvent::LoadFinished { depth, .. }
+                | BrowserEvent::LoadFailed { depth, .. } => *depth,
+                _ => unreachable!(),
+            };
+            self.reconcile_pending_rename_after_load(depth);
+        }
+    }
+
+    fn reveal_pending_archive_at(self: &Rc<Self>, depth: usize) {
+        if self
+            .pending_archive_destination
+            .borrow()
+            .as_ref()
+            .is_none_or(|destination| self.browser.location_at(depth).as_ref() != Some(destination))
+        {
+            return;
+        }
+        let names = self.pending_select.take();
+        if names.is_empty() {
+            return;
+        }
+        if self.browser.select_entries_by_name_at(depth, &names) {
+            if self.mode_views.borrow().mode() == BrowserMode::Columns {
+                self.browser.set_active_column(depth);
+            }
+            self.reveal_focused_entry();
+            self.pending_archive_destination.take();
+        } else {
+            self.pending_select.borrow_mut().extend(names);
+        }
+    }
+
+    fn reload_archive_destination(&self, destination: crate::model::Location) {
+        if self.mode_views.borrow().mode() == BrowserMode::Columns {
+            let depth = (0..self.columns.borrow().len())
+                .find(|depth| self.browser.location_at(*depth).as_ref() == Some(&destination));
+            if let Some(depth) = depth {
+                self.browser.set_active_column(depth);
+                self.browser.retry_column(depth);
+            } else {
+                self.browser.navigate(destination);
+            }
+        } else if self.browser.active_location().as_ref() == Some(&destination) {
+            self.browser.reload_active();
+        } else {
+            self.browser.navigate(destination);
+        }
+    }
+
+    fn reveal_focused_entry(self: &Rc<Self>) {
+        let Some((depth, position, _)) = self.browser.focused_item() else {
+            return;
+        };
+        if self.mode_views.borrow().mode() == BrowserMode::Columns {
+            let column = self.columns.borrow().get(depth).cloned();
+            let Some(column) = column else {
+                return;
+            };
+            if let Some(position) = column.map.view_position(position) {
+                let rows = column.bound_rows.clone();
+                super::collection::reveal_collection_after_layout(
+                    column.list.upcast_ref(),
+                    position,
+                    Rc::new(move |visit| {
+                        rows.borrow_mut().retain(|bound| {
+                            let (Some(item), Some(row)) =
+                                (bound.item.upgrade(), bound.row.upgrade())
+                            else {
+                                return false;
+                            };
+                            visit(item.position(), row.upcast_ref());
+                            true
+                        });
+                    }),
+                );
+                self.reveal_column(column.shell);
+            }
+        } else {
+            self.mode_views
+                .borrow()
+                .reveal_selected_entry(depth, position);
+        }
     }
 
     fn event_refreshes_active_path(event: &BrowserEvent) -> bool {
@@ -649,3 +857,6 @@ impl ViewState {
         )
     }
 }
+
+#[cfg(test)]
+mod tests;

@@ -10,10 +10,11 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
+CHOOSER = ROOT / "scripts/chooser-dev.sh"
 
 
 class ChooserLauncherTests(unittest.TestCase):
-    def run_target(self, *arguments: str, build_status: int = 0):
+    def run_target(self, *, env_overrides=None, build_status: int = 0):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             log = root / "calls.jsonl"
@@ -30,14 +31,25 @@ class ChooserLauncherTests(unittest.TestCase):
                     encoding="utf-8",
                 )
                 executable.chmod(0o755)
+            environment = {
+                **os.environ,
+                "PATH": f"{root}:{os.environ['PATH']}",
+                "CALL_LOG": str(log),
+                "BUILD_STATUS": str(build_status),
+            }
+            environment.pop("CHOOSER_CASE", None)
+            environment.pop("CHOOSER_ARGS", None)
+            if env_overrides:
+                environment.update(env_overrides)
             result = subprocess.run(
-                ["make", "run-chooser-dev", *arguments],
+                [str(CHOOSER)],
                 cwd=ROOT,
-                env={**os.environ, "PATH": f"{root}:{os.environ['PATH']}",
-                     "CALL_LOG": str(log), "BUILD_STATUS": str(build_status)},
-                capture_output=True, text=True, check=False,
+                env=environment,
+                capture_output=True,
+                text=True,
+                check=False,
             )
-            calls = [json.loads(line) for line in log.read_text().splitlines()]
+            calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
             return result, calls
 
     def test_default_rebuilds_before_launching_an_isolated_save_chooser(self):
@@ -48,15 +60,20 @@ class ChooserLauncherTests(unittest.TestCase):
                                               "target/debug/strata", "--choices"], "none"])
 
     def test_case_and_options_can_be_overridden(self):
-        result, calls = self.run_target(
-            "CHOOSER_CASE=multiple", "CHOOSER_ARGS=--view icons --group-by-type"
-        )
+        result, calls = self.run_target(env_overrides={
+            "CHOOSER_CASE": "multiple",
+            "CHOOSER_ARGS": "--view list --group-by-type",
+        })
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(calls[1][1], ["scripts/portal-test.py", "multiple", "--binary",
-                                      "target/debug/strata", "--view", "icons", "--group-by-type"])
+                                      "target/debug/strata", "--view", "list", "--group-by-type"])
 
     def test_a_failed_build_does_not_launch_a_stale_binary(self):
         result, calls = self.run_target(build_status=1)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(len(calls), 1)
         self.assertEqual(calls[0][:2], ["cargo", ["build"]])
+
+    def test_script_has_valid_syntax(self):
+        result = subprocess.run(["bash", "-n", str(CHOOSER)], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)

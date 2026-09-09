@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Keyboard-only movement, activation, and multi-selection."""
 
 from __future__ import annotations
@@ -10,22 +10,29 @@ from harness.modes import ALL_MODES, NEXT_ENTRY_KEY, PREVIOUS_ENTRY_KEY
 ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
 
 
+@pytest.mark.preferences(type_to_search=False)
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_arrow_keys_move_focus_and_selection(strata, mode):
+@pytest.mark.parametrize("bindings", ["arrows", "hjkl"])
+def test_arrow_keys_move_focus_and_selection(strata, mode, bindings):
     assert strata.entry_names() == ROOT_ENTRIES
 
     # A file, so that a single click never navigates in any presentation.
     strata.select_entry("readme.md")
     strata.wait_for_focused_entry("readme.md")
 
-    strata.keyboard.press(NEXT_ENTRY_KEY[mode])
+    aliases = {"Left": "h", "Down": "j", "Up": "k", "Right": "l"}
+    next_key = NEXT_ENTRY_KEY[mode]
+    previous_key = PREVIOUS_ENTRY_KEY[mode]
+    if bindings == "hjkl":
+        next_key, previous_key = aliases[next_key], aliases[previous_key]
+    strata.keyboard.press(next_key)
     strata.wait_for_focused_entry("todo.txt")
     strata.wait(
         lambda: strata.selected_names() == ["todo.txt"],
         "the selection to follow focus",
     )
 
-    strata.keyboard.press(PREVIOUS_ENTRY_KEY[mode])
+    strata.keyboard.press(previous_key)
     strata.wait_for_focused_entry("readme.md")
 
 

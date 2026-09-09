@@ -1,6 +1,7 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
-use crate::adapters::trash::{EmptyTrashOutcome, TrashSummary, empty_trash, summarize_trash};
+use crate::adapters::directory_summary::{DirectorySummary, summarize_directory};
+use crate::adapters::trash::{EmptyTrashOutcome, empty_trash};
 use crate::adapters::trash_restore::restore_destinations_for_locations;
 use crate::model::{FileEntry, Location};
 use crate::services::{LoadHandle, RestoreTrashItem};
@@ -105,6 +106,27 @@ fn delete_confirmation_focus_target(key: gtk::gdk::Key) -> Option<DeleteConfirma
     }
 }
 
+/// Rows rendered in the delete confirmation; anything beyond this collapses
+/// into a summary so a thousand-file selection cannot stall the UI thread.
+const DELETE_CONFIRMATION_MAX_ROWS: usize = 50;
+
+/// Splits confirmation entries into rendered rows and the hidden remainder.
+fn delete_confirmation_rows(entries: &[FileEntry]) -> (&[FileEntry], usize) {
+    let visible = entries.len().min(DELETE_CONFIRMATION_MAX_ROWS);
+    (&entries[..visible], entries.len() - visible)
+}
+
+/// Summary for the hidden remainder, or nothing when everything is shown.
+fn delete_confirmation_overflow_label(hidden: usize) -> Option<String> {
+    (hidden > 0).then(|| {
+        format!(
+            "… and {} more {}",
+            hidden,
+            if hidden == 1 { "item" } else { "items" }
+        )
+    })
+}
+
 impl ViewState {
     /// Safe to call more than once: whichever of cancel or completion runs first leaves the
     /// other a no-op.
@@ -137,7 +159,7 @@ impl ViewState {
             // immediately ready for long stretches on a fast local trash backend.
             glib::timeout_future(Duration::from_millis(16)).await;
             let trash = gio::File::for_uri("trash:///");
-            match summarize_trash(&trash).await {
+            match summarize_directory(&trash).await {
                 Ok(summary) if summary.item_count > 0 => {
                     if summary.truncated {
                         tracing::warn!(
@@ -271,7 +293,7 @@ impl ViewState {
         self.dismiss_trash_loading();
     }
 
-    fn show_empty_trash_confirmation(self: &Rc<Self>, summary: TrashSummary) {
+    fn show_empty_trash_confirmation(self: &Rc<Self>, summary: DirectorySummary) {
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
@@ -652,7 +674,8 @@ impl ViewState {
         );
         let files = gtk::Box::new(gtk::Orientation::Vertical, 3);
         files.add_css_class("delete-confirmation-files");
-        for entry in &entries {
+        let (visible, hidden) = delete_confirmation_rows(&entries);
+        for entry in visible {
             let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
             row.add_css_class("delete-confirmation-file");
             let icon = crate::assets::primary_icon(entry_icon(entry), 16);
@@ -676,6 +699,12 @@ impl ViewState {
             row.append(&metadata);
             files.append(&row);
         }
+        if let Some(summary) = delete_confirmation_overflow_label(hidden) {
+            let overflow = gtk::Label::new(Some(&summary));
+            overflow.set_xalign(0.0);
+            overflow.add_css_class("delete-confirmation-file-metadata");
+            files.append(&overflow);
+        }
         let file_scroller = gtk::ScrolledWindow::builder()
             .child(&files)
             .hscrollbar_policy(gtk::PolicyType::Never)
@@ -688,6 +717,7 @@ impl ViewState {
             .propagate_natural_height(true)
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
+        file_scroller.add_css_class("fixed-scrollbar");
         layout.body.append(&file_scroller);
         let explanation = message_dialog_description(
             "These items will be permanently deleted. This action cannot be undone.",

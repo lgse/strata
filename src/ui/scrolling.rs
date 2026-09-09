@@ -1,7 +1,7 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
-//! Fast scrolling shared by the browser's collection views: middle-click
-//! autoscroll and the geometry behind page-sized keyboard navigation.
+//! Scrolling shared by collection views: middle-click autoscroll, page-sized
+//! keyboard navigation, and wheel routing for transient browser panels.
 
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
@@ -9,6 +9,8 @@ use std::time::Duration;
 
 use gtk::glib;
 use gtk::prelude::*;
+
+pub(super) mod popover;
 
 /// Pointer travel from the anchor that is treated as "not moving yet".
 const DEAD_ZONE: f64 = 12.0;
@@ -249,7 +251,7 @@ pub(super) struct Page {
 ///
 /// GridView's `scroll_to` uses estimated cell sizes, which lag behind a thumbnail
 /// resize or a preview split changing the column count. Pixel-scroll the viewport
-/// instead. List views and grouped stacks still scroll by item or by distance.
+/// instead. List views still scroll by item or by distance.
 pub(super) fn reveal_selection(
     view: &gtk::Widget,
     scroll: &gtk::ScrolledWindow,

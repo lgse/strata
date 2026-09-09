@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Page objects for the Strata window.
 
 Scenarios talk to this class rather than to raw accessible nodes, so a change
@@ -32,6 +32,8 @@ ENTRY_CONTAINER_DESCRIPTION = "Files"
 SEARCH_RESULTS_LABEL = "Search results"
 # `ui::preview::PREVIEW_LABEL`.
 PREVIEW_LABEL = "Preview"
+# `ui::browser::peek::PEEK_LABEL`.
+PEEK_LABEL = "Folder peek"
 VIEW_MENU_LABELS = {"Columns": "Columns", "Icons": "Icons", "List": "List"}
 
 
@@ -409,6 +411,7 @@ class Strata:
             ),
             f"the menu item {label!r}",
         )
+        self.settle(item)
         self.pointer.click(item)
         self.wait_for_menu_closed()
 
@@ -509,6 +512,11 @@ class Strata:
         """The quick preview drawer, when it is on screen."""
 
         return self.window.find(name=PREVIEW_LABEL)
+
+    def peek(self) -> Node | None:
+        """The folder peek popover, when it is on screen."""
+
+        return self.window.find(name=PEEK_LABEL)
 
     def preview_shows(self, text: str) -> bool:
         preview = self.preview()

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Screen capture and golden-image comparison."""
 
 from __future__ import annotations

@@ -70,12 +70,28 @@ paned > separator:focus-visible {
   border: none;
 }
 
-headerbar {
+headerbar,
+.mode-pane-header {
   background: @theme_surface;
   border-bottom: 1px solid alpha(@theme_border, 0.6);
   box-shadow: none;
-  min-height: 54px;
+  min-height: 46px;
   padding: 0;
+}
+
+headerbar {
+  min-height: 40px;
+}
+
+headerbar > windowhandle > box {
+  min-height: 40px;
+  padding: 0;
+}
+
+headerbar button,
+headerbar menubutton {
+  margin-top: 0;
+  margin-bottom: 0;
 }
 
 .location-control {
@@ -487,13 +503,30 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .delete-confirmation-list {
   background: alpha(@theme_highlight, 0.42);
-  border: 1px solid alpha(@theme_border, 0.42);
-  border-radius: 5px;
 }
 
 .delete-confirmation-list viewport {
   background: transparent;
-  border-radius: 5px;
+}
+
+.delete-confirmation-list scrollbar {
+  padding: 0 !important;
+}
+
+.delete-confirmation-list scrollbar.vertical {
+  min-width: 6px !important;
+}
+
+.delete-confirmation-list scrollbar.vertical > range > trough {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.delete-confirmation-list scrollbar.vertical > range > trough > slider {
+  margin: 0 !important;
+  min-width: 6px !important;
 }
 
 .delete-confirmation-files {
@@ -610,6 +643,62 @@ headerbar menubutton.header-action > button:focus-visible {
   box-shadow: none;
   min-height: 26px;
   padding: 2px 11px;
+}
+
+.open-with-dialog {
+  min-width: 460px;
+}
+
+.open-with-list {
+  background: alpha(@theme_bg, 0.42);
+  border: 1px solid alpha(@theme_border, 0.28);
+  border-radius: 6px;
+  color: @theme_text;
+  margin-top: 2px;
+  padding: 4px;
+}
+
+.open-with-row {
+  border-radius: 5px;
+  min-height: 44px;
+  padding: 7px 9px;
+}
+
+.open-with-row:hover {
+  background: alpha(@theme_accent, 0.12);
+}
+
+.open-with-row:active {
+  background: alpha(@theme_accent, 0.24);
+}
+
+.open-with-row:focus-visible {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+.open-with-row:selected,
+.open-with-row:selected:focus {
+  background: alpha(@theme_accent, 0.2);
+  color: @theme_text;
+}
+
+.open-with-icon {
+  color: @theme_text;
+}
+
+.open-with-name {
+  color: @theme_text;
+  font-weight: 700;
+}
+
+.open-with-description,
+.open-with-empty {
+  color: @theme_dim_text;
+}
+
+.open-with-empty {
+  padding: 8px 2px 0;
 }
 
 .action-dialog-cancel {
@@ -1364,6 +1453,15 @@ switch:checked slider {
   transition: none;
 }
 
+/* Opaque troughs conceal the sidebar paned handle beneath mode scrollers. */
+.mode-scroll scrollbar.horizontal > range > trough,
+.mode-scroll scrollbar.horizontal:hover > range > trough,
+.mode-scroll scrollbar.horizontal.hovering > range > trough,
+.mode-scroll scrollbar.horizontal.dragging > range > trough {
+  background: @theme_bg;
+  border: none;
+}
+
 /* The trough is widened to a practical grab target while slider margins keep the
    visible bar as narrow as before. */
 .fixed-scrollbar scrollbar.vertical {
@@ -1390,6 +1488,10 @@ scrollbar slider:active {
 .fixed-scrollbar scrollbar.horizontal > range > trough > slider {
   margin: 4px 0;
   min-height: 6px;
+}
+
+.columns-scroll scrollbar.horizontal {
+  background: @theme_bg;
 }
 
 .autoscroll-anchor {
@@ -2339,6 +2441,16 @@ menubutton.column-header-action > button:active {
   color: @theme_text;
 }
 
+.properties-size-value {
+  font-variant-numeric: tabular-nums;
+}
+
+.properties-size-spinner {
+  color: @theme_accent;
+  min-width: 12px;
+  min-height: 12px;
+}
+
 .properties-permissions {
   border-top: 1px solid alpha(@theme_border, 0.3);
   padding: 12px 16px 14px;
@@ -2492,28 +2604,22 @@ popover.folder-context-popover.background {
 
 .context-menu-scroll scrollbar,
 .context-menu-scroll scrollbar:hover,
-.context-menu-scroll scrollbar range,
-.context-menu-scroll scrollbar trough {
+.context-menu-scroll scrollbar.hovering,
+.context-menu-scroll scrollbar.dragging {
   background: transparent;
   border: none;
-  box-shadow: none;
-  outline: none;
+  padding: 0;
+  transition: none;
 }
 
-.context-menu-scroll scrollbar slider {
-  background: alpha(@theme_border, 0.62);
-  border: 3px solid transparent;
-  border-radius: 6px;
-  min-width: 8px;
-  min-height: 32px;
+.context-menu-scroll scrollbar.vertical {
+  min-width: 14px;
 }
 
-.context-menu-scroll scrollbar slider:hover {
-  background: @theme_dim_text;
-}
-
-.context-menu-scroll scrollbar slider:active {
-  background: @theme_accent;
+.context-menu-scroll scrollbar.vertical > range > trough > slider {
+  border-width: 1px;
+  margin: 0 2px 0 4px;
+  min-width: 6px;
 }
 
 .folder-context-menu,
@@ -2875,25 +2981,14 @@ colorchooser colorswatch overlay {
   outline-color: @theme_accent;
 }
 
-.new-entry-row {
-  background: alpha(@theme_muted, 0.24);
-  border-radius: 6px;
-  color: @theme_text;
-  margin: 1px 8px;
-  padding: 4px;
-}
-
-.new-entry-row .file-icon {
-  color: @theme_accent;
-}
-
 .file-list {
   background: @theme_bg;
   color: @theme_text;
   padding-top: 4px;
 }
 
-.file-list row {
+.file-list row,
+.file-list-mode row {
   background: transparent;
   color: @theme_text;
   border-radius: 6px;
@@ -2903,17 +2998,26 @@ colorchooser colorswatch overlay {
 }
 
 .file-row,
-.icons-card,
 .list-row {
   outline: 1px solid transparent;
   outline-offset: -1px;
   transition: background 220ms ease-out, color 180ms ease-out, outline-color 220ms ease-out, transform 200ms cubic-bezier(0.2, 0.9, 0.3, 1.2), opacity 200ms ease-out;
 }
 
+.icons-card {
+  outline: 1px solid transparent;
+  outline-offset: -1px;
+}
+
 .file-row {
   border-radius: 6px;
   color: @theme_text;
-  padding: 4px;
+  padding: 0 4px;
+}
+
+.file-row > * {
+  margin-bottom: 8px;
+  margin-top: 8px;
 }
 
 .file-row.cut {
@@ -2966,7 +3070,8 @@ colorchooser colorswatch overlay {
 }
 
 .file-list row:hover:not(:selected),
-.file-list row:hover .file-row.active-path {
+.file-list row:hover .file-row.active-path,
+.file-list-mode row:hover:not(:selected) {
   background: alpha(@theme_accent, 0.15);
   color: @theme_text;
 }
@@ -3056,7 +3161,8 @@ colorchooser colorswatch overlay {
   opacity: 1;
 }
 
-.file-list row:selected {
+.file-list row:selected,
+.file-list-mode row:selected {
   background: alpha(@theme_accent, 0.22);
   color: @theme_text;
   outline: none;
@@ -3076,7 +3182,8 @@ colorchooser colorswatch overlay {
   outline-offset: -2px;
 }
 
-.directory-column:not(:focus-within) .file-list row:selected {
+.directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected,
+.file-list-mode:not(:focus-within):not(.context-selection) row:selected {
   background: alpha(@theme_highlight, 0.55);
   color: @theme_text;
 }
@@ -3129,6 +3236,7 @@ colorchooser colorswatch overlay {
 .skeleton-miller .file-row {
   margin: 1px 8px;
   min-height: 18px;
+  padding: 4px;
 }
 
 .directory-feedback {
@@ -3355,6 +3463,7 @@ entry.theme-search {
 .theme-color-picker button {
   background: transparent;
   border: 1px solid alpha(@theme_border, 0.7);
+  border-radius: 6px;
   box-shadow: none;
   padding: 0;
   transition: transform 160ms ease-out, border-color 160ms ease-out;
@@ -3374,6 +3483,16 @@ entry.theme-search {
   box-shadow: none;
   padding: 0;
   transform: scale(0.97);
+}
+
+/* GTK's default theme forces radius 0 here, assuming the button's own 4px
+   padding hides the swatch's square corners; we zero that padding above, so
+   the fill must carry the same radius as the button to avoid corner seams. */
+.theme-color-picker colorswatch,
+.theme-color-picker colorswatch:only-child,
+.theme-color-picker colorswatch overlay {
+  border-radius: 6px;
+  box-shadow: none;
 }
 
 .theme-editor-error {
@@ -3527,12 +3646,10 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .mode-pane-header {
-  background: @theme_surface;
-  border-bottom: 1px solid alpha(@theme_border, 0.6);
   color: @theme_accent;
   font-weight: 700;
-  min-height: 36px;
-  padding: 4px 12px 4px 6px;
+  min-height: 40px;
+  padding: 0 6px;
 }
 
 .file-icons {
@@ -3570,10 +3687,6 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   outline-offset: -2px;
 }
 
-.file-icons.creating-entry > child:focus-visible .icons-card {
-  outline: none;
-}
-
 .icons-card {
   border-radius: 5px;
   min-height: 0;
@@ -3589,7 +3702,6 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   color: @theme_text;
 }
 
-.icons-fast-scroll .icons-card,
 .list-fast-scroll .list-row,
 .list-fast-scroll .file-list-mode row {
   transition: none;
@@ -3635,10 +3747,6 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   font-size: 0.82em;
   font-weight: 700;
   padding: 10px 12px 4px;
-}
-
-.icons-type-groups .type-group-heading {
-  margin: 0 6px;
 }
 
 .list-pane {
@@ -3747,23 +3855,6 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   outline-offset: -2px;
 }
 
-.file-list-mode row {
-  background: transparent;
-  color: @theme_text;
-  outline: none;
-  transition: background 160ms ease-out, color 160ms ease-out;
-  padding: 0;
-}
-
-.file-list-mode row:hover {
-  background: alpha(@theme_accent, 0.15);
-}
-
-.file-list-mode row:selected {
-  background: alpha(@theme_accent, 0.22);
-  color: @theme_text;
-}
-
 .list-row.drop-destination,
 .list-row:drop(active) {
   background: alpha(@theme_highlight, 0.82);
@@ -3781,8 +3872,13 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .list-row {
-  min-height: 28px;
+  min-height: 36px;
   padding: 0;
+}
+
+.list-row > * {
+  margin-bottom: 4px;
+  margin-top: 4px;
 }
 
 .list-name-cell,
@@ -3792,12 +3888,18 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 
 .mode-list.density-airy .list-row {
   min-height: 42px;
-  padding-bottom: 4px;
-  padding-top: 4px;
+}
+
+.mode-list.density-airy .list-row > * {
+  margin-bottom: 8px;
+  margin-top: 8px;
 }
 
 .density-airy .file-row {
   min-height: 38px;
-  padding-bottom: 5px;
-  padding-top: 5px;
+}
+
+.density-airy .file-row > * {
+  margin-bottom: 9px;
+  margin-top: 9px;
 }

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{ArchiveFormat, validate_basename};
 
@@ -6,6 +6,9 @@ use super::{ArchiveFormat, validate_basename};
 fn basenames_reject_empty_reserved_nested_absolute_and_nul_names() {
     for name in [
         "",
+        "   ",
+        "\t\n\r",
+        "\u{00a0}\u{2003}",
         ".",
         "..",
         "../escaped",
@@ -22,7 +25,15 @@ fn basenames_reject_empty_reserved_nested_absolute_and_nul_names() {
 
 #[test]
 fn basenames_accept_single_native_and_unicode_components() {
-    for name in ["report.txt", "folder name", ".config", "résumé"] {
+    for name in [
+        "report.txt",
+        "folder name",
+        ".config",
+        "résumé",
+        " padded ",
+        "-draft",
+        "a\\b",
+    ] {
         assert!(
             validate_basename(name).is_ok(),
             "{name:?} should be accepted"

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
@@ -14,8 +14,54 @@ use std::process::{Command, Stdio};
 
 pub(in crate::ui) fn open_location(location: &Location, parent: &impl IsA<gtk::Widget>) {
     let file = gio_file_for_location(location);
-    let uri = file.uri();
-    if let Err(error) = gio::AppInfo::launch_default_for_uri(&uri, None::<&gio::AppLaunchContext>) {
+    if file.is_native() {
+        report_open_result(
+            location,
+            parent,
+            gio::AppInfo::launch_default_for_uri(&file.uri(), None::<&gio::AppLaunchContext>),
+        );
+        return;
+    }
+    let parent = parent.as_ref().downgrade();
+    let location = location.clone();
+    glib::MainContext::default().spawn_local(async move {
+        let result = launch_uri_default(&file).await;
+        if let Some(parent) = parent.upgrade() {
+            report_open_result(&location, &parent, result);
+        }
+    });
+}
+
+async fn launch_uri_default(file: &gio::File) -> Result<(), glib::Error> {
+    let info = file
+        .query_info_future(
+            "standard::content-type",
+            gio::FileQueryInfoFlags::NONE,
+            glib::Priority::DEFAULT,
+        )
+        .await?;
+    let app = info
+        .content_type()
+        .and_then(|content_type| gio::AppInfo::default_for_type(&content_type, true))
+        .ok_or_else(|| {
+            glib::Error::new(
+                gio::IOErrorEnum::NotSupported,
+                "No URI-capable application is registered for this file",
+            )
+        })?;
+    crate::ui::open_with::launch(
+        &app,
+        std::slice::from_ref(file),
+        None::<&gio::AppLaunchContext>,
+    )
+}
+
+fn report_open_result(
+    location: &Location,
+    parent: &impl IsA<gtk::Widget>,
+    result: Result<(), glib::Error>,
+) {
+    if let Err(error) = result {
         if executable_without_handler(location.native_path(), &error) {
             confirm_run_program(location, parent);
             return;
@@ -30,7 +76,9 @@ pub(in crate::ui) fn open_location(location: &Location, parent: &impl IsA<gtk::W
             location = %location.diagnostic_path(),
             "file open location"
         );
-        let detail = if error.matches(gio::IOErrorEnum::NotSupported) {
+        let detail = if error.matches(gio::IOErrorEnum::NotSupported)
+            && gio_file_for_location(location).is_native()
+        {
             "No application is registered for this file"
         } else {
             error.message()

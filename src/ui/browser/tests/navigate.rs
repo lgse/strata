@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
 use std::time::{Duration, Instant};
@@ -30,7 +30,7 @@ fn present_single_pane(
     tempfile::TempDir,
 ) {
     let home = tempfile::tempdir().expect("home fixture");
-    let place = tempfile::tempdir().expect("place fixture");
+    let place = tempfile::tempdir_in(home.path()).expect("place fixture");
     for index in 0..6 {
         std::fs::write(place.path().join(format!("file-{index:02}.txt")), "fixture")
             .expect("fixture file");
@@ -109,8 +109,9 @@ fn icons_navigate_focuses_first_item_so_arrows_move_without_left_right() {
     }
     crate::assets::prepare().expect("assets");
     crate::assets::register_icon_theme();
-    let (view, browser, window, _home, place) = present_single_pane(BrowserMode::Icons);
-    browser.navigate(Location::local(place.path()));
+    let (view, browser, window, _home, _place) = present_single_pane(BrowserMode::Icons);
+    browser.select(0, 0);
+    view.activate_focused();
     assert_navigate_lands_on_first_item(&view, &browser);
     window.destroy();
     browser.clear_observer();
@@ -143,8 +144,9 @@ fn list_navigate_focuses_first_item_so_arrows_move() {
     }
     crate::assets::prepare().expect("assets");
     crate::assets::register_icon_theme();
-    let (view, browser, window, _home, place) = present_single_pane(BrowserMode::List);
-    browser.navigate(Location::local(place.path()));
+    let (view, browser, window, _home, _place) = present_single_pane(BrowserMode::List);
+    browser.select(0, 0);
+    view.activate_focused();
     assert_navigate_lands_on_first_item(&view, &browser);
     window.destroy();
     browser.clear_observer();

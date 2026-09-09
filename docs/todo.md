@@ -126,7 +126,7 @@ Legend: **P0** blocks the milestone, **P1** is required for its exit criteria, *
 ### Opening and creation
 
 - [x] **P0** Open files with the default application
-- [ ] **P0** Add an Open With chooser
+- [x] **P0** Add an Open With chooser
 - [x] **P0** Create folders from `Ctrl+Shift+N` and the folder background menu
 - [x] **P0** Create an empty file
 - [x] **P0** Replace the selected row label with an inline rename input on `F2`, preserving the extension selection and showing validation feedback in place
@@ -139,7 +139,7 @@ Legend: **P0** blocks the milestone, **P1** is required for its exit criteria, *
 - [x] **P1** Preserve an existing multi-selection when right-clicking one of its selected rows; otherwise select the clicked row
 - [x] **P1** Group the available Open, Preview, Cut, Rename, Trash, and Properties actions with visible shortcuts and separators
 - [x] **P1** Add Move To, Copy To, Restore, and permanent Delete actions
-- [ ] **P1** Add Open With and Copy actions
+- [x] **P1** Add Open With and Copy actions
 - [x] **P1** Adapt context-menu actions to single and multiple selections and disable inapplicable preview and paste actions
 - [ ] **P1** Disable or hide actions according to destination writability, clipboard operation, and provider capability
 - [x] **P1** Add a folder background menu for New Folder, Paste, Select All, and Properties

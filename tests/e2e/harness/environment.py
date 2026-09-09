@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """An isolated, deterministic HOME and XDG environment for one test."""
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "single_click_previews": False,
     "search_open_files_directly": False,
     "type_to_search": True,
+    "filter_include_subfolders": True,
     "show_keybinding_hints": True,
     "reduce_motion": True,
     "browser_mode": "columns",

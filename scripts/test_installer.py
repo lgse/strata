@@ -32,6 +32,12 @@ class InstallerTests(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def test_volume_monitor_is_required_but_smb_is_optional(self) -> None:
+        result = bash('printf "%s\\n" "${REQUIRED_PACKAGES[@]}"')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("gvfs", result.stdout.splitlines())
+        self.assertNotIn("gvfs-smb", result.stdout.splitlines())
+
     def test_banner_remains_readable_without_terminal_color(self) -> None:
         result = bash("show_banner", env={"NO_COLOR": "1"})
         self.assertEqual(result.returncode, 0, result.stderr)

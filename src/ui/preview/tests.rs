@@ -1,4 +1,6 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
+
+mod preferences;
 
 use super::{
     MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, format_file_size, format_media_time,
@@ -70,6 +72,22 @@ fn formats_preview_file_sizes() {
     assert_eq!(format_file_size(999), "999 B");
     assert_eq!(format_file_size(1_200), "1.2 kB");
     assert_eq!(format_file_size(2_500_000), "2.5 MB");
+}
+
+#[test]
+fn preview_file_sizes_round_before_choosing_the_unit() {
+    assert_eq!(format_file_size(999_950), "1.0 MB");
+    assert_eq!(format_file_size(999_950_000), "1.0 GB");
+    assert_eq!(format_file_size(9_960), "10 kB");
+    assert_eq!(format_file_size(10_000), "10 kB");
+}
+
+#[test]
+fn preview_file_sizes_keep_bytes_whole_and_promote_displayed_overflow() {
+    assert_eq!(format_file_size(0), "0 B");
+    assert_eq!(format_file_size(5), "5 B");
+    assert_eq!(format_file_size(999_450), "1.0 MB");
+    assert_eq!(format_file_size(999_449), "999 kB");
 }
 
 #[test]

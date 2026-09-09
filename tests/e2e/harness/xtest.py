@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Synthetic X11 input through the XTEST extension.
 
 AT-SPI's own `GenerateMouseEvent` never replies on a headless server, so input
@@ -113,6 +113,7 @@ class XTestConnection:
             ctypes.POINTER(ctypes.c_ulong), ctypes.POINTER(ctypes.POINTER(ctypes.c_ulong)),
             ctypes.POINTER(ctypes.c_uint),
         ]
+        self._x11.XResizeWindow.argtypes = [Display, ctypes.c_ulong, ctypes.c_uint, ctypes.c_uint]
         self._x11.XGetWindowAttributes.argtypes = [
             Display, ctypes.c_ulong, ctypes.POINTER(WindowAttributes),
         ]
@@ -230,6 +231,19 @@ class XTestConnection:
     def surface_origin(self, width: int, height: int) -> tuple[int, int] | None:
         """Resolve a native popup's origin from its accessible surface dimensions."""
 
+        surface = self._surface(width, height)
+        return surface[1:] if surface is not None else None
+
+    def resize_surface(self, current_width: int, current_height: int, width: int, height: int) -> None:
+        """Resize the native surface identified by accessible dimensions."""
+
+        surface = self._surface(current_width, current_height)
+        if surface is None:
+            raise XTestError("no native surface matches the accessible window")
+        self._x11.XResizeWindow(self._display, surface[0], width, height)
+        self.flush()
+
+    def _surface(self, width: int, height: int) -> tuple[int, int, int] | None:
         if not self._display:
             raise XTestError("the X connection is closed")
         root, parent = ctypes.c_ulong(), ctypes.c_ulong()
@@ -262,6 +276,7 @@ class XTestConnection:
                     and (attributes.width, attributes.height) == (width, height)
                 ):
                     origins.add((
+                        children[index],
                         attributes.x + attributes.border_width,
                         attributes.y + attributes.border_width,
                     ))

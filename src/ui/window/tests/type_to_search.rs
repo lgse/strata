@@ -1,12 +1,14 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::super::*;
 use crate::services::{
     LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
 };
-use crate::ui::{shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation};
+use crate::ui::{
+    preview::PreviewDrawer, shortcut_footer::ShortcutFooter, top_bar_navigation::TopBarNavigation,
+};
 
-struct TextPreview;
+pub(super) struct TextPreview;
 
 impl PreviewProvider for TextPreview {
     fn load(&self, request: PreviewRequest, emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle {
@@ -27,24 +29,14 @@ impl PreviewProvider for TextPreview {
 
 #[test]
 fn type_to_search_shortcuts_work_in_all_view_modes() {
-    const CHILD: &str = "STRATA_SPACE_PREVIEW_TEST_CHILD";
-    if env::var_os(CHILD).is_none() {
-        let sandbox = tempfile::tempdir().expect("isolated preferences");
-        let status = std::process::Command::new(env::current_exe().expect("test executable"))
-            .args(["--exact", "ui::window::tests::type_to_search::type_to_search_shortcuts_work_in_all_view_modes", "--nocapture"])
-            .env(CHILD, "1")
-            .env("XDG_CONFIG_HOME", sandbox.path().join("config"))
-            .env("XDG_CACHE_HOME", sandbox.path().join("cache"))
-            .env("XDG_DATA_HOME", sandbox.path().join("data"))
-            .status().expect("isolated GTK test");
-        assert!(status.success());
-        return;
-    }
-    if gtk::init().is_err() {
-        return;
-    }
-    crate::assets::prepare().expect("assets");
-    crate::assets::register_icon_theme();
+    crate::test_support::gtk_test(
+        "ui::window::tests::type_to_search::type_to_search_shortcuts_work_in_all_view_modes",
+        exercise_type_to_search,
+    );
+}
+
+fn exercise_type_to_search() {
+    ThemeManager::seed_saved_preferences_for_test();
     load_styles();
     let preferences = ThemeManager::shared();
     let fixture = tempfile::tempdir().expect("fixture");
@@ -72,14 +64,16 @@ fn type_to_search_shortcuts_work_in_all_view_modes() {
         view: view.clone(),
         preferences: preferences.clone(),
     };
-    install_keyboard_navigation(
+    keyboard::install(
         &window,
-        &view,
         &sidebar,
-        &top_bar,
-        &preview,
-        &type_to_search,
-        &ShortcutFooter::new(BrowserMode::Columns),
+        keyboard::Bindings {
+            view: view.clone(),
+            top_bar,
+            preview: preview.clone(),
+            type_to_search,
+            shortcuts: ShortcutFooter::new(BrowserMode::Columns),
+        },
     );
     let keys = window
         .observe_controllers()
@@ -93,6 +87,17 @@ fn type_to_search_shortcuts_work_in_all_view_modes() {
             .column_snapshot(0)
             .is_some_and(|column| !column.loading)
     });
+
+    assert!(!preferences.type_to_search());
+    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+        view.set_view_mode(mode);
+        browser.focus_active();
+        press(&keys, gtk::gdk::Key::n);
+        assert!(
+            !view.filter_has_focus(),
+            "saved disabled type-to-search: {mode:?}"
+        );
+    }
 
     for enabled in [true, false] {
         preferences.set_type_to_search(enabled);
@@ -123,6 +128,54 @@ fn type_to_search_shortcuts_work_in_all_view_modes() {
         }
     }
 
+    preferences.set_type_to_search(false);
+    for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+        view.set_view_mode(mode);
+        for (letter, arrow) in [
+            (gtk::gdk::Key::h, gtk::gdk::Key::Left),
+            (gtk::gdk::Key::j, gtk::gdk::Key::Down),
+            (gtk::gdk::Key::k, gtk::gdk::Key::Up),
+            (gtk::gdk::Key::l, gtk::gdk::Key::Right),
+        ] {
+            let mut results = Vec::new();
+            for key in [arrow, letter] {
+                browser.navigate(Location::local(fixture.path()));
+                wait_until(|| {
+                    browser
+                        .column_snapshot(0)
+                        .is_some_and(|column| !column.loading)
+                });
+                select_entry(&browser, "folder");
+                browser.focus_active();
+                wait_until(|| view.item_view_has_focus());
+                if !press(&keys, key) {
+                    assert_eq!(key, arrow, "letter must be consumed: {mode:?}");
+                    assert!(crate::ui::focus_navigation::activate_native_arrow(
+                        &window, arrow
+                    ));
+                }
+                while glib::MainContext::default().pending() {
+                    glib::MainContext::default().iteration(false);
+                }
+                results.push((
+                    browser.active_location(),
+                    browser.focused_entry().map(|entry| entry.location),
+                    view.header_actions_have_focus(),
+                ));
+                assert!(!view.filter_has_focus());
+            }
+            assert_eq!(
+                results[0], results[1],
+                "{letter:?} must mirror {arrow:?}: {mode:?}"
+            );
+        }
+    }
+    browser.navigate(Location::local(fixture.path()));
+    wait_until(|| {
+        browser
+            .column_snapshot(0)
+            .is_some_and(|column| !column.loading)
+    });
     preferences.set_type_to_search(true);
     for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
         view.set_view_mode(mode);

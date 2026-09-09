@@ -1,8 +1,11 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::app::{Browser, BrowserEvent};
+use crate::services::SearchItem;
 use crate::ui::entry_list_model::EntryListModel;
 use gtk::glib;
+use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 #[test]
 fn recursive_search_arrows_select_and_clamp_results() {
@@ -12,6 +15,33 @@ fn recursive_search_arrows_select_and_clamp_results() {
     assert_eq!(search_result_navigation_position(Some(1), 3, 1), Some(2));
     assert_eq!(search_result_navigation_position(Some(2), 3, 1), Some(2));
     assert_eq!(search_result_navigation_position(None, 0, 1), None);
+}
+
+#[test]
+fn recursive_file_activation_emits_open_request() {
+    let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+    let opened = Rc::new(RefCell::new(None));
+    let opened_for_observer = opened.clone();
+    browser.observe(move |event| {
+        if let BrowserEvent::OpenRequested { location } = event {
+            opened_for_observer.replace(Some(location.clone()));
+        }
+    });
+    let path = PathBuf::from("/filtered.txt");
+    let results = RefCell::new(vec![SearchItem::for_test(path.clone(), false)]);
+
+    assert!(activate_recursive_search_result(
+        &Rc::downgrade(&browser),
+        &results,
+        0
+    ));
+    assert_eq!(
+        opened
+            .borrow()
+            .as_ref()
+            .and_then(|location| location.native_path()),
+        Some(path.as_path())
+    );
 }
 
 #[test]
@@ -156,6 +186,52 @@ fn seeded_filter_keeps_first_character_when_typing_continues() {
     super::focus_filter_entry(&entry, None);
     assert_eq!(entry.text(), format!("文{suffix}"));
     window.destroy();
+}
+
+#[test]
+fn an_allocated_scroll_supersedes_the_pending_first_row_scroll() {
+    crate::test_support::gtk_test(
+        "ui::browser::collection::tests::an_allocated_scroll_supersedes_the_pending_first_row_scroll",
+        || {
+            let names: Vec<_> = (0..200).map(|index| format!("Item {index}")).collect();
+            let model = gtk::StringList::new(&names.iter().map(String::as_str).collect::<Vec<_>>());
+            let factory = gtk::SignalListItemFactory::new();
+            factory.connect_setup(|_, item| {
+                item.downcast_ref::<gtk::ListItem>()
+                    .expect("list item")
+                    .set_child(Some(&gtk::Label::new(Some("Item"))));
+            });
+            let selection = gtk::NoSelection::new(Some(model));
+            let list = gtk::ListView::new(Some(selection), Some(factory));
+            let scroller = gtk::ScrolledWindow::builder().child(&list).build();
+            let window = gtk::Window::builder()
+                .child(&scroller)
+                .default_width(300)
+                .default_height(200)
+                .build();
+
+            window.present();
+            list.grab_focus();
+            scroll_collection_when_allocated(list.upcast_ref(), 0);
+            list.allocate(300, 200, -1, None);
+            scroll_collection_when_allocated(list.upcast_ref(), 190);
+
+            let frames = Rc::new(Cell::new(0));
+            let seen = frames.clone();
+            window.add_tick_callback(move |_, _| {
+                seen.set(seen.get() + 1);
+                glib::ControlFlow::Continue
+            });
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            while frames.get() < 5 {
+                assert!(std::time::Instant::now() < deadline, "layout timed out");
+                glib::MainContext::default().iteration(false);
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            assert!(scroller.vadjustment().value() > 1000.0);
+            window.destroy();
+        },
+    );
 }
 
 const SCROLL_PIN_GTK_CHILD: &str = "STRATA_SCROLL_PIN_GTK_CHILD";

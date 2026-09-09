@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 mod accessibility;
 mod blur;
@@ -8,12 +8,15 @@ mod chooser;
 mod controls;
 mod entry_list_model;
 mod focus_navigation;
+mod icons_cell;
 mod inline_search;
 mod input_ownership;
 mod loading_skeleton;
 mod marquee;
 mod modal;
 mod motion;
+mod open_with;
+mod pointer;
 mod portal_preferences;
 mod preview;
 mod scrolling;

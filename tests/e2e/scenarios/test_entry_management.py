@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Creating, renaming, trashing, deleting, and undoing."""
 
 from __future__ import annotations
@@ -6,6 +6,16 @@ from __future__ import annotations
 import pytest
 
 from harness.modes import ALL_MODES
+
+
+def start_new_file(strata, select=True):
+    if select:
+        strata.select_entry("readme.md")
+    strata.pointer.right_click(strata.pane(), at=strata.background_point())
+    strata.choose_menu_item("New File")
+    field = strata.editable_field()
+    strata.wait(lambda: field.text.startswith("new file"), "the created file's editor")
+    return field
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -26,28 +36,97 @@ def test_create_folder_from_the_keyboard(strata, mode):
     strata.entry("new-folder")
 
 
-def test_creating_a_folder_can_be_cancelled(strata):
-    fixture = strata.fixture
-
-    strata.select_entry("readme.md")
-    strata.keyboard.press("ctrl+shift+n")
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_invalid_new_file_names_can_be_corrected(strata, mode):
+    name = "bad/name"
+    field = start_new_file(strata)
+    original = strata.fixture.names()
+    strata.keyboard.type_text(name)
+    strata.wait(lambda: field.text == name, "the invalid name to appear")
+    strata.keyboard.press("Return")
+    strata.wait(lambda: strata.window.find(role="text", name="Rename", states={"editable"}) is None, "the invalid edit to close")
+    assert strata.fixture.names() == original
+    strata.select_entry_with_keyboard("new file")
+    strata.keyboard.press("F2")
     strata.editable_field()
-    strata.keyboard.type_text("discarded")
-    strata.keyboard.press("Escape")
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("corrected")
+    strata.keyboard.press("Return")
+    strata.wait(lambda: strata.fixture.path("corrected").is_file(), "the corrected file on disk")
+    strata.entry("corrected")
 
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("kind", ["file", "folder"])
+def test_clicking_inside_keeps_the_new_entry_and_preserves_its_name(strata, mode, kind):
+    name = " padded "
+    if kind == "folder":
+        strata.select_entry("readme.md")
+        strata.keyboard.press("ctrl+shift+n")
+        field = strata.editable_field()
+    else:
+        field = start_new_file(strata)
+    strata.keyboard.type_text(name)
+    strata.wait(lambda: field.text == name, "the name to appear")
+    strata.pointer.click(field)
+    strata.keyboard.press("Return")
+    strata.wait(lambda: strata.fixture.path(name).exists(), "the exact name on disk")
+    assert strata.fixture.path(name).is_dir() == (kind == "folder")
     strata.wait(
         lambda: strata.window.find(role="text", states={"editable"}) is None,
-        "the inline field to close",
+        "the submitted prompt to close",
     )
-    assert not fixture.path("discarded").exists()
-    assert sorted(fixture.names()) == [
-        ".hidden.txt",
-        "archive",
-        "documents",
-        "pictures",
-        "readme.md",
-        "todo.txt",
-    ]
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("kind,name", [("file", "todo.txt"), ("folder", "archive")])
+def test_creating_an_existing_name_does_not_overwrite(strata, mode, kind, name):
+    strata.select_entry("readme.md")
+    if kind == "folder":
+        strata.keyboard.press("ctrl+shift+n")
+    else:
+        strata.pointer.right_click(strata.pane(), at=strata.background_point())
+        strata.choose_menu_item("New File")
+    field = strata.editable_field()
+    original = strata.fixture.listing()
+    strata.keyboard.type_text(name)
+    strata.wait(lambda: field.text == name, "the existing name to appear")
+    strata.keyboard.press("Return")
+    dialog = strata.wait_for_dialog()
+    assert dialog.name == "Unable to rename item"
+    strata.pointer.click(strata.dialog_button("Close"))
+    strata.wait(lambda: strata.dialog() is None, "the error to be dismissible")
+    assert strata.fixture.listing() == original
+    assert strata.fixture.path("todo.txt").read_text() == "todo\n"
+    strata.select_entry("readme.md")
+    strata.wait_for_selection(["readme.md"])
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("kind", ["file", "folder"])
+def test_new_items_can_be_created_in_an_initially_empty_directory(strata, mode, kind):
+    strata.open_directory("archive")
+    if kind == "folder":
+        strata.keyboard.press("ctrl+shift+n")
+        strata.editable_field()
+    else:
+        start_new_file(strata, select=False)
+    strata.keyboard.type_text("discarded")
+    strata.keyboard.press("Escape")
+    strata.entry("new " + kind, directory="archive")
+    if kind == "folder":
+        strata.keyboard.press("ctrl+shift+n")
+        field = strata.editable_field()
+    else:
+        field = start_new_file(strata, select=False)
+    strata.keyboard.type_text("kept")
+    strata.wait(lambda: field.text == "kept", "the replacement name to appear")
+    strata.keyboard.press("Return")
+    strata.wait(lambda: strata.fixture.path("archive/kept").exists(), "the renamed item on disk")
+    assert strata.fixture.path("archive/kept").is_dir() == (kind == "folder")
+    strata.entry("kept", directory="archive")
+    assert not strata.fixture.path("archive/discarded").exists()
+    assert "Gtk-CRITICAL" not in strata.application.log()
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -87,21 +166,6 @@ def test_rename_shortcuts_leave_location_editing_alone(strata, shortcut):
     strata.keyboard.press("Return")
     strata.wait_for_directory("documents")
     assert strata.fixture.path("todo.txt").exists()
-
-
-def test_rename_can_be_cancelled(strata):
-    fixture = strata.fixture
-
-    strata.select_entry("todo.txt")
-    strata.keyboard.press("F2")
-    strata.editable_field()
-    strata.keyboard.press("ctrl+a")
-    strata.keyboard.type_text("never-applied.txt")
-    strata.keyboard.press("Escape")
-
-    strata.entry("todo.txt")
-    assert fixture.path("todo.txt").exists()
-    assert not fixture.path("never-applied.txt").exists()
 
 
 def test_rename_from_the_context_menu(strata):

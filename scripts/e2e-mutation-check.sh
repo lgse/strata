@@ -18,6 +18,10 @@ declare -A SCENARIOS=(
   [keyboard-navigation]="tests/e2e/scenarios/test_keyboard_navigation.py"
   [click-modes]="tests/e2e/scenarios/test_click_modes.py"
   [view-switching]="tests/e2e/scenarios/test_view_switching.py"
+  [quick-preview]="tests/e2e/scenarios/test_quick_preview.py"
+  [filter-results]="tests/e2e/scenarios/test_filter_results.py"
+  [popover-scrolling]="tests/e2e/scenarios/test_popover_scrolling.py"
+  [rename-caret]="tests/e2e/scenarios/test_inline_renaming.py::test_long_rename_keeps_caret_visible"
 )
 
 selected=("$@")
@@ -30,8 +34,8 @@ if [[ -n "$(git -C "$repository" status --porcelain -- src)" ]]; then
   exit 1
 fi
 
-if [[ -n "${STRATA_BINARY:-}" ]]; then
-  echo "STRATA_BINARY must be unset so mutations exercise the rebuilt binary" >&2
+if [[ -n "${STRATA_BINARY:-}" || -n "${STRATA_E2E_BUNDLE:-}" ]]; then
+  echo "STRATA_BINARY and STRATA_E2E_BUNDLE must be unset so mutations exercise the rebuilt binary" >&2
   exit 1
 fi
 
@@ -67,7 +71,9 @@ for name in "${selected[@]}"; do
   report="$reports/$name.xml"
   rm -f "$report"
   result=0
-  "$repository/scripts/e2e.sh" -q -x --junitxml="$report" "$scenario" \
+  # xdist's fail-fast shutdown exits as an interruption, not a test failure.
+  # Finish the selected scenarios so detection still requires exit status 1.
+  "$repository/scripts/e2e.sh" -q --maxfail=0 --junitxml="$report" "$scenario" \
     >"$reports/$name.log" 2>&1 || result=$?
   if python3 "$repository/scripts/e2e_mutation_result.py" "$report" "$result"; then
     echo "   detected"
