@@ -162,7 +162,7 @@ Local archive operations live under `adapters/local_operations/archive/`:
 | --- | --- |
 | Operation entry points, worker lifecycle and progress events | `archive.rs` in the parent directory |
 | Staged publication, source traversal and compression writers | `compression.rs` |
-| Per-operation extraction state, copying, cleanup and outcomes | `extraction.rs` |
+| Per-operation extraction state, copying, cleanup, size preflight and outcomes | `extraction.rs` |
 | Confined destination writes, path validation and conflict naming | `destination.rs` |
 | ZIP, TAR/gzip and 7z member enumeration, passwords and decoder errors | `decoders.rs` |
 
@@ -172,6 +172,16 @@ cancellation. Member identity tracking stays inside each decoder rather than ass
 or matching header/callback order. The session validates pending names and applies established
 root renames without filesystem probes or name reservations; final leaf conflicts remain unknown
 until a member is attempted. Sequential formats do not scan unread content to complete that list.
+Before writing, the session checks claimed uncompressed size against destination free space from
+`fstatvfs` on the pinned root, and it refuses a member whose extracted size does not match the
+size declared by the archive header. ZIP and 7z advertise a total up front, so an oversized
+archive is refused before any member is written; TAR streams check each member as it arrives, so
+extraction stops at the free-space boundary and members already written stay in place. The
+guarantee is that extraction never exceeds the free space observed when the session opened;
+it does not model per-file overhead such as block rounding or inodes. Filesystems that report no
+capacity (`f_blocks == 0`, as FUSE mounts without `statfs` do) skip the free-space checks and
+keep only the declared-size match. The `zip` crate does not bound inflated output by the header
+size itself, so that match is the control that stops a ZIP member lying about its size.
 
 The private member boundary currently retains legacy lossy TAR-name conversion and regular-file
 output for non-directory entries, including links. It is not a complete archive-entry model;

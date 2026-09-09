@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::fixtures::{
-    always_cancelled, completed_extract, extract_zip, never_cancelled, write_7z, write_7z_entries,
-    write_compression_fixture, write_tar, write_tar_entries, write_zip,
+    always_cancelled, completed_extract, extract_zip, never_cancelled, patch_zip_uncompressed_size,
+    write_7z, write_7z_entries, write_compression_fixture, write_tar, write_tar_entries, write_zip,
 };
 use super::{
     ArchiveError, ArchiveOutcome, extract_7z_from_reader, extract_tar, extract_zip_from_archive,
@@ -861,5 +861,98 @@ fn sevenz_extraction_reports_remaining_entries_when_cancelled() -> Result<(), Bo
         ArchiveOutcome::Completed(_) => panic!("extraction continued after cancellation"),
     }
     assert!(destination.read_dir()?.next().is_none());
+    Ok(())
+}
+
+#[test]
+fn zip_member_lying_about_its_size_is_refused_before_it_expands() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("bomb.zip");
+    write_zip(&archive, &[("zeros.bin", &vec![0u8; 8 << 20])])?;
+    patch_zip_uncompressed_size(&archive, 16)?;
+    assert!(
+        fs::metadata(&archive)?.len() < 64 << 10,
+        "fixture should be a small archive that expands to 8 MiB"
+    );
+    let destination = tempfile::tempdir()?;
+
+    let error = extract_zip(&archive, destination.path())
+        .expect_err("a member exceeding its declared size should fail");
+
+    assert!(
+        error.contains("`zeros.bin` declared 16 bytes but produced more"),
+        "{error}"
+    );
+    assert!(
+        destination.path().read_dir()?.next().is_none(),
+        "the partial member should be removed"
+    );
+    Ok(())
+}
+
+#[test]
+fn zip_member_declaring_more_than_it_contains_is_refused() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("short.zip");
+    write_zip(&archive, &[("note.txt", b"hello")])?;
+    patch_zip_uncompressed_size(&archive, 1000)?;
+    let destination = tempfile::tempdir()?;
+
+    let error = extract_zip(&archive, destination.path())
+        .expect_err("a member shorter than its declared size should fail");
+
+    assert!(
+        error.contains("`note.txt` declared 1000 bytes but produced 5 bytes"),
+        "{error}"
+    );
+    assert!(
+        destination.path().read_dir()?.next().is_none(),
+        "the truncated member should be removed"
+    );
+    Ok(())
+}
+
+#[test]
+fn highly_compressible_archives_extract_in_every_format() -> Result<(), Box<dyn Error>> {
+    const SIZE: u64 = 16 << 20;
+    let zeros = vec![0u8; SIZE as usize];
+    for format in [
+        ArchiveFormat::Zip,
+        ArchiveFormat::SevenZ,
+        ArchiveFormat::TarGz,
+    ] {
+        let root = tempfile::tempdir()?;
+        let archive = root.path().join("zeros.archive");
+        match format {
+            ArchiveFormat::Zip => write_zip(&archive, &[("zeros.bin", &zeros)])?,
+            ArchiveFormat::SevenZ => write_7z(&archive, "zeros.bin", &zeros)?,
+            ArchiveFormat::Tar | ArchiveFormat::TarGz => {
+                write_tar(&archive, "zeros.bin", &zeros, true)?;
+            }
+        }
+        let ratio = SIZE / fs::metadata(&archive)?.len();
+        assert!(
+            ratio > 100,
+            "{format:?} fixture should compress well, got {ratio}:1"
+        );
+        let destination = tempfile::tempdir()?;
+        let progress = Arc::new(AtomicUsize::new(0));
+
+        let first_name = completed_extract(decode_fixture(
+            &archive,
+            destination.path(),
+            format,
+            None,
+            &progress,
+        )?)?;
+
+        assert_eq!(first_name.as_deref(), Some("zeros.bin"), "{format:?}");
+        assert_eq!(
+            fs::metadata(destination.path().join("zeros.bin"))?.len(),
+            SIZE,
+            "{format:?} should extract the full member"
+        );
+        assert_eq!(progress.load(Ordering::Relaxed), 1, "{format:?}");
+    }
     Ok(())
 }
