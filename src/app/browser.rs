@@ -515,6 +515,7 @@ pub struct Browser {
     next_request: Cell<u64>,
     pending_sort: Cell<Option<(u64, usize)>>,
     preferences: Cell<ViewPreferences>,
+    chooser_mode: Cell<bool>,
     observers: RefCell<Vec<Observer>>,
     preferences_observers: RefCell<Vec<PreferencesObserver>>,
 }
@@ -562,6 +563,7 @@ impl Browser {
             next_request: Cell::new(1),
             pending_sort: Cell::new(None),
             preferences: Cell::new(preferences),
+            chooser_mode: Cell::new(false),
             observers: RefCell::new(Vec::new()),
             preferences_observers: RefCell::new(Vec::new()),
         })
@@ -569,6 +571,14 @@ impl Browser {
 
     pub fn observe(&self, observer: impl Fn(&BrowserEvent) + 'static) {
         self.observers.borrow_mut().push(Rc::new(observer));
+    }
+
+    pub fn set_chooser_mode(&self, chooser: bool) {
+        self.chooser_mode.set(chooser);
+    }
+
+    pub fn is_chooser_mode(&self) -> bool {
+        self.chooser_mode.get()
     }
 
     pub fn clear_observer(&self) {

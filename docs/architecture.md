@@ -92,16 +92,24 @@ existing fallback path. Pane assembly, headers, grouping/filtering, and Icons fa
 remain in the composition module rather than changing alongside this lifecycle boundary.
 
 Pointer intent is shared through `ui/pointer.rs` and `ui/marquee.rs`. In all three modes,
-thumbnail slots, rendered row text/metadata, and Icons' caption region are item drag targets;
-unused label allocation and the gutters beside thumbnails are marquee origins. Both paths use
-GTK's configured drag threshold. Within collection viewports, marquees claim the sequence only
-after that threshold, leaving simple clicks and modifier-clicks intact. A completed plain click
-on background clears selections; returning to an inactive column then selects its first visible entry. Presses and marquee releases do not clear selections. Click activation and automatic preview wait for release
-and reject cancelled gestures, drag motion, and recycled items. Marquees anchor and cache mapped
-item geometry in scroll-content coordinates, independent of native GtkScrollable or GtkViewport
-layout. Edge and wheel scrolling refresh selection after layout/paint, even without pointer motion;
-unmapped rows cannot overwrite cached geometry with stale allocations. The visible band stays
-clipped to the viewport, while earlier off-screen hits remain selected. Release completes pending
+thumbnail slots, rendered row text/metadata, and Icons' caption region are item drag targets.
+Columns and List treat the whole visible `.file-row` / `.list-row`, including unused label
+allocation and row padding, as a drag origin. Their drag/drop controllers stay on that
+application-owned row so they can coexist with GTK's native list-item selection gesture. Icons
+keeps content-only drag behavior. Marquee ownership mirrors that split: Columns and List use an
+allocated-bounds predicate, so row whitespace is item space; Icons keeps `hits_item_content` and
+treats the gutter beside each card as a marquee origin. Pane background and surrounding chrome
+remain marquee origins, and Alt-drag can force a marquee from an item in any mode. Both
+paths use GTK's configured drag threshold. Within collection viewports, marquees claim the
+sequence only after that threshold, leaving simple clicks and modifier-clicks intact. A
+completed plain click on background clears selections; returning to an inactive column then
+selects its first visible entry. Presses and marquee releases do not clear selections. Click
+activation and automatic preview wait for release and reject cancelled gestures, drag motion,
+and recycled items. Marquees anchor and cache mapped item geometry in scroll-content
+coordinates, independent of native GtkScrollable or GtkViewport layout. Edge and wheel scrolling
+refresh selection after layout/paint, even without pointer motion; unmapped rows cannot
+overwrite cached geometry with stale allocations. The visible band stays clipped to the
+viewport, while earlier off-screen hits remain selected. Release completes pending
 layout-dependent selection before disconnecting the frame handler.
 
 ### Browser implementation map

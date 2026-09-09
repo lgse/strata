@@ -4,7 +4,7 @@ use super::chooser_context;
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::services::ArchiveFormat;
-use crate::ui::browser::clipboard::{copy_locations, locations_equal};
+use crate::ui::browser::clipboard::{copy_locations, copy_names, locations_equal};
 use crate::ui::browser::customization::show_customize_modal;
 use crate::ui::browser::desktop::{can_open_terminal, launch_terminal};
 use crate::ui::browser::entry::{entry_icon, entry_supports_printing};
@@ -18,24 +18,41 @@ use gtk::{gio, glib};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-const CONTEXT_MENU_EDGE_MARGIN: i32 = 24;
+const CONTEXT_MENU_EDGE_MARGIN: i32 = 16;
 
 fn context_menu_placement(anchor_height: i32, click_y: f64) -> (gtk::PositionType, i32) {
     let click_y = click_y.round() as i32;
     let above = click_y.clamp(0, anchor_height);
     let below = anchor_height.saturating_sub(above);
-    let (position, available_height) = if below >= above {
-        (gtk::PositionType::Bottom, below)
+    let position = if below >= above {
+        gtk::PositionType::Bottom
     } else {
-        (gtk::PositionType::Top, above)
+        gtk::PositionType::Top
     };
 
     (
         position,
-        available_height
-            .saturating_sub(CONTEXT_MENU_EDGE_MARGIN)
+        anchor_height
+            .saturating_sub(CONTEXT_MENU_EDGE_MARGIN * 2)
             .max(1),
     )
+}
+
+// GTK popovers do not shift their anchor to use space across the click point.
+fn shifted_anchor_y(
+    position: gtk::PositionType,
+    anchor_height: i32,
+    click_y: i32,
+    content_height: i32,
+) -> i32 {
+    let near_edge = CONTEXT_MENU_EDGE_MARGIN;
+    let far_edge = anchor_height.saturating_sub(CONTEXT_MENU_EDGE_MARGIN);
+    match position {
+        gtk::PositionType::Bottom => {
+            click_y.min(far_edge.saturating_sub(content_height).max(near_edge))
+        }
+        _ => click_y.max(near_edge.saturating_add(content_height).min(far_edge)),
+    }
 }
 
 pub(super) fn context_menu_popover(
@@ -133,9 +150,12 @@ pub(super) fn show_context_popover(
         context_menu_placement(overlay.height(), f64::from(point.y()));
     popover.set_position(position);
     scroll.set_max_content_height(max_content_height);
+    let click_y = point.y().round() as i32;
+    let (_, content_height, _, _) = scroll.measure(gtk::Orientation::Vertical, -1);
+    let anchor_y = shifted_anchor_y(position, overlay.height(), click_y, content_height.max(1));
     popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
         point.x().round() as i32,
-        point.y().round() as i32,
+        anchor_y,
         1,
         1,
     )));
@@ -442,6 +462,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     let pin = item_context_option(crate::assets::icons::PIN, "Pin to sidebar", "P");
     let copy = item_context_option(crate::assets::icons::COPY, "Copy", "Ctrl+C");
     let copy_path = item_context_option(crate::assets::icons::COPY, "Copy path", "Y");
+    let copy_name = item_context_option(crate::assets::icons::COPY, "Copy name", "");
     let move_to = item_context_option(crate::assets::icons::FOLDER, "Move to…", "");
     let copy_to = item_context_option(crate::assets::icons::COPY, "Copy to…", "");
     let rename = item_context_option(crate::assets::icons::PENCIL, "Rename", "F2 / Ctrl+R");
@@ -482,6 +503,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     single.append(&cut);
     single.append(&copy);
     single.append(&copy_path);
+    single.append(&copy_name);
     single.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     single.append(&move_to);
     single.append(&copy_to);
@@ -506,6 +528,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     restore_multiple.set_visible(in_trash);
     let copy_multiple = item_context_option(crate::assets::icons::COPY, "Copy", "Ctrl+C");
     let copy_paths = item_context_option(crate::assets::icons::COPY, "Copy paths", "Y");
+    let copy_names_button = item_context_option(crate::assets::icons::COPY, "Copy names", "");
     let move_multiple = item_context_option(crate::assets::icons::FOLDER, "Move to…", "");
     let copy_to_multiple = item_context_option(crate::assets::icons::COPY, "Copy to…", "");
     let cut_multiple = item_context_option(crate::assets::icons::SCISSORS, "Cut", "Ctrl+X");
@@ -530,6 +553,7 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     multiple.append(&cut_multiple);
     multiple.append(&copy_multiple);
     multiple.append(&copy_paths);
+    multiple.append(&copy_names_button);
     multiple.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
     multiple.append(&move_multiple);
     multiple.append(&copy_to_multiple);
@@ -743,6 +767,20 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         }
     });
     let weak = Rc::downgrade(state);
+    let copy_name_target = target.clone();
+    let copy_name_popover = popover.downgrade();
+    copy_name.connect_clicked(move |_| {
+        if let Some(popover) = copy_name_popover.upgrade() {
+            popover.popdown();
+        }
+        let Some((_, entry)) = copy_name_target.borrow().clone() else {
+            return;
+        };
+        if weak.upgrade().is_some() {
+            copy_names(&[entry]);
+        }
+    });
+    let weak = Rc::downgrade(state);
     let rename_target = target.clone();
     let rename_popover = popover.downgrade();
     rename.connect_clicked(move |_| {
@@ -824,6 +862,17 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         }
         if let Some(state) = weak.upgrade() {
             copy_locations(&context_entries(&state, &paths_target));
+        }
+    });
+    let weak = Rc::downgrade(state);
+    let names_target = target.clone();
+    let names_popover = popover.downgrade();
+    copy_names_button.connect_clicked(move |_| {
+        if let Some(popover) = names_popover.upgrade() {
+            popover.popdown();
+        }
+        if let Some(state) = weak.upgrade() {
+            copy_names(&context_entries(&state, &names_target));
         }
     });
     let weak = Rc::downgrade(state);

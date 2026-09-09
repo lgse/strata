@@ -44,11 +44,53 @@ fn multi_selection_summary_lists_at_most_three_names() {
 fn context_menu_uses_the_roomier_side_of_the_click() {
     assert_eq!(
         context_menu_placement(800, 120.0),
-        (gtk::PositionType::Bottom, 656)
+        (gtk::PositionType::Bottom, 768)
     );
     assert_eq!(
         context_menu_placement(800, 680.0),
-        (gtk::PositionType::Top, 656)
+        (gtk::PositionType::Top, 768)
+    );
+}
+
+#[test]
+fn context_menu_uses_full_height_instead_of_scrolling_one_side() {
+    assert_eq!(
+        context_menu_placement(800, 400.0),
+        (gtk::PositionType::Bottom, 768)
+    );
+    assert_eq!(
+        context_menu_placement(800, 401.0),
+        (gtk::PositionType::Top, 768)
+    );
+}
+
+#[test]
+fn context_menu_anchor_stays_on_the_click_when_the_menu_fits() {
+    assert_eq!(
+        shifted_anchor_y(gtk::PositionType::Bottom, 800, 120, 400),
+        120
+    );
+    assert_eq!(shifted_anchor_y(gtk::PositionType::Top, 800, 680, 400), 680);
+}
+
+#[test]
+fn context_menu_anchor_shifts_to_use_space_on_the_other_side() {
+    assert_eq!(
+        shifted_anchor_y(gtk::PositionType::Bottom, 800, 700, 300),
+        484
+    );
+    assert_eq!(shifted_anchor_y(gtk::PositionType::Top, 800, 200, 300), 316);
+}
+
+#[test]
+fn context_menu_anchor_clamps_when_the_menu_exceeds_the_view() {
+    assert_eq!(
+        shifted_anchor_y(gtk::PositionType::Bottom, 800, 700, 900),
+        CONTEXT_MENU_EDGE_MARGIN
+    );
+    assert_eq!(
+        shifted_anchor_y(gtk::PositionType::Top, 800, 100, 900),
+        800 - CONTEXT_MENU_EDGE_MARGIN
     );
 }
 

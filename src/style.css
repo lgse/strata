@@ -1453,6 +1453,15 @@ switch:checked slider {
   transition: none;
 }
 
+/* Opaque troughs conceal the sidebar paned handle beneath mode scrollers. */
+.mode-scroll scrollbar.horizontal > range > trough,
+.mode-scroll scrollbar.horizontal:hover > range > trough,
+.mode-scroll scrollbar.horizontal.hovering > range > trough,
+.mode-scroll scrollbar.horizontal.dragging > range > trough {
+  background: @theme_bg;
+  border: none;
+}
+
 /* The trough is widened to a practical grab target while slider margins keep the
    visible bar as narrow as before. */
 .fixed-scrollbar scrollbar.vertical {
@@ -2593,12 +2602,24 @@ popover.folder-context-popover.background {
   box-shadow: none;
 }
 
+.context-menu-scroll scrollbar,
+.context-menu-scroll scrollbar:hover,
+.context-menu-scroll scrollbar.hovering,
+.context-menu-scroll scrollbar.dragging {
+  background: transparent;
+  border: none;
+  padding: 0;
+  transition: none;
+}
+
 .context-menu-scroll scrollbar.vertical {
-  min-width: 6px;
+  min-width: 14px;
 }
 
 .context-menu-scroll scrollbar.vertical > range > trough > slider {
-  margin: 0;
+  border-width: 1px;
+  margin: 0 2px 0 4px;
+  min-width: 6px;
 }
 
 .folder-context-menu,
@@ -2972,7 +2993,7 @@ colorchooser colorswatch overlay {
   color: @theme_text;
   border-radius: 6px;
   margin: 1px 8px;
-  padding: 4px 0;
+  padding: 0;
   transition: background 160ms ease-out, color 160ms ease-out;
 }
 
@@ -2991,7 +3012,12 @@ colorchooser colorswatch overlay {
 .file-row {
   border-radius: 6px;
   color: @theme_text;
-  padding: 4px;
+  padding: 0 4px;
+}
+
+.file-row > * {
+  margin-bottom: 8px;
+  margin-top: 8px;
 }
 
 .file-row.cut {
@@ -3210,6 +3236,7 @@ colorchooser colorswatch overlay {
 .skeleton-miller .file-row {
   margin: 1px 8px;
   min-height: 18px;
+  padding: 4px;
 }
 
 .directory-feedback {
@@ -3845,8 +3872,13 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .list-row {
-  min-height: 28px;
+  min-height: 36px;
   padding: 0;
+}
+
+.list-row > * {
+  margin-bottom: 4px;
+  margin-top: 4px;
 }
 
 .list-name-cell,
@@ -3856,12 +3888,18 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 
 .mode-list.density-airy .list-row {
   min-height: 42px;
-  padding-bottom: 4px;
-  padding-top: 4px;
+}
+
+.mode-list.density-airy .list-row > * {
+  margin-bottom: 8px;
+  margin-top: 8px;
 }
 
 .density-airy .file-row {
   min-height: 38px;
-  padding-bottom: 5px;
-  padding-top: 5px;
+}
+
+.density-airy .file-row > * {
+  margin-bottom: 9px;
+  margin-top: 9px;
 }
