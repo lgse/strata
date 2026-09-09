@@ -31,6 +31,14 @@ checks if fixes change the code before the push. Even when full Rust tests are
 needed during iteration, use `./scripts/quality.sh test` and defer lint/format
 phases until pre-push. CI's lint and formatting checks remain unchanged.
 
+The repository owner may explicitly authorize pushing a PR without the normally
+required local tests for the current change/push. A general push request,
+urgency, silence, or consent for another push does not qualify. Record the
+explicit authorization, omitted suites, and known failures or unverified behavior
+in the handoff and PR description; never report skipped tests as passing. This
+exception does not waive lint/format checks, GUI isolation, or required CI/merge
+checks. Renew consent if the authorized scope changes, or run the required tests.
+
 For native Rust selection, `scripts/test-headless.py` starts the private display
 and session buses, then appends its arguments to the fixed
 `cargo test --all-targets --all-features` command. Use module/name filters:

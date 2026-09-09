@@ -68,7 +68,17 @@ pass before merge.
 - Documentation-only changes need no GUI/build tests: review the complete diff,
   validate links and example filters against the scripts and existing tests, and
   run `git diff --check`. These checks do not bypass required CI checks.
-- Fix failures before pushing rather than relying on CI. Keep tests portable
+- Owner-approved exception: the repository owner may explicitly authorize
+  pushing a PR without running otherwise-required local tests. Consent must
+  specifically acknowledge skipping tests for the current change/push; a generic
+  request to push, urgency, silence, or prior approval for another push is not
+  consent. Record the authorization, skipped suites, and any known failures or
+  unverified behavior in the handoff and PR description. Do not claim skipped
+  tests passed. This waives only local test execution for that authorized scope,
+  not lint/format checks, GUI safety, or required CI/merge checks. If scope changes,
+  obtain renewed consent or perform the required validation.
+- Outside that explicit exception, fix failures before pushing rather than
+  relying on CI. Keep tests portable
   across supported environments and avoid assertions that depend on
   platform-specific URI normalization or other incidental system behavior.
 
