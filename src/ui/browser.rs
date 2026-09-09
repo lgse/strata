@@ -324,7 +324,16 @@ pub(super) struct ViewState {
     trash_loading: RefCell<Option<TrashLoadingView>>,
     auto_refresh: RefCell<Option<glib::SourceId>>,
     browser: Rc<Browser>,
+    /// Keyboard-triggered context menus, keyed by column depth. Multiple item menus
+    /// can register for one depth (a grouped grid installs one per section); each
+    /// returns whether it handled the focused entry so the shortcut can fall back to
+    /// the folder menu when no item is focused.
+    item_context_openers: RefCell<HashMap<usize, Vec<ItemContextOpener>>>,
+    folder_context_openers: RefCell<HashMap<usize, FolderContextOpener>>,
 }
+
+type ItemContextOpener = Rc<dyn Fn(&Rc<ViewState>) -> bool>;
+type FolderContextOpener = Rc<dyn Fn(&Rc<ViewState>) -> bool>;
 
 fn focus_header_action(actions: &gtk::Box, direction: gtk::DirectionType) -> bool {
     let mut action = if direction == gtk::DirectionType::Left {
@@ -476,6 +485,8 @@ impl BrowserView {
             trash_loading: RefCell::new(None),
             auto_refresh: RefCell::new(None),
             browser,
+            item_context_openers: RefCell::new(HashMap::new()),
+            folder_context_openers: RefCell::new(HashMap::new()),
         });
 
         // Columns are laid out from the start edge, so the blank strip beside the last
@@ -1005,6 +1016,12 @@ impl BrowserView {
         true
     }
 
+    /// Opens the context menu for the focused item, falling back to the folder's
+    /// background menu when no item is focused.
+    pub fn open_context_menu(&self) {
+        self.state.open_context_menu();
+    }
+
     pub fn confirm_empty_trash(&self) {
         self.state.load_trash_summary();
     }
@@ -1180,6 +1197,38 @@ impl ViewState {
             focused == column.shell.clone().upcast::<gtk::Widget>()
                 || focused.is_ancestor(&column.shell)
         })
+    }
+
+    fn register_item_context_opener(self: &Rc<Self>, depth: usize, opener: ItemContextOpener) {
+        self.item_context_openers
+            .borrow_mut()
+            .entry(depth)
+            .or_default()
+            .push(opener);
+    }
+
+    fn register_folder_context_opener(self: &Rc<Self>, depth: usize, opener: FolderContextOpener) {
+        self.folder_context_openers
+            .borrow_mut()
+            .insert(depth, opener);
+    }
+
+    fn open_context_menu(self: &Rc<Self>) {
+        if let Some((depth, _, _)) = self.focused_item()
+            && let Some(openers) = self.item_context_openers.borrow().get(&depth).cloned()
+            && openers.iter().any(|opener| opener(self))
+        {
+            return;
+        }
+        if let Some(depth) = self.browser.active_depth()
+            && let Some(opener) = self.folder_context_openers.borrow().get(&depth).cloned()
+        {
+            opener(self);
+        }
+    }
+
+    pub(super) fn focused_item(&self) -> Option<(usize, usize, FileEntry)> {
+        self.browser.focused_item()
     }
 
     fn select_all(&self, depth: usize) {
@@ -4932,12 +4981,30 @@ impl ViewState {
         let source_position = Rc::new(move |position| {
             source_position_for_filtered(&source_for_context, &filtered_for_context, position)
         });
+        let weak_state_for_row = Rc::downgrade(self);
+        let focus_row: ContextFocusRow = Rc::new(move || {
+            let state = weak_state_for_row.upgrade()?;
+            let (depth, position, _) = state.focused_item()?;
+            let columns = state.columns.borrow();
+            let column = columns.get(depth)?;
+            let filtered = filtered_position_for_source(column, position)?;
+            column.bound_rows.borrow().iter().find_map(|bound| {
+                let item = bound.item.upgrade()?;
+                let row = (item.position() == filtered)
+                    .then(|| bound.row.upgrade())
+                    .flatten()?;
+                Some(row.upcast())
+            })
+        });
         install_item_context_menu(
             self,
             list.upcast_ref(),
             &selection,
-            pick_position,
-            source_position,
+            ItemContextResolution {
+                pick_position,
+                source_position,
+                focus_row,
+            },
             Rc::new(|| {}),
             depth,
         );
@@ -5608,10 +5675,52 @@ pub(super) fn install_folder_context_menu(
         }
     });
 
+    let anchor = parent.clone();
+    let anchor_for_popup = anchor.clone();
+    let popup: Rc<dyn Fn(i32, i32)> = {
+        let browser_for_menu = state.browser.clone();
+        let has_entries = has_entries.clone();
+        let paste = paste.clone();
+        let select_all = select_all.clone();
+        let open_terminal = open_terminal.clone();
+        let toggle_hidden_label = toggle_hidden_label.clone();
+        let toggle_hidden_icon = toggle_hidden_icon.clone();
+        let popover = popover.clone();
+        let location = location.clone();
+        Rc::new(move |x, y| {
+            if popover.parent().is_none() {
+                popover.set_parent(&anchor_for_popup);
+            }
+            paste.set_sensitive(gtk::gdk::Display::default().is_some_and(|display| {
+                display
+                    .clipboard()
+                    .formats()
+                    .contains_type(gtk::gdk::FileList::static_type())
+            }));
+            select_all.set_sensitive(has_entries());
+            open_terminal.set_sensitive(can_open_terminal(&location));
+            let hidden_files_shown = browser_for_menu.preferences().show_hidden;
+            toggle_hidden_label.set_text(if hidden_files_shown {
+                "Hide Hidden Files"
+            } else {
+                "Show Hidden Files"
+            });
+            crate::assets::set_primary_icon(
+                &toggle_hidden_icon,
+                if hidden_files_shown {
+                    crate::assets::icons::EYE
+                } else {
+                    crate::assets::icons::EYE_OFF
+                },
+            );
+            popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(x, y, 1, 1)));
+            popover.popup();
+        })
+    };
+
     let menu_click = gtk::GestureClick::new();
     menu_click.set_button(3);
-    let popover_for_click = popover.clone();
-    let browser_for_click = state.browser.clone();
+    let popup_for_click = popup.clone();
     menu_click.connect_pressed(move |gesture, _, x, y| {
         let over_item = gesture
             .widget()
@@ -5621,46 +5730,36 @@ pub(super) fn install_folder_context_menu(
             return;
         }
         gesture.set_state(gtk::EventSequenceState::Claimed);
-        paste.set_sensitive(gtk::gdk::Display::default().is_some_and(|display| {
-            display
-                .clipboard()
-                .formats()
-                .contains_type(gtk::gdk::FileList::static_type())
-        }));
-        select_all.set_sensitive(has_entries());
-        open_terminal.set_sensitive(can_open_terminal(&location));
-        let hidden_files_shown = browser_for_click.preferences().show_hidden;
-        toggle_hidden_label.set_text(if hidden_files_shown {
-            "Hide Hidden Files"
-        } else {
-            "Show Hidden Files"
-        });
-        crate::assets::set_primary_icon(
-            &toggle_hidden_icon,
-            if hidden_files_shown {
-                crate::assets::icons::EYE
-            } else {
-                crate::assets::icons::EYE_OFF
-            },
-        );
-        if popover_for_click.parent().is_none()
-            && let Some(parent) = gesture.widget()
-        {
-            popover_for_click.set_parent(&parent);
-        }
-        popover_for_click.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
-            x.round() as i32,
-            y.round() as i32,
-            1,
-            1,
-        )));
-        popover_for_click.popup();
+        popup_for_click(x.round() as i32, y.round() as i32);
     });
     parent.add_controller(menu_click);
+
+    let popup_for_opener = popup.clone();
+    let opener_location = location.clone();
+    state.register_folder_context_opener(
+        depth,
+        Rc::new(move |state: &Rc<ViewState>| {
+            if state.browser.location_at(depth) != Some(opener_location.clone()) {
+                return false;
+            }
+            popup_for_opener(anchor.width() / 2, anchor.height() / 2);
+            true
+        }),
+    );
 }
 
 pub(super) type ContextPickPosition = Rc<dyn Fn(&gtk::Widget) -> Option<u32>>;
 pub(super) type ContextSourcePosition = Rc<dyn Fn(u32) -> Option<usize>>;
+pub(super) type ContextFocusRow = Rc<dyn Fn() -> Option<gtk::Widget>>;
+type ItemContextPopup = Rc<dyn Fn(usize, FileEntry, &gtk::gdk::Rectangle)>;
+
+/// Mode-specific position lookups shared by the item context menu's mouse and
+/// keyboard paths.
+pub(super) struct ItemContextResolution {
+    pub(super) pick_position: ContextPickPosition,
+    pub(super) source_position: ContextSourcePosition,
+    pub(super) focus_row: ContextFocusRow,
+}
 
 const ITEM_CONTEXT_SUMMARY_MAX_CHARS: i32 = 60;
 
@@ -5668,11 +5767,15 @@ pub(super) fn install_item_context_menu(
     state: &Rc<ViewState>,
     widget: &gtk::Widget,
     selection: &gtk::MultiSelection,
-    pick_position: ContextPickPosition,
-    source_position: ContextSourcePosition,
+    resolution: ItemContextResolution,
     clear_other_selections: Rc<dyn Fn()>,
     depth: usize,
 ) {
+    let ItemContextResolution {
+        pick_position,
+        source_position,
+        focus_row,
+    } = resolution;
     let in_trash = state
         .browser
         .location_at(depth)
@@ -5945,10 +6048,62 @@ pub(super) fn install_item_context_menu(
         }
     });
 
+    let anchor = widget.clone();
+    let popup: ItemContextPopup = {
+        let weak_state = Rc::downgrade(state);
+        let target = target.clone();
+        let preview = preview.clone();
+        let open_terminal = open_terminal.clone();
+        let permanent_delete = permanent_delete.clone();
+        let permanent_delete_multiple = permanent_delete_multiple.clone();
+        let pin = pin.clone();
+        let extract = extract.clone();
+        let extract_to = extract_to.clone();
+        let heading = heading.clone();
+        let summary = summary.clone();
+        let single = single.clone();
+        let multiple = multiple.clone();
+        let popover = popover.clone();
+        Rc::new(move |resolved_position, entry, rect| {
+            let Some(state) = weak_state.upgrade() else {
+                return;
+            };
+            target.replace(Some((resolved_position, entry.clone())));
+            let entries = state.browser.selected_entries();
+            preview.set_visible(entry_supports_quick_preview(&entry));
+            open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
+            permanent_delete.set_visible(!in_trash);
+            permanent_delete_multiple.set_visible(!in_trash);
+            pin.set_visible(entry.is_directory() && !is_trash_location(&entry.location));
+            pin.set_sensitive(
+                state
+                    .pin_status_handler
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(|handler| handler(&entry.location) == PinStatus::Available),
+            );
+            extract.set_visible(ArchiveFormat::from_extension(&entry.display_name).is_some());
+            extract_to.set_visible(ArchiveFormat::from_extension(&entry.display_name).is_some());
+            if entries.len() > 1 {
+                heading.set_text(&format!("{} items selected", entries.len()));
+                summary.set_text(&selected_items_summary(&entries));
+                single.set_visible(false);
+                multiple.set_visible(true);
+            } else {
+                heading.set_text(&entry.display_name);
+                summary.set_text(&compact_display_path(&entry.location));
+                single.set_visible(true);
+                multiple.set_visible(false);
+            }
+            popover.set_pointing_to(Some(rect));
+            popover.popup();
+        })
+    };
+
     let click = gtk::GestureClick::new();
     click.set_button(3);
     let weak_state = Rc::downgrade(state);
-    let weak_popover = popover.downgrade();
+    let popup_for_click = popup.clone();
     let selection = selection.clone();
     click.connect_pressed(move |gesture, _, x, y| {
         let Some(picked) = gesture
@@ -5974,45 +6129,48 @@ pub(super) fn install_item_context_menu(
             clear_other_selections();
             selection.select_item(filtered_position, true);
         }
-        target.replace(Some((resolved_position, entry.clone())));
-        let entries = state.browser.selected_entries();
-        preview.set_visible(entry_supports_quick_preview(&entry));
-        open_terminal.set_visible(entry.is_directory() && can_open_terminal(&entry.location));
-        permanent_delete.set_visible(!in_trash);
-        permanent_delete_multiple.set_visible(!in_trash);
-        pin.set_visible(entry.is_directory() && !is_trash_location(&entry.location));
-        pin.set_sensitive(
-            state
-                .pin_status_handler
-                .borrow()
-                .as_ref()
-                .is_some_and(|handler| handler(&entry.location) == PinStatus::Available),
+        popup_for_click(
+            resolved_position,
+            entry,
+            &gtk::gdk::Rectangle::new(x.round() as i32, y.round() as i32, 1, 1),
         );
-        extract.set_visible(ArchiveFormat::from_extension(&entry.display_name).is_some());
-        extract_to.set_visible(ArchiveFormat::from_extension(&entry.display_name).is_some());
-        if entries.len() > 1 {
-            heading.set_text(&format!("{} items selected", entries.len()));
-            summary.set_text(&selected_items_summary(&entries));
-            single.set_visible(false);
-            multiple.set_visible(true);
-        } else {
-            heading.set_text(&entry.display_name);
-            summary.set_text(&compact_display_path(&entry.location));
-            single.set_visible(true);
-            multiple.set_visible(false);
-        }
-        let Some(popover) = weak_popover.upgrade() else {
-            return;
-        };
-        popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
-            x.round() as i32,
-            y.round() as i32,
-            1,
-            1,
-        )));
-        popover.popup();
     });
     widget.add_controller(click);
+
+    let popup_for_opener = popup.clone();
+    state.register_item_context_opener(
+        depth,
+        Rc::new(move |state: &Rc<ViewState>| {
+            let Some((focused_depth, position, entry)) = state.browser.focused_item() else {
+                return false;
+            };
+            if focused_depth != depth {
+                return false;
+            }
+            // A grouped grid registers one opener per section; only the section whose
+            // view actually contains the focused row may anchor the menu to it.
+            let rect = focus_row()
+                .and_then(|row| {
+                    if !row.is_ancestor(&anchor) {
+                        return None;
+                    }
+                    row.compute_bounds(&anchor)
+                })
+                .map_or_else(
+                    || gtk::gdk::Rectangle::new(anchor.width() / 2, anchor.height() / 2, 1, 1),
+                    |bounds| {
+                        gtk::gdk::Rectangle::new(
+                            bounds.x() as i32,
+                            bounds.y() as i32,
+                            bounds.width() as i32,
+                            bounds.height() as i32,
+                        )
+                    },
+                );
+            popup_for_opener(position, entry, &rect);
+            true
+        }),
+    );
 }
 
 fn entry_responds_to_preview_click(entry: &FileEntry, previews_enabled: bool) -> bool {

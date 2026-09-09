@@ -3259,6 +3259,7 @@ fn install_section_context_menu(
         source_position_for_view(&source_model, Some(&view_model), position)
     });
     let owner_view = section.view.clone();
+    let sections_for_row = sections.clone();
     let clear_other_selections = Rc::new(move || {
         let Some(sections) = sections.upgrade() else {
             return;
@@ -3272,12 +3273,42 @@ fn install_section_context_menu(
             other.syncing.set(false);
         }
     });
+    let weak_state_for_row = Rc::downgrade(state);
+    let source_model_for_row = source.clone();
+    let depth_for_row = depth;
+    let focus_row: super::browser::ContextFocusRow = Rc::new(move || {
+        let state = weak_state_for_row.upgrade()?;
+        let (focused_depth, position, _) = state.focused_item()?;
+        if focused_depth != depth_for_row {
+            return None;
+        }
+        let sections = sections_for_row.upgrade()?;
+        for section in sections.borrow().iter() {
+            let Some(view_position) = view_position_for_source(
+                &source_model_for_row,
+                Some(&section.view_model),
+                position,
+            ) else {
+                continue;
+            };
+            if let Some(widget) = section.bound_items.borrow().iter().find_map(|bound| {
+                let item = bound.item.upgrade()?;
+                (item.position() == view_position).then(|| bound.widget.upgrade())?
+            }) {
+                return Some(widget);
+            }
+        }
+        None
+    });
     super::browser::install_item_context_menu(
         state,
         &section.view,
         &section.selection,
-        pick_position,
-        source_position,
+        super::browser::ItemContextResolution {
+            pick_position,
+            source_position,
+            focus_row,
+        },
         clear_other_selections,
         depth,
     );

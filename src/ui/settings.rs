@@ -2102,6 +2102,7 @@ fn keybindings_page() -> gtk::Widget {
         ("Cut", "Ctrl + X"),
         ("Copy", "Ctrl + C"),
         ("Paste", "Ctrl + V"),
+        ("Open context menu", "M"),
     ] {
         append_keybinding(&content, label, keys);
     }

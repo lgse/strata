@@ -753,6 +753,10 @@ fn install_keyboard_navigation(
             view.copy_path();
             return glib::Propagation::Stop;
         }
+        if !control && !alt && matches!(key, gtk::gdk::Key::m | gtk::gdk::Key::M) {
+            view.open_context_menu();
+            return glib::Propagation::Stop;
+        }
         if !control && !alt && matches!(key, gtk::gdk::Key::p | gtk::gdk::Key::P) {
             view.pin_focused();
             return glib::Propagation::Stop;
