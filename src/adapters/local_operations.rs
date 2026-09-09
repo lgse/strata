@@ -401,11 +401,17 @@ fn open_local_copy_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<LocalCo
             let children = local_directory_children(&handle)?;
             Ok(LocalCopySource::Directory { handle, children })
         }
-        _ => {
+        rustix::fs::FileType::RegularFile => {
+            // NONBLOCK so an entry swapped for a FIFO between the stat above
+            // and this open cannot block waiting for a writer; the type is
+            // re-checked on the opened descriptor below. GIO copies through
+            // `/proc/self/fd`, so the flag never affects the copy itself.
             let file = rustix::fs::openat2(
                 parent,
                 name,
-                rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC,
+                rustix::fs::OFlags::RDONLY
+                    | rustix::fs::OFlags::CLOEXEC
+                    | rustix::fs::OFlags::NONBLOCK,
                 rustix::fs::Mode::empty(),
                 rustix::fs::ResolveFlags::BENEATH
                     | rustix::fs::ResolveFlags::NO_SYMLINKS
@@ -417,8 +423,23 @@ fn open_local_copy_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<LocalCo
                     name.to_string_lossy()
                 )
             })?;
+            let opened = rustix::fs::fstat(&file).map_err(|error| {
+                format!("Could not inspect {}: {error}", name.to_string_lossy())
+            })?;
+            if rustix::fs::FileType::from_raw_mode(opened.st_mode)
+                != rustix::fs::FileType::RegularFile
+            {
+                return Err(format!(
+                    "{} changed while it was being copied",
+                    name.to_string_lossy()
+                ));
+            }
             Ok(LocalCopySource::File(std::fs::File::from(file)))
         }
+        _ => Err(format!(
+            "Cannot copy {}: it is not a regular file, directory, or symbolic link",
+            name.to_string_lossy()
+        )),
     }
 }
 
