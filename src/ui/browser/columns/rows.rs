@@ -9,8 +9,8 @@ use crate::ui::{
     browser::{
         ViewState,
         clipboard::{
-            file_drag_content, file_drop_action, locations_equal, locations_from_file_list_value,
-            shared_cut_locations,
+            drag_actions_for_modifiers, file_drag_content, file_drop_action, locations_equal,
+            locations_from_file_list_value, shared_cut_locations,
         },
         collection::{ViewMap, cancel_source},
         entry::{
@@ -181,6 +181,7 @@ pub(super) fn column_rows(
             let drag = gtk::DragSource::builder()
                 .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
                 .build();
+            drag.set_propagation_phase(gtk::PropagationPhase::Capture);
             let weak_state_for_drag = weak_state.clone();
             let dragged_item = item.downgrade();
             let map_for_drag = map_for_hover.clone();
@@ -191,6 +192,7 @@ pub(super) fn column_rows(
                     return None;
                 }
                 prepare_row.remove_css_class("slide-out");
+                source.set_actions(drag_actions_for_modifiers(source.current_event_state()));
                 let state = weak_state_for_drag.upgrade()?;
                 let dragged_item = dragged_item.upgrade()?;
                 let source_position = map_for_drag.source_position(dragged_item.position())?;
@@ -215,7 +217,8 @@ pub(super) fn column_rows(
                 }
             });
             let dragged_row = row.downgrade();
-            drag.connect_drag_end(move |_, _, _| {
+            drag.connect_drag_end(move |source, _, _| {
+                source.set_actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE);
                 if let Some(row) = dragged_row.upgrade() {
                     row.remove_css_class("dragging");
                     slide_out(&row);

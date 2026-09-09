@@ -2835,6 +2835,9 @@ fn install_list_drag_drop(
         if !super::pointer::hits_item_content(&source.widget()?, x, y) {
             return None;
         }
+        source.set_actions(super::browser::drag_actions_for_modifiers(
+            source.current_event_state(),
+        ));
         let browser = browser_for_drag.upgrade()?;
         let dragged_item = dragged_item.upgrade()?;
         let position = dragged_item.position();
@@ -2874,7 +2877,8 @@ fn install_list_drag_drop(
         }
     });
     let dragged_row = row.downgrade();
-    drag.connect_drag_end(move |_, _, _| {
+    drag.connect_drag_end(move |source, _, _| {
+        source.set_actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE);
         if let Some(row) = dragged_row.upgrade() {
             row.remove_css_class("dragging");
         }

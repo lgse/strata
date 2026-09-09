@@ -55,6 +55,18 @@ fn transfer_dropped_files(
     true
 }
 
+pub(crate) fn drag_actions_for_modifiers(
+    modifiers: gtk::gdk::ModifierType,
+) -> gtk::gdk::DragAction {
+    if modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK) {
+        gtk::gdk::DragAction::COPY
+    } else if modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK) {
+        gtk::gdk::DragAction::MOVE
+    } else {
+        gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE
+    }
+}
+
 pub(crate) fn file_drop_action(target: &gtk::DropTarget) -> gtk::gdk::DragAction {
     let Some(drop) = target.current_drop() else {
         return gtk::gdk::DragAction::empty();
