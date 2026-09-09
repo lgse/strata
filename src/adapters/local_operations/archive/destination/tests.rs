@@ -53,9 +53,31 @@ fn pinned_destination_survives_path_replacement() -> Result<(), Box<dyn Error>> 
     drop(file);
     assert_eq!(fs::read(moved.join(&created))?, b"contents");
     assert!(external.read_dir()?.next().is_none());
-    assert!(ExtractionDestination::open(&target).is_err());
     destination.remove_file(&created)?;
     assert!(!moved.join(&created).exists());
+    Ok(())
+}
+
+#[test]
+fn destination_resolves_a_symlinked_directory_and_pins_it() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let real = root.path().join("real");
+    let alias = root.path().join("alias");
+    let other = root.path().join("other");
+    fs::create_dir(&real)?;
+    fs::create_dir(&other)?;
+    symlink(&real, &alias)?;
+
+    let destination = ExtractionDestination::open(&alias)?;
+    fs::remove_file(&alias)?;
+    symlink(&other, &alias)?;
+
+    let (mut file, created) = destination.create_file(Path::new("file.txt"))?;
+    file.write_all(b"contents")?;
+    drop(file);
+    assert_eq!(fs::read(real.join(&created))?, b"contents");
+    assert!(other.read_dir()?.next().is_none());
+    assert!(ExtractionDestination::open(Path::new("relative")).is_err());
     Ok(())
 }
 

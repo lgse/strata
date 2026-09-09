@@ -129,6 +129,20 @@ fn rendered_name(widget: &gtk::Widget, name: &str) -> bool {
     false
 }
 
+fn text_view_in(widget: &gtk::Widget) -> Option<gtk::TextView> {
+    if let Some(view) = widget.downcast_ref::<gtk::TextView>() {
+        return Some(view.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if let Some(view) = text_view_in(&widget) {
+            return Some(view);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
 fn wait_until(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
@@ -179,6 +193,33 @@ fn inline_editing_owns_filter_keys_but_not_global_search() {
             assert_eq!(searches.get(), 1);
             assert!(fixture.press(Key::Escape, ModifierType::empty()));
             assert!(!fixture.view.rename_is_active());
+            assert_eq!(fixture.selected(), [0]);
+        },
+    );
+}
+
+#[test]
+fn clipboard_and_delete_shortcuts_proceed_inside_preview_text() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::clipboard_and_delete_shortcuts_proceed_inside_preview_text",
+        || {
+            let fixture = KeyboardFixture::new();
+            assert!(fixture.press(Key::space, ModifierType::empty()));
+            wait_until(|| {
+                fixture.preview.is_open() && text_view_in(&fixture.preview.widget()).is_some()
+            });
+            let text = text_view_in(&fixture.preview.widget()).expect("preview text");
+            text.grab_focus();
+            wait_until(|| text.has_focus());
+
+            for key in [Key::a, Key::c, Key::d, Key::v, Key::x] {
+                assert!(
+                    !fixture.press(key, ModifierType::CONTROL_MASK),
+                    "{key:?} should reach the text view"
+                );
+            }
+            assert!(!fixture.press(Key::Delete, ModifierType::empty()));
+            assert!(!fixture.press(Key::Delete, ModifierType::SHIFT_MASK));
             assert_eq!(fixture.selected(), [0]);
         },
     );

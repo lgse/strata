@@ -31,17 +31,18 @@ def _entry_name(row):
 
 
 def _visible_entries(container, viewport):
-    viewport = viewport.screen_bounds()
     # Inspect live collection children lazily: full-window scans race recycled rows
     # while the held pointer keeps edge scrolling active.
+    viewport = viewport.screen_bounds()
+    origin = container.screen_bounds().y - container.window_bounds().y
     for row in container.children:
         if row.role not in ENTRY_ROLES:
             continue
-        bounds = _entry_bounds(row)
+        bounds = row.window_bounds()
         if (
             bounds.height > 0
-            and bounds.y >= viewport.y
-            and bounds.y + bounds.height <= viewport.y + viewport.height
+            and bounds.y + origin >= viewport.y
+            and bounds.y + origin + bounds.height <= viewport.y + viewport.height
         ):
             yield row
 
@@ -66,6 +67,7 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
         bounds = label.screen_bounds()
         start = (bounds.x + bounds.width * 2 // 3, bounds.center[1])
     container = strata.entry_container()
+    assert container is not None
     viewport = _viewport(container)
     viewport_bounds = viewport.screen_bounds()
     end = (
@@ -83,7 +85,8 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
             strata.pointer.scroll(at=end, clicks=32)
         strata.wait(
             lambda: any(
-                _entry_name(row) >= "060.txt" for row in _visible_entries(container, viewport)
+                _entry_name(row) >= "060.txt"
+                for row in _visible_entries(container, viewport)
             ),
             f"scrolling to carry the anchor above the viewport {viewport_bounds}",
         )
@@ -113,11 +116,17 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
         strata.pointer.connection.button(1, False)
 
     for _ in range(40):
-        if any(_entry_name(row) == "000.txt" for row in _visible_entries(container, viewport)):
+        if any(
+            _entry_name(row) == "000.txt"
+            for row in _visible_entries(container, viewport)
+        ):
             break
         strata.pointer.scroll(at=viewport_bounds.center, clicks=20, down=False)
     strata.wait(
-        lambda: any(_entry_name(row) == "000.txt" for row in _visible_entries(container, viewport)),
+        lambda: any(
+            _entry_name(row) == "000.txt"
+            for row in _visible_entries(container, viewport)
+        ),
         "the beginning of the directory to scroll back into view",
     )
     assert strata.entry("010.txt").has_state("selected"), (

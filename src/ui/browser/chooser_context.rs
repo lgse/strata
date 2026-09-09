@@ -9,8 +9,8 @@ use crate::model::Location;
 use super::{
     ViewState,
     context_menu::{
-        ContextPickPosition, ContextSourcePosition, bind_column_context_owner, context_menu_option,
-        context_menu_popover, focus_context_column, show_context_popover,
+        ContextResolver, bind_column_context_owner, context_menu_option, context_menu_popover,
+        focus_context_column, preview_context_entry, rename_context_entry, show_context_popover,
     },
 };
 
@@ -106,41 +106,25 @@ pub(super) fn install_folder(
 pub(super) fn install_item(
     state: &Rc<ViewState>,
     widget: &gtk::Widget,
-    selection: &gtk::MultiSelection,
-    pick_position: ContextPickPosition,
-    source_position: ContextSourcePosition,
-    clear_other_selections: Rc<dyn Fn()>,
+    resolve: ContextResolver,
     depth: usize,
 ) {
     let click = gtk::GestureClick::new();
     click.set_button(3);
     let weak = Rc::downgrade(state);
-    let selection = selection.clone();
     click.connect_pressed(move |gesture, _, x, y| {
         let Some(anchor) = gesture.widget() else {
             return;
         };
-        let Some(position) = anchor
-            .pick(x, y, gtk::PickFlags::DEFAULT)
-            .and_then(|picked| pick_position(&picked))
-        else {
+        let Some(picked) = anchor.pick(x, y, gtk::PickFlags::DEFAULT) else {
             return;
         };
-        let Some(source) = source_position(position) else {
-            return;
-        };
-        let Some(state) = weak.upgrade() else {
-            return;
-        };
-        let Some(entry) = state.browser.entry_at(depth, source) else {
+        let Some(state) = weak.upgrade() else { return };
+        let Some((source, entry)) = resolve(&picked) else {
             return;
         };
         gesture.set_state(gtk::EventSequenceState::Claimed);
-        if !selection.is_selected(position) {
-            clear_other_selections();
-            selection.select_item(position, true);
-        }
-        let single = state.browser.selected_entries().len() == 1;
+        let single = source.is_none() || state.browser.selected_entries().len() == 1;
         let mut options = vec![(
             Action::Rename,
             crate::assets::icons::PENCIL,
@@ -171,16 +155,9 @@ pub(super) fn install_item(
             };
             match action {
                 Action::Rename => {
-                    state.browser.select(depth, source);
-                    let weak = Rc::downgrade(&state);
-                    // Selection queues collection focus; enter the editor after it settles.
-                    glib::idle_add_local_once(move || {
-                        if let Some(state) = weak.upgrade() {
-                            state.begin_rename();
-                        }
-                    });
+                    rename_context_entry(&state, depth, source, entry.clone());
                 }
-                Action::Preview => state.browser.preview(depth, source),
+                Action::Preview => preview_context_entry(&state, depth, source, entry.clone()),
                 Action::Properties => state.show_entry_properties(entry.clone()),
                 Action::NewFolder => unreachable!(),
             }

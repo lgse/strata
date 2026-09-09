@@ -57,7 +57,11 @@ fi
 
 options=(--rm --platform=linux/amd64 --user "$user_id:$group_id" --shm-size=512m)
 if [[ "$(basename "$engine")" == podman ]]; then
-  options+=(--userns=keep-id --passwd=false)
+  # Bubblewrap needs an unmasked proc tree to mount its nested private /proc.
+  options+=(--userns=keep-id --passwd=false --security-opt 'unmask=/proc/*')
+else
+  # Docker also blocks the nested namespace/mount syscalls used by bubblewrap.
+  options+=(--security-opt systempaths=unconfined --security-opt seccomp=unconfined --security-opt apparmor=unconfined)
 fi
 exec "$engine" run "${options[@]}" \
   --mount "type=bind,source=$repository,target=/workspace" \
