@@ -1215,7 +1215,7 @@ impl ViewState {
         click
     }
 
-    fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {
+    pub(super) fn reveal_column(self: &Rc<Self>, shell: gtk::Box) {
         let animation_id = self.horizontal_scroll_generation.get().saturating_add(1);
         self.horizontal_scroll_generation.set(animation_id);
         let weak = Rc::downgrade(self);
