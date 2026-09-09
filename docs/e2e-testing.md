@@ -108,6 +108,13 @@ from native builds. Artifacts remain in `target/e2e-artifacts` and are owned by
 the invoking user. Minimal generated passwd/group files provide the invoking
 UID/GID to D-Bus, so one published environment works across local user IDs without
 rebuilding it or mounting the host's account database.
+The image includes bubblewrap for sandboxed thumbnail decoding. Rootless Podman
+runs unmask `/proc/*` inside the test container so bubblewrap can mount its own
+private `/proc`; the decoder's sandbox and the container's seccomp policy remain
+enabled. Docker's outer seccomp/AppArmor profiles and system-path masks must be
+disabled for the nested namespace and mount operations. This applies only to the
+disposable E2E container; Strata still launches its normal bubblewrap decoder
+sandbox. Neither engine uses privileged mode or mounts desktop sockets.
 Updating the image inputs is an intentional rendering
 environment change and requires reviewing the visual baselines.
 
