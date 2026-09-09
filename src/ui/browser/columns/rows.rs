@@ -217,11 +217,13 @@ pub(super) fn column_rows(
                 }
             });
             let dragged_row = row.downgrade();
-            drag.connect_drag_end(move |source, _, _| {
+            drag.connect_drag_end(move |source, _, delete_data| {
                 source.set_actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE);
                 if let Some(row) = dragged_row.upgrade() {
                     row.remove_css_class("dragging");
-                    slide_out(&row);
+                    if delete_data {
+                        slide_out(&row);
+                    }
                 }
             });
             row.add_controller(drag.clone());
