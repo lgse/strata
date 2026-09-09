@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 //! Browser composition and public commands. Feature modules share this view's state and the
 //! application controller; they must not create independent navigation or operation state.
@@ -10,7 +10,7 @@ use crate::ui::browser::clipboard::{copy_locations, register_cut_view};
 use crate::ui::browser::collection::cancel_source;
 use crate::ui::browser::columns::{COLUMN_WIDTH, ColumnView};
 use crate::ui::browser::desktop::selected_terminal_location;
-use crate::ui::browser::inline_edit::{ActiveNewEntry, ActiveRename};
+use crate::ui::browser::inline_edit::{ActiveRename, PendingEntryRename, PendingRename};
 use crate::ui::browser::location::{MountCredentials, is_breadcrumb_button_target};
 use crate::ui::browser::paths::{can_pin_entry, is_trash_location};
 use crate::ui::browser::peek::{PeekAnchor, PeekView};
@@ -49,10 +49,10 @@ mod trash;
 pub(super) use crate::ui::browser::clipboard::file_drag_content;
 pub(crate) use crate::ui::browser::clipboard::{file_drop_action, locations_from_file_list_value};
 pub(crate) use crate::ui::browser::collection::{
-    activate_recursive_search_result, debounce_filter_entry, detach_collection_view,
-    focus_collection_item_when_allocated, focus_filter_entry, notify_filter_query,
-    recursive_search_activation_key, scroll_collection_when_allocated, search_result_entry,
-    search_result_navigation_position,
+    activate_recursive_search_result, bind_filter_query, debounce_filter_entry,
+    detach_collection_view, focus_collection_item_when_allocated, focus_filter_entry,
+    notify_filter_query, prepare_collection_inline_edit, recursive_search_activation_key,
+    scroll_collection_when_allocated, search_result_entry, search_result_navigation_position,
 };
 pub(super) use crate::ui::browser::columns::max_child_natural_width;
 pub(super) use crate::ui::browser::context_menu::{
@@ -63,7 +63,9 @@ pub(super) use crate::ui::browser::entry::{
     FOLDER_TYPE_GROUP, entry_filter, entry_icon, entry_model_value, format_file_size,
     metadata_needs_fill, model_type_group,
 };
-pub(super) use crate::ui::browser::inline_edit::{rename_stem_end, update_basename_validation};
+pub(super) use crate::ui::browser::inline_edit::{
+    queue_rename, rename_stem_end, reveal_rename_row, update_basename_validation,
+};
 pub(super) use crate::ui::browser::pane_header::{
     column_sort_direction_toggle, column_sort_menu, empty_trash_button, pane_new_folder_button,
     pane_refresh_button,
@@ -151,7 +153,10 @@ pub(super) struct ViewState {
     interactive: bool,
     columns_click_activation: Cell<ClickActivation>,
     active_rename: RefCell<Option<ActiveRename>>,
-    active_new_entry: RefCell<Option<ActiveNewEntry>>,
+    pending_rename: RefCell<Option<PendingRename>>,
+    rename_generation: Cell<u64>,
+    rename_reveal_generation: Cell<u64>,
+    pending_new_entry: RefCell<Option<Rc<PendingEntryRename>>>,
     file_progress_view: RefCell<Option<FileProgressView>>,
     pending_file_progress: RefCell<Option<glib::SourceId>>,
     file_operation_progress: Cell<(usize, usize)>,
@@ -336,7 +341,10 @@ impl BrowserView {
             interactive,
             columns_click_activation: Cell::new(ClickActivation::default()),
             active_rename: RefCell::new(None),
-            active_new_entry: RefCell::new(None),
+            pending_rename: RefCell::new(None),
+            rename_generation: Cell::new(0),
+            rename_reveal_generation: Cell::new(0),
+            pending_new_entry: RefCell::new(None),
             file_progress_view: RefCell::new(None),
             pending_file_progress: RefCell::new(None),
             file_operation_progress: Cell::new((0, 0)),
@@ -497,7 +505,7 @@ impl BrowserView {
     }
 
     pub fn cancel_new_entry(&self) -> bool {
-        self.state.cancel_new_entry() || self.state.mode_views.borrow().cancel_new_entry()
+        self.state.cancel_new_entry()
     }
 
     pub fn rename_is_active(&self) -> bool {
@@ -506,8 +514,7 @@ impl BrowserView {
     }
 
     pub fn new_entry_is_active(&self) -> bool {
-        self.state.active_new_entry.borrow().is_some()
-            || self.state.mode_views.borrow().new_entry_is_active()
+        self.state.pending_new_entry.borrow().is_some()
     }
 
     pub fn preview_occupied_width(&self) -> i32 {
@@ -1269,10 +1276,10 @@ impl ViewState {
             let Some(state) = weak_state.upgrade() else {
                 return glib::ControlFlow::Break;
             };
-            if state.active_rename.borrow().is_some()
-                || state.active_new_entry.borrow().is_some()
+            if state.pending_new_entry.borrow().is_some()
+                || state.active_rename.borrow().is_some()
+                || state.rename_operation_pending()
                 || state.mode_views.borrow().rename_is_active()
-                || state.mode_views.borrow().new_entry_is_active()
             {
                 return glib::ControlFlow::Continue;
             }

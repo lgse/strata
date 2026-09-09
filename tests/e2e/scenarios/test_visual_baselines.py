@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Golden screenshots for a small set of deliberately stable states.
 
 Interaction assertions are the primary gate; these catch rendering
@@ -51,6 +51,14 @@ def test_columns_view_baseline(strata, baseline):
 def test_icons_view_baseline(strata, baseline):
     _settle(strata)
     baseline(strata, "icons-view")
+
+
+@pytest.mark.preferences(browser_mode="icons")
+def test_icons_hover_baseline(strata, baseline):
+    _settle(strata)
+    strata.pointer.move_to(*strata.entry("todo.txt").screen_bounds().center)
+    strata.settle(strata.pane())
+    baseline(strata, "icons-hover")
 
 
 @pytest.mark.preferences(browser_mode="list")

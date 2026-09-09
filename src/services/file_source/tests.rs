@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{
     LocationValidationError, UriCredentials, backend_unavailable_message, sanitize_uri_credentials,

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
 use crate::model::{EntryKind, MetadataValue};
@@ -229,6 +229,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                     let in_trash = is_trash_location(&location);
                     let nested = location.uri_value() == Some("trash:///folder");
                     let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+                    view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
                     view.set_view_mode(mode);
                     let window = gtk::Window::builder()
                         .child(&view.widget())

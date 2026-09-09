@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Content drags, inert-space marquees, and release-only previews in every mode."""
 
 import pytest

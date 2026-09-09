@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::cell::{Cell, RefCell};
 
@@ -10,6 +10,7 @@ mod imp {
     #[derive(Default)]
     pub struct ThumbnailSlot {
         pub slot: Cell<i32>,
+        pub content_inset: Cell<i32>,
         pub texture: RefCell<Option<gdk::Texture>>,
         pub fallback: RefCell<Option<gdk::Texture>>,
         pub fallback_icon: RefCell<Option<String>>,
@@ -55,7 +56,18 @@ mod imp {
             let Some(texture) = texture else {
                 return;
             };
-            snapshot_texture(snapshot, &texture, width, height);
+            let inset = f64::from(self.content_inset.get())
+                .min((width - 1.0) / 2.0)
+                .min((height - 1.0) / 2.0);
+            snapshot.save();
+            snapshot.translate(&graphene::Point::new(inset as f32, inset as f32));
+            snapshot_texture(
+                snapshot,
+                &texture,
+                width - 2.0 * inset,
+                height - 2.0 * inset,
+            );
+            snapshot.restore();
         }
     }
 }
@@ -84,6 +96,9 @@ fn same_texture(left: Option<&gdk::Texture>, right: Option<&gdk::Texture>) -> bo
         _ => false,
     }
 }
+
+#[cfg(test)]
+mod tests;
 
 glib::wrapper! {
     pub struct ThumbnailSlot(ObjectSubclass<imp::ThumbnailSlot>)
@@ -114,6 +129,13 @@ impl ThumbnailSlot {
             .resize_calls
             .set(self.imp().resize_calls.get() + 1);
         self.queue_resize();
+    }
+
+    pub(crate) fn set_content_inset(&self, inset: i32) {
+        let inset = inset.max(0);
+        if self.imp().content_inset.replace(inset) != inset {
+            self.queue_draw();
+        }
     }
 
     pub(crate) fn set_texture(&self, texture: &gdk::Texture) {

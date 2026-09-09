@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 mod multi_root;
 mod performance;
@@ -8,6 +8,8 @@ use std::{
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
 };
+
+mod scope;
 
 use super::{
     SearchEvent, SearchItem, fuzzy_score_normalized, index_tree, index_trees,

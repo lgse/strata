@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::super::fixtures::{
     compression_stage_mode, compression_stages, never_cancelled, write_compression_fixture,

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::app::Browser;
 use crate::model::Location;
@@ -24,6 +24,14 @@ fn take_pending_scroll(view: &gtk::Widget) -> Option<gtk::TickCallbackId> {
             .position(|(candidate, _)| candidate.upgrade().as_ref() == Some(view))?;
         Some(pending.swap_remove(index).1)
     })
+}
+
+pub(crate) fn prepare_collection_inline_edit(view: &gtk::Widget, position: u32) {
+    if let Some(pending) = take_pending_scroll(view) {
+        pending.remove();
+    }
+    // Replace deferred row focus before moving focus into its editor.
+    apply_collection_scroll(view, position, gtk::ListScrollFlags::NONE);
 }
 
 /// `scroll_to` before the view has a real height leaves ListView/GridView with a
@@ -129,6 +137,47 @@ pub(crate) fn debounce_filter_entry(entry: &gtk::Entry, on_settled: impl Fn(Stri
             move || {
                 slot.borrow_mut().take();
                 callback(text);
+            },
+        ));
+    });
+}
+
+/// Scope changes bypass typing's debounce and cancel queued old-scope queries.
+pub(crate) fn bind_filter_query(
+    entry: &gtk::Entry,
+    on_query: impl Fn(String, bool, bool) + 'static,
+) {
+    let pending = Rc::new(RefCell::new(None));
+    let callback = Rc::new(on_query);
+    let scope = Rc::new(Cell::new(true));
+    let weak_callback = Rc::downgrade(&callback);
+    let pending_for_binding = pending.clone();
+    let scope_for_binding = scope.clone();
+    crate::ui::theme::ThemeManager::shared().bind_preference(
+        entry,
+        crate::ui::theme::ThemeManager::filter_include_subfolders,
+        move |entry, recursive| {
+            scope_for_binding.set(recursive);
+            cancel_source(&pending_for_binding);
+            if let Some(callback) = weak_callback.upgrade() {
+                let entry = entry
+                    .downcast_ref::<gtk::Entry>()
+                    .expect("filter entry anchor");
+                callback(entry.text().to_string(), recursive, true);
+            }
+        },
+    );
+    entry.connect_changed(move |entry| {
+        cancel_source(&pending);
+        let slot = pending.clone();
+        let callback = callback.clone();
+        let text = entry.text().to_string();
+        let recursive = scope.get();
+        *pending.borrow_mut() = Some(glib::timeout_add_local_once(
+            FILTER_DEBOUNCE_DELAY,
+            move || {
+                slot.borrow_mut().take();
+                callback(text, recursive, false);
             },
         ));
     });

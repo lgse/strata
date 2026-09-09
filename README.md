@@ -8,7 +8,7 @@
 
 [![CI](https://github.com/lgse/strata/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lgse/strata/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/lgse/strata?display_name=tag&sort=semver)](https://github.com/lgse/strata/releases/latest)
-[![License: GPL-3.0-or-later](https://img.shields.io/github/license/lgse/strata)](LICENSE)
+[![License: MIT](https://img.shields.io/github/license/lgse/strata)](LICENSE)
 [![Linux](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)](#technical-specifications)
 
 <picture>
@@ -415,4 +415,4 @@ This image is generated from GitHub contribution data so new contributors appear
 
 ## License
 
-Strata is free software licensed under **[GPL-3.0-or-later](LICENSE)**. Bundled fonts, icons, and other third-party components retain their own notices in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+Strata is free software licensed under the **[MIT License](LICENSE)**. Bundled fonts, icons, and other third-party components retain their own notices in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -96,6 +96,8 @@ struct Preferences {
     #[serde(default = "default_enabled")]
     type_to_search: bool,
     #[serde(default = "default_enabled")]
+    filter_include_subfolders: bool,
+    #[serde(default = "default_enabled")]
     show_keybinding_hints: bool,
     #[serde(default)]
     reduce_motion: bool,
@@ -156,6 +158,7 @@ impl Default for Preferences {
             video_preview_backend: default_video_preview_backend(),
             search_open_files_directly: false,
             type_to_search: true,
+            filter_include_subfolders: true,
             show_keybinding_hints: true,
             reduce_motion: false,
             browser_mode: default_browser_mode(),
@@ -512,6 +515,15 @@ impl ThemeManager {
 
     pub fn set_search_open_files_directly(&self, enabled: bool) {
         self.preferences.borrow_mut().search_open_files_directly = enabled;
+        self.save_preferences();
+    }
+
+    pub fn filter_include_subfolders(&self) -> bool {
+        self.preferences.borrow().filter_include_subfolders
+    }
+
+    pub fn set_filter_include_subfolders(&self, enabled: bool) {
+        self.preferences.borrow_mut().filter_include_subfolders = enabled;
         self.save_preferences();
     }
 

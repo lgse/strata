@@ -1,13 +1,14 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
+use gtk::prelude::FileExt;
 use std::{cell::Cell, ffi::OsString};
 
 use super::*;
 use crate::{
     model::{EntryKind, MetadataValue},
     services::{
-        CancelledOperation, CompressRequest, ExtractRequest, LoadHandle, MetadataOutcome,
-        MetadataRequest, MetadataUpdate, UndoCopyRequest, UndoMoveRequest,
+        CancelledOperation, CompressRequest, DirectoryEvent, ExtractRequest, LoadHandle,
+        MetadataOutcome, MetadataRequest, MetadataUpdate, UndoCopyRequest, UndoMoveRequest,
     },
 };
 
@@ -33,19 +34,44 @@ fn deleted_trash_entries_refresh_the_trash_root() {
 
 #[test]
 fn invalid_new_folder_names_are_rejected_before_an_operation_starts() {
-    assert_invalid_creation_is_rejected(|browser| {
-        browser.create_directory(Location::local("/fixture"), "../escaped".to_owned());
-    });
+    for name in [
+        "../escaped",
+        "",
+        "   ",
+        "\u{00a0}\u{2003}",
+        ".",
+        "..",
+        "nul\0name",
+    ] {
+        assert_invalid_creation_is_rejected(name, |browser| {
+            browser.create_directory_with_naming(
+                Location::local("/fixture"),
+                name.to_owned(),
+                false,
+            );
+        });
+    }
 }
 
 #[test]
 fn invalid_new_file_names_are_rejected_before_an_operation_starts() {
-    assert_invalid_creation_is_rejected(|browser| {
-        browser.create_file(Location::local("/fixture"), "../escaped".to_owned());
-    });
+    for name in [
+        "../escaped",
+        "",
+        "   ",
+        "\u{00a0}\u{2003}",
+        ".",
+        "..",
+        "nul\0name",
+    ] {
+        assert_invalid_creation_is_rejected(name, |browser| {
+            browser.create_file_with_naming(Location::local("/fixture"), name.to_owned(), false);
+        });
+    }
 }
 
-fn assert_invalid_creation_is_rejected(create: impl FnOnce(&Rc<Browser>)) {
+fn assert_invalid_creation_is_rejected(name: &str, create: impl FnOnce(&Rc<Browser>)) {
+    let expected = validate_basename(name).expect_err("invalid fixture name");
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
     let observed = events.clone();
@@ -57,8 +83,26 @@ fn assert_invalid_creation_is_rejected(create: impl FnOnce(&Rc<Browser>)) {
     assert!(browser.operation_load.borrow().is_none());
     assert!(matches!(
         events.borrow().as_slice(),
-        [BrowserEvent::OperationFailed { message }] if message == "Names cannot contain /"
+        [BrowserEvent::OperationFailed { message }] if message == expected
     ));
+}
+
+#[test]
+fn new_files_and_folders_request_unique_naming_and_report_the_created_location() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    browser.create_new_folder(Location::local("/fixture"));
+    assert!(events.borrow().iter().any(|event| matches!(event,
+        BrowserEvent::EntryCreated { location } if location == &Location::local("/fixture/new folder")
+    )));
+    browser.create_new_file(Location::local("/fixture"));
+    assert!(events.borrow().iter().any(|event| matches!(event,
+        BrowserEvent::EntryCreated { location } if location == &Location::local("/fixture/new file")
+    )));
+    assert!(browser.current_operation.get().is_none());
 }
 
 #[test]
@@ -554,6 +598,54 @@ fn cancellation_refreshes_an_affected_remote_root_and_its_open_descendants() {
 }
 
 #[test]
+fn superseding_rename_emits_a_terminal_abandonment_event() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let cancelled = Rc::new(Cell::new(false));
+    let cancelled_for_handle = cancelled.clone();
+    let request_id = browser.begin_operation();
+    browser.rename_operation.set(Some(request_id));
+    browser
+        .operation_load
+        .replace(Some(LoadHandle::new(move || {
+            cancelled_for_handle.set(true)
+        })));
+
+    let replacement = browser.begin_operation();
+
+    assert!(cancelled.get());
+    assert_eq!(browser.current_operation.get(), Some(replacement));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::RenameAbandoned { request_id: id } if *id == request_id
+    )));
+}
+
+#[test]
+fn cancelled_rename_emits_a_terminal_abandonment_event() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = browser.begin_operation();
+    browser.rename_operation.set(Some(request_id));
+    let emit = browser.operation_callback(request_id, true, HashSet::new());
+
+    emit(OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation::default(),
+    });
+
+    assert_eq!(browser.current_operation.get(), None);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::RenameAbandoned { request_id: id } if *id == request_id
+    )));
+}
+
+#[test]
 fn transfer_failure_reports_moves_completed_before_the_error() {
     let browser = Browser::new(Rc::new(FakeFileSource));
     let events = Rc::new(RefCell::new(Vec::new()));
@@ -601,9 +693,18 @@ impl OperationProvider for ImmediateOperationProvider {
         request: CreateDirectoryRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle {
-        emit(OperationEvent::Created {
-            request_id: request.id,
-        });
+        if request.unique_name {
+            let child =
+                crate::adapters::gio_file_for_location(&request.parent).child(&request.name);
+            emit(OperationEvent::EntryCreated {
+                request_id: request.id,
+                location: crate::adapters::location_for_file(&child).expect("created location"),
+            });
+        } else {
+            emit(OperationEvent::Created {
+                request_id: request.id,
+            });
+        }
         LoadHandle::new(|| {})
     }
 
@@ -612,9 +713,18 @@ impl OperationProvider for ImmediateOperationProvider {
         request: CreateFileRequest,
         emit: Rc<dyn Fn(OperationEvent)>,
     ) -> LoadHandle {
-        emit(OperationEvent::Created {
-            request_id: request.id,
-        });
+        if request.unique_name {
+            let child =
+                crate::adapters::gio_file_for_location(&request.parent).child(&request.name);
+            emit(OperationEvent::EntryCreated {
+                request_id: request.id,
+                location: crate::adapters::location_for_file(&child).expect("created location"),
+            });
+        } else {
+            emit(OperationEvent::Created {
+                request_id: request.id,
+            });
+        }
         LoadHandle::new(|| {})
     }
 
@@ -1471,7 +1581,11 @@ fn creating_a_directory_on_a_remote_location_refreshes_the_open_column() {
     browser.navigate(Location::uri("smb://host/share"));
     assert_eq!(enumerate_calls.get(), 1);
 
-    browser.create_directory(Location::uri("smb://host/share"), "New Folder".to_owned());
+    browser.create_directory_with_naming(
+        Location::uri("smb://host/share"),
+        "New Folder".to_owned(),
+        false,
+    );
 
     assert_eq!(
         enumerate_calls.get(),
@@ -1519,13 +1633,46 @@ fn creating_a_directory_locally_does_not_trigger_a_redundant_refresh() {
     browser.navigate(Location::local("/fixture"));
     assert_eq!(enumerate_calls.get(), 1);
 
-    browser.create_directory(Location::local("/fixture"), "New Folder".to_owned());
+    browser.create_directory_with_naming(
+        Location::local("/fixture"),
+        "New Folder".to_owned(),
+        false,
+    );
 
     assert_eq!(
         enumerate_calls.get(),
         1,
         "a local column already has a live file monitor; no extra refresh is needed"
     );
+}
+
+#[test]
+fn renaming_locally_does_not_trigger_a_redundant_refresh() {
+    let enumerate_calls = Rc::new(Cell::new(0));
+    let source = CountingFileSource {
+        enumerate_calls: enumerate_calls.clone(),
+    };
+    let browser = Browser::new(Rc::new(source));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::local("/fixture"));
+    assert_eq!(enumerate_calls.get(), 1);
+
+    browser.rename(
+        FileEntry {
+            location: Location::local("/fixture/old-name.txt"),
+            native_name: "old-name.txt".into(),
+            thumbnail_path: None,
+            display_name: "old-name.txt".to_owned(),
+            kind: EntryKind::File,
+            size: MetadataValue::Known(1),
+            modified_unix_seconds: MetadataValue::Unknown,
+            is_hidden: false,
+            mode: MetadataValue::Unknown,
+        },
+        "new-name.txt".to_owned(),
+    );
+
+    assert_eq!(enumerate_calls.get(), 1);
 }
 
 #[test]
@@ -2403,6 +2550,35 @@ fn preview_and_open_are_distinct_file_actions() {
         BrowserEvent::OpenRequested { location }
             if location == &Location::local("/fixture/example.conf")
     )));
+}
+
+#[test]
+fn native_selection_notifies_observers_after_state_is_available() {
+    let browser = Browser::new(Rc::new(FilePreviewSource));
+    browser.navigate(Location::local("/fixture"));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    let weak_browser = Rc::downgrade(&browser);
+    browser.observe(move |event| {
+        let BrowserEvent::SelectionSynced { depth, focused } = event else {
+            panic!("native selection must not request focus or reapply view selection: {event:?}");
+        };
+        let browser = weak_browser.upgrade().expect("browser");
+        observed
+            .borrow_mut()
+            .push((*depth, *focused, browser.selected_positions(*depth)));
+    });
+
+    browser.set_selection(0, &[0], Some(0));
+    browser.set_selection(0, &[], None);
+    browser.set_selection(0, &[1], Some(1));
+    browser.set_selection(1, &[0], Some(0));
+
+    assert_eq!(
+        *events.borrow(),
+        vec![(0, Some(0), vec![0]), (0, None, vec![])],
+        "invalid selections must not notify observers"
+    );
 }
 
 #[test]

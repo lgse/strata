@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -13,13 +13,19 @@ use crate::{
     model::{FileEntry, Location, SortDirection, SortKey, ViewPreferences},
     services::{
         ArchiveFormat, CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest,
-        DirectoryChange, DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
+        DirectoryChange, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MoveRecord, OperationEvent,
         OperationProvider, OperationRequestId, PasteItem, PasteRequest, RenameRequest, RequestId,
         RestoreRequest, RestoreSource, TransferConflict, UndoCopyRequest, UndoMoveItem,
         UndoMoveRequest, validate_basename, validate_uri_credentials,
     },
 };
+
+mod loading;
+mod publication;
+
+use loading::{LoadCompletion, RemoteTerminal};
+use publication::{PublicationPlan, PublishTerminal, StagedPublish};
 
 /// Caps a normal directory load at this project's own documented performance baseline for
 /// 100,000 entries (docs/performance-baseline.md: 3,755 ms, 286 MiB) -- past this, per-batch
@@ -125,14 +131,29 @@ pub enum BrowserEvent {
         focused: usize,
         take_focus: bool,
     },
+    /// Selection already applied by a view. Observers must not reapply it or move focus.
+    SelectionSynced {
+        depth: usize,
+        focused: Option<usize>,
+    },
     PreviewRequested {
         entry: FileEntry,
     },
     OpenRequested {
         location: Location,
     },
-    RenameCompleted,
+    RenameCompleted {
+        request_id: OperationRequestId,
+    },
+    RenameAbandoned {
+        request_id: OperationRequestId,
+    },
+    EntryCreated {
+        location: Location,
+    },
+    /// `None` means the request was rejected before an operation was allocated.
     RenameFailed {
+        request_id: Option<OperationRequestId>,
         message: String,
     },
     TransferStarted {
@@ -394,15 +415,9 @@ const COALESCE_ENTRIES: usize = 2048;
 const REMOTE_FLUSH_CAP: usize = 512;
 /// Latency bound so later remote batches flush on the next idle/frame.
 const REMOTE_FLUSH_DELAY: Duration = Duration::from_millis(50);
-/// Rows published synchronously with a staged load or sort; the rest stream
-/// from idle callbacks inside an 8 ms work budget.
-const FIRST_PUBLISH_COUNT: usize = 128;
-const STAGE_INLINE_LIMIT: usize = 512;
 /// Snapshots at or below this size sort synchronously; larger ones sort in a
 /// blocking worker.
 const SORT_INLINE_LIMIT: usize = 2048;
-const PUBLISH_TAIL_CHUNK: usize = 2048;
-const PUBLISH_SLICE_BUDGET: Duration = Duration::from_millis(8);
 
 /// Last selection emitted per depth on the batch path, keyed by request so a
 /// new load re-emits; lets background batches skip redundant refreshes.
@@ -460,39 +475,6 @@ struct SortPlan {
     can_delete: Option<bool>,
 }
 
-enum PublishTerminal {
-    LoadFinished {
-        truncated: bool,
-        retry_metadata: bool,
-    },
-    SortingFinished,
-}
-
-enum RemoteTerminal {
-    Finished {
-        request_id: RequestId,
-        truncated: bool,
-        can_trash: Option<bool>,
-        can_delete: Option<bool>,
-    },
-    Failed {
-        request_id: RequestId,
-        message: String,
-    },
-}
-
-/// A staged publication streaming to the UI: the prefix is already in the model,
-/// tails append from idle callbacks in a work budget, and selection plus the
-/// terminal event wait for the final tail.
-struct StagedPublish {
-    request_id: RequestId,
-    published: usize,
-    total: usize,
-    focused: Option<usize>,
-    positions: Vec<usize>,
-    terminal: PublishTerminal,
-}
-
 pub struct Browser {
     source: Rc<dyn FileSource>,
     state: RefCell<NavigationState>,
@@ -520,6 +502,8 @@ pub struct Browser {
     operation_provider: RefCell<Option<Rc<dyn OperationProvider>>>,
     operation_load: RefCell<Option<LoadHandle>>,
     current_operation: Cell<Option<OperationRequestId>>,
+    last_started_operation: Cell<Option<OperationRequestId>>,
+    rename_operation: Cell<Option<OperationRequestId>>,
     transfer_operation: Cell<Option<bool>>,
     deletion_operation: Cell<bool>,
     deletion_permanent: Cell<bool>,
@@ -567,6 +551,8 @@ impl Browser {
             operation_provider: RefCell::new(None),
             operation_load: RefCell::new(None),
             current_operation: Cell::new(None),
+            last_started_operation: Cell::new(None),
+            rename_operation: Cell::new(None),
             transfer_operation: Cell::new(None),
             deletion_operation: Cell::new(false),
             deletion_permanent: Cell::new(false),
@@ -1062,23 +1048,19 @@ impl Browser {
             self.preferences.set(preferences);
             let request_id = state.request_id_for_depth(depth);
             let total = state.columns.get(depth).map(|column| column.entries.len());
-            result.map(|(focused, positions)| (request_id, total, focused, positions))
-        };
-        self.notify_preferences_observers();
-        if let Some((request_id, total, focused, positions)) = result {
-            if let (Some(request_id), Some(total)) = (request_id, total) {
-                self.publish_staged(
-                    depth,
-                    request_id,
-                    total,
+            result.and_then(|(focused, positions)| {
+                Some(PublicationPlan {
+                    request_id: request_id?,
+                    total: total?,
                     focused,
                     positions,
-                    PublishTerminal::SortingFinished,
-                );
-            } else {
-                self.pending_sort.set(None);
-                self.emit(BrowserEvent::SortingFinished { depth });
-            }
+                    terminal: PublishTerminal::SortingFinished,
+                })
+            })
+        };
+        self.notify_preferences_observers();
+        if let Some(plan) = result {
+            self.publish_staged(depth, plan);
         } else {
             self.pending_sort.set(None);
             self.emit(BrowserEvent::SortingFinished { depth });
@@ -1145,6 +1127,10 @@ impl Browser {
 
     pub fn column_preferences(&self, depth: usize) -> Option<ViewPreferences> {
         self.state.borrow().column_preferences(depth)
+    }
+
+    pub(crate) fn column_request_id(&self, depth: usize) -> Option<RequestId> {
+        self.state.borrow().request_id_for_depth(depth)
     }
 
     pub fn column_snapshot(&self, depth: usize) -> Option<BrowserColumnSnapshot> {
@@ -1222,6 +1208,8 @@ impl Browser {
                 selected = state.selected_count(),
                 "selection changed"
             );
+            drop(state);
+            self.emit(BrowserEvent::SelectionSynced { depth, focused });
         }
     }
 
@@ -1256,20 +1244,27 @@ impl Browser {
         self.state.borrow().active_child_position(depth)
     }
 
-    pub fn rename(self: &Rc<Self>, entry: FileEntry, new_name: String) {
+    pub fn rename(
+        self: &Rc<Self>,
+        entry: FileEntry,
+        new_name: String,
+    ) -> Option<OperationRequestId> {
         if let Err(message) = validate_basename(&new_name) {
             self.emit(BrowserEvent::RenameFailed {
+                request_id: None,
                 message: message.to_owned(),
             });
-            return;
+            return None;
         }
         let Some(provider) = self.operation_provider.borrow().clone() else {
             self.emit(BrowserEvent::RenameFailed {
+                request_id: None,
                 message: "File operations are unavailable".to_owned(),
             });
-            return;
+            return None;
         };
         let request_id = self.begin_operation();
+        self.rename_operation.set(Some(request_id));
         let refresh_locations = entry.location.parent().into_iter().collect();
         let emit = self.operation_callback(request_id, true, refresh_locations);
         let load = provider.rename(
@@ -1280,10 +1275,20 @@ impl Browser {
             },
             emit,
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
+        Some(request_id)
     }
 
-    pub fn create_directory(self: &Rc<Self>, parent: Location, name: String) {
+    pub fn create_new_folder(self: &Rc<Self>, parent: Location) {
+        self.create_directory_with_naming(parent, "new folder".to_owned(), true);
+    }
+
+    fn create_directory_with_naming(
+        self: &Rc<Self>,
+        parent: Location,
+        name: String,
+        unique_name: bool,
+    ) {
         if let Err(message) = validate_basename(&name) {
             self.emit(BrowserEvent::OperationFailed {
                 message: message.to_owned(),
@@ -1303,13 +1308,18 @@ impl Browser {
                 id: request_id,
                 parent,
                 name,
+                unique_name,
             },
             self.operation_callback(request_id, false, HashSet::from([refresh_parent])),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
     }
 
-    pub fn create_file(self: &Rc<Self>, parent: Location, name: String) {
+    pub fn create_new_file(self: &Rc<Self>, parent: Location) {
+        self.create_file_with_naming(parent, "new file".to_owned(), true);
+    }
+
+    fn create_file_with_naming(self: &Rc<Self>, parent: Location, name: String, unique_name: bool) {
         if let Err(message) = validate_basename(&name) {
             self.emit(BrowserEvent::OperationFailed {
                 message: message.to_owned(),
@@ -1329,10 +1339,11 @@ impl Browser {
                 id: request_id,
                 parent,
                 name,
+                unique_name,
             },
             self.operation_callback(request_id, false, HashSet::from([refresh_parent])),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
     }
 
     pub fn transfer(
@@ -1372,7 +1383,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, refresh_locations),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
     }
 
     pub fn delete(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
@@ -1398,7 +1409,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, HashSet::new()),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
     }
 
     pub fn restore(self: &Rc<Self>, entries: Vec<FileEntry>) {
@@ -1422,7 +1433,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, HashSet::new()),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
     }
 
     /// The pending move undo, if the latest reversible operation was a move.
@@ -1481,7 +1492,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, HashSet::new()),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
         true
     }
 
@@ -1530,7 +1541,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, refresh_locations),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
         true
     }
 
@@ -1568,7 +1579,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, refresh_locations),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
         true
     }
 
@@ -1604,7 +1615,7 @@ impl Browser {
             },
             self.operation_callback(request_id, false, HashSet::new()),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
     }
 
     pub fn extract(
@@ -1630,15 +1641,34 @@ impl Browser {
             },
             self.operation_callback(request_id, false, HashSet::new()),
         );
-        self.operation_load.replace(Some(load));
+        self.install_operation_load(request_id, load);
     }
 
     pub fn cancel_file_operation(&self) {
         self.operation_load.borrow_mut().take();
     }
 
+    pub(crate) fn is_current_operation(&self, request_id: OperationRequestId) -> bool {
+        self.current_operation.get() == Some(request_id)
+    }
+
+    pub(crate) fn last_started_operation(&self) -> Option<OperationRequestId> {
+        self.last_started_operation.get()
+    }
+
     fn begin_operation(&self) -> OperationRequestId {
+        let request_id = OperationRequestId(self.next_request.get());
+        self.next_request
+            .set(self.next_request.get().saturating_add(1));
+        self.last_started_operation.set(Some(request_id));
+        let previous_operation = self.current_operation.take();
+        let previous_rename = self.rename_operation.take();
         self.operation_load.borrow_mut().take();
+        if previous_operation == previous_rename
+            && let Some(request_id) = previous_rename
+        {
+            self.emit(BrowserEvent::RenameAbandoned { request_id });
+        }
         if let Some((generation, _)) = self.undo_claim.take() {
             finish_undo(generation, false);
         }
@@ -1649,11 +1679,14 @@ impl Browser {
         self.deletion_permanent.set(false);
         self.restoration_operation.set(false);
         self.archive_operation.set(false);
-        let request_id = OperationRequestId(self.next_request.get());
-        self.next_request
-            .set(self.next_request.get().saturating_add(1));
         self.current_operation.set(Some(request_id));
         request_id
+    }
+
+    fn install_operation_load(&self, request_id: OperationRequestId, load: LoadHandle) {
+        if self.is_current_operation(request_id) {
+            self.operation_load.replace(Some(load));
+        }
     }
 
     fn operation_callback(
@@ -1672,6 +1705,7 @@ impl Browser {
             let event_id = match &event {
                 OperationEvent::Renamed { request_id }
                 | OperationEvent::Created { request_id }
+                | OperationEvent::EntryCreated { request_id, .. }
                 | OperationEvent::Pasted { request_id, .. }
                 | OperationEvent::TransferFailed { request_id, .. }
                 | OperationEvent::TransferProgress { request_id, .. }
@@ -1772,6 +1806,9 @@ impl Browser {
                 return;
             }
             browser.current_operation.set(None);
+            if rename && browser.rename_operation.get() == Some(request_id) {
+                browser.rename_operation.set(None);
+            }
             let moving = browser.transfer_operation.replace(None);
             let deleting = browser.deletion_operation.replace(false);
             let deletion_permanent = browser.deletion_permanent.replace(false);
@@ -1880,7 +1917,10 @@ impl Browser {
             browser.operation_load.borrow_mut().take();
             match event {
                 OperationEvent::Failed { message, .. } if rename => {
-                    browser.emit(BrowserEvent::RenameFailed { message });
+                    browser.emit(BrowserEvent::RenameFailed {
+                        request_id: Some(request_id),
+                        message,
+                    });
                 }
                 OperationEvent::Failed { message, .. } => {
                     browser.emit(BrowserEvent::OperationFailed { message });
@@ -1922,6 +1962,9 @@ impl Browser {
                     });
                 }
                 OperationEvent::Cancelled { result, .. } => {
+                    if rename {
+                        browser.emit(BrowserEvent::RenameAbandoned { request_id });
+                    }
                     let mut affected_locations = refresh_locations.clone();
                     affected_locations.extend(result.affected_locations);
                     if archiving {
@@ -1937,7 +1980,8 @@ impl Browser {
                     });
                 }
                 OperationEvent::Renamed { .. } => {
-                    browser.emit(BrowserEvent::RenameCompleted);
+                    browser.emit(BrowserEvent::RenameCompleted { request_id });
+                    // Remote locations have no monitor to publish the authoritative rename.
                     for location in &refresh_locations {
                         if location.native_path().is_none() {
                             browser.refresh_columns_at(location);
@@ -1972,6 +2016,16 @@ impl Browser {
                         });
                     }
                     browser.emit(BrowserEvent::TransferCompleted);
+                }
+                OperationEvent::EntryCreated { location, .. } => {
+                    if browser.validation_generation.get() == navigation_generation {
+                        browser.emit(BrowserEvent::EntryCreated { location });
+                    }
+                    for location in &refresh_locations {
+                        if location.native_path().is_none() {
+                            browser.refresh_columns_at(location);
+                        }
+                    }
                 }
                 OperationEvent::Created { .. } => {
                     for location in &refresh_locations {
@@ -2335,9 +2389,12 @@ impl Browser {
         match terminal {
             RemoteTerminal::Finished {
                 request_id,
-                truncated,
-                can_trash,
-                can_delete,
+                completion:
+                    LoadCompletion {
+                        truncated,
+                        can_trash,
+                        can_delete,
+                    },
             } => {
                 let finished = self
                     .state
@@ -2381,10 +2438,13 @@ impl Browser {
         self: &Rc<Self>,
         depth: usize,
         request_id: RequestId,
-        truncated: bool,
-        can_trash: Option<bool>,
-        can_delete: Option<bool>,
+        completion: LoadCompletion,
     ) {
+        let LoadCompletion {
+            truncated,
+            can_trash,
+            can_delete,
+        } = completion;
         let staging = self.staging.borrow_mut().remove(&depth);
         let Some(staging) = staging.filter(|staged| staged.request_id == request_id) else {
             return;
@@ -2534,13 +2594,15 @@ impl Browser {
             .finish(request_id, truncated, can_trash, can_delete);
         self.publish_staged(
             depth,
-            request_id,
-            total,
-            focused,
-            positions,
-            PublishTerminal::LoadFinished {
-                truncated,
-                retry_metadata,
+            PublicationPlan {
+                request_id,
+                total,
+                focused,
+                positions,
+                terminal: PublishTerminal::LoadFinished {
+                    truncated,
+                    retry_metadata,
+                },
             },
         );
     }
@@ -2601,194 +2663,6 @@ impl Browser {
         }
     }
 
-    /// Publishes an installed column in stages: a synchronous prefix for fast first
-    /// rows, tails from idle callbacks in a work budget, and deferred selection
-    /// plus terminal on the final tail.
-    fn publish_staged(
-        self: &Rc<Self>,
-        depth: usize,
-        request_id: RequestId,
-        total: usize,
-        focused: Option<usize>,
-        positions: Vec<usize>,
-        terminal: PublishTerminal,
-    ) {
-        self.drain_publish(depth);
-        if total <= STAGE_INLINE_LIMIT {
-            if self.state.borrow().columns.get(depth).is_none() {
-                return;
-            }
-            self.emit(BrowserEvent::EntriesReplaced {
-                depth,
-                count: total,
-            });
-            if let Some(focused) = focused {
-                self.emit(BrowserEvent::SelectionSetChanged {
-                    depth,
-                    positions,
-                    focused,
-                    take_focus: false,
-                });
-            }
-            self.emit_publish_terminal(depth, terminal);
-            return;
-        }
-        let published = self
-            .state
-            .borrow()
-            .columns
-            .get(depth)
-            .map_or(0, |column| column.entries.len().min(FIRST_PUBLISH_COUNT));
-        self.emit(BrowserEvent::EntriesReplaced {
-            depth,
-            count: published,
-        });
-        self.staged_publishes.borrow_mut().insert(
-            depth,
-            StagedPublish {
-                request_id,
-                published,
-                total,
-                focused,
-                positions,
-                terminal,
-            },
-        );
-        self.arm_publish_timer();
-    }
-
-    fn emit_publish_terminal(self: &Rc<Self>, depth: usize, terminal: PublishTerminal) {
-        match terminal {
-            PublishTerminal::LoadFinished {
-                truncated,
-                retry_metadata,
-            } => {
-                self.emit(BrowserEvent::LoadFinished { depth, truncated });
-                if retry_metadata {
-                    self.ensure_sorted_after_load(depth);
-                }
-            }
-            PublishTerminal::SortingFinished => self.emit(BrowserEvent::SortingFinished { depth }),
-        }
-    }
-
-    /// Completes a staged publication synchronously before any mutation assuming a
-    /// converged model.
-    fn drain_publish(self: &Rc<Self>, depth: usize) {
-        let staged = self.staged_publishes.borrow_mut().remove(&depth);
-        let Some(staged) = staged else {
-            return;
-        };
-        let remainder = self.state.borrow().columns.get(depth).map_or(0, |column| {
-            column.entries.len().saturating_sub(staged.published)
-        });
-        if remainder > 0 {
-            self.emit(BrowserEvent::EntriesPublished {
-                depth,
-                position: staged.published,
-                count: remainder,
-            });
-        }
-        if let Some(focused) = staged.focused {
-            self.emit(BrowserEvent::SelectionSetChanged {
-                depth,
-                positions: staged.positions,
-                focused,
-                take_focus: false,
-            });
-        }
-        self.emit_publish_terminal(depth, staged.terminal);
-    }
-
-    fn cancel_publish(&self, depth: usize) {
-        self.staged_publishes.borrow_mut().remove(&depth);
-        if self.staged_publishes.borrow().is_empty()
-            && let Some(source) = self.publish_timer.borrow_mut().take()
-        {
-            source.remove();
-        }
-    }
-
-    fn arm_publish_timer(self: &Rc<Self>) {
-        if self.publish_timer.borrow().is_some() {
-            return;
-        }
-        let weak: Weak<Self> = Rc::downgrade(self);
-        // Run after GDK redraw (priority 120), but before default idle (200):
-        // frames stay smooth without letting continuous frame work starve tails.
-        let source = gio::glib::idle_add_local_full(glib::Priority::from(130), move || {
-            if let Some(browser) = weak.upgrade() {
-                browser.fire_publish_tails();
-            }
-            glib::ControlFlow::Break
-        });
-        *self.publish_timer.borrow_mut() = Some(source);
-    }
-
-    fn fire_publish_tails(self: &Rc<Self>) {
-        self.publish_timer.borrow_mut().take();
-        let started = std::time::Instant::now();
-        loop {
-            let depth = self.staged_publishes.borrow().keys().copied().next();
-            let Some(depth) = depth else {
-                return;
-            };
-            let current = self
-                .staged_publishes
-                .borrow()
-                .get(&depth)
-                .map(|staged| staged.request_id);
-            if current.is_some_and(|id| self.state.borrow().request_id_for_depth(depth) != Some(id))
-            {
-                self.staged_publishes.borrow_mut().remove(&depth);
-                continue;
-            }
-            if started.elapsed() >= PUBLISH_SLICE_BUDGET {
-                self.arm_publish_timer();
-                return;
-            }
-            let chunk: Option<(usize, usize)> = self
-                .staged_publishes
-                .borrow()
-                .get(&depth)
-                .and_then(|staged| {
-                    self.state.borrow().columns.get(depth).map(|column| {
-                        let end = (staged.published + PUBLISH_TAIL_CHUNK)
-                            .min(column.entries.len())
-                            .min(staged.total);
-                        (staged.published, end.saturating_sub(staged.published))
-                    })
-                });
-            let Some((position, chunk)) = chunk else {
-                self.staged_publishes.borrow_mut().remove(&depth);
-                continue;
-            };
-            if chunk == 0 {
-                let staged = self.staged_publishes.borrow_mut().remove(&depth);
-                let Some(staged) = staged else {
-                    continue;
-                };
-                if let Some(focused) = staged.focused {
-                    self.emit(BrowserEvent::SelectionSetChanged {
-                        depth,
-                        positions: staged.positions,
-                        focused,
-                        take_focus: false,
-                    });
-                }
-                self.emit_publish_terminal(depth, staged.terminal);
-                continue;
-            }
-            self.emit(BrowserEvent::EntriesPublished {
-                depth,
-                position,
-                count: chunk,
-            });
-            if let Some(staged) = self.staged_publishes.borrow_mut().get_mut(&depth) {
-                staged.published += chunk;
-            }
-        }
-    }
     pub fn request_metadata_fill(
         self: &Rc<Self>,
         depth: usize,
@@ -2884,24 +2758,19 @@ impl Browser {
             let outcome = state.apply_sort_preferences(depth, preferences);
             self.preferences.set(preferences);
             self.pending_sort.set(None);
-            outcome.map(|(focused, positions)| {
-                let request_id = state.request_id_for_depth(depth);
-                let total = state.columns.get(depth).map(|column| column.entries.len());
-                (request_id, total, focused, positions)
+            outcome.and_then(|(focused, positions)| {
+                Some(PublicationPlan {
+                    request_id: state.request_id_for_depth(depth)?,
+                    total: state.columns.get(depth)?.entries.len(),
+                    focused,
+                    positions,
+                    terminal: PublishTerminal::SortingFinished,
+                })
             })
         };
         self.notify_preferences_observers();
         match outcome {
-            Some((Some(request_id), Some(total), focused, positions)) => {
-                self.publish_staged(
-                    depth,
-                    request_id,
-                    total,
-                    focused,
-                    positions,
-                    PublishTerminal::SortingFinished,
-                );
-            }
+            Some(plan) => self.publish_staged(depth, plan),
             _ => {
                 self.emit(BrowserEvent::SortingFinished { depth });
             }
@@ -3341,13 +3210,6 @@ impl Browser {
         });
     }
 
-    fn load_target(&self, request_id: RequestId) -> Option<(usize, bool)> {
-        let state = self.state.borrow();
-        let depth = state.depth_for_request(request_id)?;
-        let native = state.location_at(depth)?.native_path().is_some();
-        Some((depth, native))
-    }
-
     fn handle_directory_change(
         self: &Rc<Self>,
         depth: usize,
@@ -3420,209 +3282,6 @@ impl Browser {
         }
     }
 
-    fn handle_directory_event(self: &Rc<Self>, event: DirectoryEvent) {
-        match event {
-            DirectoryEvent::Batch {
-                request_id,
-                entries,
-            } => {
-                let target = self.load_target(request_id);
-                let open = self.state.borrow().open_load_depth(request_id);
-                match (target, open) {
-                    (Some((depth, true)), Some(_)) => {
-                        self.stage_batch(request_id, depth, entries);
-                    }
-                    (Some((depth, false)), Some(_)) => {
-                        let entry_count = self
-                            .state
-                            .borrow()
-                            .loading_column(request_id)
-                            .map(|(_, count)| count)
-                            .unwrap_or(0);
-                        if entry_count == 0 {
-                            self.apply_owned_batch(request_id, entries);
-                        } else {
-                            self.accumulate_batch(request_id, depth, entries);
-                        }
-                    }
-                    _ => {
-                        let peek_entries: Vec<_> = if self.preferences.get().show_hidden {
-                            entries
-                        } else {
-                            entries
-                                .into_iter()
-                                .filter(|entry| !entry.is_hidden)
-                                .collect()
-                        };
-                        let mut state = self.state.borrow_mut();
-                        if state.apply_peek_batch(request_id, &peek_entries) {
-                            drop(state);
-                            self.emit(BrowserEvent::PeekEntriesAdded {
-                                entries: peek_entries,
-                            });
-                        }
-                    }
-                }
-            }
-
-            DirectoryEvent::Finished {
-                request_id,
-                truncated,
-                can_trash,
-                can_delete,
-            } => {
-                // Bound to a variable first: an if-let scrutinee borrow would stay live
-                // across the flush and panic inside it.
-                let target = self.load_target(request_id);
-                let open = self.state.borrow().open_load_depth(request_id);
-                match (target, open) {
-                    (Some((depth, true)), Some(_)) => {
-                        self.stage_batch(request_id, depth, Vec::new());
-                        self.finish_staged_load(
-                            depth, request_id, truncated, can_trash, can_delete,
-                        );
-                    }
-                    (Some((depth, _)), Some(_)) => {
-                        self.remote_terminals.borrow_mut().insert(
-                            depth,
-                            RemoteTerminal::Finished {
-                                request_id,
-                                truncated,
-                                can_trash,
-                                can_delete,
-                            },
-                        );
-                        self.flush_coalesced_capped(Some(depth));
-                    }
-                    _ => {
-                        let mut state = self.state.borrow_mut();
-                        if state.finish_peek(request_id) {
-                            drop(state);
-                            self.emit(BrowserEvent::PeekFinished);
-                        }
-                    }
-                }
-            }
-            DirectoryEvent::MetadataIncomplete { request_id } => {
-                let target = self.load_target(request_id);
-                let open = self.state.borrow().open_load_depth(request_id);
-                if let Some((depth, true)) = target.filter(|_| open.is_some()) {
-                    self.stage_batch(request_id, depth, Vec::new());
-                    if let Some(staging) = self.staging.borrow_mut().get_mut(&depth) {
-                        staging.metadata_incomplete = true;
-                    }
-                }
-            }
-            DirectoryEvent::Failed {
-                request_id,
-                message,
-            } => {
-                let target = self.load_target(request_id);
-                let open = self.state.borrow().open_load_depth(request_id);
-                if let Some((depth, true)) = target.filter(|_| open.is_some()) {
-                    self.staging.borrow_mut().remove(&depth);
-                    self.sorting.borrow_mut().remove(&depth);
-                    self.cancel_publish(depth);
-                } else if let Some((depth, false)) = target.filter(|_| open.is_some()) {
-                    self.remote_terminals.borrow_mut().insert(
-                        depth,
-                        RemoteTerminal::Failed {
-                            request_id,
-                            message,
-                        },
-                    );
-                    self.flush_coalesced_capped(Some(depth));
-                    return;
-                }
-                let mut state = self.state.borrow_mut();
-                if let Some(depth) = state.fail(request_id, message.clone()) {
-                    drop(state);
-                    self.emit(BrowserEvent::LoadFailed { depth, message });
-                } else if state.fail_peek(request_id, message.clone()) {
-                    drop(state);
-                    self.emit(BrowserEvent::PeekFailed { message });
-                }
-            }
-            DirectoryEvent::MetadataFilled {
-                request_id,
-                updates,
-            } => {
-                // Full sort fills apply by location: positional tokens would only add
-                // validation churn to an already O(n log n) path.
-                let awaiting_sort = self
-                    .sort_awaiting_fill
-                    .borrow()
-                    .as_ref()
-                    .copied()
-                    .filter(|fill| fill.fill_request == request_id);
-                if let Some(awaiting) = awaiting_sort {
-                    let mut state = self.state.borrow_mut();
-                    if let Some((depth, positions)) =
-                        state.apply_metadata(awaiting.directory_request, updates)
-                    {
-                        let filled = filled_entries(&state, depth, &positions);
-                        tracing::debug!(
-                            request_id = request_id.0,
-                            depth,
-                            filled = positions.len(),
-                            "metadata fill applied"
-                        );
-                        drop(state);
-                        self.emit(BrowserEvent::MetadataFilled {
-                            depth,
-                            updates: filled,
-                        });
-                    }
-                    return;
-                }
-                let fill = self
-                    .fill_tokens
-                    .borrow()
-                    .get(&request_id)
-                    .map(|fill| (fill.directory_request, fill.tokens.clone()));
-                let Some((directory_request, tokens)) = fill else {
-                    return;
-                };
-                let token_positions: HashMap<&Location, usize> = tokens
-                    .iter()
-                    .map(|(position, location)| (location, *position))
-                    .collect();
-                let mut positioned = Vec::with_capacity(updates.len());
-                for update in &updates {
-                    if let Some(position) = token_positions.get(&update.location) {
-                        positioned.push((*position, update.clone()));
-                    }
-                }
-                let mut state = self.state.borrow_mut();
-                if let Some((depth, positions, stale)) =
-                    state.apply_positioned_metadata(directory_request, positioned)
-                {
-                    let filled = filled_entries(&state, depth, &positions);
-                    tracing::debug!(
-                        request_id = request_id.0,
-                        depth,
-                        filled = positions.len(),
-                        stale = stale.len(),
-                        "metadata fill applied"
-                    );
-                    drop(state);
-                    if !filled.is_empty() {
-                        self.emit(BrowserEvent::MetadataFilled {
-                            depth,
-                            updates: filled,
-                        });
-                    }
-                }
-            }
-            DirectoryEvent::MetadataFinished {
-                request_id,
-                outcome,
-            } => {
-                self.handle_metadata_finished(request_id, outcome);
-            }
-        }
-    }
-
     fn emit(&self, event: BrowserEvent) {
         let observers = self.observers.borrow().clone();
         for observer in &observers {
@@ -3635,20 +3294,6 @@ impl Browser {
         self.next_request.set(id.saturating_add(1));
         RequestId(id)
     }
-}
-
-fn filled_entries(
-    state: &NavigationState,
-    depth: usize,
-    positions: &[usize],
-) -> Vec<(usize, FileEntry)> {
-    positions
-        .iter()
-        .filter_map(|position| {
-            let entry = state.columns.get(depth)?.entries.get(*position)?.clone();
-            Some((*position, entry))
-        })
-        .collect()
 }
 
 fn location_or_ancestor_is_affected(location: &Location, roots: &HashSet<Location>) -> bool {

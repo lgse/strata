@@ -19,6 +19,8 @@ declare -A SCENARIOS=(
   [click-modes]="tests/e2e/scenarios/test_click_modes.py"
   [view-switching]="tests/e2e/scenarios/test_view_switching.py"
   [quick-preview]="tests/e2e/scenarios/test_quick_preview.py"
+  [popover-scrolling]="tests/e2e/scenarios/test_popover_scrolling.py"
+  [rename-caret]="tests/e2e/scenarios/test_inline_renaming.py::test_long_rename_keeps_caret_visible"
 )
 
 selected=("$@")
@@ -31,8 +33,8 @@ if [[ -n "$(git -C "$repository" status --porcelain -- src)" ]]; then
   exit 1
 fi
 
-if [[ -n "${STRATA_BINARY:-}" ]]; then
-  echo "STRATA_BINARY must be unset so mutations exercise the rebuilt binary" >&2
+if [[ -n "${STRATA_BINARY:-}" || -n "${STRATA_E2E_BUNDLE:-}" ]]; then
+  echo "STRATA_BINARY and STRATA_E2E_BUNDLE must be unset so mutations exercise the rebuilt binary" >&2
   exit 1
 fi
 

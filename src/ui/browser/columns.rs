@@ -1,17 +1,16 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::ViewState;
 use crate::ui::browser::clipboard::install_directory_drop_target;
 use crate::ui::browser::collection::{
     ViewMap, activate_recursive_search_result, apply_filter_query, apply_selection_plan,
-    bitset_positions, deactivate_recursive_search, debounce_filter_entry, detach_collection_view,
+    bind_filter_query, bitset_positions, deactivate_recursive_search, detach_collection_view,
     recursive_search_activation_key, scroll_collection_when_allocated,
     search_result_navigation_position,
 };
 use crate::ui::browser::context_menu::{install_folder_context_menu, install_item_context_menu};
 use crate::ui::browser::entry::{entry_filter, entry_model_value, format_file_size};
-use crate::ui::browser::inline_edit::update_basename_validation;
 use crate::ui::browser::pane_header::{
     column_sort_direction_toggle, column_sort_menu, empty_trash_button, pane_new_folder_button,
     pane_refresh_button,
@@ -37,6 +36,7 @@ const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
 pub(super) struct BoundRow {
     pub(super) item: glib::WeakRef<gtk::ListItem>,
     pub(super) row: glib::WeakRef<gtk::Box>,
+    pub(super) rename_label: glib::WeakRef<gtk::Label>,
 }
 
 struct PendingPointerActivation {
@@ -75,6 +75,7 @@ pub(super) struct ColumnView {
     pub(super) selection: gtk::MultiSelection,
     pub(super) syncing_selection: Rc<Cell<bool>>,
     pub(super) list: gtk::ListView,
+    pub(super) listing_scroll: gtk::ScrolledWindow,
     pub(super) marquee: crate::ui::marquee::Marquee,
     pub(super) bound_rows: Rc<RefCell<Vec<BoundRow>>>,
     pub(super) entry_count: Rc<Cell<usize>>,
@@ -82,9 +83,6 @@ pub(super) struct ColumnView {
     pub(super) spinner_delay: Rc<RefCell<Option<glib::SourceId>>>,
     pub(super) truncated_hint: gtk::Image,
     pub(super) empty_trash_button: Option<gtk::Button>,
-    pub(super) new_entry_row: gtk::Box,
-    pub(super) new_entry_icon: gtk::Image,
-    pub(super) new_entry_entry: gtk::Entry,
     pub(super) show_hidden: Rc<Cell<bool>>,
     pub(super) filter: gtk::CustomFilter,
     pub(super) search_results: Rc<RefCell<Vec<crate::services::SearchItem>>>,
@@ -696,23 +694,31 @@ impl ViewState {
         let search_gen_for_changed = search_generation.clone();
         let search_active_for_changed = recursive_search_active.clone();
         let weak_filter_entry = filter_entry.downgrade();
-        debounce_filter_entry(&filter_entry, move |text| {
+        bind_filter_query(&filter_entry, move |text, recursive, restart| {
+            if restart {
+                search_gen_for_changed.set(search_gen_for_changed.get().saturating_add(1));
+                search_handle_for_changed.borrow_mut().take();
+                search_results_for_changed.borrow_mut().clear();
+                search_model_for_changed.splice(0, search_model_for_changed.n_items(), &[]);
+            }
             let query = text.trim().to_string();
             if query.is_empty() {
                 search_gen_for_changed.set(search_gen_for_changed.get().saturating_add(1));
                 search_handle_for_changed.borrow_mut().take();
+                // Keep the hidden-file filter installed while swapping back to the directory
+                // model; GTK's synchronous model notifications otherwise leave a stale row.
+                apply_filter_query(
+                    &filtered_model_for_search,
+                    &filter,
+                    &filter_query,
+                    text.to_lowercase(),
+                );
                 deactivate_recursive_search(
                     &search_active_for_changed,
                     &search_results_for_changed,
                     &search_model_for_changed,
                     &filtered_model_for_search,
                     &model_for_search,
-                );
-                apply_filter_query(
-                    &filtered_model_for_search,
-                    &filter,
-                    &filter_query,
-                    text.to_lowercase(),
                 );
                 return;
             }
@@ -743,7 +749,7 @@ impl ViewState {
                     .column_preferences(depth_for_search)
                     .unwrap_or_else(|| state.browser.preferences())
                     .show_hidden;
-                let (h, receiver) = crate::services::index_tree(path, show_hidden);
+                let (h, receiver) = crate::services::index_filter(path, show_hidden, recursive);
                 handle.replace(Some(h));
                 filtered.set_filter(None::<&gtk::CustomFilter>);
                 filtered.set_model(Some(&sm));
@@ -908,6 +914,7 @@ impl ViewState {
             .vexpand(true)
             .build();
         scroll.add_css_class("fixed-scrollbar");
+        scroll.add_css_class("browser-listing-scroll");
         crate::ui::scrolling::install_autoscroll(&scroll, &self.overlay);
         let retry = gtk::Button::with_label("Retry");
         retry.add_css_class("retry-button");
@@ -958,37 +965,6 @@ impl ViewState {
             }),
         });
         marquee.add_origin_surface(&header);
-
-        let new_entry_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        new_entry_row.add_css_class("file-row");
-        new_entry_row.add_css_class("new-entry-row");
-        new_entry_row.set_visible(false);
-        let new_entry_icon = crate::assets::primary_icon(crate::assets::icons::FOLDER, 17);
-        new_entry_icon.add_css_class("file-icon");
-        let new_entry_entry = gtk::Entry::new();
-        new_entry_entry.add_css_class("inline-rename");
-        crate::ui::accessibility::set_label(&new_entry_entry, "New item name");
-        new_entry_entry.set_hexpand(true);
-        new_entry_entry.connect_changed(|field| {
-            update_basename_validation(field);
-        });
-        new_entry_row.append(&new_entry_icon);
-        new_entry_row.append(&new_entry_entry);
-        let weak_state = Rc::downgrade(self);
-        new_entry_entry.connect_activate(move |field| {
-            if let Some(state) = weak_state.upgrade() {
-                state.submit_new_entry(field);
-            }
-        });
-        let new_entry_focus = gtk::EventControllerFocus::new();
-        let weak_state = Rc::downgrade(self);
-        let field = new_entry_entry.clone();
-        new_entry_focus.connect_leave(move |_| {
-            if let Some(state) = weak_state.upgrade() {
-                state.submit_new_entry(&field);
-            }
-        });
-        new_entry_entry.add_controller(new_entry_focus);
 
         presentation.stack.set_focusable(true);
         let focus = gtk::EventControllerFocus::new();
@@ -1054,7 +1030,6 @@ impl ViewState {
                 depth,
             );
         }
-        column.append(&new_entry_row);
         column.append(&presentation.stack);
         let destination_hint = gtk::Label::new(None);
         destination_hint.add_css_class("column-destination-hint");
@@ -1157,6 +1132,7 @@ impl ViewState {
             selection,
             syncing_selection,
             list,
+            listing_scroll: scroll,
             marquee,
             bound_rows,
             entry_count,
@@ -1164,9 +1140,6 @@ impl ViewState {
             spinner_delay: Rc::new(RefCell::new(None)),
             truncated_hint,
             empty_trash_button: is_trash.then_some(empty_trash),
-            new_entry_row,
-            new_entry_icon,
-            new_entry_entry,
             show_hidden,
             filter: filter_for_column,
             search_results,

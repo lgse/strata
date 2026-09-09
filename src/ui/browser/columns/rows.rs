@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{
     BoundRow, PendingPointerActivation, column_size_text, set_active_path_style,
@@ -89,6 +89,7 @@ pub(super) fn column_rows(
         rename.add_css_class("inline-rename");
         crate::ui::accessibility::set_label(&rename, "Rename");
         rename.set_hexpand(true);
+        rename.set_width_chars(1);
         rename.set_visible(false);
         rename.connect_changed(|field| {
             update_basename_validation(field);
@@ -99,6 +100,16 @@ pub(super) fn column_rows(
                 state.submit_rename(field);
             }
         });
+        let focus = gtk::EventControllerFocus::new();
+        let weak_state_for_leave = weak_state.clone();
+        focus.connect_leave(move |controller| {
+            if let Some(state) = weak_state_for_leave.upgrade()
+                && let Some(field) = controller.widget().and_downcast::<gtk::Entry>()
+            {
+                state.submit_rename(&field);
+            }
+        });
+        rename.add_controller(focus);
         let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         spacer.add_css_class("file-row-spacer");
         let editor = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -310,6 +321,13 @@ pub(super) fn column_rows(
         let pending_activation_for_cancel = pending_activation;
         selection_click.connect_pressed(move |gesture, press_count, x, y| {
             pending_activation_for_press.take();
+            if gesture
+                .widget()
+                .and_then(|row| row.pick(x, y, gtk::PickFlags::DEFAULT))
+                .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
+            {
+                return;
+            }
             let Some(clicked_item) = clicked_item.upgrade() else {
                 return;
             };
@@ -450,9 +468,12 @@ pub(super) fn column_rows(
         weak_item.set(Some(item));
         let weak_row = glib::WeakRef::new();
         weak_row.set(Some(&row));
+        let weak_rename_label = glib::WeakRef::new();
+        weak_rename_label.set(Some(&label));
         rows_for_setup.borrow_mut().push(BoundRow {
             item: weak_item,
             row: weak_row,
+            rename_label: weak_rename_label,
         });
     });
     let map_for_bind = map.clone();
@@ -533,12 +554,21 @@ pub(super) fn column_rows(
         } else {
             source_position.and_then(|position| browser?.entry_at(depth, position))
         };
+        if let Some(entry) = entry.as_ref() {
+            let pending_name = state
+                .as_ref()
+                .and_then(|state| state.pending_rename_name(entry));
+            label.set_label(pending_name.as_deref().unwrap_or(&entry.display_name));
+        }
         let origin = entry
             .as_ref()
             .filter(|_| searching)
             .map(|entry| entry.location.display_path());
         path.set_label(origin.as_deref().unwrap_or_default());
-        path.set_visible(origin.is_some());
+        path.set_visible(
+            origin.is_some()
+                && crate::ui::theme::ThemeManager::shared().filter_include_subfolders(),
+        );
         row.set_tooltip_text(origin.as_deref());
         let active = entry.as_ref().is_some_and(|entry| {
             browser

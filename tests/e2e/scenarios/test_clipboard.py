@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Copy, cut, and paste through both the keyboard and the context menu."""
 
 from __future__ import annotations
@@ -6,6 +6,39 @@ from __future__ import annotations
 import pytest
 
 from harness.modes import ALL_MODES, SINGLE_PANE_MODES
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize(
+    "source, duplicate, action",
+    [
+        ("todo.txt", "todo (1).txt", "duplicate"),
+        ("documents", "documents (1)", "duplicate"),
+        ("todo.txt", "todo (1).txt", "paste"),
+    ],
+)
+def test_same_folder_copy_creates_a_numbered_duplicate(strata, mode, source, duplicate, action):
+    fixture = strata.fixture
+    strata.select_entry_with_keyboard(source)
+    if action == "duplicate":
+        strata.keyboard.press("ctrl+d")
+    else:
+        strata.keyboard.press("ctrl+c")
+        strata.paste_into(fixture.root.name)
+
+    strata.wait(lambda: fixture.path(duplicate).exists(), "the numbered copy")
+    strata.entry(duplicate, directory=fixture.root.name)
+    assert fixture.path(source).exists()
+    if source == "documents":
+        copied_file = fixture.path(f"{duplicate}/notes.txt")
+        expected = fixture.path("documents/notes.txt").read_bytes()
+    else:
+        copied_file = fixture.path(duplicate)
+        expected = b"todo\n"
+    strata.wait(
+        lambda: copied_file.is_file() and copied_file.read_bytes() == expected,
+        "the numbered copy's contents to finish copying",
+    )
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)

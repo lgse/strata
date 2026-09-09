@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -512,6 +512,7 @@ pub(super) fn build_appearance_menu(
         .position(gtk::PositionType::Bottom)
         .build();
     popover.add_css_class("appearance-popover");
+    super::scrolling::popover::dismiss_on_outside_scroll(&popover);
     let button = gtk::MenuButton::builder()
         .tooltip_text("Appearance")
         .popover(&popover)
