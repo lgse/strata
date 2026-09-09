@@ -976,30 +976,76 @@ fn pinned_place_changes_merge_with_the_shared_bookmarks_file() {
     gtk_test(
         "ui::window::tests::pinned_place_changes_merge_with_the_shared_bookmarks_file",
         || {
-            ThemeManager::seed_saved_preferences_for_test();
-            let path = pinned_places_path();
-            std::fs::create_dir_all(path.parent().expect("bookmarks parent"))
-                .expect("isolated config directory");
-            std::fs::write(&path, "file:///tmp/existing Existing\n").expect("seeded bookmarks");
-            let preferences = ThemeManager::shared();
-            let first = build_sidebar(browser_for_window(), preferences.clone(), true);
-            let second = build_sidebar(browser_for_window(), preferences, true);
-
+            let first = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let existing = Location::local("/tmp/existing");
             first
                 .state
-                .pin_location(Location::local("/tmp/pinned"), "Pinned".into());
-            second
-                .state
-                .unpin_location(&Location::local("/tmp/existing"));
+                .pin_location(existing.clone(), "Existing".into());
+            let second = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let pinned = Location::local("/tmp/pinned");
+            first.state.pin_location(pinned.clone(), "Pinned".into());
+            second.state.unpin_location(&existing);
+            assert_eq!(
+                load_pinned_places().expect("merged pins"),
+                vec![(pinned, "Pinned".into())]
+            );
 
-            let saved: Vec<_> = load_pinned_places()
-                .into_iter()
-                .map(|(location, _)| location)
-                .collect();
-            assert_eq!(saved, vec![Location::local("/tmp/pinned")]);
-            assert_eq!(second.state.pinned_places.borrow().len(), 1);
+            second.state.pin_location(existing, "Existing".into());
+            let path = pinned_places_path();
+            std::fs::write(&path, "file:///tmp/external External\nfile:///tmp/pinned Renamed\nfile:///tmp/existing Existing\n")
+                .expect("external edit");
+            second.state.reorder_pinned_place(1, 0, false);
+            assert_eq!(
+                std::fs::read_to_string(&path).expect("reordered pins"),
+                "file:///tmp/external External\nfile:///tmp/existing Existing\nfile:///tmp/pinned Renamed\n"
+            );
+            std::fs::write(
+                &path,
+                "file:///tmp/external External\nfile:///tmp/pinned Renamed\n",
+            )
+            .expect("external removal");
+            second.state.reorder_pinned_place(1, 2, true);
+            let saved = load_pinned_places().expect("missing source is not resurrected");
+            assert_eq!(saved.len(), 2);
+            assert_eq!(*second.state.pinned_places.borrow(), saved);
             first.disconnect();
             second.disconnect();
+        },
+    );
+}
+
+#[test]
+fn failed_bookmark_reads_and_saves_preserve_disk_and_window_state() {
+    gtk_test(
+        "ui::window::tests::failed_bookmark_reads_and_saves_preserve_disk_and_window_state",
+        || {
+            let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let existing = Location::local("/tmp/existing");
+            sidebar
+                .state
+                .pin_location(existing.clone(), "Existing".into());
+            let original = sidebar.state.pinned_places.borrow().clone();
+            let path = pinned_places_path();
+            std::fs::write(&path, [0xff]).expect("unreadable UTF-8 fixture");
+            sidebar
+                .state
+                .pin_location(Location::local("/tmp/new"), "New".into());
+            assert_eq!(std::fs::read(&path).expect("preserved bytes"), [0xff]);
+            assert_eq!(*sidebar.state.pinned_places.borrow(), original);
+
+            let contents = serialize_pinned_places(&original);
+            std::fs::write(&path, &contents).expect("restore readable bookmarks");
+            let target = path.with_extension("target");
+            std::fs::rename(&path, &target).expect("move fixture");
+            std::os::unix::fs::symlink(&target, &path).expect("readable but non-replaceable file");
+            sidebar.state.unpin_location(&existing);
+            assert_eq!(
+                std::fs::read_to_string(&target).expect("preserved target"),
+                contents
+            );
+            assert!(path.is_symlink());
+            assert_eq!(*sidebar.state.pinned_places.borrow(), original);
+            sidebar.disconnect();
         },
     );
 }
