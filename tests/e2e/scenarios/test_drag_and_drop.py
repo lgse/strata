@@ -157,11 +157,7 @@ def test_dragging_from_empty_row_space_moves_the_file(strata, mode):
     )
 
 
-@pytest.mark.parametrize("mode", ROW_DRAG_MODES)
-@pytest.mark.parametrize("edge", ["top", "bottom"])
-def test_dragging_from_row_padding_moves_the_file(strata, mode, edge):
-    """#631: a press in visual row padding must reach the drag source."""
-
+def drag_from_row_padding(strata, edge):
     fixture = strata.fixture
     source = strata.entry("todo.txt")
     target = strata.entry("archive")
@@ -177,3 +173,18 @@ def test_dragging_from_row_padding_moves_the_file(strata, mode, edge):
         lambda: not fixture.path("todo.txt").exists(),
         f"the file dragged from {edge} row padding to leave its source directory",
     )
+
+
+@pytest.mark.parametrize("mode", ROW_DRAG_MODES)
+@pytest.mark.parametrize("edge", ["top", "bottom"])
+def test_dragging_from_row_padding_moves_the_file(strata, mode, edge):
+    """#631: a press in visual row padding must reach the drag source."""
+
+    drag_from_row_padding(strata, edge)
+
+
+@pytest.mark.preferences(browser_density="airy")
+@pytest.mark.parametrize("mode", ROW_DRAG_MODES)
+@pytest.mark.parametrize("edge", ["top", "bottom"])
+def test_dragging_from_airy_row_padding_moves_the_file(strata, mode, edge):
+    drag_from_row_padding(strata, edge)

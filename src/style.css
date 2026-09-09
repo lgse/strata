@@ -2970,7 +2970,12 @@ colorchooser colorswatch overlay {
 .file-row {
   border-radius: 6px;
   color: @theme_text;
-  padding: 8px 4px;
+  padding: 0 4px;
+}
+
+.file-row > * {
+  margin-bottom: 8px;
+  margin-top: 8px;
 }
 
 .file-row.cut {
@@ -3825,8 +3830,13 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .list-row {
-  min-height: 28px;
-  padding: 4px 0;
+  min-height: 36px;
+  padding: 0;
+}
+
+.list-row > * {
+  margin-bottom: 4px;
+  margin-top: 4px;
 }
 
 .list-name-cell,
@@ -3836,12 +3846,18 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 
 .mode-list.density-airy .list-row {
   min-height: 42px;
-  padding-bottom: 8px;
-  padding-top: 8px;
+}
+
+.mode-list.density-airy .list-row > * {
+  margin-bottom: 8px;
+  margin-top: 8px;
 }
 
 .density-airy .file-row {
   min-height: 38px;
-  padding-bottom: 9px;
-  padding-top: 9px;
+}
+
+.density-airy .file-row > * {
+  margin-bottom: 9px;
+  margin-top: 9px;
 }
