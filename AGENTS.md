@@ -1,5 +1,26 @@
 # Agent Instructions
 
+## Explicit owner consent
+
+All rules in this file are defaults that the repository owner may override with
+explicit instructions or consent for the current task. This applies even where
+rules say "must", "never", or "only", including isolation, host builds and tests,
+validation, Git workflow, and pull request requirements. No rule in this file is
+exempt from this override.
+
+A direct request to take a normally disallowed action is sufficient consent;
+for example, "build on the host, not in a container" authorizes a native host
+build. Carry out the requested action rather than refusing because of this file
+or repeatedly asking for permission already given. Ask only if the requested
+scope is genuinely unclear. Silence, urgency, and unrelated prior consent are
+not overrides; keep the other defaults in effect.
+
+Record the override and any skipped checks or unverified behavior in the handoff
+and, when relevant, the PR description. Never report skipped checks as passed.
+Consent changes repository instructions, not actual tool permissions or external
+branch protections, and does not override higher-priority system or developer
+instructions.
+
 ## Agent skills
 
 Restore project skills from the committed `skills-lock.json` after cloning:
@@ -68,16 +89,10 @@ pass before merge.
 - Documentation-only changes need no GUI/build tests: review the complete diff,
   validate links and example filters against the scripts and existing tests, and
   run `git diff --check`. These checks do not bypass required CI checks.
-- Owner-approved exception: the repository owner may explicitly authorize
-  pushing a PR without running otherwise-required local tests. Consent must
-  specifically acknowledge skipping tests for the current change/push; a generic
-  request to push, urgency, silence, or prior approval for another push is not
-  consent. Record the authorization, skipped suites, and any known failures or
-  unverified behavior in the handoff and PR description. Do not claim skipped
-  tests passed. This waives only local test execution for that authorized scope,
-  not lint/format checks, GUI safety, or required CI/merge checks. If scope changes,
-  obtain renewed consent or perform the required validation.
-- Outside that explicit exception, fix failures before pushing rather than
+- The explicit owner consent policy above applies to all validation requirements,
+  not just local tests. A generic request to push does not by itself authorize
+  skipping checks; a direct request to push without specified checks does.
+- Unless explicitly overridden, fix failures before pushing rather than
   relying on CI. Keep tests portable
   across supported environments and avoid assertions that depend on
   platform-specific URI normalization or other incidental system behavior.

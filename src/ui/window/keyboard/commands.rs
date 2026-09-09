@@ -193,7 +193,7 @@ impl Dispatcher {
             },
             _ => return None,
         };
-        if self.view.filter_has_focus() {
+        if self.view.filter_has_focus() || event.text_has_focus() {
             return Some(Propagation::Proceed);
         }
         action(&self.view).then_some(Propagation::Stop)

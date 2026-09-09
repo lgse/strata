@@ -183,6 +183,18 @@ pub(super) fn extract_tar(
                 return Err(error);
             }
             let mut entry = entry.map_err(|error| archive_failed(archive_read_error(error)))?;
+            // tar-rs consumes per-entry extended headers itself, but a pax
+            // global header (the first member of every `git archive` tarball)
+            // is yielded as an ordinary entry. It carries no file.
+            if matches!(
+                entry.header().entry_type(),
+                tar::EntryType::XGlobalHeader
+                    | tar::EntryType::XHeader
+                    | tar::EntryType::GNULongName
+                    | tar::EntryType::GNULongLink
+            ) {
+                continue;
+            }
             let name = entry.path().map_err(archive_failed)?;
             let directory = entry.header().entry_type().is_dir();
             if directory && name == Path::new(".") {
