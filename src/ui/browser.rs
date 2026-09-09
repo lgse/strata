@@ -175,6 +175,7 @@ pub(super) struct ViewState {
     pending_select_properties: Cell<bool>,
     pending_extract_retry: RefCell<Option<(FileEntry, Location)>>,
     pending_archive_destination: RefCell<Option<Location>>,
+    pending_archive_retried: Cell<bool>,
     /// The entries a just-dispatched, non-permanent delete requested,
     /// snapshotted so a `CompletedWithErrors` response naming entries that
     /// failed only because the location doesn't support Trash can offer a
@@ -362,6 +363,7 @@ impl BrowserView {
             pending_select_properties: Cell::new(false),
             pending_extract_retry: RefCell::new(None),
             pending_archive_destination: RefCell::new(None),
+            pending_archive_retried: Cell::new(false),
             pending_delete_entries: RefCell::new(Vec::new()),
             pending_navigate: RefCell::new(None),
             pending_location_credentials: RefCell::new(None),

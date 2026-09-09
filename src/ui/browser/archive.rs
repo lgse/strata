@@ -151,6 +151,7 @@ impl ViewState {
         if !archive_has_collision(&destination, &final_name) {
             self.pending_archive_destination
                 .replace(Some(destination.clone()));
+            self.pending_archive_retried.set(false);
             self.browser.compress(
                 entries,
                 destination,
@@ -211,6 +212,7 @@ impl ViewState {
                 state
                     .pending_archive_destination
                     .replace(Some(destination.clone()));
+                state.pending_archive_retried.set(false);
                 state.browser.compress(
                     entries.clone(),
                     destination.clone(),

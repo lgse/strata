@@ -202,3 +202,95 @@ fn completed_archive_selects_the_authoritative_model_only_after_modal_dismissal(
         },
     );
 }
+
+#[test]
+fn cancelled_archive_clears_flag_and_following_load_restores_transfer_selection() {
+    crate::test_support::gtk_test(
+        "ui::browser::events::tests::cancelled_archive_clears_flag_and_following_load_restores_transfer_selection",
+        || {
+            let destination = tempfile::tempdir().expect("archive destination");
+            std::fs::write(destination.path().join("pasted.txt"), "pasted").expect("paste fixture");
+            let (view, browser, window, _overlay) = archive_view(destination.path());
+            let state = &view.state;
+            state
+                .pending_archive_destination
+                .replace(Some(Location::local(destination.path())));
+            state.show_file_operation_progress(
+                16,
+                crate::assets::icons::FILE_ARCHIVE,
+                "Working",
+                "Cancelling will not undo completed changes",
+                Rc::new(|| {}),
+            );
+
+            state.handle(&BrowserEvent::ArchiveCompleted {
+                select_name: String::new(),
+            });
+            assert!(
+                state.pending_archive_destination.borrow().is_none(),
+                "empty-name completion must clear the archive flag"
+            );
+            assert!(
+                !state.pending_archive_retried.get(),
+                "empty-name completion must reset the retry flag"
+            );
+
+            state
+                .pending_select
+                .borrow_mut()
+                .push("pasted.txt".to_owned());
+            state.pending_transfer_selection.replace(Some((
+                Location::local(destination.path()),
+                vec![Location::local(destination.path().join("pasted.txt"))],
+            )));
+            state.handle(&BrowserEvent::LoadFinished {
+                depth: 0,
+                truncated: false,
+            });
+            wait_until(
+                || {
+                    browser
+                        .focused_entry()
+                        .is_some_and(|entry| entry.display_name == "pasted.txt")
+                },
+                "transfer selection was not restored after LoadFinished",
+            );
+            assert!(state.pending_archive_destination.borrow().is_none());
+            window.destroy();
+            browser.clear_observer();
+        },
+    );
+}
+
+#[test]
+fn operation_cancelled_clears_archive_flag() {
+    crate::test_support::gtk_test(
+        "ui::browser::events::tests::operation_cancelled_clears_archive_flag",
+        || {
+            let destination = tempfile::tempdir().expect("archive destination");
+            let (view, browser, window, _overlay) = archive_view(destination.path());
+            let state = &view.state;
+            state
+                .pending_archive_destination
+                .replace(Some(Location::local(destination.path())));
+            state.pending_archive_retried.set(true);
+
+            state.handle(&BrowserEvent::OperationCancelled {
+                completed: 0,
+                failed: 0,
+                not_attempted: 0,
+                affected_locations: std::collections::HashSet::new(),
+            });
+            assert!(
+                state.pending_archive_destination.borrow().is_none(),
+                "OperationCancelled must clear the archive flag"
+            );
+            assert!(
+                !state.pending_archive_retried.get(),
+                "OperationCancelled must reset the retry flag"
+            );
+            window.destroy();
+            browser.clear_observer();
+        },
+    );
+}
