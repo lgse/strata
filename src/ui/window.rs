@@ -83,12 +83,7 @@ pub fn present(application: &gtk::Application) {
     present_target(application, None, Vec::new(), false);
 }
 
-pub fn present_location(application: &gtk::Application, location: Option<Location>) {
-    present_target(application, location, Vec::new(), false);
-}
-
-/// Opens the window an `org.freedesktop.FileManager1` caller asked for: the
-/// directory holding the named items, with those items selected.
+/// Opens the requested directory with the named items selected.
 pub fn present_reveal(application: &gtk::Application, request: RevealRequest) {
     present_target(
         application,

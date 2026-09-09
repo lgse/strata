@@ -6,7 +6,7 @@ use gtk::gio;
 
 use super::{
     GIO_FALLBACK_BACKENDS, LaunchMode, encode_daemon_pids, gvfs_daemon_pids,
-    gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, launch_mode, open_locations,
+    gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, launch_mode, open_requests,
     run_preview_helper,
 };
 
@@ -60,7 +60,7 @@ fn preview_helper_rejects_non_utf8_instead_of_changing_paths() {
 }
 
 #[test]
-fn every_opened_argument_becomes_a_location() {
+fn open_requests_preserve_directory_and_remote_arguments() {
     let non_utf8 = OsString::from_vec(b"/tmp/\xff".to_vec());
     let files = [
         gio::File::for_uri("smb://host/share"),
@@ -71,7 +71,9 @@ fn every_opened_argument_becomes_a_location() {
         gio::File::for_uri("trash:///"),
     ];
 
-    let locations = open_locations(&files);
+    let requests = open_requests(&files);
+    assert!(requests.iter().all(|request| request.selection.is_empty()));
+    let locations: Vec<_> = requests.iter().map(|request| &request.directory).collect();
 
     assert_eq!(locations.len(), files.len());
     assert!(
@@ -91,7 +93,42 @@ fn every_opened_argument_becomes_a_location() {
                 .is_some_and(|uri| uri.starts_with(scheme))
         );
     }
-    assert!(open_locations(&[]).is_empty());
+    assert!(open_requests(&[]).is_empty());
+}
+
+#[test]
+fn open_requests_reveal_local_files_but_open_directories() {
+    use gtk::prelude::*;
+
+    let root = tempfile::tempdir().expect("temporary directory");
+    let directory = root
+        .path()
+        .join(OsString::from_vec(b"parent-\xff".to_vec()));
+    std::fs::create_dir(&directory).expect("create parent directory");
+    let file = directory.join("open me.txt");
+    std::fs::write(&file, "hello").expect("create file");
+    let link = directory.join("linked.txt");
+    std::os::unix::fs::symlink(&file, &link).expect("create symlink");
+    let files = [
+        gio::File::for_path(&directory),
+        gio::File::for_path(&file),
+        gio::File::for_uri(gio::File::for_path(&file).uri().as_str()),
+        gio::File::for_path(&link),
+    ];
+
+    let requests = open_requests(&files);
+
+    assert_eq!(requests.len(), files.len());
+    for (request, selection) in requests.iter().zip([
+        vec![],
+        vec!["open me.txt"],
+        vec!["open me.txt"],
+        vec!["linked.txt"],
+    ]) {
+        assert_eq!(request.directory.native_path(), Some(directory.as_path()));
+        assert_eq!(request.selection, selection);
+        assert!(!request.properties);
+    }
 }
 
 fn fake_proc(label: &str, processes: &[(&str, &str)]) -> std::path::PathBuf {

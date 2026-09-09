@@ -52,11 +52,26 @@ fn launch_mode(arguments: &[OsString]) -> LaunchMode {
     }
 }
 
-/// Every location the launcher or shell asked to open, local or remote, in order.
-fn open_locations(files: &[gio::File]) -> Vec<model::Location> {
+/// Every target the launcher or shell asked to open, in argument order.
+fn open_requests(files: &[gio::File]) -> Vec<adapters::RevealRequest> {
     files
         .iter()
-        .filter_map(adapters::location_for_file)
+        .filter_map(|file| {
+            // Do not probe remote URIs synchronously during startup.
+            let reveal = file.path().is_some_and(|path| path.is_file());
+            let (directory, name) = match reveal.then(|| file.parent()).flatten() {
+                Some(parent) => (parent, file.basename()),
+                None => (file.clone(), None),
+            };
+            Some(adapters::RevealRequest {
+                directory: adapters::location_for_file(&directory)?,
+                selection: name
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .into_iter()
+                    .collect(),
+                properties: false,
+            })
+        })
         .collect()
 }
 
@@ -122,12 +137,12 @@ fn main() -> gtk::glib::ExitCode {
     application.connect_startup(export_file_manager_interface);
     application.connect_activate(ui::present);
     application.connect_open(|application, files, _| {
-        let locations = open_locations(files);
-        if locations.is_empty() {
+        let requests = open_requests(files);
+        if requests.is_empty() {
             ui::present(application);
         }
-        for location in locations {
-            ui::present_location(application, Some(location));
+        for request in requests {
+            ui::present_reveal(application, request);
         }
     });
     application.run()
