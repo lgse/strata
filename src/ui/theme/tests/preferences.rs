@@ -93,6 +93,121 @@ fn older_preferences_keep_recursive_filtering_enabled() {
 }
 
 #[test]
+fn a_malformed_preference_does_not_discard_the_others() {
+    let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
+    saved.insert("show_hidden".into(), "yes".into());
+    assert!(saved.clone().try_into::<Preferences>().is_err());
+
+    assert_eq!(
+        salvage_preferences(saved),
+        Preferences {
+            show_hidden: false,
+            ..non_default_preferences()
+        }
+    );
+}
+
+#[test]
+fn a_missing_required_preference_does_not_discard_the_others() {
+    let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
+    saved.remove("theme");
+    assert!(saved.clone().try_into::<Preferences>().is_err());
+
+    assert_eq!(
+        salvage_preferences(saved),
+        Preferences {
+            theme: Preferences::default().theme,
+            ..non_default_preferences()
+        }
+    );
+}
+
+fn assert_recovered_preferences_survive_save(
+    corrupt: impl FnOnce(&mut toml::Table),
+    mut expected: Preferences,
+) {
+    ThemeManager::seed_saved_preferences_for_test();
+    let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
+    corrupt(&mut saved);
+    let malformed = toml::to_string(&saved).expect("syntactically valid TOML");
+    fs::write(settings_path(), &malformed).expect("persist malformed preferences");
+
+    let manager = ThemeManager::shared();
+    assert_eq!(*manager.preferences.borrow(), expected);
+    assert_eq!(
+        fs::read_to_string(settings_path()).expect("unchanged settings file"),
+        malformed
+    );
+    expected.folder_peeking = true;
+    manager.set_folder_peeking(true);
+
+    let persisted: Preferences =
+        toml::from_str(&fs::read_to_string(settings_path()).expect("saved file"))
+            .expect("save repairs invalid preferences");
+    assert_eq!(persisted, expected);
+    assert_eq!(read_preferences(), Some(expected));
+}
+
+#[test]
+fn malformed_preferences_survive_startup_and_an_unrelated_save() {
+    gtk_test(
+        "ui::theme::tests::preferences::malformed_preferences_survive_startup_and_an_unrelated_save",
+        || {
+            assert_recovered_preferences_survive_save(
+                |saved| {
+                    saved.insert("show_hidden".into(), "yes".into());
+                },
+                Preferences {
+                    show_hidden: false,
+                    ..non_default_preferences()
+                },
+            );
+        },
+    );
+}
+
+#[test]
+fn missing_required_preferences_survive_startup_and_an_unrelated_save() {
+    gtk_test(
+        "ui::theme::tests::preferences::missing_required_preferences_survive_startup_and_an_unrelated_save",
+        || {
+            assert_recovered_preferences_survive_save(
+                |saved| {
+                    saved.remove("theme");
+                },
+                Preferences {
+                    theme: Preferences::default().theme,
+                    ..non_default_preferences()
+                },
+            );
+        },
+    );
+}
+
+#[test]
+fn multiple_invalid_preferences_do_not_block_later_valid_entries() {
+    gtk_test(
+        "ui::theme::tests::preferences::multiple_invalid_preferences_do_not_block_later_valid_entries",
+        || {
+            assert_recovered_preferences_survive_save(
+                |saved| {
+                    saved.insert("auto_refresh_interval".into(), (-1).into());
+                    saved.insert("hardware_accelerated_video_previews".into(), "no".into());
+                    saved.insert("show_hidden".into(), "yes".into());
+                    saved.insert("future_preference".into(), true.into());
+                },
+                Preferences {
+                    auto_refresh_interval: 0,
+                    hardware_accelerated_video_previews: None,
+                    show_hidden: false,
+                    ..non_default_preferences()
+                },
+            );
+        },
+    );
+}
+
+#[test]
 fn fresh_preferences_select_tokyo_night_before_settings_opens() {
     gtk_test(
         "ui::theme::tests::preferences::fresh_preferences_select_tokyo_night_before_settings_opens",

@@ -71,19 +71,37 @@ pub(super) struct ExtractionDestination {
 }
 
 impl ExtractionDestination {
-    /// Opens `path` as a directory without following a final symbolic link.
+    /// Opens `path` as a directory. Ordinary symlinks along the path are
+    /// resolved, since users browse symlinked folders, but the resolved
+    /// directory is pinned so later replacement of any component cannot
+    /// redirect writes. This mirrors how copy and compress open their parents.
     ///
     /// # Errors
     ///
-    /// Returns an error if `path` cannot be opened as a directory.
+    /// Returns an error if `path` is not absolute or cannot be opened as a directory.
     pub(super) fn open(path: &Path) -> Result<Self, String> {
-        let root = rustix::fs::open(
-            path,
+        let relative = path
+            .strip_prefix("/")
+            .map_err(|_| "Extraction destination must use an absolute path".to_owned())?;
+        let filesystem_root = rustix::fs::open(
+            c"/",
+            rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+            rustix::fs::Mode::empty(),
+        )
+        .map_err(|error| format!("Could not open the filesystem root: {error}"))?;
+        let relative = if relative.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            relative
+        };
+        let root = rustix::fs::openat2(
+            &filesystem_root,
+            relative,
             rustix::fs::OFlags::RDONLY
                 | rustix::fs::OFlags::DIRECTORY
-                | rustix::fs::OFlags::NOFOLLOW
                 | rustix::fs::OFlags::CLOEXEC,
             rustix::fs::Mode::empty(),
+            rustix::fs::ResolveFlags::IN_ROOT | rustix::fs::ResolveFlags::NO_MAGICLINKS,
         )
         .map_err(|error| format!("Could not open extraction destination: {error}"))?;
         Ok(Self { root })
