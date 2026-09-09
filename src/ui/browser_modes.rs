@@ -1665,7 +1665,7 @@ fn build_icons_pane(
         pin_ungrouped_icons_columns(&section, width, context.density.get());
     });
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) = collection_with_marquee(&root, scroll, targets.clone());
+    let (collection, marquee) = collection_with_marquee(&root, scroll, targets.clone(), false);
     let search = super::inline_search::wrap(
         &collection,
         &controls.filter_entry,
@@ -2450,7 +2450,8 @@ fn build_list_pane(
     table.set_vexpand(true);
     table.append(&headings);
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) = collection_with_marquee(view.upcast_ref(), scroll, targets.clone());
+    let (collection, marquee) =
+        collection_with_marquee(view.upcast_ref(), scroll, targets.clone(), true);
     table.append(&collection);
     marquee.add_origin_surface(&header);
     marquee.add_origin_surface(&headings);
@@ -2692,6 +2693,7 @@ fn collection_with_marquee(
     view: &gtk::Widget,
     scroll: gtk::ScrolledWindow,
     targets: super::marquee::MarqueeTargets,
+    whole_row: bool,
 ) -> (gtk::Overlay, super::marquee::Marquee) {
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&scroll));
@@ -2699,13 +2701,18 @@ fn collection_with_marquee(
     overlay.set_vexpand(true);
     super::scrolling::install_autoscroll(&scroll, &overlay);
 
+    let is_item = if whole_row {
+        super::marquee::item_bounds_predicate(targets.clone())
+    } else {
+        Rc::new(super::pointer::hits_item_content)
+    };
     let marquee = super::marquee::install(super::marquee::MarqueeSetup {
         view: view.clone(),
         surface: scroll.clone().upcast(),
         scroll,
         overlay: overlay.clone(),
         targets: targets.clone(),
-        is_item: Rc::new(super::pointer::hits_item_content),
+        is_item,
         clear_selection: Rc::new(move || {
             let selections: Vec<_> = targets
                 .borrow()
