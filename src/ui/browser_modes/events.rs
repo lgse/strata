@@ -34,7 +34,6 @@ impl ModeViews {
             BrowserEvent::ColumnsTruncated { .. } => self.rebuild_active_mode(),
             BrowserEvent::ColumnAdded { depth, .. } => {
                 if self.browser.active_depth() == Some(*depth) {
-                    self.browser.select_first_on_load(*depth);
                     self.rebuild_active_mode();
                 }
             }

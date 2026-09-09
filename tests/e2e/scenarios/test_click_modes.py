@@ -29,6 +29,37 @@ def test_single_click_opens_a_directory(strata, mode):
         "one click to open the directory in single-click mode",
     )
     strata.entry("notes.txt")
+    strata.wait_for_selection([], "documents")
+
+
+@SINGLE_CLICK
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_keyboard_open_selects_the_first_child(strata, mode):
+    strata.select_entry_with_keyboard("documents")
+    strata.keyboard.press("Return")
+    strata.wait_for_directory("documents")
+    strata.wait_for_selection(["notes.txt"], "documents")
+
+
+@SINGLE_CLICK
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("activation", ["mouse", "keyboard"])
+def test_sidebar_selection_depends_on_activation(strata, mode, activation):
+    home = strata.environment.home
+    (home / "child").mkdir()
+    if activation == "mouse":
+        strata.pointer.click(strata.sidebar_button("Home"))
+    else:
+        strata.keyboard.press("Home")
+        strata.keyboard.press("Left")
+        strata.wait(
+            lambda: strata.sidebar_button("Home").has_state("focused"),
+            "keyboard focus on the Home sidebar button",
+        )
+        strata.keyboard.press("Return")
+    strata.wait_for_directory(home.name)
+    strata.entry("child", home.name)
+    strata.wait_for_selection(["child"] if activation == "keyboard" else [], home.name)
 
 
 @SINGLE_CLICK
@@ -70,6 +101,8 @@ def test_two_clicks_open_in_double_click_mode(strata, mode):
         lambda: strata.pane().name == "documents",
         "two clicks to open the directory",
     )
+    strata.entry("notes.txt")
+    strata.wait_for_selection([], "documents")
 
 
 @DOUBLE_CLICK

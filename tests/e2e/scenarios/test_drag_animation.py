@@ -76,11 +76,12 @@ def test_drag_completion_keeps_the_source_label_in_place(strata, outcome):
             connection.key(keysym("Escape"), False)
         connection.button(1, False)
         samples = []
-        # GTK accepts MOVE before the asynchronous transfer completes.
+        # Sample at exact deadlines, not the UI readiness poller's 50 ms intervals.
         for delay in (0.06, 0.12, 0.18):
-            strata.wait(lambda: time.monotonic() >= released + delay, "the animation sample time")
-            measurement = text_position(grab(), bounds)
-            samples.append((time.monotonic() - released, measurement))
+            time.sleep(max(0, released + delay - time.monotonic()))
+            image = grab()
+            samples.append((time.monotonic() - released, image))
+        samples = [(elapsed, text_position(image, bounds)) for elapsed, image in samples]
         assert all(elapsed < 0.24 for elapsed, _ in samples), samples
         for _, (position, _) in samples:
             assert abs(position - resting_y) < 1.5, "source label slid out after drag completion"

@@ -1689,7 +1689,7 @@ fn restored_sorting_applies_to_the_initial_navigation_load() {
     browser.navigate(Location::local("/fixture"));
 
     let snapshot = browser.column_snapshot(0).expect("initial column");
-    assert_eq!(snapshot.selected_positions, Vec::<usize>::new());
+    assert_eq!(snapshot.selected_positions, vec![0]);
     let names: Vec<_> = browser.state.borrow().columns[0]
         .entries
         .iter()
@@ -2116,7 +2116,7 @@ fn sidebar_location_navigation_validates_uris_but_navigates_native_paths_directl
     remote_browser.observe(move |event| observed.borrow_mut().push(event.clone()));
 
     let remote = Location::uri("smb://host/share");
-    remote_browser.navigate_location(remote.clone());
+    remote_browser.navigate_location(remote.clone(), true);
 
     assert!(events.borrow().iter().any(|event| matches!(
         event,
@@ -2128,7 +2128,7 @@ fn sidebar_location_navigation_validates_uris_but_navigates_native_paths_directl
 
     let native_browser = Browser::new(Rc::new(RejectingFileSource));
     let native = Location::local("/saved/bookmark");
-    native_browser.navigate_location(native.clone());
+    native_browser.navigate_location(native.clone(), true);
 
     assert_eq!(native_browser.active_location(), Some(native));
 }
@@ -2741,7 +2741,6 @@ fn escape_clears_only_the_active_selection_and_preserves_the_cursor() {
         source.dirs = vec!["child"];
         let browser = Browser::new(Rc::new(source));
         browser.navigate(Location::local("/fixture"));
-        browser.move_selection(1);
         browser.activate_focused();
         if multiple {
             browser.select_all(1);
