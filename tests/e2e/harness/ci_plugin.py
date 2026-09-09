@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Collect once for CI, validate every worker's inventory, report all phases."""
 
 from __future__ import annotations

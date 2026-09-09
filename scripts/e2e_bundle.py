@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Bind a CI binary and collected plan to the tested revision and image inputs."""
 
 import argparse

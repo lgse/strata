@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Column background clicks focus the parent without closing its descendants."""
 
 import pytest

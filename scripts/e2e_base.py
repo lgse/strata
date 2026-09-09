@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Reuse a verified local E2E environment; building it is always explicit."""
 
 import argparse

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Copy, cut, and paste through both the keyboard and the context menu."""
 
 from __future__ import annotations

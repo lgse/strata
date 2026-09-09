@@ -163,10 +163,18 @@ class ContainerRunnerTests(unittest.TestCase):
             bundle = Path(directory)
             (bundle / "strata").write_bytes(b"container binary")
             (bundle / "plan.json").write_text("{}")
-            commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=REPOSITORY,
-                                             text=True).strip()
-            create(bundle, commit)
+            # Bundle verification only needs a stable identity; this harness test
+            # must also work from CI's archive checkout, which has no .git tree.
+            create(bundle, "synthetic-test-commit")
+            git = bundle / "git"
+            git.write_text(
+                "#!/bin/sh\n"
+                "[ \"$1\" = rev-parse ] && [ \"$2\" = HEAD ] || exit 2\n"
+                "printf '%s\\n' synthetic-test-commit\n"
+            )
+            git.chmod(0o755)
             env = {"STRATA_E2E_BUNDLE": str(bundle), "STRATA_E2E_IMAGE": "runtime",
+                   "PATH": f"{bundle}:{os.environ.get('PATH', os.defpath)}",
                    "MOCK_IMAGE_KEY": image_key()}
             result, calls = self.run_runner(extra_env=env)
             self.assertEqual(result.returncode, 0, result.stderr)

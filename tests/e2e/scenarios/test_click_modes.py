@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Single-click and double-click activation, and switching between them."""
 
 from __future__ import annotations

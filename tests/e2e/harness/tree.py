@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Accessible-tree navigation.
 
 Controls are located by accessible role, name, and state. Nothing here matches

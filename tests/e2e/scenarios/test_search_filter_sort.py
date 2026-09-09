@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Type-to-search, pane filtering, sorting, and hidden files."""
 
 from __future__ import annotations
