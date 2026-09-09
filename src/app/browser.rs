@@ -720,6 +720,10 @@ impl Browser {
     }
 
     pub fn navigate(self: &Rc<Self>, location: Location) {
+        self.navigate_with_selection(location, false);
+    }
+
+    fn navigate_with_selection(self: &Rc<Self>, location: Location, select_first: bool) {
         self.validation_generation
             .set(self.validation_generation.get().saturating_add(1));
         self.validation_load.borrow_mut().take();
@@ -734,6 +738,9 @@ impl Browser {
         self.state
             .borrow_mut()
             .navigate(location.clone(), request_id);
+        if select_first {
+            self.select_first_on_load(0);
+        }
         self.emit(BrowserEvent::Reset);
         self.emit(BrowserEvent::ColumnAdded {
             depth: 0,
@@ -2092,7 +2099,7 @@ impl Browser {
             return;
         }
         self.select(depth, position);
-        self.activate_focused();
+        self.activate_focused_with_selection(false);
     }
 
     pub(crate) fn is_open_child(&self, parent_depth: usize, location: &Location) -> bool {
@@ -2105,12 +2112,21 @@ impl Browser {
 
     /// Activates an item using conventional single-pane list navigation.
     pub fn activate_in_place(self: &Rc<Self>, depth: usize, position: usize) {
+        self.activate_in_place_with_selection(depth, position, false);
+    }
+
+    fn activate_in_place_with_selection(
+        self: &Rc<Self>,
+        depth: usize,
+        position: usize,
+        select_first: bool,
+    ) {
         self.select(depth, position);
         let Some(entry) = self.entry_at(depth, position) else {
             return;
         };
         if entry.is_directory() {
-            self.navigate(entry.location);
+            self.navigate_with_selection(entry.location, select_first);
         } else {
             self.emit(BrowserEvent::OpenRequested {
                 location: entry.location,
@@ -2123,7 +2139,7 @@ impl Browser {
             self.move_selection(1);
             return;
         };
-        self.activate_in_place(depth, position);
+        self.activate_in_place_with_selection(depth, position, true);
     }
 
     pub fn move_selection(&self, direction: i32) {
@@ -2196,6 +2212,10 @@ impl Browser {
     }
 
     pub fn activate_focused(self: &Rc<Self>) {
+        self.activate_focused_with_selection(true);
+    }
+
+    fn activate_focused_with_selection(self: &Rc<Self>, select_first: bool) {
         let focused = self.state.borrow().focused_entry();
         let Some((depth, _, entry)) = focused else {
             self.move_selection(1);
@@ -2206,7 +2226,7 @@ impl Browser {
             if self.is_open_child(depth, &entry.location) {
                 self.focus_child();
             } else {
-                self.descend_with_selection(depth, entry.location, true);
+                self.descend_with_selection(depth, entry.location, select_first);
             }
         } else {
             self.emit(BrowserEvent::OpenRequested {
