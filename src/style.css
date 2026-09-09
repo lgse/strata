@@ -1436,9 +1436,7 @@ switch:checked slider {
   transition: none;
 }
 
-/* The mode scrollers sit beside the sidebar paned handle, whose box extends
-   behind the first pixels of the horizontal scrollbar. An opaque trough
-   keeps the handle from showing through there as a small square. */
+/* Opaque troughs conceal the sidebar paned handle beneath mode scrollers. */
 .mode-scroll scrollbar.horizontal > range > trough,
 .mode-scroll scrollbar.horizontal:hover > range > trough,
 .mode-scroll scrollbar.horizontal.hovering > range > trough,
