@@ -250,6 +250,13 @@ impl ViewState {
     }
 
     pub(super) fn dismiss_file_operation_progress(&self) {
+        self.dismiss_file_operation_progress_then(|| {});
+    }
+
+    pub(super) fn dismiss_file_operation_progress_then(
+        &self,
+        after_dismiss: impl FnOnce() + 'static,
+    ) {
         if let Some(source) = self.pending_file_progress.take() {
             source.remove();
         }
@@ -260,7 +267,18 @@ impl ViewState {
             if let Some(source) = view.pulse_source.take() {
                 source.remove();
             }
+            let after_dismiss = Rc::new(RefCell::new(Some(after_dismiss)));
+            let callback = after_dismiss.clone();
+            view.layer.connect_parent_notify(move |layer| {
+                if layer.parent().is_none()
+                    && let Some(callback) = callback.borrow_mut().take()
+                {
+                    callback();
+                }
+            });
             dismiss_modal_layer(&view.layer, &view.overlay, view.blurred_root.as_ref());
+        } else {
+            after_dismiss();
         }
     }
 
