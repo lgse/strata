@@ -28,6 +28,7 @@ use gtk::{glib, prelude::*};
 use std::{
     cell::{Cell, RefCell},
     rc::Rc,
+    time::Duration,
 };
 
 fn anchored_row(state: &std::rc::Weak<ViewState>, depth: usize, map: &ViewMap) -> Option<u32> {
@@ -323,7 +324,9 @@ pub(super) fn column_rows(
                 };
                 let commit = file_drop_commit(target, &destination, &sources, &drop_state);
                 slide_in_down(&dropped_row);
-                state.commit_file_drop(destination, sources, commit);
+                glib::timeout_add_local_once(Duration::from_millis(300), move || {
+                    state.commit_file_drop(destination, sources, commit);
+                });
                 true
             });
             row.add_controller(drop);

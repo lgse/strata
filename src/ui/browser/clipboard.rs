@@ -456,8 +456,7 @@ fn classify_file_drop(
         .as_ref()
         .map_or_else(|| target.actions(), |drop| drop.actions());
     let offered = offered_file_actions(target.actions(), source_actions);
-    let (strategy, result) =
-        preferred_file_drop_commit_for_current_strategy(offered, override_with, relation, is_noop);
+    let strategy = current_cross_volume_drop_strategy();
     if commit {
         tracing::debug!(
             dest = %destination.diagnostic_path(),
@@ -474,18 +473,11 @@ fn classify_file_drop(
             "drop action classified"
         );
     }
-    result
+    preferred_file_drop_commit(offered, override_with, relation, is_noop, strategy)
 }
 
-fn preferred_file_drop_commit_for_current_strategy(
-    actions: gtk::gdk::DragAction,
-    override_with: DropOverride,
-    volume: VolumeRelation,
-    is_noop: bool,
-) -> (CrossVolumeDropStrategy, DropCommit) {
-    let strategy = crate::ui::theme::ThemeManager::shared().cross_volume_drop_strategy();
-    let commit = preferred_file_drop_commit(actions, override_with, volume, is_noop, strategy);
-    (strategy, commit)
+fn current_cross_volume_drop_strategy() -> CrossVolumeDropStrategy {
+    crate::ui::theme::ThemeManager::shared().cross_volume_drop_strategy()
 }
 
 /// A compositor's source-side MOVE offer must not prevent Strata's cross-volume copy.
