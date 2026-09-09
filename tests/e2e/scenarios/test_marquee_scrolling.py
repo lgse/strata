@@ -60,7 +60,12 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
         label = anchor.find(role="label", name="010.txt")
         assert label is not None
         bounds = label.screen_bounds()
-        start = (bounds.x + bounds.width * 2 // 3, bounds.center[1])
+        row_bounds = anchor.screen_bounds()
+        # Start in the vertical gap immediately before the row allocation.
+        # The whole row is intentionally draggable, so starting inside the
+        # label would test a content hit rather than marquee initiation from
+        # the background gap.
+        start = (bounds.center[0], row_bounds.y - 2)
     viewport = _viewport(strata)
     end = (
         viewport.x + viewport.width - 24,
