@@ -2715,5 +2715,38 @@ fn mixed_conflict_choices_apply_independently_across_a_multi_item_paste()
     Ok(())
 }
 
+#[test]
+fn copying_a_tree_with_a_named_pipe_fails_instead_of_blocking() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    fs::create_dir_all(&source)?;
+    fs::write(source.join("before.txt"), b"before")?;
+    rustix::fs::mkfifoat(
+        rustix::fs::CWD,
+        source.join("pipe"),
+        rustix::fs::Mode::from_bits_truncate(0o600),
+    )?;
+
+    let result = glib::MainContext::default().block_on(copy_recursively(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    let error = result.expect_err("a named pipe cannot be copied as a regular file");
+    assert!(
+        error.to_string().contains("pipe"),
+        "the error should name the entry: {error}"
+    );
+    assert!(!target.join("pipe").exists());
+    Ok(())
+}
+
 mod create_entry;
 mod trash_capabilities;
