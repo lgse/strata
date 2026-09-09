@@ -428,6 +428,10 @@ impl ViewMap {
             .map_or(0, |placeholder| placeholder.n_items())
     }
 
+    pub(crate) fn has_query(&self) -> bool {
+        !self.query.borrow().trim().is_empty()
+    }
+
     pub(crate) fn source_position(&self, visible_position: u32) -> Option<usize> {
         let filter_position = visible_position.checked_sub(self.placeholder_count())?;
         let query = self.query.borrow();
@@ -513,10 +517,8 @@ pub(crate) fn activate_recursive_search_result(
     };
     if item.is_directory {
         browser.navigate(Location::local(item.path));
-    } else if let Some(parent) = item.path.parent() {
-        browser.navigate(Location::local(parent));
     } else {
-        return false;
+        browser.open_location(Location::local(item.path));
     }
     true
 }
@@ -584,7 +586,7 @@ pub(super) fn bitset_positions(bitset: &gtk::Bitset) -> Vec<u32> {
     std::iter::once(first).chain(iterator).collect()
 }
 
-pub(super) fn cancel_source(source: &RefCell<Option<glib::SourceId>>) {
+pub(crate) fn cancel_source(source: &RefCell<Option<glib::SourceId>>) {
     if let Some(source) = source.take() {
         source.remove();
     }

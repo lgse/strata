@@ -2993,7 +2993,7 @@ colorchooser colorswatch overlay {
   color: @theme_text;
   border-radius: 6px;
   margin: 1px 8px;
-  padding: 4px 0;
+  padding: 0;
   transition: background 160ms ease-out, color 160ms ease-out;
 }
 
@@ -3012,7 +3012,12 @@ colorchooser colorswatch overlay {
 .file-row {
   border-radius: 6px;
   color: @theme_text;
-  padding: 4px;
+  padding: 0 4px;
+}
+
+.file-row > * {
+  margin-bottom: 8px;
+  margin-top: 8px;
 }
 
 .file-row.cut {
@@ -3231,6 +3236,7 @@ colorchooser colorswatch overlay {
 .skeleton-miller .file-row {
   margin: 1px 8px;
   min-height: 18px;
+  padding: 4px;
 }
 
 .directory-feedback {
@@ -3866,8 +3872,13 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .list-row {
-  min-height: 28px;
+  min-height: 36px;
   padding: 0;
+}
+
+.list-row > * {
+  margin-bottom: 4px;
+  margin-top: 4px;
 }
 
 .list-name-cell,
@@ -3877,12 +3888,18 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 
 .mode-list.density-airy .list-row {
   min-height: 42px;
-  padding-bottom: 4px;
-  padding-top: 4px;
+}
+
+.mode-list.density-airy .list-row > * {
+  margin-bottom: 8px;
+  margin-top: 8px;
 }
 
 .density-airy .file-row {
   min-height: 38px;
-  padding-bottom: 5px;
-  padding-top: 5px;
+}
+
+.density-airy .file-row > * {
+  margin-bottom: 9px;
+  margin-top: 9px;
 }

@@ -34,6 +34,7 @@ pub(super) struct ListFactory {
     pub(super) scrolling: Rc<Cell<bool>>,
     pub(super) bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
     pub(super) state: Option<Weak<crate::ui::browser::ViewState>>,
+    pub(super) filter_query: Rc<RefCell<String>>,
 }
 
 impl ListFactory {
@@ -73,6 +74,7 @@ impl ListFactory {
             self.activation.clone(),
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),
+            self.filter_query.clone(),
         );
         let content_click = install_modified_selection_click(
             &row.widget,
@@ -89,7 +91,13 @@ impl ListFactory {
             self.transfers.clone(),
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),
-            (Some(row.name.upcast_ref()), &content_click),
+            self.state.clone(),
+            (
+                Some(row.name.upcast_ref()),
+                Some(row.icon.upcast_ref()),
+                &content_click,
+                true,
+            ),
         );
     }
 

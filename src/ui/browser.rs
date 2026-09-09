@@ -46,6 +46,7 @@ mod properties;
 mod transfer;
 mod trash;
 
+pub(in crate::ui) use crate::ui::browser::clipboard::drag_icon_with_count;
 pub(super) use crate::ui::browser::clipboard::file_drag_content;
 pub(crate) use crate::ui::browser::clipboard::{
     drag_actions_for_modifiers, file_drop_action, locations_from_file_list_value,
@@ -310,6 +311,7 @@ impl BrowserView {
 
         let preferences = super::theme::ThemeManager::shared();
         let browser = Browser::with_preferences(source, preferences.sort_preferences());
+        browser.set_chooser_mode(!interactive);
         let preferences_for_sorting = preferences.clone();
         browser.observe_preferences(move |sorting| {
             preferences_for_sorting.set_sort_preferences(sorting);
@@ -1139,13 +1141,29 @@ impl BrowserView {
             if selected.is_empty() {
                 return None;
             }
-            let position = selected.maximum();
             column
                 .search_results
                 .borrow()
-                .get(position as usize)
+                .get(selected.maximum() as usize)
                 .map(search_result_entry)
         })
+    }
+
+    pub fn selected_search_results(&self) -> Option<Vec<FileEntry>> {
+        if self.view_mode() != BrowserMode::Columns {
+            return self.state.mode_views.borrow().selected_search_results();
+        }
+        let depth = self.state.destination_depth()?;
+        let columns = self.state.columns.borrow();
+        let column = columns.get(depth)?;
+        column.search_handle.borrow().as_ref()?;
+        let results = column.search_results.borrow();
+        Some(
+            collection::bitset_positions(&column.selection.selection())
+                .into_iter()
+                .filter_map(|position| results.get(position as usize).map(search_result_entry))
+                .collect(),
+        )
     }
 
     pub fn item_view_has_focus(&self) -> bool {
@@ -1243,6 +1261,11 @@ impl BrowserView {
 }
 
 impl ViewState {
+    pub(in crate::ui) fn cancel_peek(&self) {
+        cancel_source(&self.pending_peek);
+        self.browser.close_peek();
+    }
+
     fn begin_global_activity(self: &Rc<Self>, label: impl Into<String>) -> GlobalActivity {
         let label = label.into();
         let id = self.global_activity.borrow_mut().begin(label.clone());

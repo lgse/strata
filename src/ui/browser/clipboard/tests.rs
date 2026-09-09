@@ -52,6 +52,28 @@ fn incoming_file_lists_sanitize_remote_credentials() {
 }
 
 #[test]
+fn multi_file_badge_grows_for_multi_digit_counts() {
+    let single_digit = badge_dimensions(7.0, 10.0);
+    let four_digits = badge_dimensions(28.0, 10.0);
+
+    assert!(four_digits.0 > single_digit.0);
+    assert_eq!(single_digit.1, four_digits.1);
+    assert!(single_digit.0 >= single_digit.1);
+}
+
+#[test]
+fn badge_text_uses_the_more_contrasting_semantic_color() {
+    let accent = gtk::gdk::RGBA::new(0.1, 0.2, 0.8, 1.0);
+    let light_text = gtk::gdk::RGBA::WHITE;
+    let dark_surface = gtk::gdk::RGBA::BLACK;
+
+    assert_eq!(
+        contrasting_badge_text(&accent, &light_text, &dark_surface),
+        light_text
+    );
+}
+
+#[test]
 fn drag_actions_follow_copy_and_move_modifiers() {
     let both = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
 

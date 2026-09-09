@@ -76,7 +76,7 @@ def test_filtered_item_menu_previews_and_copies_the_real_location(strata, mode):
 def test_query_updates_retain_selection_focus_preview_and_background_menu(strata, mode):
     field = filter_results(strata)
     row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
-    strata.pointer.click(row)
+    strata.pointer.click(row, modifiers=("ctrl",))
     strata.pointer.click(field)
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview_shows("beta source"), "the selected preview")
@@ -125,7 +125,7 @@ def test_filtered_thumbnail_stays_rendered_across_updates(strata, mode, tmp_path
     strata.wait(lambda: len(strata.matches()) == 2, "image and text results")
     row = strata.window.find(role="list item", name="thumb.png")
     assert row is not None
-    strata.pointer.click(row)
+    strata.pointer.click(row, modifiers=("ctrl",))
     strata.pointer.click(field)
     icon = row.find(role="image")
     assert icon is not None
