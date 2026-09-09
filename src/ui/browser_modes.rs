@@ -1752,7 +1752,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             depth,
             Some((source_index_for_setup.clone(), filtered_for_setup.clone())),
         );
-        install_modified_selection_click(
+        let content_click = install_modified_selection_click(
             &card,
             item,
             selection_for_setup.clone(),
@@ -1776,7 +1776,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             transfers_for_setup.clone(),
             depth,
             Some((source_index_for_setup.clone(), filtered_for_setup.clone())),
-            None,
+            (None, &content_click),
         );
         item.set_child(Some(&card));
         if let Some(parent) = card.parent() {
@@ -2816,8 +2816,9 @@ fn install_list_drag_drop(
     transfer_handler: TransferHandlerSlot,
     depth: usize,
     position_map: Option<(SourceIndexMap, gio::ListModel)>,
-    drag_icon: Option<&gtk::Widget>,
+    drag_icon_and_content_click: (Option<&gtk::Widget>, &gtk::GestureClick),
 ) {
+    let (drag_icon, content_click) = drag_icon_and_content_click;
     if transfer_handler.borrow().is_none() {
         return;
     }
@@ -2834,6 +2835,9 @@ fn install_list_drag_drop(
         if !super::pointer::hits_item_content(&source.widget()?, x, y) {
             return None;
         }
+        source.set_actions(super::browser::drag_actions_for_modifiers(
+            source.current_event_state(),
+        ));
         let browser = browser_for_drag.upgrade()?;
         let dragged_item = dragged_item.upgrade()?;
         let position = dragged_item.position();
@@ -2873,12 +2877,16 @@ fn install_list_drag_drop(
         }
     });
     let dragged_row = row.downgrade();
-    drag.connect_drag_end(move |_, _, _| {
+    drag.connect_drag_end(move |source, _, _| {
+        source.set_actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE);
         if let Some(row) = dragged_row.upgrade() {
             row.remove_css_class("dragging");
         }
     });
-    row.add_controller(drag);
+    row.add_controller(drag.clone());
+    // Grouping requires both gestures already attached; claiming the modifier-click
+    // on content must not deny this drag before it reaches the threshold.
+    drag.group_with(content_click);
 
     let drop = gtk::DropTarget::new(
         gtk::gdk::FileList::static_type(),
@@ -3000,7 +3008,7 @@ fn install_modified_selection_click(
     browser: Weak<Browser>,
     depth: usize,
     positions: PanePositions,
-) {
+) -> gtk::GestureClick {
     let click = gtk::GestureClick::new();
     click.set_button(1);
     click.set_propagation_phase(gtk::PropagationPhase::Capture);
@@ -3055,7 +3063,8 @@ fn install_modified_selection_click(
             gesture.set_state(gtk::EventSequenceState::Claimed);
         }
     });
-    widget.add_controller(click);
+    widget.add_controller(click.clone());
+    click
 }
 
 fn anchor_at(browser: &Rc<Browser>, depth: usize, positions: &PanePositions, view_position: u32) {

@@ -52,6 +52,24 @@ fn incoming_file_lists_sanitize_remote_credentials() {
 }
 
 #[test]
+fn drag_actions_follow_copy_and_move_modifiers() {
+    let both = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
+
+    assert_eq!(
+        drag_actions_for_modifiers(gtk::gdk::ModifierType::empty()),
+        both
+    );
+    assert_eq!(
+        drag_actions_for_modifiers(gtk::gdk::ModifierType::CONTROL_MASK),
+        gtk::gdk::DragAction::COPY
+    );
+    assert_eq!(
+        drag_actions_for_modifiers(gtk::gdk::ModifierType::SHIFT_MASK),
+        gtk::gdk::DragAction::MOVE
+    );
+}
+
+#[test]
 fn local_file_drops_prefer_move_while_external_drops_prefer_copy() {
     let both = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
 

@@ -9,8 +9,8 @@ use crate::ui::{
     browser::{
         ViewState,
         clipboard::{
-            file_drag_content, file_drop_action, locations_equal, locations_from_file_list_value,
-            shared_cut_locations,
+            drag_actions_for_modifiers, file_drag_content, file_drop_action, locations_equal,
+            locations_from_file_list_value, shared_cut_locations,
         },
         collection::{ViewMap, cancel_source},
         entry::{
@@ -176,10 +176,12 @@ pub(super) fn column_rows(
         });
         row.add_controller(motion);
 
+        let mut content_drag: Option<gtk::DragSource> = None;
         if weak_state.upgrade().is_some_and(|state| state.interactive) {
             let drag = gtk::DragSource::builder()
                 .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
                 .build();
+            drag.set_propagation_phase(gtk::PropagationPhase::Capture);
             let weak_state_for_drag = weak_state.clone();
             let dragged_item = item.downgrade();
             let map_for_drag = map_for_hover.clone();
@@ -190,6 +192,7 @@ pub(super) fn column_rows(
                     return None;
                 }
                 prepare_row.remove_css_class("slide-out");
+                source.set_actions(drag_actions_for_modifiers(source.current_event_state()));
                 let state = weak_state_for_drag.upgrade()?;
                 let dragged_item = dragged_item.upgrade()?;
                 let source_position = map_for_drag.source_position(dragged_item.position())?;
@@ -214,13 +217,15 @@ pub(super) fn column_rows(
                 }
             });
             let dragged_row = row.downgrade();
-            drag.connect_drag_end(move |_, _, _| {
+            drag.connect_drag_end(move |source, _, _| {
+                source.set_actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE);
                 if let Some(row) = dragged_row.upgrade() {
                     row.remove_css_class("dragging");
                     slide_out(&row);
                 }
             });
-            row.add_controller(drag);
+            row.add_controller(drag.clone());
+            content_drag = Some(drag);
 
             let drop = gtk::DropTarget::new(
                 gtk::gdk::FileList::static_type(),
@@ -455,7 +460,12 @@ pub(super) fn column_rows(
         selection_click.connect_cancel(move |_, _| {
             pending_activation_for_cancel.take();
         });
-        row.add_controller(selection_click);
+        row.add_controller(selection_click.clone());
+        // Grouping requires both gestures already attached; claiming the modifier-click
+        // on content must not deny the row's drag before it reaches the threshold.
+        if let Some(drag) = &content_drag {
+            drag.group_with(&selection_click);
+        }
         item.set_child(Some(&row));
         let weak_item = glib::WeakRef::new();
         weak_item.set(Some(item));

@@ -239,7 +239,7 @@ xdg-mime query default inode/directory
 
 The final command should print `io.github.lgse.Strata.desktop`. The desktop entry's filename matches the `io.github.lgse.Strata` application ID that Strata's windows report, so desktop shells match a running window to this entry and draw its `Icon` value. Log out and back in if a shell caches launcher icons.
 
-When building from source, `make install-local` installs the binary, icon, and desktop entry in the same locations, and `make uninstall-local` removes them.
+When building from source, `mise run install-local` installs the binary, icon, and desktop entry in the same locations, and `mise run uninstall-local` removes them.
 
 ### "Open file location" from other applications
 
@@ -248,7 +248,7 @@ Browsers and GTK/GNOME applications reveal a file by calling the `org.freedeskto
 For a source installation, enable Strata as the per-user activatable provider explicitly:
 
 ```bash
-make install-file-manager
+mise run install-file-manager
 ```
 
 For an AUR package, copy its inactive service template into your per-user service directory:
@@ -268,7 +268,7 @@ sed "s|^Exec=/usr/bin/strata |Exec=$HOME/.local/bin/strata |" \
   > ~/.local/share/dbus-1/services/io.github.lgse.Strata.FileManager1.service
 ```
 
-A per-user provider takes precedence over system providers shipped by other file managers. Before enabling Strata manually, remove any other per-user service whose `Name` is `org.freedesktop.FileManager1`; two providers for the same name in one service directory are chosen arbitrarily. If another file manager already owns the bus name, exit it before testing. Use `make uninstall-file-manager` for a source installation, or remove the per-user service file, to disable Strata again.
+A per-user provider takes precedence over system providers shipped by other file managers. Before enabling Strata manually, remove any other per-user service whose `Name` is `org.freedesktop.FileManager1`; two providers for the same name in one service directory are chosen arbitrarily. If another file manager already owns the bus name, exit it before testing. Use `mise run uninstall-file-manager` for a source installation, or remove the per-user service file, to disable Strata again.
 
 Strata then answers `ShowFolders`, `ShowItems`, and `ShowItemProperties`, opening the directory that holds the named items with those items selected:
 
@@ -385,15 +385,15 @@ Plain-text and source previews are different: they stay in process because they 
 
 ## Development and documentation
 
-Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-config`, GTK 4.12+, GtkSourceView 5, Poppler GLib, and Fontconfig. On Arch:
+Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-config`, GTK 4.12+, GtkSourceView 5, Poppler GLib, and Fontconfig. [mise](https://mise.jdx.dev) pins that toolchain locally (`mise install`). On Arch:
 
 ```bash
-sudo pacman -S --needed base-devel rust bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
+sudo pacman -S --needed base-devel bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
   gst-libav gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
-make start-dev        # rebuild and restart as files change
-make run-dev          # build and launch the main app once
-make run-chooser-dev  # build and open an isolated Save chooser with choices
-./scripts/check.sh    # format, compile, Clippy, tests, and optional policy checks
+mise run start-dev        # rebuild and restart as files change
+mise run dev              # build and launch the main app once
+mise run chooser-dev      # build and open an isolated Save chooser with choices
+mise run check            # format, compile, Clippy, tests, and policy checks
 ```
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Deeper references:

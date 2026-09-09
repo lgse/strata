@@ -118,3 +118,14 @@ fn leaf_conflicts_preserve_native_filename_bytes() -> Result<(), Box<dyn Error>>
     assert!(!root.path().join(&created).exists());
     Ok(())
 }
+
+#[test]
+fn available_bytes_reports_unprivileged_free_space() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = ExtractionDestination::open(root.path())?;
+    assert!(
+        matches!(destination.available_bytes()?, Some(bytes) if bytes > 0),
+        "tempdir should report some free space"
+    );
+    Ok(())
+}
