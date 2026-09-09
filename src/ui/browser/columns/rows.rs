@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{
     BoundRow, PendingPointerActivation, column_size_text, set_active_path_style,
@@ -9,8 +9,8 @@ use crate::ui::{
     browser::{
         ViewState,
         clipboard::{
-            file_drag_content, file_drop_action, locations_equal, locations_from_file_list_value,
-            shared_cut_locations,
+            drag_actions_for_modifiers, file_drag_content, file_drop_action, locations_equal,
+            locations_from_file_list_value, shared_cut_locations,
         },
         collection::{ViewMap, cancel_source},
         entry::{
@@ -177,6 +177,7 @@ pub(super) fn column_rows(
         row.add_controller(motion);
 
         item.set_child(Some(&row));
+        let mut content_drag: Option<gtk::DragSource> = None;
         if weak_state.upgrade().is_some_and(|state| state.interactive) {
             let drag = gtk::DragSource::builder()
                 .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
@@ -194,6 +195,7 @@ pub(super) fn column_rows(
                     return None;
                 }
                 prepare_row.remove_css_class("slide-out");
+                source.set_actions(drag_actions_for_modifiers(source.current_event_state()));
                 let state = weak_state_for_drag.upgrade()?;
                 let dragged_item = dragged_item.upgrade()?;
                 let source_position = map_for_drag.source_position(dragged_item.position())?;
@@ -232,7 +234,8 @@ pub(super) fn column_rows(
                     state.cancel_peek();
                 }
             });
-            row.add_controller(drag);
+            row.add_controller(drag.clone());
+            content_drag = Some(drag);
 
             let drop = gtk::DropTarget::new(
                 gtk::gdk::FileList::static_type(),
@@ -467,7 +470,10 @@ pub(super) fn column_rows(
         selection_click.connect_cancel(move |_, _| {
             pending_activation_for_cancel.take();
         });
-        row.add_controller(selection_click);
+        row.add_controller(selection_click.clone());
+        if let Some(drag) = &content_drag {
+            drag.group_with(&selection_click);
+        }
         let weak_item = glib::WeakRef::new();
         weak_item.set(Some(item));
         let weak_row = glib::WeakRef::new();
@@ -558,6 +564,12 @@ pub(super) fn column_rows(
         } else {
             source_position.and_then(|position| browser?.entry_at(depth, position))
         };
+        if let Some(entry) = entry.as_ref() {
+            let pending_name = state
+                .as_ref()
+                .and_then(|state| state.pending_rename_name(entry));
+            label.set_label(pending_name.as_deref().unwrap_or(&entry.display_name));
+        }
         let origin = entry
             .as_ref()
             .filter(|_| searching)
