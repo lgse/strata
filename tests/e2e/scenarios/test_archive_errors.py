@@ -13,8 +13,12 @@ def test_invalid_archive_reports_damage_and_allows_another_extraction(strata, na
     strata.keyboard.press("ctrl+r")
     strata.pointer.right_click(strata.entry(name))
     strata.choose_menu_item("Extract here")
-    dialog = strata.wait_for_dialog()
-    assert dialog.name == "Unable to complete operation"
+
+    def extraction_error():
+        dialog = strata.dialog()
+        return dialog if dialog and dialog.name == "Unable to complete operation" else None
+
+    dialog = strata.wait(extraction_error, "invalid archive error after extraction progress")
     assert dialog.find(role="label", name="This file is not a valid archive or is damaged.")
     assert not strata.window.find(role="progress bar")
     assert fixture.path(name).read_bytes() == b"This is harmless text, not an archive.\n"
