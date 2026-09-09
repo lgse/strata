@@ -37,6 +37,48 @@ pub(super) struct PendingRename {
     state: PendingRenameState,
 }
 
+impl PendingRename {
+    fn begin_dispatch(&mut self) -> bool {
+        if !matches!(self.state, PendingRenameState::Queued) {
+            return false;
+        }
+        self.state = PendingRenameState::Dispatching;
+        true
+    }
+
+    fn finish_dispatch(&mut self, operation_id: OperationRequestId) -> bool {
+        if !matches!(self.state, PendingRenameState::Dispatching) {
+            return false;
+        }
+        self.state = PendingRenameState::Running(operation_id);
+        true
+    }
+
+    fn owns_operation(
+        &self,
+        operation_id: OperationRequestId,
+        last_started: Option<OperationRequestId>,
+    ) -> bool {
+        matches!(&self.state, PendingRenameState::Running(id) if *id == operation_id)
+            || (matches!(&self.state, PendingRenameState::Dispatching)
+                && last_started == Some(operation_id))
+    }
+
+    fn complete(
+        &mut self,
+        operation_id: OperationRequestId,
+        last_started: Option<OperationRequestId>,
+    ) -> bool {
+        if !self.owns_operation(operation_id, last_started) {
+            return false;
+        }
+        self.state = PendingRenameState::AwaitingRefresh {
+            requests: Vec::new(),
+        };
+        true
+    }
+}
+
 fn constrain_rename_to_viewport(field: &gtk::Entry, viewport: &gtk::ScrolledWindow) {
     let Some(editor) = field.parent() else { return };
     let Some(bounds) = editor.compute_bounds(viewport) else {
@@ -197,7 +239,113 @@ pub(in crate::ui) fn queue_rename(
     });
 }
 
+struct RenameRevealContext {
+    old: Location,
+    target: Location,
+    depth: usize,
+    mode: BrowserMode,
+    generation: u64,
+    reveal_generation: u64,
+    deadline: std::time::Instant,
+}
+
+enum RenameRevealTarget {
+    Wait,
+    Stop,
+    Ready {
+        source_position: usize,
+        position: u32,
+        row: Option<gtk::Widget>,
+        footer: Option<gtk::Widget>,
+    },
+}
+
 impl ViewState {
+    fn rename_reveal_is_valid(&self, list: &gtk::ListView, context: &RenameRevealContext) -> bool {
+        if std::time::Instant::now() >= context.deadline
+            || self.rename_generation.get() != context.generation
+            || self.rename_reveal_generation.get() != context.reveal_generation
+            || self.browser.active_depth() != Some(context.depth)
+        {
+            return false;
+        }
+        let selected = self.browser.selected_entries();
+        selected.len() == 1
+            && (selected[0].location == context.old || selected[0].location == context.target)
+            && self.mode_views.borrow().mode() == context.mode
+            && match context.mode {
+                BrowserMode::Columns => self
+                    .columns
+                    .borrow()
+                    .get(context.depth)
+                    .is_some_and(|current| current.list == *list),
+                BrowserMode::List => {
+                    self.mode_views
+                        .borrow()
+                        .list_rename_view(context.depth)
+                        .as_ref()
+                        == Some(list)
+                }
+                BrowserMode::Icons => false,
+            }
+    }
+
+    fn resolve_rename_reveal_target(&self, context: &RenameRevealContext) -> RenameRevealTarget {
+        let Some(snapshot) = self.browser.column_snapshot(context.depth) else {
+            return RenameRevealTarget::Stop;
+        };
+        if snapshot.location
+            != context
+                .target
+                .parent()
+                .unwrap_or_else(|| context.target.clone())
+        {
+            return RenameRevealTarget::Stop;
+        }
+        let position = (0..snapshot.count).find(|position| {
+            self.browser
+                .entry_at(context.depth, *position)
+                .is_some_and(|entry| entry.location == context.target)
+        });
+        let Some(source_position) = position else {
+            return RenameRevealTarget::Wait;
+        };
+        if snapshot.loading {
+            return RenameRevealTarget::Wait;
+        }
+        let (position, row, footer) = if context.mode == BrowserMode::Columns {
+            let column = self.columns.borrow()[context.depth].clone();
+            let Some(position) = column.map.view_position(source_position) else {
+                return RenameRevealTarget::Stop;
+            };
+            let row = column.bound_rows.borrow().iter().find_map(|bound| {
+                (bound.item.upgrade()?.position() == position)
+                    .then(|| bound.row.upgrade().map(|row| row.upcast::<gtk::Widget>()))
+                    .flatten()
+            });
+            (
+                position,
+                row,
+                Some(column.destination_hint.clone().upcast::<gtk::Widget>()),
+            )
+        } else {
+            let Some((position, row)) = self
+                .mode_views
+                .borrow()
+                .list_rename_row(context.depth, source_position)
+            else {
+                return RenameRevealTarget::Stop;
+            };
+            (position, row, None)
+        };
+        RenameRevealTarget::Ready {
+            source_position,
+            position,
+            row,
+            footer,
+        }
+    }
+
     pub(in crate::ui) fn rename_reveal_generation(&self) -> u64 {
         self.rename_reveal_generation.get()
     }
@@ -278,13 +426,7 @@ impl ViewState {
                 .borrow_mut()
                 .as_mut()
                 .filter(|pending| pending.generation == generation)
-                .is_some_and(|pending| {
-                    if !matches!(&pending.state, PendingRenameState::Queued) {
-                        return false;
-                    }
-                    pending.state = PendingRenameState::Dispatching;
-                    true
-                });
+                .is_some_and(PendingRename::begin_dispatch);
             if dispatch {
                 let operation_id = state.browser.rename(entry, name);
                 if let Some(operation_id) = operation_id
@@ -293,9 +435,8 @@ impl ViewState {
                         .borrow_mut()
                         .as_mut()
                         .filter(|pending| pending.generation == generation)
-                    && matches!(&pending.state, PendingRenameState::Dispatching)
                 {
-                    pending.state = PendingRenameState::Running(operation_id);
+                    pending.finish_dispatch(operation_id);
                 }
             }
         });
@@ -425,11 +566,7 @@ impl ViewState {
             .borrow()
             .as_ref()
             .is_some_and(|pending| {
-                matches!(
-                    &pending.state,
-                    PendingRenameState::Running(id) if *id == operation_id
-                ) || (matches!(&pending.state, PendingRenameState::Dispatching)
-                    && self.browser.last_started_operation() == Some(operation_id))
+                pending.owns_operation(operation_id, self.browser.last_started_operation())
             });
         if owned {
             self.fail_pending_rename();
@@ -437,31 +574,21 @@ impl ViewState {
     }
 
     pub(super) fn complete_pending_rename(self: &Rc<Self>, operation_id: OperationRequestId) {
-        let Some((old_location, new_location, new_name)) = self
-            .pending_rename
-            .borrow_mut()
-            .as_mut()
-            .filter(|pending| {
-                (matches!(&pending.state, PendingRenameState::Dispatching)
-                    && self.browser.last_started_operation() == Some(operation_id))
-                    || matches!(
-                        &pending.state,
-                        PendingRenameState::Running(id) if *id == operation_id
-                    )
-            })
-            .map(|pending| {
-                pending.state = PendingRenameState::AwaitingRefresh {
-                    requests: Vec::new(),
-                };
-                (
-                    pending.old_location.clone(),
-                    pending.new_location.clone(),
-                    pending.new_name.clone(),
-                )
-            })
-        else {
-            return;
+        let completed = {
+            let mut pending = self.pending_rename.borrow_mut();
+            let Some(pending) = pending.as_mut() else {
+                return;
+            };
+            if !pending.complete(operation_id, self.browser.last_started_operation()) {
+                return;
+            }
+            (
+                pending.old_location.clone(),
+                pending.new_location.clone(),
+                pending.new_name.clone(),
+            )
         };
+        let (old_location, new_location, new_name) = completed;
         self.update_rename_labels(&old_location, new_location.as_ref(), &new_name);
         if let Some(location) = new_location
             && self
@@ -508,9 +635,15 @@ impl ViewState {
             return;
         };
         let weak = Rc::downgrade(self);
-        let generation = self.rename_generation.get();
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
-        let reveal_generation = self.rename_reveal_generation.get();
+        let context = RenameRevealContext {
+            old,
+            target,
+            depth,
+            mode,
+            generation: self.rename_generation.get(),
+            reveal_generation: self.rename_reveal_generation.get(),
+            deadline: std::time::Instant::now() + std::time::Duration::from_secs(5),
+        };
         let scroll_value = std::cell::Cell::new(
             self.pending_rename
                 .borrow()
@@ -527,70 +660,24 @@ impl ViewState {
             let Some(state) = weak.upgrade() else {
                 return gtk::glib::ControlFlow::Break;
             };
-            let selected = state.browser.selected_entries();
-            if std::time::Instant::now() >= deadline
-                || state.rename_generation.get() != generation
-                || state.rename_reveal_generation.get() != reveal_generation
-                || state.browser.active_depth() != Some(depth)
-                || selected.len() != 1
-                || (selected[0].location != old && selected[0].location != target)
-                || state.mode_views.borrow().mode() != mode
-                || match mode {
-                    BrowserMode::Columns => !state
-                        .columns
-                        .borrow()
-                        .get(depth)
-                        .is_some_and(|current| current.list == *list),
-                    BrowserMode::List => {
-                        state.mode_views.borrow().list_rename_view(depth).as_ref() != Some(list)
-                    }
-                    BrowserMode::Icons => true,
-                }
-            {
+            if !state.rename_reveal_is_valid(list, &context) {
                 return gtk::glib::ControlFlow::Break;
             }
-            let Some(snapshot) = state.browser.column_snapshot(depth) else {
-                return gtk::glib::ControlFlow::Break;
-            };
-            if snapshot.location != target.parent().unwrap_or_else(|| target.clone()) {
-                return gtk::glib::ControlFlow::Break;
-            }
-            let position = (0..snapshot.count).find(|position| {
-                state
-                    .browser
-                    .entry_at(depth, *position)
-                    .is_some_and(|entry| entry.location == target)
-            });
-            let Some(position) = position else {
-                return gtk::glib::ControlFlow::Continue;
-            };
-            if source_position != Some(position) {
+            let (resolved_source_position, position, row, footer) =
+                match state.resolve_rename_reveal_target(&context) {
+                    RenameRevealTarget::Stop => return gtk::glib::ControlFlow::Break,
+                    RenameRevealTarget::Wait => return gtk::glib::ControlFlow::Continue,
+                    RenameRevealTarget::Ready {
+                        source_position: resolved_source_position,
+                        position,
+                        row,
+                        footer,
+                    } => (resolved_source_position, position, row, footer),
+                };
+            if source_position != Some(resolved_source_position) {
                 scroll_value.set(None);
             }
-            let (position, row, footer) = if mode == BrowserMode::Columns {
-                let column = state.columns.borrow()[depth].clone();
-                let Some(position) = column.map.view_position(position) else {
-                    return gtk::glib::ControlFlow::Break;
-                };
-                let row = column.bound_rows.borrow().iter().find_map(|bound| {
-                    (bound.item.upgrade()?.position() == position)
-                        .then(|| bound.row.upgrade().map(|row| row.upcast::<gtk::Widget>()))
-                        .flatten()
-                });
-                (
-                    position,
-                    row,
-                    Some(column.destination_hint.clone().upcast::<gtk::Widget>()),
-                )
-            } else {
-                let Some((position, row)) =
-                    state.mode_views.borrow().list_rename_row(depth, position)
-                else {
-                    return gtk::glib::ControlFlow::Break;
-                };
-                (position, row, None)
-            };
-            if snapshot.loading || list.height() <= 1 {
+            if list.height() <= 1 {
                 return gtk::glib::ControlFlow::Continue;
             }
             let Some(row) = row else {
@@ -646,14 +733,14 @@ impl ViewState {
             self.pending_rename
                 .borrow()
                 .as_ref()
-                .is_some_and(|pending| match (&pending.state, operation_id) {
-                    (PendingRenameState::Queued, None)
-                    | (PendingRenameState::Dispatching, None) => true,
-                    (PendingRenameState::Dispatching, Some(actual)) => {
-                        self.browser.last_started_operation() == Some(actual)
+                .is_some_and(|pending| match operation_id {
+                    None => matches!(
+                        pending.state,
+                        PendingRenameState::Queued | PendingRenameState::Dispatching
+                    ),
+                    Some(actual) => {
+                        pending.owns_operation(actual, self.browser.last_started_operation())
                     }
-                    (PendingRenameState::Running(expected), Some(actual)) => *expected == actual,
-                    _ => false,
                 });
         if owned {
             self.fail_pending_rename();

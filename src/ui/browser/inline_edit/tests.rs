@@ -3,7 +3,7 @@
 use super::*;
 use crate::{
     app::Browser,
-    model::{EntryKind, MetadataValue},
+    model::{EntryKind, Location, MetadataValue},
     services::{
         CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest, DirectoryChange,
         DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
@@ -985,4 +985,63 @@ fn invalid_renames_retain_the_original_file_in_every_view_mode() {
             }
         },
     );
+}
+
+#[test]
+fn lifecycle_rejects_invalid_transitions_and_stale_operations() {
+    let mut pending = pending();
+    let current = OperationRequestId(7);
+    let stale = OperationRequestId(6);
+
+    assert!(!pending.finish_dispatch(current));
+    assert!(!pending.complete(current, None));
+    assert!(pending.begin_dispatch());
+    assert!(!pending.begin_dispatch());
+    assert!(!pending.owns_operation(stale, Some(current)));
+    assert!(pending.finish_dispatch(current));
+    assert!(pending.owns_operation(current, None));
+    assert!(!pending.complete(stale, Some(current)));
+    assert!(pending.complete(current, Some(current)));
+    assert!(matches!(
+        pending.state,
+        PendingRenameState::AwaitingRefresh { .. }
+    ));
+}
+
+#[test]
+fn dispatching_operation_is_owned_by_latest_started_request() {
+    let mut pending = pending();
+    let current = OperationRequestId(11);
+    assert!(pending.begin_dispatch());
+    assert!(pending.owns_operation(current, Some(current)));
+    assert!(!pending.owns_operation(current, None));
+    assert!(pending.complete(current, Some(current)));
+}
+
+#[test]
+fn synchronous_completion_cannot_be_overwritten_by_dispatch_finish() {
+    let mut pending = pending();
+    let operation = OperationRequestId(12);
+    assert!(pending.begin_dispatch());
+    assert!(pending.complete(operation, Some(operation)));
+    assert!(!pending.finish_dispatch(operation));
+    assert!(matches!(
+        pending.state,
+        PendingRenameState::AwaitingRefresh { .. }
+    ));
+}
+
+fn pending() -> PendingRename {
+    PendingRename {
+        old_location: Location::local("/home/test/old"),
+        new_location: None,
+        old_name: "old".into(),
+        new_name: "new".into(),
+        generation: 1,
+        monitor_has_new_location: false,
+        reveal_generation: 0,
+        scroll_value: None,
+        source_position: None,
+        state: PendingRenameState::Queued,
+    }
 }
