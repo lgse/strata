@@ -240,6 +240,7 @@ impl BrowserView {
             .vexpand(true)
             .build();
         scroller.add_css_class("fixed-scrollbar");
+        scroller.add_css_class("columns-scroll");
         let overlay = gtk::Overlay::new();
 
         let location_entry = gtk::Entry::builder()
