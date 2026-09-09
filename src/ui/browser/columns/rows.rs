@@ -20,7 +20,7 @@ use crate::ui::{
         paths::is_trash_location,
     },
     browser_modes::BrowserMode,
-    modal::{slide_in_down, slide_out},
+    modal::slide_in_down,
 };
 use crate::{model::FileEntry, services::SearchItem};
 use gtk::{glib, prelude::*};
@@ -198,7 +198,6 @@ pub(super) fn column_rows(
                 {
                     return None;
                 }
-                prepare_row.remove_css_class("slide-out");
                 source.set_actions(drag_actions_for_modifiers(source.current_event_state()));
                 let state = weak_state_for_drag.upgrade()?;
                 let dragged_item = dragged_item.upgrade()?;
@@ -238,7 +237,6 @@ pub(super) fn column_rows(
             drag.connect_drag_end(move |_, _, _| {
                 if let Some(row) = dragged_row.upgrade() {
                     row.remove_css_class("dragging");
-                    slide_out(&row);
                 }
                 if let Some(state) = weak_state_for_end.upgrade() {
                     state.cancel_peek();
