@@ -2599,7 +2599,7 @@ popover.folder-context-popover.background {
 
 .context-menu-scroll scrollbar.vertical > range > trough > slider {
   border-width: 1px;
-  margin: 0 4px;
+  margin: 0 2px 0 4px;
   min-width: 6px;
 }
 
