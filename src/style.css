@@ -1475,6 +1475,10 @@ scrollbar slider:active {
   min-height: 6px;
 }
 
+.columns-scroll scrollbar.horizontal {
+  background: @theme_bg;
+}
+
 .autoscroll-anchor {
   background: alpha(@theme_surface, 0.92);
   border: 1px solid alpha(@theme_border, 0.9);
