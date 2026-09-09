@@ -13,6 +13,57 @@ checks both what the window reports and what happened on disk.
 ./scripts/e2e.sh -k "clipboard and columns"
 ```
 
+### Targeted local validation
+
+Choose checks from the behavior and caller mapping, not from changed-file names
+alone. Bounded changes may use a non-empty, relevant selection; broad,
+cross-cutting, shared infrastructure, dependency/build/CI/harness changes, or
+uncertain coverage require the full pinned quality phases and the full canonical
+E2E run. Include relevant views, callers, and preference behavior, and add or
+run the regression test that proves the change. Record the scope rationale,
+commands, results, and intentional omissions in the handoff. After editing,
+rerun affected checks rather than unrelated suites.
+
+For native Rust selection, `scripts/test-headless.py` starts the private display
+and session buses, then appends its arguments to the fixed
+`cargo test --all-targets --all-features` command. Use module/name filters:
+
+```bash
+./scripts/test-headless.py services::operations::tests
+./scripts/test-headless.py basenames_reject_empty_reserved_nested_absolute_and_nul_names
+```
+
+These select test execution across targets, not compilation to one target.
+Targeted runs can still incur a full test build; Cargo's cache helps subsequent
+iterations. There is no automatic changed-code dependency-to-test mapping.
+
+A filter must collect at least one test; use Cargo's output or a collection
+check to verify that it did. `scripts/quality.sh` only accepts `all`, `fmt`,
+`clippy`, or `test` and does **not** forward test filters, so it cannot be used
+for a targeted test selection.
+
+The E2E runner passes repository-relative paths and normal pytest arguments to
+its configured pytest invocation. Use a file or `-k` expression, then confirm
+collection is nonzero:
+
+```bash
+./scripts/e2e.sh tests/e2e/scenarios/test_inline_renaming.py
+./scripts/e2e.sh -k 'rename and not visual' --collect-only
+```
+
+`./scripts/e2e.sh` is the canonical pinned-container evidence; native
+`scripts/e2e-native.sh` is only for host-toolkit debugging and does not replace
+it. Preserve the verified image provenance and `target/e2e-container` and
+`target/quality-container` caches. CI still runs its complete unchanged gate.
+
+Every GUI or delegated check must clear inherited display variables and use a
+private Xvfb and private D-Bus session. `scripts/test-headless.py` and the E2E
+runners enforce this isolation. Rust tests set `GTK_A11Y=none`, `NO_AT_BRIDGE=1`,
+and `STRATA_REQUIRE_GTK_TESTS=1`; E2E enables accessibility on its private AT-SPI
+bus to drive the application. Other commands must arrange equivalent isolation. A
+missing isolated display or bus is a hard failure. Never run against the desktop
+or an inherited session bus, silently skip GTK tests, or fall back to the desktop.
+
 The runner prefers Podman when available; select an engine explicitly with
 `STRATA_CONTAINER_ENGINE=podman` or `docker`. CI explicitly selects Docker to match
 its runtime archive loader; an image in one engine's store is not visible to the
@@ -46,8 +97,8 @@ Updating the image inputs is an intentional rendering
 environment change and requires reviewing the visual baselines.
 
 For explicit host-toolkit debugging only, `./scripts/e2e-native.sh` accepts
-`STRATA_BINARY` and `STRATA_E2E_VENV`. It is not the pre-push E2E gate; a native
-pass does not replace `./scripts/e2e.sh`.
+`STRATA_BINARY` and `STRATA_E2E_VENV`. A native pass does not replace canonical
+`./scripts/e2e.sh` evidence when targeted or full E2E validation is required.
 
 ### Shared environment for formatting, lint, and Rust tests
 
@@ -119,17 +170,19 @@ setup or Rust compilation.
 ### Keep Rust test windows off the local desktop
 
 Some Rust tests also create GTK windows when a display is available. Run the
-complete Rust test suite on the same private Xvfb/D-Bus infrastructure with:
+complete suite, or a justified targeted selection, on the same private
+Xvfb/private D-Bus infrastructure with:
 
 ```bash
 ./scripts/test-headless.py
 ./scripts/test-headless.py -- --nocapture
+./scripts/test-headless.py relevant_module_or_test_name
 ```
 
 This requires Xvfb and AT-SPI but not the Python E2E packages. It isolates
 application preferences while retaining access to the installed Cargo/Rust
 toolchains, and disables accessibility bridging for Rust tests. A startup failure
-aborts; it never falls back to the real display.
+aborts; it never falls back to the real display or an inherited session bus.
 The E2E runner likewise clears inherited display variables before startup.
 
 ### Native debugging dependencies
