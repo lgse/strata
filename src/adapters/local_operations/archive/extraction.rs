@@ -125,7 +125,6 @@ impl<'a> ExtractionSession<'a> {
         }
     }
 
-    /// Free space left for this session, or `None` when it is not reported.
     fn remaining(&self) -> Option<u64> {
         self.available_bytes
             .map(|available| available.saturating_sub(self.written))

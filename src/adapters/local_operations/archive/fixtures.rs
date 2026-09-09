@@ -83,8 +83,6 @@ pub(super) fn write_zip(path: &Path, entries: &[(&str, &[u8])]) -> Result<(), Bo
     Ok(())
 }
 
-/// Rewrites the uncompressed size in the first central directory record of a
-/// single-member ZIP, simulating a header that lies about its expanded size.
 pub(super) fn patch_zip_uncompressed_size(
     path: &Path,
     uncompressed_size: u32,
