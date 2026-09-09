@@ -28,15 +28,18 @@ infrastructure, preferences, and views); do not infer coverage automatically
 from changed file names. For a bounded change, run the relevant regression tests
 and targeted checks, confirm the selected test count is nonzero, and record the
 scope rationale, exact commands and results, and any intentionally omitted
-checks in the handoff. Rerun affected checks after making changes; do not rerun
+checks in the handoff. Rerun affected tests after making changes; do not rerun
 unrelated suites merely to satisfy a blanket rule. Passing this justified targeted
 validation is sufficient before pushing a bounded change; full local suites are
 required only for the escalation cases below. Required GitHub checks must still
 pass before merge.
 
-- Rust changes require formatting and all-target/all-feature Clippy checks:
-  `./scripts/quality.sh fmt` and `./scripts/quality.sh clippy`.
-  Use `scripts/test-headless.py` for native targeted Rust tests, for example
+- Run local lint and formatting checks only at the pre-push checkpoint, not
+  after each edit or during the test/implementation loop. For Rust changes, run
+  `./scripts/quality.sh fmt` and `./scripts/quality.sh clippy` on the final code
+  before pushing. If fixes change that code, rerun the affected checks before
+  the push. CI continues to run its existing lint and formatting checks.
+- Use `scripts/test-headless.py` for native targeted Rust tests, for example
   `./scripts/test-headless.py services::operations::tests`; its arguments are
   forwarded after the fixed `cargo test --all-targets --all-features` arguments.
   This filters test names across targets, not compilation to one target.
@@ -53,6 +56,8 @@ pass before merge.
   `STRATA_CONTAINER_ENGINE=podman ./scripts/e2e.sh` when impact is broad or
   uncertain. Escalate to both for shared infrastructure, dependencies,
   build/CI/harness code, cross-cutting behavior, or uncertain coverage.
+  During iteration, use `./scripts/quality.sh test` for full Rust tests; defer
+  the `fmt` and `clippy` phases to the pre-push checkpoint even in these cases.
   Preserve pinned image provenance and the existing `target/quality-container`
   and `target/e2e-container` caches.
 - GUI and delegated checks must never use the desktop or an inherited session

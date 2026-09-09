@@ -22,7 +22,14 @@ uncertain coverage require the full pinned quality phases and the full canonical
 E2E run. Include relevant views, callers, and preference behavior, and add or
 run the regression test that proves the change. Record the scope rationale,
 commands, results, and intentional omissions in the handoff. After editing,
-rerun affected checks rather than unrelated suites.
+rerun affected tests rather than unrelated suites.
+
+Run local lint and formatting checks only before pushing, not during the
+edit/test loop. For Rust changes, run `./scripts/quality.sh fmt` and
+`./scripts/quality.sh clippy` on the final code at that checkpoint; rerun affected
+checks if fixes change the code before the push. Even when full Rust tests are
+needed during iteration, use `./scripts/quality.sh test` and defer lint/format
+phases until pre-push. CI's lint and formatting checks remain unchanged.
 
 For native Rust selection, `scripts/test-headless.py` starts the private display
 and session buses, then appends its arguments to the fixed
