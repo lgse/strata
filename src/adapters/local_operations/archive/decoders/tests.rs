@@ -30,7 +30,7 @@ fn decode_fixture(
     match format {
         ArchiveFormat::Zip => {
             let file = fs::File::open(archive).map_err(super::archive_failed)?;
-            let mut archive = zip::ZipArchive::new(file).map_err(super::archive_failed)?;
+            let mut archive = zip::ZipArchive::new(file).map_err(super::zip_error)?;
             extract_zip_from_archive(&mut archive, destination, password, progress, &cancelled)
         }
         ArchiveFormat::SevenZ => extract_7z_from_reader(
@@ -953,6 +953,172 @@ fn highly_compressible_archives_extract_in_every_format() -> Result<(), Box<dyn 
             "{format:?} should extract the full member"
         );
         assert_eq!(progress.load(Ordering::Relaxed), 1, "{format:?}");
+    }
+    Ok(())
+}
+
+#[test]
+fn truncated_headers_have_clear_errors() -> Result<(), Box<dyn Error>> {
+    for format in [
+        ArchiveFormat::Zip,
+        ArchiveFormat::SevenZ,
+        ArchiveFormat::Tar,
+        ArchiveFormat::TarGz,
+    ] {
+        let root = tempfile::tempdir()?;
+        let source = root.path().join("file.txt");
+        fs::write(&source, b"harmless contents")?;
+        let archive = root.path().join("archive");
+        write_compression_fixture(&archive, &[source], format, None)?;
+        fs::OpenOptions::new()
+            .write(true)
+            .open(&archive)?
+            .set_len(12)?;
+        let destination = tempfile::tempdir()?;
+        let result = decode_fixture(
+            &archive,
+            destination.path(),
+            format,
+            None,
+            &Arc::new(AtomicUsize::new(0)),
+        );
+        let Err(error) = result else {
+            panic!("accepted truncated {format:?}")
+        };
+        assert_eq!(error.to_string(), super::INVALID_ARCHIVE, "{format:?}");
+        assert!(destination.path().read_dir()?.next().is_none());
+    }
+    Ok(())
+}
+
+#[test]
+fn corrupt_members_are_removed_without_losing_completed_or_existing_files()
+-> Result<(), Box<dyn Error>> {
+    for format in [ArchiveFormat::Zip, ArchiveFormat::SevenZ] {
+        let root = tempfile::tempdir()?;
+        let archive = root.path().join("archive.zip");
+        let entries = [
+            ("done.txt", b"done".as_slice()),
+            ("broken.txt", b"payload".as_slice()),
+        ];
+        if format == ArchiveFormat::Zip {
+            super::super::fixtures::write_zip_stored(&archive, &entries)?;
+        } else {
+            let mut writer = sevenz_rust2::ArchiveWriter::create(&archive)?;
+            writer.set_content_methods(vec![sevenz_rust2::EncoderConfiguration::new(
+                sevenz_rust2::EncoderMethod::COPY,
+            )]);
+            for (name, contents) in entries {
+                writer.push_archive_entry(
+                    sevenz_rust2::ArchiveEntry::new_file(name),
+                    Some(Cursor::new(contents)),
+                )?;
+            }
+            writer.finish()?;
+        }
+        let mut bytes = fs::read(&archive)?;
+        let offset = bytes
+            .windows(7)
+            .position(|bytes| bytes == b"payload")
+            .expect("stored payload");
+        bytes[offset] ^= 1;
+        fs::write(&archive, &bytes)?;
+        let destination = tempfile::tempdir()?;
+        fs::write(destination.path().join("broken.txt"), b"original")?;
+        let progress = Arc::new(AtomicUsize::new(0));
+        let result = decode_fixture(&archive, destination.path(), format, None, &progress);
+        assert!(
+            matches!(result, Err(ArchiveError::Failed(message)) if message == super::INVALID_ARCHIVE)
+        );
+        assert_eq!(progress.load(Ordering::Relaxed), 1);
+        assert_eq!(fs::read(destination.path().join("done.txt"))?, b"done");
+        assert_eq!(
+            fs::read(destination.path().join("broken.txt"))?,
+            b"original"
+        );
+        assert_eq!(destination.path().read_dir()?.count(), 2);
+        assert_eq!(fs::read(&archive)?, bytes);
+    }
+    Ok(())
+}
+
+#[test]
+fn error_translation_preserves_passwords_unsupported_formats_and_io_failures() {
+    use sevenz_rust2::Error as SevenZError;
+    use zip::result::ZipError;
+    for error in [
+        ZipError::InvalidPassword,
+        ZipError::UnsupportedArchive(ZipError::PASSWORD_REQUIRED),
+        ZipError::UnsupportedArchive("unsupported encryption"),
+        ZipError::CompressionMethodNotSupported(99),
+        ZipError::FileNotFound,
+    ] {
+        let expected = error.to_string();
+        assert_eq!(super::zip_error(error).to_string(), expected);
+    }
+    for error in [
+        SevenZError::PasswordRequired,
+        SevenZError::MaybeBadPassword(io::ErrorKind::InvalidData.into()),
+        SevenZError::UnsupportedVersion { major: 9, minor: 0 },
+        SevenZError::UnsupportedCompressionMethod("unknown".into()),
+        SevenZError::Unsupported("unsupported encryption".into()),
+        SevenZError::FileNotFound,
+        SevenZError::Other("unknown decoder failure".into()),
+    ] {
+        let expected = error.to_string();
+        assert_eq!(super::sevenz_decode_error(error).to_string(), expected);
+    }
+    for kind in [
+        io::ErrorKind::PermissionDenied,
+        io::ErrorKind::NotFound,
+        io::ErrorKind::StorageFull,
+        io::ErrorKind::Unsupported,
+        io::ErrorKind::Interrupted,
+        io::ErrorKind::InvalidInput,
+        io::ErrorKind::Other,
+    ] {
+        let error = io::Error::new(kind, "injected I/O failure");
+        let translated = super::archive_read_error(error);
+        assert_eq!(translated.kind(), kind);
+        assert_eq!(translated.to_string(), "injected I/O failure");
+    }
+}
+
+#[test]
+fn tar_extraction_skips_pax_global_headers() -> Result<(), Box<dyn Error>> {
+    for gzip in [false, true] {
+        let root = tempfile::tempdir()?;
+        let destination = root.path().join("destination");
+        fs::create_dir_all(&destination)?;
+        let archive = root.path().join("project.tar");
+        write_tar_entries(
+            &archive,
+            &[
+                (
+                    tar::EntryType::XGlobalHeader,
+                    "pax_global_header",
+                    b"52 comment=0123456789abcdef0123456789abcdef01234567\n".as_slice(),
+                ),
+                (tar::EntryType::Directory, "project/", b"".as_slice()),
+                (tar::EntryType::Regular, "project/README", b"hello"),
+            ],
+            gzip,
+        )?;
+        let progress = Arc::new(AtomicUsize::new(0));
+        assert_eq!(
+            completed_extract(extract_tar(
+                &archive,
+                &destination,
+                gzip,
+                &progress,
+                &never_cancelled(),
+            )?)?,
+            Some("project".to_owned()),
+        );
+        assert_eq!(progress.load(Ordering::Relaxed), 2);
+        assert!(!destination.join("pax_global_header").exists());
+        assert_eq!(fs::read(destination.join("project/README"))?, b"hello");
+        assert_eq!(fs::read_dir(&destination)?.count(), 1);
     }
     Ok(())
 }

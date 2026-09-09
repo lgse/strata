@@ -219,12 +219,7 @@ pub(crate) fn parse(
     }
 
     let result_path = output.path().join(operation.output_name());
-    let metadata = fs::metadata(&result_path)
-        .map_err(|_| "The preview renderer produced no output".to_owned())?;
-    if metadata.len() == 0 || metadata.len() > MAX_OUTPUT_BYTES {
-        return Err("The preview renderer produced an invalid output size".to_owned());
-    }
-    let data = fs::read(result_path).map_err(|error| error.to_string())?;
+    let data = read_private_output(&result_path, MAX_OUTPUT_BYTES)?;
     if !valid_output(operation, &data) {
         return Err("The preview renderer produced invalid image data".to_owned());
     }
@@ -621,8 +616,41 @@ fn terminate(child: &mut Child) {
     let _waited = child.wait();
 }
 
+fn read_private_output(path: &Path, max_bytes: u64) -> Result<Vec<u8>, String> {
+    use rustix::fs::{FileType, Mode, OFlags, fstat, open};
+
+    // The renderer controls the final entry, but not the host directory ancestors.
+    // NONBLOCK lets us reject a FIFO without waiting for a writer at open time.
+    let fd = open(
+        path,
+        OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK,
+        Mode::empty(),
+    )
+    .map_err(|_| "The preview renderer produced no output".to_owned())?;
+    let stat = fstat(&fd).map_err(|error| error.to_string())?;
+    if FileType::from_raw_mode(stat.st_mode) != FileType::RegularFile {
+        return Err("The preview renderer produced a non-regular output".to_owned());
+    }
+    let len = u64::try_from(stat.st_size).unwrap_or(0);
+    if len == 0 || len > max_bytes {
+        return Err("The preview renderer produced an invalid output size".to_owned());
+    }
+    let mut data = Vec::new();
+    fs::File::from(fd)
+        .take(max_bytes.saturating_add(1))
+        .read_to_end(&mut data)
+        .map_err(|error| error.to_string())?;
+    if data.is_empty() || data.len() as u64 > max_bytes {
+        return Err("The preview renderer produced an invalid output size".to_owned());
+    }
+    Ok(data)
+}
+
 fn read_metadata(path: &Path) -> (i32, i32) {
-    let Ok(value) = fs::read_to_string(path) else {
+    let Ok(bytes) = read_private_output(path, 256) else {
+        return (0, 0);
+    };
+    let Ok(value) = std::str::from_utf8(&bytes) else {
         return (0, 0);
     };
     let mut values = value

@@ -259,7 +259,10 @@ signals share a weak rebuild callback and retain their disconnect handles. Stand
 pinned, and device rows are separate rendering stages, with the chooser's local-only
 filter preserved. Initial construction builds static places; device rows retain their
 existing deferred rebuild timing. Bookmark storage, Trash, and media-release policies
-remain in `window.rs` rather than changing alongside assembly.
+remain in `window.rs` rather than changing alongside assembly. Bookmark mutations
+read the shared GTK file before applying changes and adopt them only after a
+successful save. This preserves sequential external edits, not simultaneous writes;
+other windows are refreshed on their next bookmark action, not by a live monitor.
 
 ### Window keyboard routing
 

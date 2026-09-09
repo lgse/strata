@@ -3,7 +3,7 @@
 use super::*;
 use crate::{
     app::Browser,
-    model::{EntryKind, MetadataValue},
+    model::{EntryKind, Location, MetadataValue},
     services::{
         CompressRequest, CreateDirectoryRequest, CreateFileRequest, DeleteRequest, DirectoryChange,
         DirectoryEvent, DirectoryRequest, ExtractRequest, FileSource, LoadHandle,
@@ -25,6 +25,7 @@ use std::{
 
 mod caret;
 mod entries;
+mod lifecycle;
 mod visibility;
 
 #[test]

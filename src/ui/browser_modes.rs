@@ -1144,6 +1144,8 @@ impl ModeViews {
         let Some(location) = self.browser.location_at(pane.depth) else {
             return;
         };
+        pane.search.install_context_menu(&state, pane.depth);
+        let search = pane.search.clone();
         let sections = Rc::downgrade(&pane.sections);
         let entries = pane.model.downgrade();
         super::browser::install_folder_context_menu(
@@ -1155,12 +1157,13 @@ impl ModeViews {
                     .is_some_and(|entries| entries.n_items() > 0)
             }),
             Rc::new(move |picked| {
-                sections.upgrade().is_some_and(|sections| {
-                    sections
-                        .borrow()
-                        .iter()
-                        .any(|section| section_item_position(section, picked).is_some())
-                })
+                search.is_item_target(picked)
+                    || sections.upgrade().is_some_and(|sections| {
+                        sections
+                            .borrow()
+                            .iter()
+                            .any(|section| section_item_position(section, picked).is_some())
+                    })
             }),
             pane.depth,
             location,
