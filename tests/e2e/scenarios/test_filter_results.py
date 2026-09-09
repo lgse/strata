@@ -76,7 +76,7 @@ def test_filtered_item_menu_previews_and_copies_the_real_location(strata, mode):
 def test_query_updates_retain_selection_focus_preview_and_background_menu(strata, mode):
     field = filter_results(strata)
     row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
-    strata.pointer.click(row)
+    strata.pointer.click(row, modifiers=("ctrl",))
     strata.pointer.click(field)
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview_shows("beta source"), "the selected preview")

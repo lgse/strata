@@ -65,7 +65,7 @@ def test_space_previews_a_filtered_result_without_changing_the_query(strata, mod
     else:
         result = strata.window.find(name="nested-notes.txt", role="list item")
         assert result is not None
-        strata.pointer.click(result)
+        strata.pointer.click(result, modifiers=("ctrl",))
 
     strata.keyboard.press("space")
     strata.wait(

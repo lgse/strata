@@ -35,6 +35,14 @@ fn file_sizes_use_compact_decimal_units() {
 }
 
 #[test]
+fn file_sizes_round_before_choosing_the_unit() {
+    assert_eq!(format_file_size(999_950), "1 MB");
+    assert_eq!(format_file_size(999_950_000), "1 GB");
+    assert_eq!(format_file_size(9_949), "9.9 kB");
+    assert_eq!(format_file_size(9_950), "10 kB");
+}
+
+#[test]
 fn delete_confirmation_labels_distinguish_files_and_folders() {
     let file = FileEntry {
         location: Location::local("/fixture/file.txt"),

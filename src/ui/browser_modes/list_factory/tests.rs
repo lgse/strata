@@ -122,6 +122,7 @@ impl Fixture {
             scrolling: scrolling.clone(),
             bound_items: items.clone(),
             state: None,
+            filter_query: Rc::new(RefCell::new(String::new())),
         }
         .build();
         let view = gtk::ListView::new(Some(selection), Some(factory.clone()));

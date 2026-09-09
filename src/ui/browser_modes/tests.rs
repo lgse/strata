@@ -4,15 +4,15 @@ use super::{
     BrowserDensity, BrowserMode, ClickActivation, ClickCount, LIST_COLUMN_MIN_WIDTHS,
     LIST_COLUMN_WIDTHS, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, SourceIndexMap,
     compare_type_groups, icons_card_extent, icons_card_icon_slot, list_column_width,
-    metadata_fill_position, should_activate_pointer_click, type_group_sorter, type_groups_of,
-    value_type_group,
+    metadata_fill_position, should_activate_filtered_pointer, should_activate_pointer_click,
+    type_group_sorter, type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use crate::test_support::gtk_test;
 use gtk::{gio, prelude::*};
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Command;
+use std::{cell::RefCell, collections::HashSet};
 
 impl super::ModeViews {
     pub(in crate::ui) fn assert_saved_preferences(&self, manager: &crate::ui::theme::ThemeManager) {
@@ -86,6 +86,26 @@ fn type_grouping_is_list_only() {
     assert!(!BrowserMode::Columns.supports_type_grouping());
     assert!(!BrowserMode::Icons.supports_type_grouping());
     assert!(BrowserMode::List.supports_type_grouping());
+}
+
+#[test]
+fn filtered_activation_ignores_click_preferences() {
+    let query = RefCell::new("report".to_owned());
+    for _activation in [
+        ClickActivation {
+            files: ClickCount::One,
+            folders: ClickCount::One,
+        },
+        ClickActivation {
+            files: ClickCount::Two,
+            folders: ClickCount::Two,
+        },
+    ] {
+        assert!(should_activate_filtered_pointer(1, &query));
+        assert!(!should_activate_filtered_pointer(2, &query));
+    }
+    query.replace(String::new());
+    assert!(!should_activate_filtered_pointer(1, &query));
 }
 
 #[test]

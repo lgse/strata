@@ -129,3 +129,86 @@ def test_dragging_a_multi_selection_moves_every_entry(strata):
     )
     assert not fixture.path("todo.txt").exists()
     assert not fixture.path("readme.md").exists()
+
+
+ROW_DRAG_MODES = [
+    mode for mode in ALL_MODES if mode.id != "icons"
+]
+
+
+@pytest.mark.parametrize("mode", ROW_DRAG_MODES)
+def test_dragging_from_empty_row_space_moves_the_file(strata, mode):
+    """#631: a press in the inert label allocation must start a drag, not select."""
+
+    fixture = strata.fixture
+    source = strata.entry("todo.txt")
+    target = strata.entry("archive")
+    start = strata.pointer.row_whitespace_point(source, "todo.txt")
+
+    strata.pointer.drag_points(start, target.screen_bounds().center)
+
+    strata.wait(
+        lambda: fixture.path("archive/todo.txt").exists(),
+        "the file dragged from empty row space to arrive in archive",
+    )
+    strata.wait(
+        lambda: not fixture.path("todo.txt").exists(),
+        "the file dragged from empty row space to leave its source directory",
+    )
+
+
+def drag_from_row_padding(strata, edge):
+    fixture = strata.fixture
+    source = strata.entry("todo.txt")
+    target = strata.entry("archive")
+    start = strata.pointer.row_padding_point(source, edge)
+
+    strata.pointer.drag_points(start, target.screen_bounds().center)
+
+    strata.wait(
+        lambda: fixture.path("archive/todo.txt").exists(),
+        f"the file dragged from {edge} row padding to arrive in archive",
+    )
+    strata.wait(
+        lambda: not fixture.path("todo.txt").exists(),
+        f"the file dragged from {edge} row padding to leave its source directory",
+    )
+
+
+@pytest.mark.parametrize("mode", ROW_DRAG_MODES)
+@pytest.mark.parametrize("edge", ["top", "bottom"])
+def test_dragging_from_row_padding_moves_the_file(strata, mode, edge):
+    """#631: a press in visual row padding must reach the drag source."""
+
+    drag_from_row_padding(strata, edge)
+
+
+@pytest.mark.preferences(browser_density="airy")
+@pytest.mark.parametrize("mode", ROW_DRAG_MODES)
+@pytest.mark.parametrize("edge", ["top", "bottom"])
+def test_dragging_from_airy_row_padding_moves_the_file(strata, mode, edge):
+    drag_from_row_padding(strata, edge)
+
+
+@pytest.mark.preferences(folder_peeking=True, browser_mode="icons")
+def test_starting_a_drag_cancels_a_folder_peek(strata):
+    """#621: a drag beginning must cancel any open folder peek in Icons view."""
+
+    pane = strata.pane()
+    pane_bounds = pane.screen_bounds()
+    strata.pointer.move_to(pane_bounds.x + 20, pane_bounds.y + pane_bounds.height - 20)
+
+    folder = strata.entry("archive")
+    start = strata.pointer.drag_origin(folder)
+    strata.pointer.move_to(*start)
+    strata.wait(lambda: strata.peek() is not None, "the folder peek to open on hover")
+
+    target = strata.entry("documents")
+    strata.pointer.drag_points(start, target.screen_bounds().center, release=False)
+    try:
+        strata.wait(
+            lambda: strata.peek() is None,
+            "the peek to close when the drag starts",
+        )
+    finally:
+        strata.pointer.connection.button(1, False)
