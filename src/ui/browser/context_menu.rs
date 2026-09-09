@@ -30,9 +30,6 @@ fn context_menu_placement(anchor_height: i32, click_y: f64) -> (gtk::PositionTyp
         gtk::PositionType::Top
     };
 
-    // Cap by the full viewport (both edges) so the popover can shift away
-    // from the click point and use leftover space on the other side instead
-    // of scrolling; the scrollbar appears only when content exceeds the view.
     (
         position,
         anchor_height
@@ -41,10 +38,7 @@ fn context_menu_placement(anchor_height: i32, click_y: f64) -> (gtk::PositionTyp
     )
 }
 
-/// Moves the popover anchor off the click point when the menu does not fit
-/// on its side but fits in the viewport: a menu opening downward slides up
-/// so its bottom meets the far edge (and vice versa), instead of scrolling.
-/// Returns the click unchanged when the menu already fits or cannot fit.
+// GTK popovers do not shift their anchor to use space across the click point.
 fn shifted_anchor_y(
     position: gtk::PositionType,
     anchor_height: i32,

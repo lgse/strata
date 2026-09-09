@@ -241,6 +241,7 @@ impl BrowserView {
             .build();
         scroller.add_css_class("fixed-scrollbar");
         scroller.add_css_class("mode-scroll");
+        scroller.add_css_class("columns-scroll");
         let overlay = gtk::Overlay::new();
 
         let location_entry = gtk::Entry::builder()
