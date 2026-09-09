@@ -6,7 +6,11 @@ use std::{
     error::Error,
     ffi::{OsStr, OsString},
     fs,
-    os::unix::{ffi::OsStringExt, fs::PermissionsExt},
+    os::unix::{
+        ffi::OsStringExt,
+        fs::{FileTypeExt, PermissionsExt},
+        net::UnixListener,
+    },
     path::{Path, PathBuf},
     rc::Rc,
     time::{Duration, SystemTime},
@@ -2746,12 +2750,129 @@ fn copying_a_tree_with_a_named_pipe_fails_instead_of_blocking() -> Result<(), Bo
     ));
 
     let error = result.expect_err("a named pipe cannot be copied as a regular file");
-    assert!(
-        error.to_string().contains("pipe"),
-        "the error should name the entry: {error}"
-    );
+    assert_special_copy_error(&error, "pipe");
     assert!(!target.join("pipe").exists());
 
     fs::remove_dir_all(root)?;
     Ok(())
+}
+
+#[test]
+fn copying_a_tree_with_a_unix_socket_fails_instead_of_blocking() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("strata-socket-copy-test-{unique}"));
+    let source = root.join("source");
+    let target = root.join("target");
+    fs::create_dir_all(&source)?;
+    fs::write(source.join("before.txt"), b"before")?;
+    let _listener = UnixListener::bind(source.join("sock"))?;
+
+    let result = glib::MainContext::default().block_on(copy_recursively(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    let error = result.expect_err("a unix socket cannot be copied as a regular file");
+    assert_special_copy_error(&error, "sock");
+    assert!(!target.join("sock").exists());
+
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+#[test]
+fn copying_a_character_device_fails_instead_of_copying_without_end() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let device = Path::new("/dev/zero");
+    let metadata = fs::symlink_metadata(device)?;
+    if !metadata.file_type().is_char_device() {
+        return Ok(());
+    }
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let target = std::env::temp_dir().join(format!("strata-zero-copy-test-{unique}"));
+
+    let result = glib::MainContext::default().block_on(copy_recursively(
+        gio::File::for_path(device),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    let error = result.expect_err("a character device cannot be copied as a regular file");
+    assert_special_copy_error(&error, "zero");
+    assert!(!target.exists());
+    Ok(())
+}
+
+#[test]
+fn pasting_a_folder_with_a_named_pipe_discards_staging_instead_of_committing()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let unique = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)?
+        .as_nanos();
+    let root = std::env::temp_dir().join(format!("strata-fifo-paste-test-{unique}"));
+    let source = root.join("src");
+    let destination = root.join("dest");
+    fs::create_dir_all(&source)?;
+    fs::create_dir_all(&destination)?;
+    fs::write(source.join("a.txt"), b"hi\n")?;
+    rustix::fs::mkfifoat(
+        rustix::fs::CWD,
+        source.join("pipe"),
+        rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+    )?;
+
+    let result = glib::MainContext::default().block_on(copy_new_recursively(
+        gio::File::for_path(&source),
+        gio::File::for_path(destination.join("src")),
+        gio::Cancellable::new(),
+    ));
+
+    let error = result.expect_err("paste of a named pipe must fail");
+    assert_special_copy_error(&error, "pipe");
+    assert!(!destination.join("src").exists());
+    let leftovers = fs::read_dir(&destination)?
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            name.starts_with(".strata-") || name == "src"
+        })
+        .count();
+    assert_eq!(leftovers, 0, "failed paste must not leave staging output");
+
+    fs::remove_dir_all(root)?;
+    Ok(())
+}
+
+fn assert_special_copy_error(error: &glib::Error, name: &str) {
+    let message = error.to_string();
+    assert!(
+        message.contains(name),
+        "the error should name the entry: {error}"
+    );
+    assert!(
+        message.contains("Cannot copy"),
+        "the error should say the copy was refused: {error}"
+    );
+    assert!(
+        message.contains("not a regular file, directory, or symbolic link"),
+        "the error should match compression's special-file refusal: {error}"
+    );
 }
