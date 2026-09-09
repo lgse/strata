@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-//! Restore-target checks for freedesktop.org Trash.
-//!
-//! `trash::orig-path` / `.trashinfo` `Path=` is untrusted metadata. Restore is
-//! allowed only when the destination is on the same volume as the physical
-//! trash `files/` entry, using the same GIO filesystem ids as cross-volume
-//! drops.
+//! Treats Trash metadata as untrusted and confines restores to the physical
+//! trash entry's volume.
 
 #[cfg(test)]
 mod tests;
@@ -150,9 +146,7 @@ pub(crate) async fn plan_restore_for_location(
     physical_path: Option<&Path>,
     context: &RestoreContext,
 ) -> Result<RestorePlan, RestoreTargetError> {
-    // GVfs names volume items after their escaped physical path and resolves
-    // relative `Path=` values itself, so ask it for the physical entry rather
-    // than guessing from the `trash:///` basename.
+    // GVfs volume-trash basenames do not identify the physical entry; target-uri does.
     let known_files = physical_path
         .and_then(trash_item_from_files_path)
         .or_else(|| source.native_path().and_then(trash_item_from_files_path));
@@ -210,8 +204,7 @@ pub(crate) async fn plan_restore_for_location(
     .await
 }
 
-/// Shares one mount snapshot and bounds concurrent filesystem lookups. Dropping
-/// the batch drops its active futures instead of detaching per-item tasks.
+/// Bounds concurrent lookups; cancellation drops their active futures.
 pub(crate) async fn restore_destinations_for_locations(
     items: Vec<(Location, Option<PathBuf>)>,
 ) -> Vec<Result<PathBuf, RestoreTargetError>> {
@@ -453,8 +446,6 @@ async fn query_gio_trash_item(location: &Location) -> Result<GioTrashItem, Resto
     })
 }
 
-/// Accepts only a `<trash root>/files/<name>` entry so a reported target that
-/// is not shaped like a trash item never becomes the restore source.
 fn trash_item_from_files_path(path: &Path) -> Option<DiscoveredTrashItem> {
     let trash_root = trash_root_from_files_path(path)?;
     Some(DiscoveredTrashItem {
@@ -543,15 +534,12 @@ fn valid_shared_trash_dir(mount: &Path, uid: u32) -> Option<PathBuf> {
     Some(trash.join(uid.to_string()))
 }
 
-/// The shared `$topdir/.Trash` directory that holds `$uid` trash roots.
 fn shared_trash_dir(trash_root: &Path) -> Option<&Path> {
     trash_root
         .parent()
         .filter(|parent| parent.file_name() == Some(OsStr::new(".Trash")))
 }
 
-/// Outermost directory that belongs to the trash: the shared `.Trash` dir for
-/// the shared layout, otherwise the trash root itself.
 fn trash_tree_root(trash_root: &Path) -> PathBuf {
     shared_trash_dir(trash_root)
         .unwrap_or(trash_root)
@@ -566,10 +554,7 @@ pub(crate) fn trash_root_from_files_path(path: &Path) -> Option<PathBuf> {
     files.parent().map(Path::to_path_buf)
 }
 
-/// Directory a relative `.trashinfo` `Path=` is resolved against. That is the
-/// trash directory's parent, except for the shared `$topdir/.Trash/$uid`
-/// layout, where the spec anchors relative paths at `$topdir` rather than at
-/// the intervening `.Trash`.
+/// The Trash spec anchors relative `Path=` above `.Trash` in the shared layout.
 fn topdir_for_trash_root(trash_root: &Path) -> Option<&Path> {
     match shared_trash_dir(trash_root) {
         Some(shared) => shared.parent(),

@@ -176,11 +176,7 @@ pub(crate) struct PreparedFileDrop {
     pub state: Rc<FileDropState>,
 }
 
-/// Per-target drop state. The no-op check and volume relation are computed once
-/// per (destination, sources) pair and reused by every motion event and by the
-/// final drop, so the transfer performed always matches the cursor that was
-/// shown. URI lookups resolve asynchronously and re-status the drop when they
-/// land; until then the configured cross-volume policy applies (Ask by default).
+/// Reuses one classification for cursor feedback and the eventual transfer.
 pub(crate) struct FileDropState {
     destination: Rc<dyn Fn() -> Option<Location>>,
     last_override: Cell<DropOverride>,
@@ -484,9 +480,7 @@ fn current_cross_volume_drop_strategy() -> CrossVolumeDropStrategy {
     crate::ui::theme::ThemeManager::shared().cross_volume_drop_strategy()
 }
 
-/// File transfers are performed by Strata, not by the drag protocol. A local
-/// drag often starts over the source pane (same-volume move) and the compositor
-/// then advertises only MOVE. That must not prevent a later cross-volume copy.
+/// A compositor's source-side MOVE offer must not prevent Strata's cross-volume copy.
 fn offered_file_actions(
     dest_actions: gtk::gdk::DragAction,
     source_actions: gtk::gdk::DragAction,

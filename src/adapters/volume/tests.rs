@@ -25,8 +25,6 @@ fn ready(volumes: DropVolumes) -> DropVolumeLookup {
     }
 }
 
-/// Drives a lookup on a private main context until `on_ready` fires or
-/// `deadline` passes, returning the lookup and whether it was pending at first.
 fn resolve_on_private_context(
     query: &DropVolumeQuery,
     deadline: Duration,
@@ -298,7 +296,6 @@ fn native_path_and_file_uri_of_the_same_directory_share_an_identity() {
     );
 }
 
-/// A mount table that claims `path` sits on an NFS mount.
 fn mounts_treating_as_nfs(path: &Path) -> MountTable {
     MountTable::parse(format!(
         "1 0 0:1 / / rw - ext4 /dev/root rw\n2 1 0:2 / {} rw - nfs4 server:/export rw\n",
@@ -420,8 +417,6 @@ fn dropping_the_pending_handle_inside_on_ready_is_safe() {
                 let slot = slot.clone();
                 let relation = relation.clone();
                 move |lookup| {
-                    // Mirrors the UI cache, which swaps the Pending handle for
-                    // the Ready result while the resolver is still on the stack.
                     slot.borrow_mut().take();
                     *relation.borrow_mut() = Some(lookup.relation);
                 }

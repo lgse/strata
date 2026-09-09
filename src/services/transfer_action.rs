@@ -72,8 +72,7 @@ pub(crate) enum TransferKind {
 pub(crate) enum DropCommit {
     Copy,
     Move,
-    /// `volume` is `Unknown` when the lookup had not resolved (or timed out) at
-    /// drop time, so the prompt must not claim the destination is another device.
+    /// `Unknown` must not be presented as a confirmed device difference.
     Ask {
         default: TransferKind,
         volume: VolumeRelation,
@@ -101,8 +100,6 @@ pub(crate) struct DropActionInput {
     pub strategy: CrossVolumeDropStrategy,
 }
 
-/// Unknown if dest or any source identity is missing (URI hover, or a timed-out
-/// remote query). Same only when sources is non-empty and every source matches.
 pub(crate) fn volume_relation(
     dest: Option<&VolumeIdentity>,
     sources: &[Option<VolumeIdentity>],

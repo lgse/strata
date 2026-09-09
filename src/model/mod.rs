@@ -275,8 +275,7 @@ pub enum MetadataValue<T> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FileEntry {
     pub location: Location,
-    /// Local path for virtual files (trash `standard::target-uri`, thumbnail source).
-    /// `location` remains their operational identity.
+    /// Physical source for virtual entries; `location` remains their operational identity.
     pub thumbnail_path: Option<PathBuf>,
     pub native_name: OsString,
     pub display_name: String,

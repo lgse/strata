@@ -66,10 +66,6 @@ pub(crate) fn gtk_test(name: &str, run: impl FnOnce()) {
     assert!(status.success(), "{name} failed");
 }
 
-/// Two temporary directories on different filesystems, or `None` when the
-/// environment cannot provide a real cross-device boundary. Restore tests that
-/// need one announce the skip instead of passing vacuously, and fail outright
-/// when `STRATA_REQUIRE_DEVICE_TESTS` asks for the coverage to be enforced.
 pub(crate) fn distinct_device_dirs(name: &str) -> Option<(tempfile::TempDir, tempfile::TempDir)> {
     use std::os::unix::fs::MetadataExt;
     let dirs = (|| {

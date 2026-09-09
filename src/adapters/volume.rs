@@ -24,12 +24,6 @@ pub(crate) use mounts::MountTable;
 
 pub(crate) const REMOTE_QUERY_TIMEOUT: Duration = Duration::from_secs(2);
 
-/// Directories whose filesystem decides a drop's volume relation: the
-/// destination and each distinct source volume directory. A file is queried
-/// via its parent unless the source is itself a mount point, which is queried
-/// directly so a volume icon is not classified as a same-disk rename of its
-/// parent. The number of queries does not scale with the number of dragged
-/// files.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct DropVolumeQuery {
     pub dest: Location,
@@ -79,7 +73,6 @@ impl DropVolumeLookup {
         }
     }
 
-    /// Filesystem ids for diagnostics; `?` marks a directory that could not be queried.
     pub(crate) fn describe(&self) -> String {
         let id = |identity: &Option<VolumeIdentity>| {
             identity
@@ -114,12 +107,7 @@ impl DropVolumes {
     }
 }
 
-/// Directories on local filesystems resolve synchronously with one `stat`
-/// each. URIs, network/FUSE paths, and native paths that still look local in
-/// mountinfo but whose `query_info` would follow a symlink or `..` are queried
-/// asynchronously under a shared timeout and report through `on_ready` exactly
-/// once, from the main context, never re-entrantly from this call. Dropping
-/// the returned `Pending` handle cancels the lookup and suppresses `on_ready`.
+/// Calls `on_ready` once on the main context unless the pending handle is dropped.
 pub(crate) fn lookup_drop_volumes(
     query: &DropVolumeQuery,
     on_ready: impl FnOnce(DropVolumeLookup) + 'static,
@@ -184,8 +172,7 @@ fn source_volume_directory(source: &Location, mounts: &MountTable) -> Location {
     }
 }
 
-/// `query_info` follows symlinks and lexical `..`. Mountinfo classified the
-/// logical path as local; following can still block on a dead remote mount.
+/// GIO may follow a local-looking path onto a blocking remote mount.
 fn native_query_may_leave_mount(path: &Path) -> bool {
     let mut prefix = PathBuf::new();
     for component in path.components() {
@@ -296,8 +283,6 @@ impl PendingState {
     }
 }
 
-/// Walks to the nearest path GIO can identify, following parent symlinks.
-/// A missing restore destination therefore classifies as its existing ancestor.
 pub(crate) fn volume_identity_of_existing_ancestor(location: &Location) -> Option<VolumeIdentity> {
     volume_identity_of_existing_ancestor_with(location, gio::FileQueryInfoFlags::NONE)
 }
@@ -325,8 +310,7 @@ pub(crate) fn restore_volume_relation(source: &Location, dest: &Location) -> Vol
     )
 }
 
-/// Native directories go through GIO too so their ids share one encoding with
-/// `file://` URIs and any backend that reports the underlying local filesystem.
+/// Uses GIO for native paths so native and `file://` identities are comparable.
 pub(crate) fn native_volume_identity(location: &Location) -> Option<VolumeIdentity> {
     native_volume_identity_with(location, gio::FileQueryInfoFlags::NONE)
 }

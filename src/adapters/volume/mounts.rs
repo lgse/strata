@@ -10,9 +10,7 @@ use std::{
     sync::Arc,
 };
 
-/// Mount points and filesystem types from `/proc/self/mountinfo`. Reading it
-/// never touches the mounted filesystems, so it is safe to consult for a path
-/// on a network mount that may be unresponsive.
+/// Parsed without touching mounted filesystems, including unresponsive mounts.
 #[derive(Clone)]
 pub(crate) struct MountTable {
     entries: Arc<[(PathBuf, String)]>,
@@ -42,7 +40,6 @@ impl MountTable {
         }
     }
 
-    /// Filesystem type of the innermost mount containing `path`.
     pub(super) fn fs_type_for(&self, path: &Path) -> Option<&str> {
         self.innermost(path).map(|(_, fs_type)| fs_type.as_str())
     }
@@ -62,9 +59,7 @@ impl MountTable {
             .map(|(mount_point, _)| mount_point.as_path())
     }
 
-    /// Mounts that can hold a freedesktop volume trash. Skips proc, sysfs,
-    /// tmpfs, FUSE, and network filesystems so a fallback scan does not walk
-    /// API filesystems or block on a dead remote.
+    /// Excludes virtual or potentially blocking filesystems from fallback scans.
     pub(crate) fn trash_scan_mounts(&self) -> impl Iterator<Item = &Path> {
         self.entries.iter().filter_map(|(mount_point, fs_type)| {
             is_trash_scan_fs_type(fs_type).then_some(mount_point.as_path())
@@ -112,9 +107,7 @@ fn is_virtual_fs_type(fs_type: &str) -> bool {
     )
 }
 
-/// Network filesystems and anything served by a userspace daemon (FUSE, which
-/// includes gvfs, sshfs, rclone, and the document portal): a request against
-/// these can block indefinitely if the peer is gone.
+/// Includes FUSE because an unavailable userspace daemon can block filesystem calls.
 pub(super) fn is_remote_fs_type(fs_type: &str) -> bool {
     matches!(
         fs_type,
@@ -143,10 +136,7 @@ pub(super) fn is_remote_fs_type(fs_type: &str) -> bool {
     ) || fs_type.starts_with("fuse")
 }
 
-/// mountinfo escapes space, tab, newline, and backslash as octal `\ooo`. Mount
-/// points are arbitrary bytes, so the result stays an `OsString` rather than
-/// passing through a lossy UTF-8 conversion that would stop a non-UTF-8 mount
-/// point from ever matching a path on it.
+/// Decodes mountinfo's octal escapes without assuming pathname bytes are UTF-8.
 fn unescape(field: impl AsRef<[u8]>) -> OsString {
     let bytes = field.as_ref();
     let mut out = Vec::with_capacity(bytes.len());

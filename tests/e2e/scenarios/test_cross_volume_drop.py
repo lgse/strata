@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Cross-device policy and keyboard choices must agree with disk effects."""
-
 import tempfile
 from pathlib import Path
 

@@ -1169,8 +1169,7 @@ async fn move_restore_path_with(
             if cancellable.is_cancelled() {
                 return Err(rustix::io::Errno::CANCELED);
             }
-            // An existence check followed by an unflagged rename is not a
-            // no-clobber fallback, even with the destination parent pinned.
+            // Never fall back to an unflagged rename: the no-clobber check must be atomic.
             rename(
                 &source_parent,
                 &source_name,
@@ -1808,7 +1807,6 @@ fn open_local_parent_beneath(parent_path: &Path, allowed_root: &Path) -> Result<
     let relative = parent_path
         .strip_prefix(allowed_root)
         .map_err(|_| "The restore destination is outside the trash volume".to_owned())?;
-    // BENEATH keeps the walk inside allowed_root; NO_XDEV refuses a sub-mount.
     rustix::fs::openat2(
         &root,
         relative,
