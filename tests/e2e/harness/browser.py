@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Page objects for the Strata window.
 
 Scenarios talk to this class rather than to raw accessible nodes, so a change

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::super::{browser_for_window, home_directory, save_pinned_places, sidebar_button};
 use super::*;

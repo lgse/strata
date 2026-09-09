@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{ExtractNameResolver, ExtractionDestination, validated_archive_path};
 use std::{
@@ -116,5 +116,16 @@ fn leaf_conflicts_preserve_native_filename_bytes() -> Result<(), Box<dyn Error>>
     assert_eq!(fs::read(root.path().join(&created))?, b"new");
     destination.remove_file(&created)?;
     assert!(!root.path().join(&created).exists());
+    Ok(())
+}
+
+#[test]
+fn available_bytes_reports_unprivileged_free_space() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let destination = ExtractionDestination::open(root.path())?;
+    assert!(
+        matches!(destination.available_bytes()?, Some(bytes) if bytes > 0),
+        "tempdir should report some free space"
+    );
     Ok(())
 }

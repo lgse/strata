@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 //! Confined destination writes and extraction conflict naming.
 
@@ -87,6 +87,26 @@ impl ExtractionDestination {
         )
         .map_err(|error| format!("Could not open extraction destination: {error}"))?;
         Ok(Self { root })
+    }
+
+    /// Uses [`fstatvfs`] on the pinned root so a swapped path cannot redirect
+    /// the query. A zero `f_blocks` means the filesystem does not report
+    /// capacity, so callers skip the check instead of refusing every extraction.
+    ///
+    /// [`fstatvfs`]: rustix::fs::fstatvfs
+    pub(super) fn available_bytes(&self) -> Result<Option<u64>, String> {
+        let stat = rustix::fs::fstatvfs(&self.root).map_err(|error| {
+            format!("Could not inspect free space at the extraction destination: {error}")
+        })?;
+        if stat.f_blocks == 0 {
+            return Ok(None);
+        }
+        let block = if stat.f_frsize > 0 {
+            stat.f_frsize
+        } else {
+            stat.f_bsize.max(1)
+        };
+        Ok(Some(stat.f_bavail.saturating_mul(block)))
     }
 
     /// Finds a name in `directory` that does not already exist.

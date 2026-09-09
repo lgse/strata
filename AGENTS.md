@@ -22,26 +22,65 @@ under `.agents/`.
 
 ## Pre-push checks
 
-- Do not push until the full local CI suite passes: `cargo fmt --all --check`, `cargo clippy --all-targets --all-features -- -D warnings`, and `cargo test --all-targets --all-features`.
-- Run `./scripts/quality.sh` before pushing to exercise formatting, Clippy, and the full Rust suite
-  in CI's verified pinned build environment. It reuses the same base as E2E but
-  keeps Cargo artifacts in `target/quality-container`, and requires GTK tests to
-  execute under private Xvfb. Individual phases are `fmt`, `clippy`, and `test`.
-  It never implicitly builds an image; the explicit E2E base-update command below
-  also prepares this shared environment.
-- Agents must never run GTK tests against the user's active Wayland or X11 display. Run the suite under a private Xvfb display with accessibility bridging disabled:
+Validation is risk-based, but CI remains unchanged and is the authoritative full
+suite. Map the behavior and callers affected by the change (including shared
+infrastructure, preferences, and views); do not infer coverage automatically
+from changed file names. For a bounded change, run the relevant regression tests
+and targeted checks, confirm the selected test count is nonzero, and record the
+scope rationale, exact commands and results, and any intentionally omitted
+checks in the handoff. Rerun affected tests after making changes; do not rerun
+unrelated suites merely to satisfy a blanket rule. Passing this justified targeted
+validation is sufficient before pushing a bounded change; full local suites are
+required only for the escalation cases below. Required GitHub checks must still
+pass before merge.
 
-  ```bash
-  xvfb-run -a env -u WAYLAND_DISPLAY GDK_BACKEND=x11 \
-    GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
-    cargo test --all-targets --all-features
-  ```
-
-  If `xvfb-run` is unavailable, use a non-root portable extraction of the distribution's Xvfb package or another isolated display server. Do not fall back to the active desktop display, and do not use a backend that causes GTK tests to skip because initialization failed.
-- Run `./scripts/e2e.sh` before pushing. It uses the same pinned container as CI;
-  use `STRATA_CONTAINER_ENGINE=podman` for rootless Podman. Native-host E2E results
-  do not substitute for this gate. See `docs/e2e-testing.md`.
-- Fix failures before pushing rather than relying on CI for feedback. Keep tests portable across supported environments and avoid assertions that depend on platform-specific URI normalization or other incidental system behavior.
+- Run local lint and formatting checks only at the pre-push checkpoint, not
+  after each edit or during the test/implementation loop. For Rust changes, run
+  `./scripts/quality.sh fmt` and `./scripts/quality.sh clippy` on the final code
+  before pushing. If fixes change that code, rerun the affected checks before
+  the push. CI continues to run its existing lint and formatting checks.
+- Use `scripts/test-headless.py` for native targeted Rust tests, for example
+  `./scripts/test-headless.py services::operations::tests`; its arguments are
+  forwarded after the fixed `cargo test --all-targets --all-features` arguments.
+  This filters test names across targets, not compilation to one target.
+  The selected filter must match at least one test, including relevant views,
+  callers, or preferences coverage.
+- E2E selections may use repository-relative test paths and pytest `-k`, for
+  example `./scripts/e2e.sh tests/e2e/scenarios/test_inline_renaming.py` or
+  `./scripts/e2e.sh -k 'rename and not visual'`. Confirm collection selects
+  tests with `--collect-only` when useful. `scripts/e2e.sh` is the canonical
+  pinned-container runner; `scripts/e2e-native.sh` is host-toolkit debugging
+  only and cannot replace it. `scripts/quality.sh` accepts only `all`, `fmt`,
+  `clippy`, or `test` and does not forward test filters.
+- Use full pinned `./scripts/quality.sh` phases and canonical
+  `STRATA_CONTAINER_ENGINE=podman ./scripts/e2e.sh` when impact is broad or
+  uncertain. Escalate to both for shared infrastructure, dependencies,
+  build/CI/harness code, cross-cutting behavior, or uncertain coverage.
+  During iteration, use `./scripts/quality.sh test` for full Rust tests; defer
+  the `fmt` and `clippy` phases to the pre-push checkpoint even in these cases.
+  Preserve pinned image provenance and the existing `target/quality-container`
+  and `target/e2e-container` caches.
+- GUI and delegated checks must never use the desktop or an inherited session
+  bus. Use private Xvfb and private D-Bus, clear inherited display variables,
+  disable accessibility bridging for Rust tests (E2E needs its private AT-SPI
+  bus), and require GTK tests to run (not silently skip). Stop if the isolated display or bus is unavailable; never fall back to
+  the user's display. See `docs/e2e-testing.md`.
+- Documentation-only changes need no GUI/build tests: review the complete diff,
+  validate links and example filters against the scripts and existing tests, and
+  run `git diff --check`. These checks do not bypass required CI checks.
+- Owner-approved exception: the repository owner may explicitly authorize
+  pushing a PR without running otherwise-required local tests. Consent must
+  specifically acknowledge skipping tests for the current change/push; a generic
+  request to push, urgency, silence, or prior approval for another push is not
+  consent. Record the authorization, skipped suites, and any known failures or
+  unverified behavior in the handoff and PR description. Do not claim skipped
+  tests passed. This waives only local test execution for that authorized scope,
+  not lint/format checks, GUI safety, or required CI/merge checks. If scope changes,
+  obtain renewed consent or perform the required validation.
+- Outside that explicit exception, fix failures before pushing rather than
+  relying on CI. Keep tests portable
+  across supported environments and avoid assertions that depend on
+  platform-specific URI normalization or other incidental system behavior.
 
 ## E2E base-image reuse
 

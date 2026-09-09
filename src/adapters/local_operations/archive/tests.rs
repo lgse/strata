@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{
     ArchiveError, copy_with_big_buf,
@@ -384,5 +384,100 @@ fn cancelling_extraction_from_started_waits_for_the_worker_and_reports_pending_o
     );
     assert!(destination.read_dir()?.next().is_none());
     assert!(operation.borrow().is_none());
+    Ok(())
+}
+
+#[test]
+fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    for (name, expected) in [
+        (
+            "fake.zip",
+            "This file is not a valid archive or is damaged.",
+        ),
+        ("fake.7z", "This file is not a valid archive or is damaged."),
+        (
+            "fake.tar",
+            "This file is not a valid archive or is damaged.",
+        ),
+        (
+            "fake.tar.gz",
+            "This file is not a valid archive or is damaged.",
+        ),
+        ("missing.zip", "No such file"),
+        ("unreadable.zip", "Permission denied"),
+        ("destination.zip", "Not a directory"),
+        ("unsafe.zip", "Refusing unsafe ZIP path"),
+        ("unknown.rar", "Unsupported archive format"),
+    ] {
+        let archive = root.path().join(name);
+        if name != "missing.zip" {
+            fs::write(&archive, b"not an archive")?;
+        }
+        if name == "unreadable.zip" {
+            fs::set_permissions(&archive, fs::Permissions::from_mode(0o000))?;
+        }
+        if name == "destination.zip" {
+            write_zip_stored(&archive, &[("file.txt", b"contents")])?;
+        }
+        if name == "unsafe.zip" {
+            write_zip_stored(&archive, &[("../outside", b"contents")])?;
+        }
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let emitted = events.clone();
+        let handle = LocalOperationProvider.extract(
+            ExtractRequest {
+                id: OperationRequestId(434),
+                entry: test_file_entry(&archive),
+                destination: Location::local(if name == "destination.zip" {
+                    &archive
+                } else {
+                    &destination
+                }),
+                password: None,
+            },
+            Rc::new(move |event| emitted.borrow_mut().push(event)),
+        );
+        let context = glib::MainContext::default();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !events.borrow().iter().any(|event| {
+            matches!(
+                event,
+                OperationEvent::Failed { .. } | OperationEvent::Extracted { .. }
+            )
+        }) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "extraction did not terminate: {name}"
+            );
+            context.iteration(false);
+            std::thread::yield_now();
+        }
+        assert!(
+            matches!(events.borrow().last(), Some(OperationEvent::Failed { message, .. }) if message.contains(expected)),
+            "{name}: {:?}",
+            events.borrow()
+        );
+        let count = events.borrow().len();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(150);
+        while std::time::Instant::now() < deadline {
+            context.iteration(false);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(
+            events.borrow().len(),
+            count,
+            "progress continued after {name} failed"
+        );
+        drop(handle);
+        assert!(destination.read_dir()?.next().is_none());
+        assert!(!root.path().join("outside").exists());
+    }
     Ok(())
 }

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Golden screenshots for a small set of deliberately stable states.
 
 Interaction assertions are the primary gate; these catch rendering

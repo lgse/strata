@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Bounded, credential-safe explanations of upstream E2E job failures."""
 
 from __future__ import annotations
