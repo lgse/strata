@@ -197,6 +197,16 @@ def test_preview_renders_markdown(strata):
     )
 
 
+def test_preview_renders_csv_as_a_table(strata):
+    strata.select_entry_with_keyboard("data.csv")
+    strata.keyboard.press("space")
+
+    strata.wait(lambda: strata.preview_shows("name"), "the CSV header row")
+    assert strata.preview_shows("value")
+    assert strata.preview_shows("alpha")
+    assert strata.preview_shows("1")
+
+
 def test_space_opens_the_preview_after_a_pointer_selection(strata):
     strata.select_entry("notes.txt")
 

@@ -27,8 +27,9 @@ pub use preview::{
     Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,
 };
 pub(crate) use preview::{
-    content_family, has_plain_text_extension, is_extensionless_dotfile,
-    is_non_executable_extensionless_dotfile,
+    TABLE_ROW_LIMIT, content_family, has_csv_extension, has_excel_extension,
+    has_plain_text_extension, has_tsv_extension, is_extensionless_dotfile,
+    is_non_executable_extensionless_dotfile, parse_delimited_table, parse_excel_table,
 };
 // `best_update`, `rollback_target`, and `ReleaseSummary` are deliberately not
 // re-exported here: `rollback_target` is the never-downgrade bypass, and only

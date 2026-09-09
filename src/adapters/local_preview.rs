@@ -9,7 +9,9 @@ use crate::{
     sandbox::{Cancellation, MediaPreviewBackend, ParseOperation},
     services::{
         LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
-        content_family, has_plain_text_extension, is_non_executable_extensionless_dotfile,
+        content_family, has_csv_extension, has_excel_extension, has_plain_text_extension,
+        has_tsv_extension, is_non_executable_extensionless_dotfile, parse_delimited_table,
+        parse_excel_table,
     },
 };
 
@@ -70,12 +72,22 @@ impl PreviewProvider for LocalPreviewProvider {
                     truncated: false,
                 };
             }
+            if matches!(content, PreviewContent::Text { .. })
+                && (has_csv_extension(&entry.native_name) || has_tsv_extension(&entry.native_name))
+            {
+                content = PreviewContent::Table {
+                    headers: Vec::new(),
+                    rows: Vec::new(),
+                    truncated: false,
+                };
+            }
 
             let operation = match content {
                 PreviewContent::Pdf { .. } => Some(ParseOperation::PreviewPdf),
                 PreviewContent::Image => Some(ParseOperation::PreviewImage),
                 PreviewContent::Media => Some(ParseOperation::PreviewMedia),
                 PreviewContent::Text { .. }
+                | PreviewContent::Table { .. }
                 | PreviewContent::Rasterized { .. }
                 | PreviewContent::SandboxedMedia { .. }
                 | PreviewContent::Unsupported => None,
@@ -126,6 +138,58 @@ impl PreviewProvider for LocalPreviewProvider {
             } else if matches!(content, PreviewContent::Text { .. }) {
                 content = match read_text(&file, request.text_byte_limit).await {
                     Ok((content, truncated)) => PreviewContent::Text { content, truncated },
+                    Err(error) => {
+                        emit(PreviewEvent::Failed {
+                            request_id,
+                            entry,
+                            message: error.to_string(),
+                        });
+                        return;
+                    }
+                };
+            } else if matches!(content, PreviewContent::Table { .. })
+                && has_excel_extension(&entry.native_name)
+            {
+                let Some(path) = entry.location.native_path().map(ToOwned::to_owned) else {
+                    emit(PreviewEvent::Failed {
+                        request_id,
+                        entry,
+                        message: "Only local files can be previewed safely".to_owned(),
+                    });
+                    return;
+                };
+                content = match gio::spawn_blocking(move || parse_excel_table(&path)).await {
+                    Ok(Ok((headers, rows, truncated))) => PreviewContent::Table {
+                        headers,
+                        rows,
+                        truncated,
+                    },
+                    Ok(Err(message)) => {
+                        emit(PreviewEvent::Failed {
+                            request_id,
+                            entry,
+                            message,
+                        });
+                        return;
+                    }
+                    Err(_) => return,
+                };
+            } else if matches!(content, PreviewContent::Table { .. }) {
+                let delimiter = if has_tsv_extension(&entry.native_name) {
+                    b'\t'
+                } else {
+                    b','
+                };
+                content = match read_text(&file, request.text_byte_limit).await {
+                    Ok((text, byte_truncated)) => {
+                        let (headers, rows, row_truncated) =
+                            parse_delimited_table(&text, delimiter);
+                        PreviewContent::Table {
+                            headers,
+                            rows,
+                            truncated: byte_truncated || row_truncated,
+                        }
+                    }
                     Err(error) => {
                         emit(PreviewEvent::Failed {
                             request_id,
