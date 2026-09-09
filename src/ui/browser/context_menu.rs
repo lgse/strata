@@ -879,8 +879,23 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
         );
     });
 
+    let context_view = widget.downgrade();
+    popover.connect_show(move |_| {
+        if let Some(view) = context_view.upgrade() {
+            view.add_css_class("context-selection");
+        }
+    });
+    let context_view = widget.downgrade();
+    popover.connect_closed(move |_| {
+        if let Some(view) = context_view.upgrade() {
+            view.remove_css_class("context-selection");
+        }
+    });
+
     let click = gtk::GestureClick::new();
     click.set_button(3);
+    // Claim secondary clicks before ListView's row gestures consume them.
+    click.set_propagation_phase(gtk::PropagationPhase::Capture);
     let weak_state = Rc::downgrade(state);
     let popover_for_reveal = popover.clone();
     let scroll_for_reveal = scroll.clone();

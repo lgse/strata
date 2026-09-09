@@ -149,6 +149,8 @@ impl ViewState {
     ) {
         let final_name = format!("{archive_name}.{}", format.extension());
         if !archive_has_collision(&destination, &final_name) {
+            self.pending_archive_destination
+                .replace(Some(destination.clone()));
             self.browser.compress(
                 entries,
                 destination,
@@ -202,17 +204,22 @@ impl ViewState {
         let replaced_layer = layer.clone();
         let replaced_overlay = window_overlay.clone();
         let replaced_root = blurred_root.clone();
-        let browser = self.browser.clone();
+        let state = Rc::downgrade(self);
         replace.connect_clicked(move |_| {
             dismiss_modal_layer(&replaced_layer, &replaced_overlay, replaced_root.as_ref());
-            browser.compress(
-                entries.clone(),
-                destination.clone(),
-                archive_name.clone(),
-                TransferConflict::ReplaceExisting,
-                format,
-                password.clone(),
-            );
+            if let Some(state) = state.upgrade() {
+                state
+                    .pending_archive_destination
+                    .replace(Some(destination.clone()));
+                state.browser.compress(
+                    entries.clone(),
+                    destination.clone(),
+                    archive_name.clone(),
+                    TransferConflict::ReplaceExisting,
+                    format,
+                    password.clone(),
+                );
+            }
         });
 
         let keys = gtk::EventControllerKey::new();
