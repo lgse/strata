@@ -257,7 +257,20 @@ enum RenameRevealTarget {
         position: u32,
         row: Option<gtk::Widget>,
         footer: Option<gtk::Widget>,
+        loading: bool,
     },
+}
+
+fn prepare_rename_reveal(
+    source_position: Option<usize>,
+    resolved_source_position: usize,
+    loading: bool,
+    scroll_value: &std::cell::Cell<Option<f64>>,
+) -> bool {
+    if source_position != Some(resolved_source_position) {
+        scroll_value.set(None);
+    }
+    loading
 }
 
 impl ViewState {
@@ -310,9 +323,7 @@ impl ViewState {
         let Some(source_position) = position else {
             return RenameRevealTarget::Wait;
         };
-        if snapshot.loading {
-            return RenameRevealTarget::Wait;
-        }
+        let loading = snapshot.loading;
         let (position, row, footer) = if context.mode == BrowserMode::Columns {
             let column = self.columns.borrow()[context.depth].clone();
             let Some(position) = column.map.view_position(source_position) else {
@@ -343,6 +354,7 @@ impl ViewState {
             position,
             row,
             footer,
+            loading,
         }
     }
 
@@ -663,7 +675,7 @@ impl ViewState {
             if !state.rename_reveal_is_valid(list, &context) {
                 return gtk::glib::ControlFlow::Break;
             }
-            let (resolved_source_position, position, row, footer) =
+            let (resolved_source_position, position, row, footer, loading) =
                 match state.resolve_rename_reveal_target(&context) {
                     RenameRevealTarget::Stop => return gtk::glib::ControlFlow::Break,
                     RenameRevealTarget::Wait => return gtk::glib::ControlFlow::Continue,
@@ -672,12 +684,16 @@ impl ViewState {
                         position,
                         row,
                         footer,
-                    } => (resolved_source_position, position, row, footer),
+                        loading: is_loading,
+                    } => (resolved_source_position, position, row, footer, is_loading),
                 };
-            if source_position != Some(resolved_source_position) {
-                scroll_value.set(None);
-            }
-            if list.height() <= 1 {
+            if prepare_rename_reveal(
+                source_position,
+                resolved_source_position,
+                loading,
+                &scroll_value,
+            ) || list.height() <= 1
+            {
                 return gtk::glib::ControlFlow::Continue;
             }
             let Some(row) = row else {
