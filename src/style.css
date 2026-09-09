@@ -503,13 +503,30 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .delete-confirmation-list {
   background: alpha(@theme_highlight, 0.42);
-  border: 1px solid alpha(@theme_border, 0.42);
-  border-radius: 5px;
 }
 
 .delete-confirmation-list viewport {
   background: transparent;
-  border-radius: 5px;
+}
+
+.delete-confirmation-list scrollbar {
+  padding: 0 !important;
+}
+
+.delete-confirmation-list scrollbar.vertical {
+  min-width: 6px !important;
+}
+
+.delete-confirmation-list scrollbar.vertical > range > trough {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.delete-confirmation-list scrollbar.vertical > range > trough > slider {
+  margin: 0 !important;
+  min-width: 6px !important;
 }
 
 .delete-confirmation-files {
