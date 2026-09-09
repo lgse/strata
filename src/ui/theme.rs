@@ -316,6 +316,7 @@ pub struct ThemeManager {
     previewing: Cell<bool>,
     changes: bindings::PreferenceChanges,
     persistence_dirty: Cell<bool>,
+    persistence_enabled: bool,
 }
 
 impl ThemeManager {
@@ -333,7 +334,13 @@ impl ThemeManager {
     fn load() -> Rc<Self> {
         let themes = merge_builtin_and_custom_themes(builtins(), load_custom_themes());
         let omarchy_available = load_omarchy_theme().is_some();
-        let mut preferences = read_preferences().unwrap_or_default();
+        let loaded = read_preferences();
+        let persistence_enabled = loaded.is_ok();
+        let mut preferences = loaded.unwrap_or_else(|error| {
+            tracing::warn!(%error, path = %settings_path().display(),
+                "unable to load settings; using temporary defaults without saving; fix the file and restart Strata");
+            Preferences::default()
+        });
         preferences.preview_volume = normalized_volume(preferences.preview_volume);
         if !themes.iter().any(|theme| theme.id == preferences.theme) {
             preferences.theme = "azure-glow".to_owned();
@@ -350,6 +357,7 @@ impl ThemeManager {
             themes: RefCell::new(themes),
             changes: bindings::PreferenceChanges::new(preferences.clone()),
             persistence_dirty: Cell::new(false),
+            persistence_enabled,
             preferences: RefCell::new(preferences),
             omarchy_available,
             omarchy_monitor: RefCell::new(None),
@@ -902,6 +910,12 @@ impl ThemeManager {
         if !changed && !self.persistence_dirty.get() {
             return;
         }
+        if !self.persistence_enabled {
+            if changed {
+                self.changes.notify(self);
+            }
+            return;
+        }
         self.persistence_dirty.set(true);
         let path = settings_path();
         let result = (|| -> io::Result<()> {
@@ -1055,13 +1069,19 @@ fn load_custom_themes() -> Vec<Theme> {
     themes
 }
 
-fn read_preferences() -> Option<Preferences> {
-    let table: toml::Table = toml::from_str(&fs::read_to_string(settings_path()).ok()?).ok()?;
+fn read_preferences() -> io::Result<Preferences> {
+    let contents = match fs::read_to_string(settings_path()) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Preferences::default()),
+        Err(error) => return Err(error),
+    };
+    let table: toml::Table = toml::from_str(&contents)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
     match table.clone().try_into() {
-        Ok(preferences) => Some(preferences),
+        Ok(preferences) => Ok(preferences),
         Err(error) => {
             tracing::warn!(%error, "settings file has invalid entries; keeping the valid ones");
-            Some(salvage_preferences(table))
+            Ok(salvage_preferences(table))
         }
     }
 }
