@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Content drags, inert-space marquees, and release-only previews in every mode."""
 
 import pytest
@@ -107,6 +107,50 @@ def test_modifier_clicks_on_inert_space_still_select(strata, mode):
         modifiers=("shift",),
     )
     strata.wait_for_selection(["002.txt", "003.txt", "004.txt"])
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_ctrl_drag_from_content_copies_and_keeps_selection(strata, mode):
+    start = strata.pointer.drag_origin(strata.entry("todo.txt"))
+    target = strata.entry("archive")
+    strata.pointer.drag_points(
+        start, target.screen_bounds().center, modifiers=("ctrl",)
+    )
+    strata.wait(
+        lambda: strata.fixture.path("archive/todo.txt").exists(),
+        "the ctrl-drag from content to copy the file",
+    )
+    assert strata.fixture.path("todo.txt").exists()
+    strata.wait_for_selection(["todo.txt"])
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_ctrl_drag_from_selected_content_copies_the_file(strata, mode):
+    strata.select_entry("todo.txt")
+    start = strata.pointer.drag_origin(strata.entry("todo.txt"))
+    target = strata.entry("archive")
+    strata.pointer.drag_points(
+        start, target.screen_bounds().center, modifiers=("ctrl",)
+    )
+    strata.wait(
+        lambda: strata.fixture.path("archive/todo.txt").exists(),
+        "the ctrl-drag from selected content to copy the file",
+    )
+    assert strata.fixture.path("todo.txt").exists()
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_shift_drag_from_content_moves_the_file(strata, mode):
+    start = strata.pointer.drag_origin(strata.entry("todo.txt"))
+    target = strata.entry("archive")
+    strata.pointer.drag_points(
+        start, target.screen_bounds().center, modifiers=("shift",)
+    )
+    strata.wait(
+        lambda: strata.fixture.path("archive/todo.txt").exists(),
+        "the shift-drag from content to move the file",
+    )
+    assert not strata.fixture.path("todo.txt").exists()
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)

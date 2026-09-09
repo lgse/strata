@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Deterministic duration-balanced runner plans, independent of GTK and pytest."""
 
 from __future__ import annotations

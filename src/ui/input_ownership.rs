@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) enum NavigationInput {

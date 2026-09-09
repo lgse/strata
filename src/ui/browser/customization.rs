@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::model::{FolderColor, FolderColorValue};
 use crate::ui::controls::modal_layout;

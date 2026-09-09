@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Exercise FileChooser v4, optionally on a private bus without installing a portal.
 
 Requires PyGObject (Gio), dbus-daemon, and a graphical session. This client calls

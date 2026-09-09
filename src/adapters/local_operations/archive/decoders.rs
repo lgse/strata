@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 //! ZIP, TAR/gzip and 7z decoding adapters feeding the same extraction session.
 //! Format-specific member enumeration, passwords and error translation stay here.

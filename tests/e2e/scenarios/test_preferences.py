@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Saved preferences and live controls share one application-wide state."""
 
 import subprocess

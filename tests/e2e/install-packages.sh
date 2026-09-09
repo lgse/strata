@@ -1,5 +1,5 @@
 #!/bin/sh
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 set -eu
 
 root=${STRATA_E2E_APT_ROOT:-}
@@ -30,9 +30,11 @@ done
 
 backup=$(mktemp "$sources.strata-XXXXXX")
 cp "$sources" "$backup"
+uris=
 restore() {
     cp "$backup" "$sources"
     rm -f "$backup" "$lists/${mirror_prefix}"_*
+    [ -z "$uris" ] || rm -f "$uris"
 }
 trap restore EXIT
 trap 'exit 129' HUP
@@ -53,9 +55,50 @@ while IFS= read -r line; do
 done < "$backup" > "$sources"
 
 if ! apt-get --download-only install --yes --no-install-recommends "$@"; then
-    printf 'Mirror lacks pinned packages; completing downloads from the snapshot.\n' >&2
+    printf 'Mirror lacks pinned packages; trying the authenticated Launchpad archive fallback.\n' >&2
+    uris=$(mktemp "$sources.strata-uris-XXXXXX")
+    if apt-get --print-uris --download-only -o Acquire::ForceHash=SHA256 \
+        install --yes --no-install-recommends "$@" > "$uris"; then
+        archives="$root/var/cache/apt/archives"
+        mkdir -p "$archives/partial"
+        while read -r uri cached _size hash _extra; do
+            case "$uri" in
+                "'https://archive.ubuntu.com/ubuntu/pool/"*".deb'") ;;
+                *) continue ;;
+            esac
+            remote=${uri##*/}
+            remote=${remote%\'}
+            for name in "$remote" "$cached"; do
+                case "$name" in
+                    ''|*[!a-zA-Z0-9._+~:%-]*) fail 'invalid package download filename' ;;
+                esac
+            done
+            case "$hash" in
+                SHA256:*) checksum=${hash#SHA256:} ;;
+                *) fail 'APT did not provide a SHA256 package identity' ;;
+            esac
+            [ "${#checksum}" -eq 64 ] || fail 'invalid package SHA256 length'
+            case "$checksum" in *[!0-9a-f]*) fail 'invalid package SHA256' ;; esac
+            if [ -f "$archives/$cached" ] && \
+                printf '%s  %s\n' "$checksum" "$archives/$cached" | sha256sum --check --status; then
+                continue
+            fi
+            # Launchpad retains superseded binaries. The signed snapshot, not
+            # the mirror, supplies the mandatory hash for every downloaded byte.
+            temporary="$archives/partial/$cached"
+            if "$root/usr/lib/apt/apt-helper" -o Acquire::Retries=0 \
+                -o Acquire::https::Timeout=20 -o Acquire::http::Timeout=20 download-file \
+                "https://launchpad.net/ubuntu/+archive/primary/+files/$remote" \
+                "$temporary" "$hash"; then
+                install -m 0644 "$temporary" "$archives/$cached"
+                rm -f "$temporary"
+            else
+                printf 'Archive fallback unavailable for %s; completing downloads from the snapshot.\n' "$cached" >&2
+            fi
+        done < "$uris"
+    fi
 fi
-# Superseded versions may exist only in the snapshot. Install once, retaining
-# verified mirror downloads but never retrying a failed maintainer script.
+# Install once against the original snapshot, retaining only downloads that APT
+# verifies against its signed indexes; never retry a failed maintainer script.
 cp "$backup" "$sources"
 apt-get install --yes --no-install-recommends "$@"
