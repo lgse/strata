@@ -1757,6 +1757,23 @@ paned > separator {
   padding: 6px 10px;
 }
 
+.preview-table-header,
+.preview-table-cell {
+  border-bottom: 1px solid alpha(@theme_border, 0.24);
+  border-right: 1px solid alpha(@theme_border, 0.24);
+  padding: 4px 10px;
+}
+
+.preview-table-header {
+  background: @theme_muted;
+  color: @theme_text;
+  font-weight: 700;
+}
+
+.preview-table-cell {
+  color: @theme_text;
+}
+
 .preview-volume-toggle {
   background: alpha(@theme_bg, 0.72);
   border: 1px solid alpha(@theme_border, 0.42);

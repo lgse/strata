@@ -16,7 +16,7 @@ use crate::{
     model::{EntryKind, FileEntry, MetadataValue},
     services::{
         LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
-        PreviewRequestId,
+        PreviewRequestId, TABLE_ROW_LIMIT,
     },
 };
 
@@ -707,7 +707,8 @@ impl PreviewState {
                             print_rasterized(pages, &entry.display_name, parent.as_ref());
                         }
                     }
-                    PreviewContent::Image
+                    PreviewContent::Table { .. }
+                    | PreviewContent::Image
                     | PreviewContent::Media
                     | PreviewContent::SandboxedMedia { .. }
                     | PreviewContent::Unsupported => {}
@@ -827,6 +828,58 @@ impl PreviewState {
                 self.content.append(&scroll);
                 if truncated {
                     let notice = gtk::Label::new(Some("Preview limited to the first 1 MB"));
+                    notice.add_css_class("preview-note");
+                    self.content.append(&notice);
+                }
+            }
+            PreviewContent::Table {
+                headers,
+                rows,
+                truncated,
+            } => {
+                let grid = gtk::Grid::new();
+                grid.add_css_class("preview-table");
+                for (column, header) in headers.iter().enumerate() {
+                    grid.attach(
+                        &table_cell(header, "preview-table-header"),
+                        column as i32,
+                        0,
+                        1,
+                        1,
+                    );
+                }
+                for (row_index, row) in rows.iter().enumerate() {
+                    for (column, value) in row.iter().enumerate() {
+                        grid.attach(
+                            &table_cell(value, "preview-table-cell"),
+                            column as i32,
+                            (row_index + 1) as i32,
+                            1,
+                            1,
+                        );
+                    }
+                }
+                // Auto-hide overlay scrollbars only fade when a ScrolledWindow scrolls a
+                // single axis; nest one per axis rather than combining both in one.
+                let horizontal_scroll = gtk::ScrolledWindow::builder()
+                    .child(&grid)
+                    .hscrollbar_policy(gtk::PolicyType::Automatic)
+                    .vscrollbar_policy(gtk::PolicyType::Never)
+                    .build();
+                horizontal_scroll.add_css_class("fixed-scrollbar");
+                let vertical_scroll = gtk::ScrolledWindow::builder()
+                    .child(&horizontal_scroll)
+                    .hscrollbar_policy(gtk::PolicyType::Never)
+                    .vscrollbar_policy(gtk::PolicyType::Automatic)
+                    .hexpand(true)
+                    .vexpand(true)
+                    .build();
+                vertical_scroll.add_css_class("fixed-scrollbar");
+                self.content.append(&vertical_scroll);
+                if truncated {
+                    let notice = gtk::Label::new(Some(&format!(
+                        "Preview limited to the first {TABLE_ROW_LIMIT} rows"
+                    )));
                     notice.add_css_class("preview-note");
                     self.content.append(&notice);
                 }
@@ -1851,6 +1904,14 @@ fn clear_box(box_: &gtk::Box) {
     while let Some(child) = box_.first_child() {
         box_.remove(&child);
     }
+}
+
+fn table_cell(text: &str, css_class: &str) -> gtk::Label {
+    let label = gtk::Label::new(Some(text));
+    label.add_css_class(css_class);
+    label.set_halign(gtk::Align::Fill);
+    label.set_xalign(0.0);
+    label
 }
 
 fn metadata_size(entry: &FileEntry) -> String {
