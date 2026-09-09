@@ -781,6 +781,7 @@ impl ViewState {
             self.pending_archive_destination.take();
         } else {
             self.pending_select.borrow_mut().extend(names);
+            self.browser.retry_column(depth);
         }
     }
 
