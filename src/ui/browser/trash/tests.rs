@@ -64,3 +64,51 @@ fn retryable_delete_entries_is_empty_when_nothing_matches() {
 
     assert!(kept.is_empty());
 }
+
+#[test]
+fn delete_confirmation_renders_every_row_for_a_small_selection() {
+    let entries = (0..7).map(confirmation_entry).collect::<Vec<_>>();
+
+    let (visible, hidden) = delete_confirmation_rows(&entries);
+
+    assert_eq!(visible.len(), 7);
+    assert_eq!(hidden, 0);
+    assert_eq!(delete_confirmation_overflow_label(hidden), None);
+}
+
+#[test]
+fn delete_confirmation_caps_rows_and_summarizes_the_rest() {
+    let entries = (0..1000).map(confirmation_entry).collect::<Vec<_>>();
+
+    let (visible, hidden) = delete_confirmation_rows(&entries);
+
+    assert_eq!(visible.len(), DELETE_CONFIRMATION_MAX_ROWS);
+    assert_eq!(hidden, 1000 - DELETE_CONFIRMATION_MAX_ROWS);
+    assert_eq!(
+        delete_confirmation_overflow_label(hidden),
+        Some("… and 950 more items".to_owned())
+    );
+}
+
+#[test]
+fn delete_confirmation_overflow_label_uses_the_singular_for_one_item() {
+    assert_eq!(
+        delete_confirmation_overflow_label(1),
+        Some("… and 1 more item".to_owned())
+    );
+}
+
+fn confirmation_entry(index: usize) -> FileEntry {
+    let name = format!("file-{index}.txt");
+    FileEntry {
+        location: Location::local(format!("/fixture/{name}")),
+        native_name: name.clone().into(),
+        thumbnail_path: None,
+        display_name: name,
+        kind: crate::model::EntryKind::File,
+        size: crate::model::MetadataValue::Unknown,
+        modified_unix_seconds: crate::model::MetadataValue::Unknown,
+        is_hidden: false,
+        mode: crate::model::MetadataValue::Unknown,
+    }
+}
