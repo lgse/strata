@@ -50,15 +50,15 @@ depends = ["fmt", "compile", "clippy", "test", "deny", "typos"]
 
 [tasks.start-dev]
 description = "Rebuild and restart as files change"
-run = "./scripts/dev.sh"
+run = "./scripts/start-dev.sh"
 
-[tasks.run-dev]
+[tasks.dev]
 description = "Build and launch the main app once"
 run = "cargo run"
 
-[tasks.run-chooser-dev]
+[tasks.chooser-dev]
 description = "Build and open an isolated file chooser"
-run = "./scripts/run-chooser-dev.sh"
+run = "./scripts/chooser-dev.sh"
 
 [tasks.build]
 description = "Build the release binary"

@@ -10,7 +10,7 @@ import unittest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-CHOOSER = ROOT / "scripts/run-chooser-dev.sh"
+CHOOSER = ROOT / "scripts/chooser-dev.sh"
 
 
 class ChooserLauncherTests(unittest.TestCase):

@@ -21,7 +21,7 @@ sudo pacman -S --needed base-devel fontconfig gtk4 gtksourceview5 poppler-glib
 Run the application:
 
 ```bash
-mise run run-dev
+mise run dev
 ```
 
 To rebuild and restart the running application whenever code or bundled assets

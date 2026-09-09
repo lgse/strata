@@ -391,8 +391,8 @@ Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-con
 sudo pacman -S --needed base-devel bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
   gst-libav gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
 mise run start-dev        # rebuild and restart as files change
-mise run run-dev          # build and launch the main app once
-mise run run-chooser-dev  # build and open an isolated Save chooser with choices
+mise run dev              # build and launch the main app once
+mise run chooser-dev      # build and open an isolated Save chooser with choices
 mise run check            # format, compile, Clippy, tests, and policy checks
 ```
 
