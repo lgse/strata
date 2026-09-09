@@ -2831,16 +2831,17 @@ fn install_list_drag_drop(
     let browser_for_drag = browser.clone();
     let map_for_drag = position_map.clone();
     let drag_icon = drag_icon.map(gtk::Widget::downgrade);
+    let prepare_row = row.downgrade();
     drag.connect_prepare(move |source, x, y| {
-        let widget = source.widget()?;
+        let prepare_row = prepare_row.upgrade()?;
         if whole_row {
-            if widget
+            if prepare_row
                 .pick(x, y, gtk::PickFlags::DEFAULT)
                 .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
             {
                 return None;
             }
-        } else if !super::pointer::hits_item_content(&widget, x, y) {
+        } else if !super::pointer::hits_item_content(&prepare_row, x, y) {
             return None;
         }
         source.set_actions(super::browser::drag_actions_for_modifiers(
@@ -2868,8 +2869,7 @@ fn install_list_drag_drop(
             vec![entry]
         };
         let compact_icon = drag_icon.as_ref().and_then(glib::WeakRef::upgrade);
-        let fallback_icon = source.widget();
-        let paintable = gtk::WidgetPaintable::new(compact_icon.as_ref().or(fallback_icon.as_ref()));
+        let paintable = gtk::WidgetPaintable::new(compact_icon.as_ref().or(Some(&prepare_row)));
         let (hot_x, hot_y) = if compact_icon.is_some() {
             (0, 0)
         } else {
