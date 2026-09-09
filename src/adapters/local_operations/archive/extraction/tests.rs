@@ -505,8 +505,6 @@ fn matching_declared_size_completes_under_an_injected_quota() -> Result<(), Box<
     Ok(())
 }
 
-/// A filesystem that does not report capacity must not be mistaken for a full
-/// one; free-space checks are skipped while writes proceed normally.
 #[test]
 fn unreported_free_space_skips_capacity_checks() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
@@ -535,8 +533,6 @@ fn unreported_free_space_skips_capacity_checks() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-/// Unreported free space relaxes only the capacity checks; a member that
-/// overruns its declared size is still refused.
 #[test]
 fn unreported_free_space_still_enforces_declared_size() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;

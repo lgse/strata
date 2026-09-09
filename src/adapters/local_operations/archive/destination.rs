@@ -89,19 +89,9 @@ impl ExtractionDestination {
         Ok(Self { root })
     }
 
-    /// Unprivileged free space on the filesystem that holds this destination.
-    ///
     /// Uses [`fstatvfs`] on the pinned root so a swapped path cannot redirect
-    /// the query. Fragment size falls back to block size when `f_frsize` is 0.
-    ///
-    /// Returns `None` when the filesystem does not report capacity at all
-    /// (`f_blocks == 0`), which is how FUSE mounts without a `statfs` handler
-    /// and some network filesystems answer. Treating that as zero free space
-    /// would refuse every extraction there, so callers skip the check instead.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if the destination filesystem cannot be queried.
+    /// the query. A zero `f_blocks` means the filesystem does not report
+    /// capacity, so callers skip the check instead of refusing every extraction.
     ///
     /// [`fstatvfs`]: rustix::fs::fstatvfs
     pub(super) fn available_bytes(&self) -> Result<Option<u64>, String> {

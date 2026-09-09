@@ -5,11 +5,6 @@
 //! Decoders lend member streams to the session and supply already-known pending
 //! names only on cancellation. The session validates and maps destination reports
 //! without scanning ahead, probing the filesystem or reserving pending names.
-//! Claimed uncompressed sizes are checked against destination free space before
-//! writing, and extracted bytes must match the size declared for each member.
-//! Filesystems that do not report capacity skip the free-space checks; the size
-//! match still applies.
-
 use std::{
     io::{Read, Write},
     path::Path,
@@ -30,7 +25,6 @@ mod tests;
 /// flatten non-directory entries into file streams; this is a provisional boundary.
 pub(super) enum MemberContent<'a> {
     Directory,
-    /// File stream and the uncompressed size declared by the archive header, if known.
     File(&'a mut dyn Read, Option<u64>),
 }
 
@@ -59,19 +53,10 @@ pub(super) struct ExtractionSession<'a> {
     completed: Vec<Location>,
     interrupted: Option<InterruptedMember>,
     written: u64,
-    /// Free space at open, or `None` when the filesystem does not report it.
     available_bytes: Option<u64>,
 }
 
 impl<'a> ExtractionSession<'a> {
-    /// Pins `destination` and records its free space for later preflight checks.
-    ///
-    /// # Errors
-    ///
-    /// - [`Failed`] if the destination cannot be opened or its free space cannot
-    ///   be queried
-    ///
-    /// [`Failed`]: ArchiveError::Failed
     pub(super) fn open(
         destination: &'a Path,
         progress: &'a AtomicUsize,
@@ -109,10 +94,6 @@ impl<'a> ExtractionSession<'a> {
         }
     }
 
-    /// Test constructor that substitutes a free-space ceiling for [`fstatvfs`].
-    /// `None` models a filesystem that does not report capacity.
-    ///
-    /// [`fstatvfs`]: rustix::fs::fstatvfs
     #[cfg(test)]
     pub(super) fn open_with_available_bytes(
         destination: &'a Path,
@@ -134,17 +115,7 @@ impl<'a> ExtractionSession<'a> {
         check_archive_cancelled(self.cancelled)
     }
 
-    /// Refuses the archive when its claimed uncompressed size exceeds free space.
-    ///
-    /// Call before extracting members when the format advertises a total. Sequential
-    /// formats that cannot cheaply sum headers rely on per-member checks instead.
-    /// Passes when the destination filesystem does not report free space.
-    ///
-    /// # Errors
-    ///
-    /// - [`Failed`] if `claimed` is larger than the remaining free space
-    ///
-    /// [`Failed`]: ArchiveError::Failed
+    /// Sequential formats that cannot cheaply sum headers rely on per-member checks.
     pub(super) fn preflight_claimed_size(&self, claimed: u128) -> Result<(), ArchiveError> {
         match self.remaining() {
             Some(available) if claimed > u128::from(available) => Err(archive_failed(format!(
@@ -171,18 +142,6 @@ impl<'a> ExtractionSession<'a> {
 
     /// Processes one member. On error the decoder must stop and call `finish`.
     /// Names retain the adapters' legacy string conversion until decoder evaluation.
-    /// File members with a declared size are refused if they do not fit in the
-    /// remaining free space, and the copy must produce exactly that many bytes.
-    ///
-    /// # Errors
-    ///
-    /// - [`Cancelled`] if the operation is cancelled before the member is written
-    /// - [`Failed`] if the path is unsafe, the destination cannot be written, the
-    ///   declared size exceeds free space, or extracted bytes do not match the
-    ///   declared size
-    ///
-    /// [`Cancelled`]: ArchiveError::Cancelled
-    /// [`Failed`]: ArchiveError::Failed
     pub(super) fn extract_member(
         &mut self,
         name: &str,
@@ -305,20 +264,7 @@ fn destination_full(name: &str, available: u64) -> ArchiveError {
     ))
 }
 
-/// Copies `reader` to `writer`, enforcing declared size and remaining free space.
-///
-/// Reads at most the declared uncompressed size and the remaining destination
-/// capacity, when either is known. An extra byte past either limit, or a short
-/// read versus a declared size, fails without leaving the extra data on disk.
-///
-/// # Errors
-///
-/// - [`Cancelled`] if `cancelled` is set between reads
-/// - [`Failed`] if a read or write fails, extracted bytes do not match `declared_size`,
-///   or the remaining free space is exhausted before the stream ends
-///
-/// [`Cancelled`]: ArchiveError::Cancelled
-/// [`Failed`]: ArchiveError::Failed
+/// An extra byte past either limit is probed before it can be written.
 fn copy_member(
     name: &str,
     mut reader: impl Read,

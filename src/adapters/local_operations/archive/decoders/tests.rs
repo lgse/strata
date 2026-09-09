@@ -864,9 +864,6 @@ fn sevenz_extraction_reports_remaining_entries_when_cancelled() -> Result<(), Bo
     Ok(())
 }
 
-/// The `zip` crate only bounds the compressed input, not the inflated output,
-/// so a header that under-reports its size is the one bomb the decoder itself
-/// does not stop. The session must refuse it on the first byte past the claim.
 #[test]
 fn zip_member_lying_about_its_size_is_refused_before_it_expands() -> Result<(), Box<dyn Error>> {
     let root = tempfile::tempdir()?;
@@ -915,8 +912,6 @@ fn zip_member_declaring_more_than_it_contains_is_refused() -> Result<(), Box<dyn
     Ok(())
 }
 
-/// Size checks compare claims against free space only; a truthful header with
-/// an extreme compression ratio must still extract in full.
 #[test]
 fn highly_compressible_archives_extract_in_every_format() -> Result<(), Box<dyn Error>> {
     const SIZE: u64 = 16 << 20;
