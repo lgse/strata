@@ -107,6 +107,57 @@ fn completed_archive_does_not_restore_a_superseded_destination_after_modal_dismi
 }
 
 #[test]
+fn completed_extract_does_not_restore_destination_after_navigation_during_modal_dismissal() {
+    crate::test_support::gtk_test(
+        "ui::browser::events::tests::completed_extract_does_not_restore_destination_after_navigation_during_modal_dismissal",
+        || {
+            let origin = tempfile::tempdir().expect("extract origin");
+            let destination = tempfile::tempdir().expect("extract destination");
+            let replacement = tempfile::tempdir().expect("replacement destination");
+            let (view, browser, window, overlay) = archive_view(origin.path());
+            let state = &view.state;
+            state
+                .pending_navigate
+                .replace(Some(Location::local(destination.path())));
+            state.show_file_operation_progress(
+                16,
+                crate::assets::icons::FILE_ARCHIVE,
+                "Working",
+                "Cancelling will not undo completed changes",
+                Rc::new(|| {}),
+            );
+            let layer = progress_layer(&overlay);
+
+            state.handle(&BrowserEvent::ArchiveCompleted {
+                select_name: "extracted.txt".to_owned(),
+            });
+            assert!(state.pending_select.borrow().is_empty());
+            let replacement_location = Location::local(replacement.path());
+            browser.navigate(replacement_location.clone());
+
+            wait_until(
+                || layer.parent().is_none(),
+                "progress modal did not dismiss",
+            );
+            wait_until(
+                || {
+                    browser.active_location().as_ref() == Some(&replacement_location)
+                        && browser
+                            .column_snapshot(0)
+                            .is_some_and(|snapshot| !snapshot.loading)
+                },
+                "replacement destination was not retained",
+            );
+            while glib::MainContext::default().iteration(false) {}
+            assert_eq!(browser.active_location(), Some(replacement_location));
+            assert!(state.pending_select.borrow().is_empty());
+            window.destroy();
+            browser.clear_observer();
+        },
+    );
+}
+
+#[test]
 fn completed_archive_selects_the_authoritative_model_only_after_modal_dismissal() {
     crate::test_support::gtk_test(
         "ui::browser::events::tests::completed_archive_selects_the_authoritative_model_only_after_modal_dismissal",

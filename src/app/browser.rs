@@ -653,6 +653,10 @@ impl Browser {
         self.state.borrow().active_location()
     }
 
+    pub(crate) fn navigation_generation(&self) -> u64 {
+        self.validation_generation.get()
+    }
+
     pub fn active_depth(&self) -> Option<usize> {
         self.state.borrow().active_depth()
     }

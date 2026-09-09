@@ -641,8 +641,11 @@ impl ViewState {
                 if let Some(destination) = self.pending_navigate.take() {
                     let weak = Rc::downgrade(self);
                     let select_name = select_name.clone();
+                    let navigation_generation = self.browser.navigation_generation();
                     self.dismiss_file_operation_progress_then(move || {
-                        if let Some(state) = weak.upgrade() {
+                        if let Some(state) = weak.upgrade()
+                            && state.browser.navigation_generation() == navigation_generation
+                        {
                             if !select_name.is_empty() {
                                 state.pending_select.borrow_mut().push(select_name);
                             }
@@ -685,8 +688,11 @@ impl ViewState {
                 } else {
                     let weak = Rc::downgrade(self);
                     let select_name = select_name.clone();
+                    let navigation_generation = self.browser.navigation_generation();
                     self.dismiss_file_operation_progress_then(move || {
-                        if let Some(state) = weak.upgrade() {
+                        if let Some(state) = weak.upgrade()
+                            && state.browser.navigation_generation() == navigation_generation
+                        {
                             if !select_name.is_empty() {
                                 state.pending_select.borrow_mut().push(select_name);
                             }
