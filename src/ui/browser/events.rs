@@ -25,7 +25,7 @@ use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 impl ViewState {
     pub(super) fn handle(self: &Rc<Self>, event: &BrowserEvent) {
@@ -288,6 +288,26 @@ impl ViewState {
                                 if state.browser.select_entries_by_name_at(depth, &names) {
                                     state.reveal_focused_entry();
                                     state.pending_archive_destination.take();
+                                } else {
+                                    // A successful archive operation can finish before the
+                                    // directory monitor publishes its final rename. Keep the
+                                    // request until a subsequent scan observes the entry.
+                                    state.pending_select.borrow_mut().extend(names);
+                                    let weak = Rc::downgrade(&state);
+                                    glib::timeout_add_local_once(
+                                        Duration::from_millis(100),
+                                        move || {
+                                            if let Some(state) = weak.upgrade()
+                                                && let Some(destination) = destination
+                                                && state
+                                                    .pending_archive_destination
+                                                    .borrow()
+                                                    .is_some()
+                                            {
+                                                state.reload_archive_destination(destination);
+                                            }
+                                        },
+                                    );
                                 }
                             }
                         });
@@ -638,7 +658,7 @@ impl ViewState {
                     // final rename. Start the destination reload after this dispatch returns so
                     // its directory scan observes the committed archive.
                     let weak = Rc::downgrade(self);
-                    glib::idle_add_local_once(move || {
+                    glib::timeout_add_local_once(Duration::from_millis(500), move || {
                         if let Some(state) = weak.upgrade()
                             && state.pending_archive_destination.borrow().as_ref()
                                 == Some(&destination)
