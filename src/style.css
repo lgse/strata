@@ -1436,6 +1436,17 @@ switch:checked slider {
   transition: none;
 }
 
+/* The mode scrollers sit beside the sidebar paned handle, whose box extends
+   behind the first pixels of the horizontal scrollbar. An opaque trough
+   keeps the handle from showing through there as a small square. */
+.mode-scroll scrollbar.horizontal > range > trough,
+.mode-scroll scrollbar.horizontal:hover > range > trough,
+.mode-scroll scrollbar.horizontal.hovering > range > trough,
+.mode-scroll scrollbar.horizontal.dragging > range > trough {
+  background: @theme_bg;
+  border: none;
+}
+
 /* The trough is widened to a practical grab target while slider margins keep the
    visible bar as narrow as before. */
 .fixed-scrollbar scrollbar.vertical {
@@ -2572,12 +2583,24 @@ popover.folder-context-popover.background {
   box-shadow: none;
 }
 
+.context-menu-scroll scrollbar,
+.context-menu-scroll scrollbar:hover,
+.context-menu-scroll scrollbar.hovering,
+.context-menu-scroll scrollbar.dragging {
+  background: transparent;
+  border: none;
+  padding: 0;
+  transition: none;
+}
+
 .context-menu-scroll scrollbar.vertical {
-  min-width: 6px;
+  min-width: 14px;
 }
 
 .context-menu-scroll scrollbar.vertical > range > trough > slider {
-  margin: 0;
+  border-width: 1px;
+  margin: 0 4px;
+  min-width: 6px;
 }
 
 .folder-context-menu,

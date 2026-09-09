@@ -306,6 +306,7 @@ impl ModeViews {
             .vexpand(true)
             .build();
         icons_scroll.add_css_class("fixed-scrollbar");
+        icons_scroll.add_css_class("mode-scroll");
 
         let list_root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         list_root.add_css_class("mode-list");
@@ -2465,6 +2466,7 @@ fn build_list_pane(
         .vexpand(true)
         .build();
     table_scroll.add_css_class("fixed-scrollbar");
+    table_scroll.add_css_class("mode-scroll");
     if let Some(viewport) = table_scroll.child().and_downcast::<gtk::Viewport>() {
         // The outer viewport must not horizontally reveal oversized metadata rows; the inner
         // ListView still reveals focused rows vertically.
