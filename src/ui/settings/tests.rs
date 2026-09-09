@@ -14,8 +14,7 @@ use super::{
     RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, UPDATE_DUE_INTERVAL, aur_update_command,
     channel_index, effective_update_channel, force_due_update_check,
     general::{
-        cross_volume_drop_strategy_label, video_preview_backend_label,
-        video_preview_control_state,
+        cross_volume_drop_strategy_label, video_preview_backend_label, video_preview_control_state,
     },
     install_guard, installed_version_status, is_stale_check, managed_channel_description,
     managed_install_summary, offer_still_eligible, omarchy_update_command,

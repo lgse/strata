@@ -220,6 +220,44 @@ fn file_drop_action_hover_matches_cross_volume_strategy() {
 }
 
 #[test]
+fn drop_dispatch_reads_saved_and_live_strategy_for_every_view() {
+    crate::test_support::gtk_test(
+        "ui::browser::clipboard::tests::drop_dispatch_reads_saved_and_live_strategy_for_every_view",
+        || {
+            crate::ui::theme::ThemeManager::seed_saved_preferences_for_test();
+            let manager = crate::ui::theme::ThemeManager::shared();
+            let dispatch = || {
+                preferred_file_drop_commit_for_current_strategy(
+                    gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
+                    crate::services::DropOverride::None,
+                    crate::services::VolumeRelation::Different,
+                    false,
+                )
+                .1
+            };
+
+            assert_eq!(
+                [dispatch(), dispatch()],
+                [DropCommit::Move, DropCommit::Move]
+            );
+
+            manager.set_cross_volume_drop_strategy(crate::services::CrossVolumeDropStrategy::Copy);
+            assert_eq!(
+                [dispatch(), dispatch()],
+                [DropCommit::Copy, DropCommit::Copy]
+            );
+
+            manager.set_cross_volume_drop_strategy(crate::services::CrossVolumeDropStrategy::Ask);
+            let expected = DropCommit::Ask {
+                default: crate::services::TransferKind::Copy,
+                volume: crate::services::VolumeRelation::Different,
+            };
+            assert_eq!([dispatch(), dispatch(), dispatch()], [expected; 3]);
+        },
+    );
+}
+
+#[test]
 fn move_only_protocol_still_copies_across_volumes() {
     let dest = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
     let offered = offered_file_actions(dest, gtk::gdk::DragAction::MOVE);

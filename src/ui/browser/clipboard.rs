@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::adapters::{
     DropVolumeQuery, DropVolumes, gio_file_for_location, location_for_file, lookup_drop_volumes,
@@ -11,8 +11,8 @@ use crate::services::{
 use crate::ui::browser::ViewState;
 use crate::ui::browser::columns::set_cut_path_style;
 use crate::ui::browser::paths::{can_remove_location, is_trash_location};
-use gtk::{glib, graphene};
 use gtk::prelude::*;
+use gtk::{glib, graphene};
 use std::cell::{Cell, RefCell};
 use std::collections::HashSet;
 use std::path::Path;
@@ -456,7 +456,8 @@ fn classify_file_drop(
         .as_ref()
         .map_or_else(|| target.actions(), |drop| drop.actions());
     let offered = offered_file_actions(target.actions(), source_actions);
-    let strategy = current_cross_volume_drop_strategy();
+    let (strategy, result) =
+        preferred_file_drop_commit_for_current_strategy(offered, override_with, relation, is_noop);
     if commit {
         tracing::debug!(
             dest = %destination.diagnostic_path(),
@@ -473,11 +474,18 @@ fn classify_file_drop(
             "drop action classified"
         );
     }
-    preferred_file_drop_commit(offered, override_with, relation, is_noop, strategy)
+    result
 }
 
-fn current_cross_volume_drop_strategy() -> CrossVolumeDropStrategy {
-    crate::ui::theme::ThemeManager::shared().cross_volume_drop_strategy()
+fn preferred_file_drop_commit_for_current_strategy(
+    actions: gtk::gdk::DragAction,
+    override_with: DropOverride,
+    volume: VolumeRelation,
+    is_noop: bool,
+) -> (CrossVolumeDropStrategy, DropCommit) {
+    let strategy = crate::ui::theme::ThemeManager::shared().cross_volume_drop_strategy();
+    let commit = preferred_file_drop_commit(actions, override_with, volume, is_noop, strategy);
+    (strategy, commit)
 }
 
 /// A compositor's source-side MOVE offer must not prevent Strata's cross-volume copy.

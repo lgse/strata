@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 //! Treats Trash metadata as untrusted and confines restores to the physical
 //! trash entry's volume.
