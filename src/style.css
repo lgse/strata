@@ -3184,8 +3184,8 @@ colorchooser colorswatch overlay {
   outline-offset: -2px;
 }
 
-.directory-column:not(:focus-within) .file-list row:selected,
-.file-list-mode:not(:focus-within) row:selected {
+.directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected,
+.file-list-mode:not(:focus-within):not(.context-selection) row:selected {
   background: alpha(@theme_highlight, 0.55);
   color: @theme_text;
 }
