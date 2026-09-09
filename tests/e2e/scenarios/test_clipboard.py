@@ -25,6 +25,8 @@ def test_same_folder_copy_creates_a_numbered_duplicate(strata, mode, source, dup
     else:
         strata.keyboard.press("ctrl+c")
         strata.paste_into(fixture.root.name)
+    strata.wait(lambda: strata.dialog() is not None, "the same-folder conflict dialog")
+    strata.pointer.click(strata.dialog_button("Keep Both"))
 
     strata.wait(lambda: fixture.path(duplicate).exists(), "the numbered copy")
     strata.entry(duplicate, directory=fixture.root.name)
@@ -212,10 +214,13 @@ def _paste_from_context_menu(strata):
 
 def test_pasting_a_duplicate_name_asks_before_replacing(strata):
     fixture = strata.fixture
-    fixture.path("archive/todo.txt").write_text("existing\n")
-
-    strata.select_entry("todo.txt")
+    fixture.path("archive/notes.txt").write_text("existing\n")
+    strata.open_directory("documents")
+    strata.select_entry_with_keyboard("notes.txt")
+    strata.keyboard.press("ctrl+a")
     strata.keyboard.press("ctrl+c")
+    strata.keyboard.press("alt+Up")
+    strata.wait_for_directory(fixture.root.name)
     strata.open_directory("archive")
     strata.paste_into("archive")
 
@@ -223,11 +228,20 @@ def test_pasting_a_duplicate_name_asks_before_replacing(strata):
     assert dialog.name == "File already exists", (
         "a duplicate name must be surfaced rather than silently resolved"
     )
+    assert dialog.find(role="button", name="Skip") is None, (
+        "skip is redundant when only one name conflicts"
+    )
 
-    strata.pointer.click(strata.dialog_button("Skip"))
+    strata.pointer.click(strata.dialog_button("Replace"))
     strata.wait(lambda: strata.dialog() is None, "the conflict dialog to close")
-    assert fixture.path("archive/todo.txt").read_text() == "existing\n", (
-        "skipping must leave the existing file alone"
+    assert fixture.path("archive/notes.txt").read_text() == "notes\n", (
+        "replacing must apply the pasted contents"
+    )
+    assert fixture.path("archive/report.md").is_file(), (
+        "non-conflicting items must still be pasted"
+    )
+    assert fixture.path("archive/spreadsheet.csv").is_file(), (
+        "non-conflicting items must still be pasted"
     )
 
 

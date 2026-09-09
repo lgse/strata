@@ -51,7 +51,7 @@ fn transfer_has_collision(source: &Location, destination: &Location) -> bool {
         return false;
     };
     let target = destination.child(name);
-    if source.equal(&target) || source.equal(&destination) || destination.has_prefix(&source) {
+    if source.equal(&destination) || destination.has_prefix(&source) {
         return false;
     }
     target.query_exists(None::<&gio::Cancellable>)
@@ -289,11 +289,12 @@ impl ViewState {
             ModalTone::Danger,
         );
         layout.body.append(&message_dialog_description(explanation));
-        let apply_all = form_check_button("Apply this choice to all remaining conflicts");
+        let apply_all = form_check_button("Apply to All");
         apply_all.set_visible(has_more_conflicts);
-        layout.body.append(&apply_all);
+        layout.actions.prepend(&apply_all);
         let skip = gtk::Button::with_label("Skip");
         skip.add_css_class("action-dialog-cancel");
+        skip.set_visible(has_more_conflicts);
         layout
             .actions
             .insert_child_after(&skip, Some(&layout.cancel));
