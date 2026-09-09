@@ -4,25 +4,32 @@ Thanks for helping build Strata. The project is early, so discuss large changes 
 
 ## Development setup
 
-Install Rust, GTK4, Fontconfig, a C toolchain, and `pkg-config`. On Arch Linux:
+Install [mise](https://mise.jdx.dev), then install the pinned toolchain (Rust
+1.98.1, Python, `cargo-deny`, `typos`, `cargo-watch`):
 
 ```bash
-sudo pacman -S --needed base-devel rust fontconfig gtk4 gtksourceview5 poppler-glib
+mise install
+```
+
+GTK 4, Fontconfig, a C toolchain, and `pkg-config` still come from the system
+package manager. On Arch Linux:
+
+```bash
+sudo pacman -S --needed base-devel fontconfig gtk4 gtksourceview5 poppler-glib
 ```
 
 Run the application:
 
 ```bash
-cargo run
+mise run dev
 ```
 
 To rebuild and restart the running application whenever code or bundled assets
 change, use the development watcher. On Arch, Debian/Ubuntu, and Fedora, it
-installs missing native dependencies (prompting for `sudo`) and installs
-`cargo-watch` automatically when needed:
+installs missing native GTK libraries (prompting for `sudo`) when needed:
 
 ```bash
-make start-dev
+mise run start-dev
 ```
 
 Project coding-agent skills are listed in `skills-lock.json`. After cloning,
@@ -72,8 +79,10 @@ your own identity before opening or updating the pull request.
 Before opening a pull request:
 
 ```bash
-./scripts/check.sh
+mise run check
 ```
+
+Without mise, `./scripts/check.sh` runs the same Cargo checks.
 
 The always-available checks are:
 
@@ -90,7 +99,7 @@ CI additionally runs:
 - `typos` for spelling
 - Compilation with the latest stable Rust release
 
-Install the optional local tools with:
+`mise install` provides `cargo-deny` and `typos`. Without mise, install them with:
 
 ```bash
 cargo install --locked cargo-deny
