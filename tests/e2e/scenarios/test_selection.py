@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Range selection, toggle selection, and right-click selection behavior."""
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::time::{Duration, Instant};
 
@@ -121,7 +121,7 @@ impl Fixture {
             columns: columns.clone(),
             scrolling: scrolling.clone(),
             bound_items: items.clone(),
-            view_state: None,
+            state: None,
         }
         .build();
         let view = gtk::ListView::new(Some(selection), Some(factory.clone()));

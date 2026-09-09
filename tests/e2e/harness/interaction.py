@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Keyboard and pointer input.
 
 Pointer coordinates always come from a node's accessible bounds; no scenario

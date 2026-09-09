@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -9,8 +9,8 @@ use std::{
 use gtk::{glib, prelude::*};
 
 use super::{
-    BoundModeItem, ClickActivation, ListColumnLayout, PanePositions, PaneSection, RowDragBehavior,
-    SourceIndexMap, TransferHandlerSlot, assemble_list_row, entry_mode, entry_size, entry_type,
+    BoundModeItem, ClickActivation, ListColumnLayout, PanePositions, PaneSection, SourceIndexMap,
+    TransferHandlerSlot, assemble_list_row, entry_mode, entry_size, entry_type,
     install_list_drag_drop, install_modified_selection_click, install_preview_click,
     list_row_parts, metadata_fill_position, register_bound_mode_item, register_list_column_cell,
     set_label_if_changed, set_mode_cut_style,
@@ -33,7 +33,7 @@ pub(super) struct ListFactory {
     pub(super) columns: ListColumnLayout,
     pub(super) scrolling: Rc<Cell<bool>>,
     pub(super) bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
-    pub(super) view_state: Option<Weak<browser::ViewState>>,
+    pub(super) state: Option<Weak<crate::ui::browser::ViewState>>,
 }
 
 impl ListFactory {
@@ -59,9 +59,9 @@ impl ListFactory {
             return;
         };
         row.register_columns(&self.columns);
-        item.set_child(Some(&row.widget));
         self.install_interactions(item, &row);
-        register_bound_mode_item(&self.bound_items, item, &row.widget);
+        item.set_child(Some(&row.widget));
+        register_bound_mode_item(&self.bound_items, item, &row.widget, &row.name);
     }
 
     fn install_interactions(&self, item: &gtk::ListItem, row: &ListRow) {
@@ -74,7 +74,7 @@ impl ListFactory {
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),
         );
-        install_modified_selection_click(
+        let content_click = install_modified_selection_click(
             &row.widget,
             item,
             self.selection.clone(),
@@ -89,11 +89,7 @@ impl ListFactory {
             self.transfers.clone(),
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),
-            RowDragBehavior {
-                icon: Some(row.name.upcast_ref()),
-                view_state: self.view_state.clone(),
-                whole_row: true,
-            },
+            (Some(row.name.upcast_ref()), &content_click, true),
         );
     }
 
@@ -126,7 +122,12 @@ impl ListFactory {
             row.clear();
             return;
         };
-        row.bind_labels(item, &binding.entry);
+        let pending_name = self
+            .state
+            .as_ref()
+            .and_then(Weak::upgrade)
+            .and_then(|state| state.pending_rename_name(&binding.entry));
+        row.bind_labels(item, &binding.entry, pending_name.as_deref());
         if self.scrolling.get() {
             set_label_if_changed(&row.modified, &crate::util::modified_date(&binding.entry));
         } else {
@@ -193,14 +194,18 @@ impl ListRow {
         }
     }
 
-    fn bind_labels(&self, item: &gtk::ListItem, entry: &FileEntry) {
+    fn bind_labels(&self, item: &gtk::ListItem, entry: &FileEntry, pending_name: Option<&str>) {
         self.name.set_visible(true);
         self.field.set_visible(false);
-        set_label_if_changed(&self.name, &entry.display_name);
+        set_label_if_changed(&self.name, pending_name.unwrap_or(&entry.display_name));
         set_label_if_changed(&self.mode, &entry_mode(entry));
         set_label_if_changed(&self.size, &entry_size(entry));
         set_label_if_changed(&self.kind, entry_type(entry));
-        accessibility::describe_entry(item, &entry.display_name, Some(entry));
+        accessibility::describe_entry(
+            item,
+            pending_name.unwrap_or(&entry.display_name),
+            Some(entry),
+        );
     }
 
     fn clear(&self) {

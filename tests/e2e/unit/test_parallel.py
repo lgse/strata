@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import Mock

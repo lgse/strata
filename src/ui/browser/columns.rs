@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::ViewState;
@@ -36,6 +36,7 @@ const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
 pub(super) struct BoundRow {
     pub(super) item: glib::WeakRef<gtk::ListItem>,
     pub(super) row: glib::WeakRef<gtk::Box>,
+    pub(super) rename_label: glib::WeakRef<gtk::Label>,
 }
 
 struct PendingPointerActivation {
@@ -74,6 +75,7 @@ pub(super) struct ColumnView {
     pub(super) selection: gtk::MultiSelection,
     pub(super) syncing_selection: Rc<Cell<bool>>,
     pub(super) list: gtk::ListView,
+    pub(super) listing_scroll: gtk::ScrolledWindow,
     pub(super) marquee: crate::ui::marquee::Marquee,
     pub(super) bound_rows: Rc<RefCell<Vec<BoundRow>>>,
     pub(super) entry_count: Rc<Cell<usize>>,
@@ -703,18 +705,20 @@ impl ViewState {
             if query.is_empty() {
                 search_gen_for_changed.set(search_gen_for_changed.get().saturating_add(1));
                 search_handle_for_changed.borrow_mut().take();
+                // Keep the hidden-file filter installed while swapping back to the directory
+                // model; GTK's synchronous model notifications otherwise leave a stale row.
+                apply_filter_query(
+                    &filtered_model_for_search,
+                    &filter,
+                    &filter_query,
+                    text.to_lowercase(),
+                );
                 deactivate_recursive_search(
                     &search_active_for_changed,
                     &search_results_for_changed,
                     &search_model_for_changed,
                     &filtered_model_for_search,
                     &model_for_search,
-                );
-                apply_filter_query(
-                    &filtered_model_for_search,
-                    &filter,
-                    &filter_query,
-                    text.to_lowercase(),
                 );
                 return;
             }
@@ -1130,6 +1134,7 @@ impl ViewState {
             selection,
             syncing_selection,
             list,
+            listing_scroll: scroll,
             marquee,
             bound_rows,
             entry_count,

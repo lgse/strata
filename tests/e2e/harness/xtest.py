@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Synthetic X11 input through the XTEST extension.
 
 AT-SPI's own `GenerateMouseEvent` never replies on a headless server, so input

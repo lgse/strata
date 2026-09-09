@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Scrolling must extend a held marquee, not move its anchor or lose earlier hits."""
 
 import pytest
@@ -15,10 +15,24 @@ def _viewport(strata):
     raise AssertionError("the collection should have a scroll viewport")
 
 
+def _entry_bounds(row):
+    """Use the stable rendered child, not a virtualized cell's stale extents."""
+
+    label = row.find(role="label")
+    return label.screen_bounds() if label is not None else row.screen_bounds()
+
+
+def _entry_name(row):
+    """Read identity from the rendered child, not a recycled cell's stale name."""
+
+    label = row.find(role="label")
+    return label.name if label is not None and label.name else row.name
+
+
 def _visible_entries(strata, viewport):
     visible = []
     for row in strata.entries():
-        bounds = row.screen_bounds()
+        bounds = _entry_bounds(row)
         if (
             bounds.height > 0
             and bounds.y >= viewport.y
@@ -59,7 +73,7 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
             strata.pointer.scroll(at=end, clicks=32)
         strata.wait(
             lambda: any(
-                row.name >= "060.txt" for row in _visible_entries(strata, viewport)
+                _entry_name(row) >= "060.txt" for row in _visible_entries(strata, viewport)
             ),
             f"scrolling to carry the anchor above the viewport {viewport}",
         )
@@ -72,7 +86,7 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
         def visible_band_is_selected():
             rows = []
             for row in _visible_entries(strata, viewport):
-                bounds = row.screen_bounds()
+                bounds = _entry_bounds(row)
                 if (
                     bounds.y + bounds.height <= end[1]
                     and bounds.x < end[0]
@@ -89,11 +103,11 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
         strata.pointer.connection.button(1, False)
 
     for _ in range(40):
-        if any(row.name == "000.txt" for row in _visible_entries(strata, viewport)):
+        if any(_entry_name(row) == "000.txt" for row in _visible_entries(strata, viewport)):
             break
         strata.pointer.scroll(at=viewport.center, clicks=20, down=False)
     strata.wait(
-        lambda: any(row.name == "000.txt" for row in _visible_entries(strata, viewport)),
+        lambda: any(_entry_name(row) == "000.txt" for row in _visible_entries(strata, viewport)),
         "the beginning of the directory to scroll back into view",
     )
     assert strata.entry("010.txt").has_state("selected"), (
