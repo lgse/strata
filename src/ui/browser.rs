@@ -46,6 +46,7 @@ mod properties;
 mod transfer;
 mod trash;
 
+pub(in crate::ui) use crate::ui::browser::clipboard::drag_icon_with_count;
 pub(super) use crate::ui::browser::clipboard::file_drag_content;
 pub(crate) use crate::ui::browser::clipboard::{
     drag_actions_for_modifiers, file_drop_action, locations_from_file_list_value,
@@ -240,6 +241,7 @@ impl BrowserView {
             .vexpand(true)
             .build();
         scroller.add_css_class("fixed-scrollbar");
+        scroller.add_css_class("mode-scroll");
         let overlay = gtk::Overlay::new();
 
         let location_entry = gtk::Entry::builder()

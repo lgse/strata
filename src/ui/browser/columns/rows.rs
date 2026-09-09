@@ -9,8 +9,8 @@ use crate::ui::{
     browser::{
         ViewState,
         clipboard::{
-            drag_actions_for_modifiers, file_drag_content, file_drop_action, locations_equal,
-            locations_from_file_list_value, shared_cut_locations,
+            drag_actions_for_modifiers, drag_icon_with_count, file_drag_content, file_drop_action,
+            locations_equal, locations_from_file_list_value, shared_cut_locations,
         },
         collection::{ViewMap, cancel_source},
         entry::{
@@ -78,6 +78,7 @@ pub(super) fn column_rows(
         });
         let icon = crate::ui::thumbnail::ThumbnailSlot::new(17);
         icon.add_css_class("file-icon");
+        let drag_icon = icon.clone();
         icon.set_valign(gtk::Align::Center);
         let label = gtk::Label::builder()
             .halign(gtk::Align::Fill)
@@ -211,7 +212,13 @@ pub(super) fn column_rows(
                     vec![entry]
                 };
                 let paintable = gtk::WidgetPaintable::new(Some(&prepare_row));
-                source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);
+                if let Some((texture, hot_x, hot_y)) =
+                    drag_icon_with_count(drag_icon.upcast_ref(), entries.len())
+                {
+                    source.set_icon(Some(&texture), hot_x, hot_y);
+                } else {
+                    source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);
+                }
                 file_drag_content(&entries)
             });
             let dragged_row = row.downgrade();

@@ -24,18 +24,41 @@ fn context_menu_placement(anchor_height: i32, click_y: f64) -> (gtk::PositionTyp
     let click_y = click_y.round() as i32;
     let above = click_y.clamp(0, anchor_height);
     let below = anchor_height.saturating_sub(above);
-    let (position, available_height) = if below >= above {
-        (gtk::PositionType::Bottom, below)
+    let position = if below >= above {
+        gtk::PositionType::Bottom
     } else {
-        (gtk::PositionType::Top, above)
+        gtk::PositionType::Top
     };
 
+    // Cap by the full viewport (both edges) so the popover can shift away
+    // from the click point and use leftover space on the other side instead
+    // of scrolling; the scrollbar appears only when content exceeds the view.
     (
         position,
-        available_height
-            .saturating_sub(CONTEXT_MENU_EDGE_MARGIN)
+        anchor_height
+            .saturating_sub(CONTEXT_MENU_EDGE_MARGIN * 2)
             .max(1),
     )
+}
+
+/// Moves the popover anchor off the click point when the menu does not fit
+/// on its side but fits in the viewport: a menu opening downward slides up
+/// so its bottom meets the far edge (and vice versa), instead of scrolling.
+/// Returns the click unchanged when the menu already fits or cannot fit.
+fn shifted_anchor_y(
+    position: gtk::PositionType,
+    anchor_height: i32,
+    click_y: i32,
+    content_height: i32,
+) -> i32 {
+    let near_edge = CONTEXT_MENU_EDGE_MARGIN;
+    let far_edge = anchor_height.saturating_sub(CONTEXT_MENU_EDGE_MARGIN);
+    match position {
+        gtk::PositionType::Bottom => {
+            click_y.min(far_edge.saturating_sub(content_height).max(near_edge))
+        }
+        _ => click_y.max(near_edge.saturating_add(content_height).min(far_edge)),
+    }
 }
 
 pub(super) fn context_menu_popover(
@@ -133,9 +156,12 @@ pub(super) fn show_context_popover(
         context_menu_placement(overlay.height(), f64::from(point.y()));
     popover.set_position(position);
     scroll.set_max_content_height(max_content_height);
+    let click_y = point.y().round() as i32;
+    let (_, content_height, _, _) = scroll.measure(gtk::Orientation::Vertical, -1);
+    let anchor_y = shifted_anchor_y(position, overlay.height(), click_y, content_height.max(1));
     popover.set_pointing_to(Some(&gtk::gdk::Rectangle::new(
         point.x().round() as i32,
-        point.y().round() as i32,
+        anchor_y,
         1,
         1,
     )));

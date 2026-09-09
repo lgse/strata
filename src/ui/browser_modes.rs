@@ -306,6 +306,7 @@ impl ModeViews {
             .vexpand(true)
             .build();
         icons_scroll.add_css_class("fixed-scrollbar");
+        icons_scroll.add_css_class("mode-scroll");
 
         let list_root = gtk::Box::new(gtk::Orientation::Vertical, 0);
         list_root.add_css_class("mode-list");
@@ -1743,7 +1744,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
         };
         let thumbnail_size = icons_card_icon_slot(thumbnail_size_for_setup.get());
         let card = super::icons_cell::new_card(thumbnail_size);
-        let Some((_, rename_label)) = super::icons_cell::parts(&card) else {
+        let Some((icon, rename_label)) = super::icons_cell::parts(&card) else {
             return;
         };
         install_preview_click(
@@ -1779,7 +1780,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             transfers_for_setup.clone(),
             depth,
             Some((source_index_for_setup.clone(), filtered_for_setup.clone())),
-            (None, &content_click, false),
+            (None, Some(icon.upcast_ref()), &content_click, false),
         );
         item.set_child(Some(&card));
         if let Some(parent) = card.parent() {
@@ -2466,6 +2467,7 @@ fn build_list_pane(
         .vexpand(true)
         .build();
     table_scroll.add_css_class("fixed-scrollbar");
+    table_scroll.add_css_class("mode-scroll");
     if let Some(viewport) = table_scroll.child().and_downcast::<gtk::Viewport>() {
         // The outer viewport must not horizontally reveal oversized metadata rows; the inner
         // ListView still reveals focused rows vertically.
@@ -2826,9 +2828,14 @@ fn install_list_drag_drop(
     transfer_handler: TransferHandlerSlot,
     depth: usize,
     position_map: Option<(SourceIndexMap, gio::ListModel)>,
-    drag_icon_and_content_click: (Option<&gtk::Widget>, &gtk::GestureClick, bool),
+    drag_icon_and_content_click: (
+        Option<&gtk::Widget>,
+        Option<&gtk::Widget>,
+        &gtk::GestureClick,
+        bool,
+    ),
 ) {
-    let (drag_icon, content_click, whole_row) = drag_icon_and_content_click;
+    let (drag_icon, multi_drag_icon, content_click, whole_row) = drag_icon_and_content_click;
     if transfer_handler.borrow().is_none() {
         return;
     }
@@ -2841,6 +2848,7 @@ fn install_list_drag_drop(
     let browser_for_drag = browser.clone();
     let map_for_drag = position_map.clone();
     let drag_icon = drag_icon.map(gtk::Widget::downgrade);
+    let multi_drag_icon = multi_drag_icon.map(gtk::Widget::downgrade);
     let prepare_row = row.downgrade();
     drag.connect_prepare(move |source, x, y| {
         let prepare_row = prepare_row.upgrade()?;
@@ -2879,13 +2887,23 @@ fn install_list_drag_drop(
             vec![entry]
         };
         let compact_icon = drag_icon.as_ref().and_then(glib::WeakRef::upgrade);
-        let paintable = gtk::WidgetPaintable::new(compact_icon.as_ref().or(Some(&prepare_row)));
-        let (hot_x, hot_y) = if compact_icon.is_some() {
-            (0, 0)
+        let multi_drag_icon = multi_drag_icon.as_ref().and_then(glib::WeakRef::upgrade);
+        if let Some((texture, hot_x, hot_y)) = multi_drag_icon
+            .as_ref()
+            .or(compact_icon.as_ref())
+            .or(Some(&prepare_row))
+            .and_then(|icon| super::browser::drag_icon_with_count(icon, entries.len()))
+        {
+            source.set_icon(Some(&texture), hot_x, hot_y);
         } else {
-            (x.round() as i32, y.round() as i32)
-        };
-        source.set_icon(Some(&paintable), hot_x, hot_y);
+            let paintable = gtk::WidgetPaintable::new(compact_icon.as_ref().or(Some(&prepare_row)));
+            let (hot_x, hot_y) = if compact_icon.is_some() {
+                (0, 0)
+            } else {
+                (x.round() as i32, y.round() as i32)
+            };
+            source.set_icon(Some(&paintable), hot_x, hot_y);
+        }
         super::browser::file_drag_content(&entries)
     });
     let dragged_row = row.downgrade();
