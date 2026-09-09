@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::ui::blur::BlurBin;
 use crate::ui::controls::{ModalTone, message_dialog_description, message_dialog_layout};

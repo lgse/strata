@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::chooser_context;
 use crate::adapters::gio_file_for_location;

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Deterministic fixture trees.
 
 Every scenario gets a freshly generated tree inside its own temporary

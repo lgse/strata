@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use gtk::prelude::FileExt;
 use std::{cell::Cell, ffi::OsString};
@@ -594,6 +594,54 @@ fn cancellation_refreshes_an_affected_remote_root_and_its_open_descendants() {
             not_attempted: 1,
             ..
         }
+    )));
+}
+
+#[test]
+fn superseding_rename_emits_a_terminal_abandonment_event() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let cancelled = Rc::new(Cell::new(false));
+    let cancelled_for_handle = cancelled.clone();
+    let request_id = browser.begin_operation();
+    browser.rename_operation.set(Some(request_id));
+    browser
+        .operation_load
+        .replace(Some(LoadHandle::new(move || {
+            cancelled_for_handle.set(true)
+        })));
+
+    let replacement = browser.begin_operation();
+
+    assert!(cancelled.get());
+    assert_eq!(browser.current_operation.get(), Some(replacement));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::RenameAbandoned { request_id: id } if *id == request_id
+    )));
+}
+
+#[test]
+fn cancelled_rename_emits_a_terminal_abandonment_event() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = browser.begin_operation();
+    browser.rename_operation.set(Some(request_id));
+    let emit = browser.operation_callback(request_id, true, HashSet::new());
+
+    emit(OperationEvent::Cancelled {
+        request_id,
+        result: CancelledOperation::default(),
+    });
+
+    assert_eq!(browser.current_operation.get(), None);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::RenameAbandoned { request_id: id } if *id == request_id
     )));
 }
 
@@ -1599,6 +1647,35 @@ fn creating_a_directory_locally_does_not_trigger_a_redundant_refresh() {
 }
 
 #[test]
+fn renaming_locally_does_not_trigger_a_redundant_refresh() {
+    let enumerate_calls = Rc::new(Cell::new(0));
+    let source = CountingFileSource {
+        enumerate_calls: enumerate_calls.clone(),
+    };
+    let browser = Browser::new(Rc::new(source));
+    browser.set_operation_provider(Rc::new(ImmediateOperationProvider));
+    browser.navigate(Location::local("/fixture"));
+    assert_eq!(enumerate_calls.get(), 1);
+
+    browser.rename(
+        FileEntry {
+            location: Location::local("/fixture/old-name.txt"),
+            native_name: "old-name.txt".into(),
+            thumbnail_path: None,
+            display_name: "old-name.txt".to_owned(),
+            kind: EntryKind::File,
+            size: MetadataValue::Known(1),
+            modified_unix_seconds: MetadataValue::Unknown,
+            is_hidden: false,
+            mode: MetadataValue::Unknown,
+        },
+        "new-name.txt".to_owned(),
+    );
+
+    assert_eq!(enumerate_calls.get(), 1);
+}
+
+#[test]
 fn restored_sorting_applies_to_the_initial_navigation_load() {
     let browser = Browser::with_preferences(
         Rc::new(RestoredSortingSource),
@@ -2473,6 +2550,35 @@ fn preview_and_open_are_distinct_file_actions() {
         BrowserEvent::OpenRequested { location }
             if location == &Location::local("/fixture/example.conf")
     )));
+}
+
+#[test]
+fn native_selection_notifies_observers_after_state_is_available() {
+    let browser = Browser::new(Rc::new(FilePreviewSource));
+    browser.navigate(Location::local("/fixture"));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    let weak_browser = Rc::downgrade(&browser);
+    browser.observe(move |event| {
+        let BrowserEvent::SelectionSynced { depth, focused } = event else {
+            panic!("native selection must not request focus or reapply view selection: {event:?}");
+        };
+        let browser = weak_browser.upgrade().expect("browser");
+        observed
+            .borrow_mut()
+            .push((*depth, *focused, browser.selected_positions(*depth)));
+    });
+
+    browser.set_selection(0, &[0], Some(0));
+    browser.set_selection(0, &[], None);
+    browser.set_selection(0, &[1], Some(1));
+    browser.set_selection(1, &[0], Some(0));
+
+    assert_eq!(
+        *events.borrow(),
+        vec![(0, Some(0), vec![0]), (0, None, vec![])],
+        "invalid selections must not notify observers"
+    );
 }
 
 #[test]

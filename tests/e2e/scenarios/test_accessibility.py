@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Accessibility semantics the rest of the suite — and screen readers — rely on."""
 
 from __future__ import annotations

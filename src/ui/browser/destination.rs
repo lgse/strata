@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::services::{SearchEvent, index_tree};
 use crate::ui::browser::paths::compact_native_path;

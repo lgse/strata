@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::adapters::directory_summary::{DirectorySummary, summarize_directory};
 use crate::adapters::trash::{EmptyTrashOutcome, empty_trash};

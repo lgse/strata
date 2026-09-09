@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::super::fixtures::{
     always_cancelled, completed_extract, extract_zip, never_cancelled, patch_zip_uncompressed_size,

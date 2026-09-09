@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 //! Per-operation extraction policy, independent of archive decoding libraries.
 //!

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Opening locations directly and reacting to filesystem changes."""
 
 from __future__ import annotations
