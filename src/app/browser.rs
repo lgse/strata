@@ -3058,11 +3058,11 @@ impl Browser {
         self.select_entries_by_name_at(depth, names);
     }
 
-    pub fn select_entries_by_name_at(self: &Rc<Self>, depth: usize, names: &[String]) {
+    pub fn select_entries_by_name_at(self: &Rc<Self>, depth: usize, names: &[String]) -> bool {
         let requested: HashSet<&str> = names.iter().map(String::as_str).collect();
         self.select_entries_matching_at(depth, |entry| {
             requested.contains(entry.display_name.as_str())
-        });
+        })
     }
 
     pub fn select_entries_by_location(self: &Rc<Self>, locations: &[Location]) {
@@ -3077,10 +3077,10 @@ impl Browser {
         self: &Rc<Self>,
         depth: usize,
         matches: impl Fn(&FileEntry) -> bool,
-    ) {
+    ) -> bool {
         let state = self.state.borrow();
         let Some(column) = state.columns.get(depth) else {
-            return;
+            return false;
         };
         let positions: Vec<usize> = column
             .entries
@@ -3090,7 +3090,7 @@ impl Browser {
             .collect();
         drop(state);
         let Some(&focused) = positions.first() else {
-            return;
+            return false;
         };
         self.commit_selection();
         self.set_selection(depth, &positions, Some(focused));
@@ -3100,6 +3100,7 @@ impl Browser {
             focused,
             take_focus: true,
         });
+        true
     }
 
     fn handle_directory_change(

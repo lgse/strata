@@ -285,9 +285,10 @@ impl ViewState {
                             if let Some(state) = weak.upgrade()
                                 && state.browser.location_at(depth) == destination
                             {
-                                state.browser.select_entries_by_name_at(depth, &names);
-                                state.reveal_focused_entry();
-                                state.pending_archive_destination.take();
+                                if state.browser.select_entries_by_name_at(depth, &names) {
+                                    state.reveal_focused_entry();
+                                    state.pending_archive_destination.take();
+                                }
                             }
                         });
                     }
@@ -633,7 +634,18 @@ impl ViewState {
                 } else if !select_name.is_empty()
                     && let Some(destination) = self.pending_archive_destination.borrow().clone()
                 {
-                    self.reload_archive_destination(destination);
+                    // The provider reports completion before the monitor has delivered the
+                    // final rename. Start the destination reload after this dispatch returns so
+                    // its directory scan observes the committed archive.
+                    let weak = Rc::downgrade(self);
+                    glib::idle_add_local_once(move || {
+                        if let Some(state) = weak.upgrade()
+                            && state.pending_archive_destination.borrow().as_ref()
+                                == Some(&destination)
+                        {
+                            state.reload_archive_destination(destination);
+                        }
+                    });
                 } else {
                     self.browser.reload_active();
                 }
