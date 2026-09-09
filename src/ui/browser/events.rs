@@ -35,7 +35,6 @@ impl ViewState {
                 self.pending_new_entry.take();
                 self.pending_location_credentials.take();
                 self.pending_archive_destination.take();
-                self.pending_archive_retried.set(false);
                 self.truncate(0);
             }
             BrowserEvent::ColumnsTruncated { len } => {
@@ -286,8 +285,26 @@ impl ViewState {
                     update_empty_trash_sensitivity(column, count);
                 }
                 if archive_destination_loaded {
-                    // Selection and reveal are handled by reveal_pending_archive_at,
-                    // scheduled from EntriesReplaced; don't consume pending_select here.
+                    let names = self.pending_select.take();
+                    if !names.is_empty() {
+                        let weak = Rc::downgrade(self);
+                        let depth = *depth;
+                        let destination = self.browser.location_at(depth);
+                        glib::idle_add_local_once(move || {
+                            if let Some(state) = weak.upgrade()
+                                && state.browser.location_at(depth) == destination
+                                && state.pending_archive_destination.borrow().as_ref()
+                                    == destination.as_ref()
+                            {
+                                if state.browser.select_entries_by_name_at(depth, &names) {
+                                    state.reveal_focused_entry();
+                                    state.pending_archive_destination.take();
+                                } else {
+                                    state.pending_select.borrow_mut().extend(names);
+                                }
+                            }
+                        });
+                    }
                 } else if self.browser.active_depth() == Some(*depth)
                     && (self.mode_views.borrow().mode() != BrowserMode::Columns
                         || self.pending_archive_destination.borrow().is_none())
@@ -516,7 +533,6 @@ impl ViewState {
                 self.pending_new_entry.take();
                 self.dismiss_file_operation_progress();
                 self.pending_archive_destination.take();
-                self.pending_archive_retried.set(false);
                 let retry = self.pending_extract_retry.take();
                 if let Some((entry, dest)) = retry {
                     let lower = message.to_lowercase();
@@ -533,7 +549,6 @@ impl ViewState {
                 has_non_retryable_failures,
             } => {
                 self.pending_archive_destination.take();
-                self.pending_archive_retried.set(false);
                 let retryable_entries = retryable_delete_entries(
                     self.pending_delete_entries.take(),
                     retryable_locations,
@@ -562,7 +577,6 @@ impl ViewState {
                 affected_locations,
             } => {
                 self.pending_archive_destination.take();
-                self.pending_archive_retried.set(false);
                 let message = format!(
                     "{} completed, {} failed, and {} not attempted.\n\nCompleted changes were not reverted.",
                     item_count_label(*completed),
@@ -628,7 +642,6 @@ impl ViewState {
                 self.pending_extract_retry.replace(None);
                 if select_name.is_empty() {
                     self.pending_archive_destination.take();
-                    self.pending_archive_retried.set(false);
                 }
                 if let Some(destination) = self.pending_navigate.take() {
                     let weak = Rc::downgrade(self);
@@ -698,7 +711,6 @@ impl ViewState {
                 locations,
             } => {
                 self.pending_archive_destination.take();
-                self.pending_archive_retried.set(false);
                 self.pending_navigate.take();
                 self.pending_select.take();
                 self.pending_select_properties.set(false);
@@ -773,20 +785,7 @@ impl ViewState {
             }
             self.reveal_focused_entry();
             self.pending_archive_destination.take();
-            self.pending_archive_retried.set(false);
-        } else if !self.pending_archive_retried.replace(true) {
-            // First miss: reload the column once to pick up a freshly published
-            // archive.  The retried flag bounds this to a single reload so we
-            // cannot loop; later EntriesReplaced events keep trying selection
-            // without triggering another reload.
-            self.pending_select.borrow_mut().extend(names);
-            self.browser.retry_column(depth);
         } else {
-            // Retry already spent.  Keep the flag set so future publications
-            // (e.g. from file-monitor rescans) can still select the archive,
-            // but do not reload again.  The flag is cleared on cancel, error,
-            // transfer reveal, or reset, so it cannot block paste selections
-            // indefinitely.
             self.pending_select.borrow_mut().extend(names);
         }
     }

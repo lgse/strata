@@ -230,10 +230,6 @@ fn cancelled_archive_clears_flag_and_following_load_restores_transfer_selection(
                 state.pending_archive_destination.borrow().is_none(),
                 "empty-name completion must clear the archive flag"
             );
-            assert!(
-                !state.pending_archive_retried.get(),
-                "empty-name completion must reset the retry flag"
-            );
 
             state
                 .pending_select
@@ -273,7 +269,6 @@ fn operation_cancelled_clears_archive_flag() {
             state
                 .pending_archive_destination
                 .replace(Some(Location::local(destination.path())));
-            state.pending_archive_retried.set(true);
 
             state.handle(&BrowserEvent::OperationCancelled {
                 completed: 0,
@@ -284,10 +279,6 @@ fn operation_cancelled_clears_archive_flag() {
             assert!(
                 state.pending_archive_destination.borrow().is_none(),
                 "OperationCancelled must clear the archive flag"
-            );
-            assert!(
-                !state.pending_archive_retried.get(),
-                "OperationCancelled must reset the retry flag"
             );
             window.destroy();
             browser.clear_observer();
