@@ -112,6 +112,22 @@ def test_committed_rename_visibility(strata, kind, new, final_name, mode):
     wait_for_visible_commit(strata, final_name, mode)
 
 
+@pytest.mark.preferences(browser_density="airy")
+@pytest.mark.parametrize("mode", ("Columns", "List"))
+def test_airy_committed_rename_stays_visible(strata, mode):
+    field, original = begin_long_directory_rename(strata, "file", False, mode)
+    final_name = "zz-airy-final"
+    strata.keyboard.type_text(final_name)
+    strata.wait(lambda: field.text == final_name, "the committed name in the editor")
+    strata.keyboard.press("Return")
+    strata.wait(
+        strata.fixture.path("rename-target/" + final_name).exists,
+        "the renamed item on disk",
+    )
+    strata.wait_for_entry_gone(original, "rename-target")
+    wait_for_visible_commit(strata, final_name, mode)
+
+
 @pytest.mark.parametrize("kind", ("file", "folder"))
 @pytest.mark.parametrize("mode", ("Columns", "List"))
 def test_already_visible_rename_preserves_scroll(strata, kind, mode):

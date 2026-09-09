@@ -9,10 +9,10 @@ use crate::ui::{
     browser::{
         ViewState,
         clipboard::{
-            drag_actions_for_modifiers, file_drag_content, file_drop_action, locations_equal,
-            locations_from_file_list_value, shared_cut_locations,
+            drag_actions_for_modifiers, drag_icon_with_count, file_drag_content, file_drop_action,
+            locations_equal, locations_from_file_list_value, shared_cut_locations,
         },
-        collection::{ViewMap, cancel_source},
+        collection::{ViewMap, activate_recursive_search_result, cancel_source},
         entry::{
             entry_icon, entry_responds_to_preview_click, metadata_needs_fill, model_display_name,
         },
@@ -59,6 +59,8 @@ pub(super) fn column_rows(
     let factory = gtk::SignalListItemFactory::new();
     let bound_rows: Rc<RefCell<Vec<BoundRow>>> = Rc::new(RefCell::new(Vec::new()));
     let rows_for_setup = bound_rows.clone();
+    let search_active_for_factory = recursive_search_active.clone();
+    let search_results_for_factory = search_results.clone();
     let weak_state = Rc::downgrade(state);
     let modified_selection_for_rows = modified_selection.clone();
     let selection_for_rows = selection.clone();
@@ -78,6 +80,7 @@ pub(super) fn column_rows(
         });
         let icon = crate::ui::thumbnail::ThumbnailSlot::new(17);
         icon.add_css_class("file-icon");
+        let drag_icon = icon.clone();
         icon.set_valign(gtk::Align::Center);
         let label = gtk::Label::builder()
             .halign(gtk::Align::Fill)
@@ -176,6 +179,7 @@ pub(super) fn column_rows(
         });
         row.add_controller(motion);
 
+        item.set_child(Some(&row));
         let mut content_drag: Option<gtk::DragSource> = None;
         if weak_state.upgrade().is_some_and(|state| state.interactive) {
             let drag = gtk::DragSource::builder()
@@ -188,7 +192,10 @@ pub(super) fn column_rows(
             let prepare_row = row.downgrade();
             drag.connect_prepare(move |source, x, y| {
                 let prepare_row = prepare_row.upgrade()?;
-                if !crate::ui::pointer::hits_item_content(prepare_row.upcast_ref(), x, y) {
+                if prepare_row
+                    .pick(x, y, gtk::PickFlags::DEFAULT)
+                    .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
+                {
                     return None;
                 }
                 prepare_row.remove_css_class("slide-out");
@@ -206,22 +213,35 @@ pub(super) fn column_rows(
                 } else {
                     vec![entry]
                 };
-                let paintable = gtk::WidgetPaintable::new(source.widget().as_ref());
-                source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);
+                let paintable = gtk::WidgetPaintable::new(Some(&prepare_row));
+                if let Some((texture, hot_x, hot_y)) =
+                    drag_icon_with_count(drag_icon.upcast_ref(), entries.len())
+                {
+                    source.set_icon(Some(&texture), hot_x, hot_y);
+                } else {
+                    source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);
+                }
                 file_drag_content(&entries)
             });
             let dragged_row = row.downgrade();
+            let weak_state_for_begin = weak_state.clone();
             drag.connect_drag_begin(move |_, _| {
                 if let Some(row) = dragged_row.upgrade() {
                     row.add_css_class("dragging");
                 }
+                if let Some(state) = weak_state_for_begin.upgrade() {
+                    state.cancel_peek();
+                }
             });
             let dragged_row = row.downgrade();
-            drag.connect_drag_end(move |source, _, _| {
-                source.set_actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE);
+            let weak_state_for_end = weak_state.clone();
+            drag.connect_drag_end(move |_, _, _| {
                 if let Some(row) = dragged_row.upgrade() {
                     row.remove_css_class("dragging");
                     slide_out(&row);
+                }
+                if let Some(state) = weak_state_for_end.upgrade() {
+                    state.cancel_peek();
                 }
             });
             row.add_controller(drag.clone());
@@ -316,6 +336,8 @@ pub(super) fn column_rows(
         let selection_for_click = selection_for_rows.clone();
         let modified_for_click = modified_selection_for_rows.clone();
         let map_for_click = map_for_hover.clone();
+        let search_active_for_click = search_active_for_factory.clone();
+        let search_results_for_click = search_results_for_factory.clone();
         // Open on release so a press-and-move can start a drag first.
         let pending_activation = Rc::new(RefCell::new(None::<PendingPointerActivation>));
         let pending_activation_for_press = pending_activation.clone();
@@ -377,6 +399,53 @@ pub(super) fn column_rows(
                 gesture.set_state(gtk::EventSequenceState::Claimed);
             }
             modified_for_click.set(false);
+
+            let filtered = search_active_for_click.get() || map_for_click.has_query();
+            if filtered {
+                if press_count == 1
+                    && !control
+                    && !shift
+                    && let Some(state) = weak_state_for_click.upgrade()
+                {
+                    let activated = if search_active_for_click.get() {
+                        if state.browser.is_chooser_mode() {
+                            search_results_for_click
+                                .borrow()
+                                .get(position as usize)
+                                .map(|item| {
+                                    if item.is_directory {
+                                        state.browser.navigate(crate::model::Location::local(
+                                            item.path.clone(),
+                                        ));
+                                    }
+                                    true
+                                })
+                                .unwrap_or(false)
+                        } else {
+                            activate_recursive_search_result(
+                                &Rc::downgrade(&state.browser),
+                                &search_results_for_click,
+                                position,
+                            )
+                        }
+                    } else {
+                        map_for_click
+                            .source_position(position)
+                            .map(|source_position| {
+                                state.browser.select(depth, source_position);
+                                if !state.browser.is_chooser_mode() {
+                                    state.browser.activate_in_place(depth, source_position);
+                                }
+                                true
+                            })
+                            .is_some()
+                    };
+                    if activated {
+                        gesture.set_state(gtk::EventSequenceState::Claimed);
+                    }
+                }
+                return;
+            }
 
             let source_position = map_for_click.source_position(position);
             if let (Some(state), Some(source_position)) =
@@ -461,12 +530,9 @@ pub(super) fn column_rows(
             pending_activation_for_cancel.take();
         });
         row.add_controller(selection_click.clone());
-        // Grouping requires both gestures already attached; claiming the modifier-click
-        // on content must not deny the row's drag before it reaches the threshold.
         if let Some(drag) = &content_drag {
             drag.group_with(&selection_click);
         }
-        item.set_child(Some(&row));
         let weak_item = glib::WeakRef::new();
         weak_item.set(Some(item));
         let weak_row = glib::WeakRef::new();

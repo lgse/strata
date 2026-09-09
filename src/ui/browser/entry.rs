@@ -13,18 +13,31 @@ use std::rc::Rc;
 
 pub(in crate::ui) fn format_file_size(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
-    if bytes < 1_000 {
-        return format!("{bytes} B");
-    }
+    let (value, unit) = rounded_size_and_unit(bytes, &UNITS);
+    let formatted = format!("{value:.1}");
+    format!("{} {}", formatted.trim_end_matches(".0"), UNITS[unit])
+}
 
+/// Divide `bytes` into the largest unit whose threshold it meets after
+/// rounding to one decimal, returning the rounded value and unit index.
+/// Callers that format with zero decimals for values >= 10 still receive
+/// the one-decimal rounded value so they can decide their own precision.
+pub(in crate::ui) fn rounded_size_and_unit(bytes: u64, units: &[&str]) -> (f64, usize) {
+    if bytes < 1_000 {
+        return (bytes as f64, 0);
+    }
     let mut value = bytes as f64;
     let mut unit = 0;
-    while value >= 1_000.0 && unit < UNITS.len() - 1 {
+    while value >= 1_000.0 && unit < units.len() - 1 {
         value /= 1_000.0;
         unit += 1;
     }
-    let formatted = format!("{value:.1}");
-    format!("{} {}", formatted.trim_end_matches(".0"), UNITS[unit])
+    let rounded = (value * 10.0).round() / 10.0;
+    if rounded >= 1_000.0 && unit < units.len() - 1 {
+        (rounded / 1_000.0, unit + 1)
+    } else {
+        (rounded, unit)
+    }
 }
 
 pub(in crate::ui) fn metadata_needs_fill(entry: &FileEntry) -> bool {
