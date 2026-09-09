@@ -63,7 +63,7 @@ pub(super) use crate::ui::browser::context_menu::{
 pub(super) use crate::ui::browser::desktop::{launch_terminal, open_location};
 pub(super) use crate::ui::browser::entry::{
     FOLDER_TYPE_GROUP, entry_filter, entry_icon, entry_model_value, format_file_size,
-    metadata_needs_fill, model_type_group,
+    metadata_needs_fill, model_type_group, rounded_size_and_unit,
 };
 pub(super) use crate::ui::browser::inline_edit::{
     queue_rename, rename_stem_end, reveal_rename_row, update_basename_validation,
