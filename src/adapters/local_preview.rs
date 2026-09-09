@@ -10,7 +10,8 @@ use crate::{
     services::{
         LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
         content_family, has_csv_extension, has_excel_extension, has_plain_text_extension,
-        is_non_executable_extensionless_dotfile, parse_csv_table, parse_excel_table,
+        has_tsv_extension, is_non_executable_extensionless_dotfile, parse_delimited_table,
+        parse_excel_table,
     },
 };
 
@@ -72,7 +73,7 @@ impl PreviewProvider for LocalPreviewProvider {
                 };
             }
             if matches!(content, PreviewContent::Text { .. })
-                && has_csv_extension(&entry.native_name)
+                && (has_csv_extension(&entry.native_name) || has_tsv_extension(&entry.native_name))
             {
                 content = PreviewContent::Table {
                     headers: Vec::new(),
@@ -174,9 +175,15 @@ impl PreviewProvider for LocalPreviewProvider {
                     Err(_) => return,
                 };
             } else if matches!(content, PreviewContent::Table { .. }) {
+                let delimiter = if has_tsv_extension(&entry.native_name) {
+                    b'\t'
+                } else {
+                    b','
+                };
                 content = match read_text(&file, request.text_byte_limit).await {
                     Ok((text, byte_truncated)) => {
-                        let (headers, rows, row_truncated) = parse_csv_table(&text);
+                        let (headers, rows, row_truncated) =
+                            parse_delimited_table(&text, delimiter);
                         PreviewContent::Table {
                             headers,
                             rows,

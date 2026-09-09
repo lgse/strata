@@ -82,6 +82,13 @@ pub(crate) fn has_csv_extension(name: &OsStr) -> bool {
         .is_some_and(|extension| extension.eq_ignore_ascii_case("csv"))
 }
 
+pub(crate) fn has_tsv_extension(name: &OsStr) -> bool {
+    Path::new(name)
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("tsv"))
+}
+
 pub(crate) fn has_excel_extension(name: &OsStr) -> bool {
     Path::new(name)
         .extension()
@@ -97,10 +104,15 @@ pub(crate) fn has_excel_extension(name: &OsStr) -> bool {
 /// Cap on rows parsed for a table preview, matching pandas' truncated-display feel.
 pub(crate) const TABLE_ROW_LIMIT: usize = 200;
 
-/// Parses CSV text into a header row plus up to `TABLE_ROW_LIMIT` data rows.
-/// Ragged rows are tolerated (`flexible`); unparsable rows are skipped.
-pub(crate) fn parse_csv_table(content: &str) -> (Vec<String>, Vec<Vec<String>>, bool) {
+/// Parses delimited text (CSV comma, TSV tab) into a header row plus up to
+/// `TABLE_ROW_LIMIT` data rows. Ragged rows are tolerated (`flexible`);
+/// unparsable rows are skipped.
+pub(crate) fn parse_delimited_table(
+    content: &str,
+    delimiter: u8,
+) -> (Vec<String>, Vec<Vec<String>>, bool) {
     let mut reader = csv::ReaderBuilder::new()
+        .delimiter(delimiter)
         .flexible(true)
         .from_reader(content.as_bytes());
     let headers = reader
@@ -181,14 +193,14 @@ pub(crate) fn content_family(content_type: &str) -> PreviewContent {
         PreviewContent::Image
     } else if content_type.starts_with("audio/") || content_type.starts_with("video/") {
         PreviewContent::Media
-    } else if content_type == "text/csv"
-        || matches!(
-            content_type,
-            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                | "application/vnd.ms-excel"
-                | "application/vnd.oasis.opendocument.spreadsheet"
-        )
-    {
+    } else if matches!(
+        content_type,
+        "text/csv"
+            | "text/tab-separated-values"
+            | "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            | "application/vnd.ms-excel"
+            | "application/vnd.oasis.opendocument.spreadsheet"
+    ) {
         PreviewContent::Table {
             headers: Vec::new(),
             rows: Vec::new(),

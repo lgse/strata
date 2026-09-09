@@ -4,8 +4,8 @@ use std::io::Write;
 
 use super::{
     EXCEL_BYTE_LIMIT, PreviewContent, content_family, has_csv_extension, has_excel_extension,
-    has_plain_text_extension, is_extensionless_dotfile, is_non_executable_extensionless_dotfile,
-    parse_csv_table, parse_excel_table,
+    has_plain_text_extension, has_tsv_extension, is_extensionless_dotfile,
+    is_non_executable_extensionless_dotfile, parse_delimited_table, parse_excel_table,
 };
 
 #[test]
@@ -82,6 +82,10 @@ fn classifies_common_preview_content_types() {
         content_family("application/vnd.oasis.opendocument.spreadsheet"),
         PreviewContent::Table { .. }
     ));
+    assert!(matches!(
+        content_family("text/tab-separated-values"),
+        PreviewContent::Table { .. }
+    ));
 }
 
 #[test]
@@ -91,9 +95,17 @@ fn recognizes_csv_extension() {
 }
 
 #[test]
+fn recognizes_tsv_extension() {
+    assert!(has_tsv_extension(std::ffi::OsStr::new("expenses.TSV")));
+    assert!(!has_tsv_extension(std::ffi::OsStr::new("notes.txt")));
+}
+
+#[test]
 fn parses_headers_and_quoted_fields() {
-    let (headers, rows, truncated) =
-        parse_csv_table("name,description\nwidget,\"a, tricky value\"\ngizmo,plain\n");
+    let (headers, rows, truncated) = parse_delimited_table(
+        "name,description\nwidget,\"a, tricky value\"\ngizmo,plain\n",
+        b',',
+    );
 
     assert_eq!(headers, vec!["name", "description"]);
     assert_eq!(
@@ -107,13 +119,29 @@ fn parses_headers_and_quoted_fields() {
 }
 
 #[test]
+fn parses_tab_delimited_rows() {
+    let (headers, rows, truncated) =
+        parse_delimited_table("name\tvalue\nalpha\t1\nbeta\t2\n", b'\t');
+
+    assert_eq!(headers, vec!["name", "value"]);
+    assert_eq!(
+        rows,
+        vec![
+            vec!["alpha".to_owned(), "1".to_owned()],
+            vec!["beta".to_owned(), "2".to_owned()],
+        ]
+    );
+    assert!(!truncated);
+}
+
+#[test]
 fn truncates_rows_past_the_limit() {
     let mut content = String::from("id\n");
     for row in 0..250 {
         content.push_str(&format!("{row}\n"));
     }
 
-    let (_, rows, truncated) = parse_csv_table(&content);
+    let (_, rows, truncated) = parse_delimited_table(&content, b',');
 
     assert_eq!(rows.len(), super::TABLE_ROW_LIMIT);
     assert!(truncated);
@@ -121,7 +149,7 @@ fn truncates_rows_past_the_limit() {
 
 #[test]
 fn tolerates_ragged_rows() {
-    let (headers, rows, truncated) = parse_csv_table("a,b,c\n1,2\n3,4,5,6\n");
+    let (headers, rows, truncated) = parse_delimited_table("a,b,c\n1,2\n3,4,5,6\n", b',');
 
     assert_eq!(headers, vec!["a", "b", "c"]);
     assert_eq!(
@@ -215,8 +243,9 @@ fn write_minimal_xlsx(
         sheet_xml.push_str(&format!(r#"<row r="{}">"#, row_index + 1));
         for (column_index, value) in row.iter().enumerate() {
             let cell_ref = format!("{}{}", column_letter(column_index), row_index + 1);
-            sheet_xml
-                .push_str(&format!(r#"<c r="{cell_ref}" t="inlineStr"><is><t>{value}</t></is></c>"#));
+            sheet_xml.push_str(&format!(
+                r#"<c r="{cell_ref}" t="inlineStr"><is><t>{value}</t></is></c>"#
+            ));
         }
         sheet_xml.push_str("</row>");
     }
@@ -232,7 +261,10 @@ fn write_minimal_xlsx(
 fn parses_the_first_worksheet_of_a_workbook() -> Result<(), Box<dyn std::error::Error>> {
     let directory = tempfile::tempdir()?;
     let path = directory.path().join("book.xlsx");
-    write_minimal_xlsx(&path, &string_rows(&[&["name", "value"], &["alpha", "1"], &["beta", "2"]]))?;
+    write_minimal_xlsx(
+        &path,
+        &string_rows(&[&["name", "value"], &["alpha", "1"], &["beta", "2"]]),
+    )?;
 
     let (headers, rows, truncated) = parse_excel_table(&path).map_err(|error| error.to_string())?;
 
@@ -272,7 +304,7 @@ fn rejects_oversized_workbooks() -> Result<(), Box<dyn std::error::Error>> {
     let file = std::fs::File::create(&path)?;
     file.set_len(EXCEL_BYTE_LIMIT + 1)?;
 
-    let error = parse_excel_table(&path).unwrap_err();
+    let error = parse_excel_table(&path).expect_err("oversized workbook should be rejected");
 
     assert!(error.contains("too large"));
     Ok(())
