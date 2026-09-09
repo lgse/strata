@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{
     BuildKind, Channel, ReleaseSummary, Version, best_update, is_eligible, rollback_target,

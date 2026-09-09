@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -270,6 +270,10 @@ impl PreviewDrawer {
                 depth,
                 position: Some(position),
             }
+            | BrowserEvent::SelectionSynced {
+                depth,
+                focused: Some(position),
+            }
             | BrowserEvent::SelectionSetChanged {
                 depth,
                 focused: position,
@@ -284,7 +288,12 @@ impl PreviewDrawer {
                     self.close();
                 }
             }
-            BrowserEvent::FocusChanged { position: None, .. } if self.is_open() => self.close(),
+            BrowserEvent::FocusChanged { position: None, .. }
+            | BrowserEvent::SelectionSynced { focused: None, .. }
+                if self.is_open() =>
+            {
+                self.close()
+            }
             _ => {}
         }
     }

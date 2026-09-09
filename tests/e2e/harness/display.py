@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Deterministic headless display, session bus, and accessibility bus."""
 
 from __future__ import annotations

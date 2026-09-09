@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Parametrisation helpers for the three browser presentations."""
 
 from __future__ import annotations

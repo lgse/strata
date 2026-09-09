@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -83,13 +83,8 @@ pub fn present(application: &gtk::Application) {
     present_target(application, None, Vec::new(), false);
 }
 
-pub fn present_location(application: &gtk::Application, location: Option<PathBuf>) {
-    present_target(
-        application,
-        location.map(Location::local),
-        Vec::new(),
-        false,
-    );
+pub fn present_location(application: &gtk::Application, location: Option<Location>) {
+    present_target(application, location, Vec::new(), false);
 }
 
 /// Opens the window an `org.freedesktop.FileManager1` caller asked for: the
@@ -976,18 +971,40 @@ impl SidebarState {
     }
 
     fn pin_location(self: &Rc<Self>, location: Location, name: String) {
-        if pin_status(&self.pinned_places.borrow(), &location) != PinStatus::Available {
-            return;
-        }
-        self.pinned_places.borrow_mut().push((location, name));
-        save_pinned_places(&self.pinned_places.borrow());
-        self.rebuild();
+        self.update_pinned_places(|places| {
+            if pin_status(places, &location) != PinStatus::Available {
+                return false;
+            }
+            places.push((location, name));
+            true
+        });
     }
 
     fn unpin_location(self: &Rc<Self>, location: &Location) {
-        if remove_pinned_place(&mut self.pinned_places.borrow_mut(), location) {
-            save_pinned_places(&self.pinned_places.borrow());
-            self.rebuild();
+        self.update_pinned_places(|places| remove_pinned_place(places, location));
+    }
+
+    fn update_pinned_places(
+        self: &Rc<Self>,
+        change: impl FnOnce(&mut Vec<(Location, String)>) -> bool,
+    ) {
+        // Merge into the shared file, never this window's stale snapshot.
+        let result = load_pinned_places().and_then(|mut places| {
+            if change(&mut places) {
+                save_pinned_places(&places)?;
+            }
+            Ok(places)
+        });
+        match result {
+            Ok(places) => {
+                self.pinned_places.replace(places);
+                self.rebuild();
+            }
+            Err(error) => show_error_dialog(
+                &self.view.widget(),
+                "Unable to update pinned folders",
+                &error.to_string(),
+            ),
         }
     }
     fn event_changes_active_place(event: &BrowserEvent) -> bool {
@@ -1256,12 +1273,23 @@ impl SidebarState {
     }
 
     fn reorder_pinned_place(self: &Rc<Self>, source: usize, target: usize, after: bool) {
-        let changed =
-            reorder_pinned_places(&mut self.pinned_places.borrow_mut(), source, target, after);
-        if changed {
-            save_pinned_places(&self.pinned_places.borrow());
-            self.rebuild();
-        }
+        let (source, target) = {
+            let places = self.pinned_places.borrow();
+            match (places.get(source), places.get(target)) {
+                (Some(source), Some(target)) => (source.0.clone(), target.0.clone()),
+                _ => return,
+            }
+        };
+        self.update_pinned_places(|places| {
+            let position =
+                |location: &Location| places.iter().position(|(pinned, _)| pinned == location);
+            match (position(&source), position(&target)) {
+                (Some(source), Some(target)) => {
+                    reorder_pinned_places(places, source, target, after)
+                }
+                _ => false,
+            }
+        });
     }
 
     fn append_separator(&self) {
@@ -2027,10 +2055,12 @@ fn pinned_places_path() -> PathBuf {
     glib::user_config_dir().join("gtk-3.0/bookmarks")
 }
 
-fn load_pinned_places() -> Vec<(Location, String)> {
-    std::fs::read_to_string(pinned_places_path())
-        .map(|contents| parse_pinned_places(&contents))
-        .unwrap_or_default()
+fn load_pinned_places() -> std::io::Result<Vec<(Location, String)>> {
+    match std::fs::read_to_string(pinned_places_path()) {
+        Ok(contents) => Ok(parse_pinned_places(&contents)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
+        Err(error) => Err(error),
+    }
 }
 
 fn parse_pinned_places(contents: &str) -> Vec<(Location, String)> {
@@ -2061,16 +2091,13 @@ fn parse_pinned_places(contents: &str) -> Vec<(Location, String)> {
     places
 }
 
-fn save_pinned_places(places: &[(Location, String)]) {
+fn save_pinned_places(places: &[(Location, String)]) -> std::io::Result<()> {
     let path = pinned_places_path();
-    let Some(parent) = path.parent() else {
-        return;
-    };
-    if std::fs::create_dir_all(parent).is_err() {
-        return;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
     }
     let contents = serialize_pinned_places(places);
-    let _result = crate::storage::atomic_write(&path, contents.as_bytes());
+    crate::storage::atomic_write(&path, contents.as_bytes())
 }
 
 fn serialize_pinned_places(places: &[(Location, String)]) -> String {

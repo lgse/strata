@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 //! Staged archive publication and the existing format-specific writers.
 
@@ -307,7 +307,12 @@ pub(super) fn compress_zip(
         stored
     };
     visit_archive_entries(entries, cancelled, &mut |path, source| {
-        let name = path.to_string_lossy();
+        let name = path.to_str().ok_or_else(|| {
+            format!(
+                "ZIP cannot preserve the non-UTF-8 name of {}. Use TAR instead.",
+                path.display()
+            )
+        })?;
         match source {
             ArchiveSource::Directory(_) => {
                 return writer.add_directory(name, stored).map_err(archive_failed);
@@ -543,7 +548,12 @@ pub(super) fn compress_7z(
         writer.set_content_methods(vec![lzma2]);
     }
     visit_archive_entries(entries, cancelled, &mut |path, source| {
-        let name = path.to_string_lossy();
+        let name = path.to_str().ok_or_else(|| {
+            archive_failed(format!(
+                "7z cannot preserve the non-UTF-8 name of {}. Use TAR instead.",
+                path.display()
+            ))
+        })?;
         let (mut entry, file) = match source {
             ArchiveSource::Symlink(_) => {
                 return Err(archive_failed(format!(
@@ -552,9 +562,9 @@ pub(super) fn compress_7z(
                 )));
             }
             ArchiveSource::Directory(file) => {
-                (sevenz_rust2::ArchiveEntry::new_directory(&name), file)
+                (sevenz_rust2::ArchiveEntry::new_directory(name), file)
             }
-            ArchiveSource::File(file) => (sevenz_rust2::ArchiveEntry::new_file(&name), file),
+            ArchiveSource::File(file) => (sevenz_rust2::ArchiveEntry::new_file(name), file),
         };
         let metadata = file.metadata().map_err(|error| error.to_string())?;
         if let Ok(modified) = metadata.modified()

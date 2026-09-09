@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 
 import os
 import signal
@@ -12,16 +12,71 @@ from PIL import Image
 from harness import screenshots, tree
 from harness.application import Application, binary_path
 from harness.browser import Strata
-from harness.tree import Bounds, Node
 from harness.environment import process_environment
 from harness.fixtures import FixtureTree
 from harness.process import ManagedProcess, terminate
+from harness.tree import Bounds, Node
+from tests.e2e.scenarios.test_marquee_scrolling import (
+    _entry_bounds,
+    _entry_name,
+    _visible_entries,
+)
 
 
 @pytest.mark.parametrize("reported", ["button", "push button"])
 def test_button_role_is_stable_across_atspi_versions(reported):
     node = Node(Mock(get_role_name=lambda: reported))
     assert node.role == "button"
+
+
+def test_marquee_uses_rendered_child_bounds_for_virtualized_cells():
+    row = Mock(name="row")
+    row.name = "565.txt"
+    label = Mock(role="label", screen_bounds=lambda: Bounds(233, 96, 153, 36))
+    row.walk.return_value = iter([(0, row), (1, label)])
+    row.screen_bounds.return_value = Bounds(217, 7, 191, 145)
+
+    assert _entry_bounds(row) == Bounds(233, 96, 153, 36)
+    row.find.assert_not_called()
+
+
+def test_marquee_uses_rendered_child_identity_for_recycled_cells():
+    row = Mock(name="row")
+    row.name = "092.txt"
+    label = Mock(role="label")
+    label.name = "575.txt"
+    row.walk.return_value = iter([(0, row), (1, label)])
+
+    assert _entry_name(row) == "575.txt"
+
+
+def test_marquee_falls_back_to_cell_bounds_when_no_label_is_rendered():
+    row = Mock(name="row")
+    row.walk.return_value = iter([(0, row)])
+    row.screen_bounds.return_value = Bounds(217, 7, 191, 145)
+
+    assert _entry_bounds(row) == Bounds(217, 7, 191, 145)
+    row.find.assert_not_called()
+
+
+def test_marquee_progress_short_circuits_before_inspecting_later_recycled_rows():
+    label = Mock(role="label", screen_bounds=lambda: Bounds(20, 30, 80, 20))
+    label.name = "060.txt"
+    row = Mock(role="list item", window_bounds=lambda: Bounds(20, -10, 80, 20))
+    row.walk.side_effect = lambda: iter([(0, row), (1, label)])
+    later = Mock(role="list item")
+    later.walk.side_effect = AssertionError("must not scan later moving rows")
+    container = Mock(
+        children=[Mock(role="scroll bar"), row, later],
+        screen_bounds=lambda: Bounds(10, 50, 200, 100),
+        window_bounds=lambda: Bounds(10, 10, 200, 100),
+    )
+    viewport = Mock(screen_bounds=lambda: Bounds(10, 20, 200, 100))
+
+    assert any(_entry_name(row) >= "060.txt" for row in _visible_entries(container, viewport))
+    container.find_all.assert_not_called()
+    later.window_bounds.assert_not_called()
+    later.walk.assert_not_called()
 
 
 @pytest.mark.parametrize("anchor", [(0, 0), (1074, 6), (500, 200)])

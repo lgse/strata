@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 //! Local archive operation entry points and worker/event coordination.
 //!
@@ -225,7 +225,7 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         let result = gio::spawn_blocking(move || match format {
             Some(ArchiveFormat::Zip) => {
                 let file = std::fs::File::open(&archive_path).map_err(|e| e.to_string())?;
-                let mut archive = zip::ZipArchive::new(file).map_err(|e| e.to_string())?;
+                let mut archive = zip::ZipArchive::new(file).map_err(decoders::zip_error)?;
                 work_total.store(archive.len(), Ordering::Relaxed);
                 extract_zip_from_archive(
                     &mut archive,

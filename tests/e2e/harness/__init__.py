@@ -1,2 +1,2 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Headless end-to-end harness for the Strata GTK application."""

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::super::fixtures::{
     compression_stage_mode, compression_stages, never_cancelled, write_compression_fixture,
@@ -463,5 +463,29 @@ fn compression_accepts_a_symlink_in_the_parent_path() -> Result<(), Box<dyn Erro
             "{format:?}"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn zip_and_seven_z_refuse_non_utf8_names_instead_of_mangling_them() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let source = root
+        .path()
+        .join(OsString::from_vec(b"name-\xff.txt".to_vec()));
+    fs::write(&source, b"contents")?;
+    for format in [ArchiveFormat::Zip, ArchiveFormat::SevenZ] {
+        let archive = root.path().join("archive.out");
+        let error =
+            write_compression_fixture(&archive, std::slice::from_ref(&source), format, None)
+                .expect_err("a non-UTF-8 name cannot be stored losslessly");
+        assert!(error.contains("non-UTF-8 name"), "{format:?}: {error}");
+    }
+    let archive = root.path().join("archive.tar");
+    write_compression_fixture(
+        &archive,
+        std::slice::from_ref(&source),
+        ArchiveFormat::Tar,
+        None,
+    )?;
     Ok(())
 }

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -121,7 +121,7 @@ impl SidebarState {
             mount_monitor: gio_unix::MountMonitor::get(),
             theme_manager,
             place_order: RefCell::new(place_order),
-            pinned_places: Rc::new(RefCell::new(load_pinned_places())),
+            pinned_places: Rc::new(RefCell::new(load_pinned_places().unwrap_or_default())),
             place_rows: RefCell::new(Vec::new()),
             trash_contents: Cell::new(TrashContents::Unknown),
             trash_menu_rows: RefCell::new(None),

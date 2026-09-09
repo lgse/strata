@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Failure evidence: screenshot, accessibility tree, logs, and fixture state."""
 
 from __future__ import annotations

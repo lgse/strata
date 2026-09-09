@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Empty-space clicks clear selection without taking over item clicks or drags."""
 
 import pytest

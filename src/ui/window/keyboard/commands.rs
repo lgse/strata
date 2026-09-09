@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::rc::Rc;
 
@@ -193,7 +193,7 @@ impl Dispatcher {
             },
             _ => return None,
         };
-        if self.view.filter_has_focus() {
+        if self.view.filter_has_focus() || event.text_has_focus() {
             return Some(Propagation::Proceed);
         }
         action(&self.view).then_some(Propagation::Stop)
