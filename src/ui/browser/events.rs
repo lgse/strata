@@ -245,6 +245,19 @@ impl ViewState {
                 self.mode_views.borrow().set_show_hidden(*show_hidden);
             }
             BrowserEvent::LoadFinished { depth, truncated } => {
+                let archive_destination_loaded = !self.pending_select.borrow().is_empty()
+                    && self
+                        .pending_archive_destination
+                        .borrow()
+                        .as_ref()
+                        .is_some_and(|destination| {
+                            self.browser.location_at(*depth).as_ref() == Some(destination)
+                        });
+                if archive_destination_loaded
+                    && self.mode_views.borrow().mode() == BrowserMode::Columns
+                {
+                    self.browser.set_active_column(*depth);
+                }
                 if let Some(column) = self.columns.borrow().get(*depth) {
                     if column.selection.model().is_none() {
                         column.filtered_model.set_model(Some(&column.model));
@@ -262,7 +275,26 @@ impl ViewState {
                     set_column_busy(column, false);
                     update_empty_trash_sensitivity(column, count);
                 }
-                if self.browser.active_depth() == Some(*depth) {
+                if archive_destination_loaded {
+                    let names = self.pending_select.take();
+                    if !names.is_empty() {
+                        let weak = Rc::downgrade(self);
+                        let depth = *depth;
+                        let destination = self.browser.location_at(depth);
+                        glib::idle_add_local_once(move || {
+                            if let Some(state) = weak.upgrade()
+                                && state.browser.location_at(depth) == destination
+                            {
+                                state.browser.select_entries_by_name_at(depth, &names);
+                                state.reveal_focused_entry();
+                                state.pending_archive_destination.take();
+                            }
+                        });
+                    }
+                } else if self.browser.active_depth() == Some(*depth)
+                    && (self.mode_views.borrow().mode() != BrowserMode::Columns
+                        || self.pending_archive_destination.borrow().is_none())
+                {
                     let names = self.pending_select.take();
                     let properties = self.pending_select_properties.replace(false);
                     let locations = self
@@ -284,6 +316,17 @@ impl ViewState {
                                     state.browser.select_entries_by_name(&names);
                                 } else {
                                     state.browser.select_entries_by_location(&locations);
+                                }
+                                if state
+                                    .pending_archive_destination
+                                    .borrow()
+                                    .as_ref()
+                                    .is_some_and(|destination| {
+                                        state.browser.active_location().as_ref()
+                                            == Some(destination)
+                                    })
+                                {
+                                    state.pending_archive_destination.take();
                                 }
                                 state.reveal_focused_entry();
                                 if properties && let Some(entry) = state.browser.focused_entry() {
@@ -582,14 +625,13 @@ impl ViewState {
             BrowserEvent::ArchiveCompleted { select_name, .. } => {
                 self.dismiss_file_operation_progress();
                 self.pending_extract_retry.replace(None);
-                let archive_destination = self.pending_archive_destination.take();
                 if !select_name.is_empty() {
                     self.pending_select.borrow_mut().push(select_name.clone());
                 }
                 if let Some(dest) = self.pending_navigate.take() {
                     self.browser.navigate(dest);
                 } else if !select_name.is_empty()
-                    && let Some(destination) = archive_destination
+                    && let Some(destination) = self.pending_archive_destination.borrow().clone()
                 {
                     self.reload_archive_destination(destination);
                 } else {
