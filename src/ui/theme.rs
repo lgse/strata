@@ -1056,7 +1056,37 @@ fn load_custom_themes() -> Vec<Theme> {
 }
 
 fn read_preferences() -> Option<Preferences> {
-    toml::from_str(&fs::read_to_string(settings_path()).ok()?).ok()
+    let table: toml::Table = toml::from_str(&fs::read_to_string(settings_path()).ok()?).ok()?;
+    match table.clone().try_into() {
+        Ok(preferences) => Some(preferences),
+        Err(error) => {
+            tracing::warn!(%error, "settings file has invalid entries; keeping the valid ones");
+            Some(salvage_preferences(table))
+        }
+    }
+}
+
+/// Rebuilds preferences from every entry that deserializes on its own, so one
+/// malformed value does not reset the rest (and, on the next save, overwrite
+/// them with defaults).
+fn salvage_preferences(saved: toml::Table) -> Preferences {
+    let Ok(mut merged) = toml::Table::try_from(Preferences::default()) else {
+        return Preferences::default();
+    };
+    for (key, value) in saved {
+        let previous = merged.insert(key.clone(), value);
+        if merged.clone().try_into::<Preferences>().is_err() {
+            match previous {
+                Some(previous) => {
+                    merged.insert(key, previous);
+                }
+                None => {
+                    merged.remove(&key);
+                }
+            }
+        }
+    }
+    merged.try_into().unwrap_or_default()
 }
 
 fn sort_preferences(preferences: &Preferences) -> ViewPreferences {
