@@ -483,24 +483,15 @@ impl ChooserState {
                 multiple,
             } => {
                 let browser = self.view.browser();
-                if !directory && let Some(location) = browser.chooser_location() {
-                    let Some(path) = location.native_path() else {
-                        self.show_error("Choose a local file");
-                        return;
-                    };
-                    self.complete_paths(
-                        vec![path.to_path_buf()],
-                        self.read_only
-                            .as_ref()
-                            .map(|read_only| writable_from_read_only(read_only.is_active())),
-                    );
-                    return;
-                }
                 let Some(current) = browser.active_location() else {
                     self.show_error("Choose an accessible local folder");
                     return;
                 };
-                let entries = eligible_open_entries(browser.selected_entries(), *directory);
+                let entries = self
+                    .view
+                    .selected_search_results()
+                    .unwrap_or_else(|| browser.selected_entries());
+                let entries = eligible_open_entries(entries, *directory);
                 match open_selection(&entries, &current, *directory, *multiple) {
                     Ok(paths) => self.complete_paths(
                         paths,

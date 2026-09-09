@@ -22,10 +22,7 @@ use crate::ui::{
     browser_modes::BrowserMode,
     modal::{slide_in_down, slide_out},
 };
-use crate::{
-    model::{FileEntry, Location},
-    services::SearchItem,
-};
+use crate::{model::FileEntry, services::SearchItem};
 use gtk::{glib, prelude::*};
 use std::{
     cell::{Cell, RefCell},
@@ -399,9 +396,7 @@ pub(super) fn column_rows(
                                 .get(position as usize)
                                 .map(|item| {
                                     if item.is_directory {
-                                        state.browser.navigate(Location::local(item.path.clone()));
-                                    } else {
-                                        state.browser.set_chooser_location(Location::local(
+                                        state.browser.navigate(crate::model::Location::local(
                                             item.path.clone(),
                                         ));
                                     }

@@ -754,10 +754,11 @@ impl ModeViews {
     }
 
     pub fn selected_search_result(&self) -> Option<FileEntry> {
-        self.icons_panes
-            .iter()
-            .chain(self.list_pane.iter())
-            .find_map(|pane| pane.search.selected_entry())
+        self.single_pane()?.search.selected_entry()
+    }
+
+    pub fn selected_search_results(&self) -> Option<Vec<FileEntry>> {
+        self.single_pane()?.search.selected_entries()
     }
 
     pub fn item_view_has_focus(&self) -> bool {

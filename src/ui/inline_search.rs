@@ -69,20 +69,34 @@ impl InlineSearch {
         let state = self.state.as_ref()?;
         let focused = self.widget.root()?.focus()?;
         let entry = state.entry.upgrade()?;
-        if state.stack.visible_child_name().as_deref() != Some("search")
-            || !(focused.is_ancestor(&entry)
-                || focused == entry.upcast::<gtk::Widget>()
-                || focused.is_ancestor(&state.list)
-                || focused == state.list.clone().upcast::<gtk::Widget>())
+        if !(focused.is_ancestor(&entry)
+            || focused == entry.upcast::<gtk::Widget>()
+            || focused.is_ancestor(&state.list)
+            || focused == state.list.clone().upcast::<gtk::Widget>())
         {
             return None;
         }
-        let row = state.list.selected_row()?;
-        state
-            .items
-            .borrow()
-            .get(row.index() as usize)
-            .map(super::browser::search_result_entry)
+        self.selected_entries()?.into_iter().next()
+    }
+
+    pub fn selected_entries(&self) -> Option<Vec<crate::model::FileEntry>> {
+        let state = self.state.as_ref()?;
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return None;
+        }
+        let entries = state
+            .list
+            .selected_row()
+            .and_then(|row| {
+                state
+                    .items
+                    .borrow()
+                    .get(row.index() as usize)
+                    .map(super::browser::search_result_entry)
+            })
+            .into_iter()
+            .collect();
+        Some(entries)
     }
 }
 
@@ -128,7 +142,6 @@ pub(super) fn wrap(
         handle: RefCell::new(None),
         generation: Cell::new(0),
     });
-    let suppress_row_activation = Rc::new(Cell::new(false));
     let weak = Rc::downgrade(&state);
     state.list.set_sort_func(move |left, right| {
         let Some(state) = weak.upgrade() else {
@@ -139,11 +152,7 @@ pub(super) fn wrap(
     });
     let weak = Rc::downgrade(&state);
     let weak_browser = Rc::downgrade(browser);
-    let suppress_for_row_activation = suppress_row_activation.clone();
     state.list.connect_row_activated(move |_, row| {
-        if suppress_for_row_activation.replace(false) {
-            return;
-        }
         if let Some(state) = weak.upgrade() {
             super::browser::activate_recursive_search_result(
                 &weak_browser,
@@ -154,6 +163,23 @@ pub(super) fn wrap(
     });
     let click = gtk::GestureClick::new();
     click.set_button(1);
+    click.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let weak = Rc::downgrade(&state);
+    click.connect_pressed(move |gesture, _press_count, _x, y| {
+        let Some(state) = weak.upgrade() else { return };
+        let Some(row) = state.list.row_at_y(y as i32) else {
+            return;
+        };
+        let control = gesture
+            .current_event_state()
+            .contains(gtk::gdk::ModifierType::CONTROL_MASK);
+        if control && state.list.selected_row().as_ref() == Some(&row) {
+            state.list.unselect_all();
+        } else {
+            state.list.select_row(Some(&row));
+        }
+        gesture.set_state(gtk::EventSequenceState::Claimed);
+    });
     let weak = Rc::downgrade(&state);
     let weak_browser = Rc::downgrade(browser);
     click.connect_released(move |gesture, press_count, _x, y| {
@@ -180,17 +206,13 @@ pub(super) fn wrap(
         if browser.is_chooser_mode() {
             if item.is_directory {
                 browser.navigate(crate::model::Location::local(item.path));
-            } else {
-                browser.set_chooser_location(crate::model::Location::local(item.path));
             }
-        } else if super::browser::activate_recursive_search_result(
-            &Rc::downgrade(&browser),
-            &state.items,
-            row.index() as u32,
-        ) {
-            suppress_row_activation.set(true);
-            let suppress = suppress_row_activation.clone();
-            glib::idle_add_local_once(move || suppress.set(false));
+        } else {
+            super::browser::activate_recursive_search_result(
+                &Rc::downgrade(&browser),
+                &state.items,
+                row.index() as u32,
+            );
         }
     });
     state.list.add_controller(click);

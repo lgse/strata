@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from harness.modes import ALL_MODES
+from harness.modes import ALL_MODES, SINGLE_PANE_MODES
 
 ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
 # Folders stay grouped first, so descending is not simply the reverse.
@@ -20,6 +20,25 @@ DOUBLE_CLICK_PREFERENCES = {
     "single_click_previews": True,
 }
 DOUBLE_CLICK = pytest.mark.preferences(**DOUBLE_CLICK_PREFERENCES)
+
+
+@pytest.fixture
+def launch_counter(test_environment):
+    applications = test_environment.data_home / "applications"
+    applications.mkdir()
+    launches = test_environment.root / "filtered-launches"
+    launcher = test_environment.root / "record-filtered-launch"
+    launcher.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" >> "{launches}"\n')
+    launcher.chmod(0o755)
+    (applications / "strata-filtered.desktop").write_text(
+        "[Desktop Entry]\nType=Application\nName=Filtered Result Viewer\n"
+        f"Exec={launcher} %U\nMimeType=text/csv;\nNoDisplay=true\n"
+    )
+    (test_environment.config_home / "mimeapps.list").write_text(
+        "[Default Applications]\ntext/csv=strata-filtered.desktop;\n"
+        "[Added Associations]\ntext/csv=strata-filtered.desktop;\n"
+    )
+    return launches
 
 
 @pytest.fixture
@@ -102,6 +121,32 @@ def test_local_filtered_results_open_with_one_activation(strata, mode, activatio
 @pytest.mark.parametrize("activation", ["click", "enter"])
 def test_recursive_filtered_results_open_with_one_activation(strata, mode, activation):
     assert_filtered_result_opens(strata, activation)
+
+
+@DOUBLE_CLICK
+@pytest.mark.parametrize("mode", SINGLE_PANE_MODES)
+def test_recursive_file_double_click_launches_once(launch_counter, strata, mode):
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    strata.keyboard.type_text("spreadsheet")
+    result = strata.wait(
+        lambda: strata.window.find(role="list item", name="spreadsheet.csv"),
+        "the recursive file result",
+    )
+
+    strata.pointer.double_click(result)
+    strata.wait(
+        lambda: launch_counter.exists() and len(launch_counter.read_text().splitlines()) >= 1,
+        "the file launch",
+    )
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("photo")
+    strata.wait(lambda: field.text == "photo", "the follow-up query")
+    strata.wait(
+        lambda: strata.window.find(role="list item", name="photo.txt") is not None,
+        "the follow-up results",
+    )
+    assert len(launch_counter.read_text().splitlines()) == 1
 
 
 @pytest.mark.preferences(filter_include_subfolders=False)
