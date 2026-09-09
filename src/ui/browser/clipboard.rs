@@ -59,7 +59,10 @@ pub(crate) fn file_drop_action(target: &gtk::DropTarget) -> gtk::gdk::DragAction
     let Some(drop) = target.current_drop() else {
         return gtk::gdk::DragAction::empty();
     };
-    preferred_file_drop_action(drop.actions(), drop.drag().is_some())
+    let selected = drop.drag().map(|drag| drag.selected_action());
+    selected
+        .filter(|action| !action.is_empty())
+        .unwrap_or_else(|| preferred_file_drop_action(drop.actions(), drop.drag().is_some()))
 }
 
 fn preferred_file_drop_action(actions: gtk::gdk::DragAction, local: bool) -> gtk::gdk::DragAction {
