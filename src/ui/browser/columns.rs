@@ -39,12 +39,23 @@ pub(super) struct BoundRow {
     pub(super) rename_label: glib::WeakRef<gtk::Label>,
 }
 
+/// What a deferred pointer activation does on release. `position` in the
+/// enclosing `PendingPointerActivation` means the source-model position for
+/// `Standard`, or the visible filtered/search-list position otherwise.
+#[derive(Clone, Copy)]
+pub(super) enum PendingActivationKind {
+    Standard { preview: bool },
+    ChooserSearchNavigate,
+    RecursiveSearch,
+    Mapped,
+}
+
 struct PendingPointerActivation {
     pub(super) position: usize,
     pub(super) location: Location,
     pub(super) press: (f64, f64),
     pub(super) moved: bool,
-    pub(super) preview: bool,
+    pub(super) kind: PendingActivationKind,
 }
 
 impl PendingPointerActivation {
