@@ -43,6 +43,17 @@ fn exact_names_rank_above_substrings_and_fuzzy_matches() {
 }
 
 #[test]
+fn cat_01_name_matches_rank_above_fuzzy_bucket_paths() {
+    let root = Path::new("/fixture");
+    let exact_prefix = score_path("/fixture/Cats/cat-01-photo.jpg", "cat-01", root)
+        .expect("the exact name prefix should match");
+    let fuzzy_bucket = score_path("/fixture/bucket-cat/file-01-noise.jpg", "cat-01", root)
+        .expect("the bucket path should fuzzy match");
+    assert!(exact_prefix > fuzzy_bucket);
+    assert!(score_path("/fixture/Cats/cat-02-photo.jpg", "cat-01", root).is_none());
+}
+
+#[test]
 fn nearby_duplicate_names_rank_first_without_overriding_match_quality() {
     let root = Path::new("/fixture/Videos");
     let score = |path, query| score_path(path, query, root).expect("fixture should match");
