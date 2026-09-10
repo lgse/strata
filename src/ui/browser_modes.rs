@@ -1827,6 +1827,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             &card,
             item,
             browser_for_setup.clone(),
+            selection_for_setup.clone(),
             transfers_for_setup.clone(),
             depth,
             Some((source_index_for_setup.clone(), filtered_for_setup.clone())),
@@ -2899,6 +2900,17 @@ fn install_mode_directory_drop_target(
     widget.add_controller(drop);
 }
 
+fn drag_source_entries(selected: &[FileEntry], item: &FileEntry) -> (Vec<FileEntry>, bool) {
+    if selected
+        .iter()
+        .any(|selected| selected.location == item.location)
+    {
+        (selected.to_vec(), false)
+    } else {
+        (vec![item.clone()], true)
+    }
+}
+
 #[expect(
     clippy::too_many_arguments,
     reason = "drag setup wires every GTK signal it needs"
@@ -2907,6 +2919,7 @@ fn install_list_drag_drop(
     row: &impl IsA<gtk::Widget>,
     item: &gtk::ListItem,
     browser: Weak<Browser>,
+    selection: gtk::MultiSelection,
     transfer_handler: TransferHandlerSlot,
     depth: usize,
     position_map: Option<(SourceIndexMap, gio::ListModel)>,
@@ -2950,25 +2963,21 @@ fn install_list_drag_drop(
         ));
         let browser = browser_for_drag.upgrade()?;
         let dragged_item = dragged_item.upgrade()?;
-        let position = dragged_item.position();
-        if position == gtk::INVALID_LIST_POSITION {
+        let view_position = dragged_item.position();
+        if view_position == gtk::INVALID_LIST_POSITION {
             return None;
         }
         let position = map_for_drag
             .as_ref()
-            .map_or(Some(position as usize), |(source, filtered)| {
-                source_position_for_view(source, Some(filtered), position)
+            .map_or(Some(view_position as usize), |(source, filtered)| {
+                source_position_for_view(source, Some(filtered), view_position)
             })?;
         let entry = browser.entry_at(depth, position)?;
         let selected = browser.selected_entries();
-        let entries = if selected
-            .iter()
-            .any(|selected| selected.location == entry.location)
-        {
-            selected
-        } else {
-            vec![entry]
-        };
+        let (entries, exclusive_select) = drag_source_entries(&selected, &entry);
+        if exclusive_select {
+            selection.select_item(view_position, true);
+        }
         let compact_icon = drag_icon.as_ref().and_then(glib::WeakRef::upgrade);
         let multi_drag_icon = multi_drag_icon.as_ref().and_then(glib::WeakRef::upgrade);
         if let Some((texture, hot_x, hot_y)) = multi_drag_icon

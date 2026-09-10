@@ -91,6 +91,26 @@ def test_dragging_onto_the_pane_background_is_a_no_op(strata):
     )
 
 
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_dragging_an_unselected_file_selects_it(strata, mode):
+    """#770: dragging B while A is selected makes B the selection."""
+
+    fixture = strata.fixture
+    before = fixture.listing()
+    strata.select_entry("readme.md")
+    source = strata.entry("todo.txt")
+    pane = strata.pane()
+    bounds = pane.screen_bounds()
+    empty_point = (bounds.x + bounds.width // 2, bounds.y + bounds.height - 20)
+
+    strata.pointer.drag_to_point(source, empty_point)
+
+    strata.wait_for_selection(["todo.txt"])
+    assert fixture.listing() == before, (
+        "cancelling the drag on empty pane space must not move anything"
+    )
+
+
 def test_dragging_a_folder_into_another_folder_moves_its_contents(strata):
     fixture = strata.fixture
     source = strata.select_entry("pictures")

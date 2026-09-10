@@ -88,6 +88,7 @@ impl ListFactory {
             &row.widget,
             item,
             self.browser.clone(),
+            self.selection.clone(),
             self.transfers.clone(),
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),

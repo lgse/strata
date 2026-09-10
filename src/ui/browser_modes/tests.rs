@@ -3,9 +3,9 @@
 use super::{
     BrowserDensity, BrowserMode, ClickActivation, ClickCount, LIST_COLUMN_MIN_WIDTHS,
     LIST_COLUMN_WIDTHS, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, SourceIndexMap,
-    compare_type_groups, icons_card_extent, icons_card_icon_slot, list_column_width,
-    metadata_fill_position, should_activate_filtered_pointer, should_activate_pointer_click,
-    type_group_sorter, type_groups_of, value_type_group,
+    compare_type_groups, drag_source_entries, icons_card_extent, icons_card_icon_slot,
+    list_column_width, metadata_fill_position, should_activate_filtered_pointer,
+    should_activate_pointer_click, type_group_sorter, type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use crate::test_support::gtk_test;
@@ -36,6 +36,47 @@ impl super::ModeViews {
 /// Model values as the panes store them: kind, hidden flag, then the display name.
 fn value(kind: char, name: &str) -> String {
     format!("{kind}v\t{name}")
+}
+
+fn drag_entry(name: &str) -> FileEntry {
+    FileEntry {
+        location: Location::local(format!("/fixture/{name}")),
+        thumbnail_path: None,
+        native_name: name.into(),
+        display_name: name.into(),
+        kind: EntryKind::File,
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        mode: MetadataValue::Unknown,
+        is_hidden: false,
+    }
+}
+
+#[test]
+fn drag_source_entries_exclusive_selects_an_unselected_item() {
+    let selected = [drag_entry("a.txt")];
+    let item = drag_entry("b.txt");
+    let (entries, exclusive_select) = drag_source_entries(&selected, &item);
+    assert_eq!(entries, vec![item]);
+    assert!(exclusive_select);
+}
+
+#[test]
+fn drag_source_entries_keeps_a_multi_selection() {
+    let selected = vec![drag_entry("a.txt"), drag_entry("b.txt")];
+    let item = drag_entry("b.txt");
+    let (entries, exclusive_select) = drag_source_entries(&selected, &item);
+    assert_eq!(entries, selected);
+    assert!(!exclusive_select);
+}
+
+#[test]
+fn drag_source_entries_leaves_the_only_selected_item() {
+    let item = drag_entry("a.txt");
+    let selected = [item.clone()];
+    let (entries, exclusive_select) = drag_source_entries(&selected, &item);
+    assert_eq!(entries, vec![item]);
+    assert!(!exclusive_select);
 }
 
 #[test]
