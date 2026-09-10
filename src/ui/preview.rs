@@ -1439,6 +1439,9 @@ impl PreviewState {
                 stream.disconnect(handler);
             }
             stream.set_playing(false);
+            if let Some(media_file) = stream.downcast_ref::<gtk::MediaFile>() {
+                media_file.clear();
+            }
         }
         self.media_toggle_mute.replace(None);
         self.media_volume_slider.replace(None);

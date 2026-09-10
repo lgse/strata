@@ -2,11 +2,24 @@
 
 mod preferences;
 
+use std::rc::Rc;
+
+use gtk::{gio, glib, prelude::*};
+
 use super::{
-    MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, format_file_size, format_media_time,
-    media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
+    MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, PreviewDrawer, format_file_size,
+    format_media_time, media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
     preview_width_for_empty_space, print_fit, print_page_starts, print_progress_for_page,
 };
+use crate::services::{LoadHandle, PreviewEvent, PreviewProvider, PreviewRequest};
+
+struct UnusedPreviewProvider;
+
+impl PreviewProvider for UnusedPreviewProvider {
+    fn load(&self, _request: PreviewRequest, _emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle {
+        panic!("media teardown test does not load previews")
+    }
+}
 
 #[test]
 fn print_fit_centers_landscape_image_on_portrait_page() {
@@ -120,6 +133,30 @@ fn pdf_scroll_zoom_stays_within_its_supported_range() {
     assert!(pdf_zoom_after_scroll(2.0, 1.0) < 2.0);
     assert_eq!(pdf_zoom_after_scroll(PDF_MIN_ZOOM, 100.0), PDF_MIN_ZOOM);
     assert_eq!(pdf_zoom_after_scroll(PDF_MAX_ZOOM, -100.0), PDF_MAX_ZOOM);
+}
+
+#[test]
+fn clear_content_clears_media_file_input_stream() {
+    const TEST: &str = "ui::preview::tests::clear_content_clears_media_file_input_stream";
+    crate::test_support::gtk_test(TEST, || {
+        let bytes = glib::Bytes::from_static(b"media fixture");
+        let input = gio::MemoryInputStream::from_bytes(&bytes);
+        let media = gtk::MediaFile::for_input_stream(&input);
+        let drawer = PreviewDrawer::new(Rc::new(UnusedPreviewProvider), false);
+        drawer
+            .state
+            .media
+            .replace(Some(media.clone().upcast::<gtk::MediaStream>()));
+
+        assert!(media.input_stream().is_some());
+        drawer.state.clear_content();
+
+        assert!(drawer.state.media.borrow().is_none());
+        assert!(
+            media.input_stream().is_none(),
+            "clearing preview content must detach the media source"
+        );
+    });
 }
 
 #[test]
