@@ -147,6 +147,10 @@ pub(crate) fn parse(
     if cancellation.is_cancelled() {
         return Err("Preview cancelled".to_owned());
     }
+    crate::preview_trace::event!("sandbox_parse",
+        "operation" => operation.argument(), "policy" => media_backend.argument(),
+        "input_token" => crate::preview_trace::file_id(&input),
+    );
     let input = input
         .canonicalize()
         .map_err(|error| format!("Unable to open preview input: {error}"))?;
@@ -182,7 +186,13 @@ pub(crate) fn parse(
         media_backend,
         &devices,
     );
-    command.stderr(Stdio::null());
+    command.stderr(
+        if crate::preview_trace::enabled() && operation == ParseOperation::PreviewMedia {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        },
+    );
     if operation == ParseOperation::PreviewMedia {
         command.stdout(Stdio::piped());
     } else {
@@ -190,13 +200,34 @@ pub(crate) fn parse(
     }
     let mut child = spawn_renderer(&mut command)
         .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
+    let trace_reader = child.stderr.take().map(|stderr| {
+        thread::spawn(move || {
+            let _ = crate::preview_trace::relay_helper_trace(stderr, io::stderr());
+        })
+    });
+    crate::preview_trace::event!("sandbox_started",
+        "child_pid" => child.id(), "job" => crate::preview_trace::file_id(&output.path()),
+        "operation" => operation.argument(), "policy" => media_backend.argument(),
+        "gpu_devices" => devices.len(),
+    );
     if operation == ParseOperation::PreviewMedia {
-        let (status, data) = wait_for_renderer_output(
+        let result = wait_for_renderer_output(
             &mut child,
             cancellation,
             operation.wall_time_limit(),
             MAX_OUTPUT_BYTES,
-        )?;
+        );
+        // Joining is safe only after the renderer exits or the wait loop terminates it.
+        if let Some(reader) = trace_reader {
+            let _ = reader.join();
+        }
+        crate::preview_trace::event!("sandbox_finished",
+            "child_pid" => child.id(), "job" => crate::preview_trace::file_id(&output.path()),
+            "wait_ok" => result.is_ok(), "cancelled" => cancellation.is_cancelled(),
+            "exit_code" => result.as_ref().ok().and_then(|(status, _)| status.code()),
+            "bytes" => result.as_ref().ok().map(|(_, data)| data.len()),
+        );
+        let (status, data) = result?;
         if !status.success() {
             return Err("The sandboxed preview renderer failed".to_owned());
         }
@@ -213,7 +244,13 @@ pub(crate) fn parse(
         });
     }
 
-    let status = wait_for_renderer(&mut child, cancellation, operation.wall_time_limit())?;
+    let result = wait_for_renderer(&mut child, cancellation, operation.wall_time_limit());
+    crate::preview_trace::event!("sandbox_finished",
+        "child_pid" => child.id(), "job" => crate::preview_trace::file_id(&output.path()),
+        "wait_ok" => result.is_ok(), "cancelled" => cancellation.is_cancelled(),
+        "exit_code" => result.as_ref().ok().and_then(|status| status.code()),
+    );
+    let status = result?;
     if !status.success() {
         return Err("The sandboxed preview renderer failed".to_owned());
     }
@@ -436,6 +473,12 @@ fn sandbox_command(
         "/etc/ImageMagick-6",
         "/etc/ImageMagick-6",
     ]);
+    if crate::preview_trace::enabled() && operation == ParseOperation::PreviewMedia {
+        command.args(["--setenv", "STRATA_PREVIEW_TRACE", "1"]);
+        command
+            .args(["--setenv", "STRATA_PREVIEW_TRACE_JOB"])
+            .arg(crate::preview_trace::file_id(&output).to_string());
+    }
     let sandbox_input = sandbox_input_path(input);
     if operation != ParseOperation::ThumbnailVideo {
         command.arg("--ro-bind").arg(executable).arg("/app/strata");
@@ -605,6 +648,7 @@ fn png_dimensions(data: &[u8]) -> Option<(u32, u32)> {
 }
 
 fn terminate(child: &mut Child) {
+    crate::preview_trace::event!("sandbox_terminate", "child_pid" => child.id());
     if let Ok(raw_pid) = i32::try_from(child.id())
         && let Some(process_group) = Pid::from_raw(raw_pid)
     {

@@ -1,0 +1,22 @@
+{
+  "started_unix_ms": 1789052767406,
+  "driver": "610.57.04",
+  "gpus": [
+    {
+      "gpu": 0,
+      "name": "NVIDIA GeForce RTX 5090",
+      "total_mib": 32607,
+      "used_mib": 2935
+    }
+  ],
+  "interval_seconds": 0.5,
+  "environment": {
+    "GSK_RENDERER": null,
+    "GDK_BACKEND": "wayland,x11,*",
+    "GTK_MEDIA": null
+  },
+  "binary_sha256": "112c6f940d3b6372903efa12798210f7896c8439c2fce2364678d99db8ad0585",
+  "capture": "20260910-110607",
+  "baseline_commit": "63f1063589b4a523612ef606a847be05fa6ffce3",
+  "applied_pr_head": "51c8a16b5154887caec3b4e29206c653df123cd1"
+}

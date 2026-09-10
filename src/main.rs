@@ -8,6 +8,7 @@ mod metrics;
 mod model;
 mod portal;
 mod portal_setup;
+mod preview_trace;
 mod sandbox;
 mod sandbox_helper;
 mod services;
@@ -80,6 +81,11 @@ fn main() -> gtk::glib::ExitCode {
     }
 
     metrics::initialize();
+    preview_trace::event!("startup",
+        "version" => env!("CARGO_PKG_VERSION"),
+        "gtk" => format!("{}.{}.{}", gtk::major_version(), gtk::minor_version(), gtk::micro_version()),
+        "debug_assertions" => cfg!(debug_assertions),
+    );
     if let Err(error) = tracing_subscriber::fmt::try_init() {
         eprintln!("Unable to initialize logging: {error}");
     }

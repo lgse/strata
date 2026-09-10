@@ -268,9 +268,23 @@ fn render_media_preview(path: &Path, policy: MediaPreviewBackend) -> Result<Vec<
                 .min(hardware_remaining)
                 .min(total_remaining)
         };
+        crate::preview_trace::event!("backend_attempt",
+            "backend" => format!("{backend:?}"), "timeout_ms" => timeout.as_millis() as u64,
+        );
         let mut command = media_command(backend, path);
-        bounded_output_with_timeout(&mut command, MAX_OUTPUT_BYTES, timeout).map(|result| {
-            result.and_then(|output| {
+        let attempt_started = Instant::now();
+        let result = bounded_output_with_timeout(&mut command, MAX_OUTPUT_BYTES, timeout);
+        crate::preview_trace::event!("backend_finished",
+            "backend" => format!("{backend:?}"),
+            "elapsed_ms" => attempt_started.elapsed().as_millis() as u64,
+            "outcome" => match &result {
+                Ok(Some(output)) if output.status.success() && !output.stdout.is_empty() => "success",
+                Ok(Some(_)) => "failed", Ok(None) => "timeout_or_no_budget", Err(_) => "io_error",
+            },
+            "bytes" => result.as_ref().ok().and_then(|output| output.as_ref()).map(|output| output.stdout.len()),
+        );
+        result.map(|output| {
+            output.and_then(|output| {
                 (output.status.success() && !output.stdout.is_empty()).then_some(output.stdout)
             })
         })
@@ -443,6 +457,7 @@ fn bounded_output_with_timeout(
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()?;
+    crate::preview_trace::event!("ffmpeg_started", "namespace_pid" => child.id());
     let stdout = child
         .stdout
         .take()
@@ -514,6 +529,7 @@ fn bounded_output_with_timeout(
 }
 
 fn stop_child(child: &mut Child) {
+    crate::preview_trace::event!("child_terminate", "local_pid" => child.id());
     let _killed = child.kill();
     let _waited = child.wait();
 }

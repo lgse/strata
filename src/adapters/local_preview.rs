@@ -102,6 +102,21 @@ impl PreviewProvider for LocalPreviewProvider {
         let media_preview_backend = (self.media_preview_backend)();
         let request_id = request.id;
         let entry = request.entry.clone();
+        crate::preview_trace::event!("provider_load",
+            "request" => request_id.0, "file" => crate::preview_trace::file_id(&entry.location),
+            "policy" => media_preview_backend.argument(),
+        );
+        let emit: Rc<dyn Fn(PreviewEvent)> = if crate::preview_trace::enabled() {
+            Rc::new(move |event| {
+                crate::preview_trace::event!("provider_event",
+                    "request" => request_id.0,
+                    "result" => match &event { PreviewEvent::Ready(_) => "ready", PreviewEvent::Failed { .. } => "failed" },
+                );
+                emit(event);
+            })
+        } else {
+            emit
+        };
         let cancellation = Cancellation::default();
         let cancellation_for_task = cancellation.clone();
         let task = glib::MainContext::default().spawn_local(async move {
@@ -200,6 +215,9 @@ impl PreviewProvider for LocalPreviewProvider {
                     .as_ref()
                     .and_then(|key| PREVIEW_CACHE.with(|cache| cache.borrow_mut().get(key)))
                 {
+                    crate::preview_trace::event!("cache_hit",
+                        "request" => request_id.0, "bytes" => preview_content_size(&cached),
+                    );
                     emit(PreviewEvent::Ready(Preview {
                         request_id,
                         entry,
@@ -209,6 +227,10 @@ impl PreviewProvider for LocalPreviewProvider {
                     return;
                 }
 
+                crate::preview_trace::event!("cache_miss",
+                    "request" => request_id.0, "cacheable" => cache_key.is_some(),
+                    "input_token" => crate::preview_trace::file_id(&path),
+                );
                 let shared_thumbnail = if uses_shared_thumbnail(operation, request.pdf_page) {
                     if let Some(mtime) = modified {
                         let thumbnail_path = path.clone();
@@ -302,7 +324,12 @@ impl PreviewProvider for LocalPreviewProvider {
                 };
                 if let Some(cache_key) = cache_key {
                     PREVIEW_CACHE.with(|cache| {
-                        cache.borrow_mut().insert(cache_key, content.clone());
+                        let mut cache = cache.borrow_mut();
+                        cache.insert(cache_key, content.clone());
+                        crate::preview_trace::event!("cache_store",
+                            "request" => request_id.0, "entries" => cache.entries.len(),
+                            "cache_bytes" => cache.byte_count, "content_bytes" => preview_content_size(&content),
+                        );
                     });
                 }
                 emit(PreviewEvent::Ready(Preview {
@@ -344,6 +371,7 @@ impl PreviewProvider for LocalPreviewProvider {
         });
 
         LoadHandle::new(move || {
+            crate::preview_trace::event!("load_handle_dropped", "request" => request_id.0);
             cancellation.cancel();
             task.abort();
         })

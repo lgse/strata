@@ -1,0 +1,568 @@
+{"event": "startup", "fields": {"debug_assertions": true, "gtk": "4.22.4", "version": "0.14.0"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052767544}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 15722863277959347544, "page": 0, "request": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052774772}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052774773}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052774773}
+{"event": "provider_load", "fields": {"file": 15722863277959347544, "policy": "software", "request": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052774773}
+{"event": "cache_miss", "fields": {"cacheable": true, "input_token": 17835500465535990704, "request": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052774773}
+{"event": "sandbox_parse", "fields": {"input_token": 17835500465535990704, "operation": "preview-media", "policy": "software"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052774773}
+{"event": "sandbox_started", "fields": {"child_pid": 1169167, "gpu_devices": 0, "job": 12106875159947932497, "operation": "preview-media", "policy": "software"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052774773}
+{"event": "backend_attempt", "fields": {"backend": "Software", "timeout_ms": 27999}, "pid": 2, "sandbox_job": "12106875159947932497", "unix_ms": 1789052774792}
+{"event": "ffmpeg_started", "fields": {"namespace_pid": 3}, "pid": 2, "sandbox_job": "12106875159947932497", "unix_ms": 1789052774792}
+{"event": "backend_finished", "fields": {"backend": "Software", "bytes": 490175, "elapsed_ms": 180, "outcome": "success"}, "pid": 2, "sandbox_job": "12106875159947932497", "unix_ms": 1789052774973}
+{"event": "sandbox_finished", "fields": {"bytes": 490175, "cancelled": false, "child_pid": 1169167, "exit_code": 0, "job": 12106875159947932497, "wait_ok": true}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052774974}
+{"event": "cache_store", "fields": {"cache_bytes": 490175, "content_bytes": 490175, "entries": 1, "request": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052774975}
+{"event": "provider_event", "fields": {"request": 1, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052774975}
+{"event": "preview_render", "fields": {"content_type": "image/gif", "drawer": 1, "file": 15722863277959347544, "renderer": "GskVulkanRenderer", "request": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052774975}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052774975}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052774975}
+{"event": "media_open", "fields": {"drawer": 1, "encoded_bytes": 490175, "media": 2, "request": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052774975}
+{"event": "object_created", "fields": {"kind": "media", "object": 2}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052775094}
+{"event": "media_created", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 2, "playing": false, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052775094}
+{"event": "object_created", "fields": {"kind": "picture", "object": 2}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052775094}
+{"event": "object_created", "fields": {"kind": "overlay", "object": 2}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052775094}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 2, "playing": true, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052775096}
+{"event": "media_prepared", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 2, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052775306}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 2, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052776278}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 2, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052776681}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 2, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052777769}
+{"event": "preview_close", "fields": {"drawer": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779101}
+{"event": "load_handle_dropped", "fields": {"request": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779101}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 2}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779101}
+{"event": "object_finalized", "fields": {"kind": "picture", "object": 2}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779163}
+{"event": "object_finalized", "fields": {"kind": "overlay", "object": 2}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779163}
+{"event": "object_finalized", "fields": {"kind": "media", "object": 2}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779163}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 2}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779163}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 15722863277959347544, "page": 0, "request": 2}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779626}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779626}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779626}
+{"event": "provider_load", "fields": {"file": 15722863277959347544, "policy": "software", "request": 2}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779627}
+{"event": "cache_hit", "fields": {"bytes": 490175, "request": 2}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779627}
+{"event": "provider_event", "fields": {"request": 2, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779627}
+{"event": "preview_render", "fields": {"content_type": "image/gif", "drawer": 1, "file": 15722863277959347544, "renderer": "GskVulkanRenderer", "request": 2}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779627}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779627}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779627}
+{"event": "media_open", "fields": {"drawer": 1, "encoded_bytes": 490175, "media": 3, "request": 2}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779627}
+{"event": "object_created", "fields": {"kind": "media", "object": 3}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779658}
+{"event": "media_created", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 3, "playing": false, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779658}
+{"event": "object_created", "fields": {"kind": "picture", "object": 3}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779658}
+{"event": "object_created", "fields": {"kind": "overlay", "object": 3}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779658}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 3, "playing": true, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779659}
+{"event": "media_prepared", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 3, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052779833}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 3, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052781494}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 3, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052781953}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 3, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052783190}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 3, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052783898}
+{"event": "preview_close", "fields": {"drawer": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052784689}
+{"event": "load_handle_dropped", "fields": {"request": 2}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052784689}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 3}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052784689}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 3, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052784689}
+{"event": "object_finalized", "fields": {"kind": "picture", "object": 3}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052784748}
+{"event": "object_finalized", "fields": {"kind": "overlay", "object": 3}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052784749}
+{"event": "object_finalized", "fields": {"kind": "media", "object": 3}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052784749}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 3}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052784749}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 15722863277959347544, "page": 0, "request": 3}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785675}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785676}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785676}
+{"event": "provider_load", "fields": {"file": 15722863277959347544, "policy": "software", "request": 3}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785676}
+{"event": "cache_hit", "fields": {"bytes": 490175, "request": 3}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785676}
+{"event": "provider_event", "fields": {"request": 3, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785676}
+{"event": "preview_render", "fields": {"content_type": "image/gif", "drawer": 1, "file": 15722863277959347544, "renderer": "GskVulkanRenderer", "request": 3}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785676}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785676}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785676}
+{"event": "media_open", "fields": {"drawer": 1, "encoded_bytes": 490175, "media": 4, "request": 3}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785676}
+{"event": "object_created", "fields": {"kind": "media", "object": 4}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785706}
+{"event": "media_created", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 4, "playing": false, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785706}
+{"event": "object_created", "fields": {"kind": "picture", "object": 4}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785706}
+{"event": "object_created", "fields": {"kind": "overlay", "object": 4}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785706}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 4, "playing": true, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785706}
+{"event": "media_prepared", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 4, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052785881}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 4, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052788167}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 4, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052788519}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 4, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052789985}
+{"event": "preview_close", "fields": {"drawer": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052790312}
+{"event": "load_handle_dropped", "fields": {"request": 3}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052790312}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 4}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052790312}
+{"event": "object_finalized", "fields": {"kind": "picture", "object": 4}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052790370}
+{"event": "object_finalized", "fields": {"kind": "overlay", "object": 4}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052790370}
+{"event": "object_finalized", "fields": {"kind": "media", "object": 4}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052790370}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 4}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052790370}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 15722863277959347544, "page": 0, "request": 4}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791074}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791074}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791074}
+{"event": "provider_load", "fields": {"file": 15722863277959347544, "policy": "software", "request": 4}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791074}
+{"event": "cache_hit", "fields": {"bytes": 490175, "request": 4}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791074}
+{"event": "provider_event", "fields": {"request": 4, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791074}
+{"event": "preview_render", "fields": {"content_type": "image/gif", "drawer": 1, "file": 15722863277959347544, "renderer": "GskVulkanRenderer", "request": 4}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791074}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791074}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791074}
+{"event": "media_open", "fields": {"drawer": 1, "encoded_bytes": 490175, "media": 5, "request": 4}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791074}
+{"event": "object_created", "fields": {"kind": "media", "object": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791122}
+{"event": "media_created", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 5, "playing": false, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791122}
+{"event": "object_created", "fields": {"kind": "picture", "object": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791122}
+{"event": "object_created", "fields": {"kind": "overlay", "object": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791122}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 5, "playing": true, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791122}
+{"event": "media_prepared", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 5, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052791303}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 5, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052792068}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 5, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052792392}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 542, "media": 5, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052793597}
+{"event": "preview_close", "fields": {"drawer": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052793939}
+{"event": "load_handle_dropped", "fields": {"request": 4}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052793940}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052793940}
+{"event": "object_finalized", "fields": {"kind": "picture", "object": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052793998}
+{"event": "object_finalized", "fields": {"kind": "overlay", "object": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052793998}
+{"event": "object_finalized", "fields": {"kind": "media", "object": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052793999}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052793999}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 7062335731912094676, "page": 0, "request": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797237}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797237}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797237}
+{"event": "provider_load", "fields": {"file": 7062335731912094676, "policy": "software", "request": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797237}
+{"event": "cache_miss", "fields": {"cacheable": true, "input_token": 15364470724627791795, "request": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797237}
+{"event": "provider_event", "fields": {"request": 5, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797238}
+{"event": "preview_render", "fields": {"content_type": "image/jpeg", "drawer": 1, "file": 7062335731912094676, "renderer": "GskVulkanRenderer", "request": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797238}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797238}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797238}
+{"event": "sandbox_parse", "fields": {"input_token": 15364470724627791795, "operation": "preview-image", "policy": "software"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797289}
+{"event": "sandbox_started", "fields": {"child_pid": 1169418, "gpu_devices": 0, "job": 927756657978303892, "operation": "preview-image", "policy": "software"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797289}
+{"event": "sandbox_finished", "fields": {"cancelled": false, "child_pid": 1169418, "exit_code": 0, "job": 927756657978303892, "wait_ok": true}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797331}
+{"event": "cache_store", "fields": {"cache_bytes": 1065787, "content_bytes": 575612, "entries": 2, "request": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797332}
+{"event": "provider_event", "fields": {"request": 5, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797332}
+{"event": "preview_render", "fields": {"content_type": "image/jpeg", "drawer": 1, "file": 7062335731912094676, "renderer": "GskVulkanRenderer", "request": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797332}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797332}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797332}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797744}
+{"event": "load_handle_dropped", "fields": {"request": 5}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797745}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797745}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797745}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797745}
+{"event": "cache_miss", "fields": {"cacheable": true, "input_token": 7888182186159798702, "request": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797745}
+{"event": "provider_event", "fields": {"request": 6, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797745}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797745}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797745}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797745}
+{"event": "sandbox_parse", "fields": {"input_token": 7888182186159798702, "operation": "preview-image", "policy": "software"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797796}
+{"event": "sandbox_started", "fields": {"child_pid": 1169450, "gpu_devices": 0, "job": 9231907241534615216, "operation": "preview-image", "policy": "software"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797796}
+{"event": "sandbox_finished", "fields": {"cancelled": false, "child_pid": 1169450, "exit_code": 0, "job": 9231907241534615216, "wait_ok": true}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797872}
+{"event": "cache_store", "fields": {"cache_bytes": 1751033, "content_bytes": 685246, "entries": 3, "request": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797873}
+{"event": "provider_event", "fields": {"request": 6, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797873}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797873}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797873}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052797873}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 7062335731912094676, "page": 0, "request": 7}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052798463}
+{"event": "load_handle_dropped", "fields": {"request": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052798464}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052798464}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052798464}
+{"event": "provider_load", "fields": {"file": 7062335731912094676, "policy": "software", "request": 7}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052798464}
+{"event": "cache_hit", "fields": {"bytes": 575612, "request": 7}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052798464}
+{"event": "provider_event", "fields": {"request": 7, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052798464}
+{"event": "preview_render", "fields": {"content_type": "image/jpeg", "drawer": 1, "file": 7062335731912094676, "renderer": "GskVulkanRenderer", "request": 7}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052798464}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052798464}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052798464}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 8}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799037}
+{"event": "load_handle_dropped", "fields": {"request": 7}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799038}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799038}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799038}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 8}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799038}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 8}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799038}
+{"event": "provider_event", "fields": {"request": 8, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799038}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 8}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799038}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799038}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799038}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 7062335731912094676, "page": 0, "request": 9}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799522}
+{"event": "load_handle_dropped", "fields": {"request": 8}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799523}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799523}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799523}
+{"event": "provider_load", "fields": {"file": 7062335731912094676, "policy": "software", "request": 9}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799523}
+{"event": "cache_hit", "fields": {"bytes": 575612, "request": 9}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799523}
+{"event": "provider_event", "fields": {"request": 9, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799523}
+{"event": "preview_render", "fields": {"content_type": "image/jpeg", "drawer": 1, "file": 7062335731912094676, "renderer": "GskVulkanRenderer", "request": 9}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799523}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799523}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799523}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 10}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799900}
+{"event": "load_handle_dropped", "fields": {"request": 9}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799901}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799901}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799901}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 10}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799901}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 10}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799901}
+{"event": "provider_event", "fields": {"request": 10, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799901}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 10}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799901}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799901}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052799901}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 7062335731912094676, "page": 0, "request": 11}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800163}
+{"event": "load_handle_dropped", "fields": {"request": 10}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800164}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800164}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800164}
+{"event": "provider_load", "fields": {"file": 7062335731912094676, "policy": "software", "request": 11}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800164}
+{"event": "cache_hit", "fields": {"bytes": 575612, "request": 11}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800164}
+{"event": "provider_event", "fields": {"request": 11, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800164}
+{"event": "preview_render", "fields": {"content_type": "image/jpeg", "drawer": 1, "file": 7062335731912094676, "renderer": "GskVulkanRenderer", "request": 11}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800164}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800164}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800164}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 12}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800325}
+{"event": "load_handle_dropped", "fields": {"request": 11}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800325}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800325}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800325}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 12}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800325}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 12}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800326}
+{"event": "provider_event", "fields": {"request": 12, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800326}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 12}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800326}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800326}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800326}
+{"event": "preview_close", "fields": {"drawer": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800861}
+{"event": "load_handle_dropped", "fields": {"request": 12}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800861}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800861}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052800861}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 13}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052801696}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052801696}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052801696}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 13}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052801696}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 13}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052801696}
+{"event": "provider_event", "fields": {"request": 13, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052801696}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 13}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052801696}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052801696}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052801696}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 7062335731912094676, "page": 0, "request": 14}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802011}
+{"event": "load_handle_dropped", "fields": {"request": 13}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802012}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802012}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802012}
+{"event": "provider_load", "fields": {"file": 7062335731912094676, "policy": "software", "request": 14}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802012}
+{"event": "cache_hit", "fields": {"bytes": 575612, "request": 14}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802012}
+{"event": "provider_event", "fields": {"request": 14, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802012}
+{"event": "preview_render", "fields": {"content_type": "image/jpeg", "drawer": 1, "file": 7062335731912094676, "renderer": "GskVulkanRenderer", "request": 14}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802012}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802012}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802012}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 15}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802364}
+{"event": "load_handle_dropped", "fields": {"request": 14}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802365}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802365}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802365}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 15}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802365}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 15}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802365}
+{"event": "provider_event", "fields": {"request": 15, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802365}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 15}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802365}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802365}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802365}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 7062335731912094676, "page": 0, "request": 16}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802607}
+{"event": "load_handle_dropped", "fields": {"request": 15}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802608}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802608}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802608}
+{"event": "provider_load", "fields": {"file": 7062335731912094676, "policy": "software", "request": 16}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802608}
+{"event": "cache_hit", "fields": {"bytes": 575612, "request": 16}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802608}
+{"event": "provider_event", "fields": {"request": 16, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802608}
+{"event": "preview_render", "fields": {"content_type": "image/jpeg", "drawer": 1, "file": 7062335731912094676, "renderer": "GskVulkanRenderer", "request": 16}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802608}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802608}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802608}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 17}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802829}
+{"event": "load_handle_dropped", "fields": {"request": 16}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802829}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802829}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802829}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 17}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802830}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 17}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802830}
+{"event": "provider_event", "fields": {"request": 17, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802830}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 17}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802830}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802830}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052802830}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 7062335731912094676, "page": 0, "request": 18}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803125}
+{"event": "load_handle_dropped", "fields": {"request": 17}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803125}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803125}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803125}
+{"event": "provider_load", "fields": {"file": 7062335731912094676, "policy": "software", "request": 18}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803126}
+{"event": "cache_hit", "fields": {"bytes": 575612, "request": 18}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803126}
+{"event": "provider_event", "fields": {"request": 18, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803126}
+{"event": "preview_render", "fields": {"content_type": "image/jpeg", "drawer": 1, "file": 7062335731912094676, "renderer": "GskVulkanRenderer", "request": 18}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803126}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803126}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803126}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 19}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803323}
+{"event": "load_handle_dropped", "fields": {"request": 18}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803323}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803323}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803323}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 19}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803323}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 19}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803323}
+{"event": "provider_event", "fields": {"request": 19, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803323}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 19}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803323}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803323}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803323}
+{"event": "preview_close", "fields": {"drawer": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803836}
+{"event": "load_handle_dropped", "fields": {"request": 19}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803836}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803836}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052803836}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 20}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804691}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804691}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804691}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 20}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804691}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 20}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804691}
+{"event": "provider_event", "fields": {"request": 20, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804691}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 20}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804691}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804692}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804692}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 7062335731912094676, "page": 0, "request": 21}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804948}
+{"event": "load_handle_dropped", "fields": {"request": 20}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804948}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804948}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804948}
+{"event": "provider_load", "fields": {"file": 7062335731912094676, "policy": "software", "request": 21}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804948}
+{"event": "cache_hit", "fields": {"bytes": 575612, "request": 21}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804948}
+{"event": "provider_event", "fields": {"request": 21, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804948}
+{"event": "preview_render", "fields": {"content_type": "image/jpeg", "drawer": 1, "file": 7062335731912094676, "renderer": "GskVulkanRenderer", "request": 21}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804948}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804948}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052804948}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 22}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805137}
+{"event": "load_handle_dropped", "fields": {"request": 21}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805138}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805138}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805138}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 22}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805138}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 22}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805138}
+{"event": "provider_event", "fields": {"request": 22, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805138}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 22}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805138}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805138}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805138}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 7062335731912094676, "page": 0, "request": 23}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805320}
+{"event": "load_handle_dropped", "fields": {"request": 22}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805320}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805320}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805320}
+{"event": "provider_load", "fields": {"file": 7062335731912094676, "policy": "software", "request": 23}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805321}
+{"event": "cache_hit", "fields": {"bytes": 575612, "request": 23}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805321}
+{"event": "provider_event", "fields": {"request": 23, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805321}
+{"event": "preview_render", "fields": {"content_type": "image/jpeg", "drawer": 1, "file": 7062335731912094676, "renderer": "GskVulkanRenderer", "request": 23}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805321}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805321}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805321}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 24}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805505}
+{"event": "load_handle_dropped", "fields": {"request": 23}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805506}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805506}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805506}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 24}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805506}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 24}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805506}
+{"event": "provider_event", "fields": {"request": 24, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805506}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 24}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805506}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805506}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805506}
+{"event": "preview_close", "fields": {"drawer": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805796}
+{"event": "load_handle_dropped", "fields": {"request": 24}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805796}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805796}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052805796}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 4078973738586241879, "page": 0, "request": 25}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052807084}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052807085}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052807085}
+{"event": "provider_load", "fields": {"file": 4078973738586241879, "policy": "software", "request": 25}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052807085}
+{"event": "cache_miss", "fields": {"cacheable": true, "input_token": 8066901110834936735, "request": 25}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052807085}
+{"event": "sandbox_parse", "fields": {"input_token": 8066901110834936735, "operation": "preview-media", "policy": "software"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052807085}
+{"event": "sandbox_started", "fields": {"child_pid": 1169522, "gpu_devices": 0, "job": 9029115130083919096, "operation": "preview-media", "policy": "software"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052807085}
+{"event": "backend_attempt", "fields": {"backend": "Software", "timeout_ms": 27999}, "pid": 2, "sandbox_job": "9029115130083919096", "unix_ms": 1789052807104}
+{"event": "ffmpeg_started", "fields": {"namespace_pid": 3}, "pid": 2, "sandbox_job": "9029115130083919096", "unix_ms": 1789052807104}
+{"event": "backend_finished", "fields": {"backend": "Software", "bytes": 4634021, "elapsed_ms": 4133, "outcome": "success"}, "pid": 2, "sandbox_job": "9029115130083919096", "unix_ms": 1789052811237}
+{"event": "sandbox_finished", "fields": {"bytes": 4634021, "cancelled": false, "child_pid": 1169522, "exit_code": 0, "job": 9029115130083919096, "wait_ok": true}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052811241}
+{"event": "cache_store", "fields": {"cache_bytes": 6385054, "content_bytes": 4634021, "entries": 4, "request": 25}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052811241}
+{"event": "provider_event", "fields": {"request": 25, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052811242}
+{"event": "preview_render", "fields": {"content_type": "video/mp4", "drawer": 1, "file": 4078973738586241879, "renderer": "GskVulkanRenderer", "request": 25}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052811242}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052811242}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052811242}
+{"event": "media_open", "fields": {"drawer": 1, "encoded_bytes": 4634021, "media": 6, "request": 25}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052811242}
+{"event": "object_created", "fields": {"kind": "media", "object": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052811295}
+{"event": "media_created", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 6, "playing": false, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052811295}
+{"event": "object_created", "fields": {"kind": "picture", "object": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052811295}
+{"event": "object_created", "fields": {"kind": "overlay", "object": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052811295}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 6, "playing": true, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052811312}
+{"event": "media_prepared", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 6, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052811493}
+{"event": "preview_close", "fields": {"drawer": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052812924}
+{"event": "load_handle_dropped", "fields": {"request": 25}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052812924}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052812924}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 6, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052812924}
+{"event": "object_finalized", "fields": {"kind": "picture", "object": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052812984}
+{"event": "object_finalized", "fields": {"kind": "overlay", "object": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052812985}
+{"event": "object_finalized", "fields": {"kind": "media", "object": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052812985}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 6}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052812985}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 4078973738586241879, "page": 0, "request": 26}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813415}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813416}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813416}
+{"event": "provider_load", "fields": {"file": 4078973738586241879, "policy": "software", "request": 26}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813416}
+{"event": "cache_hit", "fields": {"bytes": 4634021, "request": 26}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813416}
+{"event": "provider_event", "fields": {"request": 26, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813416}
+{"event": "preview_render", "fields": {"content_type": "video/mp4", "drawer": 1, "file": 4078973738586241879, "renderer": "GskVulkanRenderer", "request": 26}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813416}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813416}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813416}
+{"event": "media_open", "fields": {"drawer": 1, "encoded_bytes": 4634021, "media": 7, "request": 26}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813416}
+{"event": "object_created", "fields": {"kind": "media", "object": 7}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813449}
+{"event": "media_created", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 7, "playing": false, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813449}
+{"event": "object_created", "fields": {"kind": "picture", "object": 7}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813449}
+{"event": "object_created", "fields": {"kind": "overlay", "object": 7}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813449}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 7, "playing": true, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813449}
+{"event": "media_prepared", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 7, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052813649}
+{"event": "preview_close", "fields": {"drawer": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052814645}
+{"event": "load_handle_dropped", "fields": {"request": 26}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052814645}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 7}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052814645}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 7, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052814645}
+{"event": "object_finalized", "fields": {"kind": "picture", "object": 7}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052814705}
+{"event": "object_finalized", "fields": {"kind": "overlay", "object": 7}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052814705}
+{"event": "object_finalized", "fields": {"kind": "media", "object": 7}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052814705}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 7}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052814705}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 4078973738586241879, "page": 0, "request": 27}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815010}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815010}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815010}
+{"event": "provider_load", "fields": {"file": 4078973738586241879, "policy": "software", "request": 27}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815011}
+{"event": "cache_hit", "fields": {"bytes": 4634021, "request": 27}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815011}
+{"event": "provider_event", "fields": {"request": 27, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815011}
+{"event": "preview_render", "fields": {"content_type": "video/mp4", "drawer": 1, "file": 4078973738586241879, "renderer": "GskVulkanRenderer", "request": 27}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815011}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815011}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815011}
+{"event": "media_open", "fields": {"drawer": 1, "encoded_bytes": 4634021, "media": 8, "request": 27}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815011}
+{"event": "object_created", "fields": {"kind": "media", "object": 8}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815042}
+{"event": "media_created", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 8, "playing": false, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815042}
+{"event": "object_created", "fields": {"kind": "picture", "object": 8}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815042}
+{"event": "object_created", "fields": {"kind": "overlay", "object": 8}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815042}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 8, "playing": true, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815042}
+{"event": "media_prepared", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 8, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815245}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 8, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815609}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 8, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052815942}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 8, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052816472}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 8, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052816740}
+{"event": "preview_close", "fields": {"drawer": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052816961}
+{"event": "load_handle_dropped", "fields": {"request": 27}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052816961}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 8}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052816961}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 8, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052816961}
+{"event": "object_finalized", "fields": {"kind": "picture", "object": 8}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817019}
+{"event": "object_finalized", "fields": {"kind": "overlay", "object": 8}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817019}
+{"event": "object_finalized", "fields": {"kind": "media", "object": 8}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817019}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 8}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817019}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 4078973738586241879, "page": 0, "request": 28}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817522}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817522}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817522}
+{"event": "provider_load", "fields": {"file": 4078973738586241879, "policy": "software", "request": 28}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817522}
+{"event": "cache_hit", "fields": {"bytes": 4634021, "request": 28}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817522}
+{"event": "provider_event", "fields": {"request": 28, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817522}
+{"event": "preview_render", "fields": {"content_type": "video/mp4", "drawer": 1, "file": 4078973738586241879, "renderer": "GskVulkanRenderer", "request": 28}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817522}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817522}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817522}
+{"event": "media_open", "fields": {"drawer": 1, "encoded_bytes": 4634021, "media": 9, "request": 28}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817522}
+{"event": "object_created", "fields": {"kind": "media", "object": 9}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817558}
+{"event": "media_created", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 9, "playing": false, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817558}
+{"event": "object_created", "fields": {"kind": "picture", "object": 9}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817558}
+{"event": "object_created", "fields": {"kind": "overlay", "object": 9}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817558}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 9, "playing": true, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817559}
+{"event": "media_prepared", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 9, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052817761}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 9, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052818374}
+{"event": "preview_close", "fields": {"drawer": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052818725}
+{"event": "load_handle_dropped", "fields": {"request": 28}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052818725}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 9}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052818725}
+{"event": "object_finalized", "fields": {"kind": "picture", "object": 9}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052818785}
+{"event": "object_finalized", "fields": {"kind": "overlay", "object": 9}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052818785}
+{"event": "object_finalized", "fields": {"kind": "media", "object": 9}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052818785}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 9}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052818785}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 4078973738586241879, "page": 0, "request": 29}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819604}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819604}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819604}
+{"event": "provider_load", "fields": {"file": 4078973738586241879, "policy": "software", "request": 29}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819604}
+{"event": "cache_hit", "fields": {"bytes": 4634021, "request": 29}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819604}
+{"event": "provider_event", "fields": {"request": 29, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819604}
+{"event": "preview_render", "fields": {"content_type": "video/mp4", "drawer": 1, "file": 4078973738586241879, "renderer": "GskVulkanRenderer", "request": 29}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819604}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819604}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819604}
+{"event": "media_open", "fields": {"drawer": 1, "encoded_bytes": 4634021, "media": 10, "request": 29}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819604}
+{"event": "object_created", "fields": {"kind": "media", "object": 10}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819641}
+{"event": "media_created", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 10, "playing": false, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819641}
+{"event": "object_created", "fields": {"kind": "picture", "object": 10}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819641}
+{"event": "object_created", "fields": {"kind": "overlay", "object": 10}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819641}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 0, "has_error": false, "has_input": true, "height": 0, "media": 10, "playing": true, "prepared": false, "width": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819642}
+{"event": "media_prepared", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 10, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052819823}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 10, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052820859}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 10, "playing": true, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052821228}
+{"event": "media_playing", "fields": {"backend": "GtkGstMediaFileBuiltin", "duration_us": 30000000, "has_error": false, "has_input": true, "height": 1280, "media": 10, "playing": false, "prepared": true, "width": 1280}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052822730}
+{"event": "preview_close", "fields": {"drawer": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052823011}
+{"event": "load_handle_dropped", "fields": {"request": 29}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052823011}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 10}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052823011}
+{"event": "object_finalized", "fields": {"kind": "picture", "object": 10}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052823076}
+{"event": "object_finalized", "fields": {"kind": "overlay", "object": 10}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052823076}
+{"event": "object_finalized", "fields": {"kind": "media", "object": 10}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052823076}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 10}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052823076}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 7062335731912094676, "page": 0, "request": 30}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052830505}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052830506}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052830506}
+{"event": "provider_load", "fields": {"file": 7062335731912094676, "policy": "software", "request": 30}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052830506}
+{"event": "cache_hit", "fields": {"bytes": 575612, "request": 30}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052830506}
+{"event": "provider_event", "fields": {"request": 30, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052830506}
+{"event": "preview_render", "fields": {"content_type": "image/jpeg", "drawer": 1, "file": 7062335731912094676, "renderer": "GskVulkanRenderer", "request": 30}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052830506}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052830506}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052830506}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 31}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052831454}
+{"event": "load_handle_dropped", "fields": {"request": 30}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052831454}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052831454}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052831454}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 31}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052831454}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 31}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052831454}
+{"event": "provider_event", "fields": {"request": 31, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052831454}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 31}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052831454}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052831454}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052831454}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 7062335731912094676, "page": 0, "request": 32}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052832269}
+{"event": "load_handle_dropped", "fields": {"request": 31}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052832269}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052832269}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052832269}
+{"event": "provider_load", "fields": {"file": 7062335731912094676, "policy": "software", "request": 32}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052832269}
+{"event": "cache_hit", "fields": {"bytes": 575612, "request": 32}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052832269}
+{"event": "provider_event", "fields": {"request": 32, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052832269}
+{"event": "preview_render", "fields": {"content_type": "image/jpeg", "drawer": 1, "file": 7062335731912094676, "renderer": "GskVulkanRenderer", "request": 32}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052832269}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052832269}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052832269}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 33}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833030}
+{"event": "load_handle_dropped", "fields": {"request": 32}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833030}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833030}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833030}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 33}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833030}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 33}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833030}
+{"event": "provider_event", "fields": {"request": 33, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833030}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 33}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833030}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833030}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833030}
+{"event": "preview_close", "fields": {"drawer": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833370}
+{"event": "load_handle_dropped", "fields": {"request": 33}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833370}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833370}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833370}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 34}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833748}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833748}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833748}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 34}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833749}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 34}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833749}
+{"event": "provider_event", "fields": {"request": 34, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833749}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 34}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833749}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833749}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052833749}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 7062335731912094676, "page": 0, "request": 35}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834485}
+{"event": "load_handle_dropped", "fields": {"request": 34}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834485}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834485}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834485}
+{"event": "provider_load", "fields": {"file": 7062335731912094676, "policy": "software", "request": 35}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834485}
+{"event": "cache_hit", "fields": {"bytes": 575612, "request": 35}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834485}
+{"event": "provider_event", "fields": {"request": 35, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834485}
+{"event": "preview_render", "fields": {"content_type": "image/jpeg", "drawer": 1, "file": 7062335731912094676, "renderer": "GskVulkanRenderer", "request": 35}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834485}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834485}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834485}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 36}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834785}
+{"event": "load_handle_dropped", "fields": {"request": 35}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834786}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834786}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834786}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 36}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834786}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 36}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834786}
+{"event": "provider_event", "fields": {"request": 36, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834786}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 36}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834786}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834786}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052834786}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 7062335731912094676, "page": 0, "request": 37}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835033}
+{"event": "load_handle_dropped", "fields": {"request": 36}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835034}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835034}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835034}
+{"event": "provider_load", "fields": {"file": 7062335731912094676, "policy": "software", "request": 37}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835034}
+{"event": "cache_hit", "fields": {"bytes": 575612, "request": 37}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835034}
+{"event": "provider_event", "fields": {"request": 37, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835034}
+{"event": "preview_render", "fields": {"content_type": "image/jpeg", "drawer": 1, "file": 7062335731912094676, "renderer": "GskVulkanRenderer", "request": 37}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835034}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835034}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835034}
+{"event": "preview_load", "fields": {"drawer": 1, "file": 5597488791421843127, "page": 0, "request": 38}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835259}
+{"event": "load_handle_dropped", "fields": {"request": 37}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835260}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835260}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835260}
+{"event": "provider_load", "fields": {"file": 5597488791421843127, "policy": "software", "request": 38}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835260}
+{"event": "cache_hit", "fields": {"bytes": 685246, "request": 38}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835260}
+{"event": "provider_event", "fields": {"request": 38, "result": "ready"}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835260}
+{"event": "preview_render", "fields": {"content_type": "image/webp", "drawer": 1, "file": 5597488791421843127, "renderer": "GskVulkanRenderer", "request": 38}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835260}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835260}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052835260}
+{"event": "preview_close", "fields": {"drawer": 1}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052836074}
+{"event": "load_handle_dropped", "fields": {"request": 38}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052836074}
+{"event": "content_clear_begin", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052836074}
+{"event": "content_clear_end", "fields": {"drawer": 1, "media": 0}, "pid": 1167281, "sandbox_job": null, "unix_ms": 1789052836074}

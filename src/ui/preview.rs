@@ -81,6 +81,8 @@ struct PreviewState {
     content: gtk::Box,
     print: gtk::Button,
     media: RefCell<Option<gtk::MediaStream>>,
+    trace_drawer: u64,
+    trace_media: Cell<u64>,
     media_signals: RefCell<Vec<glib::SignalHandlerId>>,
     media_volume_slider: RefCell<Option<gtk::Scale>>,
     media_volume_icon: RefCell<Option<gtk::Image>>,
@@ -198,6 +200,8 @@ impl PreviewDrawer {
             content,
             print: print.clone(),
             media: RefCell::new(None),
+            trace_drawer: crate::preview_trace::next_id(),
+            trace_media: Cell::new(0),
             media_signals: RefCell::new(Vec::new()),
             media_volume_slider: RefCell::new(None),
             media_volume_icon: RefCell::new(None),
@@ -492,6 +496,7 @@ impl PreviewState {
     }
 
     fn close(self: &Rc<Self>) {
+        crate::preview_trace::event!("preview_close", "drawer" => self.trace_drawer);
         self.opened.set(false);
         self.animating.set(false);
         self.animation_generation
@@ -732,6 +737,10 @@ impl PreviewState {
     }
 
     fn load(self: &Rc<Self>, entry: FileEntry, pdf_page: i32) {
+        crate::preview_trace::event!("preview_load",
+            "drawer" => self.trace_drawer, "request" => self.next_request.get(),
+            "file" => crate::preview_trace::file_id(&entry.location), "page" => pdf_page,
+        );
         self.current.replace(Some(entry.clone()));
         crate::assets::set_primary_icon(&self.icon, super::browser::entry_icon(&entry));
         self.title.set_text(&entry.display_name);
@@ -792,6 +801,12 @@ impl PreviewState {
     }
 
     fn render(self: &Rc<Self>, preview: Preview) {
+        crate::preview_trace::event!("preview_render",
+            "drawer" => self.trace_drawer, "request" => preview.request_id.0,
+            "file" => crate::preview_trace::file_id(&preview.entry.location),
+            "content_type" => preview.content_type,
+            "renderer" => self.pane.native().and_then(|native| native.renderer()).map(|renderer| renderer.type_().name().to_string()),
+        );
         self.content_type.set_text(&preview.content_type);
         self.clear_content();
         match preview.content {
@@ -854,9 +869,16 @@ impl PreviewState {
                 }
             }
             PreviewContent::SandboxedMedia { data } => {
+                let trace_media = crate::preview_trace::next_id();
+                self.trace_media.set(trace_media);
+                crate::preview_trace::event!("media_open",
+                    "drawer" => self.trace_drawer, "request" => preview.request_id.0,
+                    "media" => trace_media, "encoded_bytes" => data.len(),
+                );
                 let bytes = glib::Bytes::from_owned(data);
                 let stream = gio::MemoryInputStream::from_bytes(&bytes);
                 let media = gtk::MediaFile::for_input_stream(&stream);
+                crate::preview_trace::watch_media(&media, trace_media);
                 let is_gif = preview.content_type == "image/gif";
                 self.media.replace(Some(media.clone().upcast()));
                 let weak = Rc::downgrade(self);
@@ -945,6 +967,8 @@ impl PreviewState {
         install_preview_drag(&picture, self);
 
         let overlay = gtk::Overlay::new();
+        crate::preview_trace::watch_object(&picture, "picture", self.trace_media.get());
+        crate::preview_trace::watch_object(&overlay, "overlay", self.trace_media.get());
         overlay.set_child(Some(&picture));
         overlay.set_focusable(true);
         overlay.set_can_target(true);
@@ -1443,6 +1467,9 @@ impl PreviewState {
     }
 
     fn clear_content(&self) {
+        crate::preview_trace::event!("content_clear_begin",
+            "drawer" => self.trace_drawer, "media" => self.trace_media.get(),
+        );
         if let Some(stream) = self.media.borrow_mut().take() {
             for handler in self.media_signals.borrow_mut().drain(..) {
                 stream.disconnect(handler);
@@ -1457,6 +1484,10 @@ impl PreviewState {
         self.media_volume_icon.replace(None);
         self.print.set_visible(false);
         clear_box(&self.content);
+        crate::preview_trace::event!("content_clear_end",
+            "drawer" => self.trace_drawer, "media" => self.trace_media.get(),
+        );
+        self.trace_media.set(0);
     }
 
     fn show_loading(self: &Rc<Self>, request_id: PreviewRequestId) {
