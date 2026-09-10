@@ -193,9 +193,10 @@ fn clear_status(browser: &BrowserView) {
     }
 }
 
-fn status_container() -> (gtk::Box, gtk::Box) {
+fn connecting_status_container() -> (gtk::Box, gtk::Box) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     row.add_css_class("open-argument-status");
+    row.add_css_class("open-argument-connecting");
     row.set_halign(gtk::Align::Center);
     row.set_valign(gtk::Align::Start);
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -213,7 +214,7 @@ fn show_connecting(weak: WeakBrowserView, generation: u64, request: Rc<OpenReque
     }
     clear_status(&browser);
     let overlay = browser.overlay();
-    let (row, content) = status_container();
+    let (row, content) = connecting_status_container();
 
     let spinner = gtk::Spinner::new();
     spinner.start();
@@ -241,16 +242,29 @@ fn show_connecting(weak: WeakBrowserView, generation: u64, request: Rc<OpenReque
 
 fn show_error(browser: &BrowserView, file: gio::File, location: Location) {
     let overlay = browser.overlay();
-    let (row, content) = status_container();
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    content.add_css_class("open-argument-status");
+    content.add_css_class("directory-feedback");
+    content.set_halign(gtk::Align::Center);
+    content.set_valign(gtk::Align::Center);
 
-    let label = gtk::Label::new(Some("Unable to open location"));
-    label.add_css_class("form-message");
+    let label = gtk::Label::new(Some(&format!(
+        "The requested location is unavailable\n{}",
+        location.display_path()
+    )));
+    label.add_css_class("status-message");
     label.add_css_class("error");
+    label.set_justify(gtk::Justification::Center);
     label.set_wrap(true);
+    label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+    label.set_lines(3);
+    label.set_max_width_chars(60);
     content.append(&label);
 
     let retry = gtk::Button::with_label("Retry");
-    retry.add_css_class("suggested-action");
+    retry.add_css_class("retry-button");
+    retry.set_halign(gtk::Align::Center);
     content.append(&retry);
     let retry_browser = browser.downgrade();
     retry.connect_clicked(move |_| {
@@ -260,7 +274,7 @@ fn show_error(browser: &BrowserView, file: gio::File, location: Location) {
         }
     });
 
-    overlay.add_overlay(&row);
+    overlay.add_overlay(&content);
 }
 
 #[cfg(test)]

@@ -76,6 +76,20 @@ fn button_with_label(widget: &gtk::Widget, label: &str) -> Option<gtk::Button> {
     None
 }
 
+fn first_label(widget: &gtk::Widget) -> Option<gtk::Label> {
+    if let Ok(label) = widget.clone().downcast::<gtk::Label>() {
+        return Some(label);
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        if let Some(label) = first_label(&widget) {
+            return Some(label);
+        }
+    }
+    None
+}
+
 #[test]
 fn query_kind_classifies_a_directory() {
     crate::test_support::gtk_test(
@@ -222,6 +236,68 @@ fn fast_failure_keeps_retry_after_the_connecting_delay() {
 }
 
 #[test]
+fn retry_opens_a_directory_restored_after_the_initial_failure() {
+    crate::test_support::gtk_test(
+        "ui::window::open_argument::tests::retry_opens_a_directory_restored_after_the_initial_failure",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            let root = tempfile::tempdir().expect("fixture");
+            let restored = root.path().join("restored directory");
+            let file = gio::File::for_path(&restored);
+            let location = location_for_file(&file).expect("native location");
+            let browser = view();
+
+            classify(browser.clone(), file, location);
+            wait_until(|| status_widget(&browser.overlay()).is_some());
+            std::fs::create_dir(&restored).expect("restore directory");
+            let status = status_widget(&browser.overlay()).expect("error status");
+            button_with_label(&status, "Retry")
+                .expect("retry button")
+                .emit_clicked();
+
+            wait_until(|| {
+                browser
+                    .browser()
+                    .active_location()
+                    .is_some_and(|location| location.native_path() == Some(restored.as_path()))
+            });
+            assert!(status_widget(&browser.overlay()).is_none());
+        },
+    );
+}
+
+#[test]
+fn retry_reveals_a_file_restored_after_the_initial_failure() {
+    crate::test_support::gtk_test(
+        "ui::window::open_argument::tests::retry_reveals_a_file_restored_after_the_initial_failure",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            let root = tempfile::tempdir().expect("fixture");
+            let restored = root.path().join("restored file.txt");
+            let file = gio::File::for_path(&restored);
+            let location = location_for_file(&file).expect("native location");
+            let browser = view();
+
+            classify(browser.clone(), file, location);
+            wait_until(|| status_widget(&browser.overlay()).is_some());
+            std::fs::write(&restored, b"restored").expect("restore file");
+            let status = status_widget(&browser.overlay()).expect("error status");
+            button_with_label(&status, "Retry")
+                .expect("retry button")
+                .emit_clicked();
+
+            wait_until(|| {
+                browser
+                    .browser()
+                    .active_location()
+                    .is_some_and(|location| location.native_path() == Some(root.path()))
+            });
+            assert!(status_widget(&browser.overlay()).is_none());
+        },
+    );
+}
+
+#[test]
 fn connecting_cancel_invalidates_the_request_and_clears_status() {
     crate::test_support::gtk_test(
         "ui::window::open_argument::tests::connecting_cancel_invalidates_the_request_and_clears_status",
@@ -254,16 +330,35 @@ fn errors_do_not_expose_uri_credentials() {
                 Location::uri("sftp://user@example.invalid/file.txt"),
             );
             let status = status_widget(&browser.overlay()).expect("error status");
+            let content = status
+                .clone()
+                .downcast::<gtk::Box>()
+                .expect("error content");
+            assert_eq!(content.orientation(), gtk::Orientation::Vertical);
+            assert_eq!(content.halign(), gtk::Align::Center);
+            assert_eq!(content.valign(), gtk::Align::Center);
+            assert!(content.has_css_class("directory-feedback"));
+            assert!(!content.has_css_class("open-argument-connecting"));
+
+            let label = first_label(&status).expect("error label");
             assert_eq!(
-                status
-                    .first_child()
-                    .and_then(|content| content.first_child())
-                    .and_downcast::<gtk::Label>()
-                    .expect("error label")
-                    .text(),
-                "Unable to open location"
+                label.text(),
+                "The requested location is unavailable\nsftp://user@example.invalid/file.txt"
             );
-            assert!(button_with_label(&status, "Retry").is_some());
+            assert!(label.has_css_class("status-message"));
+            assert!(label.has_css_class("error"));
+            assert!(!label.has_css_class("form-message"));
+            assert_eq!(label.justify(), gtk::Justification::Center);
+            assert!(label.wraps());
+            assert_eq!(label.wrap_mode(), gtk::pango::WrapMode::WordChar);
+            assert_eq!(label.ellipsize(), gtk::pango::EllipsizeMode::Middle);
+            assert_eq!(label.lines(), 3);
+            assert!(!label.text().contains("secret"));
+
+            let retry = button_with_label(&status, "Retry").expect("retry button");
+            assert!(retry.has_css_class("retry-button"));
+            assert!(!retry.has_css_class("suggested-action"));
+            assert_eq!(retry.halign(), gtk::Align::Center);
         },
     );
 }

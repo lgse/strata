@@ -834,7 +834,7 @@ headerbar menubutton.header-action > button:focus-visible {
   color: @theme_danger;
 }
 
-.open-argument-status {
+.open-argument-connecting {
   background: @theme_surface;
   border: 1px solid alpha(@theme_border, 0.6);
   border-radius: 8px;
