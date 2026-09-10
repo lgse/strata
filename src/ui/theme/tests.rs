@@ -5,11 +5,11 @@ mod preferences;
 use std::{cell::RefCell, collections::HashSet};
 
 use super::{
-    Preferences, TextSize, Theme, azure_tokens, blend, browser_mode_from_stored, builtins,
-    configured_hardware_acceleration, configured_video_preview_backend, is_omarchy_theme_event,
-    merge_builtin_and_custom_themes, notify_live, slugify, snapped_root_font_px, sort_preferences,
-    stored_browser_mode, text_scale_factor_from_xft_dpi, title_case_slug, tokens_from_quattro,
-    validate_tokens,
+    Preferences, TextSize, Theme, ThemeTokens, azure_tokens, blend, browser_mode_from_stored,
+    builtins, configured_hardware_acceleration, configured_video_preview_backend,
+    is_omarchy_theme_event, merge_builtin_and_custom_themes, notify_live, slugify,
+    snapped_root_font_px, sort_preferences, source_style_scheme_xml, stored_browser_mode,
+    text_scale_factor_from_xft_dpi, title_case_slug, tokens_from_quattro, validate_tokens,
 };
 use crate::{
     model::{SortDirection, SortKey, ViewPreferences},
@@ -142,6 +142,116 @@ color8 = "#123247"
 #[test]
 fn legacy_palette_without_quattro_semantics_is_not_detected() {
     assert!(tokens_from_quattro("legacy", "color4 = \"#00aaff\"").is_none());
+}
+
+#[test]
+fn quattro_syntax_slots_map_to_syntax_tokens() {
+    let theme = tokens_from_quattro(
+        "sunset-drive",
+        r##"
+background = "#0F0F19"
+foreground = "#EDEDFE"
+accent = "#33A1FF"
+selection = "#202034"
+color1 = "#FF3366"
+color2 = "#00F59B"
+color3 = "#FFEA00"
+color5 = "#FF66F6"
+color8 = "#181824"
+color9 = "#ff9a8f"
+"##,
+    )
+    .expect("valid Quattro colors should map");
+
+    assert_eq!(theme.syntax_string.as_deref(), Some("#00F59B"));
+    assert_eq!(theme.syntax_type.as_deref(), Some("#FFEA00"));
+    assert_eq!(theme.syntax_keyword.as_deref(), Some("#FF66F6"));
+    assert_eq!(theme.syntax_constant.as_deref(), Some("#ff9a8f"));
+}
+
+#[test]
+fn missing_quattro_syntax_slots_stay_derived() {
+    let theme = tokens_from_quattro(
+        "azure-glow",
+        r##"
+background = "#0a0f1a"
+foreground = "#a8dfff"
+accent = "#00aaff"
+selection = "#a8dfff"
+color8 = "#123247"
+"##,
+    )
+    .expect("valid Quattro colors should map");
+
+    assert_eq!(theme.syntax_string, None);
+    assert_eq!(theme.syntax_type, None);
+    assert_eq!(theme.syntax_keyword, None);
+    assert_eq!(theme.syntax_constant, None);
+}
+
+#[test]
+fn explicit_syntax_tokens_reach_the_source_style_scheme() {
+    let mut tokens = azure_tokens();
+    tokens.syntax_keyword = Some("rgb(255, 102, 246)".to_owned());
+    tokens.syntax_string = Some("#00F59B".to_owned());
+    tokens.syntax_type = None;
+
+    let xml = source_style_scheme_xml(&tokens);
+
+    assert!(xml.contains(r##"<color name="keyword" value="#ff66f6"/>"##));
+    assert!(xml.contains(r##"<color name="string" value="#00f59b"/>"##));
+    assert!(xml.contains(r#"<style name="def:statement" foreground="keyword" bold="true"/>"#));
+    assert!(!xml.contains("rgb("));
+}
+
+#[test]
+fn absent_syntax_tokens_fall_back_to_the_derived_palette() {
+    let tokens = azure_tokens();
+    let xml = source_style_scheme_xml(&tokens);
+
+    assert!(xml.contains(&format!(
+        r#"<color name="keyword" value="{}"/>"#,
+        tokens.accent
+    )));
+}
+
+#[test]
+fn custom_theme_files_round_trip_syntax_tokens() {
+    let source = r##"
+name = "Ocean Blue"
+background = "#0c1a2b"
+surface = "#122438"
+text = "#c9deed"
+accent = "#4fd6ff"
+danger = "#ff6b7a"
+muted = "#1e3a52"
+highlight = "#244d68"
+border = "#315b75"
+dim_text = "#6f8da3"
+syntax_string = "#7ee787"
+syntax_keyword = "#ff7b72"
+"##;
+
+    let tokens: ThemeTokens = toml::from_str(source).expect("theme should parse");
+    assert_eq!(tokens.syntax_string.as_deref(), Some("#7ee787"));
+    assert_eq!(tokens.syntax_keyword.as_deref(), Some("#ff7b72"));
+    assert_eq!(tokens.syntax_constant, None);
+    assert!(validate_tokens(&tokens).is_ok());
+
+    let serialized = toml::to_string_pretty(&tokens).expect("theme should serialize");
+    let restored: ThemeTokens = toml::from_str(&serialized).expect("theme should deserialize");
+    assert_eq!(restored, tokens);
+}
+
+#[test]
+fn invalid_syntax_tokens_fail_validation() {
+    let mut tokens = azure_tokens();
+    tokens.syntax_string = Some("not-a-color".to_owned());
+
+    assert_eq!(
+        validate_tokens(&tokens),
+        Err("Every color must be a valid CSS color")
+    );
 }
 
 #[test]
