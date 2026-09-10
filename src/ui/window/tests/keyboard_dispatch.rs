@@ -116,6 +116,9 @@ fn rendered_name(widget: &gtk::Widget, name: &str) -> bool {
     if widget
         .downcast_ref::<gtk::Label>()
         .is_some_and(|label| label.label() == name)
+        || widget
+            .downcast_ref::<gtk::Inscription>()
+            .is_some_and(|label| label.text().as_deref() == Some(name))
     {
         return true;
     }
@@ -218,7 +221,10 @@ fn ctrl_a_during_rename_selects_only_unicode_entry_text_in_every_view() {
                 field.set_text("résumé-💾.txt");
                 field.set_position(-1);
 
-                assert!(fixture.press(Key::a, ModifierType::CONTROL_MASK), "{mode:?}");
+                assert!(
+                    fixture.press(Key::a, ModifierType::CONTROL_MASK),
+                    "{mode:?}"
+                );
                 assert_eq!(
                     field.selection_bounds(),
                     Some((0, field.text().chars().count() as i32)),
@@ -226,7 +232,10 @@ fn ctrl_a_during_rename_selects_only_unicode_entry_text_in_every_view() {
                 );
                 assert_eq!(fixture.selected(), [0], "{mode:?}");
 
-                assert!(fixture.press(Key::Escape, ModifierType::empty()), "{mode:?}");
+                assert!(
+                    fixture.press(Key::Escape, ModifierType::empty()),
+                    "{mode:?}"
+                );
                 assert!(!fixture.view.rename_is_active(), "{mode:?}");
                 assert_eq!(fixture.selected(), [0], "{mode:?}");
             }
