@@ -58,6 +58,16 @@ pub struct ThemeTokens {
     pub highlight: String,
     pub border: String,
     pub dim_text: String,
+    /// Code-preview syntax colours. Every slot falls back to the derived
+    /// palette when it is absent, so existing theme files stay valid.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub syntax_keyword: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub syntax_string: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub syntax_constant: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub syntax_type: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -1057,6 +1067,10 @@ fn azure_tokens() -> ThemeTokens {
             highlight: "#244d68".to_owned(),
             border: "#315b75".to_owned(),
             dim_text: "#6f8da3".to_owned(),
+            syntax_keyword: None,
+            syntax_string: None,
+            syntax_constant: None,
+            syntax_type: None,
         })
 }
 
@@ -1197,6 +1211,10 @@ fn tokens_from_quattro(name: &str, source: &str) -> Option<ThemeTokens> {
         text,
         accent,
         danger: get("color1").unwrap_or_else(default_danger),
+        syntax_keyword: get("color5"),
+        syntax_string: get("color2"),
+        syntax_constant: get("color9"),
+        syntax_type: get("color3"),
     })
 }
 
@@ -1208,7 +1226,7 @@ fn validate_tokens(tokens: &ThemeTokens) -> Result<(), &'static str> {
     if tokens.name.trim().is_empty() {
         return Err("Enter a theme name");
     }
-    for color in [
+    let mut colors = vec![
         &tokens.background,
         &tokens.surface,
         &tokens.text,
@@ -1218,7 +1236,18 @@ fn validate_tokens(tokens: &ThemeTokens) -> Result<(), &'static str> {
         &tokens.highlight,
         &tokens.border,
         &tokens.dim_text,
-    ] {
+    ];
+    colors.extend(
+        [
+            &tokens.syntax_keyword,
+            &tokens.syntax_string,
+            &tokens.syntax_constant,
+            &tokens.syntax_type,
+        ]
+        .into_iter()
+        .flatten(),
+    );
+    for color in colors {
         if gdk::RGBA::parse(color).is_err() {
             return Err("Every color must be a valid CSS color");
         }
@@ -1295,9 +1324,16 @@ fn ensure_source_style_scheme_installed() {
 }
 
 fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
-    let string = blend(&tokens.accent, &tokens.text, 0.48);
-    let constant = blend(&tokens.accent, &tokens.text, 0.18);
-    let type_color = blend(&tokens.accent, &tokens.text, 0.24);
+    let string = syntax_scheme_color(tokens.syntax_string.as_deref(), || {
+        blend(&tokens.accent, &tokens.text, 0.48)
+    });
+    let constant = syntax_scheme_color(tokens.syntax_constant.as_deref(), || {
+        blend(&tokens.accent, &tokens.text, 0.18)
+    });
+    let type_color = syntax_scheme_color(tokens.syntax_type.as_deref(), || {
+        blend(&tokens.accent, &tokens.text, 0.24)
+    });
+    let keyword = syntax_scheme_color(tokens.syntax_keyword.as_deref(), || tokens.accent.clone());
     format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <style-scheme id="strata-current" _name="Strata Current Theme" version="1.0">
@@ -1307,6 +1343,7 @@ fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
   <color name="accent" value="{}"/>
   <color name="selection" value="{}"/>
   <color name="dim" value="{}"/>
+  <color name="keyword" value="{}"/>
   <color name="string" value="{}"/>
   <color name="constant" value="{}"/>
   <color name="type" value="{}"/>
@@ -1321,7 +1358,7 @@ fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
   <style name="def:constant" foreground="constant"/>
   <style name="def:special-char" foreground="constant"/>
   <style name="def:identifier" foreground="text"/>
-  <style name="def:statement" foreground="accent" bold="true"/>
+  <style name="def:statement" foreground="keyword" bold="true"/>
   <style name="def:type" foreground="type" bold="true"/>
   <style name="def:preprocessor" foreground="type"/>
   <style name="def:heading" foreground="accent" bold="true"/>
@@ -1335,10 +1372,28 @@ fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
         tokens.accent,
         tokens.highlight,
         tokens.dim_text,
+        keyword,
         string,
         constant,
         type_color,
     )
+}
+
+/// GtkSourceView 5.12 only accepts `#RGB` colours in scheme `<color>` tags, so
+/// explicit syntax tokens are canonicalized to `#rrggbb` (or rejected) here.
+fn syntax_scheme_color(token: Option<&str>, derive: impl FnOnce() -> String) -> String {
+    token
+        .and_then(|value| {
+            gdk::RGBA::parse(value).ok().map(|color| {
+                format!(
+                    "#{:02x}{:02x}{:02x}",
+                    (color.red() * 255.0 + 0.5) as u8,
+                    (color.green() * 255.0 + 0.5) as u8,
+                    (color.blue() * 255.0 + 0.5) as u8
+                )
+            })
+        })
+        .unwrap_or_else(derive)
 }
 
 const INTERFACE_FONT_FAMILY: &str = "JetBrains Mono";
