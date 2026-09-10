@@ -15,7 +15,7 @@ from e2e_bundle import create, image_key, verify
 from e2e_ci import report_timing, critical_path, main as ci_main, workflow_jobs
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tests/e2e"))
-from harness.sharding import TARGET_SECONDS, make_plan, validate_plan, verify_reports
+from harness.sharding import MAX_SHARDS, TARGET_SECONDS, make_plan, validate_plan, verify_reports
 
 
 def inventory(count):
@@ -53,7 +53,7 @@ class ShardingTests(unittest.TestCase):
                            len(make_plan(inventory(100), {})["shards"]))
 
     def test_tighter_worker_budget_adds_runners_without_dropping_tests(self):
-        tests = inventory(100)
+        tests = inventory(60)
         normal = make_plan(tests, {}, target=40)
         tighter = make_plan(tests, {}, target=30)
         self.assertGreater(len(tighter["shards"]), len(normal["shards"]))
@@ -61,7 +61,7 @@ class ShardingTests(unittest.TestCase):
         self.assertTrue(all(shard["estimated_seconds"] <= 30 for shard in tighter["shards"]))
 
     def test_new_tests_receive_a_nonzero_conservative_weight(self):
-        tests = inventory(25)
+        tests = inventory(50)
         self.assertGreater(len(make_plan(tests, {})["shards"]),
                            len(make_plan(tests, {test["nodeid"]: 0.1 for test in tests})["shards"]))
 
@@ -79,16 +79,42 @@ class ShardingTests(unittest.TestCase):
             with self.subTest(tests=tests, times=times), self.assertRaises(ValueError):
                 make_plan(tests, times)
 
-    def test_oversized_serial_group_is_not_hidden_by_more_runners(self):
-        tests = inventory(10)
+    def test_oversized_serial_group_remains_intact_above_soft_target(self):
+        tests = inventory(20)
         for test in tests:
             test["group"] = "serial"
-        with self.assertRaisesRegex(ValueError, "serial group"):
-            make_plan(tests, {})
+        plan = make_plan(tests, {})
+        validate_plan(plan, tests)
+        self.assertEqual(len(plan["shards"]), 1)
+        self.assertGreater(plan["shards"][0]["estimated_seconds"], TARGET_SECONDS)
 
-    def test_matrix_limit_is_an_error_not_silently_throttled_capacity(self):
-        with self.assertRaisesRegex(ValueError, "matrix limit"):
-            make_plan(inventory(257), {}, target=7, workers=1)
+    def test_defaults_reduce_fanout_and_preserve_coverage(self):
+        tests = inventory(100)
+        plan = make_plan(tests, {})
+        validate_plan(plan, tests)
+        self.assertEqual(TARGET_SECONDS, 90)
+        self.assertEqual(MAX_SHARDS, 8)
+        self.assertEqual(plan["workers"], 2)
+        self.assertEqual(len(plan["shards"]), 4)
+
+    def test_growth_above_cap_extends_runtime_without_dropping_tests(self):
+        for count in (224, 225, 1000):
+            with self.subTest(count=count):
+                tests = inventory(count)
+                plan = make_plan(tests, {})
+                validate_plan(plan, tests)
+                self.assertEqual(len(plan["shards"]), MAX_SHARDS)
+                self.assertEqual(plan["target_seconds"], TARGET_SECONDS)
+                if count > 224:
+                    self.assertGreater(max(shard["estimated_seconds"]
+                                           for shard in plan["shards"]), TARGET_SECONDS)
+                self.assertEqual(len(verify_reports(plan, passing_reports(plan))), count)
+
+    def test_single_worker_over_budget_still_covers_every_test(self):
+        tests = inventory(257)
+        plan = make_plan(tests, {}, target=7, workers=1)
+        validate_plan(plan, tests)
+        self.assertEqual(len(plan["shards"]), MAX_SHARDS)
 
     def test_stale_or_incomplete_plan_is_rejected(self):
         tests = inventory(25)
