@@ -32,7 +32,7 @@ struct PreviewCache {
 #[derive(Clone, Eq, Hash, PartialEq)]
 struct PreviewCacheKey {
     path: PathBuf,
-    modified: Option<i64>,
+    modified: i64,
     pdf_page: Option<i32>,
 }
 
@@ -191,12 +191,14 @@ impl PreviewProvider for LocalPreviewProvider {
                     ParseOperation::PreviewPdf => Some(request.pdf_page),
                     _ => None,
                 };
-                let cache_key = PreviewCacheKey {
+                let cache_key = modified.map(|modified| PreviewCacheKey {
                     path: path.clone(),
                     modified,
                     pdf_page,
-                };
-                if let Some(cached) = PREVIEW_CACHE.with(|cache| cache.borrow_mut().get(&cache_key))
+                });
+                if let Some(cached) = cache_key
+                    .as_ref()
+                    .and_then(|key| PREVIEW_CACHE.with(|cache| cache.borrow_mut().get(key)))
                 {
                     emit(PreviewEvent::Ready(Preview {
                         request_id,
@@ -298,9 +300,11 @@ impl PreviewProvider for LocalPreviewProvider {
                     }
                     Err(_) => return,
                 };
-                PREVIEW_CACHE.with(|cache| {
-                    cache.borrow_mut().insert(cache_key, content.clone());
-                });
+                if let Some(cache_key) = cache_key {
+                    PREVIEW_CACHE.with(|cache| {
+                        cache.borrow_mut().insert(cache_key, content.clone());
+                    });
+                }
                 emit(PreviewEvent::Ready(Preview {
                     request_id,
                     entry,

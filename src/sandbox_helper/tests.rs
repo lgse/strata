@@ -239,18 +239,16 @@ fn media_commands_select_the_backend_and_preserve_limits() {
 
     let software = arguments(&MediaBackend::Software);
     assert!(software.contains(
-        "-vf scale=w=1280:h=1280:force_original_aspect_ratio=decrease,format=yuv420p -c:v libvpx -auto-alt-ref 0 -lag-in-frames 0"
+        "-vf scale=w=1280:h=1280:force_original_aspect_ratio=decrease,format=yuv420p -c:v libvpx -auto-alt-ref 0"
     ));
-    assert!(software.contains("-threads 4 -deadline realtime -cpu-used 8"));
+    assert!(software.contains("-threads 2 -deadline realtime -cpu-used 8"));
     assert!(software.contains("-c:a libopus -b:a 96k -f webm"));
 
     for command in [vaapi, vulkan, software] {
-        assert!(command.contains(
-            "-probesize 500000 -analyzeduration 500000 -max_alloc 536870912 -max_pixels 50000000"
-        ));
+        assert!(command.contains("-max_alloc 536870912 -max_pixels 50000000"));
         assert!(command.contains("-map 0:v:0 -map 0:a:0? -sn -dn -t 30"));
         assert!(command.contains("-fpsmax 30"));
-        assert!(command.contains("-b:v 4M -maxrate 6M -bufsize 8M"));
+        assert!(command.contains("-b:v 2M -maxrate 3M -bufsize 4M"));
         assert!(command.ends_with("pipe:1"));
     }
 }

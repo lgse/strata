@@ -15,7 +15,7 @@ use gtk::gio;
 
 use crate::sandbox::{MAX_OUTPUT_BYTES, MediaPreviewBackend, gpu_devices, numbered_name};
 
-const HARDWARE_ATTEMPT_TIME_LIMIT: Duration = Duration::from_millis(400);
+const HARDWARE_ATTEMPT_TIME_LIMIT: Duration = Duration::from_secs(8);
 const HARDWARE_TOTAL_TIME_LIMIT: Duration = Duration::from_secs(12);
 const MEDIA_TOTAL_TIME_LIMIT: Duration = Duration::from_secs(28);
 const MAX_MEDIA_ALLOCATION_BYTES: u64 = 512 * 1024 * 1024;
@@ -317,16 +317,7 @@ fn media_backends(devices: &[PathBuf], policy: MediaPreviewBackend) -> Vec<Media
 fn media_command(backend: &MediaBackend, path: &Path) -> Command {
     let mut command = Command::new("ffmpeg");
     command
-        .args([
-            "-nostdin",
-            "-v",
-            "error",
-            "-probesize",
-            "500000",
-            "-analyzeduration",
-            "500000",
-            "-max_alloc",
-        ])
+        .args(["-nostdin", "-v", "error", "-max_alloc"])
         .arg(MAX_MEDIA_ALLOCATION_BYTES.to_string())
         .arg("-max_pixels")
         .arg(MAX_MEDIA_DECODE_PIXELS.to_string());
@@ -363,7 +354,7 @@ fn media_command(backend: &MediaBackend, path: &Path) -> Command {
                 ]);
         }
         MediaBackend::Software => {
-            command.args(["-threads", "4"]);
+            command.args(["-threads", "2"]);
         }
     }
     command
@@ -399,10 +390,8 @@ fn media_command(backend: &MediaBackend, path: &Path) -> Command {
                 "libvpx",
                 "-auto-alt-ref",
                 "0",
-                "-lag-in-frames",
-                "0",
                 "-threads",
-                "4",
+                "2",
                 "-deadline",
                 "realtime",
                 "-cpu-used",
@@ -410,27 +399,21 @@ fn media_command(backend: &MediaBackend, path: &Path) -> Command {
             ]);
         }
     }
+    command.args(["-fpsmax", "30"]);
+    command.args(["-b:v", "2M", "-maxrate", "3M", "-bufsize", "4M"]);
     match backend {
-        MediaBackend::Software => {
-            command.args(["-fpsmax", "30"]);
-            command.args(["-b:v", "4M", "-maxrate", "6M", "-bufsize", "8M"]);
-            command.args(["-c:a", "libopus", "-b:a", "96k", "-f", "webm"]);
-        }
-        MediaBackend::VaApi(_) | MediaBackend::Vulkan(_) => {
-            command.args(["-fpsmax", "30"]);
-            command.args(["-b:v", "4M", "-maxrate", "6M", "-bufsize", "8M"]);
-            command.args([
-                "-c:a",
-                "aac",
-                "-b:a",
-                "96k",
-                "-movflags",
-                "+frag_keyframe+empty_moov",
-                "-f",
-                "mp4",
-            ]);
-        }
-    }
+        MediaBackend::Software => command.args(["-c:a", "libopus", "-b:a", "96k", "-f", "webm"]),
+        MediaBackend::VaApi(_) | MediaBackend::Vulkan(_) => command.args([
+            "-c:a",
+            "aac",
+            "-b:a",
+            "96k",
+            "-movflags",
+            "+frag_keyframe+empty_moov",
+            "-f",
+            "mp4",
+        ]),
+    };
     command.arg("pipe:1");
     command
 }

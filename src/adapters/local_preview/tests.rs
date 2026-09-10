@@ -80,8 +80,8 @@ fn preview_cache_stores_and_retrieves_entries() {
         byte_count: 0,
     };
     let key1 = PreviewCacheKey {
-        path: PathBuf::from("/tmp/test1.png"),
-        modified: Some(100),
+        path: PathBuf::from("test1.png"),
+        modified: 100,
         pdf_page: None,
     };
     let content1 = PreviewContent::Rasterized {
@@ -92,8 +92,8 @@ fn preview_cache_stores_and_retrieves_entries() {
     assert_eq!(cache.byte_count, 4);
 
     let key2 = PreviewCacheKey {
-        path: PathBuf::from("/tmp/test2.txt"),
-        modified: Some(200),
+        path: PathBuf::from("test2.txt"),
+        modified: 200,
         pdf_page: None,
     };
     let content2 = PreviewContent::Text {
@@ -105,13 +105,13 @@ fn preview_cache_stores_and_retrieves_entries() {
     assert_eq!(cache.byte_count, 4 + 11);
 
     let pdf_page_0 = PreviewCacheKey {
-        path: PathBuf::from("/tmp/doc.pdf"),
-        modified: Some(300),
+        path: PathBuf::from("doc.pdf"),
+        modified: 300,
         pdf_page: Some(0),
     };
     let pdf_page_1 = PreviewCacheKey {
-        path: PathBuf::from("/tmp/doc.pdf"),
-        modified: Some(300),
+        path: PathBuf::from("doc.pdf"),
+        modified: 300,
         pdf_page: Some(1),
     };
     let page0_content = PreviewContent::Pdf {
@@ -128,6 +128,56 @@ fn preview_cache_stores_and_retrieves_entries() {
     cache.insert(pdf_page_1.clone(), page1_content.clone());
     assert_eq!(cache.get(&pdf_page_0), Some(page0_content));
     assert_eq!(cache.get(&pdf_page_1), Some(page1_content));
+}
+
+#[test]
+fn preview_cache_evicts_the_least_recent_entry() {
+    let mut cache = PreviewCache {
+        entries: HashMap::new(),
+        recent: VecDeque::new(),
+        byte_count: 0,
+    };
+    let keys: Vec<_> = (0..=MAX_PREVIEW_CACHE_ENTRIES)
+        .map(|index| PreviewCacheKey {
+            path: PathBuf::from(format!("image-{index}.png")),
+            modified: index as i64,
+            pdf_page: None,
+        })
+        .collect();
+
+    for key in &keys[..MAX_PREVIEW_CACHE_ENTRIES] {
+        cache.insert(key.clone(), PreviewContent::Rasterized { png: vec![0] });
+    }
+    assert!(cache.get(&keys[0]).is_some());
+    cache.insert(
+        keys[MAX_PREVIEW_CACHE_ENTRIES].clone(),
+        PreviewContent::Rasterized { png: vec![0] },
+    );
+
+    assert!(cache.get(&keys[0]).is_some());
+    assert!(cache.get(&keys[1]).is_none());
+    assert_eq!(cache.entries.len(), MAX_PREVIEW_CACHE_ENTRIES);
+    assert_eq!(cache.byte_count, MAX_PREVIEW_CACHE_ENTRIES);
+}
+
+#[test]
+fn replacing_a_preview_cache_entry_updates_its_byte_count() {
+    let mut cache = PreviewCache {
+        entries: HashMap::new(),
+        recent: VecDeque::new(),
+        byte_count: 0,
+    };
+    let key = PreviewCacheKey {
+        path: PathBuf::from("image.png"),
+        modified: 1,
+        pdf_page: None,
+    };
+
+    cache.insert(key.clone(), PreviewContent::Rasterized { png: vec![0; 8] });
+    cache.insert(key, PreviewContent::Rasterized { png: vec![0; 3] });
+
+    assert_eq!(cache.byte_count, 3);
+    assert_eq!(cache.entries.len(), 1);
 }
 
 #[test]
