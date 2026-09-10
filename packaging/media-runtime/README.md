@@ -166,7 +166,39 @@ Sanitized discussion:
 [review corrections and latest capture](https://github.com/lgse/strata/pull/782#issuecomment-5623949139).
 Raw captures, profiles, core dumps, and host-built binaries are deliberately absent.
 
+## Dependency updates
+
+Patches are supported only against the checksum-pinned source versions. A newer
+version accepting a patch cleanly does not prove that its ownership rules or ABI
+remain compatible. Review the changed implementation, rerun baseline/candidate
+regressions, and update source hashes and evidence as one change. Retire a patch
+only when the upstream equivalent is verified by the regression, not merely
+because the version number increased. See the maintenance rule in
+[AGENTS.md](../../AGENTS.md#private-media-runtime-patches).
+
+Upstream check on 2026-09-10 (source inspection, **not** a runtime retest):
+
+- [GTK 4.22.5 release notes](https://download.gnome.org/sources/gtk/4.22/gtk-4.22.5.news)
+  include GPU cache garbage collection from dmabuf downloading code and other
+  memory/Wayland fixes. These merit testing for the remaining RAM behavior, but
+  are not evidence that it is fixed. Its
+  [sink disposal code](https://github.com/GNOME/gtk/blob/4.22.5/gtk/media/gtkgstsink.c)
+  still omits releasing `gst_context`.
+- [GStreamer 1.28.7](https://gstreamer.freedesktop.org/releases/1.28/#1.28.7)
+  is also available. Its
+  [GstPlay disposal code](https://github.com/GStreamer/gstreamer/blob/1.28.7/subprojects/gst-plugins-bad/gst-libs/gst/play/gstplay.c)
+  retains the same own-thread disposal path implicated by the reproducer.
+
+Neither newer version has been substituted into this kit or measured in these
+captures. Check newer maintenance releases before selecting the shipping baseline;
+the observations above are not a reason to freeze all future security updates.
+
 ## Shipping requirements (not implemented by this patch kit)
+
+The manual `patch` commands above are the only application mechanism currently
+provided. There is **no automated runtime build/apply/package gate** in this kit.
+A release from this branch still builds and distributes the usual system-linked
+Strata executable. The next shipping implementation needs to:
 
 1. Choose and pin the supported runtime baseline for both x86_64 and aarch64.
    A pair of Arch-built `.so` files is not a portable Ubuntu release artifact.
@@ -182,6 +214,13 @@ Raw captures, profiles, core dumps, and host-built binaries are deliberately abs
 5. Validate the **installed release artifact** on supported distributions, including
    real media, sandbox helpers, portal/file-manager integration, updates and rollback.
    Run the full pinned repository checks when changing release/build infrastructure.
-6. Publish a prerelease before promoting it. Describe the measured crash/GL-resource
+6. Wire the verified runtime build into `.github/workflows/release.yml` before
+   archive creation, failing the build on source/checksum/patch mismatches or failed
+   regressions. Teach `install.sh`, `src/services/update_install.rs`, and relevant
+   distribution packages about a versioned runtime directory and atomic bundle
+   updates. Copying only the executable (the current updater behavior) must not
+   produce a partially updated or unpatched installation. Include runtime provenance
+   in the artifact and check loaded library identity in package-level tests.
+7. Publish a prerelease before promoting it. Describe the measured crash/GL-resource
    fixes separately from unresolved RAM growth. Remove/backport patches deliberately
    after upstream versions incorporate equivalent fixes; do not apply by fuzzy match.
