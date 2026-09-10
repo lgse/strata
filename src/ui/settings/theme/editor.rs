@@ -93,8 +93,7 @@ fn color_field_row(
     let values_for_color = values.clone();
     let manager_for_color = manager.clone();
     picker.connect_rgba_notify(move |picker| {
-        *field.slot(&mut values_for_color.borrow_mut()) =
-            color_to_hex(&picker.rgba().to_string());
+        *field.slot(&mut values_for_color.borrow_mut()) = color_to_hex(&picker.rgba().to_string());
         manager_for_color.preview(&values_for_color.borrow());
     });
     field_row.append(&picker);
