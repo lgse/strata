@@ -100,15 +100,13 @@ fn ensure_modified_date_timer() {
     });
 }
 
-/// Whole calendar days between the two timestamps' local dates, so that
-/// "Yesterday" means the previous date rather than 24 to 48 hours ago.
 fn calendar_day_difference(modified: &glib::DateTime, now: &glib::DateTime) -> Option<i64> {
     let midnight = |value: &glib::DateTime| {
         let (year, month, day) = value.ymd();
         glib::DateTime::new(&value.timezone(), year, month, day, 0, 0, 0.0).ok()
     };
     let span = midnight(now)?.difference(&midnight(modified)?).0;
-    // Midnights either side of a DST change are 23 or 25 hours apart.
+    // Rounding maps 23- and 25-hour DST intervals to one civil day.
     Some((span + 43_200_000_000) / 86_400_000_000)
 }
 
