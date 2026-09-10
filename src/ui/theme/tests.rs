@@ -6,7 +6,7 @@ use std::{cell::RefCell, collections::HashSet};
 
 use super::{
     Preferences, TextSize, Theme, ThemeTokens, azure_tokens, blend, browser_mode_from_stored,
-    builtins, configured_hardware_acceleration, configured_video_preview_backend,
+    builtins, color_to_hex, configured_hardware_acceleration, configured_video_preview_backend,
     is_omarchy_theme_event, merge_builtin_and_custom_themes, notify_live, slugify,
     snapped_root_font_px, sort_preferences, source_style_scheme_xml, stored_browser_mode,
     text_scale_factor_from_xft_dpi, title_case_slug, tokens_from_quattro, validate_tokens,
@@ -120,6 +120,14 @@ fn colors_can_be_blended_into_semantic_tokens() {
     assert_eq!(blend("#000000", "#ffffff", 0.5), "#808080");
     assert_eq!(blend("rgb(0,0,0)", "rgb(255,255,255)", 0.5), "#808080");
     assert_eq!(blend("#000", "#fff", 0.5), "#808080");
+    assert_eq!(blend("black", "white", 0.5), "#808080");
+}
+
+#[test]
+fn gtk_color_formats_canonicalize_for_persistence_and_scheme_xml() {
+    assert_eq!(color_to_hex("rgb(153,193,241)"), "#99c1f1");
+    assert_eq!(color_to_hex("#fff"), "#ffffff");
+    assert_eq!(color_to_hex("rebeccapurple"), "#663399");
 }
 
 fn scheme_color_values(xml: &str) -> Vec<&str> {
@@ -156,7 +164,7 @@ fn source_style_scheme_xml_canonicalizes_rgb_tokens_for_gtksourceview() {
             for value in &values {
                 assert!(
                     value.starts_with('#') && value.len() == 7,
-                    "GtkSourceView requires #rrggbb, got {value}"
+                    "scheme colors must be canonical #rrggbb, got {value}"
                 );
             }
             assert!(

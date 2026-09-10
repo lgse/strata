@@ -1370,7 +1370,7 @@ fn tokens_css(tokens: &ThemeTokens, root_font_px: f64) -> String {
 }
 
 /// Parses colours GTK accepts (`#rgb`, `#rrggbb`, `rgb(...)`, names) into 8-bit
-/// channels. GtkSourceView scheme XML still requires `#rrggbb`.
+/// channels. Strata emits these channels as `#rrggbb` in GtkSourceView schemes.
 pub(crate) fn parse_rgb_channels(value: &str) -> Option<[u8; 3]> {
     let color = gdk::RGBA::parse(value).ok()?;
     let channel = |component: f32| (f64::from(component).clamp(0.0, 1.0) * 255.0).round() as u8;
@@ -1385,7 +1385,7 @@ fn hex_from_channels(channels: [u8; 3]) -> String {
     format!("#{:02x}{:02x}{:02x}", channels[0], channels[1], channels[2])
 }
 
-/// Canonicalizes a colour token to `#rrggbb` for GtkSourceView scheme XML.
+/// Canonicalizes a colour token to Strata's `#rrggbb` scheme representation.
 pub(crate) fn color_to_hex(value: &str) -> String {
     parse_rgb_channels(value)
         .map(hex_from_channels)
