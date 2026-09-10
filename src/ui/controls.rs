@@ -21,6 +21,29 @@ pub(super) fn form_label(text: &str) -> gtk::Label {
     label
 }
 
+pub(super) fn form_error_label() -> gtk::Label {
+    let label = gtk::Label::new(None);
+    label.add_css_class("form-field-error");
+    label.set_xalign(0.0);
+    label.set_visible(false);
+    label
+}
+
+pub(super) fn set_form_field_error(
+    field: &impl IsA<gtk::Widget>,
+    helper: &gtk::Label,
+    message: Option<&str>,
+) {
+    if let Some(message) = message {
+        field.add_css_class("error");
+        helper.set_text(message);
+        helper.set_visible(true);
+    } else {
+        field.remove_css_class("error");
+        helper.set_visible(false);
+    }
+}
+
 pub(super) fn form_check_button(label: &str) -> gtk::CheckButton {
     let button = gtk::CheckButton::with_label(label);
     button.add_css_class("form-check");

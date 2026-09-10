@@ -544,7 +544,8 @@ impl ViewState {
                 if let Some((entry, dest)) = retry {
                     let lower = message.to_lowercase();
                     if lower.contains("password") || lower.contains("encrypt") {
-                        self.show_extract_password_dialog(entry, dest);
+                        let invalid_password = lower.contains("incorrect");
+                        self.show_extract_password_dialog(entry, dest, invalid_password);
                         return;
                     }
                 }
