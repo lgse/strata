@@ -317,6 +317,22 @@ fn missing_parent_destination_is_rejected_at_lookup() {
 }
 
 #[test]
+fn non_directory_parent_destination_is_rejected_at_lookup() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let uid = 1000;
+    let trash = volume_trash(fixture.path(), uid);
+    let source = trash.join("files/report.txt");
+    fs::write(&source, b"ok").expect("source");
+    let parent = fixture.path().join("not-a-folder");
+    fs::write(&parent, b"file").expect("parent file");
+    let context = context_for(&fixture.path().join("home-trash"), uid, fixture.path());
+    let error =
+        plan_restore_from_known_paths(&source, &parent.join("report.txt"), &trash, None, &context)
+            .expect_err("non-directory parent");
+    assert!(error.message().contains("parent folder no longer exists"));
+}
+
+#[test]
 fn different_device_orig_path_is_rejected_by_volume_identity() -> std::io::Result<()> {
     let Some((home, stick)) = crate::test_support::distinct_device_dirs(
         "different_device_orig_path_is_rejected_by_volume_identity",
