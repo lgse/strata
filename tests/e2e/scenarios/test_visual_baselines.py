@@ -81,6 +81,12 @@ def test_icons_view_baseline(strata, baseline):
     baseline(strata, "icons-view")
 
 
+@pytest.mark.preferences(browser_mode="icons", browser_density="airy")
+def test_icons_airy_view_baseline(strata, baseline):
+    _settle(strata)
+    baseline(strata, "icons-airy-view")
+
+
 @pytest.mark.preferences(browser_mode="icons")
 def test_icons_hover_baseline(strata, baseline):
     _settle(strata)
