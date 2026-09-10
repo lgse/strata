@@ -1056,9 +1056,18 @@ fn error_translation_preserves_passwords_unsupported_formats_and_io_failures() {
         let expected = error.to_string();
         assert_eq!(super::zip_error(error).to_string(), expected);
     }
+    assert_eq!(
+        super::sevenz_decode_error(SevenZError::PasswordRequired).to_string(),
+        "A password is required to extract this archive."
+    );
+    assert_eq!(
+        super::sevenz_decode_error(SevenZError::MaybeBadPassword(
+            io::ErrorKind::InvalidData.into()
+        ))
+        .to_string(),
+        "The password may be incorrect."
+    );
     for error in [
-        SevenZError::PasswordRequired,
-        SevenZError::MaybeBadPassword(io::ErrorKind::InvalidData.into()),
         SevenZError::UnsupportedVersion { major: 9, minor: 0 },
         SevenZError::UnsupportedCompressionMethod("unknown".into()),
         SevenZError::Unsupported("unsupported encryption".into()),

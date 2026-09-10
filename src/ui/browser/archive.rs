@@ -580,12 +580,19 @@ impl ViewState {
         body.append(&password_label);
         body.append(&password_entry);
 
+        let extract_state = self.clone();
         let browser = self.browser.clone();
         let password_for_confirm = password_entry.clone();
         let dismiss_for_confirm = dismiss.clone();
         confirm.connect_clicked(move |_| {
             let pw = password_for_confirm.text().to_string();
             let password = if pw.is_empty() { None } else { Some(pw) };
+            let format = ArchiveFormat::from_extension(&entry.display_name);
+            if format.map(|f| f.supports_password()).unwrap_or(false) {
+                extract_state
+                    .pending_extract_retry
+                    .replace(Some((entry.clone(), destination.clone())));
+            }
             dismiss_for_confirm();
             browser.extract(entry.clone(), destination.clone(), password);
         });

@@ -46,6 +46,10 @@ fn sevenz_decode_error(error: sevenz_rust2::Error) -> ArchiveError {
         | Error::BadTerminatedPackInfo(_)
         | Error::BadTerminatedSubStreamsInfo
         | Error::BadTerminatedHeader(_) => archive_failed(INVALID_ARCHIVE),
+        Error::PasswordRequired => {
+            archive_failed("A password is required to extract this archive.")
+        }
+        Error::MaybeBadPassword(_) => archive_failed("The password may be incorrect."),
         Error::Other(message) if message.as_ref() == INVALID_ARCHIVE => archive_failed(message),
         Error::Io(error, _) => archive_failed(archive_read_error(error)),
         error => archive_failed(error),
