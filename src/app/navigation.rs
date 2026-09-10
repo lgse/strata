@@ -769,7 +769,12 @@ impl NavigationState {
             first_visible
         });
 
-        let focused = if direction < 0 {
+        // Escape clears filled selection without dropping the cursor or leftover
+        // range anchor. Start a new range from that cursor instead of stepping.
+        let starting_from_empty = column.selected_locations.is_empty();
+        let focused = if starting_from_empty {
+            current
+        } else if direction < 0 {
             column.entries[..current]
                 .iter()
                 .rposition(is_visible)
@@ -784,19 +789,21 @@ impl NavigationState {
             current
         };
 
-        let anchor = column
-            .selection_anchor
-            .as_ref()
-            .and_then(|location| {
-                column
-                    .entries
-                    .iter()
-                    .position(|entry| &entry.location == location)
-            })
-            .unwrap_or(current);
-        if column.selection_anchor.is_none() {
-            column.selection_anchor = Some(column.entries[anchor].location.clone());
-        }
+        let anchor = if starting_from_empty {
+            current
+        } else {
+            column
+                .selection_anchor
+                .as_ref()
+                .and_then(|location| {
+                    column
+                        .entries
+                        .iter()
+                        .position(|entry| &entry.location == location)
+                })
+                .unwrap_or(current)
+        };
+        column.selection_anchor = Some(column.entries[anchor].location.clone());
         let start = anchor.min(focused);
         let end = anchor.max(focused);
         let selected_positions: Vec<usize> = (start..=end)

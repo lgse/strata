@@ -638,8 +638,8 @@ impl BrowserView {
         self.state.browser.commit_selection();
     }
 
-    pub fn resume_native_selection(&self) {
-        self.state.mode_views.borrow().resume_native_selection();
+    pub fn resume_native_selection(&self) -> bool {
+        self.state.mode_views.borrow().resume_native_selection()
     }
 
     pub fn navigate_left(&self) {
