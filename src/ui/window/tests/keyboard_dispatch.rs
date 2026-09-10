@@ -199,6 +199,42 @@ fn inline_editing_owns_filter_keys_but_not_global_search() {
 }
 
 #[test]
+fn ctrl_a_during_rename_selects_only_unicode_entry_text_in_every_view() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::ctrl_a_during_rename_selects_only_unicode_entry_text_in_every_view",
+        || {
+            let fixture = KeyboardFixture::new();
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                fixture.view.set_view_mode(mode);
+                fixture.view.browser().select(0, 0);
+                fixture.view.browser().focus_active();
+                wait_until(|| {
+                    fixture.view.item_view_has_focus()
+                        && rendered_name(&fixture.view.widget(), "a.txt")
+                });
+                assert!(fixture.press(Key::F2, ModifierType::empty()), "{mode:?}");
+                assert!(fixture.view.rename_is_active(), "{mode:?}");
+                let field = fixture.view.active_rename_field().expect("rename field");
+                field.set_text("résumé-💾.txt");
+                field.set_position(-1);
+
+                assert!(fixture.press(Key::a, ModifierType::CONTROL_MASK), "{mode:?}");
+                assert_eq!(
+                    field.selection_bounds(),
+                    Some((0, field.text().chars().count() as i32)),
+                    "{mode:?}"
+                );
+                assert_eq!(fixture.selected(), [0], "{mode:?}");
+
+                assert!(fixture.press(Key::Escape, ModifierType::empty()), "{mode:?}");
+                assert!(!fixture.view.rename_is_active(), "{mode:?}");
+                assert_eq!(fixture.selected(), [0], "{mode:?}");
+            }
+        },
+    );
+}
+
+#[test]
 fn clipboard_and_delete_shortcuts_proceed_inside_preview_text() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::clipboard_and_delete_shortcuts_proceed_inside_preview_text",

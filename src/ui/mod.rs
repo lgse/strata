@@ -26,7 +26,7 @@ mod shortcut_footer;
 mod terminal;
 mod theme;
 mod thumbnail;
-mod thumbnail_cache;
+pub(crate) mod thumbnail_cache;
 mod top_bar_navigation;
 mod window;
 
