@@ -1309,15 +1309,15 @@ fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
   <style name="def:error" foreground="background" background="accent" bold="true"/>
 </style-scheme>
 "#,
-        tokens.background,
-        tokens.surface,
-        tokens.text,
-        tokens.accent,
-        tokens.highlight,
-        tokens.dim_text,
-        string,
-        constant,
-        type_color,
+        color_to_hex(&tokens.background),
+        color_to_hex(&tokens.surface),
+        color_to_hex(&tokens.text),
+        color_to_hex(&tokens.accent),
+        color_to_hex(&tokens.highlight),
+        color_to_hex(&tokens.dim_text),
+        color_to_hex(&string),
+        color_to_hex(&constant),
+        color_to_hex(&type_color),
     )
 }
 
@@ -1369,8 +1369,8 @@ fn tokens_css(tokens: &ThemeTokens, root_font_px: f64) -> String {
     )
 }
 
-/// Parses any CSS colour GTK accepts (`#rgb`, `#rrggbb`, `rgb(...)`, names)
-/// into 8-bit channels. The theme editor stores colour pickers as `rgb(...)`.
+/// Parses colours GTK accepts (`#rgb`, `#rrggbb`, `rgb(...)`, names) into 8-bit
+/// channels. GtkSourceView scheme XML still requires `#rrggbb`.
 pub(crate) fn parse_rgb_channels(value: &str) -> Option<[u8; 3]> {
     let color = gdk::RGBA::parse(value).ok()?;
     let channel = |component: f32| (f64::from(component).clamp(0.0, 1.0) * 255.0).round() as u8;
@@ -1379,6 +1379,17 @@ pub(crate) fn parse_rgb_channels(value: &str) -> Option<[u8; 3]> {
         channel(color.green()),
         channel(color.blue()),
     ])
+}
+
+fn hex_from_channels(channels: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", channels[0], channels[1], channels[2])
+}
+
+/// Canonicalizes a colour token to `#rrggbb` for GtkSourceView scheme XML.
+pub(crate) fn color_to_hex(value: &str) -> String {
+    parse_rgb_channels(value)
+        .map(hex_from_channels)
+        .unwrap_or_else(|| value.to_owned())
 }
 
 fn blend(left: &str, right: &str, amount: f64) -> String {
