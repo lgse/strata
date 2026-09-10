@@ -19,10 +19,6 @@ struct KeyboardFixture {
 
 impl KeyboardFixture {
     fn new() -> Self {
-        Self::new_in_mode(BrowserMode::Columns)
-    }
-
-    fn new_in_mode(mode: BrowserMode) -> Self {
         ThemeManager::seed_saved_preferences_for_test();
         let preferences = ThemeManager::shared();
         let directory = tempfile::tempdir().expect("fixture");
@@ -30,7 +26,7 @@ impl KeyboardFixture {
             std::fs::write(directory.path().join(name), b"preview").expect("fixture file");
         }
         let view = browser_for_window();
-        view.set_view_mode(mode);
+        view.set_view_mode(BrowserMode::Columns);
         let sidebar = build_sidebar(view.clone(), preferences.clone(), true);
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         let toggle = gtk::ToggleButton::builder().active(true).build();
@@ -78,8 +74,7 @@ impl KeyboardFixture {
         });
         view.browser().select(0, 0);
         view.browser().focus_active();
-        wait_until(|| view.item_view_has_focus());
-        settle();
+        wait_until(|| view.item_view_has_focus() && rendered_name(&view.widget(), "a.txt"));
         Self {
             window,
             overlay,
@@ -109,6 +104,34 @@ impl Drop for KeyboardFixture {
     }
 }
 
+fn rendered_name(widget: &gtk::Widget, name: &str) -> bool {
+    if !widget.is_mapped()
+        || widget.width() <= 0
+        || widget
+            .downcast_ref::<gtk::Stack>()
+            .is_some_and(|stack| stack.is_transition_running())
+    {
+        return false;
+    }
+    if widget
+        .downcast_ref::<gtk::Label>()
+        .is_some_and(|label| label.label() == name)
+        || widget
+            .downcast_ref::<gtk::Inscription>()
+            .is_some_and(|label| label.text().as_deref() == Some(name))
+    {
+        return true;
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if rendered_name(&widget, name) {
+            return true;
+        }
+        child = widget.next_sibling();
+    }
+    false
+}
+
 fn text_view_in(widget: &gtk::Widget) -> Option<gtk::TextView> {
     if let Some(view) = widget.downcast_ref::<gtk::TextView>() {
         return Some(view.clone());
@@ -121,14 +144,6 @@ fn text_view_in(widget: &gtk::Widget) -> Option<gtk::TextView> {
         child = widget.next_sibling();
     }
     None
-}
-
-fn settle() {
-    let deadline = Instant::now() + Duration::from_millis(120);
-    while Instant::now() < deadline {
-        while glib::MainContext::default().iteration(false) {}
-        std::thread::sleep(Duration::from_millis(2));
-    }
 }
 
 fn wait_until(condition: impl Fn() -> bool) {
@@ -191,8 +206,15 @@ fn ctrl_a_during_rename_selects_only_unicode_entry_text_in_every_view() {
     crate::test_support::gtk_test(
         "ui::window::tests::keyboard_dispatch::ctrl_a_during_rename_selects_only_unicode_entry_text_in_every_view",
         || {
+            let fixture = KeyboardFixture::new();
             for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
-                let fixture = KeyboardFixture::new_in_mode(mode);
+                fixture.view.set_view_mode(mode);
+                fixture.view.browser().select(0, 0);
+                fixture.view.browser().focus_active();
+                wait_until(|| {
+                    fixture.view.item_view_has_focus()
+                        && rendered_name(&fixture.view.widget(), "a.txt")
+                });
                 assert!(fixture.press(Key::F2, ModifierType::empty()), "{mode:?}");
                 assert!(fixture.view.rename_is_active(), "{mode:?}");
                 let field = fixture.view.active_rename_field().expect("rename field");
