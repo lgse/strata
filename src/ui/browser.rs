@@ -479,6 +479,24 @@ impl BrowserView {
         self.state.overlay.clone()
     }
 
+    pub(crate) fn set_navigation_cleanup(&self, cleanup: impl FnOnce() + 'static) {
+        self.state.browser.set_navigation_cleanup(cleanup);
+    }
+
+    pub(crate) fn finish_navigation_cleanup(&self) {
+        self.state.browser.finish_navigation_cleanup();
+    }
+
+    pub(crate) fn connect_navigation_cleanup(&self, window: &gtk::Window) {
+        let weak = self.downgrade();
+        window.connect_close_request(move |_| {
+            if let Some(browser) = weak.upgrade() {
+                browser.browser().bump_navigation_generation();
+            }
+            glib::Propagation::Proceed
+        });
+    }
+
     pub(crate) fn downgrade(&self) -> WeakBrowserView {
         WeakBrowserView(Rc::downgrade(&self.state))
     }

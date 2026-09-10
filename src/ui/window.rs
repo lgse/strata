@@ -150,6 +150,7 @@ pub(super) fn present_target(
     let content = composition::WindowContent::new(&window, &theme_manager);
     let update_notice = content.bind(&window, &theme_manager);
     let browser = content.browser.clone();
+    browser.connect_navigation_cleanup(window.upcast_ref());
     schedule_after_first_paint(&window, &content.sidebar);
     content.connect_cleanup(&window);
     window.present();

@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use std::time::Duration;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    time::Duration,
+};
 
 use gtk::{gio, glib, prelude::*};
 
@@ -29,35 +33,81 @@ enum Kind {
     File,
 }
 
-fn classify(browser: BrowserView, file: gio::File, location: Location) {
+struct OpenRequest {
+    operation: gtk::MountOperation,
+    timer: RefCell<Option<glib::SourceId>>,
+    active: Cell<bool>,
+}
+
+impl OpenRequest {
+    fn new(operation: gtk::MountOperation) -> Rc<Self> {
+        Rc::new(Self {
+            operation,
+            timer: RefCell::new(None),
+            active: Cell::new(true),
+        })
+    }
+
+    fn finish(&self) {
+        self.active.set(false);
+        if let Some(timer) = self.timer.take() {
+            timer.remove();
+        }
+        self.operation.set_parent(None::<&gtk::Window>);
+    }
+
+    fn abort(&self) {
+        if self.active.replace(false) {
+            self.operation.reply(gio::MountOperationResult::Aborted);
+        }
+        if let Some(timer) = self.timer.take() {
+            timer.remove();
+        }
+        self.operation.set_parent(None::<&gtk::Window>);
+    }
+}
+
+fn classify(browser: BrowserView, file: gio::File, location: Location) -> Rc<OpenRequest> {
     let generation = browser.browser().bump_navigation_generation();
     let parent = browser.overlay().root().and_downcast::<gtk::Window>();
-    let operation = gtk::MountOperation::new(parent.as_ref());
+    let request = OpenRequest::new(gtk::MountOperation::new(parent.as_ref()));
+    let cleanup_request = request.clone();
+    browser.set_navigation_cleanup(move || cleanup_request.abort());
 
     let connecting = browser.downgrade();
-    let cancel_operation = operation.clone();
-    glib::timeout_add_local_once(CONNECTING_DELAY, move || {
-        show_connecting(connecting, generation, cancel_operation);
+    let connecting_request = request.clone();
+    let timer = glib::timeout_add_local_once(CONNECTING_DELAY, move || {
+        connecting_request.timer.take();
+        if connecting_request.active.get() {
+            show_connecting(connecting, generation, connecting_request);
+        }
     });
+    request.timer.replace(Some(timer));
 
     let weak = browser.downgrade();
     let retry_file = file.clone();
     let retry_location = location.clone();
+    let query_request = request.clone();
     glib::MainContext::default().spawn_local(async move {
-        let outcome = query_kind(&file, Some(&operation)).await;
+        let outcome = query_kind(&file, Some(&query_request.operation)).await;
         let Some(browser) = weak.upgrade() else {
+            query_request.abort();
             return;
         };
         if browser.browser().navigation_generation() != generation {
+            query_request.abort();
             return;
         }
+        query_request.finish();
+        browser.finish_navigation_cleanup();
         clear_status(&browser);
         match outcome {
             Ok(Kind::Directory) => browser.navigate_location(location),
             Ok(Kind::File) => reveal_in_parent(&browser, &file, location),
-            Err(_) => show_error(browser, retry_file, retry_location),
+            Err(_) => show_error(&browser, retry_file, retry_location),
         }
     });
+    request
 }
 
 /// A no-follow fallback preserves broken native symlinks as revealable entries.
@@ -154,7 +204,7 @@ fn status_container() -> (gtk::Box, gtk::Box) {
 }
 
 /// Cancellation disowns late results because a native query may remain blocked in the kernel.
-fn show_connecting(weak: WeakBrowserView, generation: u64, operation: gtk::MountOperation) {
+fn show_connecting(weak: WeakBrowserView, generation: u64, request: Rc<OpenRequest>) {
     let Some(browser) = weak.upgrade() else {
         return;
     };
@@ -175,18 +225,21 @@ fn show_connecting(weak: WeakBrowserView, generation: u64, operation: gtk::Mount
 
     let cancel = gtk::Button::with_label("Cancel");
     content.append(&cancel);
-    let cancel_browser = browser.clone();
+    let cancel_browser = browser.downgrade();
     cancel.connect_clicked(move |_| {
-        operation.reply(gio::MountOperationResult::Aborted);
-        cancel_browser.browser().bump_navigation_generation();
-        clear_status(&cancel_browser);
-        cancel_browser.navigate_location(Location::local(super::home_directory()));
+        request.abort();
+        if let Some(browser) = cancel_browser.upgrade() {
+            browser.browser().bump_navigation_generation();
+            browser.finish_navigation_cleanup();
+            clear_status(&browser);
+            browser.navigate_location(Location::local(super::home_directory()));
+        }
     });
 
     overlay.add_overlay(&row);
 }
 
-fn show_error(browser: BrowserView, file: gio::File, location: Location) {
+fn show_error(browser: &BrowserView, file: gio::File, location: Location) {
     let overlay = browser.overlay();
     let (row, content) = status_container();
 
@@ -199,9 +252,12 @@ fn show_error(browser: BrowserView, file: gio::File, location: Location) {
     let retry = gtk::Button::with_label("Retry");
     retry.add_css_class("suggested-action");
     content.append(&retry);
+    let retry_browser = browser.downgrade();
     retry.connect_clicked(move |_| {
-        clear_status(&browser);
-        classify(browser.clone(), file.clone(), location.clone());
+        if let Some(browser) = retry_browser.upgrade() {
+            clear_status(&browser);
+            classify(browser, file.clone(), location.clone());
+        }
     });
 
     overlay.add_overlay(&row);
