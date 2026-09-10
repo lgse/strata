@@ -117,6 +117,8 @@ fn omarchy_slugs_become_display_names() {
 #[test]
 fn colors_can_be_blended_into_semantic_tokens() {
     assert_eq!(blend("#000000", "#ffffff", 0.5), "#808080");
+    assert_eq!(blend("rgb(0,0,0)", "rgb(255,255,255)", 0.5), "#808080");
+    assert_eq!(blend("#000", "#fff", 0.5), "#808080");
 }
 
 #[test]

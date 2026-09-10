@@ -1369,17 +1369,28 @@ fn tokens_css(tokens: &ThemeTokens, root_font_px: f64) -> String {
     )
 }
 
+/// Parses any CSS colour GTK accepts (`#rgb`, `#rrggbb`, `rgb(...)`, names)
+/// into 8-bit channels. The theme editor stores colour pickers as `rgb(...)`.
+pub(crate) fn parse_rgb_channels(value: &str) -> Option<[u8; 3]> {
+    let color = gdk::RGBA::parse(value).ok()?;
+    let channel = |component: f32| (f64::from(component).clamp(0.0, 1.0) * 255.0).round() as u8;
+    Some([
+        channel(color.red()),
+        channel(color.green()),
+        channel(color.blue()),
+    ])
+}
+
 fn blend(left: &str, right: &str, amount: f64) -> String {
-    let parse = |value: &str| u32::from_str_radix(value.trim_start_matches('#'), 16).ok();
-    let (Some(left), Some(right)) = (parse(left), parse(right)) else {
+    let (Some(left), Some(right)) = (parse_rgb_channels(left), parse_rgb_channels(right)) else {
         return right.to_owned();
     };
-    let channel = |shift| {
-        let a = f64::from((left >> shift) & 0xff_u32);
-        let b = f64::from((right >> shift) & 0xff_u32);
+    let channel = |index: usize| {
+        let a = f64::from(left[index]);
+        let b = f64::from(right[index]);
         (a + (b - a) * amount).round() as u32
     };
-    format!("#{:02x}{:02x}{:02x}", channel(16), channel(8), channel(0))
+    format!("#{:02x}{:02x}{:02x}", channel(0), channel(1), channel(2))
 }
 
 fn slugify(name: &str) -> String {
