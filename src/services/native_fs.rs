@@ -13,8 +13,6 @@ use crate::model::EntryKind;
 
 const MAX_HIDDEN_FILE_BYTES: u64 = 1024 * 1024;
 
-/// Mirrors GIO's directory/symlink classification for a raw `std::fs` scan:
-/// a symlink is followed to the target's type, same as GIO's `standard::type`.
 pub(crate) fn native_kind(file_type: fs::FileType, path: &Path) -> EntryKind {
     if file_type.is_dir() {
         return EntryKind::Directory;
@@ -33,8 +31,6 @@ pub(crate) fn native_kind(file_type: fs::FileType, path: &Path) -> EntryKind {
     }
 }
 
-/// GIO's `standard::is-hidden` covers both dot-prefixed names and names listed in a
-/// directory's `.hidden` file; this reproduces that for a raw `std::fs` scan.
 pub(crate) fn is_hidden_name(native_name: &OsStr, hidden_names: &HashSet<OsString>) -> bool {
     native_name.as_encoded_bytes().first().copied() == Some(b'.')
         || hidden_names.contains(native_name)
