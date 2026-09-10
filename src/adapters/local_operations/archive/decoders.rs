@@ -26,11 +26,13 @@ use super::{
 mod tests;
 
 const INVALID_ARCHIVE: &str = "This file is not a valid archive or is damaged.";
+// Plain-header 7z cannot distinguish wrong passwords from content decode failures.
+const MAYBE_BAD_PASSWORD: &str = "The password may be incorrect.";
 
 pub(super) fn zip_error(error: zip::result::ZipError) -> ArchiveError {
     match error {
         zip::result::ZipError::InvalidArchive(_) => archive_failed(INVALID_ARCHIVE),
-        zip::result::ZipError::Io(error) => archive_failed(archive_read_error(error)),
+        zip::result::ZipError::Io(error) => archive_failed(archive_read_error(error, false)),
         error => archive_failed(error),
     }
 }
@@ -47,12 +49,13 @@ fn sevenz_decode_error(error: sevenz_rust2::Error) -> ArchiveError {
         | Error::BadTerminatedSubStreamsInfo
         | Error::BadTerminatedHeader(_) => archive_failed(INVALID_ARCHIVE),
         Error::Other(message) if message.as_ref() == INVALID_ARCHIVE => archive_failed(message),
-        Error::Io(error, _) => archive_failed(archive_read_error(error)),
+        Error::Other(message) if message.as_ref() == MAYBE_BAD_PASSWORD => archive_failed(message),
+        Error::Io(error, _) => archive_failed(archive_read_error(error, false)),
         error => archive_failed(error),
     }
 }
 
-fn archive_read_error(error: std::io::Error) -> std::io::Error {
+fn archive_read_error(error: std::io::Error, password_supplied: bool) -> std::io::Error {
     use std::io::ErrorKind;
     let checksum_failed = matches!(
         error
@@ -60,6 +63,14 @@ fn archive_read_error(error: std::io::Error) -> std::io::Error {
             .and_then(|error| error.downcast_ref::<sevenz_rust2::Error>()),
         Some(sevenz_rust2::Error::ChecksumVerificationFailed)
     );
+    if password_supplied
+        && (matches!(
+            error.kind(),
+            ErrorKind::InvalidData | ErrorKind::UnexpectedEof
+        ) || checksum_failed)
+    {
+        return std::io::Error::new(ErrorKind::InvalidData, MAYBE_BAD_PASSWORD);
+    }
     // TAR reports these malformed-header errors as Other, not InvalidData.
     let invalid_tar = error.kind() == ErrorKind::Other
         && matches!(
@@ -90,11 +101,25 @@ fn archive_read_error(error: std::io::Error) -> std::io::Error {
 }
 
 // Translate only decoder reads; destination writes retain their own errors.
-struct ArchiveReader<R>(R);
+struct ArchiveReader<R> {
+    inner: R,
+    password_supplied: bool,
+}
+
+impl<R> ArchiveReader<R> {
+    fn new(inner: R) -> Self {
+        Self {
+            inner,
+            password_supplied: false,
+        }
+    }
+}
 
 impl<R: Read> Read for ArchiveReader<R> {
     fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
-        self.0.read(buffer).map_err(archive_read_error)
+        self.inner
+            .read(buffer)
+            .map_err(|error| archive_read_error(error, self.password_supplied))
     }
 }
 
@@ -132,7 +157,7 @@ pub(super) fn extract_zip_from_archive(
                 .ok_or_else(|| format!("Refusing unsafe ZIP path: {name}"))?;
             let declared_size = entry.size();
             let directory = entry.is_dir();
-            let mut reader = ArchiveReader(&mut entry);
+            let mut reader = ArchiveReader::new(&mut entry);
             let content = if directory {
                 MemberContent::Directory
             } else {
@@ -171,7 +196,7 @@ pub(super) fn extract_tar(
     let result = (|| {
         for entry in archive
             .entries()
-            .map_err(|error| archive_failed(archive_read_error(error)))?
+            .map_err(|error| archive_failed(archive_read_error(error, false)))?
         {
             if let Err(error) = session.check_cancelled() {
                 remaining = entry.ok().and_then(|entry| {
@@ -182,7 +207,8 @@ pub(super) fn extract_tar(
                 });
                 return Err(error);
             }
-            let mut entry = entry.map_err(|error| archive_failed(archive_read_error(error)))?;
+            let mut entry =
+                entry.map_err(|error| archive_failed(archive_read_error(error, false)))?;
             // tar-rs consumes per-entry extended headers itself, but a pax
             // global header (the first member of every `git archive` tarball)
             // is yielded as an ordinary entry. It carries no file.
@@ -202,7 +228,7 @@ pub(super) fn extract_tar(
             }
             let declared_size = entry.size();
             let name = name.to_string_lossy().into_owned();
-            let mut reader = ArchiveReader(&mut entry);
+            let mut reader = ArchiveReader::new(&mut entry);
             let content = if directory {
                 MemberContent::Directory
             } else {
@@ -223,6 +249,7 @@ pub(super) fn extract_7z_from_reader(
     cancelled: &AtomicBool,
 ) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
     let mut session = ExtractionSession::open(dest_dir, progress, cancelled)?;
+    let password_supplied = !password.is_empty();
     let mut archive =
         sevenz_rust2::ArchiveReader::new(reader, password).map_err(sevenz_decode_error)?;
     let claimed = archive
@@ -253,7 +280,10 @@ pub(super) fn extract_7z_from_reader(
                 "7z decoder returned an unknown member".into(),
             ));
         };
-        let mut reader = ArchiveReader(reader);
+        let mut reader = ArchiveReader {
+            inner: reader,
+            password_supplied,
+        };
         let content = if entry.is_directory {
             MemberContent::Directory
         } else {

@@ -134,6 +134,11 @@ pub(crate) fn plan_restore_from_known_paths(
             "The original location must not be inside the trash directory",
         ));
     }
+    if !destination.parent().map(Path::is_dir).unwrap_or(false) {
+        return Err(RestoreTargetError::new(
+            "The original location's parent folder no longer exists",
+        ));
+    }
     Ok(RestorePlan {
         source_path: source_path.to_path_buf(),
         destination,
