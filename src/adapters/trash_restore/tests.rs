@@ -58,6 +58,7 @@ fn relative_orig_path_is_joined_to_the_trash_parent() {
     let source = trash.join("files/report.txt");
     fs::write(&source, b"ok").expect("source");
     let context = context_for(&fixture.path().join("home-trash"), uid, fixture.path());
+    fs::create_dir_all(fixture.path().join("Documents")).expect("dest parent");
     let plan = plan_restore_from_known_paths(
         &source,
         Path::new("Documents/report.txt"),
@@ -82,6 +83,7 @@ fn relative_orig_path_in_home_trash_is_joined_to_xdg_data_home() {
     let source = trash.join("files/report.txt");
     fs::write(&source, b"ok").expect("source");
     let context = context_for(&trash, uid, fixture.path());
+    fs::create_dir_all(xdg_data.join("Documents")).expect("dest parent");
     let plan = plan_restore_from_known_paths(
         &source,
         Path::new("Documents/report.txt"),
@@ -293,6 +295,24 @@ fn destination_inside_the_trash_directory_is_rejected() {
             &context
         )
         .is_err()
+    );
+}
+
+#[test]
+fn missing_parent_destination_is_rejected_at_lookup() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let uid = 1000;
+    let trash = volume_trash(fixture.path(), uid);
+    let source = trash.join("files/report.txt");
+    fs::write(&source, b"ok").expect("source");
+    let dest = fixture.path().join("gone/nested/report.txt");
+    let context = context_for(&fixture.path().join("home-trash"), uid, fixture.path());
+    let error = plan_restore_from_known_paths(&source, &dest, &trash, None, &context)
+        .expect_err("missing parent");
+    assert!(
+        error.message().contains("parent folder no longer exists"),
+        "{}",
+        error.message()
     );
 }
 
@@ -518,6 +538,7 @@ fn relative_orig_path_in_shared_trash_is_joined_to_the_volume_topdir() {
     let source = trash.join("files/report.txt");
     fs::write(&source, b"report").expect("source");
     let context = context_for(&mount_path.join("unused"), uid, &mount_path);
+    fs::create_dir_all(mount_path.join("Documents")).expect("dest parent");
 
     let plan = plan_restore_from_known_paths(
         &source,
