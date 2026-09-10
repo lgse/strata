@@ -1034,6 +1034,51 @@ fn pinned_place_changes_merge_with_the_shared_bookmarks_file() {
 }
 
 #[test]
+fn pinning_with_a_non_utf8_label_preserves_shared_bookmarks() {
+    gtk_test(
+        "ui::window::tests::pinning_with_a_non_utf8_label_preserves_shared_bookmarks",
+        || {
+            let path = pinned_places_path();
+            std::fs::create_dir_all(path.parent().expect("bookmarks parent"))
+                .expect("create bookmarks parent");
+            std::fs::write(
+                &path,
+                b"file:///fixtures/existing Existing\nfile:///fixtures/lossy \xff\n",
+            )
+            .expect("seed non-UTF-8 bookmark label");
+
+            let first = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let second = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let initial = vec![
+                (Location::local("/fixtures/existing"), "Existing".into()),
+                (Location::local("/fixtures/lossy"), "\u{FFFD}".into()),
+            ];
+            assert_eq!(*first.state.pinned_places.borrow(), initial);
+            assert_eq!(*second.state.pinned_places.borrow(), initial);
+
+            first
+                .state
+                .pin_location(Location::local("/fixtures/first"), "First".into());
+            second
+                .state
+                .pin_location(Location::local("/fixtures/second"), "Second".into());
+            assert_eq!(
+                load_pinned_places().expect("saved bookmarks"),
+                vec![
+                    (Location::local("/fixtures/existing"), "Existing".into()),
+                    (Location::local("/fixtures/lossy"), "\u{FFFD}".into()),
+                    (Location::local("/fixtures/first"), "First".into()),
+                    (Location::local("/fixtures/second"), "Second".into()),
+                ]
+            );
+            std::fs::read_to_string(path).expect("saved bookmarks are valid UTF-8");
+            first.disconnect();
+            second.disconnect();
+        },
+    );
+}
+
+#[test]
 fn failed_bookmark_reads_and_saves_preserve_disk_and_window_state() {
     gtk_test(
         "ui::window::tests::failed_bookmark_reads_and_saves_preserve_disk_and_window_state",

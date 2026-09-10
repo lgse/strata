@@ -2068,8 +2068,7 @@ fn load_pinned_places() -> std::io::Result<Vec<(Location, String)>> {
     }
 }
 
-/// GTK writes the bookmarks file without validating UTF-8, so labels are
-/// decoded leniently and only lines whose URI is not valid UTF-8 are skipped.
+/// GTK bookmarks may contain non-UTF-8 labels.
 fn parse_pinned_places(contents: &[u8]) -> Vec<(Location, String)> {
     let mut places = Vec::new();
     for line in contents.split(|byte| *byte == b'\n') {
