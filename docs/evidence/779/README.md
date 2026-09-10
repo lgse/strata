@@ -34,9 +34,9 @@ separately isolated on Xvfb; they are not the source of these GPU measurements.
 Baseline source: upstream **`63f1063589b4a523612ef606a847be05fa6ffce3`** plus opt-in
 instrumentation. Comparison source: that **same baseline plus #765 at
 `51c8a16b5154887caec3b4e29206c653df123cd1`**, retaining the traces. This is not a
-pristine executable of the PR's older tree. The diagnostic PR containing this
-report is stacked on #765; the measurements predate its resource-category/PSS
-extension and do not claim those new fields were already collected.
+pristine executable of the PR's older tree. These measurements predate the
+resource-category/PSS diagnostic extension and do not claim those new fields
+were already collected.
 
 - Baseline SHA256:
   `2d0fa0888fd5ee714e2059fd17d035d7925ba91610388688bab47f43bf727c4e`
