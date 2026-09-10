@@ -1078,10 +1078,23 @@ fn error_translation_preserves_passwords_unsupported_formats_and_io_failures() {
         io::ErrorKind::Other,
     ] {
         let error = io::Error::new(kind, "injected I/O failure");
-        let translated = super::archive_read_error(error);
+        let translated = super::archive_read_error(error, false);
         assert_eq!(translated.kind(), kind);
         assert_eq!(translated.to_string(), "injected I/O failure");
     }
+}
+
+#[test]
+fn checksum_failure_suggests_wrong_password_only_when_one_was_supplied() {
+    let checksum_failure = || io::Error::other(sevenz_rust2::Error::ChecksumVerificationFailed);
+    assert_eq!(
+        super::archive_read_error(checksum_failure(), true).to_string(),
+        super::MAYBE_BAD_PASSWORD
+    );
+    assert_eq!(
+        super::archive_read_error(checksum_failure(), false).to_string(),
+        super::INVALID_ARCHIVE
+    );
 }
 
 #[test]
