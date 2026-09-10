@@ -26,9 +26,7 @@ use super::{
 mod tests;
 
 const INVALID_ARCHIVE: &str = "This file is not a valid archive or is damaged.";
-/// A wrong password on content-encrypted 7z (plain header, `-mhe=off`) surfaces as a
-/// checksum failure during decompression rather than at header parsing, so it must
-/// stay distinguishable from a genuinely damaged archive when a password was tried.
+// Plain-header 7z cannot distinguish wrong passwords from content decode failures.
 const MAYBE_BAD_PASSWORD: &str = "The password may be incorrect.";
 
 pub(super) fn zip_error(error: zip::result::ZipError) -> ArchiveError {
@@ -65,7 +63,12 @@ fn archive_read_error(error: std::io::Error, password_supplied: bool) -> std::io
             .and_then(|error| error.downcast_ref::<sevenz_rust2::Error>()),
         Some(sevenz_rust2::Error::ChecksumVerificationFailed)
     );
-    if checksum_failed && password_supplied {
+    if password_supplied
+        && (matches!(
+            error.kind(),
+            ErrorKind::InvalidData | ErrorKind::UnexpectedEof
+        ) || checksum_failed)
+    {
         return std::io::Error::new(ErrorKind::InvalidData, MAYBE_BAD_PASSWORD);
     }
     // TAR reports these malformed-header errors as Other, not InvalidData.
