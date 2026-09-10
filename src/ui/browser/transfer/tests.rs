@@ -37,6 +37,47 @@ fn has_visible_button(overlay: &gtk::Overlay, label: &str) -> bool {
     visible_texts(overlay).iter().any(|text| text == label)
 }
 
+fn button_with_label(overlay: &gtk::Overlay, label: &str) -> Option<gtk::Button> {
+    let mut stack = Vec::new();
+    let mut child = overlay.first_child();
+    while let Some(widget) = child {
+        stack.push(widget.clone());
+        child = widget.next_sibling();
+    }
+    while let Some(widget) = stack.pop() {
+        if let Some(button) = widget.downcast_ref::<gtk::Button>()
+            && button.label().as_deref() == Some(label)
+            && button.is_visible()
+        {
+            return Some(button.clone());
+        }
+        let mut descendant = widget.first_child();
+        while let Some(next) = descendant {
+            stack.push(next.clone());
+            descendant = next.next_sibling();
+        }
+    }
+    None
+}
+
+fn click_button(overlay: &gtk::Overlay, label: &str) {
+    button_with_label(overlay, label)
+        .unwrap_or_else(|| panic!("visible {label:?} button not found"))
+        .emit_clicked();
+}
+
+fn wait_until(condition: impl Fn() -> bool, what: &str) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while !condition() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "timed out waiting for {what}"
+        );
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
 fn wait_for_modal_layer(overlay: &gtk::Overlay) -> bool {
     let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
     while std::time::Instant::now() < deadline {
@@ -141,7 +182,7 @@ fn transfer_collisions_detect_existing_destination_items() -> Result<(), Box<dyn
         &Location::local(&source),
         &Location::local(&destination)
     ));
-    assert!(transfer_has_collision(
+    assert!(!transfer_has_collision(
         &Location::local(&source),
         &Location::local(&source_dir)
     ));
@@ -250,9 +291,9 @@ fn transfer_noops_preserve_same_folder_copies() {
 }
 
 #[test]
-fn conflict_dialog_appears_when_pasting_into_the_same_directory() {
+fn same_folder_paste_creates_a_numbered_copy_without_a_dialog() {
     crate::test_support::gtk_test(
-        "ui::browser::transfer::tests::conflict_dialog_appears_when_pasting_into_the_same_directory",
+        "ui::browser::transfer::tests::same_folder_paste_creates_a_numbered_copy_without_a_dialog",
         || {
             let fixture = tempfile::tempdir().expect("conflict fixture");
             let folder = fixture.path().join("folder");
@@ -277,14 +318,17 @@ fn conflict_dialog_appears_when_pasting_into_the_same_directory() {
                 false,
             );
 
-            assert!(
-                wait_for_modal_layer(&overlay),
-                "same-directory conflict dialog did not appear"
+            let source = folder.join("photo.jpg");
+            let copy = folder.join("photo (1).jpg");
+            wait_until(
+                || std::fs::read(&copy).is_ok_and(|contents| contents == b"photo"),
+                "the numbered duplicate copy",
             );
             assert!(
-                !has_visible_button(&overlay, "Skip"),
-                "skip is redundant for a single-item conflict"
+                find_widget_with_class(&overlay, "app-modal-layer").is_none(),
+                "same-folder duplicates must not open the conflict dialog"
             );
+            assert_eq!(std::fs::read(&source).expect("original contents"), b"photo");
             window.destroy();
         },
     );
@@ -334,15 +378,19 @@ fn conflict_dialog_offers_skip_for_a_multi_item_paste() {
                 has_visible_button(&overlay, "Skip"),
                 "skip must remain for multi-item pastes"
             );
+            assert!(
+                has_visible_button(&overlay, "Apply to All"),
+                "apply to all must appear while further conflicts remain"
+            );
             window.destroy();
         },
     );
 }
 
 #[test]
-fn skip_is_hidden_when_only_one_item_conflicts() {
+fn skipping_the_only_collision_still_transfers_accepted_items() {
     crate::test_support::gtk_test(
-        "ui::browser::transfer::tests::skip_is_hidden_when_only_one_item_conflicts",
+        "ui::browser::transfer::tests::skipping_the_only_collision_still_transfers_accepted_items",
         || {
             let fixture = tempfile::tempdir().expect("conflict fixture");
             let source_dir = fixture.path().join("source");
@@ -387,8 +435,197 @@ fn skip_is_hidden_when_only_one_item_conflicts() {
                 "the single conflicting item must still be resolvable"
             );
             assert!(
-                !has_visible_button(&overlay, "Skip"),
-                "skip is redundant when no other name conflicts remain"
+                has_visible_button(&overlay, "Skip"),
+                "skip must stay visible while other items are already accepted"
+            );
+            assert!(
+                !has_visible_button(&overlay, "Apply to All"),
+                "apply to all has nothing left to apply to"
+            );
+
+            click_button(&overlay, "Skip");
+            for name in ["b.txt", "c.txt", "d.txt"] {
+                let copied = destination.join(name);
+                wait_until(|| copied.exists(), "the non-conflicting transfer to finish");
+                assert_eq!(
+                    std::fs::read(&copied).expect("copied contents"),
+                    std::fs::read(source_dir.join(name)).expect("source contents"),
+                    "the accepted items must still be pasted"
+                );
+            }
+            assert_eq!(
+                std::fs::read(destination.join("a.txt")).expect("colliding file"),
+                b"old a",
+                "skipping must leave the conflicting file alone"
+            );
+            assert!(
+                !destination.join("a (1).txt").exists(),
+                "skipping must not create a numbered copy"
+            );
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn skip_stays_visible_for_the_final_conflict_after_keep_both() {
+    crate::test_support::gtk_test(
+        "ui::browser::transfer::tests::skip_stays_visible_for_the_final_conflict_after_keep_both",
+        || {
+            let fixture = tempfile::tempdir().expect("conflict fixture");
+            let source_dir = fixture.path().join("source");
+            let destination = fixture.path().join("destination");
+            std::fs::create_dir_all(&source_dir).expect("source dir");
+            std::fs::create_dir_all(&destination).expect("destination dir");
+            std::fs::write(source_dir.join("a.txt"), b"new a").expect("source file");
+            std::fs::write(source_dir.join("b.txt"), b"new b").expect("source file");
+            std::fs::write(destination.join("a.txt"), b"old a").expect("destination file");
+            std::fs::write(destination.join("b.txt"), b"old b").expect("destination file");
+
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            let browser_widget = view.widget();
+            let root = crate::ui::blur::BlurBin::new(&browser_widget);
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&root));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+
+            view.start_transfer(
+                Location::local(&destination),
+                vec![
+                    Location::local(source_dir.join("a.txt")),
+                    Location::local(source_dir.join("b.txt")),
+                ],
+                false,
+            );
+
+            assert!(
+                wait_for_modal_layer(&overlay),
+                "conflict dialog modal did not appear"
+            );
+            click_button(&overlay, "Keep Both");
+
+            wait_until(
+                || {
+                    visible_texts(&overlay).iter().any(|text| text == "b.txt")
+                        && !has_visible_button(&overlay, "Apply to All")
+                },
+                "the final conflict dialog once the first dialog has dismissed",
+            );
+            assert!(
+                has_visible_button(&overlay, "Skip"),
+                "skip must stay available for the final conflict after earlier work is accepted"
+            );
+            assert!(
+                !has_visible_button(&overlay, "Apply to All"),
+                "apply to all has no further conflicts left to apply to"
+            );
+            click_button(&overlay, "Skip");
+
+            let kept_both = destination.join("a (1).txt");
+            wait_until(|| kept_both.exists(), "the first Keep Both copy");
+            assert_eq!(
+                std::fs::read(&kept_both).expect("kept-both copy"),
+                b"new a",
+                "earlier Keep Both choices must be preserved"
+            );
+            assert_eq!(
+                std::fs::read(destination.join("b.txt")).expect("colliding file"),
+                b"old b",
+                "skipping the final conflict must leave it alone"
+            );
+            assert!(
+                !destination.join("b (1).txt").exists(),
+                "skipping must not create a numbered copy"
+            );
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn undo_move_keeps_skip_visible_for_a_partial_restore() {
+    crate::test_support::gtk_test(
+        "ui::browser::transfer::tests::undo_move_keeps_skip_visible_for_a_partial_restore",
+        || {
+            let fixture = tempfile::tempdir().expect("undo fixture");
+            let original = fixture.path().join("original");
+            let current = fixture.path().join("current");
+            std::fs::create_dir_all(&original).expect("original dir");
+            std::fs::create_dir_all(&current).expect("current dir");
+            std::fs::write(original.join("a.txt"), b"new a").expect("moved file");
+            std::fs::write(original.join("b.txt"), b"new b").expect("moved file");
+
+            let view = crate::ui::browser::BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            let browser_widget = view.widget();
+            let root = crate::ui::blur::BlurBin::new(&browser_widget);
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&root));
+            let window = gtk::Window::builder().child(&overlay).build();
+            window.present();
+
+            view.start_transfer(
+                Location::local(&current),
+                vec![
+                    Location::local(original.join("a.txt")),
+                    Location::local(original.join("b.txt")),
+                ],
+                true,
+            );
+            wait_until(
+                || current.join("b.txt").exists() && !original.join("b.txt").exists(),
+                "the move to complete",
+            );
+            std::fs::write(original.join("a.txt"), b"blocker").expect("new occupant");
+
+            let browser = view.browser();
+            wait_until(
+                || browser.pending_undo_move().is_some(),
+                "the move undo to become pending",
+            );
+            let (generation, records) = browser.pending_undo_move().expect("pending move undo");
+            assert_eq!(records.len(), 2, "both moved items must be recorded");
+            view.state.undo_move(generation, records);
+
+            assert!(
+                wait_for_modal_layer(&overlay),
+                "undo collision dialog did not appear"
+            );
+            assert!(
+                has_visible_button(&overlay, "Skip"),
+                "skip must stay visible when cancelling would discard the accepted restore"
+            );
+            assert!(
+                !has_visible_button(&overlay, "Apply to All"),
+                "apply to all has no further conflicts left to apply to"
+            );
+            click_button(&overlay, "Skip");
+
+            wait_until(
+                || !current.join("b.txt").exists(),
+                "the accepted item to move back",
+            );
+            assert_eq!(
+                std::fs::read(original.join("b.txt")).expect("restored file"),
+                b"new b",
+                "the accepted portion of the undo must still be restored"
+            );
+            assert!(
+                current.join("a.txt").exists(),
+                "skipping must leave the conflicting move in place"
+            );
+            assert_eq!(
+                std::fs::read(original.join("a.txt")).expect("new occupant"),
+                b"blocker",
+                "a skipped conflict must not be overwritten"
             );
             window.destroy();
         },

@@ -25,9 +25,6 @@ def test_same_folder_copy_creates_a_numbered_duplicate(strata, mode, source, dup
     else:
         strata.keyboard.press("ctrl+c")
         strata.paste_into(fixture.root.name)
-    strata.wait(lambda: strata.dialog() is not None, "the same-folder conflict dialog")
-    strata.pointer.click(strata.dialog_button("Keep Both"))
-
     strata.wait(lambda: fixture.path(duplicate).exists(), "the numbered copy")
     strata.entry(duplicate, directory=fixture.root.name)
     assert fixture.path(source).exists()
@@ -212,7 +209,7 @@ def _paste_from_context_menu(strata):
     strata.choose_menu_item("Paste")
 
 
-def test_pasting_a_duplicate_name_asks_before_replacing(strata):
+def test_skipping_one_collision_still_pastes_the_rest(strata):
     fixture = strata.fixture
     fixture.path("archive/notes.txt").write_text("existing\n")
     strata.open_directory("documents")
@@ -228,14 +225,20 @@ def test_pasting_a_duplicate_name_asks_before_replacing(strata):
     assert dialog.name == "File already exists", (
         "a duplicate name must be surfaced rather than silently resolved"
     )
-    assert dialog.find(role="button", name="Skip") is None, (
-        "skip is redundant when only one name conflicts"
+    assert dialog.find(role="button", name="Skip") is not None, (
+        "skip must stay available when other items are already accepted"
+    )
+    assert dialog.find(name="Apply to All") is None, (
+        "apply to all has no further conflicts left to apply to"
     )
 
-    strata.pointer.click(strata.dialog_button("Replace"))
+    strata.pointer.click(strata.dialog_button("Skip"))
     strata.wait(lambda: strata.dialog() is None, "the conflict dialog to close")
-    assert fixture.path("archive/notes.txt").read_text() == "notes\n", (
-        "replacing must apply the pasted contents"
+    assert fixture.path("archive/notes.txt").read_text() == "existing\n", (
+        "skipping must leave the conflicting file alone"
+    )
+    assert not fixture.path("archive/notes (1).txt").exists(), (
+        "skipping must not create a numbered copy"
     )
     assert fixture.path("archive/report.md").is_file(), (
         "non-conflicting items must still be pasted"
