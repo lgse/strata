@@ -3174,12 +3174,11 @@ fn install_modified_selection_click(
         }
         if let Some(widget) = gesture.widget()
             && super::pointer::hits_item_content(&widget, x, y)
+            && let Some(item_widget) = widget.parent()
         {
-            if let Some(item_widget) = widget.parent() {
-                item_widget.grab_focus();
-            }
-            gesture.set_state(gtk::EventSequenceState::Claimed);
+            item_widget.grab_focus();
         }
+        gesture.set_state(gtk::EventSequenceState::Claimed);
     });
     click.connect_released(|gesture, _, _, _| {
         if gesture
