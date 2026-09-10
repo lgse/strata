@@ -499,6 +499,7 @@ pub struct Browser {
     peek_load: RefCell<Option<LoadHandle>>,
     validation_load: RefCell<Option<LoadHandle>>,
     validation_generation: Cell<u64>,
+    navigation_cleanup: RefCell<Option<Box<dyn FnOnce()>>>,
     operation_provider: RefCell<Option<Rc<dyn OperationProvider>>>,
     operation_load: RefCell<Option<LoadHandle>>,
     current_operation: Cell<Option<OperationRequestId>>,
@@ -547,6 +548,7 @@ impl Browser {
             peek_load: RefCell::new(None),
             validation_load: RefCell::new(None),
             validation_generation: Cell::new(0),
+            navigation_cleanup: RefCell::new(None),
             operation_provider: RefCell::new(None),
             operation_load: RefCell::new(None),
             current_operation: Cell::new(None),
@@ -638,9 +640,7 @@ impl Browser {
     }
 
     fn navigate_validated(self: &Rc<Self>, location: Location, select_first: bool) {
-        let generation = self.validation_generation.get().saturating_add(1);
-        self.validation_generation.set(generation);
-        self.validation_load.borrow_mut().take();
+        let generation = self.bump_navigation_generation();
         let weak = Rc::downgrade(self);
         let pending_location = location.clone();
         let emit = Rc::new(move |result| {
@@ -667,6 +667,27 @@ impl Browser {
 
     pub(crate) fn navigation_generation(&self) -> u64 {
         self.validation_generation.get()
+    }
+
+    /// Invalidates work whose result is guarded by the navigation generation.
+    pub(crate) fn bump_navigation_generation(&self) -> u64 {
+        let generation = self.validation_generation.get().saturating_add(1);
+        self.validation_generation.set(generation);
+        self.validation_load.borrow_mut().take();
+        if let Some(cleanup) = self.navigation_cleanup.take() {
+            cleanup();
+        }
+        generation
+    }
+
+    pub(crate) fn set_navigation_cleanup(&self, cleanup: impl FnOnce() + 'static) {
+        if let Some(previous) = self.navigation_cleanup.replace(Some(Box::new(cleanup))) {
+            previous();
+        }
+    }
+
+    pub(crate) fn finish_navigation_cleanup(&self) {
+        self.navigation_cleanup.take();
     }
 
     pub fn active_depth(&self) -> Option<usize> {
@@ -726,9 +747,7 @@ impl Browser {
     }
 
     pub(crate) fn navigate_with_selection(self: &Rc<Self>, location: Location, select_first: bool) {
-        self.validation_generation
-            .set(self.validation_generation.get().saturating_add(1));
-        self.validation_load.borrow_mut().take();
+        self.bump_navigation_generation();
         if self.active_location().as_ref() == Some(&location) {
             return;
         }
@@ -765,9 +784,7 @@ impl Browser {
         location: Location,
         select_first_on_load: bool,
     ) {
-        self.validation_generation
-            .set(self.validation_generation.get().saturating_add(1));
-        self.validation_load.borrow_mut().take();
+        self.bump_navigation_generation();
         if self.is_open_child(parent_depth, &location) {
             return;
         }
@@ -785,9 +802,7 @@ impl Browser {
             return;
         }
 
-        let generation = self.validation_generation.get().saturating_add(1);
-        self.validation_generation.set(generation);
-        self.validation_load.borrow_mut().take();
+        let generation = self.bump_navigation_generation();
         let weak = Rc::downgrade(self);
         let pending_location = location.clone();
         let parent_location = self.location_at(parent_depth);

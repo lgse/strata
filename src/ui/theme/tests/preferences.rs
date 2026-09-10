@@ -146,7 +146,77 @@ fn assert_recovered_preferences_survive_save(
         toml::from_str(&fs::read_to_string(settings_path()).expect("saved file"))
             .expect("save repairs invalid preferences");
     assert_eq!(persisted, expected);
-    assert_eq!(read_preferences(), Some(expected));
+    assert_eq!(read_preferences().expect("saved preferences"), expected);
+}
+
+#[test]
+fn unreadable_preferences_are_preserved_while_live_changes_still_apply() {
+    gtk_test(
+        "ui::theme::tests::preferences::unreadable_preferences_are_preserved_while_live_changes_still_apply",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            let valid = fs::read(settings_path()).expect("saved fixture");
+            for suffix in [b"\nthis is not valid toml [".as_slice(), b"\xff"] {
+                let mut broken = valid.clone();
+                broken.extend_from_slice(suffix);
+                fs::write(settings_path(), &broken).expect("broken settings");
+                let manager = ThemeManager::load();
+                let anchors = [
+                    gtk::Box::new(gtk::Orientation::Vertical, 0),
+                    gtk::Box::new(gtk::Orientation::Vertical, 0),
+                ];
+                let observations = anchors.each_ref().map(|anchor| {
+                    let values = Rc::new(RefCell::new(Vec::new()));
+                    let observed = values.clone();
+                    manager.bind_preference(
+                        anchor,
+                        ThemeManager::folder_peeking,
+                        move |_, value| {
+                            observed.borrow_mut().push(value);
+                        },
+                    );
+                    values
+                });
+                manager.set_folder_peeking(false);
+                manager.set_folder_peeking(false);
+                for values in observations {
+                    assert_eq!(*values.borrow(), [true, false]);
+                }
+                assert_eq!(
+                    fs::read(settings_path()).expect("preserved settings"),
+                    broken
+                );
+                fs::write(settings_path(), &valid).expect("repair settings");
+                manager.set_folder_peeking(true);
+                assert_eq!(
+                    fs::read(settings_path()).expect("repair left untouched"),
+                    valid
+                );
+                drop(manager);
+            }
+            let manager = ThemeManager::load();
+            assert_eq!(*manager.preferences.borrow(), non_default_preferences());
+            manager.set_folder_peeking(true);
+            assert!(
+                read_preferences()
+                    .expect("saving resumes after reload")
+                    .folder_peeking
+            );
+        },
+    );
+}
+
+#[test]
+fn missing_settings_allow_first_run_saves() {
+    gtk_test(
+        "ui::theme::tests::preferences::missing_settings_allow_first_run_saves",
+        || {
+            assert!(!settings_path().exists());
+            let manager = ThemeManager::load();
+            manager.set_folder_peeking(false);
+            assert!(!read_preferences().expect("first run save").folder_peeking);
+        },
+    );
 }
 
 #[test]
@@ -439,7 +509,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                     "setter {index} publishes exactly once"
                 );
                 assert_eq!(observations.borrow().last(), Some(&expected));
-                assert_eq!(read_preferences(), Some(expected));
+                assert_eq!(read_preferences().expect("saved preferences"), expected);
                 setter(&manager);
                 assert_eq!(
                     observations.borrow().len(),

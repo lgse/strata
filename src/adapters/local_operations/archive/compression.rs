@@ -542,7 +542,9 @@ pub(super) fn compress_7z(
             EncoderOptions::Lzma2(Lzma2Options::from_level_mt(6, threads, 1 << 26)),
         );
     if let Some(pw) = password {
-        let methods = vec![lzma2, AesEncoderOptions::new(pw.into()).into()];
+        // The last method is the outermost coder and sees the plaintext, so
+        // AES must come first for LZMA2 to compress anything.
+        let methods = vec![AesEncoderOptions::new(pw.into()).into(), lzma2];
         writer.set_content_methods(methods);
     } else {
         writer.set_content_methods(vec![lzma2]);

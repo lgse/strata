@@ -60,6 +60,32 @@ fn package_update_accepts_the_stable_release_in_the_repository() {
 }
 
 #[test]
+fn package_update_accepts_the_prerelease_a_prerelease_package_ships() {
+    let asset = matching_asset_json("0.10.0-rc.2");
+    let response = release_response(&format!(
+        r#"{{"tag_name":"v0.10.0-rc.2","draft":false,"prerelease":true,"assets":[{asset}]}}"#
+    ));
+
+    assert!(matches!(
+        package_update_from_response(&version("0.10.0-rc.2"), &response),
+        UpdateCheck::Available { .. }
+    ));
+}
+
+#[test]
+fn package_update_still_requires_a_stable_release_for_a_stable_package() {
+    let asset = matching_asset_json("0.8.2");
+    let response = release_response(&format!(
+        r#"{{"tag_name":"v0.8.2","draft":false,"prerelease":true,"assets":[{asset}]}}"#
+    ));
+
+    assert!(matches!(
+        package_update_from_response(&version("0.8.2"), &response),
+        UpdateCheck::Failed(_)
+    ));
+}
+
+#[test]
 fn package_check_stays_quiet_when_the_repository_has_no_newer_version() {
     let result = fetch_package_update(&version("0.8.1"), || Ok(version("0.8.1")));
 
