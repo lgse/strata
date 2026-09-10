@@ -821,6 +821,11 @@ headerbar menubutton.header-action > button:focus-visible {
   padding: 7px 9px;
 }
 
+.form-field-error {
+  color: @theme_danger;
+  font-size: 0.82em;
+}
+
 .portal-setup-dialog .form-message:not(.error) {
   padding: 0;
   color: @theme_text;
