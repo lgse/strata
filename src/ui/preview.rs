@@ -26,6 +26,7 @@ const DEFAULT_WIDTH: i32 = 520;
 const MIN_WIDTH: i32 = 280;
 const MAX_WIDTH: i32 = 3_000;
 const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
+const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
 const PRINT_TEXT_BYTE_LIMIT: usize = 16 * 1024 * 1024;
 const TRANSITION: Duration = Duration::from_millis(260);
 const PDF_PAGE_GAP: i32 = 6;
@@ -88,6 +89,7 @@ struct PreviewState {
     occupied_width: RefCell<Option<Rc<dyn Fn() -> i32>>>,
     current: RefCell<Option<FileEntry>>,
     load: RefCell<Option<LoadHandle>>,
+    loading_delay: RefCell<Option<glib::SourceId>>,
     pdf_loads: Rc<RefCell<HashMap<i32, LoadHandle>>>,
     print_load: RefCell<Option<LoadHandle>>,
     print_progress: RefCell<Option<PrintProgress>>,
@@ -204,6 +206,7 @@ impl PreviewDrawer {
             occupied_width: RefCell::new(None),
             current: RefCell::new(None),
             load: RefCell::new(None),
+            loading_delay: RefCell::new(None),
             pdf_loads: Rc::new(RefCell::new(HashMap::new())),
             print_load: RefCell::new(None),
             print_progress: RefCell::new(None),
@@ -495,6 +498,7 @@ impl PreviewState {
             .set(self.animation_generation.get().saturating_add(1));
         self.current_request.set(None);
         self.load.borrow_mut().take();
+        self.cancel_loading();
         self.pdf_loads.borrow_mut().clear();
         self.cancel_print();
         self.clear_content();
@@ -736,7 +740,6 @@ impl PreviewState {
         self.size.set_text(&metadata_size(&entry));
         crate::util::set_modified_date(&self.modified, Some(&entry), "—");
         self.content_type.set_text(file_extension(&entry));
-        self.show_loading();
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
 
@@ -744,6 +747,7 @@ impl PreviewState {
         self.next_request
             .set(self.next_request.get().saturating_add(1));
         self.current_request.set(Some(request_id));
+        self.show_loading(request_id);
         let weak = Rc::downgrade(self);
         let emit = Rc::new(move |event| {
             let Some(state) = weak.upgrade() else {
@@ -769,8 +773,7 @@ impl PreviewState {
         }
         match event {
             PreviewEvent::Ready(preview) if preview.request_id == expected => {
-                self.current_request.set(None);
-                self.load.borrow_mut().take();
+                self.cancel_loading();
                 self.render(preview);
             }
             PreviewEvent::Failed {
@@ -780,6 +783,7 @@ impl PreviewState {
             } if request_id == expected => {
                 self.current_request.set(None);
                 self.load.borrow_mut().take();
+                self.cancel_loading();
                 self.title.set_text(&entry.display_name);
                 self.show_message("Preview unavailable", &message);
             }
@@ -1443,15 +1447,33 @@ impl PreviewState {
         clear_box(&self.content);
     }
 
-    fn show_loading(&self) {
+    fn show_loading(self: &Rc<Self>, request_id: PreviewRequestId) {
         self.clear_content();
-        let spinner = gtk::Spinner::new();
-        spinner.add_css_class("preview-spinner");
-        spinner.set_halign(gtk::Align::Center);
-        spinner.set_valign(gtk::Align::Center);
-        spinner.set_vexpand(true);
-        spinner.start();
-        self.content.append(&spinner);
+        self.cancel_loading();
+        let weak = Rc::downgrade(self);
+        let source = glib::timeout_add_local_once(PREVIEW_SPINNER_DELAY, move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.loading_delay.borrow_mut().take();
+            if state.current_request.get() != Some(request_id) {
+                return;
+            }
+            let spinner = gtk::Spinner::new();
+            spinner.add_css_class("preview-spinner");
+            spinner.set_halign(gtk::Align::Center);
+            spinner.set_valign(gtk::Align::Center);
+            spinner.set_vexpand(true);
+            spinner.start();
+            state.content.append(&spinner);
+        });
+        self.loading_delay.replace(Some(source));
+    }
+
+    fn cancel_loading(&self) {
+        if let Some(source) = self.loading_delay.borrow_mut().take() {
+            source.remove();
+        }
     }
 
     fn show_media_error(&self, error: &glib::Error) {
