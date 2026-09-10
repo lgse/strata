@@ -669,6 +669,17 @@ impl Browser {
         self.validation_generation.get()
     }
 
+    /// Claims the current navigation slot without starting a load, so a caller doing
+    /// out-of-band classification (an open-argument's file-vs-directory check) can later
+    /// tell, via [`Self::navigation_generation`], whether the user has since navigated
+    /// elsewhere and any redirect it was about to make should be dropped.
+    pub(crate) fn bump_navigation_generation(&self) -> u64 {
+        let generation = self.validation_generation.get().saturating_add(1);
+        self.validation_generation.set(generation);
+        self.validation_load.borrow_mut().take();
+        generation
+    }
+
     pub fn active_depth(&self) -> Option<usize> {
         self.state.borrow().active_depth()
     }

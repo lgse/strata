@@ -32,7 +32,7 @@ mod window;
 
 pub(crate) use chooser::{cancel_chooser, present_chooser};
 pub(crate) use window::home_directory;
-pub use window::{present, present_reveal};
+pub use window::{present, present_open, present_reveal};
 
 pub(crate) fn prepare_portal_ui() {
     let _theme = theme::ThemeManager::shared();

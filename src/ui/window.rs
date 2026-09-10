@@ -19,8 +19,9 @@ use crate::{
 
 use super::{
     browser::{
-        BrowserView, PeekBehavior, PinStatus, PreparedFileDrop, file_drop_action, file_drop_commit,
-        locations_from_file_list_value, prepare_file_drop_target, show_error_dialog,
+        BrowserView, PeekBehavior, PinStatus, PreparedFileDrop, WeakBrowserView, file_drop_action,
+        file_drop_commit, locations_from_file_list_value, prepare_file_drop_target,
+        show_error_dialog,
     },
     browser_modes::{BrowserDensity, BrowserMode},
     motion::{animations_enabled, emphasized_deceleration},
@@ -30,7 +31,10 @@ use super::{
 mod composition;
 mod devices;
 mod keyboard;
+mod open_argument;
 mod sidebar;
+
+pub use open_argument::present_open;
 
 use sidebar::PlaceNavigation;
 pub(super) use sidebar::build_sidebar;
@@ -80,7 +84,7 @@ fn mouse_history_action(button: u32) -> Option<MouseHistoryAction> {
 }
 
 pub fn present(application: &gtk::Application) {
-    present_target(application, None, Vec::new(), false);
+    present_target(application, None, Vec::new(), false, true);
 }
 
 /// Opens the requested directory with the named items selected.
@@ -90,6 +94,7 @@ pub fn present_reveal(application: &gtk::Application, request: RevealRequest) {
         Some(request.directory),
         request.selection,
         request.properties,
+        true,
     );
 }
 
@@ -119,12 +124,16 @@ fn browser_for_window() -> BrowserView {
     browser
 }
 
-fn present_target(
+/// Builds and presents a window immediately. When `auto_navigate` is false, the caller
+/// takes over the first navigation itself (see `open_argument`) instead of the window
+/// navigating to `location` (or home) on its own right after presenting.
+pub(super) fn present_target(
     application: &gtk::Application,
     location: Option<Location>,
     selection: Vec<String>,
     properties: bool,
-) {
+    auto_navigate: bool,
+) -> BrowserView {
     let present_started = std::time::Instant::now();
     crate::assets::register_icon_theme();
     let theme_manager = super::theme::ThemeManager::shared();
@@ -148,21 +157,24 @@ fn present_target(
     content.connect_cleanup(&window);
     window.present();
     crate::metrics::mark_window_presented();
-    let pending_location = location.unwrap_or_else(|| Location::local(home_directory()));
-    if !selection.is_empty() {
-        browser.select_after_load(selection, properties);
+    if auto_navigate {
+        let pending_location = location.unwrap_or_else(|| Location::local(home_directory()));
+        if !selection.is_empty() {
+            browser.select_after_load(selection, properties);
+        }
+        let idle_browser = browser.clone();
+        glib::idle_add_local_once(move || {
+            let started = std::time::Instant::now();
+            idle_browser.navigate_location(pending_location);
+            tracing::debug!(
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "present navigation started"
+            );
+        });
     }
-    let idle_browser = browser.clone();
-    glib::idle_add_local_once(move || {
-        let started = std::time::Instant::now();
-        idle_browser.navigate_location(pending_location);
-        tracing::debug!(
-            elapsed_ms = started.elapsed().as_millis() as u64,
-            "present navigation started"
-        );
-    });
     super::portal_preferences::schedule_offer(&window);
     schedule_due_update_check(&theme_manager, &update_notice);
+    browser
 }
 
 fn schedule_after_first_paint(window: &gtk::ApplicationWindow, sidebar: &SidebarView) {

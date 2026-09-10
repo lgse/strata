@@ -21,7 +21,7 @@ use crate::ui::browser_modes::{BrowserDensity, BrowserMode, ClickActivation, Mod
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 mod archive;
@@ -213,6 +213,15 @@ fn focus_header_action(actions: &gtk::Box, direction: gtk::DirectionType) -> boo
 #[derive(Clone)]
 pub struct BrowserView {
     state: Rc<ViewState>,
+}
+
+#[derive(Clone)]
+pub(crate) struct WeakBrowserView(Weak<ViewState>);
+
+impl WeakBrowserView {
+    pub(crate) fn upgrade(&self) -> Option<BrowserView> {
+        self.0.upgrade().map(|state| BrowserView { state })
+    }
 }
 
 impl BrowserView {
@@ -464,6 +473,20 @@ impl BrowserView {
 
     pub fn navigate_location(&self, location: Location) {
         self.state.browser.navigate(location);
+    }
+
+    /// The overlay content sits in, for a caller that needs to add its own
+    /// transient, non-modal widget (see [`crate::ui::window::open_argument`]) without
+    /// reaching into view-state internals.
+    pub(crate) fn overlay(&self) -> gtk::Overlay {
+        self.state.overlay.clone()
+    }
+
+    /// A handle that outlives this window's close without keeping its widgets or
+    /// `Browser` alive, for an async caller that must ignore a late result instead
+    /// of assuming the underlying operation terminated.
+    pub(crate) fn downgrade(&self) -> WeakBrowserView {
+        WeakBrowserView(Rc::downgrade(&self.state))
     }
 
     pub fn commit_file_drop(
