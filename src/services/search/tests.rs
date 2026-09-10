@@ -392,6 +392,41 @@ fn assert_fair_sibling_coverage(create_bulk_first: bool) {
 }
 
 #[test]
+fn bounded_index_reaches_a_deep_file_while_broad_folders_compete() {
+    let root = unique_fixture_root("deep-file-with-broad-competition");
+    let mut roots = Vec::new();
+    for branch in 0..5 {
+        let broad = root.join(format!("broad-{branch}"));
+        roots.push(broad.clone());
+        for child in 0..80 {
+            fs::create_dir_all(broad.join(format!("child-{child:03}")))
+                .expect("create broad competing directory");
+        }
+    }
+    let pictures = root.join("Pictures");
+    roots.push(pictures.clone());
+    fs::create_dir_all(&pictures).expect("create Pictures fixture");
+    for position in 0..15 {
+        fixture_file(&pictures, format!("screenshot-{position:02}.png"));
+    }
+    let target = fixture_file(&pictures, "test/dsds/le-cat.jpeg");
+
+    let (search, events) = index_trees_with_budget(roots, false, 200, 64, Duration::from_secs(10));
+    search.query("le-cat");
+    let SearchEvent::Results {
+        items, coverage, ..
+    } = wait_for_results(&events).expect("results");
+    drop(search);
+    fs::remove_dir_all(root).expect("remove fixture");
+
+    assert!(coverage.entry_limit);
+    assert!(
+        items.iter().any(|item| item.path == target),
+        "the sparse deep path must progress before broad folders consume the budget"
+    );
+}
+
+#[test]
 fn bounded_index_fairly_reaches_deep_document_hits_when_bulk_is_created_first() {
     assert_fair_sibling_coverage(true);
 }

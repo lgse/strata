@@ -403,7 +403,6 @@ headerbar menubutton.header-action > button:focus-visible {
   border-bottom: 1px solid alpha(@theme_border, 0.28);
   color: @theme_text;
   padding: 0;
-  transition: background 160ms ease-out;
 }
 
 .search-result > box {

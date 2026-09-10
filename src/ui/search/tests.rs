@@ -53,6 +53,83 @@ fn result_updates_preserve_entry_caret_selection_and_default_selection() {
 }
 
 #[test]
+fn query_changes_retain_rows_until_incremental_results_arrive() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::query_changes_retain_rows_until_incremental_results_arrive",
+        || {
+            let (dialog, window) = mapped_dialog(Rc::new(|_| {}));
+            dialog.state.field.set_text("le");
+            render_results(
+                &dialog.state,
+                search_items("le-cat", 3),
+                true,
+                SearchCoverage::default(),
+            );
+            let retained = dialog
+                .state
+                .list
+                .row_at_index(0)
+                .expect("initial result row");
+            let text = dialog
+                .state
+                .field
+                .first_child()
+                .and_downcast::<gtk::Text>()
+                .expect("entry text");
+
+            text.emit_by_name::<()>("insert-at-cursor", &[&"-"]);
+
+            assert_eq!(dialog.state.list.row_at_index(0), Some(retained));
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn refined_queries_select_the_new_best_result_without_rebuilding_it() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::refined_queries_select_the_new_best_result_without_rebuilding_it",
+        || {
+            let (dialog, window) = mapped_dialog(Rc::new(|_| {}));
+            dialog.state.field.set_text("l");
+            let other = SearchItem::for_test(PathBuf::from("/search/older-log.txt"), false);
+            let target =
+                SearchItem::for_test(PathBuf::from("/Pictures/test/dsds/le-cat.jpeg"), false);
+            render_results(
+                &dialog.state,
+                vec![other.clone(), target.clone()],
+                false,
+                SearchCoverage::default(),
+            );
+            let target_row = dialog
+                .state
+                .list
+                .row_at_index(1)
+                .expect("target result row");
+            let text = dialog
+                .state
+                .field
+                .first_child()
+                .and_downcast::<gtk::Text>()
+                .expect("entry text");
+            text.emit_by_name::<()>("insert-at-cursor", &[&"e-cat"]);
+
+            render_results(
+                &dialog.state,
+                vec![target, other],
+                false,
+                SearchCoverage::default(),
+            );
+
+            assert_eq!(dialog.state.list.row_at_index(0), Some(target_row.clone()));
+            assert_eq!(dialog.state.list.selected_row(), Some(target_row));
+            assert!(contains_keyboard_focus(dialog.state.field.upcast_ref()));
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn arrow_keys_keep_entry_focus_and_use_a_logical_navigation_start() {
     crate::test_support::gtk_test(
         "ui::search::tests::arrow_keys_keep_entry_focus_and_use_a_logical_navigation_start",

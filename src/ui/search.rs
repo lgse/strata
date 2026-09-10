@@ -32,6 +32,7 @@ struct SearchState {
     visible_results: RefCell<Vec<SearchItem>>,
     positions: Rc<RefCell<HashMap<gtk::ListBoxRow, usize>>>,
     requested_thumbnails: RefCell<HashSet<PathBuf>>,
+    rendered_query: RefCell<String>,
     search: RefCell<Option<SearchHandle>>,
     generation: Cell<u64>,
     interaction_revision: Cell<u64>,
@@ -166,6 +167,7 @@ impl SearchDialog {
             visible_results: RefCell::new(Vec::new()),
             positions,
             requested_thumbnails: RefCell::new(HashSet::new()),
+            rendered_query: RefCell::new(String::new()),
             search: RefCell::new(None),
             generation: Cell::new(0),
             interaction_revision: Cell::new(0),
@@ -369,13 +371,15 @@ impl SearchDialog {
 
 fn begin_query(state: &Rc<SearchState>, query: &str) {
     record_interaction(state);
-    clear_results(state);
-    state.results.set_visible_child_name("status");
+    state.navigation_started.set(false);
     if query.trim().is_empty() {
+        clear_results(state);
+        state.results.set_visible_child_name("status");
         state.status.set_text(
             "Type to search Home and mounted local drives\nFuzzy matching · try a name or path fragment",
         );
-    } else {
+    } else if state.visible_results.borrow().is_empty() {
+        state.results.set_visible_child_name("status");
         state.status.set_text("Searching…");
     }
     if let Some(search) = state.search.borrow().as_ref() {
@@ -389,6 +393,8 @@ fn render_results(
     indexing: bool,
     coverage: SearchCoverage,
 ) {
+    let query = state.field.text().trim().to_owned();
+    let query_changed = state.rendered_query.borrow().as_str() != query;
     let old_items = state.visible_results.borrow().clone();
     let results_changed = old_items != results;
     let selected_index = state.list.selected_row().map(|row| row.index());
@@ -460,25 +466,30 @@ fn render_results(
         state.reconciling_results.set(false);
     }
 
+    state.rendered_query.replace(query);
     let has_results = !state.visible_results.borrow().is_empty();
     state.truncated_hint.set_text(&coverage.message());
     state.truncated_hint.set_visible(coverage.is_partial());
     state
         .results
         .set_visible_child_name(if has_results { "results" } else { "status" });
-    if has_results && results_changed {
+    if has_results && (results_changed || query_changed) {
         let items = state.visible_results.borrow();
-        let restored = selected_path
-            .as_ref()
-            .and_then(|path| items.iter().position(|item| &item.path == path))
-            .or_else(|| {
-                selected_index.map(|position| {
-                    usize::try_from(position)
-                        .unwrap_or_default()
-                        .min(items.len() - 1)
+        let restored = if query_changed {
+            0
+        } else {
+            selected_path
+                .as_ref()
+                .and_then(|path| items.iter().position(|item| &item.path == path))
+                .or_else(|| {
+                    selected_index.map(|position| {
+                        usize::try_from(position)
+                            .unwrap_or_default()
+                            .min(items.len() - 1)
+                    })
                 })
-            })
-            .unwrap_or(0);
+                .unwrap_or(0)
+        };
         drop(items);
         state
             .list
@@ -727,6 +738,7 @@ fn clear_results(state: &SearchState) {
     state.navigation_started.set(false);
     state.reconciling_results.set(true);
     state.visible_results.borrow_mut().clear();
+    state.rendered_query.borrow_mut().clear();
     state.positions.borrow_mut().clear();
     state.requested_thumbnails.borrow_mut().clear();
     state.scroller.vadjustment().set_value(0.0);

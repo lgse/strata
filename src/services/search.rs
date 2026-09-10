@@ -2,7 +2,7 @@
 
 use std::{
     cmp::Reverse,
-    collections::{BinaryHeap, HashMap, HashSet},
+    collections::{BinaryHeap, HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock, RwLock, Weak,
@@ -629,14 +629,16 @@ fn build_index(
     let boundaries = Arc::new(seen);
     let initial_directory_batch = initial_directory_batch.max(1);
     let max_pending_directories = max_pending_directories.max(1);
-    let mut pending_walks = BinaryHeap::new();
+    let mut pending_branches = VecDeque::new();
+    let mut pending_directory_count = 0_usize;
     let mut next_sequence = 0_u64;
     for root in roots {
-        if pending_walks.len() >= max_pending_directories {
+        if pending_directory_count >= max_pending_directories {
             coverage.directory_limit = true;
             continue;
         }
-        pending_walks.push(ScheduledDirectory {
+        let mut branch = BinaryHeap::new();
+        branch.push(ScheduledDirectory {
             task: DirectoryTask {
                 path: root.clone(),
                 root,
@@ -649,10 +651,17 @@ fn build_index(
             sequence: next_sequence,
         });
         next_sequence = next_sequence.wrapping_add(1);
+        pending_branches.push_back(branch);
+        pending_directory_count += 1;
     }
 
-    'walk: while let Some(scheduled) = pending_walks.pop() {
+    'walk: while let Some(mut branch) = pending_branches.pop_front() {
+        let Some(scheduled) = branch.pop() else {
+            continue;
+        };
+        pending_directory_count = pending_directory_count.saturating_sub(1);
         let mut directory = scheduled.task;
+        let mut new_branches = Vec::new();
         if index.is_retired() {
             return;
         }
@@ -697,8 +706,8 @@ fn build_index(
                 coverage.unreadable = true;
             }
             let is_directory = entry.file_type().is_some_and(|kind| kind.is_dir());
-            // Structural entries are cheap in the fair-work clock so the scheduler maps
-            // breadth and depth before returning to dense directories of regular files.
+            // Structural entries are cheap within a branch so nested documents progress
+            // before dense runs of regular files consume the shared entry budget.
             slice_work = slice_work.saturating_add(if is_directory { 1 } else { 8 });
             if directory.probe_only {
                 coverage.depth_limit = true;
@@ -719,8 +728,8 @@ fn build_index(
             if is_directory {
                 // Keep one queue slot available for this slice's continuation. A child that
                 // cannot be admitted is omitted, while already queued work still completes.
-                if pending_walks.len() < max_pending_directories.saturating_sub(1) {
-                    pending_walks.push(ScheduledDirectory {
+                if pending_directory_count < max_pending_directories.saturating_sub(1) {
+                    let child = ScheduledDirectory {
                         task: DirectoryTask {
                             path,
                             root: directory.root.clone(),
@@ -731,8 +740,16 @@ fn build_index(
                             virtual_work: directory.virtual_work.saturating_add(slice_work),
                         },
                         sequence: next_sequence,
-                    });
+                    };
                     next_sequence = next_sequence.wrapping_add(1);
+                    pending_directory_count += 1;
+                    if directory.depth == 0 {
+                        let mut child_branch = BinaryHeap::new();
+                        child_branch.push(child);
+                        new_branches.push(child_branch);
+                    } else {
+                        branch.push(child);
+                    }
                 } else {
                     coverage.directory_limit = true;
                 }
@@ -751,12 +768,17 @@ fn build_index(
             directory.skipped_entries = directory.skipped_entries.saturating_add(processed_entries);
             directory.batch_size = directory.batch_size.saturating_mul(2);
             directory.virtual_work = directory.virtual_work.saturating_add(slice_work);
-            pending_walks.push(ScheduledDirectory {
+            branch.push(ScheduledDirectory {
                 task: directory,
                 sequence: next_sequence,
             });
             next_sequence = next_sequence.wrapping_add(1);
+            pending_directory_count += 1;
         }
+        if !branch.is_empty() {
+            pending_branches.push_back(branch);
+        }
+        pending_branches.extend(new_branches);
     }
     append_index_items(index, &mut pending_items, false, coverage);
     if coverage.is_partial() {
