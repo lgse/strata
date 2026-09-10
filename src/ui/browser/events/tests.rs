@@ -55,6 +55,23 @@ fn progress_layer(overlay: &gtk::Overlay) -> gtk::Box {
 }
 
 #[test]
+fn extract_error_needs_password_ignores_quoted_member_names() {
+    assert!(extract_error_needs_password("Invalid password"));
+    assert!(extract_error_needs_password(
+        "Unsupported encryption method"
+    ));
+    assert!(!extract_error_needs_password(
+        "Archive member `passwords.txt` declared 4 bytes but produced more"
+    ));
+    assert!(!extract_error_needs_password(
+        "Archive member `passwords.txt` declared 10 bytes, but only 2 bytes are free at the destination"
+    ));
+    assert!(!extract_error_needs_password(
+        "Not enough free space at the destination to extract `encrypted-notes.md` (0 bytes available)"
+    ));
+}
+
+#[test]
 fn completed_archive_does_not_restore_a_superseded_destination_after_modal_dismissal() {
     crate::test_support::gtk_test(
         "ui::browser::events::tests::completed_archive_does_not_restore_a_superseded_destination_after_modal_dismissal",

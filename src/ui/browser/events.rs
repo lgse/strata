@@ -534,12 +534,11 @@ impl ViewState {
                 self.dismiss_file_operation_progress();
                 self.pending_archive_destination.take();
                 let retry = self.pending_extract_retry.take();
-                if let Some((entry, dest)) = retry {
-                    let lower = message.to_lowercase();
-                    if lower.contains("password") || lower.contains("encrypt") {
-                        self.show_extract_password_dialog(entry, dest);
-                        return;
-                    }
+                if let Some((entry, dest)) = retry
+                    && extract_error_needs_password(message)
+                {
+                    self.show_extract_password_dialog(entry, dest);
+                    return;
                 }
                 show_error_dialog(&self.overlay, "Unable to complete operation", message);
             }
@@ -856,6 +855,17 @@ impl ViewState {
                 | BrowserEvent::EntriesReplaced { .. }
         )
     }
+}
+
+/// Whether an extract failure message reports a password or encryption problem.
+///
+/// Backtick-quoted spans hold archive member names, which extraction can quote
+/// verbatim in unrelated size/free-space errors (e.g. `` `passwords.txt` ``);
+/// strip them before matching so such names can't be mistaken for the keyword.
+fn extract_error_needs_password(message: &str) -> bool {
+    let without_member_names: String = message.split('`').step_by(2).collect();
+    let lower = without_member_names.to_lowercase();
+    lower.contains("password") || lower.contains("encrypt")
 }
 
 #[cfg(test)]
