@@ -928,19 +928,22 @@ impl ModeViews {
         }
     }
 
-    pub fn resume_native_selection(&self) {
+    pub fn resume_native_selection(&self) -> bool {
         let Some((depth, focused, _)) = self.browser.focused_item() else {
-            return;
+            return false;
         };
         if !self.browser.selected_positions(depth).is_empty() {
-            return;
+            return false;
         }
         // Seed GTK's empty selection before the arrow moves it, without scheduling
         // a focus restore that would undo the native move after key dispatch.
         for pane in self.panes_at(depth) {
             set_selections(pane, &[focused]);
+            reset_native_range_origin(pane, focused);
         }
         self.browser.set_selection(depth, &[focused], Some(focused));
+        self.browser.set_selection_anchor(depth, focused);
+        true
     }
 
     pub fn focused_position(&self) -> Option<(usize, usize)> {
@@ -3445,6 +3448,27 @@ fn set_selections(pane: &Pane, positions: &[usize]) {
                 section.selection.select_item(position, false);
             }
         }
+        section.syncing.set(false);
+    }
+}
+
+fn reset_native_range_origin(pane: &Pane, source_position: usize) {
+    for section in pane.item_sections() {
+        let Some(position) =
+            view_position_for_source(&pane.model, Some(&section.view_model), source_position)
+        else {
+            continue;
+        };
+        // MultiSelection bits do not move GtkListView/GridView's Shift range
+        // origin; list.select-item does.
+        section.syncing.set(true);
+        section
+            .view
+            .activate_action(
+                "list.select-item",
+                Some(&(position, false, false).to_variant()),
+            )
+            .expect("ListView and GridView expose list.select-item");
         section.syncing.set(false);
     }
 }
