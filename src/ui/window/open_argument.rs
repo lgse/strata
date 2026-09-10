@@ -1,11 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-//! Opens a window for a launch argument whose file-vs-directory kind isn't known yet
-//! (`main.rs`'s `connect_open`; `org.freedesktop.FileManager1`'s `ShowItems`/`ShowFolders`
-//! already know the answer and go through `present_reveal` instead). The window presents
-//! immediately; classification runs off the GTK main thread, redirecting to reveal the
-//! target in its parent when it turns out to be a regular file.
-
 use std::time::Duration;
 
 use gtk::{gio, glib, prelude::*};
@@ -14,8 +8,6 @@ use crate::{adapters::location_for_file, model::Location};
 
 use super::{BrowserView, WeakBrowserView, present_target};
 
-/// How long a pending classification is left to resolve quietly before a spinner and
-/// "Connecting to location…" appear, per the recommended feedback in lgse/strata#726.
 const CONNECTING_DELAY: Duration = Duration::from_secs(1);
 
 pub fn present_open(application: &gtk::Application, file: gio::File) {
@@ -39,18 +31,20 @@ enum Kind {
 
 fn classify(browser: BrowserView, file: gio::File, location: Location) {
     let generation = browser.browser().bump_navigation_generation();
+    let parent = browser.overlay().root().and_downcast::<gtk::Window>();
+    let operation = gtk::MountOperation::new(parent.as_ref());
 
     let connecting = browser.downgrade();
-    let cancel_fallback = location.clone();
+    let cancel_operation = operation.clone();
     glib::timeout_add_local_once(CONNECTING_DELAY, move || {
-        show_connecting(connecting, generation, cancel_fallback);
+        show_connecting(connecting, generation, cancel_operation);
     });
 
     let weak = browser.downgrade();
     let retry_file = file.clone();
     let retry_location = location.clone();
     glib::MainContext::default().spawn_local(async move {
-        let outcome = query_kind(&file).await;
+        let outcome = query_kind(&file, Some(&operation)).await;
         let Some(browser) = weak.upgrade() else {
             return;
         };
@@ -61,37 +55,60 @@ fn classify(browser: BrowserView, file: gio::File, location: Location) {
         match outcome {
             Ok(Kind::Directory) => browser.navigate_location(location),
             Ok(Kind::File) => reveal_in_parent(&browser, &file, location),
-            Err(message) => show_error(browser, retry_file, retry_location, message),
+            Err(_) => show_error(browser, retry_file, retry_location),
         }
     });
 }
 
-/// A broken symlink has no type GIO can resolve for the link's target; a no-follow query
-/// for the link itself still counts as revealable, matching the pre-async behavior.
-async fn query_kind(file: &gio::File) -> Result<Kind, String> {
-    match file
-        .query_info_future(
-            "standard::type",
-            gio::FileQueryInfoFlags::NONE,
-            glib::Priority::DEFAULT,
-        )
-        .await
-    {
-        Ok(info) => Ok(match info.file_type() {
-            gio::FileType::Directory | gio::FileType::Mountable => Kind::Directory,
-            _ => Kind::File,
-        }),
-        Err(error) => match file
+/// A no-follow fallback preserves broken native symlinks as revealable entries.
+async fn query_kind(
+    file: &gio::File,
+    operation: Option<&gtk::MountOperation>,
+) -> Result<Kind, glib::Error> {
+    let mut mounted = false;
+    loop {
+        match file
             .query_info_future(
-                "standard::is-symlink",
-                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                "standard::type",
+                gio::FileQueryInfoFlags::NONE,
                 glib::Priority::DEFAULT,
             )
             .await
         {
-            Ok(info) if info.is_symlink() => Ok(Kind::File),
-            _ => Err(error.to_string()),
-        },
+            Ok(info) => {
+                return Ok(match info.file_type() {
+                    gio::FileType::Directory | gio::FileType::Mountable => Kind::Directory,
+                    _ => Kind::File,
+                });
+            }
+            Err(error)
+                if !mounted
+                    && operation.is_some()
+                    && error.matches(gio::IOErrorEnum::NotMounted) =>
+            {
+                mounted = true;
+                if let Err(error) = file
+                    .mount_enclosing_volume_future(gio::MountMountFlags::NONE, operation)
+                    .await
+                    && !error.matches(gio::IOErrorEnum::AlreadyMounted)
+                {
+                    return Err(error);
+                }
+            }
+            Err(error) => {
+                return match file
+                    .query_info_future(
+                        "standard::is-symlink",
+                        gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                        glib::Priority::DEFAULT,
+                    )
+                    .await
+                {
+                    Ok(info) if info.is_symlink() => Ok(Kind::File),
+                    _ => Err(error),
+                };
+            }
+        }
     }
 }
 
@@ -136,10 +153,8 @@ fn status_container() -> (gtk::Box, gtk::Box) {
     (row, content)
 }
 
-/// Cancelling doesn't guarantee the in-flight GIO query actually stops (a blocked native
-/// stat on a dead NFS mount may not respond to cancellation at all); it only stops the UI
-/// from waiting and disowns the result, matching lgse/strata#726's cancel semantics.
-fn show_connecting(weak: WeakBrowserView, generation: u64, fallback: Location) {
+/// Cancellation disowns late results because a native query may remain blocked in the kernel.
+fn show_connecting(weak: WeakBrowserView, generation: u64, operation: gtk::MountOperation) {
     let Some(browser) = weak.upgrade() else {
         return;
     };
@@ -162,19 +177,20 @@ fn show_connecting(weak: WeakBrowserView, generation: u64, fallback: Location) {
     content.append(&cancel);
     let cancel_browser = browser.clone();
     cancel.connect_clicked(move |_| {
+        operation.reply(gio::MountOperationResult::Aborted);
         cancel_browser.browser().bump_navigation_generation();
         clear_status(&cancel_browser);
-        cancel_browser.navigate_location(fallback.clone());
+        cancel_browser.navigate_location(Location::local(super::home_directory()));
     });
 
     overlay.add_overlay(&row);
 }
 
-fn show_error(browser: BrowserView, file: gio::File, location: Location, message: String) {
+fn show_error(browser: BrowserView, file: gio::File, location: Location) {
     let overlay = browser.overlay();
     let (row, content) = status_container();
 
-    let label = gtk::Label::new(Some(&message));
+    let label = gtk::Label::new(Some("Unable to open location"));
     label.add_css_class("form-message");
     label.add_css_class("error");
     label.set_wrap(true);

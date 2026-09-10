@@ -124,9 +124,6 @@ fn browser_for_window() -> BrowserView {
     browser
 }
 
-/// Builds and presents a window immediately. When `auto_navigate` is false, the caller
-/// takes over the first navigation itself (see `open_argument`) instead of the window
-/// navigating to `location` (or home) on its own right after presenting.
 pub(super) fn present_target(
     application: &gtk::Application,
     location: Option<Location>,

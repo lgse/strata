@@ -472,19 +472,13 @@ impl BrowserView {
     }
 
     pub fn navigate_location(&self, location: Location) {
-        self.state.browser.navigate(location);
+        self.state.browser.navigate_location(location, true);
     }
 
-    /// The overlay content sits in, for a caller that needs to add its own
-    /// transient, non-modal widget (see [`crate::ui::window::open_argument`]) without
-    /// reaching into view-state internals.
     pub(crate) fn overlay(&self) -> gtk::Overlay {
         self.state.overlay.clone()
     }
 
-    /// A handle that outlives this window's close without keeping its widgets or
-    /// `Browser` alive, for an async caller that must ignore a late result instead
-    /// of assuming the underlying operation terminated.
     pub(crate) fn downgrade(&self) -> WeakBrowserView {
         WeakBrowserView(Rc::downgrade(&self.state))
     }
