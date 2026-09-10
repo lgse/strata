@@ -58,6 +58,7 @@ fn relative_orig_path_is_joined_to_the_trash_parent() {
     let source = trash.join("files/report.txt");
     fs::write(&source, b"ok").expect("source");
     let context = context_for(&fixture.path().join("home-trash"), uid, fixture.path());
+    fs::create_dir_all(fixture.path().join("Documents")).expect("dest parent");
     let plan = plan_restore_from_known_paths(
         &source,
         Path::new("Documents/report.txt"),
@@ -82,6 +83,7 @@ fn relative_orig_path_in_home_trash_is_joined_to_xdg_data_home() {
     let source = trash.join("files/report.txt");
     fs::write(&source, b"ok").expect("source");
     let context = context_for(&trash, uid, fixture.path());
+    fs::create_dir_all(xdg_data.join("Documents")).expect("dest parent");
     let plan = plan_restore_from_known_paths(
         &source,
         Path::new("Documents/report.txt"),
@@ -297,6 +299,40 @@ fn destination_inside_the_trash_directory_is_rejected() {
 }
 
 #[test]
+fn missing_parent_destination_is_rejected_at_lookup() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let uid = 1000;
+    let trash = volume_trash(fixture.path(), uid);
+    let source = trash.join("files/report.txt");
+    fs::write(&source, b"ok").expect("source");
+    let dest = fixture.path().join("gone/nested/report.txt");
+    let context = context_for(&fixture.path().join("home-trash"), uid, fixture.path());
+    let error = plan_restore_from_known_paths(&source, &dest, &trash, None, &context)
+        .expect_err("missing parent");
+    assert!(
+        error.message().contains("parent folder no longer exists"),
+        "{}",
+        error.message()
+    );
+}
+
+#[test]
+fn non_directory_parent_destination_is_rejected_at_lookup() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let uid = 1000;
+    let trash = volume_trash(fixture.path(), uid);
+    let source = trash.join("files/report.txt");
+    fs::write(&source, b"ok").expect("source");
+    let parent = fixture.path().join("not-a-folder");
+    fs::write(&parent, b"file").expect("parent file");
+    let context = context_for(&fixture.path().join("home-trash"), uid, fixture.path());
+    let error =
+        plan_restore_from_known_paths(&source, &parent.join("report.txt"), &trash, None, &context)
+            .expect_err("non-directory parent");
+    assert!(error.message().contains("parent folder no longer exists"));
+}
+
+#[test]
 fn different_device_orig_path_is_rejected_by_volume_identity() -> std::io::Result<()> {
     let Some((home, stick)) = crate::test_support::distinct_device_dirs(
         "different_device_orig_path_is_rejected_by_volume_identity",
@@ -318,6 +354,40 @@ fn different_device_orig_path_is_rejected_by_volume_identity() -> std::io::Resul
     assert!(
         error.message().contains("outside the trash volume"),
         "{}",
+        error.message()
+    );
+    Ok(())
+}
+
+#[test]
+fn home_trash_cross_filesystem_orig_path_is_rejected_with_clear_message() -> std::io::Result<()> {
+    let Some((home, stick)) = crate::test_support::distinct_device_dirs(
+        "home_trash_cross_filesystem_orig_path_is_rejected_with_clear_message",
+    ) else {
+        return Ok(());
+    };
+    let uid = rustix::process::getuid().as_raw();
+    let trash = home.path().join("Trash");
+    fs::create_dir_all(trash.join("files")).expect("files");
+    fs::create_dir_all(trash.join("info")).expect("info");
+    let source = trash.join("files/payload");
+    fs::write(&source, b"ok")?;
+    let dest = stick.path().join("payload");
+    let context = RestoreContext {
+        home_trash_root: trash.clone(),
+        uid,
+        mounts: MountTable::current(),
+    };
+    let error = plan_restore_from_known_paths(&source, &dest, &trash, None, &context)
+        .expect_err("cross-device home trash");
+    assert!(
+        error.message().contains("outside the trash volume"),
+        "expected 'outside the trash volume', got: {}",
+        error.message()
+    );
+    assert!(
+        !error.message().contains("bind mount or subvolume"),
+        "home trash should not report bind-mount/subvolume: {}",
         error.message()
     );
     Ok(())
@@ -518,6 +588,7 @@ fn relative_orig_path_in_shared_trash_is_joined_to_the_volume_topdir() {
     let source = trash.join("files/report.txt");
     fs::write(&source, b"report").expect("source");
     let context = context_for(&mount_path.join("unused"), uid, &mount_path);
+    fs::create_dir_all(mount_path.join("Documents")).expect("dest parent");
 
     let plan = plan_restore_from_known_paths(
         &source,

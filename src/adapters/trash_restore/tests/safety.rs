@@ -15,9 +15,14 @@ fn same_filesystem_nested_mount_is_rejected_during_planning() {
         restore_volume_relation(&Location::local(&source), &Location::local(&destination)),
         VolumeRelation::Same
     );
-    for fs_type in ["ext4", "btrfs"] {
+    for (fs_type, home_trash_root) in [
+        ("ext4", fixture.path().join("home-trash")),
+        ("btrfs", fixture.path().join("home-trash")),
+        ("ext4", trash.clone()),
+        ("btrfs", trash.clone()),
+    ] {
         let context = RestoreContext {
-            home_trash_root: fixture.path().join("home-trash"),
+            home_trash_root,
             uid: 1000,
             mounts: MountTable::parse(format!(
                 "1 0 8:1 / / rw - {fs_type} /dev/root rw\n2 1 8:1 / {} rw - {fs_type} /dev/root rw\n3 2 8:1 /original {} rw - {fs_type} /dev/root rw\n",

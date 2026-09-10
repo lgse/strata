@@ -89,6 +89,7 @@ impl WindowContent {
         let footer = self.footer;
         window.connect_destroy(move |_| {
             footer.disconnect_clipboard();
+            browser.bump_navigation_generation();
             browser.clear_observer();
             sidebar.disconnect();
         });

@@ -21,7 +21,7 @@ use crate::ui::browser_modes::{BrowserDensity, BrowserMode, ClickActivation, Mod
 use gtk::glib;
 use gtk::prelude::*;
 use std::cell::{Cell, RefCell};
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 mod archive;
@@ -213,6 +213,15 @@ fn focus_header_action(actions: &gtk::Box, direction: gtk::DirectionType) -> boo
 #[derive(Clone)]
 pub struct BrowserView {
     state: Rc<ViewState>,
+}
+
+#[derive(Clone)]
+pub(crate) struct WeakBrowserView(Weak<ViewState>);
+
+impl WeakBrowserView {
+    pub(crate) fn upgrade(&self) -> Option<BrowserView> {
+        self.0.upgrade().map(|state| BrowserView { state })
+    }
 }
 
 impl BrowserView {
@@ -463,7 +472,33 @@ impl BrowserView {
     }
 
     pub fn navigate_location(&self, location: Location) {
-        self.state.browser.navigate(location);
+        self.state.browser.navigate_location(location, true);
+    }
+
+    pub(crate) fn overlay(&self) -> gtk::Overlay {
+        self.state.overlay.clone()
+    }
+
+    pub(crate) fn set_navigation_cleanup(&self, cleanup: impl FnOnce() + 'static) {
+        self.state.browser.set_navigation_cleanup(cleanup);
+    }
+
+    pub(crate) fn finish_navigation_cleanup(&self) {
+        self.state.browser.finish_navigation_cleanup();
+    }
+
+    pub(crate) fn connect_navigation_cleanup(&self, window: &gtk::Window) {
+        let weak = self.downgrade();
+        window.connect_close_request(move |_| {
+            if let Some(browser) = weak.upgrade() {
+                browser.browser().bump_navigation_generation();
+            }
+            glib::Propagation::Proceed
+        });
+    }
+
+    pub(crate) fn downgrade(&self) -> WeakBrowserView {
+        WeakBrowserView(Rc::downgrade(&self.state))
     }
 
     pub fn commit_file_drop(

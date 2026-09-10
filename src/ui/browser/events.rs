@@ -35,6 +35,13 @@ impl ViewState {
                 self.pending_new_entry.take();
                 self.pending_location_credentials.take();
                 self.pending_archive_destination.take();
+                let mut child = self.overlay.first_child();
+                while let Some(widget) = child {
+                    child = widget.next_sibling();
+                    if widget.has_css_class("open-argument-status") {
+                        self.overlay.remove_overlay(&widget);
+                    }
+                }
                 self.truncate(0);
             }
             BrowserEvent::ColumnsTruncated { len } => {
