@@ -324,6 +324,40 @@ fn different_device_orig_path_is_rejected_by_volume_identity() -> std::io::Resul
 }
 
 #[test]
+fn home_trash_cross_filesystem_orig_path_is_rejected_with_clear_message() -> std::io::Result<()> {
+    let Some((home, stick)) = crate::test_support::distinct_device_dirs(
+        "home_trash_cross_filesystem_orig_path_is_rejected_with_clear_message",
+    ) else {
+        return Ok(());
+    };
+    let uid = rustix::process::getuid().as_raw();
+    let trash = home.path().join("Trash");
+    fs::create_dir_all(trash.join("files")).expect("files");
+    fs::create_dir_all(trash.join("info")).expect("info");
+    let source = trash.join("files/payload");
+    fs::write(&source, b"ok")?;
+    let dest = stick.path().join("payload");
+    let context = RestoreContext {
+        home_trash_root: trash.clone(),
+        uid,
+        mounts: MountTable::current(),
+    };
+    let error = plan_restore_from_known_paths(&source, &dest, &trash, None, &context)
+        .expect_err("cross-device home trash");
+    assert!(
+        error.message().contains("outside the trash volume"),
+        "expected 'outside the trash volume', got: {}",
+        error.message()
+    );
+    assert!(
+        !error.message().contains("bind mount or subvolume"),
+        "home trash should not report bind-mount/subvolume: {}",
+        error.message()
+    );
+    Ok(())
+}
+
+#[test]
 fn lexical_normalize_collapses_dot_and_rejects_parent_dir() {
     assert_eq!(
         lexically_normalize(Path::new("/media/usb/./docs/a.txt")).as_deref(),
