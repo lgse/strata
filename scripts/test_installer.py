@@ -39,6 +39,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("gvfs", result.stdout.splitlines())
         self.assertNotIn("gvfs-smb", result.stdout.splitlines())
+        self.assertNotIn("github-cli", result.stdout.splitlines())
 
     def test_banner_remains_readable_without_terminal_color(self) -> None:
         result = bash("show_banner", env={"NO_COLOR": "1"})
@@ -47,6 +48,56 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("Navigate every layer.", result.stdout)
         self.assertIn("Interactive installer", result.stdout)
         self.assertNotIn("\033", result.stdout)
+
+    def test_provenance_verification_is_optional_without_github_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            result = bash(
+                'PATH="$EMPTY_PATH"; verify_provenance /tmp/strata.tar.gz',
+                env={"EMPTY_PATH": directory},
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("GitHub CLI is unavailable", result.stderr)
+
+    def test_provenance_verification_is_optional_without_github_authentication(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_gh = pathlib.Path(directory) / "gh"
+            fake_gh.write_text(
+                '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\nexit 1\n', encoding="utf-8"
+            )
+            fake_gh.chmod(0o755)
+            calls = pathlib.Path(directory) / "calls"
+            result = bash(
+                'PATH="$FAKE_PATH"; verify_provenance /tmp/strata.tar.gz',
+                env={"FAKE_PATH": directory, "CALLS": str(calls)},
+            )
+            recorded_calls = calls.read_text().splitlines()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(recorded_calls, ["auth status --hostname github.com"])
+        self.assertIn("GitHub CLI is not authenticated", result.stderr)
+
+    def test_authenticated_provenance_verification_remains_mandatory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_gh = pathlib.Path(directory) / "gh"
+            fake_gh.write_text(
+                '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n'
+                'case "$*" in "auth status"*) exit 0;; *) exit "$VERIFY_RESULT";; esac\n',
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+            calls = pathlib.Path(directory) / "calls"
+            result = bash(
+                'PATH="$FAKE_PATH"; verify_provenance /tmp/strata.tar.gz',
+                env={"FAKE_PATH": directory, "CALLS": str(calls), "VERIFY_RESULT": "9"},
+            )
+            recorded_calls = calls.read_text().splitlines()
+        self.assertEqual(result.returncode, 9, result.stderr)
+        self.assertEqual(
+            recorded_calls,
+            [
+                "auth status --hostname github.com",
+                "attestation verify /tmp/strata.tar.gz --repo lgse/strata",
+            ],
+        )
 
     def test_unattended_flags_select_only_requested_integrations(self) -> None:
         result = bash(
