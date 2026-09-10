@@ -3153,6 +3153,12 @@ fn install_modified_selection_click(
         let modifiers = gesture.current_event_state();
         let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        let preserve_group = !control
+            && !shift
+            && super::browser::should_preserve_drag_selection(
+                selection.is_selected(position),
+                selection.selection().size(),
+            );
         if shift {
             let anchor = browser
                 .selection_anchor_position(depth)
@@ -3170,6 +3176,9 @@ fn install_modified_selection_click(
             }
         } else {
             anchor_at(&browser, depth, &positions, position);
+            if !preserve_group {
+                selection.select_item(position, true);
+            }
             return;
         }
         if let Some(widget) = gesture.widget()

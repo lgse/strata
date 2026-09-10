@@ -220,7 +220,7 @@ pub(super) fn is_column_background(surface: &gtk::Widget, picked: &gtk::Widget) 
     false
 }
 
-fn should_preserve_drag_selection(clicked_selected: bool, selected_count: u64) -> bool {
+pub(crate) fn should_preserve_drag_selection(clicked_selected: bool, selected_count: u64) -> bool {
     clicked_selected && selected_count > 1
 }
 

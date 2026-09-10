@@ -60,6 +60,7 @@ pub(crate) use crate::ui::browser::collection::{
     search_result_navigation_position,
 };
 pub(super) use crate::ui::browser::columns::max_child_natural_width;
+pub(crate) use crate::ui::browser::columns::should_preserve_drag_selection;
 pub(super) use crate::ui::browser::context_menu::{
     install_folder_context_menu, install_item_context_menu, install_resolved_item_context_menu,
 };
