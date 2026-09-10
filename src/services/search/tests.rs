@@ -4,6 +4,7 @@ mod multi_root;
 mod performance;
 
 use std::{
+    collections::HashSet,
     fs,
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
@@ -12,8 +13,8 @@ use std::{
 mod scope;
 
 use super::{
-    SearchEvent, SearchItem, fuzzy_score_normalized, index_tree, index_trees,
-    index_trees_with_budget,
+    PathAdmission, SearchEvent, SearchItem, admit_path, fuzzy_score_normalized, index_tree,
+    index_trees, index_trees_with_budget, index_trees_with_scheduler_budget,
 };
 
 fn score_path(path: &str, query: &str, root: &Path) -> Option<i64> {
@@ -291,6 +292,222 @@ fn index_reports_completion_before_a_query_is_entered() {
             ..
         } if query.is_empty()
     ));
+}
+
+#[test]
+fn repeated_walker_paths_are_published_once_without_blocking_later_progress() {
+    let repeated = PathBuf::from("/fixture/repeated.txt");
+    let later = PathBuf::from("/fixture/later.txt");
+    let over_limit = PathBuf::from("/fixture/over-limit.txt");
+    let mut indexed_paths = HashSet::new();
+    let mut published = Vec::new();
+
+    for path in [&repeated, &repeated] {
+        if admit_path(&mut indexed_paths, path, 2) == PathAdmission::Unique {
+            published.push(path.clone());
+        }
+    }
+    assert_eq!(published, vec![repeated.clone()]);
+
+    assert_eq!(
+        admit_path(&mut indexed_paths, &later, 2),
+        PathAdmission::Unique
+    );
+    published.push(later.clone());
+    assert_eq!(published, vec![repeated.clone(), later]);
+
+    assert_eq!(
+        admit_path(&mut indexed_paths, &repeated, 2),
+        PathAdmission::Duplicate,
+        "a duplicate at the unique-entry cap must not report truncation"
+    );
+    assert_eq!(
+        admit_path(&mut indexed_paths, &over_limit, 2),
+        PathAdmission::EntryLimit
+    );
+    assert_eq!(indexed_paths.len(), 2);
+}
+
+fn fixture_file(root: &Path, relative: impl AsRef<Path>) -> PathBuf {
+    let path = root.join(relative);
+    fs::create_dir_all(path.parent().expect("fixture parent")).expect("create fixture directory");
+    fs::write(&path, b"fixture").expect("write fixture file");
+    path
+}
+
+fn assert_fair_sibling_coverage(create_bulk_first: bool) {
+    let root = unique_fixture_root(if create_bulk_first {
+        "fair-bulk-first"
+    } else {
+        "fair-document-first"
+    });
+    fs::create_dir_all(&root).expect("create fixture");
+    let mut expected = Vec::new();
+    for sibling in 0..8 {
+        let branch = root.join(format!("branch-{sibling}"));
+        let create_bulk = || {
+            for entry in 0..80 {
+                fixture_file(&branch, format!("storage/chunk-{entry:03}.bin"));
+            }
+        };
+        let target = || fixture_file(&branch, format!("Documents/demo/Cats/wanted-{sibling}.jpg"));
+        if create_bulk_first {
+            create_bulk();
+            expected.push(target());
+        } else {
+            expected.push(target());
+            create_bulk();
+        }
+    }
+
+    let (search, events) =
+        index_tree_with_budget(root.clone(), false, 120, 64, Duration::from_secs(10));
+    search.query("wanted");
+    let SearchEvent::Results {
+        items, coverage, ..
+    } = wait_for_results(&events).expect("results");
+    drop(search);
+    fs::remove_dir_all(root).expect("remove fixture");
+
+    assert!(coverage.entry_limit);
+    for target in expected {
+        assert!(
+            items.iter().any(|item| item.path == target),
+            "every sibling should make progressive indexing progress: {}",
+            target.display()
+        );
+    }
+}
+
+#[test]
+fn bounded_index_fairly_reaches_deep_document_hits_when_bulk_is_created_first() {
+    assert_fair_sibling_coverage(true);
+}
+
+#[test]
+fn bounded_index_fairly_reaches_deep_document_hits_when_bulk_is_created_last() {
+    assert_fair_sibling_coverage(false);
+}
+
+fn assert_resumable_slices_cross_the_scheduler_batch(create_bulk_first: bool) {
+    let root = unique_fixture_root(if create_bulk_first {
+        "sliced-bulk-first"
+    } else {
+        "sliced-marker-first"
+    });
+    fs::create_dir_all(&root).expect("create fixture");
+    let mut expected = Vec::new();
+    for sibling in 0..12 {
+        let branch = root.join(format!("branch-{sibling:02}"));
+        let create_bulk = || {
+            for entry in 0..20 {
+                fixture_file(&branch, format!("bulk/chunk-{entry:03}.bin"));
+            }
+        };
+        let create_target = || {
+            fixture_file(
+                &branch,
+                format!("Documents/demo/Cats/sliced-marker-{sibling:02}.jpg"),
+            )
+        };
+        if create_bulk_first {
+            create_bulk();
+            expected.push(create_target());
+        } else {
+            expected.push(create_target());
+            create_bulk();
+        }
+    }
+
+    let (search, events) = index_trees_with_scheduler_budget(
+        vec![root.clone()],
+        false,
+        400,
+        64,
+        Duration::from_secs(10),
+        2,
+        64,
+    );
+    search.query("sliced-marker");
+    let SearchEvent::Results {
+        items, coverage, ..
+    } = wait_for_results(&events).expect("results");
+    drop(search);
+    fs::remove_dir_all(root).expect("remove fixture");
+
+    assert!(!coverage.is_partial(), "unexpected coverage: {coverage:?}");
+    for target in expected {
+        assert!(
+            items.iter().any(|item| item.path == target),
+            "{}",
+            target.display()
+        );
+    }
+}
+
+#[test]
+fn resumable_slices_reach_deep_markers_for_both_directory_input_orders() {
+    assert_resumable_slices_cross_the_scheduler_batch(true);
+    assert_resumable_slices_cross_the_scheduler_batch(false);
+}
+
+#[test]
+fn pending_overflow_omits_new_subtrees_but_finishes_admitted_work() {
+    let root = unique_fixture_root("pending-overflow");
+    for sibling in 0..12 {
+        fixture_file(
+            &root,
+            format!("branch-{sibling:02}/queued-marker-{sibling:02}.txt"),
+        );
+    }
+
+    let (search, events) = index_trees_with_scheduler_budget(
+        vec![root.clone()],
+        false,
+        1_000,
+        64,
+        Duration::from_secs(10),
+        2,
+        3,
+    );
+    search.query("queued-marker");
+    let SearchEvent::Results {
+        items, coverage, ..
+    } = wait_for_results(&events).expect("results");
+    drop(search);
+    fs::remove_dir_all(root).expect("remove fixture");
+
+    assert!(coverage.directory_limit);
+    assert!(!coverage.entry_limit);
+    assert!(
+        !items.is_empty(),
+        "already admitted directories must continue after later work is omitted"
+    );
+    assert_eq!(
+        coverage.message(),
+        "Partial search — some folders were omitted"
+    );
+}
+
+#[test]
+fn nested_ignore_rules_are_preserved_by_fair_directory_scheduling() {
+    let root = unique_fixture_root("fair-ignore");
+    fixture_file(&root, "workspace/.ignore");
+    fs::write(root.join("workspace/.ignore"), "ignored/\n").expect("write ignore rule");
+    fixture_file(&root, "workspace/ignored/hidden-needle.txt");
+    let visible = fixture_file(&root, "workspace/visible/visible-needle.txt");
+
+    let (search, events) = index_tree(root.clone(), false);
+    search.query("needle");
+    let SearchEvent::Results {
+        items, coverage, ..
+    } = wait_for_results(&events).expect("results");
+    drop(search);
+    fs::remove_dir_all(root).expect("remove fixture");
+
+    assert!(!coverage.is_partial());
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].path, visible);
 }
 
 fn unique_fixture_root(label: &str) -> PathBuf {

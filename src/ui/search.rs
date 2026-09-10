@@ -35,6 +35,7 @@ struct SearchState {
     search: RefCell<Option<SearchHandle>>,
     generation: Cell<u64>,
     interaction_revision: Cell<u64>,
+    navigation_started: Cell<bool>,
     reconciling_results: Cell<bool>,
     activate: Rc<dyn Fn(SearchItem)>,
     dismiss: Rc<dyn Fn()>,
@@ -168,6 +169,7 @@ impl SearchDialog {
             search: RefCell::new(None),
             generation: Cell::new(0),
             interaction_revision: Cell::new(0),
+            navigation_started: Cell::new(false),
             reconciling_results: Cell::new(false),
             activate,
             dismiss,
@@ -204,7 +206,9 @@ impl SearchDialog {
             ) {
                 return glib::Propagation::Proceed;
             }
-            if matches!(key, gdk::Key::Down | gdk::Key::Up) {
+            if matches!(key, gdk::Key::Down | gdk::Key::Up)
+                && !modifiers.contains(gdk::ModifierType::SHIFT_MASK)
+            {
                 move_selection(&state, if key == gdk::Key::Down { 1 } else { -1 });
                 return glib::Propagation::Stop;
             }
@@ -517,7 +521,13 @@ fn render_results(
         glib::idle_add_local_once(move || {
             if let Some(state) = weak.upgrade() {
                 if state.layer.is_visible() && state.interaction_revision.get() == revision {
-                    state.scroller.vadjustment().set_value(scroll_position);
+                    if state.navigation_started.get() {
+                        if let Some(row) = state.list.selected_row() {
+                            scroll_row_into_view(&state, &row);
+                        }
+                    } else {
+                        state.scroller.vadjustment().set_value(scroll_position);
+                    }
                 }
                 refresh_visible_thumbnails(&state);
             }
@@ -635,29 +645,39 @@ fn record_interaction(state: &SearchState) {
 
 fn move_selection(state: &SearchState, direction: i32) {
     record_interaction(state);
+    if !contains_keyboard_focus(state.field.upcast_ref()) {
+        state.field.grab_focus_without_selecting();
+    }
     let count = state.visible_results.borrow().len() as i32;
     if count == 0 {
         return;
     }
-    if contains_keyboard_focus(state.field.upcast_ref()) {
-        if direction < 0 {
-            return;
-        }
-        if let Some(first) = state.list.row_at_index(0) {
-            state.list.select_row(Some(&first));
-            first.grab_focus();
-        }
-        return;
-    }
-    let current = state.list.selected_row().map_or(-1, |row| row.index());
-    if direction < 0 && current <= 0 {
-        state.field.grab_focus_without_selecting();
-        return;
-    }
-    let next = (current + direction).clamp(0, count - 1);
+
+    let current = state.list.selected_row().map_or(0, |row| row.index());
+    let next = if state.navigation_started.replace(true) {
+        (current + direction).clamp(0, count - 1)
+    } else {
+        current.clamp(0, count - 1)
+    };
     if let Some(row) = state.list.row_at_index(next) {
         state.list.select_row(Some(&row));
-        row.grab_focus();
+        scroll_row_into_view(state, &row);
+    }
+}
+
+fn scroll_row_into_view(state: &SearchState, row: &gtk::ListBoxRow) {
+    let Some(bounds) = row.compute_bounds(&state.list) else {
+        return;
+    };
+    let adjustment = state.scroller.vadjustment();
+    let viewport_top = adjustment.value();
+    let viewport_bottom = viewport_top + adjustment.page_size();
+    let row_top = f64::from(bounds.y());
+    let row_bottom = row_top + f64::from(bounds.height());
+    if row_top < viewport_top {
+        adjustment.set_value(row_top);
+    } else if row_bottom > viewport_bottom {
+        adjustment.set_value(row_bottom - adjustment.page_size());
     }
 }
 
@@ -704,6 +724,7 @@ fn hide(state: &SearchState) {
 }
 
 fn clear_results(state: &SearchState) {
+    state.navigation_started.set(false);
     state.reconciling_results.set(true);
     state.visible_results.borrow_mut().clear();
     state.positions.borrow_mut().clear();

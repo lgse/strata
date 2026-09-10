@@ -53,11 +53,12 @@ fn result_updates_preserve_entry_caret_selection_and_default_selection() {
 }
 
 #[test]
-fn entry_down_up_down_cycles_through_the_first_result() {
+fn arrow_keys_keep_entry_focus_and_use_a_logical_navigation_start() {
     crate::test_support::gtk_test(
-        "ui::search::tests::entry_down_up_down_cycles_through_the_first_result",
+        "ui::search::tests::arrow_keys_keep_entry_focus_and_use_a_logical_navigation_start",
         || {
             let (dialog, window) = mapped_dialog(Rc::new(|_| {}));
+            dialog.state.field.set_text("navigation");
             render_results(
                 &dialog.state,
                 search_items("navigation", 3),
@@ -65,16 +66,342 @@ fn entry_down_up_down_cycles_through_the_first_result() {
                 SearchCoverage::default(),
             );
             assert!(dialog.state.field.grab_focus_without_selecting());
+            dialog.state.field.set_position(6);
+            dialog.state.field.select_region(2, 6);
+            let selection = dialog.state.field.selection_bounds();
 
-            move_selection(&dialog.state, 1);
-            let first = dialog.state.list.row_at_index(0).expect("first result row");
-            assert!(contains_keyboard_focus(first.upcast_ref()));
-            move_selection(&dialog.state, -1);
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Down,
+                gtk::gdk::ModifierType::empty()
+            ));
+            assert_selected(&dialog, 0);
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Down,
+                gtk::gdk::ModifierType::empty()
+            ));
+            assert_selected(&dialog, 1);
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Down,
+                gtk::gdk::ModifierType::empty()
+            ));
+            assert_selected(&dialog, 2);
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Down,
+                gtk::gdk::ModifierType::empty()
+            ));
+            assert_selected(&dialog, 2);
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Up,
+                gtk::gdk::ModifierType::empty()
+            ));
+            assert_selected(&dialog, 1);
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Up,
+                gtk::gdk::ModifierType::empty()
+            ));
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Up,
+                gtk::gdk::ModifierType::empty()
+            ));
+            assert_selected(&dialog, 0);
+
             assert!(contains_keyboard_focus(dialog.state.field.upcast_ref()));
-            assert_eq!(dialog.state.list.selected_row(), Some(first.clone()));
-            move_selection(&dialog.state, 1);
-            assert!(contains_keyboard_focus(first.upcast_ref()));
-            assert_eq!(dialog.state.list.selected_row(), Some(first));
+            assert_eq!(dialog.state.field.position(), 6);
+            assert_eq!(dialog.state.field.selection_bounds(), selection);
+            assert!(!emit_key(
+                &dialog,
+                gtk::gdk::Key::Down,
+                gtk::gdk::ModifierType::SHIFT_MASK,
+            ));
+            assert_selected(&dialog, 0);
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn typing_and_backspace_after_arrows_edit_the_query_at_the_caret() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::typing_and_backspace_after_arrows_edit_the_query_at_the_caret",
+        || {
+            let (dialog, window) = mapped_dialog(Rc::new(|_| {}));
+            dialog.state.field.set_text("quartely");
+            render_results(
+                &dialog.state,
+                search_items("typing", 3),
+                false,
+                SearchCoverage::default(),
+            );
+            assert!(dialog.state.field.grab_focus_without_selecting());
+            dialog.state.field.set_position(6);
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Down,
+                gtk::gdk::ModifierType::empty()
+            ));
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Down,
+                gtk::gdk::ModifierType::empty()
+            ));
+
+            let text = dialog
+                .state
+                .field
+                .first_child()
+                .and_downcast::<gtk::Text>()
+                .expect("entry text");
+            text.emit_by_name::<()>("insert-at-cursor", &[&"r"]);
+            assert_eq!(dialog.state.field.text(), "quarterly");
+            assert_eq!(dialog.state.field.position(), 7);
+            assert!(dialog.state.visible_results.borrow().is_empty());
+            assert!(!dialog.state.navigation_started.get());
+            text.emit_by_name::<()>("backspace", &[]);
+            assert_eq!(dialog.state.field.text(), "quartely");
+            assert_eq!(dialog.state.field.position(), 6);
+            assert!(contains_keyboard_focus(dialog.state.field.upcast_ref()));
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn arrow_navigation_reveals_offscreen_results_without_moving_focus() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::arrow_navigation_reveals_offscreen_results_without_moving_focus",
+        || {
+            let (dialog, window) = mapped_dialog(Rc::new(|_| {}));
+            render_results(
+                &dialog.state,
+                search_items("offscreen", 40),
+                false,
+                SearchCoverage::default(),
+            );
+            drain_main_context();
+            assert!(dialog.state.field.grab_focus_without_selecting());
+            for _ in 0..26 {
+                assert!(emit_key(
+                    &dialog,
+                    gtk::gdk::Key::Down,
+                    gtk::gdk::ModifierType::empty(),
+                ));
+            }
+            assert_selected(&dialog, 25);
+            let adjustment = dialog.state.scroller.vadjustment();
+            assert!(adjustment.value() > 0.0);
+            let selected = dialog.state.list.selected_row().expect("selected row");
+            let bounds = selected
+                .compute_bounds(&dialog.state.list)
+                .expect("allocated selected row");
+            assert!(f64::from(bounds.y()) >= adjustment.value());
+            assert!(
+                f64::from(bounds.y() + bounds.height())
+                    <= adjustment.value() + adjustment.page_size()
+            );
+            assert!(contains_keyboard_focus(dialog.state.field.upcast_ref()));
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn result_reorders_reveal_keyboard_selection_after_layout_and_user_scroll_wins() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::result_reorders_reveal_keyboard_selection_after_layout_and_user_scroll_wins",
+        || {
+            let (dialog, window) = mapped_dialog(Rc::new(|_| {}));
+            let mut items = search_items("reorder", 100);
+            dialog
+                .state
+                .requested_thumbnails
+                .borrow_mut()
+                .extend(items.iter().map(|item| item.path.clone()));
+            render_results(
+                &dialog.state,
+                items.clone(),
+                true,
+                SearchCoverage::default(),
+            );
+            settle_layout();
+            assert!(dialog.state.field.grab_focus_without_selecting());
+            dialog.state.reconciling_results.set(true);
+            for _ in 0..21 {
+                assert!(emit_key(
+                    &dialog,
+                    gtk::gdk::Key::Down,
+                    gtk::gdk::ModifierType::empty(),
+                ));
+            }
+            dialog.state.reconciling_results.set(false);
+            let selected_path = items[20].path.clone();
+
+            let selected = items.remove(20);
+            items.insert(0, selected);
+            dialog
+                .state
+                .requested_thumbnails
+                .borrow_mut()
+                .extend(items.iter().map(|item| item.path.clone()));
+            render_results(
+                &dialog.state,
+                items.clone(),
+                true,
+                SearchCoverage::default(),
+            );
+            settle_layout();
+            assert_eq!(
+                dialog.state.list.selected_row().expect("selection").index(),
+                0
+            );
+            assert_selected_is_visible(&dialog);
+            assert!(contains_keyboard_focus(dialog.state.field.upcast_ref()));
+
+            let selected = items.remove(0);
+            items.insert(90, selected);
+            dialog
+                .state
+                .requested_thumbnails
+                .borrow_mut()
+                .extend(items.iter().map(|item| item.path.clone()));
+            render_results(
+                &dialog.state,
+                items.clone(),
+                true,
+                SearchCoverage::default(),
+            );
+            settle_layout();
+            let selected_row = dialog.state.list.selected_row().expect("selection");
+            assert_eq!(selected_row.index(), 90);
+            assert_eq!(items[90].path, selected_path);
+            assert_selected_is_visible(&dialog);
+            assert!(contains_keyboard_focus(dialog.state.field.upcast_ref()));
+
+            let selected = items.remove(90);
+            items.insert(0, selected);
+            dialog
+                .state
+                .requested_thumbnails
+                .borrow_mut()
+                .extend(items.iter().map(|item| item.path.clone()));
+            render_results(&dialog.state, items, false, SearchCoverage::default());
+            assert!(
+                !scroll_controller(&dialog).emit_by_name::<bool>("scroll", &[&0.0_f64, &1.0_f64],)
+            );
+            let adjustment = dialog.state.scroller.vadjustment();
+            adjustment.set_value(200.0);
+            settle_layout();
+            assert_eq!(adjustment.value(), 200.0);
+            assert!(contains_keyboard_focus(dialog.state.field.upcast_ref()));
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn partial_updates_preserve_selected_path_entry_focus_and_navigation_progress() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::partial_updates_preserve_selected_path_entry_focus_and_navigation_progress",
+        || {
+            let (dialog, window) = mapped_dialog(Rc::new(|_| {}));
+            dialog.state.field.set_text("stable");
+            let mut items = search_items("stable", 5);
+            render_results(
+                &dialog.state,
+                items.clone(),
+                true,
+                SearchCoverage::default(),
+            );
+            assert!(dialog.state.field.grab_focus_without_selecting());
+            dialog.state.field.set_position(3);
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Down,
+                gtk::gdk::ModifierType::empty()
+            ));
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Down,
+                gtk::gdk::ModifierType::empty()
+            ));
+            let selected_path = items[1].path.clone();
+
+            items.insert(
+                0,
+                SearchItem::for_test(PathBuf::from("/search/inserted.txt"), false),
+            );
+            items.swap(2, 4);
+            render_results(
+                &dialog.state,
+                items.clone(),
+                true,
+                SearchCoverage::default(),
+            );
+            let selected = dialog
+                .state
+                .list
+                .selected_row()
+                .expect("restored selection");
+            assert_eq!(items[selected.index() as usize].path, selected_path);
+            assert!(contains_keyboard_focus(dialog.state.field.upcast_ref()));
+            assert_eq!(dialog.state.field.position(), 3);
+
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Down,
+                gtk::gdk::ModifierType::empty()
+            ));
+            let advanced = dialog
+                .state
+                .list
+                .selected_row()
+                .expect("advanced selection");
+            assert_eq!(advanced.index(), selected.index() + 1);
+            let removed_index = advanced.index() as usize;
+            items.remove(removed_index);
+            let fallback_index = removed_index.min(items.len() - 1);
+            render_results(&dialog.state, items, false, SearchCoverage::default());
+            assert_eq!(
+                dialog
+                    .state
+                    .list
+                    .selected_row()
+                    .expect("stable fallback")
+                    .index(),
+                fallback_index as i32
+            );
+            assert!(contains_keyboard_focus(dialog.state.field.upcast_ref()));
+            assert_eq!(dialog.state.field.position(), 3);
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn arrows_with_empty_results_preserve_the_entry_caret() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::arrows_with_empty_results_preserve_the_entry_caret",
+        || {
+            let (dialog, window) = mapped_dialog(Rc::new(|_| {}));
+            dialog.state.field.set_text("missing");
+            dialog.state.field.set_position(3);
+            dialog.state.layer.grab_focus();
+
+            assert!(emit_key(
+                &dialog,
+                gtk::gdk::Key::Down,
+                gtk::gdk::ModifierType::empty()
+            ));
+            assert!(dialog.state.list.selected_row().is_none());
+            assert!(contains_keyboard_focus(dialog.state.field.upcast_ref()));
+            assert_eq!(dialog.state.field.position(), 3);
+            assert!(!dialog.state.navigation_started.get());
             window.destroy();
         },
     );
@@ -391,6 +718,32 @@ fn key_controller(dialog: &SearchDialog) -> gtk::EventControllerKey {
     controller::<gtk::EventControllerKey>(&dialog.state.layer)
 }
 
+fn emit_key(dialog: &SearchDialog, key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+    key_controller(dialog).emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
+}
+
+fn assert_selected(dialog: &SearchDialog, position: i32) {
+    assert_eq!(
+        dialog
+            .state
+            .list
+            .selected_row()
+            .expect("selected result")
+            .index(),
+        position
+    );
+}
+
+fn assert_selected_is_visible(dialog: &SearchDialog) {
+    let adjustment = dialog.state.scroller.vadjustment();
+    let selected = dialog.state.list.selected_row().expect("selected result");
+    let bounds = selected
+        .compute_bounds(&dialog.state.list)
+        .expect("allocated selected row");
+    assert!(f64::from(bounds.y()) >= adjustment.value());
+    assert!(f64::from(bounds.y() + bounds.height()) <= adjustment.value() + adjustment.page_size());
+}
+
 fn scroll_controller(dialog: &SearchDialog) -> gtk::EventControllerScroll {
     controller::<gtk::EventControllerScroll>(&dialog.state.layer)
 }
@@ -426,6 +779,12 @@ fn search_items(prefix: &str, count: usize) -> Vec<SearchItem> {
 
 fn drain_main_context() {
     while glib::MainContext::default().iteration(false) {}
+}
+
+fn settle_layout() {
+    for _ in 0..20 {
+        glib::MainContext::default().iteration(false);
+    }
 }
 
 #[test]
