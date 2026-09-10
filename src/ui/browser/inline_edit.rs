@@ -870,7 +870,18 @@ impl ViewState {
                 .flatten();
             if let Some(position) = position {
                 if !selected.replace(true) {
-                    state.browser.select(pending.depth, position);
+                    if state.mode_views.borrow().mode() == BrowserMode::Columns {
+                        // Mirrors a real row click: opens the new folder as the child
+                        // column and refreshes the breadcrumb, rather than leaving a
+                        // stale child column from whatever was previously open.
+                        // `activate` truncates columns, which clears
+                        // `pending_new_entry` as a side effect, so re-arm it to keep
+                        // this wait loop alive for the rename that follows.
+                        state.browser.activate(pending.depth, position);
+                        state.pending_new_entry.replace(Some(pending.clone()));
+                    } else {
+                        state.browser.select(pending.depth, position);
+                    }
                 } else if let Some(entry) = state.browser.entry_at(pending.depth, position)
                     && state.begin_rename_item(pending.depth, position, entry)
                 {

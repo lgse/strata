@@ -154,6 +154,56 @@ fn navigating_before_creation_finishes_does_not_open_an_editor_in_the_new_locati
 }
 
 #[test]
+fn new_folder_from_the_parent_background_replaces_a_stale_child_column() {
+    gtk_test(
+        "ui::browser::inline_edit::tests::entries::new_folder_from_the_parent_background_replaces_a_stale_child_column",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            let existing = fixture.path().join("existing");
+            std::fs::create_dir(&existing).expect("existing child folder");
+
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            view.set_view_mode(BrowserMode::Columns);
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(800)
+                .default_height(600)
+                .build();
+            view.install_inline_edit_dismissal(&window);
+            window.present();
+            view.browser().navigate(Location::local(fixture.path()));
+            wait_until(|| {
+                view.browser()
+                    .column_snapshot(0)
+                    .is_some_and(|snapshot| !snapshot.loading)
+            });
+
+            view.browser().select(0, 0);
+            view.browser().activate_focused();
+            wait_until(|| view.browser().location_at(1) == Some(Location::local(&existing)));
+
+            view.state
+                .begin_new_entry(0, Location::local(fixture.path()), true);
+            wait_until(|| rename_field(&view).is_some());
+
+            let new_folder = fixture.path().join("new folder");
+            assert_eq!(
+                view.browser().location_at(1),
+                Some(Location::local(&new_folder)),
+                "the child column should follow the newly created folder, not stay on the previously opened one"
+            );
+
+            view.browser().clear_observer();
+            window.destroy();
+        },
+    );
+}
+
+#[test]
 fn cancelling_before_creation_finishes_does_not_open_a_late_editor_or_delete_the_item() {
     gtk_test(
         "ui::browser::inline_edit::tests::entries::cancelling_before_creation_finishes_does_not_open_a_late_editor_or_delete_the_item",
