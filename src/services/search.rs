@@ -910,12 +910,12 @@ fn fuzzy_subsequence_score(haystack: &str, needle: &str) -> Option<i64> {
         return fuzzy_ascii_subsequence_score(haystack.as_bytes(), needle.as_bytes());
     }
     let mut chars = haystack.char_indices();
-    let mut previous = None;
+    let mut previous_end = None;
     let mut score = 1_000i64;
     for wanted in needle.chars() {
         let (position, _) = chars.find(|(_, candidate)| *candidate == wanted)?;
         score -= position as i64;
-        if previous.is_some_and(|previous| previous + wanted.len_utf8() == position) {
+        if previous_end == Some(position) {
             score += 80;
         }
         if position == 0
@@ -926,7 +926,7 @@ fn fuzzy_subsequence_score(haystack: &str, needle: &str) -> Option<i64> {
         {
             score += 45;
         }
-        previous = Some(position);
+        previous_end = Some(position + wanted.len_utf8());
     }
     Some(score)
 }

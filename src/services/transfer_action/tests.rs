@@ -6,10 +6,10 @@ use super::{
 };
 use crate::model::Location;
 
-fn identity(id: &str, is_remote: bool) -> VolumeIdentity {
+fn identity(id: &str, backend: &str) -> VolumeIdentity {
     VolumeIdentity {
         filesystem_id: id.into(),
-        is_remote,
+        backend: backend.into(),
     }
 }
 
@@ -57,14 +57,14 @@ fn commit(
 
 #[test]
 fn volume_relation_treats_empty_sources_as_unknown() {
-    let dest = identity("dev:1", false);
+    let dest = identity("dev:1", "file");
     assert_eq!(volume_relation(Some(&dest), &[]), VolumeRelation::Unknown);
 }
 
 #[test]
 fn volume_relation_is_unknown_when_dest_or_any_source_is_missing() {
-    let dest = identity("dev:1", false);
-    let same = identity("dev:1", false);
+    let dest = identity("dev:1", "file");
+    let same = identity("dev:1", "file");
     assert_eq!(
         volume_relation(None, &[Some(same.clone())]),
         VolumeRelation::Unknown
@@ -77,9 +77,9 @@ fn volume_relation_is_unknown_when_dest_or_any_source_is_missing() {
 
 #[test]
 fn volume_relation_is_different_if_any_source_disagrees() {
-    let dest = identity("dev:1", false);
-    let same = identity("dev:1", false);
-    let other = identity("dev:2", false);
+    let dest = identity("dev:1", "file");
+    let same = identity("dev:1", "file");
+    let other = identity("dev:2", "file");
     assert_eq!(
         volume_relation(Some(&dest), &[Some(same.clone())]),
         VolumeRelation::Same
@@ -91,13 +91,21 @@ fn volume_relation_is_different_if_any_source_disagrees() {
 }
 
 #[test]
-fn volume_relation_treats_remote_flag_mismatch_as_different() {
-    let local = identity("same-id", false);
-    let remote = identity("same-id", true);
-    assert_eq!(
-        volume_relation(Some(&local), &[Some(remote)]),
-        VolumeRelation::Different
-    );
+fn volume_relation_preserves_backend_namespaces() {
+    for backend in ["file", "trash", "sftp", "smb"] {
+        let dest = identity("same-id", backend);
+        for source_backend in ["file", "trash", "sftp", "smb"] {
+            let source = identity("same-id", source_backend);
+            assert_eq!(
+                volume_relation(Some(&dest), &[Some(source)]),
+                if backend == source_backend {
+                    VolumeRelation::Same
+                } else {
+                    VolumeRelation::Different
+                }
+            );
+        }
+    }
 }
 
 #[test]

@@ -131,6 +131,11 @@ fn theme_appearance_uses_background_luminance() {
     assert!(theme_background_is_light("#ffffff"));
     assert!(theme_background_is_light("#efecf4"));
     assert!(!theme_background_is_light("#1e1d1f"));
+    assert!(theme_background_is_light("rgb(255,255,255)"));
+    assert!(!theme_background_is_light("rgb(30,29,31)"));
+    assert!(theme_background_is_light("#fff"));
+    assert!(theme_background_is_light("white"));
+    assert!(!theme_background_is_light("black"));
     assert!(!theme_background_is_light("invalid"));
 }
 

@@ -61,6 +61,43 @@ def test_the_pane_context_menu_offers_directory_actions(strata):
     strata.dismiss_menu()
 
 
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_folder_background_customize_targets_the_presented_directory(strata, mode):
+    root = strata.fixture.root.name
+    strata.pointer.right_click(strata.pane(root), at=strata.background_point(root))
+    strata.wait(strata.context_menu, "the pane context menu")
+    strata.choose_menu_item("Customize…")
+
+    dialog = strata.wait_for_dialog()
+    assert "Customize Folder" in dialog.dump()
+    assert root in dialog.dump()
+    strata.pointer.click(strata.dialog_button("Done"))
+    strata.wait(lambda: strata.dialog() is None, "the customize dialog to close")
+
+
+@pytest.mark.preferences(browser_mode="columns")
+def test_folder_background_customize_targets_a_non_active_ancestor_column(strata):
+    nested = strata.fixture.path("documents/nested")
+    nested.mkdir()
+    (nested / "child.txt").write_text("child")
+    strata.open_directory("documents")
+    strata.open_directory("nested", directory="documents")
+
+    strata.pointer.right_click(
+        strata.pane("documents"), at=strata.background_point("documents")
+    )
+    strata.wait(strata.context_menu, "the ancestor pane context menu")
+    strata.choose_menu_item("Customize…")
+
+    dialog = strata.wait_for_dialog()
+    contents = dialog.dump()
+    assert "Customize Folder" in contents
+    assert "documents" in contents
+    assert "nested" not in contents
+    strata.pointer.click(strata.dialog_button("Done"))
+    strata.wait(lambda: strata.dialog() is None, "the customize dialog to close")
+
+
 def _open_properties(strata, name):
     strata.open_context_menu(name)
     strata.choose_menu_item("Properties")

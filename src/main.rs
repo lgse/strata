@@ -52,35 +52,6 @@ fn launch_mode(arguments: &[OsString]) -> LaunchMode {
     }
 }
 
-/// Every target the launcher or shell asked to open, in argument order.
-fn open_requests(files: &[gio::File]) -> Vec<adapters::RevealRequest> {
-    files
-        .iter()
-        .filter_map(|file| {
-            // Do not probe remote URIs synchronously during startup.
-            let reveal = file.is_native()
-                && file
-                    .path()
-                    .is_some_and(|path| match std::fs::metadata(&path) {
-                        Ok(metadata) => metadata.is_file(),
-                        Err(_) => path.is_symlink(),
-                    });
-            let (directory, name) = match reveal.then(|| file.parent()).flatten() {
-                Some(parent) => (parent, file.basename()),
-                None => (file.clone(), None),
-            };
-            Some(adapters::RevealRequest {
-                directory: adapters::location_for_file(&directory)?,
-                selection: name
-                    .map(|name| name.to_string_lossy().into_owned())
-                    .into_iter()
-                    .collect(),
-                properties: false,
-            })
-        })
-        .collect()
-}
-
 fn main() -> gtk::glib::ExitCode {
     let arguments: Vec<OsString> = std::env::args_os().collect();
     match launch_mode(&arguments) {
@@ -143,12 +114,11 @@ fn main() -> gtk::glib::ExitCode {
     application.connect_startup(export_file_manager_interface);
     application.connect_activate(ui::present);
     application.connect_open(|application, files, _| {
-        let requests = open_requests(files);
-        if requests.is_empty() {
+        if files.is_empty() {
             ui::present(application);
         }
-        for request in requests {
-            ui::present_reveal(application, request);
+        for file in files {
+            ui::present_open(application, file.clone());
         }
     });
     application.run()

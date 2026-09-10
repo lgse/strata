@@ -5,16 +5,17 @@ mod preferences;
 use std::{cell::RefCell, collections::HashSet};
 
 use super::{
-    Preferences, TextSize, Theme, azure_tokens, blend, browser_mode_from_stored, builtins,
-    configured_hardware_acceleration, configured_video_preview_backend, is_omarchy_theme_event,
-    merge_builtin_and_custom_themes, notify_live, slugify, snapped_root_font_px, sort_preferences,
-    stored_browser_mode, text_scale_factor_from_xft_dpi, title_case_slug, tokens_from_quattro,
-    validate_tokens,
+    Preferences, TextSize, Theme, ThemeTokens, azure_tokens, blend, browser_mode_from_stored,
+    builtins, color_to_hex, configured_hardware_acceleration, configured_video_preview_backend,
+    is_omarchy_theme_event, merge_builtin_and_custom_themes, notify_live, slugify,
+    snapped_root_font_px, sort_preferences, source_style_scheme_xml, stored_browser_mode,
+    text_scale_factor_from_xft_dpi, title_case_slug, tokens_from_quattro, validate_tokens,
 };
 use crate::{
     model::{SortDirection, SortKey, ViewPreferences},
     sandbox::MediaPreviewBackend,
     services::{Channel, CrossVolumeDropStrategy},
+    test_support::gtk_test,
     ui::browser_modes::BrowserMode,
 };
 
@@ -117,6 +118,75 @@ fn omarchy_slugs_become_display_names() {
 #[test]
 fn colors_can_be_blended_into_semantic_tokens() {
     assert_eq!(blend("#000000", "#ffffff", 0.5), "#808080");
+    assert_eq!(blend("rgb(0,0,0)", "rgb(255,255,255)", 0.5), "#808080");
+    assert_eq!(blend("#000", "#fff", 0.5), "#808080");
+    assert_eq!(blend("black", "white", 0.5), "#808080");
+}
+
+#[test]
+fn gtk_color_formats_canonicalize_for_persistence_and_scheme_xml() {
+    assert_eq!(color_to_hex("rgb(153,193,241)"), "#99c1f1");
+    assert_eq!(color_to_hex("#fff"), "#ffffff");
+    assert_eq!(color_to_hex("rebeccapurple"), "#663399");
+}
+
+fn scheme_color_values(xml: &str) -> Vec<&str> {
+    xml.lines()
+        .filter_map(|line| {
+            let start = line.find("value=\"")? + 7;
+            let rest = line.get(start..)?;
+            let end = rest.find('"')?;
+            Some(&rest[..end])
+        })
+        .collect()
+}
+
+#[test]
+fn source_style_scheme_xml_canonicalizes_rgb_tokens_for_gtksourceview() {
+    gtk_test(
+        "ui::theme::tests::source_style_scheme_xml_canonicalizes_rgb_tokens_for_gtksourceview",
+        || {
+            let tokens = ThemeTokens {
+                name: "Picker".to_owned(),
+                background: "rgb(255,255,255)".to_owned(),
+                surface: "rgb(245,245,245)".to_owned(),
+                text: "rgb(30,29,31)".to_owned(),
+                accent: "rgb(153,193,241)".to_owned(),
+                danger: "rgb(229,72,77)".to_owned(),
+                muted: "rgb(200,200,200)".to_owned(),
+                highlight: "rgb(36,77,104)".to_owned(),
+                border: "rgb(49,91,117)".to_owned(),
+                dim_text: "rgb(111,141,163)".to_owned(),
+            };
+            let xml = source_style_scheme_xml(&tokens);
+            let values = scheme_color_values(&xml);
+            assert_eq!(values.len(), 9);
+            for value in &values {
+                assert!(
+                    value.starts_with('#') && value.len() == 7,
+                    "scheme colors must be canonical #rrggbb, got {value}"
+                );
+            }
+            assert!(
+                !xml.contains("rgb("),
+                "scheme XML must not emit rgb() colour tags"
+            );
+
+            let directory = tempfile::tempdir().expect("scheme directory");
+            std::fs::write(directory.path().join("strata-current.xml"), xml.as_bytes())
+                .expect("write scheme");
+            let manager = sourceview5::StyleSchemeManager::new();
+            manager.set_search_path(&[directory.path().to_str().expect("utf-8 scheme path")]);
+            manager.force_rescan();
+            let scheme = manager
+                .scheme("strata-current")
+                .expect("GtkSourceView should load a #rrggbb scheme");
+            let statement = scheme
+                .style("def:statement")
+                .expect("def:statement should resolve");
+            assert_eq!(statement.foreground().as_deref(), Some("#99c1f1"));
+        },
+    );
 }
 
 #[test]

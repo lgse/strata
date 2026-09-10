@@ -278,13 +278,13 @@ fn preview_image_uses_raw_fallbacks() {
     let output = directory.path().join("result.png");
     std::fs::write(&input, b"not a camera file").expect("write stub");
 
-    let pixbuf = render_pixbuf(&input, 1400).expect_err("stub must fail pixbuf");
-    let raw = render_raw(&input, 1400);
+    let pixbuf = render_pixbuf(&input, 800).expect_err("stub must fail pixbuf");
+    let raw = render_raw(&input, 800);
     let preview = run(&[
         "preview-image".into(),
         input.to_string_lossy().into_owned(),
         output.to_string_lossy().into_owned(),
-        "1400".into(),
+        "800".into(),
         "software".into(),
     ]);
 

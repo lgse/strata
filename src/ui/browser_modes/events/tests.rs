@@ -471,3 +471,83 @@ fn list_metadata_updates_bound_rows_without_replacing_the_model() {
         },
     );
 }
+
+fn native_select_item(view: &gtk::Widget, position: u32, modify: bool, extend: bool) {
+    view.activate_action(
+        "list.select-item",
+        Some(&(position, modify, extend).to_variant()),
+    )
+    .expect("list.select-item");
+}
+
+fn gtk_selected(pane: &Pane) -> Vec<usize> {
+    (0..pane.section.selection.n_items())
+        .filter(|&position| pane.section.selection.is_selected(position))
+        .map(|position| position as usize)
+        .collect()
+}
+
+#[test]
+fn resume_native_selection_starts_from_the_cursor_after_escape() {
+    gtk_test(
+        "ui::browser_modes::events::tests::resume_native_selection_starts_from_the_cursor_after_escape",
+        || {
+            for (mode, grouped) in presentations() {
+                let fixture = Fixture::new(mode, grouped);
+                fixture.show();
+                fixture.browser.select(0, 0);
+                fixture.browser.set_selection(0, &[0, 1], Some(1));
+                assert_eq!(fixture.browser.selected_positions(0), [0, 1]);
+                assert_eq!(fixture.browser.selection_anchor_position(0), Some(0));
+
+                assert!(fixture.browser.clear_active_selection());
+                assert!(fixture.browser.selected_positions(0).is_empty());
+                assert_eq!(
+                    fixture
+                        .browser
+                        .focused_item()
+                        .map(|(_, position, _)| position),
+                    Some(1)
+                );
+                assert_eq!(fixture.browser.selection_anchor_position(0), Some(0));
+
+                if !grouped {
+                    let pane = fixture.pane();
+                    pane.section.syncing.set(true);
+                    native_select_item(&pane.section.view, 0, false, false);
+                    native_select_item(&pane.section.view, 1, false, true);
+                    pane.section.syncing.set(false);
+                    assert_eq!(
+                        gtk_selected(&pane),
+                        [0, 1],
+                        "{mode:?}: plant GTK's leftover range origin on the first item"
+                    );
+                }
+
+                assert!(
+                    fixture.views.resume_native_selection(),
+                    "{mode:?} grouped={grouped}: seed the cursor when filled selection is empty"
+                );
+                assert_eq!(fixture.browser.selected_positions(0), [1]);
+                assert_eq!(
+                    fixture.browser.selection_anchor_position(0),
+                    Some(1),
+                    "{mode:?} grouped={grouped}: leftover range anchor must not be reused"
+                );
+                if !grouped {
+                    let view = fixture.pane().section.view.clone();
+                    native_select_item(&view, 2, false, true);
+                    assert_eq!(
+                        gtk_selected(&fixture.pane()),
+                        [1, 2],
+                        "{mode:?}: native Shift must not re-include the old range origin"
+                    );
+                }
+                assert!(
+                    !fixture.views.resume_native_selection(),
+                    "{mode:?} grouped={grouped}: a filled selection must keep native Shift movement"
+                );
+            }
+        },
+    );
+}

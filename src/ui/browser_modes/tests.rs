@@ -152,8 +152,8 @@ fn icons_cards_keep_a_uniform_icon_slot_and_two_line_label() {
     assert_eq!(icons_card_icon_slot(128), 128);
     assert_eq!(icons_card_icon_slot(512), MAX_ICONS_THUMBNAIL_SIZE);
     assert_eq!(icons_card_extent(26), icons_card_extent(64));
-    assert_eq!(icons_card_extent(64), (156, 107));
-    assert_eq!(icons_card_extent(128), (156, 171));
+    assert_eq!(icons_card_extent(64), (116, 107));
+    assert_eq!(icons_card_extent(128), (128, 171));
     assert_eq!(icons_card_extent(256), (256, 299));
     assert_eq!(icons_card_extent(512), icons_card_extent(256));
 }
@@ -161,23 +161,23 @@ fn icons_cards_keep_a_uniform_icon_slot_and_two_line_label() {
 #[test]
 fn icons_columns_follow_viewport_width() {
     assert_eq!(
-        super::icons_columns_for_width(800, 160, BrowserDensity::Compact),
-        5
+        super::icons_columns_for_width(800, 120, BrowserDensity::Compact),
+        6
     );
     assert_eq!(
-        super::icons_columns_for_width(160, 160, BrowserDensity::Compact),
+        super::icons_columns_for_width(120, 120, BrowserDensity::Compact),
         1
     );
     assert_eq!(
-        super::icons_columns_for_width(80, 160, BrowserDensity::Compact),
+        super::icons_columns_for_width(80, 120, BrowserDensity::Compact),
         1
     );
     assert_eq!(
-        super::icons_columns_for_width(8000, 160, BrowserDensity::Compact),
+        super::icons_columns_for_width(8000, 120, BrowserDensity::Compact),
         20
     );
     assert_eq!(
-        super::icons_columns_for_width(8000, 160, BrowserDensity::Airy),
+        super::icons_columns_for_width(8000, 120, BrowserDensity::Airy),
         16
     );
 }

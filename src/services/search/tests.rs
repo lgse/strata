@@ -13,8 +13,9 @@ use std::{
 mod scope;
 
 use super::{
-    PathAdmission, SearchEvent, SearchItem, admit_path, fuzzy_score_normalized, index_tree,
-    index_trees, index_trees_with_budget, index_trees_with_scheduler_budget,
+    PathAdmission, SearchEvent, SearchItem, admit_path, fuzzy_score_normalized,
+    fuzzy_subsequence_score, index_tree, index_trees, index_trees_with_budget,
+    index_trees_with_scheduler_budget,
 };
 
 fn score_path(path: &str, query: &str, root: &Path) -> Option<i64> {
@@ -52,6 +53,17 @@ fn cat_01_name_matches_rank_above_fuzzy_bucket_paths() {
         .expect("the bucket path should fuzzy match");
     assert!(exact_prefix > fuzzy_bucket);
     assert!(score_path("/fixture/Cats/cat-02-photo.jpg", "cat-01", root).is_none());
+}
+
+#[test]
+fn contiguous_multibyte_matches_outrank_separated_ones() {
+    let contiguous = fuzzy_subsequence_score("éa", "éa").expect("a contiguous match");
+    let separated = fuzzy_subsequence_score("é_a", "éa").expect("a separated match");
+    assert!(contiguous > separated);
+
+    let contiguous = fuzzy_subsequence_score("配置", "配置").expect("a contiguous match");
+    let separated = fuzzy_subsequence_score("配/置", "配置").expect("a separated match");
+    assert!(contiguous > separated);
 }
 
 #[test]

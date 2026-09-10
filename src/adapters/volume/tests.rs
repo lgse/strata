@@ -270,11 +270,9 @@ fn uri_lookup_is_pending_then_reports_once_resolved() {
     assert!(was_pending);
     let lookup = lookup.expect("file uri lookup should resolve");
     assert_eq!(lookup.relation, VolumeRelation::Same);
-    assert!(
-        lookup
-            .dest
-            .is_some_and(|identity| { !identity.filesystem_id.is_empty() && !identity.is_remote })
-    );
+    assert!(lookup.dest.is_some_and(|identity| {
+        !identity.filesystem_id.is_empty() && identity.backend == "file"
+    }));
 }
 
 #[test]
@@ -319,11 +317,67 @@ fn native_path_on_a_remote_mount_is_looked_up_asynchronously() {
     );
     let lookup = lookup.expect("remote native lookup should resolve");
     assert_eq!(lookup.relation, VolumeRelation::Same);
-    assert!(lookup.dest.is_some_and(|identity| identity.is_remote));
+    assert!(
+        lookup
+            .dest
+            .is_some_and(|identity| identity.backend == "file")
+    );
 }
 
 #[test]
-fn remote_and_local_native_paths_never_match() {
+fn network_mount_aliases_preserve_identity_and_plain_drop_move_policy() {
+    use crate::services::{
+        CrossVolumeDropStrategy, DropActionInput, DropCommit, DropOverride, drop_commit,
+    };
+
+    let root = tempfile::tempdir().expect("tempdir");
+    let nas = root.path().join("nas");
+    let alias = root.path().join("alias");
+    fs::create_dir_all(nas.join("a")).expect("source directory");
+    fs::create_dir(nas.join("b")).expect("destination directory");
+    fs::write(nas.join("a/file"), b"x").expect("source file");
+    std::os::unix::fs::symlink(&nas, &alias).expect("mount alias");
+    let mounts = mounts_treating_as_nfs(&nas);
+
+    for (source_root, dest_root) in [(&nas, &alias), (&alias, &nas)] {
+        let query = DropVolumeQuery::with_mounts(
+            &Location::local(dest_root.join("b")),
+            &[Location::local(source_root.join("a/file"))],
+            &mounts,
+        );
+        let (lookup, was_pending) = resolve_with_mounts(&query, &mounts, Duration::from_secs(5));
+        assert!(
+            was_pending,
+            "mounts and aliases require asynchronous lookup"
+        );
+        let lookup = lookup.expect("alias lookup should resolve");
+        let dest = lookup.dest.as_ref().expect("destination identity");
+        let source = lookup.sources[0].as_ref().expect("source identity");
+        assert_eq!(dest.filesystem_id, source.filesystem_id);
+        assert_eq!(lookup.relation, VolumeRelation::Same);
+        for strategy in [CrossVolumeDropStrategy::Copy, CrossVolumeDropStrategy::Ask] {
+            for (override_with, expected) in [
+                (DropOverride::None, DropCommit::Move),
+                (DropOverride::ForceCopy, DropCommit::Copy),
+                (DropOverride::ForceMove, DropCommit::Move),
+            ] {
+                assert_eq!(
+                    drop_commit(DropActionInput {
+                        can_copy: true,
+                        can_move: true,
+                        volume: lookup.relation,
+                        override_with,
+                        strategy,
+                    }),
+                    expected
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn mount_classification_does_not_override_native_filesystem_identity() {
     let root = tempfile::tempdir().expect("tempdir");
     let remote = root.path().join("remote");
     let local = root.path().join("local");
@@ -337,7 +391,7 @@ fn remote_and_local_native_paths_never_match() {
     let mounts = mounts_treating_as_nfs(&remote);
     let (lookup, _) = resolve_with_mounts(&query, &mounts, Duration::from_secs(5));
     let lookup = lookup.expect("mixed lookup should resolve");
-    assert_eq!(lookup.relation, VolumeRelation::Different);
+    assert_eq!(lookup.relation, VolumeRelation::Same);
 }
 
 fn local_only_mounts() -> MountTable {
@@ -446,7 +500,7 @@ fn timeout_finishes_with_partial_results_and_ignores_late_callbacks() {
     }));
     let dest = VolumeIdentity {
         filesystem_id: "l1".into(),
-        is_remote: true,
+        backend: "sftp".into(),
     };
     PendingState::resolve(&state, 0, Some(dest.clone()));
     assert!(reported.borrow().is_empty());
