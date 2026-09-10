@@ -105,20 +105,17 @@ pub(crate) fn plan_restore_from_known_paths(
     if !destination.starts_with(&allowed_root) {
         return Err(escaped_restore_error());
     }
-    // Home trash collects items from any filesystem; only volume trash is confined to its mount (#478).
-    if trash_root != context.home_trash_root
-        && context.mounts.mount_point_for(&destination) != Some(allowed_root.as_path())
-    {
-        return Err(RestoreTargetError::new(
-            "The original location crosses a bind mount or subvolume boundary and cannot be restored",
-        ));
-    }
     if restore_volume_relation(
         &Location::local(source_path),
         &Location::local(&destination),
     ) != VolumeRelation::Same
     {
         return Err(escaped_restore_error());
+    }
+    if context.mounts.mount_point_for(&destination) != Some(allowed_root.as_path()) {
+        return Err(RestoreTargetError::new(
+            "The original location crosses a bind mount or subvolume boundary and cannot be restored",
+        ));
     }
     let trash_tree = trash_tree_root(trash_root);
     if path_is_within(&destination, &trash_tree) {
