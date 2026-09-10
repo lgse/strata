@@ -340,12 +340,24 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                         assert_actions(
                             &menu,
                             &[],
-                            &["New Folder", "New File", "Paste", "Open in Terminal"],
+                            &[
+                                "New Folder",
+                                "New File",
+                                "Paste",
+                                "Open in Terminal",
+                                "Customize…",
+                            ],
                         );
                     } else {
                         assert_actions(
                             &menu,
-                            &["New Folder", "New File", "Paste", "Open in Terminal"],
+                            &[
+                                "New Folder",
+                                "New File",
+                                "Paste",
+                                "Open in Terminal",
+                                "Customize…",
+                            ],
                             &[],
                         );
                     }
@@ -409,6 +421,11 @@ fn assert_remote_menu_separates_rename_from_properties() {
         "rename must stay separated from the properties group"
     );
 
+    menu.popdown();
+    wait_until(|| menu.parent().is_none());
+
+    let menu = open_menu(&view, None);
+    assert_actions(&menu, &["Properties"], &["Customize…"]);
     menu.popdown();
     wait_until(|| menu.parent().is_none());
     view.browser().clear_observer();

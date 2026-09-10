@@ -192,13 +192,14 @@ run_pacman() {
     sudo -n pacman -S --needed --noconfirm -- "$@" \
       || die "Non-interactive package installation failed; passwordless sudo or cached credentials may be required."
   else
-    sudo pacman -S --needed -- "$@"
+    sudo pacman -S --needed -- "$@" </dev/tty
   fi
 }
 
 install_arch_dependencies() {
   local missing=() package
   for package in "${REQUIRED_PACKAGES[@]}"; do
+    [[ $package == github-cli ]] && command -v gh >/dev/null 2>&1 && continue
     pacman -Q "$package" >/dev/null 2>&1 || missing+=("$package")
   done
 
