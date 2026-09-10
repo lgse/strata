@@ -693,6 +693,8 @@ impl ViewState {
         let search_handle_for_changed = search_handle.clone();
         let search_gen_for_changed = search_generation.clone();
         let search_active_for_changed = recursive_search_active.clone();
+        let selection_for_search = selection.clone();
+        let syncing_for_search = syncing_selection.clone();
         let weak_filter_entry = filter_entry.downgrade();
         bind_filter_query(&filter_entry, move |text, recursive, restart| {
             if restart {
@@ -731,6 +733,8 @@ impl ViewState {
             let results = search_results_for_changed.clone();
             let handle = search_handle_for_changed.clone();
             let search_gen = search_gen_for_changed.clone();
+            let selection_for_poll = selection_for_search.clone();
+            let syncing_for_poll = syncing_for_search.clone();
             if handle.borrow().is_none() {
                 let Some(state) = weak_state.upgrade() else {
                     return;
@@ -755,9 +759,10 @@ impl ViewState {
                 filtered.set_model(Some(&sm));
                 let weak_entry = weak_entry.clone();
                 let weak_sm = sm.downgrade();
-                let weak_filtered = filtered.downgrade();
                 let results = results.clone();
                 let gen_check = search_gen.clone();
+                let selection_for_poll = selection_for_poll.clone();
+                let syncing_for_poll = syncing_for_poll.clone();
                 let _poll = glib::timeout_add_local(Duration::from_millis(16), move || {
                     if gen_check.get() != poll_gen {
                         return glib::ControlFlow::Break;
@@ -780,12 +785,64 @@ impl ViewState {
                         let Some(sm) = weak_sm.upgrade() else {
                             return glib::ControlFlow::Break;
                         };
-                        let labels: Vec<_> = items.iter().map(|item| item.name.clone()).collect();
+                        let old_items = results.borrow();
+                        let n_old = old_items.len();
+                        let n_new = items.len();
+
+                        let selected_pos = bitset_positions(&selection_for_poll.selection())
+                            .first()
+                            .copied();
+                        let selected_path = selected_pos
+                            .and_then(|pos| old_items.get(pos as usize).map(|it| it.path.clone()));
+
+                        let mut prefix = 0;
+                        while prefix < n_old
+                            && prefix < n_new
+                            && old_items[prefix].path == items[prefix].path
+                            && old_items[prefix].name == items[prefix].name
+                            && old_items[prefix].is_directory == items[prefix].is_directory
+                        {
+                            prefix += 1;
+                        }
+
+                        let mut suffix = 0;
+                        while suffix < (n_old - prefix) && suffix < (n_new - prefix) {
+                            let old_idx = n_old - 1 - suffix;
+                            let new_idx = n_new - 1 - suffix;
+                            if old_items[old_idx].path == items[new_idx].path
+                                && old_items[old_idx].name == items[new_idx].name
+                                && old_items[old_idx].is_directory == items[new_idx].is_directory
+                            {
+                                suffix += 1;
+                            } else {
+                                break;
+                            }
+                        }
+
+                        let removals = (n_old - prefix - suffix) as u32;
+                        let additions: Vec<String> = items[prefix..n_new - suffix]
+                            .iter()
+                            .map(|item| item.name.clone())
+                            .collect();
+                        let additions_refs: Vec<&str> =
+                            additions.iter().map(String::as_str).collect();
+
+                        drop(old_items);
                         results.replace(items);
-                        let labels: Vec<_> = labels.iter().map(String::as_str).collect();
-                        sm.splice(0, sm.n_items(), &labels);
-                        if let Some(fm) = weak_filtered.upgrade() {
-                            fm.items_changed(0, sm.n_items(), sm.n_items());
+
+                        if removals > 0 || !additions.is_empty() {
+                            sm.splice(prefix as u32, removals, &additions_refs);
+                        }
+
+                        if let Some(selected_path) = selected_path {
+                            let results_ref = results.borrow();
+                            if let Some(new_pos) =
+                                results_ref.iter().position(|it| it.path == selected_path)
+                            {
+                                syncing_for_poll.set(true);
+                                selection_for_poll.select_item(new_pos as u32, true);
+                                syncing_for_poll.set(false);
+                            }
                         }
                     }
                     glib::ControlFlow::Continue
