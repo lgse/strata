@@ -100,6 +100,18 @@ fn ensure_modified_date_timer() {
     });
 }
 
+/// Whole calendar days between the two timestamps' local dates, so that
+/// "Yesterday" means the previous date rather than 24 to 48 hours ago.
+fn calendar_day_difference(modified: &glib::DateTime, now: &glib::DateTime) -> Option<i64> {
+    let midnight = |value: &glib::DateTime| {
+        let (year, month, day) = value.ymd();
+        glib::DateTime::new(&value.timezone(), year, month, day, 0, 0, 0.0).ok()
+    };
+    let span = midnight(now)?.difference(&midnight(modified)?).0;
+    // Midnights either side of a DST change are 23 or 25 hours apart.
+    Some((span + 43_200_000_000) / 86_400_000_000)
+}
+
 fn modified_date_at(modified: &glib::DateTime, now: &glib::DateTime) -> String {
     let span = now.difference(modified).0;
     if span < 0 {
@@ -109,7 +121,7 @@ fn modified_date_at(modified: &glib::DateTime, now: &glib::DateTime) -> String {
             .unwrap_or_else(|_| "—".to_owned());
     }
 
-    let day_diff = span / 86_400_000_000;
+    let day_diff = calendar_day_difference(modified, now).unwrap_or(span / 86_400_000_000);
     let same_year = now.year() == modified.year();
 
     if day_diff == 0 {

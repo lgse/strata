@@ -21,3 +21,21 @@ fn recent_past_modified_dates_remain_relative() {
 
     assert_eq!(modified_date_at(&modified, &now), "15m ago");
 }
+
+#[test]
+fn relative_days_follow_the_calendar_rather_than_24_hour_windows() {
+    let now = utc_date(2026, 9, 8, 23, 0);
+
+    assert_eq!(
+        modified_date_at(&utc_date(2026, 9, 7, 0, 30), &now),
+        "Yesterday, 00:30"
+    );
+    assert_eq!(
+        modified_date_at(&utc_date(2026, 9, 6, 23, 30), &now),
+        "Sunday 23:30"
+    );
+    assert_eq!(
+        modified_date_at(&utc_date(2026, 9, 1, 23, 30), &now),
+        "Sep 1, 23:30"
+    );
+}
