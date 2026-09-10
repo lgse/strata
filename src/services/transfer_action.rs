@@ -10,14 +10,15 @@ use crate::model::Location;
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct VolumeIdentity {
     pub filesystem_id: String,
-    pub is_remote: bool,
+    /// GIO URI scheme; native paths and file URIs share the `file` namespace.
+    pub backend: String,
 }
 
 impl VolumeIdentity {
     pub(crate) fn matches(&self, other: &Self) -> bool {
         !self.filesystem_id.is_empty()
             && self.filesystem_id == other.filesystem_id
-            && self.is_remote == other.is_remote
+            && self.backend == other.backend
     }
 }
 

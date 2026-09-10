@@ -55,7 +55,19 @@ impl Dispatcher {
         if event.key == Key::Escape && (self.view.cancel_new_entry() || self.view.cancel_rename()) {
             return Some(Propagation::Stop);
         }
-        self.inline_editing_active().then_some(Propagation::Proceed)
+        if !self.inline_editing_active() {
+            return None;
+        }
+        // Stop Ctrl+A before the collection view also applies its select-all binding.
+        if event.control()
+            && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
+            && event.key == Key::a
+            && let Some(field) = self.view.active_rename_field()
+        {
+            field.select_region(0, -1);
+            return Some(Propagation::Stop);
+        }
+        Some(Propagation::Proceed)
     }
 
     pub(super) fn filter_and_location_commands(&self, event: &KeyEvent) -> KeyResult {

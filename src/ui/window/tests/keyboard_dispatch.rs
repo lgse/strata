@@ -22,7 +22,7 @@ impl KeyboardFixture {
         ThemeManager::seed_saved_preferences_for_test();
         let preferences = ThemeManager::shared();
         let directory = tempfile::tempdir().expect("fixture");
-        for name in ["a.txt", "b.txt"] {
+        for name in ["a.txt", "b.txt", "c.txt"] {
             std::fs::write(directory.path().join(name), b"preview").expect("fixture file");
         }
         let view = browser_for_window();
@@ -116,6 +116,9 @@ fn rendered_name(widget: &gtk::Widget, name: &str) -> bool {
     if widget
         .downcast_ref::<gtk::Label>()
         .is_some_and(|label| label.label() == name)
+        || widget
+            .downcast_ref::<gtk::Inscription>()
+            .is_some_and(|label| label.text().as_deref() == Some(name))
     {
         return true;
     }
@@ -194,6 +197,48 @@ fn inline_editing_owns_filter_keys_but_not_global_search() {
             assert!(fixture.press(Key::Escape, ModifierType::empty()));
             assert!(!fixture.view.rename_is_active());
             assert_eq!(fixture.selected(), [0]);
+        },
+    );
+}
+
+#[test]
+fn ctrl_a_during_rename_selects_only_unicode_entry_text_in_every_view() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::ctrl_a_during_rename_selects_only_unicode_entry_text_in_every_view",
+        || {
+            let fixture = KeyboardFixture::new();
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                fixture.view.set_view_mode(mode);
+                fixture.view.browser().select(0, 0);
+                fixture.view.browser().focus_active();
+                wait_until(|| {
+                    fixture.view.item_view_has_focus()
+                        && rendered_name(&fixture.view.widget(), "a.txt")
+                });
+                assert!(fixture.press(Key::F2, ModifierType::empty()), "{mode:?}");
+                assert!(fixture.view.rename_is_active(), "{mode:?}");
+                let field = fixture.view.active_rename_field().expect("rename field");
+                field.set_text("résumé-💾.txt");
+                field.set_position(-1);
+
+                assert!(
+                    fixture.press(Key::a, ModifierType::CONTROL_MASK),
+                    "{mode:?}"
+                );
+                assert_eq!(
+                    field.selection_bounds(),
+                    Some((0, field.text().chars().count() as i32)),
+                    "{mode:?}"
+                );
+                assert_eq!(fixture.selected(), [0], "{mode:?}");
+
+                assert!(
+                    fixture.press(Key::Escape, ModifierType::empty()),
+                    "{mode:?}"
+                );
+                assert!(!fixture.view.rename_is_active(), "{mode:?}");
+                assert_eq!(fixture.selected(), [0], "{mode:?}");
+            }
         },
     );
 }
@@ -280,6 +325,62 @@ fn single_pane_arrows_preserve_native_propagation_and_sidebar_focus_return() {
                 });
                 assert!(fixture.press(Key::Right, ModifierType::empty()));
                 assert!(fixture.view.item_view_has_focus());
+            }
+        },
+    );
+}
+
+#[test]
+fn shift_after_escape_starts_on_the_focused_entry() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::shift_after_escape_starts_on_the_focused_entry",
+        || {
+            let fixture = KeyboardFixture::new();
+            for (mode, next) in [
+                (BrowserMode::Columns, Key::Down),
+                (BrowserMode::List, Key::Down),
+                (BrowserMode::Icons, Key::Right),
+            ] {
+                fixture.view.set_view_mode(mode);
+                fixture.view.browser().select(0, 0);
+                fixture.view.browser().focus_active();
+                wait_until(|| fixture.view.item_view_has_focus() && fixture.selected() == [0]);
+
+                assert!(fixture.press(Key::Escape, ModifierType::empty()));
+                assert!(
+                    fixture.selected().is_empty(),
+                    "{mode:?}: Escape must clear filled selection"
+                );
+
+                assert!(
+                    fixture.press(next, ModifierType::SHIFT_MASK),
+                    "{mode:?}: first Shift after Escape must start on the cursor"
+                );
+                assert_eq!(fixture.selected(), [0], "{mode:?}");
+                assert_eq!(
+                    fixture.view.browser().selection_anchor_position(0),
+                    Some(0),
+                    "{mode:?}"
+                );
+
+                if mode == BrowserMode::Columns {
+                    assert!(fixture.press(next, ModifierType::SHIFT_MASK));
+                    assert_eq!(fixture.selected(), [0, 1], "{mode:?}");
+
+                    assert!(fixture.press(Key::Escape, ModifierType::empty()));
+                    assert!(fixture.selected().is_empty(), "{mode:?}");
+                    assert!(fixture.press(next, ModifierType::SHIFT_MASK));
+                    assert_eq!(
+                        fixture.selected(),
+                        [1],
+                        "{mode:?}: leftover range anchor must not expand after Escape"
+                    );
+                } else {
+                    assert!(
+                        !fixture.press(next, ModifierType::SHIFT_MASK),
+                        "{mode:?}: further Shift arrows stay native once a range exists"
+                    );
+                }
             }
         },
     );
