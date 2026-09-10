@@ -102,8 +102,9 @@ impl Dispatcher {
             return Propagation::Stop;
         }
         self.view.commit_selection();
-        if !event.control() {
-            self.view.resume_native_selection();
+        let started_from_empty = !event.control() && self.view.resume_native_selection();
+        if event.shift() && started_from_empty {
+            return Propagation::Stop;
         }
         if event.without(Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
             && let Some(direction) = sidebar_focus_direction(event.key)

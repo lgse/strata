@@ -9,9 +9,9 @@ import math
 
 SCHEMA = 1
 UNKNOWN_SECONDS = 5.0
-TARGET_SECONDS = 30.0
+TARGET_SECONDS = 90.0
 WORKERS = 2
-MAX_SHARDS = 256
+MAX_SHARDS = 8
 
 
 def inventory_digest(tests: list[dict]) -> str:
@@ -38,12 +38,10 @@ def make_plan(tests: list[dict], durations: dict[str, float], *,
         group["nodeids"].append(nodeid)
         group["seconds"] += estimate
     ordered = sorted(groups.values(), key=lambda group: (-group["seconds"], group["nodeids"]))
-    if ordered[0]["seconds"] > target:
-        raise ValueError(f"one serial group exceeds {target:g}s; split the scenario/group: "
-                         f"{ordered[0]['nodeids']}")
-
-    minimum = max(1, math.ceil(sum(group["seconds"] for group in ordered) / (target * workers)))
-    for count in range(minimum, min(len(ordered), MAX_SHARDS) + 1):
+    maximum = min(len(ordered), MAX_SHARDS)
+    minimum = min(maximum, max(1, math.ceil(
+        sum(group["seconds"] for group in ordered) / (target * workers))))
+    for count in range(minimum, maximum + 1):
         lanes = [[0.0] * workers for _ in range(count)]
         shards = [[] for _ in range(count)]
         for group in ordered:
@@ -51,13 +49,12 @@ def make_plan(tests: list[dict], durations: dict[str, float], *,
                               key=lambda pair: (lanes[pair[0]][pair[1]], pair))
             lanes[shard][lane] += group["seconds"]
             shards[shard].extend(group["nodeids"])
-        if max(max(lane) for lane in lanes) <= target:
+        if max(max(lane) for lane in lanes) <= target or count == maximum:
             return {"schema": SCHEMA, "inventory": inventory_digest(tests),
                     "workers": workers, "target_seconds": target,
                     "shards": [{"index": index, "nodeids": nodeids,
                                 "estimated_seconds": round(max(lanes[index]), 2)}
                                for index, nodeids in enumerate(shards) if nodeids]}
-    raise ValueError(f"suite exceeds the {MAX_SHARDS}-runner matrix limit")
 
 
 def validate_plan(plan: dict, tests: list[dict] | None = None) -> None:

@@ -206,8 +206,10 @@ pub(in crate::ui) fn install_folder_context_menu(
         },
         "Ctrl+H",
     );
+    let customize = context_menu_option(crate::assets::icons::PALETTE, "Customize…", "");
     let properties = context_menu_option(crate::assets::icons::INFO, "Properties", "");
     let in_trash = is_trash_location(&location);
+    customize.set_visible(!in_trash && location.native_path().is_some());
     new_folder.set_visible(!in_trash);
     new_file.set_visible(!in_trash);
     open_terminal.set_visible(!in_trash);
@@ -223,6 +225,7 @@ pub(in crate::ui) fn install_folder_context_menu(
     content.append(&refresh);
     content.append(&toggle_hidden);
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    content.append(&customize);
     content.append(&properties);
 
     let pending_new_entry = Rc::new(Cell::new(None));
@@ -297,6 +300,26 @@ pub(in crate::ui) fn install_folder_context_menu(
         if let Some(state) = weak.upgrade() {
             state.browser.toggle_hidden();
         }
+    });
+    let weak = Rc::downgrade(state);
+    let customize_popover = popover.downgrade();
+    let customize_location = location.clone();
+    customize.connect_clicked(move |_| {
+        if let Some(popover) = customize_popover.upgrade() {
+            popover.popdown();
+        }
+        let Some(state) = weak.upgrade() else {
+            return;
+        };
+        let Some(path) = customize_location.native_path() else {
+            return;
+        };
+        show_customize_modal(
+            &state.overlay,
+            path.to_path_buf(),
+            true,
+            crate::assets::icons::FOLDER,
+        );
     });
     let weak = Rc::downgrade(state);
     let properties_popover = popover.downgrade();

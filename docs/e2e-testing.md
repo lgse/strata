@@ -437,13 +437,18 @@ a workflow that does not have a mutation yet.
 
 The matrix is generated from `harness/sharding.py`, not a fixed runner count or
 file list. Tests are scheduled longest-first using committed setup+call+teardown
-CI measurements from `tests/e2e/durations.json`, with 25% headroom and a 30-second
-estimated worker budget. New tests automatically receive a conservative five-second
-weight. More tests or longer measured durations add runners. Baselines stay in
-one serial scheduling group. An indivisible group over budget or a plan requiring
-more than GitHub's 256 matrix jobs fails explicitly instead of silently extending
-the gate. There is no `max-parallel` throttle; the runner provider must have enough
-concurrent capacity. Runner queues affect reported timing, not test correctness.
+CI measurements from `tests/e2e/durations.json`, with 25% headroom and a 90-second
+soft target per worker (two workers per runner). New tests automatically receive a
+conservative five-second weight. More tests or longer measured durations add runners
+up to a maximum of eight shards, reducing duplicated runtime setup and bounding
+fan-out. At the cap, shards run longer rather than failing planning or dropping tests.
+Baselines stay in one serial scheduling group, even when that group exceeds the soft
+target. Estimated time alone never fails the gate; hang-protection timeouts still apply.
+Tune `TARGET_SECONDS` and `MAX_SHARDS` in `tests/e2e/harness/sharding.py` manually as
+runtime and cost needs change. The shard cap is not a spending cap: longer runs still
+consume more runner-minutes. There is no `max-parallel` throttle; the runner provider
+must have enough concurrent capacity for up to eight shards. Runner queues affect
+reported timing, not test correctness.
 
 Shards validate their entire collection against the plan before selecting tests.
 A missing, extra, skipped, failed, or stale result fails the aggregate gate.

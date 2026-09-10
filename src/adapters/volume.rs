@@ -139,7 +139,6 @@ fn lookup_drop_volumes_with_mounts(
 
 struct Directory<'a> {
     location: &'a Location,
-    is_remote: bool,
     synchronous: bool,
 }
 
@@ -155,7 +154,6 @@ impl<'a> Directory<'a> {
                 .is_some_and(|path| !native_query_may_leave_mount(path));
         Self {
             location,
-            is_remote,
             synchronous,
         }
     }
@@ -215,9 +213,10 @@ impl PendingVolumeLookup {
                 state.remaining -= 1;
                 continue;
             }
-            let is_remote = directory.is_remote;
+            let file = gio_file_for_location(directory.location);
+            let backend = file.uri_scheme().unwrap_or_default().to_string();
             let state = state.clone();
-            gio_file_for_location(directory.location).query_info_async(
+            file.query_info_async(
                 gio::FILE_ATTRIBUTE_ID_FILESYSTEM,
                 gio::FileQueryInfoFlags::NONE,
                 glib::Priority::DEFAULT,
@@ -225,7 +224,7 @@ impl PendingVolumeLookup {
                 move |result| {
                     let identity = result
                         .ok()
-                        .and_then(|info| identity_from_gio(&info, is_remote));
+                        .and_then(|info| identity_from_gio(&info, &backend));
                     PendingState::resolve(&state, index, identity);
                 },
             );
@@ -326,7 +325,7 @@ fn native_volume_identity_with(
             None::<&gio::Cancellable>,
         )
         .ok()?;
-    identity_from_gio(&info, false)
+    identity_from_gio(&info, "file")
 }
 
 pub(crate) fn location_is_remote(location: &Location) -> bool {
@@ -339,13 +338,13 @@ pub(crate) fn location_is_remote(location: &Location) -> bool {
     }
 }
 
-fn identity_from_gio(info: &gio::FileInfo, is_remote: bool) -> Option<VolumeIdentity> {
+fn identity_from_gio(info: &gio::FileInfo, backend: &str) -> Option<VolumeIdentity> {
     let filesystem_id = info.attribute_string(gio::FILE_ATTRIBUTE_ID_FILESYSTEM)?;
     if filesystem_id.is_empty() {
         return None;
     }
     Some(VolumeIdentity {
         filesystem_id: filesystem_id.to_string(),
-        is_remote,
+        backend: backend.into(),
     })
 }

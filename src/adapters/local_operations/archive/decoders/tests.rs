@@ -1078,10 +1078,51 @@ fn error_translation_preserves_passwords_unsupported_formats_and_io_failures() {
         io::ErrorKind::Other,
     ] {
         let error = io::Error::new(kind, "injected I/O failure");
-        let translated = super::archive_read_error(error);
+        let translated = super::archive_read_error(error, false);
         assert_eq!(translated.kind(), kind);
         assert_eq!(translated.to_string(), "injected I/O failure");
     }
+}
+
+#[test]
+fn wrong_password_for_content_encrypted_7z_is_retryable() -> Result<(), Box<dyn Error>> {
+    // Generated with `7z a -psecret -mhe=off` using 7-Zip 26.02.
+    let archive = include_bytes!("fixtures/content-encrypted.7z");
+    let wrong_destination = tempfile::tempdir()?;
+    let Err(error) = extract_7z_from_reader(
+        Cursor::new(archive),
+        wrong_destination.path(),
+        "wrong".into(),
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    ) else {
+        panic!("a wrong password must fail extraction");
+    };
+    assert_eq!(error.to_string(), super::MAYBE_BAD_PASSWORD);
+    assert!(wrong_destination.path().read_dir()?.next().is_none());
+
+    let correct_destination = tempfile::tempdir()?;
+    completed_extract(extract_7z_from_reader(
+        Cursor::new(archive),
+        correct_destination.path(),
+        "secret".into(),
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    )?)?;
+    assert_eq!(
+        fs::read(correct_destination.path().join("document.txt"))?,
+        b"private contents"
+    );
+    Ok(())
+}
+
+#[test]
+fn checksum_failure_without_a_password_remains_damaged() {
+    let error = io::Error::other(sevenz_rust2::Error::ChecksumVerificationFailed);
+    assert_eq!(
+        super::archive_read_error(error, false).to_string(),
+        super::INVALID_ARCHIVE
+    );
 }
 
 #[test]

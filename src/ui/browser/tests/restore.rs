@@ -157,6 +157,35 @@ fn restore_confirms_full_destination_and_skips_invalid_items() {
 }
 
 #[test]
+fn missing_destination_parent_is_rejected_before_confirmation() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::restore::missing_destination_parent_is_rejected_before_confirmation",
+        || {
+            let fixture = tempfile::tempdir().expect("fixture");
+            let destination = fixture.path().join("gone/restored");
+            let (entry, info) = trashed_entry(fixture.path(), "safe", &destination);
+            let source = entry.thumbnail_path.clone().expect("source");
+            let metadata = fs::read(&info).expect("metadata");
+            let view = view();
+            let window = window(&view);
+            view.state.request_restore(vec![entry]);
+            wait_until(|| {
+                find_widget(&window.clone().upcast(), &|label: &gtk::Label| {
+                    label.text() == "Unable to restore"
+                })
+                .is_some()
+            });
+            assert!(button(&window.clone().upcast(), "Restore").is_none());
+            assert!(source.exists());
+            assert_eq!(fs::read(&info).expect("preserved metadata"), metadata);
+            assert!(!destination.exists());
+            window.destroy();
+            view.browser().clear_observer();
+        },
+    );
+}
+
+#[test]
 fn cancelling_restore_lookup_keeps_payload_and_metadata() {
     crate::test_support::gtk_test(
         "ui::browser::tests::restore::cancelling_restore_lookup_keeps_payload_and_metadata",

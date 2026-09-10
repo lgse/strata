@@ -4,24 +4,23 @@ use gtk::prelude::*;
 
 pub(super) const MIN_ICONS_THUMBNAIL_SIZE: i32 = 64;
 pub(super) const MAX_ICONS_THUMBNAIL_SIZE: i32 = 256;
-const FALLBACK_ICONS_COLUMN_WIDTH: i32 = 160;
+const FALLBACK_ICONS_COLUMN_WIDTH: i32 = 120;
 pub(super) const ICONS_CARD_SPACING: i32 = 4;
-const ICONS_CARD_LABEL_CHARS: i32 = 16;
+const ICONS_CARD_LABEL_CHARS: i32 = 12;
 const ICONS_CARD_LABEL_LINES: i32 = 2;
 const ICONS_CARD_LABEL_LINE_PX: i32 = 18;
 const ICONS_CARD_PAD_Y: i32 = 4;
+const ICONS_CARD_ICON_INSET: i32 = 0;
 
 pub(super) fn new_card(slot: i32) -> gtk::Box {
-    let card = gtk::Box::new(gtk::Orientation::Vertical, 3);
+    let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
     card.add_css_class("icons-card");
     card.set_overflow(gtk::Overflow::Hidden);
     card.set_halign(gtk::Align::Fill);
     card.set_valign(gtk::Align::Start);
 
     let icon = super::thumbnail::ThumbnailSlot::new(slot);
-    // Match the spare half-line around a centered single-line filename without
-    // changing the fixed slot measurement used by grid scrolling.
-    icon.set_content_inset(ICONS_CARD_LABEL_LINE_PX / 2);
+    icon.set_content_inset(ICONS_CARD_ICON_INSET);
     icon.add_css_class("icons-card-icon");
     icon.set_halign(gtk::Align::Center);
     icon.set_valign(gtk::Align::Start);
@@ -113,7 +112,7 @@ fn configure_label(label: &gtk::Inscription) {
     label.set_min_lines(lines);
     label.set_nat_lines(lines);
     label.set_xalign(0.5);
-    label.set_yalign(0.5);
+    label.set_yalign(0.0);
     label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     label.set_text_overflow(gtk::InscriptionOverflow::EllipsizeEnd);
 }

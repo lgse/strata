@@ -834,6 +834,15 @@ headerbar menubutton.header-action > button:focus-visible {
   color: @theme_danger;
 }
 
+.open-argument-connecting {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px alpha(@theme_bg, 0.4);
+  margin: 12px;
+  padding: 10px 12px;
+}
+
 .form-message.warning {
   background: alpha(@theme_accent, 0.1);
   border: 1px solid alpha(@theme_accent, 0.46);
@@ -3736,9 +3745,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .mode-icons.density-airy .icons-card {
-  min-height: 130px;
-  min-width: 225px;
-  padding: 8px 10px;
+  padding: 5px 7px;
 }
 
 .type-group-heading {
