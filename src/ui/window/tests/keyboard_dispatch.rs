@@ -116,6 +116,9 @@ fn rendered_name(widget: &gtk::Widget, name: &str) -> bool {
     if widget
         .downcast_ref::<gtk::Label>()
         .is_some_and(|label| label.label() == name)
+        || widget
+            .downcast_ref::<gtk::Inscription>()
+            .is_some_and(|label| label.text().as_deref() == Some(name))
     {
         return true;
     }
