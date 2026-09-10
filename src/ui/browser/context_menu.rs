@@ -1423,7 +1423,7 @@ fn prepare_open_with(
         if generation.get() != expected_generation {
             return;
         }
-        let requires_uris = files.iter().any(|file| !file.is_native());
+        let requires_uris = crate::ui::open_with::requires_uri_handlers(&files);
         let (apps, default) = common_applications(&content_types, requires_uris);
         let available = !apps.is_empty();
         let explanation = if available {

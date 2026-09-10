@@ -40,13 +40,18 @@ async fn launch_uri_default(file: &gio::File) -> Result<(), glib::Error> {
             glib::Priority::DEFAULT,
         )
         .await?;
+    let requires_uris = crate::ui::open_with::requires_uri_handlers(std::slice::from_ref(file));
     let app = info
         .content_type()
-        .and_then(|content_type| gio::AppInfo::default_for_type(&content_type, true))
+        .and_then(|content_type| gio::AppInfo::default_for_type(&content_type, requires_uris))
         .ok_or_else(|| {
             glib::Error::new(
                 gio::IOErrorEnum::NotSupported,
-                "No URI-capable application is registered for this file",
+                if requires_uris {
+                    "No URI-capable application is registered for this file"
+                } else {
+                    "No application is registered for this file"
+                },
             )
         })?;
     crate::ui::open_with::launch(
