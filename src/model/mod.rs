@@ -195,12 +195,17 @@ impl Location {
                 .filter(|name| !name.is_empty())
                 .unwrap_or_else(|| path.to_string_lossy().into_owned()),
             LocationKind::Uri(uri) if uri == "trash:///" => "Trash".into(),
-            LocationKind::Uri(uri) => uri
-                .trim_end_matches('/')
-                .rsplit('/')
-                .next()
-                .unwrap_or(uri)
-                .into(),
+            LocationKind::Uri(uri) => self
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .filter(|name| !name.is_empty())
+                .unwrap_or_else(|| {
+                    uri.trim_end_matches('/')
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or(uri)
+                        .into()
+                }),
         }
     }
 

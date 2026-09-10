@@ -2,6 +2,7 @@
 
 import os
 import pathlib
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -9,6 +10,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "install.sh"
+BASH = shutil.which("bash")
 
 
 def bash(script: str, *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -17,7 +19,7 @@ def bash(script: str, *, env: dict[str, str] | None = None) -> subprocess.Comple
     if env:
         test_env.update(env)
     return subprocess.run(
-        ["bash", "-c", f'source "$1"; {script}', "bash", str(INSTALLER)],
+        [BASH, "-c", f'source "$1"; {script}', "bash", str(INSTALLER)],
         check=False,
         capture_output=True,
         text=True,
@@ -169,6 +171,40 @@ class InstallerTests(unittest.TestCase):
             result.stdout.splitlines(),
             ["-n", "pacman", "-S", "--needed", "--noconfirm", "--", "gvfs-smb"],
         )
+
+    def test_interactive_pacman_reads_from_the_terminal_not_stdin(self) -> None:
+        source = INSTALLER.read_text(encoding="utf-8")
+        self.assertIn('sudo pacman -S --needed -- "$@" </dev/tty', source)
+
+    def test_github_cli_requirement_is_skipped_when_gh_is_already_on_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_pacman = pathlib.Path(directory) / "pacman"
+            fake_pacman.write_text('#!/bin/sh\n[ "$1" = "-Q" ] && exit 1\nexit 0\n')
+            fake_pacman.chmod(0o755)
+            result = bash(
+                "REQUIRED_PACKAGES=(github-cli); NON_INTERACTIVE=yes; "
+                "gh() { :; }; "
+                'run_pacman() { printf "run_pacman called: %s\\n" "$*" >&2; }; '
+                "install_arch_dependencies",
+                env={"PATH": directory},
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("already installed", result.stdout)
+        self.assertNotIn("run_pacman called", result.stderr)
+
+    def test_github_cli_requirement_still_installs_when_gh_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_pacman = pathlib.Path(directory) / "pacman"
+            fake_pacman.write_text('#!/bin/sh\n[ "$1" = "-Q" ] && exit 1\nexit 0\n')
+            fake_pacman.chmod(0o755)
+            result = bash(
+                "REQUIRED_PACKAGES=(github-cli); NON_INTERACTIVE=yes; "
+                'run_pacman() { printf "run_pacman called: %s\\n" "$*" >&2; }; '
+                "install_arch_dependencies",
+                env={"PATH": directory},
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("run_pacman called: github-cli", result.stderr)
 
     def test_unknown_installer_option_is_rejected(self) -> None:
         result = bash("parse_args --definitely-unknown")

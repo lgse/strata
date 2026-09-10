@@ -574,9 +574,11 @@ fn fetch_package_update(
 }
 
 fn package_update_from_response(available: &Version, response: &ReleaseResponse) -> UpdateCheck {
-    match to_release_summary(response)
-        .filter(|release| release.version == *available && !release.prerelease)
-    {
+    // Prerelease packages (strata-rc-bin) legitimately point at prerelease tags.
+    let accepts_prerelease = available.build_kind() != BuildKind::Stable;
+    match to_release_summary(response).filter(|release| {
+        release.version == *available && (!release.prerelease || accepts_prerelease)
+    }) {
         Some(summary) => available_check(&summary),
         None => UpdateCheck::Failed(
             "package repository version has no matching stable release".to_owned(),

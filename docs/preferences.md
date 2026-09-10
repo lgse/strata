@@ -15,7 +15,12 @@ changes to its selected value. There is no separate startup initializer to keep
 in sync with the change handler. Every setter goes through `save_preferences`,
 which deduplicates unchanged preferences and publishes changes through the same
 notification mechanism. Failed writes are logged, still apply in memory, and
-are retried on the next save attempt.
+are retried on the next save attempt. If an existing settings file cannot be read
+or parsed as TOML, startup logs a warning and uses temporary defaults. Preference
+changes still apply in memory, but saving is disabled for that manager's lifetime
+to preserve the original file. Fix the file and restart Strata to resume saving.
+Missing files allow normal first-run saves; invalid values in otherwise valid
+TOML still use the existing per-entry recovery.
 
 Bindings use weak widget anchors and remove their listeners when the anchor is
 destroyed. Callbacks must capture weak references to any owned widget/state or
