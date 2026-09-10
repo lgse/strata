@@ -55,7 +55,23 @@ impl Dispatcher {
         if event.key == Key::Escape && (self.view.cancel_new_entry() || self.view.cancel_rename()) {
             return Some(Propagation::Stop);
         }
-        self.inline_editing_active().then_some(Propagation::Proceed)
+        if !self.inline_editing_active() {
+            return None;
+        }
+        // Proceeding here (as for every other key while renaming) would let this
+        // capture-phase controller's own Ctrl+A also reach the surrounding
+        // ListView/GridView's default select-all binding on its way to the entry,
+        // selecting every row along with the entry's text. Handling it directly
+        // gets the entry-only selection without that side effect.
+        if event.control()
+            && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
+            && event.key == Key::a
+            && let Some(field) = self.view.active_rename_field()
+        {
+            field.select_region(0, -1);
+            return Some(Propagation::Stop);
+        }
+        Some(Propagation::Proceed)
     }
 
     pub(super) fn filter_and_location_commands(&self, event: &KeyEvent) -> KeyResult {

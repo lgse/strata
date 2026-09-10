@@ -522,6 +522,15 @@ impl BrowserView {
             || self.state.mode_views.borrow().rename_is_active()
     }
 
+    pub fn active_rename_field(&self) -> Option<gtk::Entry> {
+        self.state
+            .active_rename
+            .borrow()
+            .as_ref()
+            .map(|rename| rename.field.clone())
+            .or_else(|| self.state.mode_views.borrow().active_rename_field())
+    }
+
     pub fn new_entry_is_active(&self) -> bool {
         self.state.pending_new_entry.borrow().is_some()
     }

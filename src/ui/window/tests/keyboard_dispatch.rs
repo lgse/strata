@@ -198,6 +198,34 @@ fn inline_editing_owns_filter_keys_but_not_global_search() {
     );
 }
 
+/// Proceeding here (as for every other key while renaming) would let this
+/// capture-phase controller's own Ctrl+A also reach the ListView's default
+/// select-all binding on its way to the entry. `press` returning `true`
+/// (Stop) is what keeps that from happening.
+#[test]
+fn ctrl_a_during_rename_selects_only_the_entry_text() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::ctrl_a_during_rename_selects_only_the_entry_text",
+        || {
+            let fixture = KeyboardFixture::new();
+            assert!(fixture.press(Key::F2, ModifierType::empty()));
+            assert!(fixture.view.rename_is_active());
+            let field = fixture.view.active_rename_field().expect("rename field");
+
+            assert!(fixture.press(Key::a, ModifierType::CONTROL_MASK));
+            assert_eq!(
+                field.selection_bounds(),
+                Some((0, field.text().len() as i32))
+            );
+            assert_eq!(fixture.selected(), [0]);
+
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            assert!(!fixture.view.rename_is_active());
+            assert_eq!(fixture.selected(), [0]);
+        },
+    );
+}
+
 #[test]
 fn clipboard_and_delete_shortcuts_proceed_inside_preview_text() {
     crate::test_support::gtk_test(
