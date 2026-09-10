@@ -3736,9 +3736,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .mode-icons.density-airy .icons-card {
-  min-height: 130px;
-  min-width: 225px;
-  padding: 8px 10px;
+  padding: 5px 7px;
 }
 
 .type-group-heading {
