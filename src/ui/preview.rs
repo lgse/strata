@@ -901,10 +901,12 @@ impl PreviewState {
                 });
 
                 let media_for_click = media.clone();
-                let overlay_for_focus = overlay.clone();
+                let overlay_for_focus = overlay.downgrade();
                 let click = gtk::GestureClick::new();
                 click.connect_pressed(move |_, _, _, _| {
-                    overlay_for_focus.grab_focus();
+                    if let Some(overlay) = overlay_for_focus.upgrade() {
+                        overlay.grab_focus();
+                    }
                     if media_for_click.is_playing() {
                         media_for_click.pause();
                     } else {
@@ -1375,10 +1377,12 @@ impl PreviewState {
         });
         let seeking_for_end = seeking.clone();
         let media_for_drag_end = media.clone();
-        let seek_for_drag_end = seek.clone();
+        let seek_for_drag_end = seek.downgrade();
         drag.connect_drag_end(move |_, _, _| {
             seeking_for_end.set(false);
-            media_for_drag_end.seek(seek_for_drag_end.value() as i64);
+            if let Some(seek) = seek_for_drag_end.upgrade() {
+                media_for_drag_end.seek(seek.value() as i64);
+            }
         });
         seek.add_controller(drag);
 

@@ -11,7 +11,13 @@ use super::{
     format_media_time, media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
     preview_width_for_empty_space, print_fit, print_page_starts, print_progress_for_page,
 };
-use crate::services::{LoadHandle, PreviewEvent, PreviewProvider, PreviewRequest};
+use crate::{
+    model::{EntryKind, FileEntry, Location, MetadataValue},
+    services::{
+        LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
+        PreviewRequestId,
+    },
+};
 
 struct UnusedPreviewProvider;
 
@@ -19,6 +25,85 @@ impl PreviewProvider for UnusedPreviewProvider {
     fn load(&self, _request: PreviewRequest, _emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle {
         panic!("media teardown test does not load previews")
     }
+}
+
+struct WeakMediaWidgets {
+    overlay: glib::WeakRef<gtk::Overlay>,
+    picture: glib::WeakRef<gtk::Picture>,
+    media: glib::WeakRef<gtk::MediaFile>,
+}
+
+fn generated_media_data(content_type: &str) -> Vec<u8> {
+    if content_type == "image/gif" {
+        b"GIF89a\x01\0\x01\0\x80\0\0\0\0\0\xff\xff\xff!\xf9\x04\x01\0\0\0\0,\0\0\0\0\x01\0\x01\0\0\x02\x02D\x01\0;".to_vec()
+    } else {
+        let mut data = 24_u32.to_be_bytes().to_vec();
+        data.extend_from_slice(b"ftypisom\0\0\x02\0isomiso2");
+        data
+    }
+}
+
+fn render_media_widgets(drawer: &PreviewDrawer, content_type: &str) -> WeakMediaWidgets {
+    let filename = if content_type == "image/gif" {
+        "generated.gif"
+    } else {
+        "generated.mp4"
+    };
+    let entry = FileEntry {
+        location: Location::local(std::path::PathBuf::from(filename)),
+        native_name: filename.into(),
+        thumbnail_path: None,
+        display_name: filename.to_owned(),
+        kind: EntryKind::File,
+        size: MetadataValue::Known(0),
+        modified_unix_seconds: MetadataValue::Known(0),
+        mode: MetadataValue::Unknown,
+        is_hidden: false,
+    };
+    drawer.state.render(Preview {
+        request_id: PreviewRequestId(1),
+        entry,
+        content_type: content_type.to_owned(),
+        content: PreviewContent::SandboxedMedia {
+            data: generated_media_data(content_type),
+        },
+    });
+
+    let overlay = drawer
+        .state
+        .content
+        .first_child()
+        .and_downcast::<gtk::Overlay>()
+        .expect("production media overlay");
+    let picture = overlay
+        .child()
+        .and_downcast::<gtk::Picture>()
+        .expect("production media picture");
+    let media = drawer
+        .state
+        .media
+        .borrow()
+        .as_ref()
+        .expect("production media stream")
+        .clone()
+        .downcast::<gtk::MediaFile>()
+        .expect("media file");
+
+    WeakMediaWidgets {
+        overlay: overlay.downgrade(),
+        picture: picture.downgrade(),
+        media: media.downgrade(),
+    }
+}
+
+fn assert_media_hierarchy_finalized(widgets: &WeakMediaWidgets) {
+    assert!(widgets.overlay.upgrade().is_none(), "overlay must finalize");
+    assert!(widgets.picture.upgrade().is_none(), "picture must finalize");
+}
+
+fn assert_media_widgets_finalized(widgets: &WeakMediaWidgets) {
+    assert_media_hierarchy_finalized(widgets);
+    assert!(widgets.media.upgrade().is_none(), "media must finalize");
 }
 
 #[test]
@@ -156,6 +241,38 @@ fn clear_content_clears_media_file_input_stream() {
             media.input_stream().is_none(),
             "clearing preview content must detach the media source"
         );
+    });
+}
+
+#[test]
+fn closing_media_preview_finalizes_production_widget_tree() {
+    const TEST: &str = "ui::preview::tests::closing_media_preview_finalizes_production_widget_tree";
+    crate::test_support::gtk_test(TEST, || {
+        let drawer = PreviewDrawer::new(Rc::new(UnusedPreviewProvider), false);
+        let widgets = render_media_widgets(&drawer, "image/gif");
+
+        drawer.close();
+
+        assert_media_widgets_finalized(&widgets);
+    });
+}
+
+#[test]
+fn replacing_repeated_media_previews_finalizes_previous_widget_trees() {
+    const TEST: &str =
+        "ui::preview::tests::replacing_repeated_media_previews_finalizes_previous_widget_trees";
+    crate::test_support::gtk_test(TEST, || {
+        let drawer = PreviewDrawer::new(Rc::new(UnusedPreviewProvider), false);
+        let mut current = render_media_widgets(&drawer, "image/gif");
+
+        for content_type in ["video/mp4", "image/gif", "video/mp4", "image/gif"] {
+            let next = render_media_widgets(&drawer, content_type);
+            assert_media_widgets_finalized(&current);
+            current = next;
+        }
+
+        drawer.close();
+        assert_media_widgets_finalized(&current);
     });
 }
 
