@@ -45,6 +45,7 @@ fn non_default_preferences() -> Preferences {
         preview_muted: true,
         preview_volume: 0.35,
         auto_refresh_interval: 600,
+        cross_volume_drop_strategy: CrossVolumeDropStrategy::Move.as_str().into(),
         release_channel: "nightly".into(),
         folder_colors: HashMap::from([("/fixture/folder".into(), "red".into())]),
         custom_icons: HashMap::from([(
@@ -373,6 +374,10 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert_eq!(manager.preview_volume(), 0.35);
             assert_eq!(manager.auto_refresh_interval(), 600);
             assert_eq!(
+                manager.cross_volume_drop_strategy(),
+                CrossVolumeDropStrategy::Move
+            );
+            assert_eq!(
                 manager.folder_color(Path::new("/fixture/folder")),
                 FolderColorValue::parse("red")
             );
@@ -474,6 +479,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_preview_muted(false),
                 |m| m.set_preview_volume(0.8),
                 |m| m.set_auto_refresh_interval(60),
+                |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),
                 |m| m.set_folder_color(Path::new("/fixture/folder"), None),
                 |m| m.set_custom_icon(Path::new("/fixture/folder"), None),
                 |m| m.set_follow_omarchy(true),

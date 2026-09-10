@@ -85,6 +85,7 @@ jobs:
         env:
           STRATA_CONTAINER_ENGINE: docker
           STRATA_QUALITY_IMAGE: ${{ steps.environment.outputs.environment_image }}
+          STRATA_REQUIRE_DEVICE_TESTS: "1"
         run: ./scripts/quality.sh test
 
       - name: Save trusted quality cache

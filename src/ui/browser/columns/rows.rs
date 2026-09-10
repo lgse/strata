@@ -9,8 +9,9 @@ use crate::ui::{
     browser::{
         ViewState,
         clipboard::{
-            drag_actions_for_modifiers, drag_icon_with_count, file_drag_content, file_drop_action,
-            locations_equal, locations_from_file_list_value, shared_cut_locations,
+            PreparedFileDrop, drag_actions_for_modifiers, drag_icon_with_count, file_drag_content,
+            file_drop_action, file_drop_commit, locations_equal, locations_from_file_list_value,
+            prepare_file_drop_target, shared_cut_locations,
         },
         collection::{ViewMap, activate_recursive_search_result, cancel_source},
         entry::{
@@ -245,23 +246,38 @@ pub(super) fn column_rows(
             row.add_controller(drag.clone());
             content_drag = Some(drag);
 
-            let drop = gtk::DropTarget::new(
-                gtk::gdk::FileList::static_type(),
-                gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
-            );
+            let dest_for_row = {
+                let weak_state = weak_state.clone();
+                let item = item.downgrade();
+                let map = map_for_hover.clone();
+                move || {
+                    let state = weak_state.upgrade()?;
+                    let item = item.upgrade()?;
+                    map.source_position(item.position())
+                        .and_then(|position| state.browser.entry_at(depth, position))
+                        .filter(FileEntry::is_directory)
+                        .map(|entry| entry.location)
+                }
+            };
+            let PreparedFileDrop {
+                target: drop,
+                state: drop_state,
+            } = prepare_file_drop_target(dest_for_row);
             let highlighted_row = row.downgrade();
+            let state_for_enter = drop_state.clone();
             drop.connect_enter(move |target, _, _| {
                 if let Some(row) = highlighted_row.upgrade() {
                     row.add_css_class("drop-destination");
                 }
-                file_drop_action(target)
+                file_drop_action(target, &state_for_enter)
             });
             let highlighted_row = row.downgrade();
+            let state_for_motion = drop_state.clone();
             drop.connect_motion(move |target, _, _| {
                 if let Some(row) = highlighted_row.upgrade() {
                     row.add_css_class("drop-destination");
                 }
-                file_drop_action(target)
+                file_drop_action(target, &state_for_motion)
             });
             let highlighted_row = row.downgrade();
             drop.connect_leave(move |_| {
@@ -291,8 +307,6 @@ pub(super) fn column_rows(
                 })
             });
             let weak_state_for_drop = weak_state.clone();
-            let dropped_item = item.downgrade();
-            let map_for_drop = map_for_hover.clone();
             let dropped_row = row.downgrade();
             drop.connect_drop(move |target, value, _, _| {
                 let Some(dropped_row) = dropped_row.upgrade() else {
@@ -302,24 +316,16 @@ pub(super) fn column_rows(
                 let Some(state) = weak_state_for_drop.upgrade() else {
                     return false;
                 };
-                let Some(dropped_item) = dropped_item.upgrade() else {
-                    return false;
-                };
-                let Some(destination) = map_for_drop
-                    .source_position(dropped_item.position())
-                    .and_then(|position| state.browser.entry_at(depth, position))
-                    .filter(FileEntry::is_directory)
-                    .map(|entry| entry.location)
-                else {
+                let Some(destination) = drop_state.destination() else {
                     return false;
                 };
                 let Some(sources) = locations_from_file_list_value(value) else {
                     return false;
                 };
-                let move_sources = file_drop_action(target) == gtk::gdk::DragAction::MOVE;
+                let commit = file_drop_commit(target, &destination, &sources, &drop_state);
                 slide_in_down(&dropped_row);
                 glib::timeout_add_local_once(Duration::from_millis(300), move || {
-                    state.start_transfer(destination, sources, move_sources);
+                    state.commit_file_drop(destination, sources, commit);
                 });
                 true
             });

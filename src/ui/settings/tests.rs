@@ -5,15 +5,17 @@ mod preferences;
 use std::rc::Rc;
 
 use crate::services::{
-    BuildKind, Channel, InstallSource, ManagedInstall, ReleaseMetadata, UpdateCheck, UpdateMethod,
-    Version,
+    BuildKind, Channel, CrossVolumeDropStrategy, InstallSource, ManagedInstall, ReleaseMetadata,
+    UpdateCheck, UpdateMethod, Version,
 };
 
 use super::{
     CHANNEL_ORDER, COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
     RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, UPDATE_DUE_INTERVAL, aur_update_command,
     channel_index, effective_update_channel, force_due_update_check,
-    general::{video_preview_backend_label, video_preview_control_state},
+    general::{
+        cross_volume_drop_strategy_label, video_preview_backend_label, video_preview_control_state,
+    },
     install_guard, installed_version_status, is_stale_check, managed_channel_description,
     managed_install_summary, offer_still_eligible, omarchy_update_command,
     resolve_update_method_async, responsive_dialog_size, shows_available_release_notes,
@@ -22,6 +24,27 @@ use super::{
     uses_compact_navigation,
 };
 use crate::sandbox::MediaPreviewBackend;
+
+#[test]
+fn cross_volume_drop_settings_offer_always_copy_move_and_ask() {
+    assert_eq!(
+        cross_volume_drop_strategy_label(CrossVolumeDropStrategy::Copy),
+        "Always Copy"
+    );
+    assert_eq!(
+        cross_volume_drop_strategy_label(CrossVolumeDropStrategy::Move),
+        "Always Move"
+    );
+    assert_eq!(
+        cross_volume_drop_strategy_label(CrossVolumeDropStrategy::Ask),
+        "Always Ask"
+    );
+    let source = include_str!("../settings/general.rs");
+    assert!(source.contains("Always Copy"));
+    assert!(source.contains("Always Move"));
+    assert!(source.contains("Always Ask"));
+    assert!(source.contains("set_cross_volume_drop_strategy"));
+}
 
 #[test]
 fn a_checks_result_is_current_only_for_the_generation_it_was_issued_under() {

@@ -19,8 +19,8 @@ use crate::{
 
 use super::{
     browser::{
-        BrowserView, PeekBehavior, PinStatus, file_drop_action, locations_from_file_list_value,
-        show_error_dialog,
+        BrowserView, PeekBehavior, PinStatus, PreparedFileDrop, file_drop_action, file_drop_commit,
+        locations_from_file_list_value, prepare_file_drop_target, show_error_dialog,
     },
     browser_modes::{BrowserDensity, BrowserMode},
     motion::{animations_enabled, emphasized_deceleration},
@@ -83,12 +83,7 @@ pub fn present(application: &gtk::Application) {
     present_target(application, None, Vec::new(), false);
 }
 
-pub fn present_location(application: &gtk::Application, location: Option<Location>) {
-    present_target(application, location, Vec::new(), false);
-}
-
-/// Opens the window an `org.freedesktop.FileManager1` caller asked for: the
-/// directory holding the named items, with those items selected.
+/// Opens the requested directory with the named items selected.
 pub fn present_reveal(application: &gtk::Application, request: RevealRequest) {
     present_target(
         application,
@@ -1553,13 +1548,18 @@ fn install_sidebar_file_drop(
         return;
     }
     row.add_css_class("file-drop-zone");
-    let drop = gtk::DropTarget::new(
-        gtk::gdk::FileList::static_type(),
-        gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
-    );
+    let PreparedFileDrop {
+        target: drop,
+        state: drop_state,
+    } = prepare_file_drop_target({
+        let destination = destination.clone();
+        move || Some(destination.clone())
+    });
     drop.set_propagation_phase(gtk::PropagationPhase::Capture);
-    drop.connect_enter(|target, _, _| file_drop_action(target));
-    drop.connect_motion(|target, _, _| file_drop_action(target));
+    let state_for_enter = drop_state.clone();
+    drop.connect_enter(move |target, _, _| file_drop_action(target, &state_for_enter));
+    let state_for_motion = drop_state.clone();
+    drop.connect_motion(move |target, _, _| file_drop_action(target, &state_for_motion));
     let view = view.clone();
     drop.connect_drop(move |target, value, _, _| {
         let Some(sources) = locations_from_file_list_value(value) else {
@@ -1568,8 +1568,8 @@ fn install_sidebar_file_drop(
         if sources.is_empty() {
             return false;
         }
-        let move_sources = file_drop_action(target) == gtk::gdk::DragAction::MOVE;
-        view.start_transfer(destination.clone(), sources, move_sources);
+        let commit = file_drop_commit(target, &destination, &sources, &drop_state);
+        view.commit_file_drop(destination.clone(), sources, commit);
         true
     });
     row.add_controller(drop);
@@ -2056,22 +2056,28 @@ fn pinned_places_path() -> PathBuf {
 }
 
 fn load_pinned_places() -> std::io::Result<Vec<(Location, String)>> {
-    match std::fs::read_to_string(pinned_places_path()) {
+    match std::fs::read(pinned_places_path()) {
         Ok(contents) => Ok(parse_pinned_places(&contents)),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
         Err(error) => Err(error),
     }
 }
 
-fn parse_pinned_places(contents: &str) -> Vec<(Location, String)> {
+/// GTK bookmarks may contain non-UTF-8 labels.
+fn parse_pinned_places(contents: &[u8]) -> Vec<(Location, String)> {
     let mut places = Vec::new();
-    for line in contents.lines() {
-        let (uri, label) = line
-            .split_once(' ')
-            .map_or((line, None), |(uri, label)| (uri, Some(label)));
+    for line in contents.split(|byte| *byte == b'\n') {
+        let line = line.strip_suffix(b"\r").unwrap_or(line);
+        let (uri, label) = match line.iter().position(|byte| *byte == b' ') {
+            Some(space) => (&line[..space], Some(&line[space + 1..])),
+            None => (line, None),
+        };
         if uri.is_empty() {
             continue;
         }
+        let Ok(uri) = std::str::from_utf8(uri) else {
+            continue;
+        };
         let file = gio::File::for_uri(uri);
         let Some(location) = location_for_file(&file) else {
             continue;
@@ -2084,7 +2090,7 @@ fn parse_pinned_places(contents: &str) -> Vec<(Location, String)> {
         }
         let name = label
             .filter(|label| !label.is_empty())
-            .map(str::to_owned)
+            .map(|label| String::from_utf8_lossy(label).into_owned())
             .unwrap_or_else(|| location.display_name());
         places.push((location, name));
     }

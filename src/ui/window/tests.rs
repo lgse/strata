@@ -509,7 +509,7 @@ fn only_pinned_drag_payloads_resolve_to_a_pinned_place() {
 #[test]
 fn gtk_bookmarks_become_native_and_remote_pinned_places() {
     let places = parse_pinned_places(
-        "file:///home/user/Projects Work\nsftp://host.example/home/user Remote\nfile:///home/user/Projects Duplicate\n",
+        b"file:///home/user/Projects Work\nsftp://host.example/home/user Remote\nfile:///home/user/Projects Duplicate\n",
     );
 
     assert_eq!(
@@ -526,9 +526,28 @@ fn gtk_bookmarks_become_native_and_remote_pinned_places() {
 }
 
 #[test]
+fn gtk_bookmarks_survive_non_utf8_labels_and_windows_line_endings() {
+    let places = parse_pinned_places(b"file:///tmp/a A\r\nfile:///tmp/b \xff\nfile:///tmp/c C\n");
+
+    assert_eq!(places.len(), 3);
+    assert_eq!(places[0].1, "A");
+    assert_eq!(places[1].1, "\u{FFFD}");
+    assert_eq!(places[2].1, "C");
+}
+
+#[test]
+fn gtk_bookmarks_drop_lines_with_non_utf8_uris() {
+    let places = parse_pinned_places(b"file:///tmp/\xff bad\nfile:///tmp/good Good\n");
+
+    assert_eq!(places.len(), 1);
+    assert_eq!(places[0].0.native_path(), Some(Path::new("/tmp/good")));
+    assert_eq!(places[0].1, "Good");
+}
+
+#[test]
 fn gtk_bookmarks_sanitize_uris_with_credentials() {
     let places = parse_pinned_places(
-        "smb://alice@host/safe Safe\nsmb://alice:secret@host/private Password\nsmb://alice%3Asecret@host/private Encoded password delimiter\nsmb://alice;password=secret@host/private Auth\nsmb://alice%3Bpassword=secret@host/private Encoded auth delimiter\nsmb://alice;password=sec%72et@host/private Encoded value\nsmb://alice%ZZ@host/private Invalid\n",
+        b"smb://alice@host/safe Safe\nsmb://alice:secret@host/private Password\nsmb://alice%3Asecret@host/private Encoded password delimiter\nsmb://alice;password=secret@host/private Auth\nsmb://alice%3Bpassword=secret@host/private Encoded auth delimiter\nsmb://alice;password=sec%72et@host/private Encoded value\nsmb://alice%ZZ@host/private Invalid\n",
     );
 
     assert_eq!(places.len(), 2);
@@ -1015,6 +1034,51 @@ fn pinned_place_changes_merge_with_the_shared_bookmarks_file() {
 }
 
 #[test]
+fn pinning_with_a_non_utf8_label_preserves_shared_bookmarks() {
+    gtk_test(
+        "ui::window::tests::pinning_with_a_non_utf8_label_preserves_shared_bookmarks",
+        || {
+            let path = pinned_places_path();
+            std::fs::create_dir_all(path.parent().expect("bookmarks parent"))
+                .expect("create bookmarks parent");
+            std::fs::write(
+                &path,
+                b"file:///fixtures/existing Existing\nfile:///fixtures/lossy \xff\n",
+            )
+            .expect("seed non-UTF-8 bookmark label");
+
+            let first = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let second = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let initial = vec![
+                (Location::local("/fixtures/existing"), "Existing".into()),
+                (Location::local("/fixtures/lossy"), "\u{FFFD}".into()),
+            ];
+            assert_eq!(*first.state.pinned_places.borrow(), initial);
+            assert_eq!(*second.state.pinned_places.borrow(), initial);
+
+            first
+                .state
+                .pin_location(Location::local("/fixtures/first"), "First".into());
+            second
+                .state
+                .pin_location(Location::local("/fixtures/second"), "Second".into());
+            assert_eq!(
+                load_pinned_places().expect("saved bookmarks"),
+                vec![
+                    (Location::local("/fixtures/existing"), "Existing".into()),
+                    (Location::local("/fixtures/lossy"), "\u{FFFD}".into()),
+                    (Location::local("/fixtures/first"), "First".into()),
+                    (Location::local("/fixtures/second"), "Second".into()),
+                ]
+            );
+            std::fs::read_to_string(path).expect("saved bookmarks are valid UTF-8");
+            first.disconnect();
+            second.disconnect();
+        },
+    );
+}
+
+#[test]
 fn failed_bookmark_reads_and_saves_preserve_disk_and_window_state() {
     gtk_test(
         "ui::window::tests::failed_bookmark_reads_and_saves_preserve_disk_and_window_state",
@@ -1026,14 +1090,16 @@ fn failed_bookmark_reads_and_saves_preserve_disk_and_window_state() {
                 .pin_location(existing.clone(), "Existing".into());
             let original = sidebar.state.pinned_places.borrow().clone();
             let path = pinned_places_path();
-            std::fs::write(&path, [0xff]).expect("unreadable UTF-8 fixture");
+            std::fs::remove_file(&path).expect("remove seeded bookmarks file");
+            std::fs::create_dir(&path).expect("unreadable bookmarks directory");
             sidebar
                 .state
                 .pin_location(Location::local("/tmp/new"), "New".into());
-            assert_eq!(std::fs::read(&path).expect("preserved bytes"), [0xff]);
+            assert!(path.is_dir());
             assert_eq!(*sidebar.state.pinned_places.borrow(), original);
 
             let contents = serialize_pinned_places(&original);
+            std::fs::remove_dir(&path).expect("remove directory fixture");
             std::fs::write(&path, &contents).expect("restore readable bookmarks");
             let target = path.with_extension("target");
             std::fs::rename(&path, &target).expect("move fixture");
