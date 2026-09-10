@@ -2589,7 +2589,7 @@ fn icons_loading_skeleton(thumbnail_size: i32, density: BrowserDensity) -> gtk::
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
         };
-        let card = gtk::Box::new(gtk::Orientation::Vertical, 3);
+        let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
         card.add_css_class("icons-card");
         card.set_halign(gtk::Align::Fill);
         ensure_icons_card_slot(&card, thumbnail_size);
