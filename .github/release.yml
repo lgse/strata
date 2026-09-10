@@ -2,3 +2,4 @@ changelog:
   exclude:
     labels:
       - dependencies
+      - skip-changelog

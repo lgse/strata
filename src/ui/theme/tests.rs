@@ -1,16 +1,21 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
+
+mod preferences;
 
 use std::{cell::RefCell, collections::HashSet};
 
 use super::{
-    Preferences, TextSize, Theme, azure_tokens, blend, builtins, configured_hardware_acceleration,
-    configured_video_preview_backend, is_omarchy_theme_event, merge_builtin_and_custom_themes,
-    notify_live, slugify, sort_preferences, title_case_slug, tokens_from_quattro, validate_tokens,
+    Preferences, TextSize, Theme, azure_tokens, blend, browser_mode_from_stored, builtins,
+    configured_hardware_acceleration, configured_video_preview_backend, is_omarchy_theme_event,
+    merge_builtin_and_custom_themes, notify_live, slugify, snapped_root_font_px, sort_preferences,
+    stored_browser_mode, text_scale_factor_from_xft_dpi, title_case_slug, tokens_from_quattro,
+    validate_tokens,
 };
 use crate::{
     model::{SortDirection, SortKey, ViewPreferences},
     sandbox::MediaPreviewBackend,
-    services::Channel,
+    services::{Channel, CrossVolumeDropStrategy},
+    ui::browser_modes::BrowserMode,
 };
 
 #[test]
@@ -175,16 +180,33 @@ theme = "azure-glow"
         MediaPreviewBackend::Automatic
     );
     assert!(!preferences.search_open_files_directly);
+    assert!(preferences.type_to_search);
+    assert!(Preferences::default().type_to_search);
+    assert!(preferences.show_keybinding_hints);
+    assert!(Preferences::default().show_keybinding_hints);
     assert!(!preferences.reduce_motion);
     assert_eq!(preferences.browser_mode, "columns");
     assert_eq!(preferences.browser_density, "compact");
+    assert_eq!(preferences.columns_file_clicks, 2);
+    assert_eq!(preferences.columns_folder_clicks, 1);
+    assert_eq!(preferences.icons_file_clicks, 2);
+    assert_eq!(preferences.icons_folder_clicks, 2);
     assert_eq!(preferences.list_file_clicks, 2);
-    assert_eq!(preferences.list_folder_clicks, 1);
-    assert_eq!(preferences.grid_file_clicks, 2);
-    assert_eq!(preferences.grid_folder_clicks, 2);
-    assert_eq!(preferences.explorer_file_clicks, 2);
-    assert_eq!(preferences.explorer_folder_clicks, 2);
+    assert_eq!(preferences.list_folder_clicks, 2);
     assert_eq!(sort_preferences(&preferences), ViewPreferences::default());
+}
+
+#[test]
+fn browser_mode_storage_uses_current_names_and_accepts_legacy_names() {
+    for (mode, stored, legacy) in [
+        (BrowserMode::Columns, "columns", "columns"),
+        (BrowserMode::Icons, "icons", "grid"),
+        (BrowserMode::List, "list", "explorer"),
+    ] {
+        assert_eq!(stored_browser_mode(mode), stored);
+        assert_eq!(browser_mode_from_stored(stored), mode);
+        assert_eq!(browser_mode_from_stored(legacy), mode);
+    }
 }
 
 #[test]
@@ -249,13 +271,15 @@ fn general_preferences_round_trip() {
         folder_peeking: false,
         single_click_previews: false,
         search_open_files_directly: true,
+        type_to_search: false,
+        show_keybinding_hints: false,
         reduce_motion: true,
+        columns_file_clicks: 1,
+        columns_folder_clicks: 2,
+        icons_file_clicks: 1,
+        icons_folder_clicks: 2,
         list_file_clicks: 1,
         list_folder_clicks: 2,
-        grid_file_clicks: 1,
-        grid_folder_clicks: 2,
-        explorer_file_clicks: 1,
-        explorer_folder_clicks: 2,
         ..Preferences::default()
     };
 
@@ -266,13 +290,67 @@ fn general_preferences_round_trip() {
     assert!(!restored.folder_peeking);
     assert!(!restored.single_click_previews);
     assert!(restored.search_open_files_directly);
+    assert!(!restored.type_to_search);
+    assert!(!restored.show_keybinding_hints);
     assert!(restored.reduce_motion);
+    assert_eq!(restored.columns_file_clicks, 1);
+    assert_eq!(restored.columns_folder_clicks, 2);
+    assert_eq!(restored.icons_file_clicks, 1);
+    assert_eq!(restored.icons_folder_clicks, 2);
     assert_eq!(restored.list_file_clicks, 1);
     assert_eq!(restored.list_folder_clicks, 2);
-    assert_eq!(restored.grid_file_clicks, 1);
-    assert_eq!(restored.grid_folder_clicks, 2);
-    assert_eq!(restored.explorer_file_clicks, 1);
-    assert_eq!(restored.explorer_folder_clicks, 2);
+}
+
+#[test]
+fn cross_volume_drop_strategy_round_trips() {
+    for strategy in [
+        CrossVolumeDropStrategy::Copy,
+        CrossVolumeDropStrategy::Move,
+        CrossVolumeDropStrategy::Ask,
+    ] {
+        let preferences = Preferences {
+            cross_volume_drop_strategy: strategy.as_str().to_owned(),
+            ..Preferences::default()
+        };
+        let serialized = toml::to_string(&preferences).expect("preferences should serialize");
+        let restored: Preferences =
+            toml::from_str(&serialized).expect("preferences should deserialize");
+        assert_eq!(
+            CrossVolumeDropStrategy::parse(&restored.cross_volume_drop_strategy),
+            strategy
+        );
+        assert!(
+            serialized.contains(&format!(
+                "cross_volume_drop_strategy = \"{}\"",
+                strategy.as_str()
+            )),
+            "{serialized}"
+        );
+    }
+}
+
+#[test]
+fn omitted_cross_volume_drop_strategy_defaults_to_always_ask() {
+    let preferences: Preferences = toml::from_str(
+        r#"
+mode = "theme"
+theme = "azure-glow"
+"#,
+    )
+    .expect("legacy preferences without cross_volume_drop_strategy should remain valid");
+
+    assert_eq!(
+        preferences.cross_volume_drop_strategy,
+        CrossVolumeDropStrategy::Ask.as_str()
+    );
+    assert_eq!(
+        CrossVolumeDropStrategy::parse(&preferences.cross_volume_drop_strategy),
+        CrossVolumeDropStrategy::Ask
+    );
+    assert_eq!(
+        CrossVolumeDropStrategy::parse("not-a-strategy"),
+        CrossVolumeDropStrategy::Ask
+    );
 }
 
 #[test]
@@ -407,6 +485,39 @@ fn text_sizes_map_to_a_strictly_increasing_root_font_size() {
 }
 
 #[test]
+fn root_font_size_snaps_to_a_whole_effective_pixel() {
+    let scale_factor = 13.0 / 11.0;
+    let root_font_px = snapped_root_font_px(TextSize::Large.root_font_px(), scale_factor);
+
+    assert!((root_font_px - 15.230_769).abs() < 0.000_001);
+    assert!((root_font_px * scale_factor - 18.0).abs() < f64::EPSILON);
+}
+
+#[test]
+fn root_font_size_is_unchanged_without_desktop_scaling() {
+    for size in [TextSize::Small, TextSize::Medium, TextSize::Large] {
+        assert_eq!(
+            snapped_root_font_px(size.root_font_px(), 1.0),
+            f64::from(size.root_font_px())
+        );
+    }
+}
+
+#[test]
+fn invalid_scaling_values_leave_the_root_font_size_unchanged() {
+    for scale_factor in [0.0, -1.0, f64::NAN] {
+        assert_eq!(snapped_root_font_px(15, scale_factor), 15.0);
+    }
+}
+
+#[test]
+fn xft_dpi_converts_to_desktop_text_scale() {
+    assert_eq!(text_scale_factor_from_xft_dpi(-1), 1.0);
+    assert_eq!(text_scale_factor_from_xft_dpi(96 * 1024), 1.0);
+    assert!((text_scale_factor_from_xft_dpi(115_200) - 1.171_875).abs() < f64::EPSILON);
+}
+
+#[test]
 fn legacy_preferences_without_text_size_default_to_medium() {
     let preferences: Preferences = toml::from_str(
         r#"
@@ -530,4 +641,77 @@ fn a_channel_change_with_no_surviving_views_clears_the_registry() {
 
     assert_eq!(ran.into_inner(), 0);
     assert!(live.is_empty());
+}
+
+#[test]
+fn preferences_folder_colors_round_trip() {
+    let mut preferences = Preferences::default();
+    assert!(preferences.folder_colors.is_empty());
+
+    let empty_serialized = toml::to_string_pretty(&preferences).expect("serialization succeeds");
+    assert!(!empty_serialized.contains("folder_colors"));
+
+    preferences
+        .folder_colors
+        .insert("/tmp/test-folder".to_owned(), "blue".to_owned());
+    preferences
+        .folder_colors
+        .insert("/tmp/custom-folder".to_owned(), "#34d399".to_owned());
+    let serialized = toml::to_string_pretty(&preferences).expect("serialization succeeds");
+    assert!(serialized.contains("folder_colors"));
+    assert!(serialized.contains("/tmp/test-folder"));
+    assert!(serialized.contains("/tmp/custom-folder"));
+
+    let deserialized: Preferences = toml::from_str(&serialized).expect("deserialization succeeds");
+    assert_eq!(
+        deserialized.folder_colors.get("/tmp/test-folder"),
+        Some(&"blue".to_owned())
+    );
+    assert_eq!(
+        deserialized
+            .folder_colors
+            .get("/tmp/test-folder")
+            .and_then(|c| crate::model::FolderColorValue::parse(c)),
+        Some(crate::model::FolderColorValue::Preset(
+            crate::model::FolderColor::Blue
+        ))
+    );
+    assert_eq!(
+        deserialized
+            .folder_colors
+            .get("/tmp/custom-folder")
+            .and_then(|c| crate::model::FolderColorValue::parse(c)),
+        Some(crate::model::FolderColorValue::Custom("#34d399".to_owned()))
+    );
+}
+
+#[test]
+fn preferences_custom_icons_round_trip() {
+    let mut preferences = Preferences::default();
+    assert!(preferences.custom_icons.is_empty());
+
+    let empty_serialized = toml::to_string_pretty(&preferences).expect("serialization succeeds");
+    assert!(!empty_serialized.contains("custom_icons"));
+
+    preferences.custom_icons.insert(
+        "/tmp/folder".to_owned(),
+        crate::assets::icons::PICTURES.to_owned(),
+    );
+    preferences
+        .custom_icons
+        .insert("/tmp/file.txt".to_owned(), "emoji:🚀".to_owned());
+    let serialized = toml::to_string_pretty(&preferences).expect("serialization succeeds");
+    assert!(serialized.contains("custom_icons"));
+    assert!(serialized.contains("/tmp/folder"));
+    assert!(serialized.contains(crate::assets::icons::PICTURES));
+
+    let deserialized: Preferences = toml::from_str(&serialized).expect("deserialization succeeds");
+    assert_eq!(
+        deserialized.custom_icons.get("/tmp/folder"),
+        Some(&crate::assets::icons::PICTURES.to_owned())
+    );
+    assert_eq!(
+        deserialized.custom_icons.get("/tmp/file.txt"),
+        Some(&"emoji:🚀".to_owned())
+    );
 }

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     fs,
@@ -122,12 +122,12 @@ fn render_simple_dcraw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     use std::os::unix::fs::symlink;
 
     // Writes `<file>.thumb.jpg` next to the input, which is a read-only bind.
-    let staging = Path::new("/tmp/raw-thumb");
-    let _ = fs::remove_file(staging);
-    symlink(path, staging).map_err(|error| error.to_string())?;
+    let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
+    let staging = directory.path().join("raw-thumb");
+    symlink(path, &staging).map_err(|error| error.to_string())?;
     let status = Command::new("simple_dcraw")
         .arg("-e")
-        .arg(staging)
+        .arg(&staging)
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -136,8 +136,8 @@ fn render_simple_dcraw(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     if !status.success() {
         return Err("simple_dcraw failed".to_owned());
     }
-    for thumb in ["/tmp/raw-thumb.thumb.jpg", "/tmp/raw-thumb.thumb.ppm"] {
-        let Ok(file) = fs::File::open(thumb) else {
+    for thumb in ["raw-thumb.thumb.jpg", "raw-thumb.thumb.ppm"] {
+        let Ok(file) = fs::File::open(directory.path().join(thumb)) else {
             continue;
         };
         let Ok(data) = read_limited(file, MAX_OUTPUT_BYTES) else {

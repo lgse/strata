@@ -1,18 +1,48 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
+
+mod keyboard_dispatch;
+mod preferences;
+mod type_to_search;
 
 use std::{cell::Cell, path::Path};
 
-use crate::services::{BuildKind, ReleaseMetadata};
+use gtk::glib;
+
+use crate::{
+    app::BrowserEvent,
+    model::Location,
+    services::{BuildKind, ReleaseMetadata},
+    test_support::gtk_test,
+    ui::theme::ThemeManager,
+};
 
 use super::{
-    MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, begin_media_release,
-    is_open_terminal_shortcut, is_sidebar_focus_shortcut, is_smb_location,
-    is_standard_place_location, is_toggle_hidden_shortcut, is_undo_trash_shortcut,
-    media_release_label, mount_release_action, mouse_history_action, parse_pinned_drag_source,
-    parse_pinned_places, pin_status, remove_pinned_place, reorder_pinned_places, reorder_places,
-    resolve_place_order, serialize_pinned_places, should_show_standard_place, sidebar_update_label,
-    standard_place, vim_focus_direction, volume_release_action,
+    DEFAULT_ACCELS, MediaRelease, MouseHistoryAction, PinStatus, STANDARD_PLACE_IDS, TrashContents,
+    TrashMenuVisibility, TypeToSearchQuery, accepts_sidebar_reorder_payload, begin_media_release,
+    browser_for_window, browser_mode_for_digit, build_sidebar, event_changes_trash_contents,
+    is_open_terminal_shortcut, is_refresh_shortcut, is_rename_shortcut, is_sidebar_focus_shortcut,
+    is_smb_location, is_standard_place_location, is_toggle_hidden_shortcut, is_undo_shortcut,
+    jump_direction, load_pinned_places, media_release_label, mount_release_action,
+    mouse_history_action, page_direction, parse_pinned_drag_source, parse_pinned_places,
+    pin_status, pinned_places_path, remove_pinned_place, reorder_pinned_places, reorder_places,
+    resolve_place_order, serialize_pinned_places, should_show_standard_place,
+    sidebar_accepts_file_drop, sidebar_update_label, standard_place, trash_contents_from_probe,
+    trash_has_entries, trash_menu_visibility, type_to_search_query, vim_focus_direction,
+    volume_release_action,
 };
+
+#[test]
+fn startup_applies_disabled_single_click_previews_before_the_first_click() {
+    gtk_test(
+        "ui::window::tests::startup_applies_disabled_single_click_previews_before_the_first_click",
+        || {
+            let manager = ThemeManager::shared();
+            manager.set_single_click_previews(false);
+            let browser = browser_for_window();
+            assert!(!browser.single_click_previews_enabled());
+        },
+    );
+}
 
 fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
     ReleaseMetadata {
@@ -24,6 +54,111 @@ fn release(version: &str, kind: BuildKind) -> ReleaseMetadata {
         tag: format!("v{version}"),
         published_at: None,
         commit: None,
+    }
+}
+
+#[test]
+fn plain_single_pane_arrows_move_focus_not_directories() {
+    use super::{BrowserMode, SinglePaneArrow, single_pane_arrow_action};
+    use gtk::gdk::{Key, ModifierType};
+    let plain = ModifierType::empty();
+    assert_eq!(
+        single_pane_arrow_action(BrowserMode::Icons, Key::Left, plain, false, true),
+        Some(SinglePaneArrow::Native)
+    );
+    for mode in [BrowserMode::Icons, BrowserMode::List] {
+        assert_eq!(
+            single_pane_arrow_action(mode, Key::Left, plain, true, true),
+            Some(SinglePaneArrow::Sidebar)
+        );
+        for key in [Key::Up, Key::Down] {
+            assert_eq!(
+                single_pane_arrow_action(mode, key, plain, true, true),
+                Some(SinglePaneArrow::Native)
+            );
+        }
+        for key in [Key::Left, Key::Right, Key::Up] {
+            assert_eq!(
+                single_pane_arrow_action(mode, key, ModifierType::ALT_MASK, true, true),
+                None
+            );
+        }
+        assert_eq!(
+            single_pane_arrow_action(mode, Key::Return, plain, true, true),
+            None
+        );
+    }
+    assert_eq!(
+        single_pane_arrow_action(BrowserMode::List, Key::Right, plain, true, true),
+        Some(SinglePaneArrow::Stay)
+    );
+    assert_eq!(
+        single_pane_arrow_action(BrowserMode::List, Key::Left, plain, true, false),
+        Some(SinglePaneArrow::Stay)
+    );
+    assert_eq!(
+        single_pane_arrow_action(BrowserMode::Icons, Key::Left, plain, true, false),
+        Some(SinglePaneArrow::Native)
+    );
+    assert_eq!(
+        single_pane_arrow_action(BrowserMode::Columns, Key::Left, plain, true, true),
+        None
+    );
+    for modifier in [ModifierType::SHIFT_MASK, ModifierType::CONTROL_MASK] {
+        assert_eq!(
+            single_pane_arrow_action(BrowserMode::Icons, Key::Left, modifier, true, true),
+            Some(SinglePaneArrow::Native)
+        );
+    }
+}
+
+#[test]
+fn sidebar_arrows_and_vim_keys_share_focus_directions() {
+    use gtk::gdk::Key;
+    for (arrow, vim) in [
+        (Key::Left, Key::h),
+        (Key::Right, Key::l),
+        (Key::Up, Key::k),
+        (Key::Down, Key::j),
+    ] {
+        assert_eq!(
+            super::sidebar_focus_direction(arrow),
+            vim_focus_direction(vim)
+        );
+    }
+    assert_eq!(super::sidebar_focus_direction(Key::Return), None);
+}
+
+#[test]
+fn navigation_keys_claim_keyboard_ownership_but_commands_do_not() {
+    use gtk::gdk::{Key, ModifierType};
+    for key in [
+        Key::Up,
+        Key::Down,
+        Key::h,
+        Key::j,
+        Key::k,
+        Key::l,
+        Key::Tab,
+        Key::ISO_Left_Tab,
+        Key::Page_Down,
+        Key::Return,
+    ] {
+        assert!(super::is_browser_navigation_key(key, ModifierType::empty()));
+    }
+    assert!(super::is_browser_navigation_key(
+        Key::Down,
+        ModifierType::SHIFT_MASK
+    ));
+    assert!(super::is_browser_navigation_key(
+        Key::Left,
+        ModifierType::ALT_MASK
+    ));
+    for key in [Key::v, Key::c, Key::x, Key::z, Key::Control_L, Key::Delete] {
+        assert!(!super::is_browser_navigation_key(
+            key,
+            ModifierType::CONTROL_MASK
+        ));
     }
 }
 
@@ -77,19 +212,46 @@ fn open_terminal_shortcut_requires_only_control() {
 }
 
 #[test]
-fn undo_trash_shortcut_requires_control_without_shift_or_alt() {
+fn undo_shortcut_requires_control_without_shift_or_alt() {
     let control = gtk::gdk::ModifierType::CONTROL_MASK;
     let shift = gtk::gdk::ModifierType::SHIFT_MASK;
     let alt = gtk::gdk::ModifierType::ALT_MASK;
 
-    assert!(is_undo_trash_shortcut(gtk::gdk::Key::z, control));
-    assert!(is_undo_trash_shortcut(gtk::gdk::Key::Z, control));
-    assert!(!is_undo_trash_shortcut(
+    assert!(is_undo_shortcut(gtk::gdk::Key::z, control));
+    assert!(is_undo_shortcut(gtk::gdk::Key::Z, control));
+    assert!(!is_undo_shortcut(
         gtk::gdk::Key::z,
         gtk::gdk::ModifierType::empty()
     ));
-    assert!(!is_undo_trash_shortcut(gtk::gdk::Key::z, control | shift));
-    assert!(!is_undo_trash_shortcut(gtk::gdk::Key::z, control | alt));
+    assert!(!is_undo_shortcut(gtk::gdk::Key::z, control | shift));
+    assert!(!is_undo_shortcut(gtk::gdk::Key::z, control | alt));
+}
+
+#[test]
+fn page_keys_map_to_a_scroll_direction() {
+    assert_eq!(page_direction(gtk::gdk::Key::Page_Up), Some(-1));
+    assert_eq!(page_direction(gtk::gdk::Key::KP_Page_Up), Some(-1));
+    assert_eq!(page_direction(gtk::gdk::Key::Page_Down), Some(1));
+    assert_eq!(page_direction(gtk::gdk::Key::KP_Page_Down), Some(1));
+    assert_eq!(page_direction(gtk::gdk::Key::Home), None);
+}
+
+#[test]
+fn jump_shortcut_requires_control_without_other_command_modifiers() {
+    use gtk::gdk::{Key, ModifierType};
+    let control = ModifierType::CONTROL_MASK;
+
+    assert_eq!(jump_direction(Key::Up, control), Some(-1));
+    assert_eq!(jump_direction(Key::Down, control), Some(1));
+    assert_eq!(jump_direction(Key::Left, control), None);
+    assert_eq!(jump_direction(Key::Up, ModifierType::empty()), None);
+    for modifier in [
+        ModifierType::SHIFT_MASK,
+        ModifierType::ALT_MASK,
+        ModifierType::SUPER_MASK,
+    ] {
+        assert_eq!(jump_direction(Key::Up, control | modifier), None);
+    }
 }
 
 #[test]
@@ -124,6 +286,52 @@ fn sidebar_focus_shortcut_requires_control_and_shift() {
     assert!(is_sidebar_focus_shortcut(gtk::gdk::Key::b, control | shift));
     assert!(is_sidebar_focus_shortcut(gtk::gdk::Key::B, control | shift));
     assert!(!is_sidebar_focus_shortcut(gtk::gdk::Key::b, control));
+}
+
+#[test]
+fn type_to_search_accepts_printable_keys_without_command_modifiers() {
+    assert_eq!(
+        type_to_search_query(gtk::gdk::Key::a, gtk::gdk::ModifierType::empty()),
+        Some(TypeToSearchQuery::Character('a'))
+    );
+    assert_eq!(
+        type_to_search_query(gtk::gdk::Key::A, gtk::gdk::ModifierType::SHIFT_MASK),
+        Some(TypeToSearchQuery::Character('A'))
+    );
+    assert_eq!(
+        type_to_search_query(gtk::gdk::Key::period, gtk::gdk::ModifierType::empty()),
+        Some(TypeToSearchQuery::Character('.'))
+    );
+}
+
+#[test]
+fn type_to_search_uses_slash_to_open_an_empty_filter() {
+    assert_eq!(
+        type_to_search_query(gtk::gdk::Key::slash, gtk::gdk::ModifierType::empty()),
+        Some(TypeToSearchQuery::Empty)
+    );
+}
+
+#[test]
+fn type_to_search_leaves_space_for_quick_preview() {
+    for modifiers in [
+        gtk::gdk::ModifierType::empty(),
+        gtk::gdk::ModifierType::SHIFT_MASK,
+    ] {
+        assert_eq!(type_to_search_query(gtk::gdk::Key::space, modifiers), None);
+    }
+}
+
+#[test]
+fn type_to_search_ignores_shortcuts_and_non_printable_keys() {
+    assert_eq!(
+        type_to_search_query(gtk::gdk::Key::k, gtk::gdk::ModifierType::CONTROL_MASK),
+        None
+    );
+    assert_eq!(
+        type_to_search_query(gtk::gdk::Key::F5, gtk::gdk::ModifierType::empty()),
+        None
+    );
 }
 
 #[test]
@@ -555,4 +763,318 @@ fn media_release_guard_rejects_repeated_actions_until_completion() {
 
     in_flight.set(false);
     assert!(begin_media_release(&in_flight));
+}
+
+#[test]
+fn file_payloads_are_not_claimed_as_sidebar_reorders() {
+    assert!(accepts_sidebar_reorder_payload(true, false));
+    assert!(!accepts_sidebar_reorder_payload(true, true));
+    assert!(!accepts_sidebar_reorder_payload(false, true));
+}
+
+#[test]
+fn sidebar_file_drops_accept_local_places_but_not_virtual_locations() {
+    assert!(sidebar_accepts_file_drop(&Location::local(
+        "/run/media/user/stick"
+    )));
+    assert!(sidebar_accepts_file_drop(&Location::local(
+        "/home/user/Documents"
+    )));
+    assert!(!sidebar_accepts_file_drop(&Location::uri("trash:///")));
+    assert!(!sidebar_accepts_file_drop(&Location::uri("network:///")));
+    assert!(!sidebar_accepts_file_drop(&Location::uri(
+        "smb://host.example/share"
+    )));
+}
+
+#[test]
+fn the_empty_trash_row_and_its_separator_appear_only_for_confirmed_non_empty_trash() {
+    assert_eq!(
+        trash_menu_visibility(TrashContents::NonEmpty),
+        TrashMenuVisibility {
+            separator: true,
+            empty: true,
+        }
+    );
+    assert_eq!(
+        trash_menu_visibility(TrashContents::Empty),
+        TrashMenuVisibility {
+            separator: false,
+            empty: false,
+        }
+    );
+    assert_eq!(
+        trash_menu_visibility(TrashContents::Unknown),
+        TrashMenuVisibility {
+            separator: false,
+            empty: false,
+        }
+    );
+}
+
+#[test]
+fn trash_probe_results_map_to_menu_state() {
+    assert_eq!(trash_contents_from_probe(Ok(true)), TrashContents::NonEmpty);
+    assert_eq!(trash_contents_from_probe(Ok(false)), TrashContents::Empty);
+    assert_eq!(
+        trash_contents_from_probe(Err(glib::Error::new(
+            gtk::gio::IOErrorEnum::NotSupported,
+            "trash backend unavailable",
+        ))),
+        TrashContents::Unknown
+    );
+}
+
+#[test]
+fn trash_mutating_operations_refresh_the_context_menu() {
+    assert!(event_changes_trash_contents(
+        &BrowserEvent::DeletionFinished
+    ));
+    assert!(event_changes_trash_contents(
+        &BrowserEvent::RestorationFinished
+    ));
+    assert!(event_changes_trash_contents(
+        &BrowserEvent::TransferFinished {
+            moved_locations: Vec::new(),
+        }
+    ));
+    assert!(!event_changes_trash_contents(&BrowserEvent::Reset));
+    assert!(!event_changes_trash_contents(
+        &BrowserEvent::HiddenToggled { show_hidden: true }
+    ));
+}
+
+#[test]
+fn the_trash_probe_reports_emptiness_from_the_first_entry_alone() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let root = gtk::gio::File::for_path(fixture.path());
+
+    let empty = glib::MainContext::new()
+        .block_on(trash_has_entries(&root))
+        .expect("an empty directory should enumerate");
+    assert!(!empty);
+
+    std::fs::write(fixture.path().join("note.txt"), b"trashed").expect("fixture entry");
+    let non_empty = glib::MainContext::new()
+        .block_on(trash_has_entries(&root))
+        .expect("a populated directory should enumerate");
+    assert!(non_empty);
+
+    let missing = glib::MainContext::new().block_on(trash_has_entries(&gtk::gio::File::for_path(
+        fixture.path().join("absent"),
+    )));
+    assert!(missing.is_err());
+}
+
+#[test]
+fn control_digits_select_each_browser_presentation() {
+    use super::BrowserMode;
+
+    assert_eq!(
+        browser_mode_for_digit(gtk::gdk::Key::_1),
+        Some(BrowserMode::Columns)
+    );
+    assert_eq!(
+        browser_mode_for_digit(gtk::gdk::Key::_2),
+        Some(BrowserMode::Icons)
+    );
+    assert_eq!(
+        browser_mode_for_digit(gtk::gdk::Key::_3),
+        Some(BrowserMode::List)
+    );
+    assert_eq!(
+        browser_mode_for_digit(gtk::gdk::Key::KP_3),
+        Some(BrowserMode::List)
+    );
+    assert_eq!(browser_mode_for_digit(gtk::gdk::Key::_4), None);
+    assert_eq!(browser_mode_for_digit(gtk::gdk::Key::a), None);
+}
+
+#[test]
+fn the_bundled_stylesheet_only_uses_at_rules_gtk_parses() {
+    // GTK's CSS parser rejects anything outside this set with a startup
+    // "Unknown @ rule" warning; `@media` only became valid in GTK 4.20.
+    const SUPPORTED: [&str; 3] = ["define-color", "import", "keyframes"];
+
+    let unsupported: Vec<&str> = include_str!("../../style.css")
+        .lines()
+        .filter_map(|line| line.trim_start().strip_prefix('@'))
+        .map(|rule| {
+            let end = rule
+                .find(|character: char| !character.is_ascii_alphanumeric() && character != '-')
+                .unwrap_or(rule.len());
+            &rule[..end]
+        })
+        .filter(|rule| !SUPPORTED.contains(rule))
+        .collect();
+
+    assert!(
+        unsupported.is_empty(),
+        "the stylesheet uses at-rules GTK 4.12 cannot parse: {unsupported:?}"
+    );
+}
+
+#[test]
+fn chrome_stylesheet_requests_header_bar_icon_size() {
+    let css = include_str!("../../style.css");
+    assert!(
+        css.contains("headerbar image {\n  -gtk-icon-size: 16px;"),
+        "header-bar icons must use GTK's compact 16px size, not large/app sizes"
+    );
+    assert!(
+        !css.contains("-gtk-icon-size: 20px;"),
+        "20px chrome icon size regresses XFCE toolbar density"
+    );
+}
+
+#[test]
+fn rename_shortcut_accepts_f2_and_control_r() {
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+    assert!(is_rename_shortcut(
+        gtk::gdk::Key::F2,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(is_rename_shortcut(gtk::gdk::Key::r, control));
+    assert!(is_rename_shortcut(gtk::gdk::Key::R, control));
+}
+
+#[test]
+fn rename_shortcut_ignores_extra_modifiers_and_other_keys() {
+    let control = gtk::gdk::ModifierType::CONTROL_MASK;
+    assert!(!is_rename_shortcut(
+        gtk::gdk::Key::r,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(!is_rename_shortcut(
+        gtk::gdk::Key::r,
+        control | gtk::gdk::ModifierType::SHIFT_MASK
+    ));
+    assert!(!is_rename_shortcut(
+        gtk::gdk::Key::r,
+        control | gtk::gdk::ModifierType::ALT_MASK
+    ));
+    assert!(!is_rename_shortcut(gtk::gdk::Key::F2, control));
+    assert!(!is_rename_shortcut(gtk::gdk::Key::F5, control));
+}
+
+#[test]
+fn refresh_shortcut_keeps_f5_and_releases_control_r() {
+    assert!(is_refresh_shortcut(gtk::gdk::Key::F5));
+    assert!(!is_refresh_shortcut(gtk::gdk::Key::r));
+    assert!(!is_rename_shortcut(
+        gtk::gdk::Key::F5,
+        gtk::gdk::ModifierType::empty()
+    ));
+    assert!(is_rename_shortcut(
+        gtk::gdk::Key::r,
+        gtk::gdk::ModifierType::CONTROL_MASK
+    ));
+}
+
+#[test]
+fn pinned_place_changes_merge_with_the_shared_bookmarks_file() {
+    gtk_test(
+        "ui::window::tests::pinned_place_changes_merge_with_the_shared_bookmarks_file",
+        || {
+            let first = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let existing = Location::local("/tmp/existing");
+            first
+                .state
+                .pin_location(existing.clone(), "Existing".into());
+            let second = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let pinned = Location::local("/tmp/pinned");
+            first.state.pin_location(pinned.clone(), "Pinned".into());
+            second.state.unpin_location(&existing);
+            assert_eq!(
+                load_pinned_places().expect("merged pins"),
+                vec![(pinned, "Pinned".into())]
+            );
+
+            second.state.pin_location(existing, "Existing".into());
+            let path = pinned_places_path();
+            std::fs::write(&path, "file:///tmp/external External\nfile:///tmp/pinned Renamed\nfile:///tmp/existing Existing\n")
+                .expect("external edit");
+            second.state.reorder_pinned_place(1, 0, false);
+            assert_eq!(
+                std::fs::read_to_string(&path).expect("reordered pins"),
+                "file:///tmp/external External\nfile:///tmp/existing Existing\nfile:///tmp/pinned Renamed\n"
+            );
+            std::fs::write(
+                &path,
+                "file:///tmp/external External\nfile:///tmp/pinned Renamed\n",
+            )
+            .expect("external removal");
+            second.state.reorder_pinned_place(1, 2, true);
+            let saved = load_pinned_places().expect("missing source is not resurrected");
+            assert_eq!(saved.len(), 2);
+            assert_eq!(*second.state.pinned_places.borrow(), saved);
+            first.disconnect();
+            second.disconnect();
+        },
+    );
+}
+
+#[test]
+fn failed_bookmark_reads_and_saves_preserve_disk_and_window_state() {
+    gtk_test(
+        "ui::window::tests::failed_bookmark_reads_and_saves_preserve_disk_and_window_state",
+        || {
+            let sidebar = build_sidebar(browser_for_window(), ThemeManager::shared(), true);
+            let existing = Location::local("/tmp/existing");
+            sidebar
+                .state
+                .pin_location(existing.clone(), "Existing".into());
+            let original = sidebar.state.pinned_places.borrow().clone();
+            let path = pinned_places_path();
+            std::fs::write(&path, [0xff]).expect("unreadable UTF-8 fixture");
+            sidebar
+                .state
+                .pin_location(Location::local("/tmp/new"), "New".into());
+            assert_eq!(std::fs::read(&path).expect("preserved bytes"), [0xff]);
+            assert_eq!(*sidebar.state.pinned_places.borrow(), original);
+
+            let contents = serialize_pinned_places(&original);
+            std::fs::write(&path, &contents).expect("restore readable bookmarks");
+            let target = path.with_extension("target");
+            std::fs::rename(&path, &target).expect("move fixture");
+            std::os::unix::fs::symlink(&target, &path).expect("readable but non-replaceable file");
+            sidebar.state.unpin_location(&existing);
+            assert_eq!(
+                std::fs::read_to_string(&target).expect("preserved target"),
+                contents
+            );
+            assert!(path.is_symlink());
+            assert_eq!(*sidebar.state.pinned_places.borrow(), original);
+            sidebar.disconnect();
+        },
+    );
+}
+
+#[test]
+fn default_accels_never_bind_one_chord_twice() {
+    gtk_test(
+        "ui::window::tests::default_accels_never_bind_one_chord_twice",
+        || {
+            let mut seen = std::collections::HashMap::new();
+            for (action, accels) in DEFAULT_ACCELS {
+                for accel in *accels {
+                    let chord = gtk::accelerator_parse(*accel).expect("valid default accelerator");
+                    assert!(
+                        !is_rename_shortcut(chord.0, chord.1),
+                        "{action} must not claim a rename shortcut"
+                    );
+                    assert!(
+                        seen.insert(chord, *action).is_none(),
+                        "{accel} is bound to more than one action"
+                    );
+                }
+            }
+            let refresh = DEFAULT_ACCELS
+                .iter()
+                .find(|(action, _)| *action == "win.refresh")
+                .expect("refresh accels")
+                .1;
+            assert_eq!(refresh, &["F5"]);
+        },
+    );
 }

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -6,14 +6,9 @@ use std::{
     error::Error,
     ffi::{OsStr, OsString},
     fs,
-    io::{Cursor, Write},
     os::unix::{ffi::OsStringExt, fs::PermissionsExt},
-    path::Path,
+    path::{Path, PathBuf},
     rc::Rc,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    },
     time::{Duration, SystemTime},
 };
 
@@ -21,26 +16,28 @@ use gtk::{gio, glib, prelude::*};
 
 use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 
+mod restore_safety;
+
 use super::{
-    LocalOperationProvider, await_cancellable, copy_new_recursively, copy_recursively,
-    deletion_error_message, deletion_error_summary, duplicate_candidate_name,
-    extract_7z_from_reader, extract_tar, extract_zip_from_archive, home_trash_entries_at, io_error,
-    is_trash_unsupported_failure, move_local_with, operation_error_summary, parse_copy_suffix,
-    replace_local, replace_local_with, transfer_is_noop, validated_archive_path, validated_child,
-    write_staged_archive,
+    LocalOperationProvider, TransferProgressTracker, await_cancellable, copy_failure_after_cleanup,
+    copy_new_recursively, copy_new_remote_file_with, copy_recursively, deletion_error_message,
+    deletion_error_summary, duplicate_candidate_name, home_trash_entries_at, io_error,
+    is_trash_unsupported_failure, move_local, move_local_with, operation_error_summary,
+    parse_copy_suffix, replace_local, replace_local_with, transfer_is_noop, validated_child,
 };
 use crate::{
     model::{EntryKind, FileEntry, Location, MetadataValue},
     services::{
-        ArchiveFormat, CompressRequest, DeleteRequest, LoadHandle, OperationEvent,
-        OperationProvider, OperationRequestId, PasteItem, PasteRequest, RestoreRequest,
-        RestoreSource, TransferConflict,
+        DeleteRequest, LoadHandle, MoveRecord, OperationEvent, OperationProvider,
+        OperationRequestId, PasteItem, PasteRequest, RestoreRequest, RestoreSource,
+        RestoreTrashItem, TransferConflict, UndoMoveItem, UndoMoveRequest,
     },
 };
 
 fn file_entry(path: &std::path::Path) -> FileEntry {
     FileEntry {
         location: Location::local(path),
+        thumbnail_path: None,
         native_name: path.file_name().unwrap_or_default().to_owned(),
         display_name: path
             .file_name()
@@ -51,6 +48,7 @@ fn file_entry(path: &std::path::Path) -> FileEntry {
         size: MetadataValue::Unknown,
         modified_unix_seconds: MetadataValue::Unknown,
         is_hidden: false,
+        mode: MetadataValue::Unknown,
     }
 }
 
@@ -469,6 +467,105 @@ fn a_successful_move_attempt_is_used_without_falling_back_to_copy() -> Result<()
 }
 
 #[test]
+fn a_plain_move_relocates_the_entry_via_the_hardened_rename_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.txt");
+    let target = root.path().join("target.txt");
+    fs::write(&source, b"payload")?;
+
+    let result = glib::MainContext::default().block_on(move_local(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok());
+    assert!(!source.exists());
+    assert_eq!(fs::read(target)?, b"payload");
+    Ok(())
+}
+
+#[test]
+fn moving_a_directory_into_its_own_child_fails_instead_of_deleting_it() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    fs::create_dir_all(source.join("nested"))?;
+    fs::write(source.join("top.txt"), b"top")?;
+    let target = source.join("nested").join("moved-source");
+
+    let result = glib::MainContext::default().block_on(move_local(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_err());
+    assert_eq!(fs::read(source.join("top.txt"))?, b"top");
+    Ok(())
+}
+
+#[test]
+fn move_accepts_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual_parent = root.path().join("actual");
+    let linked_parent = root.path().join("linked");
+    fs::create_dir(&actual_parent)?;
+    fs::write(actual_parent.join("source.txt"), b"keep")?;
+    std::os::unix::fs::symlink(&actual_parent, &linked_parent)?;
+    let target = root.path().join("target.txt");
+
+    let result = glib::MainContext::default().block_on(move_local(
+        gio::File::for_path(linked_parent.join("source.txt")),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    assert!(!actual_parent.join("source.txt").exists());
+    assert_eq!(fs::read(target)?, b"keep");
+    Ok(())
+}
+
+#[test]
+fn move_accepts_a_symlink_in_the_destinations_parent_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.txt");
+    let actual_destination = root.path().join("actual");
+    let linked_destination = root.path().join("linked");
+    fs::create_dir(&actual_destination)?;
+    fs::write(&source, b"keep")?;
+    std::os::unix::fs::symlink(&actual_destination, &linked_destination)?;
+
+    let result = glib::MainContext::default().block_on(move_local(
+        gio::File::for_path(&source),
+        gio::File::for_path(linked_destination.join("target.txt")),
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    assert!(!source.exists());
+    assert_eq!(fs::read(actual_destination.join("target.txt"))?, b"keep");
+    Ok(())
+}
+
+#[test]
 fn cancelling_staging_preserves_the_destination_and_cleans_the_partial_copy()
 -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -560,6 +657,31 @@ fn staged_file_replacement_commits_then_removes_a_moved_source() -> Result<(), B
 }
 
 #[test]
+fn replacing_a_symlink_preserves_link_semantics() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source-link");
+    let target = root.path().join("target-link");
+    std::os::unix::fs::symlink("new-target", &source)?;
+    std::os::unix::fs::symlink("old-target", &target)?;
+
+    let result = glib::MainContext::default().block_on(replace_local(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(fs::read_link(&target)?, Path::new("new-target"));
+    assert_eq!(fs::read_link(&source)?, Path::new("new-target"));
+    Ok(())
+}
+
+#[test]
 fn replacement_move_does_not_delete_a_substituted_source() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -597,6 +719,62 @@ fn replacement_move_does_not_delete_a_substituted_source() -> Result<(), Box<dyn
     assert_eq!(fs::read(target)?, b"replacement");
     assert_eq!(fs::read(source)?, b"new arrival");
     assert_eq!(fs::read(original_source)?, b"replacement");
+    Ok(())
+}
+
+#[test]
+fn replace_accepts_a_symlink_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual_parent = root.path().join("actual");
+    let linked_parent = root.path().join("linked");
+    fs::create_dir(&actual_parent)?;
+    fs::write(actual_parent.join("source.txt"), b"new")?;
+    std::os::unix::fs::symlink(&actual_parent, &linked_parent)?;
+    let target = root.path().join("target.txt");
+    fs::write(&target, b"old")?;
+
+    let mut affected_locations = HashSet::new();
+    let result = glib::MainContext::default().block_on(replace_local(
+        gio::File::for_path(linked_parent.join("source.txt")),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        Some(&mut affected_locations),
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(fs::read(&target)?, b"new");
+    assert_eq!(fs::read(actual_parent.join("source.txt"))?, b"new");
+    Ok(())
+}
+
+#[test]
+fn copy_accepts_a_symlink_higher_in_the_sources_parent_path() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual_root = root.path().join("actual");
+    let linked_root = root.path().join("linked");
+    fs::create_dir_all(actual_root.join("subdir"))?;
+    fs::write(actual_root.join("subdir/source.txt"), b"keep")?;
+    std::os::unix::fs::symlink(&actual_root, &linked_root)?;
+    let target = root.path().join("target.txt");
+
+    let result = glib::MainContext::default().block_on(copy_recursively(
+        gio::File::for_path(linked_root.join("subdir/source.txt")),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    assert!(result.is_ok(), "{result:?}");
+    assert_eq!(fs::read(target)?, b"keep");
+    assert_eq!(fs::read(actual_root.join("subdir/source.txt"))?, b"keep");
     Ok(())
 }
 
@@ -848,368 +1026,6 @@ fn replacing_a_directory_cleans_up_a_symlink_in_the_old_contents_without_followi
     Ok(())
 }
 
-fn test_file_entry(path: &Path) -> FileEntry {
-    let name = path.file_name().unwrap_or_default().to_os_string();
-    FileEntry {
-        location: Location::local(path),
-        native_name: name.clone(),
-        display_name: name.to_string_lossy().into_owned(),
-        kind: EntryKind::File,
-        size: MetadataValue::Unknown,
-        modified_unix_seconds: MetadataValue::Unknown,
-        is_hidden: false,
-    }
-}
-
-fn run_compression(request: CompressRequest) -> Vec<OperationEvent> {
-    let events = Rc::new(RefCell::new(Vec::new()));
-    let emitted = events.clone();
-    let operation = LocalOperationProvider.compress(
-        request,
-        Rc::new(move |event| emitted.borrow_mut().push(event)),
-    );
-    while !events.borrow().iter().any(|event| {
-        matches!(
-            event,
-            OperationEvent::Compressed { .. } | OperationEvent::Failed { .. }
-        )
-    }) {
-        glib::MainContext::default().iteration(true);
-    }
-    drop(operation);
-    events.borrow().clone()
-}
-
-fn compression_stages(destination: &Path) -> Result<Vec<OsString>, Box<dyn Error>> {
-    Ok(fs::read_dir(destination)?
-        .filter_map(Result::ok)
-        .map(|entry| entry.file_name())
-        .filter(|name| name.to_string_lossy().starts_with(".strata-compression-"))
-        .collect())
-}
-
-#[test]
-fn compression_provider_rejects_escaping_archive_names() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
-    let root = tempfile::tempdir()?;
-    let destination = root.path().join("destination");
-    let source = root.path().join("source.txt");
-    fs::create_dir(&destination)?;
-    fs::write(&source, b"source")?;
-
-    let events = run_compression(CompressRequest {
-        id: OperationRequestId(1),
-        entries: vec![test_file_entry(&source)],
-        destination: Location::local(&destination),
-        archive_name: "../outside".to_owned(),
-        conflict: TransferConflict::ReplaceExisting,
-        format: ArchiveFormat::Zip,
-        password: None,
-    });
-
-    assert!(matches!(events.as_slice(), [OperationEvent::Failed { .. }]));
-    assert!(!root.path().join("outside.zip").exists());
-    assert!(compression_stages(&destination)?.is_empty());
-    Ok(())
-}
-
-#[test]
-fn compression_conflict_choices_preserve_or_replace_the_destination() -> Result<(), Box<dyn Error>>
-{
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
-    let root = tempfile::tempdir()?;
-    let destination = root.path().join("destination");
-    let source = root.path().join("source.txt");
-    let archive = destination.join("existing.zip");
-    fs::create_dir(&destination)?;
-    fs::write(&source, b"replacement")?;
-    fs::write(&archive, b"original")?;
-    fs::set_permissions(&archive, fs::Permissions::from_mode(0o640))?;
-    let request = |conflict| CompressRequest {
-        id: OperationRequestId(1),
-        entries: vec![test_file_entry(&source)],
-        destination: Location::local(&destination),
-        archive_name: "existing".to_owned(),
-        conflict,
-        format: ArchiveFormat::Zip,
-        password: None,
-    };
-
-    let refused = run_compression(request(TransferConflict::FailIfExists));
-    assert!(
-        refused
-            .iter()
-            .any(|event| matches!(event, OperationEvent::Failed { .. }))
-    );
-    assert_eq!(fs::read(&archive)?, b"original");
-    assert_eq!(fs::metadata(&archive)?.permissions().mode() & 0o777, 0o640);
-
-    let replaced = run_compression(request(TransferConflict::ReplaceExisting));
-    assert!(
-        replaced
-            .iter()
-            .any(|event| matches!(event, OperationEvent::Compressed { .. }))
-    );
-    let extracted = destination.join("extracted");
-    fs::create_dir(&extracted)?;
-    assert_eq!(
-        extract_zip(&archive, &extracted)?,
-        Some("source.txt".to_owned())
-    );
-    assert_eq!(fs::metadata(&archive)?.permissions().mode() & 0o777, 0o640);
-    assert!(compression_stages(&destination)?.is_empty());
-    Ok(())
-}
-
-#[test]
-fn compression_failure_preserves_an_existing_archive() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
-    let root = tempfile::tempdir()?;
-    let destination = root.path().join("destination");
-    let missing = root.path().join("missing.txt");
-    let archive = destination.join("existing.zip");
-    fs::create_dir(&destination)?;
-    fs::write(&archive, b"original")?;
-
-    let events = run_compression(CompressRequest {
-        id: OperationRequestId(1),
-        entries: vec![test_file_entry(&missing)],
-        destination: Location::local(&destination),
-        archive_name: "existing".to_owned(),
-        conflict: TransferConflict::ReplaceExisting,
-        format: ArchiveFormat::Zip,
-        password: None,
-    });
-
-    assert!(
-        events
-            .iter()
-            .any(|event| matches!(event, OperationEvent::Failed { .. }))
-    );
-    assert_eq!(fs::read(&archive)?, b"original");
-    assert!(compression_stages(&destination)?.is_empty());
-    Ok(())
-}
-
-#[test]
-fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
-    let root = tempfile::tempdir()?;
-    let destination = root.path().join("destination");
-    let source = root.path().join("source.txt");
-    let mode_reference = root.path().join("mode-reference");
-    fs::create_dir(&destination)?;
-    fs::write(&source, b"contents")?;
-    fs::File::create(&mode_reference)?;
-    let expected_mode = fs::metadata(&mode_reference)?.permissions().mode() & 0o777;
-
-    for format in [
-        ArchiveFormat::Zip,
-        ArchiveFormat::SevenZ,
-        ArchiveFormat::TarGz,
-        ArchiveFormat::Tar,
-    ] {
-        let base = format!("archive-{}", format.extension().replace('.', "-"));
-        let events = run_compression(CompressRequest {
-            id: OperationRequestId(1),
-            entries: vec![test_file_entry(&source)],
-            destination: Location::local(&destination),
-            archive_name: base.clone(),
-            conflict: TransferConflict::FailIfExists,
-            format,
-            password: None,
-        });
-        assert!(
-            events
-                .iter()
-                .any(|event| matches!(event, OperationEvent::Compressed { .. }))
-        );
-        let archive = destination.join(format!("{base}.{}", format.extension()));
-        let extracted = destination.join(format!("extracted-{base}"));
-        fs::create_dir(&extracted)?;
-        match format {
-            ArchiveFormat::Zip => {
-                extract_zip(&archive, &extracted)?;
-            }
-            ArchiveFormat::SevenZ => {
-                extract_7z_from_reader(
-                    fs::File::open(&archive)?,
-                    &extracted,
-                    sevenz_rust2::Password::empty(),
-                    &Arc::new(AtomicUsize::new(0)),
-                )?;
-            }
-            ArchiveFormat::TarGz => {
-                extract_tar(&archive, &extracted, true, &Arc::new(AtomicUsize::new(0)))?;
-            }
-            ArchiveFormat::Tar => {
-                extract_tar(&archive, &extracted, false, &Arc::new(AtomicUsize::new(0)))?;
-            }
-        }
-        assert_eq!(fs::read(extracted.join("source.txt"))?, b"contents");
-        assert_eq!(
-            fs::metadata(&archive)?.permissions().mode() & 0o777,
-            expected_mode
-        );
-    }
-    assert!(compression_stages(&destination)?.is_empty());
-    Ok(())
-}
-
-#[test]
-fn cancelling_staged_compression_unlinks_the_partial_output() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
-    let root = tempfile::tempdir()?;
-    let destination = root.path().to_path_buf();
-    let archive = destination.join("existing.zip");
-    fs::write(&archive, b"original")?;
-    let started = Arc::new(AtomicBool::new(false));
-    let release = Arc::new(AtomicBool::new(false));
-    let finished = Arc::new(AtomicBool::new(false));
-    let worker_started = started.clone();
-    let worker_release = release.clone();
-    let worker_finished = finished.clone();
-    let worker_destination = destination.clone();
-    let worker_archive = archive.clone();
-    let task = glib::MainContext::default().spawn_local(async move {
-        write_staged_archive(
-            &worker_destination,
-            &worker_archive,
-            TransferConflict::ReplaceExisting,
-            move |mut file| {
-                file.write_all(b"partial")
-                    .map_err(|error| error.to_string())?;
-                worker_started.store(true, Ordering::Release);
-                while !worker_release.load(Ordering::Acquire) {
-                    std::thread::yield_now();
-                }
-                worker_finished.store(true, Ordering::Release);
-                Ok(())
-            },
-        )
-        .await
-    });
-    let context = glib::MainContext::default();
-    while !started.load(Ordering::Acquire) {
-        context.iteration(false);
-        std::thread::yield_now();
-    }
-    assert_eq!(compression_stages(&destination)?.len(), 1);
-
-    task.abort();
-    drop(task);
-    while context.pending() {
-        context.iteration(false);
-    }
-    let stage_was_removed = compression_stages(&destination)?.is_empty();
-    let destination_was_preserved = fs::read(&archive)? == b"original";
-    release.store(true, Ordering::Release);
-    while !finished.load(Ordering::Acquire) {
-        std::thread::yield_now();
-    }
-
-    assert!(stage_was_removed);
-    assert!(destination_was_preserved);
-    Ok(())
-}
-
-fn write_zip(path: &Path, entries: &[(&str, &[u8])]) -> Result<(), Box<dyn Error>> {
-    let mut writer = zip::ZipWriter::new(fs::File::create(path)?);
-    for (name, contents) in entries {
-        writer.start_file(*name, zip::write::SimpleFileOptions::default())?;
-        writer.write_all(contents)?;
-    }
-    writer.finish()?;
-    Ok(())
-}
-
-fn append_raw_tar_entry<W: Write>(
-    builder: &mut tar::Builder<W>,
-    name: &str,
-    contents: &[u8],
-) -> Result<(), Box<dyn Error>> {
-    let mut header = tar::Header::new_gnu();
-    header.as_old_mut().name[..name.len()].copy_from_slice(name.as_bytes());
-    header.set_mode(0o644);
-    header.set_size(contents.len() as u64);
-    header.set_entry_type(tar::EntryType::Regular);
-    header.set_cksum();
-    builder.append(&header, contents)?;
-    Ok(())
-}
-
-fn write_tar(path: &Path, name: &str, contents: &[u8], gzip: bool) -> Result<(), Box<dyn Error>> {
-    let file = fs::File::create(path)?;
-    if gzip {
-        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
-            file,
-            flate2::Compression::default(),
-        ));
-        append_raw_tar_entry(&mut builder, name, contents)?;
-        builder.into_inner()?.finish()?;
-    } else {
-        let mut builder = tar::Builder::new(file);
-        append_raw_tar_entry(&mut builder, name, contents)?;
-        builder.finish()?;
-    }
-    Ok(())
-}
-
-fn write_7z(path: &Path, name: &str, contents: &[u8]) -> Result<(), Box<dyn Error>> {
-    let mut writer = sevenz_rust2::ArchiveWriter::create(path)?;
-    writer.push_archive_entry(
-        sevenz_rust2::ArchiveEntry::new_file(name),
-        Some(Cursor::new(contents)),
-    )?;
-    writer.finish()?;
-    Ok(())
-}
-
-fn extract_zip(path: &Path, destination: &Path) -> Result<Option<String>, String> {
-    let file = fs::File::open(path).map_err(|error| error.to_string())?;
-    let mut archive = zip::ZipArchive::new(file).map_err(|error| error.to_string())?;
-    extract_zip_from_archive(
-        &mut archive,
-        destination,
-        None,
-        &Arc::new(AtomicUsize::new(0)),
-    )
-}
-
-#[test]
-fn archive_paths_must_be_nonempty_confined_relative_paths() -> Result<(), Box<dyn Error>> {
-    for path in [
-        "",
-        ".",
-        "../marker",
-        "safe/../marker",
-        "/tmp/marker",
-        "\\tmp\\marker",
-        "C:\\tmp\\marker",
-        "C:marker",
-        "safe/C:/marker",
-        "\\\\server\\share\\marker",
-        "//server/share/marker",
-    ] {
-        assert!(validated_archive_path(path).is_err(), "accepted {path:?}");
-    }
-    assert_eq!(
-        validated_archive_path("folder/./nested//item.txt")?,
-        Path::new("folder/nested/item.txt")
-    );
-    Ok(())
-}
-
 #[test]
 fn cancelling_between_deletions_reports_completed_and_unattempted_items()
 -> Result<(), Box<dyn Error>> {
@@ -1272,57 +1088,100 @@ fn cancelling_between_deletions_reports_completed_and_unattempted_items()
 }
 
 #[test]
-fn every_archive_format_rejects_parent_traversal() -> Result<(), Box<dyn Error>> {
+fn cancelling_staged_remote_file_copy_removes_only_the_incomplete_stage()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
     let root = tempfile::tempdir()?;
-    let destination = root.path().join("destination");
-    fs::create_dir(&destination)?;
-    let zip_path = root.path().join("malicious.zip");
-    let tar_path = root.path().join("malicious.tar");
-    let tar_gz_path = root.path().join("malicious.tar.gz");
-    let seven_z_path = root.path().join("malicious.7z");
-    write_zip(&zip_path, &[("../zip-marker", b"escaped")])?;
-    write_tar(&tar_path, "../tar-marker", b"escaped", false)?;
-    write_tar(&tar_gz_path, "../tar-gz-marker", b"escaped", true)?;
-    write_7z(&seven_z_path, "../seven-z-marker", b"escaped")?;
+    let source = root.path().join("source.bin");
+    let target = root.path().join("target.bin");
+    fs::write(&source, b"source contents")?;
 
-    assert!(extract_zip(&zip_path, &destination).is_err());
-    assert!(
-        extract_tar(
-            &tar_path,
-            &destination,
-            false,
-            &Arc::new(AtomicUsize::new(0)),
-        )
-        .is_err()
-    );
-    assert!(
-        extract_tar(
-            &tar_gz_path,
-            &destination,
-            true,
-            &Arc::new(AtomicUsize::new(0)),
-        )
-        .is_err()
-    );
-    assert!(
-        extract_7z_from_reader(
-            fs::File::open(&seven_z_path)?,
-            &destination,
-            sevenz_rust2::Password::empty(),
-            &Arc::new(AtomicUsize::new(0)),
-        )
-        .is_err()
-    );
+    let result = glib::MainContext::default().block_on(copy_new_remote_file_with(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        Rc::new(|_, stage, _| {
+            Box::pin(async move {
+                fs::write(stage.path().expect("native stage"), b"partial")
+                    .map_err(super::io_error)?;
+                Err(glib::Error::new(
+                    gio::IOErrorEnum::Cancelled,
+                    "injected cancellation",
+                ))
+            })
+        }),
+        Rc::new(|_, _, _| Box::pin(async { panic!("cancelled copy must not commit") })),
+    ));
 
-    for marker in [
-        "zip-marker",
-        "tar-marker",
-        "tar-gz-marker",
-        "seven-z-marker",
-    ] {
-        assert!(!root.path().join(marker).exists(), "created {marker}");
-    }
+    assert!(result.is_err_and(|error| error.matches(gio::IOErrorEnum::Cancelled)));
+    assert!(!target.exists());
+    assert_eq!(fs::read(&source)?, b"source contents");
+    assert_eq!(fs::read_dir(root.path())?.count(), 1);
     Ok(())
+}
+
+#[test]
+fn staged_remote_file_copy_preserves_a_racing_destination() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.bin");
+    let target = root.path().join("target.bin");
+    fs::write(&source, b"source contents")?;
+
+    let result = glib::MainContext::default().block_on(copy_new_remote_file_with(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        gio::Cancellable::new(),
+        Rc::new(|source, stage, _| {
+            Box::pin(async move {
+                fs::copy(
+                    source.path().expect("native source"),
+                    stage.path().expect("native stage"),
+                )
+                .map(|_| ())
+                .map_err(super::io_error)
+            })
+        }),
+        Rc::new(|_, target, _| {
+            Box::pin(async move {
+                fs::write(target.path().expect("native target"), b"racing contents")
+                    .map_err(super::io_error)?;
+                Err(glib::Error::new(
+                    gio::IOErrorEnum::Exists,
+                    "injected destination race",
+                ))
+            })
+        }),
+    ));
+
+    assert!(result.is_err_and(|error| error.matches(gio::IOErrorEnum::Exists)));
+    assert_eq!(fs::read(&target)?, b"racing contents");
+    assert_eq!(fs::read(&source)?, b"source contents");
+    assert_eq!(fs::read_dir(root.path())?.count(), 2);
+    Ok(())
+}
+
+#[test]
+fn failed_incomplete_copy_cleanup_is_reported_as_a_failure() {
+    let error = copy_failure_after_cleanup(
+        glib::Error::new(gio::IOErrorEnum::Cancelled, "injected cancellation"),
+        Err(glib::Error::new(
+            gio::IOErrorEnum::PermissionDenied,
+            "injected cleanup failure",
+        )),
+    );
+
+    assert!(!error.matches(gio::IOErrorEnum::Cancelled));
+    assert!(
+        error
+            .to_string()
+            .contains("incomplete copy could not be removed")
+    );
+    assert!(error.to_string().contains("injected cleanup failure"));
 }
 
 #[test]
@@ -1466,7 +1325,7 @@ fn permanent_delete_does_not_follow_a_symlink_nested_inside_the_tree() -> Result
 }
 
 #[test]
-fn permanent_delete_rejects_a_symlink_in_the_parent_path() -> Result<(), Box<dyn Error>> {
+fn permanent_delete_accepts_a_symlink_in_the_parent_path() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
@@ -1489,15 +1348,226 @@ fn permanent_delete_rejects_a_symlink_in_the_parent_path() -> Result<(), Box<dyn
         Rc::new(move |event| emitted.borrow_mut().push(event)),
     );
     let context = glib::MainContext::default();
-    while !events
-        .borrow()
-        .iter()
-        .any(|event| matches!(event, OperationEvent::CompletedWithErrors { .. }))
-    {
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Deleted { .. }
+                | OperationEvent::CompletedWithErrors { .. }
+                | OperationEvent::Failed { .. }
+        )
+    }) {
         context.iteration(true);
     }
 
-    assert_eq!(fs::read(target)?, b"keep");
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, OperationEvent::Deleted { .. })),
+        "{:?}",
+        events.borrow()
+    );
+    assert!(!target.exists());
+    assert!(linked_parent.is_symlink());
+    assert!(actual_parent.is_dir());
+    Ok(())
+}
+
+#[test]
+fn parent_resolution_accepts_absolute_relative_and_chained_aliases() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let actual = root.path().join("actual");
+    fs::create_dir_all(actual.join("nested"))?;
+    std::os::unix::fs::symlink(&actual, root.path().join("absolute"))?;
+    std::os::unix::fs::symlink("actual", root.path().join("relative"))?;
+    std::os::unix::fs::symlink("relative", root.path().join("chain"))?;
+    std::os::unix::fs::symlink("../relative", actual.join("up"))?;
+    let expected = super::LocalFileIdentity::from_stat(&rustix::fs::stat(&actual)?);
+
+    for name in [
+        "actual",
+        "absolute",
+        "relative",
+        "chain",
+        "actual/up",
+        "chain/nested/..",
+    ] {
+        let parent = super::open_local_parent_directory(&root.path().join(name))?;
+        assert_eq!(
+            super::LocalFileIdentity::from_stat(&rustix::fs::fstat(&parent)?),
+            expected,
+            "{name}"
+        );
+    }
+    let parent = super::open_local_parent_directory(Path::new("/"))?;
+    assert_eq!(
+        super::LocalFileIdentity::from_stat(&rustix::fs::fstat(&parent)?),
+        super::LocalFileIdentity::from_stat(&rustix::fs::stat(c"/")?)
+    );
+    Ok(())
+}
+
+#[test]
+fn parent_resolution_rejects_magic_links_loops_and_dangling_aliases() -> Result<(), Box<dyn Error>>
+{
+    use std::os::fd::AsRawFd;
+
+    let root = tempfile::tempdir()?;
+    let handle = fs::File::open(root.path())?;
+    let magic = PathBuf::from(format!("/proc/self/fd/{}", handle.as_raw_fd()));
+    assert!(
+        magic.is_dir(),
+        "the fixture must expose a working procfs magic link"
+    );
+    std::os::unix::fs::symlink(&magic, root.path().join("magic"))?;
+    std::os::unix::fs::symlink("loop", root.path().join("loop"))?;
+    std::os::unix::fs::symlink("missing", root.path().join("dangling"))?;
+
+    for path in [
+        magic,
+        root.path().join("magic"),
+        root.path().join("loop"),
+        root.path().join("dangling"),
+        PathBuf::from("relative"),
+    ] {
+        assert!(
+            super::open_local_parent_directory(&path).is_err(),
+            "{}",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn permanent_delete_keeps_the_open_parent_when_its_alias_is_retargeted()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual = root.path().join("actual");
+    let outside = root.path().join("outside");
+    let alias = root.path().join("alias");
+    fs::create_dir_all(actual.join("tree/nested"))?;
+    fs::create_dir_all(outside.join("tree"))?;
+    fs::write(actual.join("tree/nested/file.txt"), b"delete")?;
+    fs::write(outside.join("tree/sentinel.txt"), b"keep")?;
+    std::os::unix::fs::symlink(&outside, actual.join("tree/decoy"))?;
+    std::os::unix::fs::symlink(&actual, &alias)?;
+    let parent = super::open_local_parent_directory(&alias)?;
+
+    std::os::unix::fs::symlink(&outside, root.path().join("replacement"))?;
+    fs::rename(root.path().join("replacement"), &alias)?;
+    glib::MainContext::default().block_on(super::permanently_delete_local(
+        parent,
+        OsString::from("tree"),
+        None,
+        gio::Cancellable::new(),
+    ))?;
+
+    assert!(!actual.join("tree").exists());
+    assert_eq!(fs::read(outside.join("tree/sentinel.txt"))?, b"keep");
+    assert_eq!(fs::read_link(alias)?, outside);
+    Ok(())
+}
+
+#[test]
+fn permanent_delete_revalidates_identity_after_a_parent_alias_changes() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual = root.path().join("actual");
+    let outside = root.path().join("outside");
+    let alias = root.path().join("alias");
+    fs::create_dir(&actual)?;
+    fs::create_dir(&outside)?;
+    fs::write(actual.join("file.txt"), b"original")?;
+    fs::write(outside.join("file.txt"), b"keep")?;
+    std::os::unix::fs::symlink(&actual, &alias)?;
+    let file = gio::File::for_path(alias.join("file.txt"));
+    let context = glib::MainContext::default();
+    let expected = context.block_on(super::local_file_identity(&file))?;
+
+    std::os::unix::fs::symlink(&outside, root.path().join("replacement"))?;
+    fs::rename(root.path().join("replacement"), &alias)?;
+    let error = context
+        .block_on(super::permanently_delete_local_path_if_unchanged(
+            alias.join("file.txt"),
+            expected,
+            gio::Cancellable::new(),
+        ))
+        .expect_err("retargeting the alias must not delete a different entry");
+
+    assert!(error.to_string().contains("changed"), "{error}");
+    assert_eq!(fs::read(actual.join("file.txt"))?, b"original");
+    assert_eq!(fs::read(outside.join("file.txt"))?, b"keep");
+    Ok(())
+}
+
+#[test]
+fn permanent_delete_of_a_symlink_through_an_alias_keeps_its_referent() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual = root.path().join("actual");
+    let alias = root.path().join("alias");
+    fs::create_dir(&actual)?;
+    fs::write(actual.join("sentinel.txt"), b"keep")?;
+    std::os::unix::fs::symlink("actual", &alias)?;
+    std::os::unix::fs::symlink(".", actual.join("link"))?;
+
+    glib::MainContext::default().block_on(super::permanently_delete_local_path_if_unchanged(
+        alias.join("link"),
+        None,
+        gio::Cancellable::new(),
+    ))?;
+
+    assert!(!actual.join("link").is_symlink());
+    assert_eq!(fs::read(actual.join("sentinel.txt"))?, b"keep");
+    assert!(alias.is_symlink());
+    Ok(())
+}
+
+#[test]
+fn copying_and_replacing_symlinks_accepts_an_aliased_destination() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let actual = root.path().join("actual");
+    let alias = root.path().join("alias");
+    let source = root.path().join("source");
+    fs::create_dir(&actual)?;
+    fs::write(root.path().join("sentinel.txt"), b"keep")?;
+    std::os::unix::fs::symlink("actual", &alias)?;
+    std::os::unix::fs::symlink("../sentinel.txt", &source)?;
+    let context = glib::MainContext::default();
+
+    for overwrite in [false, true] {
+        context.block_on(copy_recursively(
+            gio::File::for_path(&source),
+            gio::File::for_path(alias.join("link")),
+            overwrite,
+            gio::Cancellable::new(),
+            None,
+        ))?;
+        assert_eq!(
+            fs::read_link(actual.join("link"))?,
+            Path::new("../sentinel.txt")
+        );
+    }
+    context.block_on(copy_new_recursively(
+        gio::File::for_path(root.path().join("sentinel.txt")),
+        gio::File::for_path(alias.join("new.txt")),
+        gio::Cancellable::new(),
+    ))?;
+    assert_eq!(fs::read(actual.join("new.txt"))?, b"keep");
+    assert_eq!(fs::read(root.path().join("sentinel.txt"))?, b"keep");
     Ok(())
 }
 
@@ -1601,6 +1671,102 @@ fn cancelling_recursive_delete_leaves_the_unfinished_root_in_place() -> Result<(
 }
 
 #[test]
+fn transfer_progress_aggregates_completed_and_in_flight_file_bytes() {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let tracker = TransferProgressTracker::new(
+        OperationRequestId(24),
+        Some(150),
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    let first = tracker.begin_file();
+    let mut first_callback = first.callback();
+    first_callback(25, 100);
+    first_callback(100, 100);
+    first.finish();
+    tracker.finish_item(0, Some(100), None);
+
+    let second = tracker.begin_file();
+    let mut second_callback = second.callback();
+    second_callback(10, 50);
+
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        OperationEvent::TransferProgress {
+            completed_items: 0,
+            transferred_bytes: 25,
+            total_bytes: Some(150),
+            ..
+        }
+    )));
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::TransferProgress {
+            completed_items: 1,
+            transferred_bytes: 110,
+            total_bytes: Some(150),
+            ..
+        })
+    ));
+}
+
+#[test]
+fn copying_a_file_emits_bytes_before_item_completion() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source.bin");
+    let destination = root.path().join("destination");
+    let contents = vec![0x5a; 1024 * 1024];
+    fs::write(&source, &contents)?;
+    fs::create_dir(&destination)?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(25),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. }
+                | OperationEvent::Cancelled { .. }
+                | OperationEvent::TransferFailed { .. }
+                | OperationEvent::Failed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        OperationEvent::TransferProgress {
+            completed_items: 0,
+            transferred_bytes,
+            total_bytes: Some(total_bytes),
+            ..
+        } if *transferred_bytes > 0 && *total_bytes == contents.len() as u64
+    )));
+    assert_eq!(fs::read(destination.join("source.bin"))?, contents);
+    Ok(())
+}
+
+#[test]
 fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Result<(), Box<dyn Error>>
 {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -1640,7 +1806,13 @@ fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Resul
             move_sources: true,
         },
         Rc::new(move |event| {
-            let cancel = matches!(event, OperationEvent::TransferProgress { completed: 1, .. });
+            let cancel = matches!(
+                event,
+                OperationEvent::TransferProgress {
+                    completed_items: 1,
+                    ..
+                }
+            );
             emitted.borrow_mut().push(event);
             if cancel {
                 operation_for_emit.borrow_mut().take();
@@ -1664,6 +1836,15 @@ fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Resul
             _ => None,
         })
         .expect("terminal cancellation result");
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        OperationEvent::TransferProgress {
+            completed_items: 1,
+            transferred_bytes: 5,
+            total_bytes: Some(11),
+            ..
+        }
+    )));
     assert_eq!(result.completed, [Location::local(&first)]);
     assert!(result.failed.is_empty());
     assert_eq!(result.not_attempted, [Location::local(&second)]);
@@ -1672,63 +1853,6 @@ fn cancelling_between_moves_reports_completed_and_unattempted_sources() -> Resul
     assert!(second.exists());
 
     fs::remove_dir_all(root)?;
-    Ok(())
-}
-
-#[test]
-fn extraction_rejects_final_and_intermediate_symlinks() -> Result<(), Box<dyn Error>> {
-    let root = tempfile::tempdir()?;
-    let destination = root.path().join("destination");
-    let external = root.path().join("external");
-    fs::create_dir(&destination)?;
-    fs::create_dir(&external)?;
-    std::os::unix::fs::symlink(root.path().join("missing"), destination.join("dangling"))?;
-    std::os::unix::fs::symlink(&external, destination.join("redirect"))?;
-    let final_archive = root.path().join("final.zip");
-    let intermediate_archive = root.path().join("intermediate.zip");
-    write_zip(&final_archive, &[("dangling", b"escaped")])?;
-    write_zip(&intermediate_archive, &[("redirect/marker", b"escaped")])?;
-
-    assert!(extract_zip(&final_archive, &destination).is_err());
-    assert!(extract_zip(&intermediate_archive, &destination).is_err());
-    assert!(!root.path().join("missing").exists());
-    assert!(!external.join("marker").exists());
-    Ok(())
-}
-
-#[test]
-fn extraction_supports_nesting_and_regular_conflicts() -> Result<(), Box<dyn Error>> {
-    let root = tempfile::tempdir()?;
-    let destination = root.path().join("destination");
-    fs::create_dir(&destination)?;
-    fs::write(destination.join("report.txt"), b"original")?;
-    fs::create_dir(destination.join("existing"))?;
-    fs::write(destination.join("existing/old.txt"), b"old")?;
-    let archive_path = root.path().join("content.zip");
-    write_zip(
-        &archive_path,
-        &[
-            ("folder/nested/item.txt", b"nested"),
-            ("report.txt", b"replacement"),
-            ("existing/new.txt", b"new"),
-        ],
-    )?;
-
-    assert_eq!(
-        extract_zip(&archive_path, &destination)?.as_deref(),
-        Some("folder")
-    );
-    assert_eq!(
-        fs::read(destination.join("folder/nested/item.txt"))?,
-        b"nested"
-    );
-    assert_eq!(fs::read(destination.join("report.txt"))?, b"original");
-    assert_eq!(
-        fs::read(destination.join("report (2).txt"))?,
-        b"replacement"
-    );
-    assert_eq!(fs::read(destination.join("existing/old.txt"))?, b"old");
-    assert_eq!(fs::read(destination.join("existing (2)/new.txt"))?, b"new");
     Ok(())
 }
 
@@ -1773,7 +1897,10 @@ fn cancelling_restore_before_io_reports_every_item_as_unattempted() -> Result<()
         .map_err(|error| error.to_string())?;
     let events = Rc::new(RefCell::new(Vec::new()));
     let emitted = events.clone();
-    let entries = vec![file_entry(std::path::Path::new("/fixture/trashed.txt"))];
+    let entries = vec![RestoreTrashItem {
+        entry: file_entry(std::path::Path::new("/fixture/trashed.txt")),
+        destination: PathBuf::from("/fixture/trashed.txt"),
+    }];
     let operation = LocalOperationProvider.restore(
         RestoreRequest {
             id: OperationRequestId(9),
@@ -1792,8 +1919,218 @@ fn cancelling_restore_before_io_reports_every_item_as_unattempted() -> Result<()
         [OperationEvent::Cancelled { result, .. }]
             if result.completed.is_empty()
                 && result.failed.is_empty()
-                && result.not_attempted == [entries[0].location.clone()]
+                && result.not_attempted == [entries[0].entry.location.clone()]
     ));
+    Ok(())
+}
+
+fn wait_for_restore(events: &Rc<RefCell<Vec<OperationEvent>>>) {
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Restored { .. }
+                | OperationEvent::RestoreCompletedWithErrors { .. }
+                | OperationEvent::Failed { .. }
+                | OperationEvent::Cancelled { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+}
+
+fn volume_trash_entry(
+    root: &Path,
+    name: &str,
+    orig_path: &str,
+    contents: &[u8],
+) -> Result<(PathBuf, FileEntry), Box<dyn Error>> {
+    let uid = rustix::process::getuid().as_raw();
+    let trash = root.join(format!(".Trash-{uid}"));
+    fs::create_dir_all(trash.join("files"))?;
+    fs::create_dir_all(trash.join("info"))?;
+    let source = trash.join("files").join(name);
+    fs::write(&source, contents)?;
+    fs::write(
+        trash.join("info").join(format!("{name}.trashinfo")),
+        format!("[Trash Info]\nPath={orig_path}\nDeletionDate=2026-01-01T00:00:00\n"),
+    )?;
+    Ok((source.clone(), file_entry(&source)))
+}
+
+#[test]
+fn restore_rejects_a_volume_orig_path_on_another_device() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let Some((home, stick)) = crate::test_support::distinct_device_dirs(
+        "restore_rejects_a_volume_orig_path_on_another_device",
+    ) else {
+        return Ok(());
+    };
+    let dest = home.path().join(".config/autostart/payload.desktop");
+    let (source, entry) = volume_trash_entry(
+        stick.path(),
+        "payload",
+        &dest.to_string_lossy(),
+        b"ssh-ed25519 AAAA attacker",
+    )?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.restore(
+        RestoreRequest {
+            id: OperationRequestId(478),
+            source: RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry,
+                destination: dest.clone(),
+            }]),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    wait_for_restore(&events);
+
+    assert!(
+        matches!(
+            events.borrow().last(),
+            Some(OperationEvent::RestoreCompletedWithErrors { message, .. })
+                if message.contains("outside the trash volume")
+        ),
+        "{:?}",
+        events.borrow()
+    );
+    assert!(source.exists());
+    assert_eq!(fs::read(&source)?, b"ssh-ed25519 AAAA attacker");
+    assert!(!dest.exists());
+    Ok(())
+}
+
+#[test]
+fn restore_returns_a_volume_item_to_a_path_on_the_same_volume() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let fixture = tempfile::tempdir()?;
+    fs::create_dir_all(fixture.path().join("Documents"))?;
+    let (source, entry) = volume_trash_entry(
+        fixture.path(),
+        "report.txt",
+        "Documents/report.txt",
+        b"notes",
+    )?;
+    let destination = fixture.path().canonicalize()?.join("Documents/report.txt");
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.restore(
+        RestoreRequest {
+            id: OperationRequestId(479),
+            source: RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry,
+                destination: destination.clone(),
+            }]),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    wait_for_restore(&events);
+
+    assert!(
+        matches!(
+            events.borrow().last(),
+            Some(OperationEvent::Restored { .. })
+        ),
+        "{:?}",
+        events.borrow()
+    );
+    assert_eq!(fs::read(&destination)?, b"notes");
+    assert!(!source.exists());
+    Ok(())
+}
+
+#[test]
+fn restore_fails_when_the_confirmed_destination_no_longer_matches() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let fixture = tempfile::tempdir()?;
+    fs::create_dir_all(fixture.path().join("Documents"))?;
+    let (source, entry) = volume_trash_entry(
+        fixture.path(),
+        "report.txt",
+        "Documents/report.txt",
+        b"notes",
+    )?;
+    let confirmed = fixture.path().canonicalize()?.join("Documents/other.txt");
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.restore(
+        RestoreRequest {
+            id: OperationRequestId(480),
+            source: RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry,
+                destination: confirmed.clone(),
+            }]),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    wait_for_restore(&events);
+
+    assert!(
+        matches!(
+            events.borrow().last(),
+            Some(OperationEvent::RestoreCompletedWithErrors { message, .. })
+                if message.contains("no longer matches the confirmed destination")
+        ),
+        "{:?}",
+        events.borrow()
+    );
+    assert!(source.exists());
+    assert!(!confirmed.exists());
+    assert!(!fixture.path().join("Documents/report.txt").exists());
+    Ok(())
+}
+
+#[test]
+fn restore_uses_the_trash_entry_target_path_as_the_physical_source() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let fixture = tempfile::tempdir()?;
+    fs::create_dir_all(fixture.path().join("Documents"))?;
+    let (source, mut entry) = volume_trash_entry(
+        fixture.path(),
+        "report.txt",
+        "Documents/report.txt",
+        b"notes",
+    )?;
+    entry.location = Location::uri("trash:///report.txt");
+    entry.thumbnail_path = Some(source.clone());
+    let destination = fixture.path().canonicalize()?.join("Documents/report.txt");
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.restore(
+        RestoreRequest {
+            id: OperationRequestId(481),
+            source: RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry,
+                destination: destination.clone(),
+            }]),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    wait_for_restore(&events);
+
+    assert!(
+        matches!(
+            events.borrow().last(),
+            Some(OperationEvent::Restored { .. })
+        ),
+        "{:?}",
+        events.borrow()
+    );
+    assert_eq!(fs::read(&destination)?, b"notes");
+    assert!(!source.exists());
     Ok(())
 }
 
@@ -2130,3 +2467,501 @@ fn cutting_in_the_same_folder_remains_a_noop() -> Result<(), Box<dyn Error>> {
     assert!(!destination.join("folder (1)").exists());
     Ok(())
 }
+
+fn drive_until_transfer_settles(events: &Rc<RefCell<Vec<OperationEvent>>>) {
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. }
+                | OperationEvent::TransferFailed { .. }
+                | OperationEvent::Cancelled { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+}
+
+#[test]
+fn undoing_a_move_returns_each_item_to_its_original_directory() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let origin = root.path().join("origin");
+    let archive = root.path().join("archive");
+    fs::create_dir_all(&origin)?;
+    fs::create_dir_all(&archive)?;
+    let moved = archive.join("report.txt");
+    fs::write(&moved, b"contents")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.undo_move(
+        UndoMoveRequest {
+            id: OperationRequestId(40),
+            items: vec![UndoMoveItem {
+                record: MoveRecord {
+                    original: Location::local(origin.join("report.txt")),
+                    current: Location::local(&moved),
+                },
+                conflict: TransferConflict::FailIfExists,
+            }],
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    drive_until_transfer_settles(&events);
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(!moved.exists());
+    assert_eq!(fs::read(origin.join("report.txt"))?, b"contents");
+    Ok(())
+}
+
+#[test]
+fn undoing_a_move_stops_at_an_unconfirmed_conflict() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let origin = root.path().join("origin");
+    let archive = root.path().join("archive");
+    fs::create_dir_all(&origin)?;
+    fs::create_dir_all(&archive)?;
+    let blocked = origin.join("report.txt");
+    fs::write(&blocked, b"newer")?;
+    let first = archive.join("notes.txt");
+    let second = archive.join("report.txt");
+    fs::write(&first, b"first")?;
+    fs::write(&second, b"second")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.undo_move(
+        UndoMoveRequest {
+            id: OperationRequestId(41),
+            items: vec![
+                UndoMoveItem {
+                    record: MoveRecord {
+                        original: Location::local(origin.join("notes.txt")),
+                        current: Location::local(&first),
+                    },
+                    conflict: TransferConflict::FailIfExists,
+                },
+                UndoMoveItem {
+                    record: MoveRecord {
+                        original: Location::local(&blocked),
+                        current: Location::local(&second),
+                    },
+                    conflict: TransferConflict::FailIfExists,
+                },
+            ],
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    drive_until_transfer_settles(&events);
+
+    let completed = match events.borrow().last() {
+        Some(OperationEvent::TransferFailed {
+            completed_locations,
+            ..
+        }) => completed_locations.clone(),
+        other => panic!("expected a transfer failure, got {other:?}"),
+    };
+    assert_eq!(completed, vec![Location::local(&first)]);
+    assert_eq!(fs::read(&blocked)?, b"newer");
+    assert_eq!(fs::read(&second)?, b"second");
+    assert_eq!(fs::read(origin.join("notes.txt"))?, b"first");
+    Ok(())
+}
+
+#[test]
+fn a_confirmed_undo_conflict_replaces_the_newer_item() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let origin = root.path().join("origin");
+    let archive = root.path().join("archive");
+    fs::create_dir_all(&origin)?;
+    fs::create_dir_all(&archive)?;
+    let original = origin.join("report.txt");
+    let moved = archive.join("report.txt");
+    fs::write(&original, b"newer")?;
+    fs::write(&moved, b"moved")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.undo_move(
+        UndoMoveRequest {
+            id: OperationRequestId(42),
+            items: vec![UndoMoveItem {
+                record: MoveRecord {
+                    original: Location::local(&original),
+                    current: Location::local(&moved),
+                },
+                conflict: TransferConflict::ReplaceExisting,
+            }],
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    drive_until_transfer_settles(&events);
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(!moved.exists());
+    assert_eq!(fs::read(&original)?, b"moved");
+    Ok(())
+}
+
+fn run_paste_collecting_created(
+    request: PasteRequest,
+) -> Result<Vec<Option<Location>>, Box<dyn Error>> {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        request,
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    let created = events
+        .borrow()
+        .iter()
+        .filter_map(|event| match event {
+            OperationEvent::TransferProgress {
+                created_location, ..
+            } => Some(created_location.clone()),
+            _ => None,
+        })
+        .collect();
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    Ok(created)
+}
+
+#[test]
+fn a_copy_reports_the_destination_it_created() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("photo.jpg");
+    let destination = root.path().join("album");
+    fs::write(&source, b"original-content")?;
+    fs::create_dir(&destination)?;
+
+    let created = run_paste_collecting_created(PasteRequest {
+        id: OperationRequestId(70),
+        destination: Location::local(&destination),
+        items: vec![PasteItem {
+            source: Location::local(&source),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        move_sources: false,
+    })?;
+
+    assert_eq!(
+        created.into_iter().flatten().collect::<Vec<_>>(),
+        vec![Location::local(destination.join("photo.jpg"))]
+    );
+    Ok(())
+}
+
+#[test]
+fn duplicating_a_file_reports_the_generated_name() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source = destination.join("photo.jpg");
+    fs::write(&source, b"original-content")?;
+
+    let created = run_paste_collecting_created(PasteRequest {
+        id: OperationRequestId(71),
+        destination: Location::local(&destination),
+        items: vec![PasteItem {
+            source: Location::local(&source),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        move_sources: false,
+    })?;
+
+    assert_eq!(
+        created.into_iter().flatten().collect::<Vec<_>>(),
+        vec![Location::local(destination.join("photo (1).jpg"))]
+    );
+    Ok(())
+}
+
+#[test]
+fn a_copy_that_replaces_an_existing_item_reports_its_destination() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("photo.jpg");
+    let destination = root.path().join("album");
+    fs::write(&source, b"new-content")?;
+    fs::create_dir(&destination)?;
+    fs::write(destination.join("photo.jpg"), b"old-content")?;
+
+    let created = run_paste_collecting_created(PasteRequest {
+        id: OperationRequestId(72),
+        destination: Location::local(&destination),
+        items: vec![PasteItem {
+            source: Location::local(&source),
+            conflict: TransferConflict::ReplaceExisting,
+        }],
+        move_sources: false,
+    })?;
+
+    assert_eq!(
+        created.into_iter().flatten().collect::<Vec<_>>(),
+        vec![Location::local(destination.join("photo.jpg"))]
+    );
+    Ok(())
+}
+
+#[test]
+fn a_move_reports_no_created_destination() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("photo.jpg");
+    let destination = root.path().join("album");
+    fs::write(&source, b"original-content")?;
+    fs::create_dir(&destination)?;
+
+    let created = run_paste_collecting_created(PasteRequest {
+        id: OperationRequestId(73),
+        destination: Location::local(&destination),
+        items: vec![PasteItem {
+            source: Location::local(&source),
+            conflict: TransferConflict::FailIfExists,
+        }],
+        move_sources: true,
+    })?;
+
+    assert!(created.into_iter().flatten().next().is_none());
+    Ok(())
+}
+
+#[test]
+fn keeping_both_preserves_transfer_noops() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let nested = source.join("nested");
+    fs::create_dir_all(&nested)?;
+    fs::write(source.join("report.txt"), b"original")?;
+
+    for moving in [false, true] {
+        for destination in [&source, &nested] {
+            let created = run_paste_collecting_created(PasteRequest {
+                id: OperationRequestId(77),
+                destination: Location::local(destination),
+                items: vec![PasteItem {
+                    source: Location::local(&source),
+                    conflict: TransferConflict::KeepBoth,
+                }],
+                move_sources: moving,
+            })?;
+            assert!(created.into_iter().flatten().next().is_none());
+            assert_eq!(fs::read_dir(&source)?.count(), 2);
+            assert_eq!(fs::read_dir(&nested)?.count(), 0);
+            assert_eq!(fs::read(source.join("report.txt"))?, b"original");
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn keeping_both_in_a_cross_folder_paste_generates_a_unique_name() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source_dir = root.path().join("source");
+    let source = source_dir.join("report.txt");
+    let destination = root.path().join("dest");
+    fs::create_dir_all(&source_dir)?;
+    fs::create_dir_all(&destination)?;
+    fs::write(&source, b"incoming")?;
+    fs::write(destination.join("report.txt"), b"existing")?;
+
+    let created = run_paste_collecting_created(PasteRequest {
+        id: OperationRequestId(74),
+        destination: Location::local(&destination),
+        items: vec![PasteItem {
+            source: Location::local(&source),
+            conflict: TransferConflict::KeepBoth,
+        }],
+        move_sources: false,
+    })?;
+
+    assert_eq!(
+        created.into_iter().flatten().collect::<Vec<_>>(),
+        vec![Location::local(destination.join("report (1).txt"))]
+    );
+    assert_eq!(fs::read(destination.join("report.txt"))?, b"existing");
+    assert_eq!(fs::read(destination.join("report (1).txt"))?, b"incoming");
+    assert!(source.exists());
+    Ok(())
+}
+
+#[test]
+fn keeping_both_while_moving_renames_the_destination_instead_of_replacing_it()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source_dir = root.path().join("source");
+    let source = source_dir.join("report.txt");
+    let destination = root.path().join("dest");
+    fs::create_dir_all(&source_dir)?;
+    fs::create_dir_all(&destination)?;
+    fs::write(&source, b"incoming")?;
+    fs::write(destination.join("report.txt"), b"existing")?;
+
+    let created = run_paste_collecting_created(PasteRequest {
+        id: OperationRequestId(75),
+        destination: Location::local(&destination),
+        items: vec![PasteItem {
+            source: Location::local(&source),
+            conflict: TransferConflict::KeepBoth,
+        }],
+        move_sources: true,
+    })?;
+
+    assert!(created.into_iter().flatten().next().is_none());
+    assert_eq!(fs::read(destination.join("report.txt"))?, b"existing");
+    assert_eq!(fs::read(destination.join("report (1).txt"))?, b"incoming");
+    assert!(!source.exists());
+    Ok(())
+}
+
+#[test]
+fn mixed_conflict_choices_apply_independently_across_a_multi_item_paste()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let sources = root.path().join("sources");
+    let destination = root.path().join("destination");
+    fs::create_dir_all(&sources)?;
+    fs::create_dir_all(&destination)?;
+    fs::write(sources.join("new.txt"), b"brand new")?;
+    fs::write(sources.join("replace.txt"), b"new replacement")?;
+    fs::write(destination.join("replace.txt"), b"old replacement")?;
+    fs::write(sources.join("keep.txt"), b"new keep")?;
+    fs::write(destination.join("keep.txt"), b"old keep")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(76),
+            destination: Location::local(&destination),
+            items: vec![
+                PasteItem {
+                    source: Location::local(sources.join("new.txt")),
+                    conflict: TransferConflict::FailIfExists,
+                },
+                PasteItem {
+                    source: Location::local(sources.join("replace.txt")),
+                    conflict: TransferConflict::ReplaceExisting,
+                },
+                PasteItem {
+                    source: Location::local(sources.join("keep.txt")),
+                    conflict: TransferConflict::KeepBoth,
+                },
+            ],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. }
+                | OperationEvent::Cancelled { .. }
+                | OperationEvent::TransferFailed { .. }
+                | OperationEvent::Failed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert_eq!(fs::read(destination.join("new.txt"))?, b"brand new");
+    assert_eq!(
+        fs::read(destination.join("replace.txt"))?,
+        b"new replacement"
+    );
+    assert_eq!(fs::read(destination.join("keep.txt"))?, b"old keep");
+    assert_eq!(fs::read(destination.join("keep (1).txt"))?, b"new keep");
+    Ok(())
+}
+
+#[test]
+fn copying_a_tree_with_a_named_pipe_fails_instead_of_blocking() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    fs::create_dir_all(&source)?;
+    fs::write(source.join("before.txt"), b"before")?;
+    rustix::fs::mkfifoat(
+        rustix::fs::CWD,
+        source.join("pipe"),
+        rustix::fs::Mode::from_bits_truncate(0o600),
+    )?;
+
+    let result = glib::MainContext::default().block_on(copy_recursively(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    let error = result.expect_err("a named pipe cannot be copied as a regular file");
+    assert!(
+        error.to_string().contains("pipe"),
+        "the error should name the entry: {error}"
+    );
+    assert!(!target.join("pipe").exists());
+    Ok(())
+}
+
+mod create_entry;
+mod trash_capabilities;

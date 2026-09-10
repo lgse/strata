@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use gtk::prelude::*;
 
@@ -101,6 +101,7 @@ pub(super) struct ModalLayout {
     pub close: gtk::Button,
     pub cancel: gtk::Button,
     pub confirm: gtk::Button,
+    pub icon: gtk::Image,
 }
 
 impl ModalLayout {
@@ -158,7 +159,7 @@ pub(super) fn modal_layout_with_tone(
     confirm_label: &str,
     tone: ModalTone,
 ) -> ModalLayout {
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let content = super::accessibility::dialog_box(title);
     content.add_css_class("action-dialog");
     content.set_halign(gtk::Align::Center);
     content.set_valign(gtk::Align::Center);
@@ -242,6 +243,7 @@ pub(super) fn modal_layout_with_tone(
         close,
         cancel,
         confirm,
+        icon,
     }
 }
 
@@ -277,3 +279,6 @@ pub(super) fn segmented_control(
 
     (control, buttons)
 }
+
+#[cfg(test)]
+mod tests;

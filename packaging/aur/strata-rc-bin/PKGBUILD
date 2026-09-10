@@ -8,13 +8,14 @@ _releasever=0.9.0
 pkgdesc="A fast, keyboard-first file manager for Linux (preview channel)"
 arch=('x86_64' 'aarch64')
 url="https://github.com/lgse/strata"
-license=('GPL-3.0-or-later')
+license=('MIT')
 depends=(
   'bubblewrap'
   'fontconfig'
   'glibc>=2.39'
   'gtk4>=4.12'
   'gtksourceview5'
+  'gvfs'
   'poppler-glib'
 )
 optdepends=(
@@ -50,6 +51,11 @@ package() {
       "${pkgdir}/usr/share/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg"
   else
     warning "Strata ${_releasever} ships no desktop entry or application icon; installing without a launcher."
+  fi
+
+  if [[ -f "${dist}/io.github.lgse.Strata.FileManager1.service" ]]; then
+    install -Dm644 "${dist}/io.github.lgse.Strata.FileManager1.service" \
+      "${pkgdir}/usr/share/strata/io.github.lgse.Strata.FileManager1.service"
   fi
 
   install -Dm644 /dev/stdin "${pkgdir}/usr/share/strata/install-source.toml" <<'MARKER'

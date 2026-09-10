@@ -1,0 +1,596 @@
+// SPDX-License-Identifier: MIT
+
+use crate::app::Browser;
+use crate::model::Location;
+use crate::ui::browser::entry::entry_matches;
+use crate::ui::entry_list_model::EntryListModel;
+use gtk::prelude::*;
+use gtk::{gio, glib};
+use std::cell::{Cell, RefCell};
+use std::rc::{Rc, Weak};
+use std::time::Duration;
+
+pub(crate) const FILTER_DEBOUNCE_DELAY: Duration = Duration::from_millis(40);
+
+thread_local! {
+    static PENDING_SCROLLS: RefCell<Vec<(glib::WeakRef<gtk::Widget>, gtk::TickCallbackId)>> = const { RefCell::new(Vec::new()) };
+    static PENDING_REVEALS: RefCell<Vec<(glib::WeakRef<gtk::Widget>, gtk::TickCallbackId)>> = const { RefCell::new(Vec::new()) };
+}
+
+fn take_pending_scroll(view: &gtk::Widget) -> Option<gtk::TickCallbackId> {
+    PENDING_SCROLLS.with_borrow_mut(|pending| {
+        pending.retain(|(view, _)| view.upgrade().is_some());
+        let index = pending
+            .iter()
+            .position(|(candidate, _)| candidate.upgrade().as_ref() == Some(view))?;
+        Some(pending.swap_remove(index).1)
+    })
+}
+
+pub(crate) fn prepare_collection_inline_edit(view: &gtk::Widget, position: u32) {
+    if let Some(pending) = take_pending_reveal(view) {
+        pending.remove();
+    }
+    if let Some(pending) = take_pending_scroll(view) {
+        pending.remove();
+    }
+    // Replace deferred row focus before moving focus into its editor.
+    apply_collection_scroll(view, position, gtk::ListScrollFlags::NONE);
+}
+
+/// `scroll_to` before the view has a real height leaves ListView/GridView with a
+/// one-row widget pool, so scrolling after a mode switch stays janky.
+pub(crate) fn scroll_collection_when_allocated(view: &gtk::Widget, position: u32) {
+    scroll_collection_when_allocated_with(view, position, gtk::ListScrollFlags::FOCUS);
+}
+
+/// SELECT would collapse the multi-selection already applied by the caller.
+pub(crate) fn focus_collection_item_when_allocated(view: &gtk::Widget, position: u32) {
+    scroll_collection_when_allocated_with(view, position, gtk::ListScrollFlags::FOCUS);
+}
+
+fn scroll_collection_when_allocated_with(
+    view: &gtk::Widget,
+    position: u32,
+    flags: gtk::ListScrollFlags,
+) {
+    if let Some(pending) = take_pending_scroll(view) {
+        pending.remove();
+    }
+    if view.height() > 1 {
+        apply_collection_scroll(view, position, flags);
+        return;
+    }
+    let frames = Cell::new(0u8);
+    let callback = view.add_tick_callback(move |view, _| {
+        if view.height() > 1 {
+            take_pending_scroll(view);
+            if flags.intersects(gtk::ListScrollFlags::FOCUS | gtk::ListScrollFlags::SELECT)
+                && !collection_view_holds_focus(view)
+            {
+                return glib::ControlFlow::Break;
+            }
+            apply_collection_scroll(view, position, flags);
+            return glib::ControlFlow::Break;
+        }
+        let waited = frames.get().saturating_add(1);
+        frames.set(waited);
+        if waited >= 8 {
+            take_pending_scroll(view);
+            glib::ControlFlow::Break
+        } else {
+            glib::ControlFlow::Continue
+        }
+    });
+    PENDING_SCROLLS.with_borrow_mut(|pending| pending.push((view.downgrade(), callback)));
+}
+
+fn take_pending_reveal(view: &gtk::Widget) -> Option<gtk::TickCallbackId> {
+    PENDING_REVEALS.with_borrow_mut(|pending| {
+        pending.retain(|(view, _)| view.upgrade().is_some());
+        let index = pending
+            .iter()
+            .position(|(candidate, _)| candidate.upgrade().as_ref() == Some(view))?;
+        Some(pending.swap_remove(index).1)
+    })
+}
+
+pub(crate) fn reveal_collection_after_layout(
+    view: &gtk::Widget,
+    position: u32,
+    visit_items: crate::ui::marquee::ItemVisitor,
+) {
+    if view.is::<gtk::GridView>() {
+        focus_collection_item_when_allocated(view, position);
+        return;
+    }
+    if let Some(pending) = take_pending_reveal(view) {
+        pending.remove();
+    }
+    let frames = Cell::new(0u8);
+    let visible_frames = Cell::new(0u8);
+    let callback = view.add_tick_callback(move |view, _| {
+        let frame = frames.get() + 1;
+        frames.set(frame);
+        let selection = view
+            .downcast_ref::<gtk::ListView>()
+            .and_then(|list| list.model())
+            .or_else(|| {
+                view.downcast_ref::<gtk::GridView>()
+                    .and_then(|grid| grid.model())
+            });
+        let Some(selection) = selection.filter(|model| model.is_selected(position)) else {
+            take_pending_reveal(view);
+            return glib::ControlFlow::Break;
+        };
+        if frame >= 30 || !view.is_mapped() {
+            take_pending_reveal(view);
+            return glib::ControlFlow::Break;
+        }
+        if frame < 2 || view.height() <= 1 {
+            return glib::ControlFlow::Continue;
+        }
+        let Some(scroll) = view
+            .ancestor(gtk::ScrolledWindow::static_type())
+            .and_downcast::<gtk::ScrolledWindow>()
+        else {
+            take_pending_reveal(view);
+            return glib::ControlFlow::Break;
+        };
+        let adjustment = scroll.vadjustment();
+        let mut bounds = None;
+        visit_items(&mut |candidate, item| {
+            if candidate == position && item.is_mapped() && item.height() > 0 {
+                bounds = item.compute_bounds(&scroll);
+            }
+        });
+        if let Some(bounds) = bounds {
+            let top = f64::from(bounds.y());
+            let bottom = top + f64::from(bounds.height());
+            let page = adjustment.page_size();
+            let delta = if top < 0.0 {
+                top
+            } else if bottom > page {
+                bottom - page
+            } else {
+                0.0
+            };
+            if delta.abs() < 1.0 {
+                visible_frames.set(visible_frames.get() + 1);
+                if visible_frames.get() >= 2 {
+                    take_pending_reveal(view);
+                    return glib::ControlFlow::Break;
+                }
+            } else {
+                visible_frames.set(0);
+                adjustment.set_value((adjustment.value() + delta).clamp(
+                    adjustment.lower(),
+                    (adjustment.upper() - page).max(adjustment.lower()),
+                ));
+            }
+        } else {
+            visible_frames.set(0);
+            // Materialize the virtualized target before measuring its real row bounds.
+            apply_collection_scroll(view, position, gtk::ListScrollFlags::NONE);
+            if view.is::<gtk::ListView>() && frame > 2 {
+                let row_height = (adjustment.upper() - adjustment.lower())
+                    / f64::from(selection.n_items().max(1));
+                adjustment.set_value((row_height * f64::from(position)).clamp(
+                    adjustment.lower(),
+                    (adjustment.upper() - adjustment.page_size()).max(adjustment.lower()),
+                ));
+            }
+        }
+        glib::ControlFlow::Continue
+    });
+    PENDING_REVEALS.with_borrow_mut(|pending| pending.push((view.downgrade(), callback)));
+}
+
+fn collection_view_holds_focus(view: &gtk::Widget) -> bool {
+    let Some(focused) = view.root().and_then(|root| root.focus()) else {
+        return false;
+    };
+    view.has_focus() || focused == *view || view.is_ancestor(&focused) || focused.is_ancestor(view)
+}
+
+fn apply_collection_scroll(view: &gtk::Widget, position: u32, flags: gtk::ListScrollFlags) {
+    if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
+        if position < list.model().map_or(0, |model| model.n_items()) {
+            list.scroll_to(position, flags, None);
+        }
+        return;
+    }
+    if let Ok(grid) = view.clone().downcast::<gtk::GridView>()
+        && position < grid.model().map_or(0, |model| model.n_items())
+    {
+        grid.scroll_to(position, flags, None);
+    }
+}
+
+pub(crate) fn detach_collection_view(view: &impl IsA<gtk::Widget>) {
+    let view = view.as_ref();
+    if let Some(pending) = take_pending_reveal(view) {
+        pending.remove();
+    }
+    if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
+        list.set_factory(None::<&gtk::ListItemFactory>);
+        list.set_model(None::<&gtk::SelectionModel>);
+    } else if let Ok(grid) = view.clone().downcast::<gtk::GridView>() {
+        grid.set_factory(None::<&gtk::ListItemFactory>);
+        grid.set_model(None::<&gtk::SelectionModel>);
+    }
+}
+
+pub(crate) fn focus_filter_entry(entry: &gtk::Entry, query: Option<&str>) {
+    if let Some(query) = query {
+        entry.set_text(query);
+        // Regular grab_focus selects the seed again, so the next key would replace it.
+        entry.grab_focus_without_selecting();
+        entry.select_region(-1, -1);
+    } else {
+        entry.grab_focus();
+    }
+}
+
+pub(crate) fn debounce_filter_entry(entry: &gtk::Entry, on_settled: impl Fn(String) + 'static) {
+    let pending: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
+    let on_settled = Rc::new(on_settled);
+    entry.connect_changed(move |entry| {
+        cancel_source(&pending);
+        let slot = pending.clone();
+        let callback = on_settled.clone();
+        let text = entry.text().to_string();
+        *pending.borrow_mut() = Some(glib::timeout_add_local_once(
+            FILTER_DEBOUNCE_DELAY,
+            move || {
+                slot.borrow_mut().take();
+                callback(text);
+            },
+        ));
+    });
+}
+
+/// Scope changes bypass typing's debounce and cancel queued old-scope queries.
+pub(crate) fn bind_filter_query(
+    entry: &gtk::Entry,
+    on_query: impl Fn(String, bool, bool) + 'static,
+) {
+    let pending = Rc::new(RefCell::new(None));
+    let callback = Rc::new(on_query);
+    let scope = Rc::new(Cell::new(true));
+    let weak_callback = Rc::downgrade(&callback);
+    let pending_for_binding = pending.clone();
+    let scope_for_binding = scope.clone();
+    crate::ui::theme::ThemeManager::shared().bind_preference(
+        entry,
+        crate::ui::theme::ThemeManager::filter_include_subfolders,
+        move |entry, recursive| {
+            scope_for_binding.set(recursive);
+            cancel_source(&pending_for_binding);
+            if let Some(callback) = weak_callback.upgrade() {
+                let entry = entry
+                    .downcast_ref::<gtk::Entry>()
+                    .expect("filter entry anchor");
+                callback(entry.text().to_string(), recursive, true);
+            }
+        },
+    );
+    entry.connect_changed(move |entry| {
+        cancel_source(&pending);
+        let slot = pending.clone();
+        let callback = callback.clone();
+        let text = entry.text().to_string();
+        let recursive = scope.get();
+        *pending.borrow_mut() = Some(glib::timeout_add_local_once(
+            FILTER_DEBOUNCE_DELAY,
+            move || {
+                slot.borrow_mut().take();
+                callback(text, recursive, false);
+            },
+        ));
+    });
+}
+
+pub(crate) fn filter_change_for(previous: &str, settled: &str) -> gtk::FilterChange {
+    if settled.starts_with(previous) && settled.len() > previous.len() {
+        gtk::FilterChange::MoreStrict
+    } else if previous.starts_with(settled) && previous.len() > settled.len() {
+        gtk::FilterChange::LessStrict
+    } else {
+        gtk::FilterChange::Different
+    }
+}
+
+pub(crate) fn notify_filter_query(
+    filter: &gtk::CustomFilter,
+    query: &RefCell<String>,
+    text: String,
+) {
+    let settled = text.to_lowercase();
+    let previous = query.borrow().clone();
+    if previous == settled {
+        return;
+    }
+    let change = filter_change_for(&previous, &settled);
+    *query.borrow_mut() = settled;
+    filter.changed(change);
+}
+
+/// Restores a miller column to its directory listing after its recursive search filter is cleared.
+///
+/// The flag must drop before the model swap: GTK binds the visible rows synchronously inside
+/// `set_model`, and the row factory reads it to decide whether to source entries from the
+/// search results or the directory. Clearing it afterwards binds every visible row against the
+/// already-emptied results, so they keep fallback icons and no hover size until an unrelated
+/// rebuild.
+pub(crate) fn deactivate_recursive_search(
+    search_active: &Cell<bool>,
+    search_results: &RefCell<Vec<crate::services::SearchItem>>,
+    search_model: &gtk::StringList,
+    filtered_model: &gtk::FilterListModel,
+    directory_model: &EntryListModel,
+) {
+    search_active.set(false);
+    search_results.borrow_mut().clear();
+    search_model.splice(0, search_model.n_items(), &[]);
+    if filtered_model.model().as_ref() != Some(directory_model.upcast_ref::<gio::ListModel>()) {
+        filtered_model.set_model(Some(directory_model));
+    }
+}
+
+pub(crate) fn apply_filter_query(
+    model: &gtk::FilterListModel,
+    filter: &gtk::CustomFilter,
+    query: &RefCell<String>,
+    settled: String,
+) {
+    let previous = query.borrow().clone();
+    let change = filter_change_for(&previous, &settled);
+    *query.borrow_mut() = settled;
+    // The filter also hides dotfiles, even when the search query is empty.
+    if model.filter().is_none() {
+        model.set_filter(Some(filter));
+    } else {
+        filter.changed(change);
+    }
+}
+
+#[derive(Default)]
+pub(crate) struct PositionMap {
+    query: String,
+    generation: u64,
+    forward: Vec<usize>,
+    reverse: Vec<u32>,
+}
+
+pub(crate) const NO_FILTERED_POSITION: u32 = u32::MAX;
+
+fn rebuild_position_map(
+    source: &EntryListModel,
+    query: &str,
+    show_hidden: bool,
+    generation: u64,
+) -> PositionMap {
+    let n_source = source.n_items() as usize;
+    let mut forward = Vec::new();
+    let mut reverse = vec![NO_FILTERED_POSITION; n_source];
+    for (source_position, filtered_position) in reverse.iter_mut().enumerate() {
+        let Some(text) = source.value(source_position as u32) else {
+            continue;
+        };
+        if entry_matches(&text, show_hidden, query) {
+            *filtered_position = forward.len() as u32;
+            forward.push(source_position);
+        }
+    }
+    PositionMap {
+        query: query.to_owned(),
+        generation,
+        forward,
+        reverse,
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct ViewMap {
+    cache: Rc<RefCell<PositionMap>>,
+    query: Rc<RefCell<String>>,
+    show_hidden: Rc<Cell<bool>>,
+    generation: Rc<Cell<u64>>,
+    source: EntryListModel,
+    filter: gtk::FilterListModel,
+    placeholder: Option<gtk::StringList>,
+}
+
+impl ViewMap {
+    pub(crate) fn new(
+        query: Rc<RefCell<String>>,
+        show_hidden: Rc<Cell<bool>>,
+        generation: Rc<Cell<u64>>,
+        source: EntryListModel,
+        filter: gtk::FilterListModel,
+        placeholder: Option<gtk::StringList>,
+    ) -> Self {
+        Self {
+            cache: Rc::new(RefCell::new(PositionMap::default())),
+            query,
+            show_hidden,
+            generation,
+            source,
+            filter,
+            placeholder,
+        }
+    }
+
+    fn placeholder_count(&self) -> u32 {
+        self.placeholder
+            .as_ref()
+            .map_or(0, |placeholder| placeholder.n_items())
+    }
+
+    pub(crate) fn has_query(&self) -> bool {
+        !self.query.borrow().trim().is_empty()
+    }
+
+    pub(crate) fn source_position(&self, visible_position: u32) -> Option<usize> {
+        let filter_position = visible_position.checked_sub(self.placeholder_count())?;
+        let query = self.query.borrow();
+        if query.is_empty() && self.show_hidden.get() {
+            if filter_position < self.source.n_items() && filter_position < self.filter.n_items() {
+                return Some(filter_position as usize);
+            }
+            return None;
+        }
+        let mut cache = self.cache.borrow_mut();
+        let generation = self.generation.get();
+        if cache.query != *query || cache.generation != generation {
+            *cache = rebuild_position_map(&self.source, &query, self.show_hidden.get(), generation);
+        }
+        cache.forward.get(filter_position as usize).copied()
+    }
+
+    pub(crate) fn view_position(&self, source_position: usize) -> Option<u32> {
+        let query = self.query.borrow();
+        if query.is_empty() && self.show_hidden.get() {
+            let position = source_position as u64;
+            if position < self.source.n_items() as u64 && position < self.filter.n_items() as u64 {
+                return Some(position as u32 + self.placeholder_count());
+            }
+            return None;
+        }
+        let mut cache = self.cache.borrow_mut();
+        let generation = self.generation.get();
+        if cache.query != *query || cache.generation != generation {
+            *cache = rebuild_position_map(&self.source, &query, self.show_hidden.get(), generation);
+        }
+        let position = *cache.reverse.get(source_position)?;
+        (position != NO_FILTERED_POSITION).then_some(position + self.placeholder_count())
+    }
+
+    pub(crate) fn source_positions(&self, visible_positions: &[u32]) -> Vec<(u32, usize)> {
+        visible_positions
+            .iter()
+            .filter_map(|position| {
+                self.source_position(*position)
+                    .map(|source| (*position, source))
+            })
+            .collect()
+    }
+}
+
+pub(crate) fn search_result_entry(item: &crate::services::SearchItem) -> crate::model::FileEntry {
+    use crate::model::{EntryKind, FileEntry, MetadataValue};
+    FileEntry {
+        location: Location::local(item.path.clone()),
+        native_name: item.path.file_name().unwrap_or_default().to_os_string(),
+        thumbnail_path: None,
+        display_name: item.name.clone(),
+        kind: if item.is_directory {
+            EntryKind::Directory
+        } else {
+            EntryKind::File
+        },
+        size: MetadataValue::Unknown,
+        modified_unix_seconds: MetadataValue::Unknown,
+        is_hidden: false,
+        mode: MetadataValue::Unknown,
+    }
+}
+
+pub(crate) fn recursive_search_activation_key(key: gtk::gdk::Key) -> bool {
+    matches!(
+        key,
+        gtk::gdk::Key::Return | gtk::gdk::Key::KP_Enter | gtk::gdk::Key::Right
+    )
+}
+
+pub(crate) fn activate_recursive_search_result(
+    browser: &Weak<Browser>,
+    results: &RefCell<Vec<crate::services::SearchItem>>,
+    position: u32,
+) -> bool {
+    let Some(item) = results.borrow().get(position as usize).cloned() else {
+        return false;
+    };
+    let Some(browser) = browser.upgrade() else {
+        return false;
+    };
+    if item.is_directory {
+        browser.navigate(Location::local(item.path));
+    } else {
+        browser.open_location(Location::local(item.path));
+    }
+    true
+}
+
+pub(crate) fn search_result_navigation_position(
+    current: Option<u32>,
+    count: u32,
+    direction: i32,
+) -> Option<u32> {
+    if count == 0 {
+        return None;
+    }
+    let Some(current) = current else {
+        return Some(if direction < 0 { count - 1 } else { 0 });
+    };
+    Some((i64::from(current) + i64::from(direction)).clamp(0, i64::from(count - 1)) as u32)
+}
+
+pub(crate) enum SelectionPlan<'a> {
+    All,
+    Range { position: u32, count: u32 },
+    Items(&'a [u32]),
+}
+
+pub(crate) fn plan_selection(n_items: u32, positions: &[u32]) -> SelectionPlan<'_> {
+    let contiguous =
+        !positions.is_empty() && positions.windows(2).all(|pair| pair[1] == pair[0] + 1);
+    if contiguous && positions.len() as u32 == n_items && positions[0] == 0 {
+        SelectionPlan::All
+    } else if contiguous {
+        SelectionPlan::Range {
+            position: positions[0],
+            count: positions.len() as u32,
+        }
+    } else {
+        SelectionPlan::Items(positions)
+    }
+}
+
+pub(crate) fn apply_selection_plan(
+    selection: &gtk::MultiSelection,
+    n_items: u32,
+    positions: &[u32],
+) {
+    match plan_selection(n_items, positions) {
+        SelectionPlan::All => {
+            selection.select_all();
+        }
+        SelectionPlan::Range { position, count } => {
+            selection.select_range(position, count, true);
+        }
+        SelectionPlan::Items(items) => {
+            selection.unselect_all();
+            for position in items {
+                selection.select_item(*position, false);
+            }
+        }
+    }
+}
+
+pub(super) fn bitset_positions(bitset: &gtk::Bitset) -> Vec<u32> {
+    let Some((iterator, first)) = gtk::BitsetIter::init_first(bitset) else {
+        return Vec::new();
+    };
+    std::iter::once(first).chain(iterator).collect()
+}
+
+pub(crate) fn cancel_source(source: &RefCell<Option<glib::SourceId>>) {
+    if let Some(source) = source.take() {
+        source.remove();
+    }
+}
+
+#[cfg(test)]
+mod tests;

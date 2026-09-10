@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cmp::Ordering,
@@ -42,9 +42,19 @@ pub struct ColumnState {
     selection_target: Option<Location>,
     pub load_state: LoadState,
     pub truncated: bool,
+    /// Whether entries here can be moved to Trash, resolved from a listed entry
+    /// when the directory loads (see `DirectoryEvent::Finished`). `None` before
+    /// the first load finishes, for an empty directory, or when the capability
+    /// couldn't be answered; treated as "assume trashable" by consumers.
+    pub can_trash: Option<bool>,
+    /// Whether entries here can be permanently deleted, resolved the same way
+    /// as `can_trash`. `None` carries the same "assume deletable" meaning.
+    pub can_delete: Option<bool>,
     preferences: ViewPreferences,
     request_id: RequestId,
     select_first_on_load: bool,
+    // Auto-selection must not redirect paste into the first folder.
+    load_cursor: Option<Location>,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -81,6 +91,8 @@ pub struct NavigationState {
     back_history: Vec<NavigationPath>,
     forward_history: Vec<NavigationPath>,
     preferences: ViewPreferences,
+    // GTK focus/rebuild selection echoes must not arm paste-into.
+    selection_commit: bool,
 }
 
 impl NavigationState {
@@ -108,6 +120,7 @@ impl NavigationState {
 
         self.record_navigation();
         self.peek = None;
+        self.selection_commit = false;
         self.columns.truncate(parent_depth + 1);
         self.push_column(location, request_id);
         self.active_column = self.columns.len().checked_sub(1);
@@ -154,6 +167,7 @@ impl NavigationState {
         request_ids: impl IntoIterator<Item = RequestId>,
     ) {
         self.peek = None;
+        self.selection_commit = false;
         let preferences = self.preferences;
         self.columns = path
             .locations
@@ -168,9 +182,12 @@ impl NavigationState {
                 selection_target: None,
                 load_state: LoadState::Loading,
                 truncated: false,
+                can_trash: None,
+                can_delete: None,
                 preferences,
                 request_id,
                 select_first_on_load: false,
+                load_cursor: None,
             })
             .collect();
         self.active_column = self.columns.len().checked_sub(1);
@@ -236,9 +253,12 @@ impl NavigationState {
             selection_target: None,
             load_state: LoadState::Loading,
             truncated: false,
+            can_trash: None,
+            can_delete: None,
             preferences: self.preferences,
             request_id,
             select_first_on_load: false,
+            load_cursor: None,
         });
     }
 
@@ -283,8 +303,9 @@ impl NavigationState {
                 column.selected = Some(position);
                 column.selected_locations.clear();
                 column.selected_locations.insert(location.clone());
-                column.selection_anchor = Some(location);
+                column.selection_anchor = Some(location.clone());
                 column.select_first_on_load = false;
+                column.load_cursor = Some(location);
             }
         }
         Some((depth, insertions))
@@ -317,8 +338,9 @@ impl NavigationState {
                 column.selected = Some(position);
                 column.selected_locations.clear();
                 column.selected_locations.insert(location.clone());
-                column.selection_anchor = Some(location);
+                column.selection_anchor = Some(location.clone());
                 column.select_first_on_load = false;
+                column.load_cursor = Some(location);
             }
         }
         Some(depth)
@@ -477,6 +499,8 @@ impl NavigationState {
         column.selected = None;
         column.load_state = LoadState::Loading;
         column.truncated = false;
+        column.can_trash = None;
+        column.can_delete = None;
         column.request_id = request_id;
         Some(column.location.clone())
     }
@@ -510,6 +534,11 @@ impl NavigationState {
                 });
             }
         }
+    }
+
+    /// Existing columns retain their local sort; new columns inherit the shared defaults.
+    pub fn set_default_preferences(&mut self, preferences: ViewPreferences) {
+        self.preferences = preferences;
     }
 
     pub fn column_preferences(&self, depth: usize) -> Option<ViewPreferences> {
@@ -575,10 +604,26 @@ impl NavigationState {
         Some(self.columns.get(depth)?.location.clone())
     }
 
-    pub fn finish(&mut self, request_id: RequestId, truncated: bool) -> Option<usize> {
+    pub fn can_trash_at(&self, depth: usize) -> Option<bool> {
+        self.columns.get(depth)?.can_trash
+    }
+
+    pub fn can_delete_at(&self, depth: usize) -> Option<bool> {
+        self.columns.get(depth)?.can_delete
+    }
+
+    pub fn finish(
+        &mut self,
+        request_id: RequestId,
+        truncated: bool,
+        can_trash: Option<bool>,
+        can_delete: Option<bool>,
+    ) -> Option<usize> {
         let (depth, column) = self.column_for_request_mut(request_id)?;
         column.select_first_on_load = false;
         column.truncated = truncated;
+        column.can_trash = can_trash;
+        column.can_delete = can_delete;
         column.load_state = if column.entries.is_empty() {
             LoadState::Empty
         } else {
@@ -647,12 +692,16 @@ impl NavigationState {
         let Some(entry) = column.entries.get(position) else {
             return false;
         };
+        let location = entry.location.clone();
+        adopt_selected_locations(column, HashSet::from([location.clone()]), true);
         column.selected = Some(position);
-        column.selected_locations.clear();
-        column.selected_locations.insert(entry.location.clone());
-        column.selection_anchor = Some(entry.location.clone());
+        column.selection_anchor = Some(location);
         self.active_column = Some(depth);
         true
+    }
+
+    pub fn commit_selection(&mut self) {
+        self.selection_commit = true;
     }
 
     pub fn set_selection(
@@ -671,11 +720,13 @@ impl NavigationState {
         {
             return false;
         }
-        column.selected_locations = positions
+        let locations = positions
             .iter()
             .map(|position| column.entries[*position].location.clone())
             .collect();
-        column.selected = focused.filter(|position| positions.contains(position));
+        let commit = std::mem::take(&mut self.selection_commit);
+        adopt_selected_locations(column, locations, commit);
+        column.selected = focused.or(column.selected);
         if column.selection_anchor.is_none() {
             column.selection_anchor = column
                 .selected
@@ -684,6 +735,17 @@ impl NavigationState {
         }
         self.active_column = Some(depth);
         true
+    }
+
+    pub fn clear_active_selection(&mut self) -> Option<(usize, usize)> {
+        let depth = self.active_depth()?;
+        let column = self.columns.get_mut(depth)?;
+        if column.selected_locations.is_empty() {
+            return None;
+        }
+        let focused = column.selected.unwrap_or(0);
+        adopt_selected_locations(column, HashSet::new(), true);
+        Some((depth, focused))
     }
 
     pub fn extend_selection(&mut self, direction: i32) -> Option<(usize, usize, Vec<usize>)> {
@@ -740,13 +802,72 @@ impl NavigationState {
         let selected_positions: Vec<usize> = (start..=end)
             .filter(|&index| is_visible(&column.entries[index]))
             .collect();
-        column.selected_locations = selected_positions
+        let locations = selected_positions
             .iter()
             .map(|&index| column.entries[index].location.clone())
             .collect();
+        adopt_selected_locations(column, locations, true);
         column.selected = Some(focused);
         self.active_column = Some(depth);
         Some((depth, focused, selected_positions))
+    }
+
+    pub fn extend_visual_selection(
+        &mut self,
+        depth: usize,
+        focused: usize,
+        order: &[usize],
+    ) -> Option<Vec<usize>> {
+        let column = self.columns.get_mut(depth)?;
+        let end = order.iter().position(|position| *position == focused)?;
+        let start = column
+            .selection_anchor
+            .as_ref()
+            .and_then(|anchor| {
+                order.iter().position(|position| {
+                    column
+                        .entries
+                        .get(*position)
+                        .is_some_and(|entry| &entry.location == anchor)
+                })
+            })
+            .unwrap_or(end);
+        let positions = order[start.min(end)..=start.max(end)].to_vec();
+        if positions
+            .iter()
+            .any(|position| *position >= column.entries.len())
+        {
+            return None;
+        }
+        column.selection_anchor = Some(column.entries[order[start]].location.clone());
+        let locations = positions
+            .iter()
+            .map(|position| column.entries[*position].location.clone())
+            .collect();
+        adopt_selected_locations(column, locations, true);
+        column.selected = Some(focused);
+        self.active_column = Some(depth);
+        Some(positions)
+    }
+
+    pub fn selection_anchor_position(&self, depth: usize) -> Option<usize> {
+        let column = self.columns.get(depth)?;
+        let anchor = column.selection_anchor.as_ref()?;
+        column
+            .entries
+            .iter()
+            .position(|entry| &entry.location == anchor)
+    }
+
+    pub fn set_selection_anchor(&mut self, depth: usize, position: usize) -> bool {
+        let Some(column) = self.columns.get_mut(depth) else {
+            return false;
+        };
+        let Some(entry) = column.entries.get(position) else {
+            return false;
+        };
+        column.selection_anchor = Some(entry.location.clone());
+        true
     }
 
     pub fn selected_positions(&self, depth: usize) -> Vec<usize> {
@@ -791,6 +912,12 @@ impl NavigationState {
             .collect()
     }
 
+    pub fn selection_is_load_cursor(&self) -> bool {
+        self.active_column
+            .and_then(|depth| self.columns.get(depth))
+            .is_some_and(|column| column.load_cursor.is_some())
+    }
+
     pub fn move_selection(&mut self, direction: i32) -> Option<(usize, usize)> {
         let depth = self
             .active_column
@@ -807,6 +934,7 @@ impl NavigationState {
             column.selected = None;
             column.selected_locations.clear();
             column.selection_anchor = None;
+            column.load_cursor = None;
             return None;
         }
 
@@ -862,14 +990,66 @@ impl NavigationState {
                 }
             }
         };
-        column.selected = Some(position);
-        column.selected_locations.clear();
-        column
-            .selected_locations
-            .insert(column.entries[position].location.clone());
-        column.selection_anchor = Some(column.entries[position].location.clone());
+        focus_only(column, position);
         self.active_column = Some(depth);
         Some((depth, position))
+    }
+
+    /// Moves the focus `page` visible entries at a time, clamped to the first and
+    /// last visible entry, for page-sized keyboard navigation. `order` is the
+    /// displayed source indices when the view is not in source order.
+    pub fn page_along(
+        &mut self,
+        direction: i32,
+        page: usize,
+        order: Option<&[usize]>,
+    ) -> Option<(usize, usize)> {
+        if direction == 0 {
+            return None;
+        }
+        let depth = self
+            .active_column
+            .or_else(|| self.columns.len().checked_sub(1))?;
+        let column = self.columns.get_mut(depth)?;
+        let visible: Vec<usize> = match order {
+            Some(order) if !order.is_empty() => order.to_vec(),
+            _ => {
+                let show_hidden = column.preferences.show_hidden;
+                column
+                    .entries
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, entry)| show_hidden || !entry.is_hidden)
+                    .map(|(position, _)| position)
+                    .collect()
+            }
+        };
+        let last = visible.len().checked_sub(1)?;
+        let steps = page.max(1);
+        let current = column.selected.and_then(|selected| {
+            visible
+                .iter()
+                .position(|position| *position == selected)
+                .or_else(|| visible.iter().position(|position| *position >= selected))
+        });
+        let target = match (current, direction < 0) {
+            (None, true) => last,
+            (None, false) => 0,
+            (Some(current), true) => current.saturating_sub(steps),
+            (Some(current), false) => current.saturating_add(steps).min(last),
+        };
+        let position = visible[target];
+        focus_only(column, position);
+        self.active_column = Some(depth);
+        Some((depth, position))
+    }
+
+    pub fn focus_column(&mut self, depth: usize) -> bool {
+        if depth >= self.columns.len() {
+            return false;
+        }
+        self.active_column = Some(depth);
+        true
     }
 
     pub fn focus_parent(&mut self) -> Option<(usize, Option<usize>)> {
@@ -969,6 +1149,20 @@ impl NavigationState {
     }
 }
 
+fn focus_only(column: &mut ColumnState, position: usize) {
+    let location = column.entries[position].location.clone();
+    adopt_selected_locations(column, HashSet::from([location.clone()]), true);
+    column.selected = Some(position);
+    column.selection_anchor = Some(location);
+}
+
+fn adopt_selected_locations(column: &mut ColumnState, locations: HashSet<Location>, commit: bool) {
+    if commit {
+        column.load_cursor = None;
+    }
+    column.selected_locations = locations;
+}
+
 fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool {
     let mut changed = false;
     if update.size != MetadataValue::Unknown && entry.size != update.size {
@@ -979,6 +1173,10 @@ fn apply_metadata_update(entry: &mut FileEntry, update: &MetadataUpdate) -> bool
         && entry.modified_unix_seconds != update.modified_unix_seconds
     {
         entry.modified_unix_seconds = update.modified_unix_seconds.clone();
+        changed = true;
+    }
+    if update.mode != MetadataValue::Unknown && entry.mode != update.mode {
+        entry.mode = update.mode.clone();
         changed = true;
     }
     changed

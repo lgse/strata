@@ -4,26 +4,44 @@ Thanks for helping build Strata. The project is early, so discuss large changes 
 
 ## Development setup
 
-Install Rust, GTK4, Fontconfig, a C toolchain, and `pkg-config`. On Arch Linux:
+Install [mise](https://mise.jdx.dev), then install the pinned toolchain (Rust
+1.98.1, Python, `cargo-deny`, `typos`, `cargo-watch`):
 
 ```bash
-sudo pacman -S --needed base-devel rust fontconfig gtk4 gtksourceview5 poppler-glib
+mise install
+```
+
+GTK 4, Fontconfig, a C toolchain, and `pkg-config` still come from the system
+package manager. On Arch Linux:
+
+```bash
+sudo pacman -S --needed base-devel fontconfig gtk4 gtksourceview5 poppler-glib
 ```
 
 Run the application:
 
 ```bash
-cargo run
+mise run dev
 ```
 
 To rebuild and restart the running application whenever code or bundled assets
 change, use the development watcher. On Arch, Debian/Ubuntu, and Fedora, it
-installs missing native dependencies (prompting for `sudo`) and installs
-`cargo-watch` automatically when needed:
+installs missing native GTK libraries (prompting for `sudo`) when needed:
 
 ```bash
-make start-dev
+mise run start-dev
 ```
+
+Project coding-agent skills are listed in `skills-lock.json`. After cloning,
+restore them into the gitignored `.agents/` directory (requires Node.js for
+`npx`):
+
+```bash
+npx skills experimental_install
+```
+
+Commit `skills-lock.json` when adding or updating skills with `npx skills add`
+or `npx skills update`. Do not commit `.agents/`.
 
 ## Branching and pull requests
 
@@ -51,13 +69,20 @@ fix(navigation): preserve selection after reload
 
 Use `!` after the type or scope and add a `BREAKING CHANGE:` footer when a change is incompatible. Keep unrelated changes in separate commits.
 
+Commits must be authored by the contributor submitting them. Do not submit
+commits authored or co-authored by an AI coding agent. If an agent created
+commits, remove them and recreate the changes and commits as your own work under
+your own identity before opening or updating the pull request.
+
 ## Required checks
 
 Before opening a pull request:
 
 ```bash
-./scripts/check.sh
+mise run check
 ```
+
+Without mise, `./scripts/check.sh` runs the same Cargo checks.
 
 The always-available checks are:
 
@@ -74,12 +99,29 @@ CI additionally runs:
 - `typos` for spelling
 - Compilation with the latest stable Rust release
 
-Install the optional local tools with:
+`mise install` provides `cargo-deny` and `typos`. Without mise, install them with:
 
 ```bash
 cargo install --locked cargo-deny
 cargo install --locked typos-cli
 ```
+
+## End-to-end GUI tests
+
+`./scripts/check.sh` clears desktop display variables and skips display-dependent
+Rust tests. Run `./scripts/test-headless.py` to include those tests on a private
+Xvfb display without opening windows on your desktop. The end-to-end suite also
+uses a private display and checks the real application and resulting files:
+
+```bash
+./scripts/e2e.sh
+```
+
+It needs Xvfb, `at-spi2-core`, the Python AT-SPI bindings, D-Bus, and
+ImageMagick; the script names the packages when one is missing. See
+[end-to-end GUI testing](docs/e2e-testing.md) for how scenarios are written,
+how failure artifacts are collected, and how to regenerate the visual
+baselines.
 
 ## Performance fixtures
 

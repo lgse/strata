@@ -1,8 +1,8 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
-    process::{Command, Stdio},
+    process::Command,
     rc::Rc,
     sync::{OnceLock, mpsc::TryRecvError},
     time::{Duration, Instant},
@@ -12,25 +12,34 @@ use gtk::{gdk, gio, glib, prelude::*, subclass::prelude::*};
 
 use crate::{
     assets::icons,
-    sandbox::MediaPreviewBackend,
     services::{
         self, BuildKind, Channel, InstallRequest, InstallSource, ManagedInstall, ReleaseMetadata,
         ReleaseNoteBlock, ReleaseNotes, UpdateCheck, UpdateInstall, UpdateMethod, Version,
     },
 };
 
+mod about;
+mod bindings;
+mod general;
+mod keybindings;
+mod theme;
+use about::about_page;
+use bindings::{bind_choice, bind_switch};
+use general::general_page;
+use keybindings::keybindings_page;
+use theme::theme_page;
+
 #[cfg(test)]
 mod tests;
 
 use super::{
     blur::BlurBin,
-    browser::{BrowserView, dismiss_modal_layer, modal_layer},
-    browser_modes::{BrowserMode, ClickActivation, ClickCount},
-    controls::{form_entry, menu_option, modal_layout, segmented_control},
-    theme::{TextSize, Theme, ThemeManager, ThemeTokens},
+    browser::{dismiss_modal_layer, modal_layer},
+    controls::{modal_layout, segmented_control},
+    terminal,
+    theme::ThemeManager,
 };
 
-type ThemeCards = Rc<RefCell<Vec<(String, gtk::Button, gtk::Image)>>>;
 pub(super) type UpdateNoticeHandler = Rc<dyn Fn(Option<(ReleaseMetadata, String, UpdateMethod)>)>;
 
 struct UpdateCheckRow {
@@ -134,13 +143,19 @@ fn update_check_due(last: Option<Instant>, now: Instant) -> bool {
     last.is_none_or(|completed| now.duration_since(completed) >= UPDATE_DUE_INTERVAL)
 }
 
+fn force_due_update_check(last: Option<Instant>) -> bool {
+    last.is_none()
+}
+
 pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &UpdateNoticeHandler) {
     if !manager.checks_for_updates() || CHECK_IN_FLIGHT.get() {
         return;
     }
-    if !update_check_due(LAST_COMPLETED_CHECK.get(), Instant::now()) {
+    let last_completed = LAST_COMPLETED_CHECK.get();
+    if !update_check_due(last_completed, Instant::now()) {
         return;
     }
+    let force = force_due_update_check(last_completed);
     CHECK_IN_FLIGHT.set(true);
     let channel = manager.release_channel();
     let weak_manager = Rc::downgrade(manager);
@@ -150,7 +165,7 @@ pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &Up
             channel,
             crate::build_info::installed_version(),
             method,
-            false,
+            force,
         );
         glib::timeout_add_local(Duration::from_millis(100), move || {
             match receiver.try_recv() {
@@ -373,7 +388,6 @@ fn uses_compact_navigation(dialog_width: i32) -> bool {
     reason = "GTK 4.12 deprecated translate_coordinates and allocation without a replacement for click-in-bounds checks"
 )]
 pub fn build_layer(
-    browser: &BrowserView,
     settings_button: &gtk::Button,
     root: &BlurBin,
     themes: Rc<ThemeManager>,
@@ -426,9 +440,9 @@ pub fn build_layer(
         .vexpand(true)
         .build();
     let (general, responsive_setting_rows, responsive_activation_rows) =
-        general_page(browser, themes.clone());
+        general_page(themes.clone());
     stack.add_named(&general, Some("general"));
-    stack.add_named(&keybindings_page(), Some("keybindings"));
+    stack.add_named(&keybindings_page(themes.clone()), Some("keybindings"));
     stack.add_named(&about_page(), Some("about"));
     // Heavy pages build on first selection, never during startup: the
     // Updates page spawns package-manager detection plus release-note
@@ -593,6 +607,7 @@ pub fn build_layer(
         }
     });
     layer.add_controller(click);
+    super::focus_navigation::install(&layer);
     layer
 }
 
@@ -613,170 +628,6 @@ fn hide(layer: &gtk::Box, button: &gtk::Button, root: &BlurBin) {
         root.set_blurred(false);
         button.remove_css_class("active");
     });
-}
-
-fn general_page(
-    browser: &BrowserView,
-    manager: Rc<ThemeManager>,
-) -> (gtk::Widget, Vec<gtk::Box>, Vec<ResponsiveActivationRow>) {
-    let preferences = page_content();
-    append_heading(&preferences, "BROWSING");
-    let peeking_enabled = manager.folder_peeking();
-    browser.set_peek_enabled(peeking_enabled);
-    let (peeking_row, peeking) = settings_option(
-        "Folder peeking",
-        "Preview folders automatically while moving through a pane.",
-        peeking_enabled,
-    );
-    let browser_for_peeking = browser.clone();
-    let manager_for_peeking = manager.clone();
-    peeking.connect_active_notify(move |toggle| {
-        let enabled = toggle.is_active();
-        browser_for_peeking.set_peek_enabled(enabled);
-        manager_for_peeking.set_folder_peeking(enabled);
-    });
-    preferences.append(&peeking_row);
-
-    let single_click_enabled = manager.single_click_previews();
-    browser.set_single_click_previews(single_click_enabled);
-    let (preview_row, single_click_previews) = settings_option(
-        "Single-click file previews",
-        "Show a quick preview when selecting a supported file.",
-        single_click_enabled,
-    );
-    let browser_for_previews = browser.clone();
-    let manager_for_previews = manager.clone();
-    single_click_previews.connect_active_notify(move |toggle| {
-        let enabled = toggle.is_active();
-        browser_for_previews.set_single_click_previews(enabled);
-        manager_for_previews.set_single_click_previews(enabled);
-    });
-    preferences.append(&preview_row);
-
-    let direct_open_enabled = manager.search_open_files_directly();
-    let (search_open_row, search_open_files) = settings_option(
-        "Open search results directly",
-        "Launch files from search instead of opening Strata's quick preview.",
-        direct_open_enabled,
-    );
-    let manager_for_search_open = manager.clone();
-    search_open_files.connect_active_notify(move |toggle| {
-        manager_for_search_open.set_search_open_files_directly(toggle.is_active());
-    });
-    preferences.append(&search_open_row);
-
-    append_heading(&preferences, "REFRESH");
-    let interval = manager.auto_refresh_interval();
-    let options = ["Off", "1 min", "5 min", "10 min"];
-    let secs = [0, 60, 300, 600];
-    let active = secs.iter().position(|&s| s == interval).unwrap_or(0);
-    let (control, buttons) = segmented_control(&options, active);
-    let refresh_row = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    refresh_row.add_css_class("settings-option");
-    let refresh_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    refresh_copy.set_hexpand(true);
-    let refresh_title = gtk::Label::new(Some("Auto-refresh interval"));
-    refresh_title.set_xalign(0.0);
-    refresh_title.add_css_class("settings-option-title");
-    let refresh_desc = gtk::Label::new(Some(
-        "Automatically reload the current folder. Useful for network shares where file monitors may miss changes.",
-    ));
-    refresh_desc.set_xalign(0.0);
-    refresh_desc.set_wrap(true);
-    refresh_desc.add_css_class("settings-option-description");
-    refresh_copy.append(&refresh_title);
-    refresh_copy.append(&refresh_desc);
-    refresh_row.append(&refresh_copy);
-    refresh_row.append(&control);
-    preferences.append(&refresh_row);
-    for (idx, button) in buttons.iter().enumerate() {
-        let manager = manager.clone();
-        let browser = browser.clone();
-        let secs = secs[idx];
-        button.connect_toggled(move |toggled| {
-            if toggled.is_active() {
-                manager.set_auto_refresh_interval(secs);
-                browser.set_auto_refresh_interval(secs);
-            }
-        });
-    }
-
-    append_heading(&preferences, "VIDEO PREVIEWS");
-    let (acceleration_active, acceleration_sensitive, backend_sensitive) =
-        video_preview_control_state(manager.hardware_accelerated_video_previews());
-    let description = "Choose a hardware backend.";
-    let selected_backend = manager.video_preview_backend();
-    let manager_for_backend = manager.clone();
-    let (video_row, acceleration, backend) = video_preview_option(
-        description,
-        acceleration_active,
-        acceleration_sensitive,
-        backend_sensitive,
-        selected_backend,
-        Rc::new(move |backend| manager_for_backend.set_video_preview_backend(backend)),
-    );
-    let manager_for_acceleration = manager.clone();
-    let backend_for_acceleration = backend.clone();
-    acceleration.connect_active_notify(move |toggle| {
-        let enabled = toggle.is_active();
-        backend_for_acceleration.set_sensitive(enabled);
-        manager_for_acceleration.set_hardware_accelerated_video_previews(enabled);
-    });
-    preferences.append(&video_row);
-
-    append_heading(&preferences, "MOTION");
-    let (motion_row, reduce_motion) = settings_option(
-        "Reduce motion",
-        "Disable nonessential interface animations.",
-        manager.reduce_motion(),
-    );
-    let manager_for_motion = manager.clone();
-    reduce_motion.connect_active_notify(move |toggle| {
-        manager_for_motion.set_reduce_motion(toggle.is_active());
-    });
-    preferences.append(&motion_row);
-
-    append_heading(&preferences, "CLICK ACTIVATION");
-    let activation_options = gtk::Box::new(gtk::Orientation::Vertical, 4);
-    let mut responsive_activation_rows = Vec::new();
-    activation_options.add_css_class("settings-option");
-    activation_options.add_css_class("click-activation-options");
-    for (label, mode) in [
-        ("List", BrowserMode::Columns),
-        ("Grid", BrowserMode::Grid),
-        ("Explorer", BrowserMode::Explorer),
-    ] {
-        let activation = manager.click_activation(mode);
-        browser.set_click_activation(mode, activation);
-        let (row, options, file_buttons, folder_buttons) =
-            click_activation_option(label, activation);
-        let update = Rc::new({
-            let browser = browser.clone();
-            let manager = manager.clone();
-            move |files, folders| {
-                let activation = ClickActivation { files, folders };
-                browser.set_click_activation(mode, activation);
-                manager.set_click_activation(mode, activation);
-            }
-        });
-        connect_click_activation_buttons(&file_buttons, &folder_buttons, update.clone());
-        connect_click_activation_buttons(
-            &folder_buttons,
-            &file_buttons,
-            Rc::new(move |folders, files| {
-                update(files, folders);
-            }),
-        );
-        activation_options.append(&row);
-        responsive_activation_rows.push(ResponsiveActivationRow { row, options });
-    }
-    preferences.append(&activation_options);
-
-    (
-        scrollable_page(&preferences, None),
-        vec![video_row],
-        responsive_activation_rows,
-    )
 }
 
 fn updates_page(
@@ -809,30 +660,45 @@ fn updates_page(
         update_method,
     );
 
-    let auto_check_enabled = manager.checks_for_updates();
-    let (auto_check_row, auto_check) = settings_option(
-        "Automatically check for updates",
-        match update_method {
-            UpdateMethod::InPlace => "Check GitHub for a newer release when Strata starts.",
-            UpdateMethod::Aur => "Check the AUR for a newer packaged release when Strata starts.",
-            UpdateMethod::Omarchy => {
-                "Check the Omarchy package repository for a newer release when Strata starts."
-            }
-            UpdateMethod::Pacman => {
-                "Check the configured package repositories for a newer release when Strata starts."
-            }
-        },
-        auto_check_enabled,
+    preferences.append(&automatic_updates_option(&manager, update_method));
+    let (channel_row, sync_channel_selection) =
+        append_channel_option(&preferences, manager.clone(), managed, update_method);
+    preferences.append(&update_row);
+    append_current_release_notes(&preferences);
+    bind_updates_auto_check(
+        &manager,
+        &channel_row,
+        &preferences,
+        run_check.clone(),
+        update_notice,
     );
-    preferences.append(&auto_check_row);
 
+    let page = scrollable_page(&preferences, None);
+    wire_channel_change_check(
+        &manager,
+        &page,
+        sync_channel_selection,
+        run_check,
+        install_underway,
+    );
+    (page, vec![responsive_action])
+}
+
+fn append_channel_option(
+    preferences: &gtk::Box,
+    manager: Rc<ThemeManager>,
+    managed: Option<&ManagedInstall>,
+    update_method: UpdateMethod,
+) -> (gtk::Box, Rc<dyn Fn()>) {
     let (channel_row, sync_channel_selection) = channel_option(manager.clone(), managed);
-    channel_row.set_sensitive(auto_check_enabled);
+    channel_row.set_sensitive(manager.checks_for_updates());
     channel_row.set_visible(managed.is_some() || !update_method.is_package_managed());
     preferences.append(&channel_row);
-    preferences.append(&update_row);
+    (channel_row, sync_channel_selection)
+}
 
-    append_heading(&preferences, "RELEASE NOTES");
+fn append_current_release_notes(preferences: &gtk::Box) {
+    append_heading(preferences, "RELEASE NOTES");
     let current_notes = release_notes_card(
         &format!(
             "Current release · v{}",
@@ -842,33 +708,78 @@ fn updates_page(
     );
     preferences.append(&current_notes.container);
     load_current_release_notes(&current_notes);
+}
 
-    let manager_for_updates = manager.clone();
-    let toggled_check = run_check.clone();
-    auto_check.connect_active_notify(move |toggle| {
-        let enabled = toggle.is_active();
-        manager_for_updates.set_checks_for_updates(enabled);
-        channel_row.set_sensitive(enabled);
-        if enabled {
-            toggled_check(false);
-        } else {
-            update_notice(None);
-        }
-    });
+fn bind_updates_auto_check(
+    manager: &Rc<ThemeManager>,
+    channel_row: &gtk::Box,
+    preferences: &gtk::Box,
+    run_check: Rc<dyn Fn(bool)>,
+    update_notice: UpdateNoticeHandler,
+) {
+    manager.bind_preference(
+        channel_row,
+        ThemeManager::checks_for_updates,
+        |widget, enabled| widget.set_sensitive(enabled),
+    );
+    let initial = Cell::new(true);
+    manager.bind_preference(
+        preferences,
+        ThemeManager::checks_for_updates,
+        move |_, enabled| {
+            if initial.replace(false) {
+                return;
+            }
+            if enabled {
+                run_check(false);
+            } else {
+                update_notice(None);
+            }
+        },
+    );
+}
+
+fn wire_channel_change_check(
+    manager: &Rc<ThemeManager>,
+    page: &impl IsA<gtk::Widget>,
+    sync_channel_selection: Rc<dyn Fn()>,
+    run_check: Rc<dyn Fn(bool)>,
+    install_underway: Rc<dyn Fn() -> bool>,
+) {
     // No automatic check here: the due scheduler owns background checks process-wide.
-
-    let page = scrollable_page(&preferences, None);
-    let broadcast_check = run_check.clone();
     manager.on_release_channel_changed(
-        &page,
+        page,
         Rc::new(move || {
             sync_channel_selection();
             if !install_underway() {
-                broadcast_check(false);
+                run_check(false);
             }
         }),
     );
-    (page, vec![responsive_action])
+}
+
+fn automatic_updates_option(manager: &Rc<ThemeManager>, method: UpdateMethod) -> gtk::Box {
+    let (row, toggle) = settings_option(
+        "Automatically check for updates",
+        match method {
+            UpdateMethod::InPlace => "Check GitHub for a newer release when Strata starts.",
+            UpdateMethod::Aur => "Check the AUR for a newer packaged release when Strata starts.",
+            UpdateMethod::Omarchy => {
+                "Check the Omarchy package repository for a newer release when Strata starts."
+            }
+            UpdateMethod::Pacman => {
+                "Check the configured package repositories for a newer release when Strata starts."
+            }
+        },
+        manager.checks_for_updates(),
+    );
+    bind_switch(
+        manager,
+        &toggle,
+        ThemeManager::checks_for_updates,
+        ThemeManager::set_checks_for_updates,
+    );
+    row
 }
 
 const RELEASE_CHANNEL_TITLE: &str = "Release channel";
@@ -885,10 +796,6 @@ fn channel_option(
     let title = gtk::Label::new(Some(RELEASE_CHANNEL_TITLE));
     title.set_xalign(0.0);
     title.add_css_class("settings-option-title");
-    let locked_channel = managed.and_then(ManagedInstall::tracked_channel);
-    if let Some(channel) = locked_channel {
-        manager.set_release_channel(channel);
-    }
     let description = gtk::Label::new(Some(&match managed {
         Some(managed) => managed_channel_description(managed),
         None => RELEASE_CHANNEL_DESCRIPTION.to_owned(),
@@ -907,12 +814,13 @@ fn channel_option(
     let weak_buttons: Vec<glib::WeakRef<gtk::ToggleButton>> =
         buttons.iter().map(|button| button.downgrade()).collect();
     for (button, channel) in buttons.into_iter().zip(CHANNEL_ORDER) {
-        let manager = manager.clone();
-        button.connect_active_notify(move |button| {
-            if button.is_active() {
-                manager.set_release_channel(channel);
-            }
-        });
+        bind_choice(
+            &manager,
+            &button,
+            channel,
+            ThemeManager::release_channel,
+            ThemeManager::set_release_channel,
+        );
     }
     control.set_sensitive(managed.is_none());
     row.append(&control);
@@ -2078,12 +1986,8 @@ fn aur_update_action_label() -> &'static str {
 }
 
 fn aur_update_command(helper: &str, package: &str) -> Command {
-    let mut command = Command::new("xdg-terminal-exec");
-    command
-        .args(["--", helper, "-Syu", package])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    let mut command = terminal::command();
+    command.args(["--", helper, "-Syu", package]);
     command
 }
 
@@ -2095,7 +1999,7 @@ fn launch_aur_update() -> Result<&'static str, String> {
         return aur_update_command(helper, package)
             .spawn()
             .map(|_child| "AUR update opened in your terminal.")
-            .map_err(|error| error.to_string());
+            .map_err(|error| terminal::launch_failure(&error));
     }
     let package = managed
         .package()
@@ -2107,12 +2011,8 @@ fn launch_aur_update() -> Result<&'static str, String> {
 }
 
 fn omarchy_update_command() -> Command {
-    let mut command = Command::new("xdg-terminal-exec");
-    command
-        .args(["--", "omarchy", "update"])
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null());
+    let mut command = terminal::command();
+    command.args(["--", "omarchy", "update"]);
     command
 }
 
@@ -2120,7 +2020,20 @@ fn launch_omarchy_update() -> Result<(), String> {
     omarchy_update_command()
         .spawn()
         .map(|_child| ())
-        .map_err(|error| error.to_string())
+        .map_err(|error| terminal::launch_failure(&error))
+}
+
+fn or_unknown(value: Option<String>) -> String {
+    value.unwrap_or_else(|| "Unknown".to_owned())
+}
+
+fn release_detail_rows(release: &ReleaseMetadata) -> [(&'static str, String); 4] {
+    [
+        ("Channel", release.kind.label().to_owned()),
+        ("Tag", release.tag.clone()),
+        ("Commit", or_unknown(release.commit.clone())),
+        ("Published", or_unknown(release.published_at.clone())),
+    ]
 }
 
 /// Renders `release`'s channel, tag, source commit, and publication date as
@@ -2130,24 +2043,7 @@ fn launch_omarchy_update() -> Result<(), String> {
 fn update_dialog_details(release: &ReleaseMetadata) -> gtk::Box {
     let details = gtk::Box::new(gtk::Orientation::Vertical, 2);
     details.add_css_class("update-dialog-details");
-    for (label, value) in [
-        ("Channel", release.kind.label().to_owned()),
-        ("Tag", release.tag.clone()),
-        (
-            "Commit",
-            release
-                .commit
-                .clone()
-                .unwrap_or_else(|| "Unknown".to_owned()),
-        ),
-        (
-            "Published",
-            release
-                .published_at
-                .clone()
-                .unwrap_or_else(|| "Unknown".to_owned()),
-        ),
-    ] {
+    for (label, value) in release_detail_rows(release) {
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.add_css_class("update-dialog-detail-row");
         let label_widget = gtk::Label::new(Some(label));
@@ -2246,666 +2142,6 @@ fn update_check_message(result: &UpdateCheck, update_method: UpdateMethod) -> St
     }
 }
 
-fn keybindings_page() -> gtk::Widget {
-    let content = page_content();
-    append_heading(&content, "NAVIGATION");
-    for (label, keys) in [
-        ("Move through items", "J / K  or  ↑ / ↓"),
-        ("Open folder", "L / → / Enter"),
-        ("Go to parent", "H / ←"),
-        ("Edit location", "Ctrl + L"),
-        ("Filter items", "Ctrl + F"),
-        ("Toggle sidebar", "Ctrl + B"),
-    ] {
-        append_keybinding(&content, label, keys);
-    }
-
-    append_heading(&content, "VIEW");
-    append_keybinding(&content, "Toggle hidden files", "Ctrl + H  or  Ctrl + .");
-
-    append_heading(&content, "FILE OPERATIONS");
-    for (label, keys) in [
-        ("Create new folder", "Ctrl + Shift + N"),
-        ("Cut", "Ctrl + X"),
-        ("Copy", "Ctrl + C"),
-        ("Paste", "Ctrl + V"),
-    ] {
-        append_keybinding(&content, label, keys);
-    }
-
-    append_heading(&content, "APPLICATION");
-    for (label, keys) in [
-        ("Search", "Ctrl + K"),
-        ("Open terminal", "Ctrl + T"),
-        ("Refresh", "F5 / Ctrl + R"),
-        ("Open settings", "Ctrl + ,"),
-    ] {
-        append_keybinding(&content, label, keys);
-    }
-
-    scrollable_page(&content, Some("settings-keybindings-scroll"))
-}
-
-fn about_page() -> gtk::Widget {
-    let content = page_content();
-    content.add_css_class("about-page");
-
-    let identity = gtk::Box::new(gtk::Orientation::Vertical, 7);
-    identity.add_css_class("about-identity");
-    identity.set_halign(gtk::Align::Center);
-
-    let name = gtk::Label::new(Some("Strata"));
-    name.add_css_class("about-name");
-    let description = gtk::Label::new(Some(crate::build_info::DESCRIPTION));
-    description.add_css_class("about-description");
-    description.set_justify(gtk::Justification::Center);
-    description.set_wrap(true);
-    identity.append(&name);
-    identity.append(&description);
-    content.append(&identity);
-
-    append_heading(&content, "BUILD INFORMATION");
-    let build = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    build.add_css_class("about-details");
-    let version = crate::build_info::installed_version().to_string();
-    append_about_detail(&build, "Version", &version, false);
-    let build_kind = crate::build_info::build_kind();
-    if build_kind != services::BuildKind::Stable {
-        append_about_detail(&build, "Build", build_kind.label(), false);
-    }
-    append_about_detail(&build, "Commit", crate::build_info::COMMIT, true);
-    content.append(&build);
-
-    append_heading(&content, "PROJECT");
-    let project = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    project.add_css_class("about-details");
-    append_about_detail(&project, "Author", crate::build_info::AUTHOR, false);
-
-    let repository = gtk::LinkButton::builder()
-        .uri(crate::build_info::REPOSITORY)
-        .tooltip_text("Open the Strata repository")
-        .build();
-    repository.add_css_class("about-repository");
-    let repository_content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let repository_label = gtk::Label::new(Some("GitHub repository"));
-    repository_label.set_xalign(0.0);
-    repository_label.set_hexpand(true);
-    repository_content.append(&repository_label);
-    repository_content.append(&crate::assets::primary_icon(icons::EXTERNAL_LINK, 16));
-    repository.set_child(Some(&repository_content));
-    project.append(&repository);
-    content.append(&project);
-
-    scrollable_page(&content, None)
-}
-
-fn append_about_detail(container: &gtk::Box, label: &str, value: &str, monospace: bool) {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
-    row.add_css_class("about-detail-row");
-    let label = gtk::Label::new(Some(label));
-    label.add_css_class("about-detail-label");
-    label.set_xalign(0.0);
-    label.set_hexpand(true);
-    let value = gtk::Label::new(Some(value));
-    value.add_css_class("about-detail-value");
-    value.set_selectable(true);
-    if monospace {
-        value.add_css_class("monospace");
-    }
-    row.append(&label);
-    row.append(&value);
-    container.append(&row);
-}
-
-fn append_keybinding(content: &gtk::Box, label: &str, keys: &str) {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
-    row.add_css_class("keybinding-row");
-    let label = gtk::Label::new(Some(label));
-    label.set_xalign(0.0);
-    label.set_hexpand(true);
-    let keys = gtk::Label::new(Some(keys));
-    keys.add_css_class("keybinding-keys");
-    row.append(&label);
-    row.append(&keys);
-    content.append(&row);
-}
-
-fn theme_page(manager: Rc<ThemeManager>) -> (gtk::Widget, Vec<(gtk::FlowBox, u32)>) {
-    let content = page_content();
-    content.add_css_class("theme-page");
-
-    let follow = gtk::Switch::builder()
-        .active(manager.follows_omarchy())
-        .valign(gtk::Align::Center)
-        .build();
-    if manager.is_omarchy_available() {
-        append_heading(&content, "SYSTEM");
-        let system = gtk::Box::new(gtk::Orientation::Horizontal, 14);
-        system.add_css_class("settings-option");
-        let icon = crate::assets::primary_icon(icons::MONITOR, 22);
-        icon.add_css_class("system-theme-icon");
-        let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
-        copy.set_hexpand(true);
-        copy.set_valign(gtk::Align::Center);
-        let system_title = gtk::Label::new(Some("Follow Omarchy"));
-        system_title.set_xalign(0.0);
-        system_title.add_css_class("settings-option-title");
-        let system_description = gtk::Label::new(Some(
-            "Use the active Omarchy Quattro theme and follow system theme changes.",
-        ));
-        system_description.set_xalign(0.0);
-        system_description.set_wrap(true);
-        system_description.add_css_class("settings-option-description");
-        copy.append(&system_title);
-        copy.append(&system_description);
-        system.append(&icon);
-        system.append(&copy);
-        system.append(&follow);
-        content.append(&system);
-    }
-
-    append_heading(&content, "TYPOGRAPHY");
-    let text_sizes = [TextSize::Small, TextSize::Medium, TextSize::Large];
-    let active_text_size = text_sizes
-        .iter()
-        .position(|&size| size == manager.text_size())
-        .unwrap_or(1);
-    let (text_size_control, text_size_buttons) =
-        segmented_control(&["Small", "Medium", "Large"], active_text_size);
-    let text_size_row = gtk::Box::new(gtk::Orientation::Vertical, 8);
-    text_size_row.add_css_class("settings-option");
-    let text_size_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    text_size_copy.set_hexpand(true);
-    let text_size_title = gtk::Label::new(Some("Text size"));
-    text_size_title.set_xalign(0.0);
-    text_size_title.add_css_class("settings-option-title");
-    let text_size_description = gtk::Label::new(Some(
-        "Scale interface text across menus, labels, and lists.",
-    ));
-    text_size_description.set_xalign(0.0);
-    text_size_description.set_wrap(true);
-    text_size_description.add_css_class("settings-option-description");
-    text_size_copy.append(&text_size_title);
-    text_size_copy.append(&text_size_description);
-    text_size_row.append(&text_size_copy);
-    text_size_row.append(&text_size_control);
-    content.append(&text_size_row);
-    for (button, size) in text_size_buttons.into_iter().zip(text_sizes) {
-        let manager = manager.clone();
-        button.connect_toggled(move |toggled| {
-            if toggled.is_active() {
-                manager.set_text_size(size);
-            }
-        });
-    }
-
-    append_heading(&content, "THEMES");
-    let packaged = gtk::FlowBox::builder()
-        .column_spacing(12)
-        .row_spacing(12)
-        .max_children_per_line(3)
-        .min_children_per_line(1)
-        .selection_mode(gtk::SelectionMode::None)
-        .homogeneous(true)
-        .build();
-    packaged.add_css_class("theme-grid");
-    let theme_search = gtk::Entry::new();
-    theme_search.add_css_class("form-control");
-    theme_search.add_css_class("theme-search");
-    theme_search.set_placeholder_text(Some("Search themes"));
-    let search_keys = gtk::EventControllerKey::new();
-    search_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let selected_search = theme_search.downgrade();
-    search_keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if modifiers.contains(gdk::ModifierType::CONTROL_MASK)
-            && matches!(key, gdk::Key::a | gdk::Key::A)
-            && let Some(search) = selected_search.upgrade()
-        {
-            search.select_region(0, -1);
-            return glib::Propagation::Stop;
-        }
-        glib::Propagation::Proceed
-    });
-    theme_search.add_controller(search_keys);
-    let clear_search = gtk::Button::builder()
-        .child(&crate::assets::primary_icon(icons::X, 15))
-        .tooltip_text("Clear theme search")
-        .halign(gtk::Align::End)
-        .valign(gtk::Align::Center)
-        .margin_end(6)
-        .visible(false)
-        .build();
-    clear_search.add_css_class("theme-search-clear");
-    clear_search.set_has_frame(false);
-    let search_overlay = gtk::Overlay::new();
-    search_overlay.set_child(Some(&theme_search));
-    search_overlay.add_overlay(&clear_search);
-    content.append(&search_overlay);
-    let cleared_search = theme_search.clone();
-    clear_search.connect_clicked(move |_| {
-        cleared_search.set_text("");
-        cleared_search.grab_focus();
-    });
-    let (appearance_filter, appearance_buttons) = segmented_control(&["All", "Light", "Dark"], 0);
-    appearance_filter.add_css_class("theme-appearance-filter");
-    content.append(&appearance_filter);
-    let catalog_scroll = gtk::ScrolledWindow::builder()
-        .child(&packaged)
-        .hscrollbar_policy(gtk::PolicyType::Never)
-        .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .min_content_height(240)
-        .max_content_height(330)
-        .propagate_natural_height(true)
-        .build();
-    catalog_scroll.add_css_class("theme-catalog-scroll");
-    let catalog_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    catalog_container.add_css_class("theme-catalog-container");
-    catalog_container.append(&catalog_scroll);
-    content.append(&catalog_container);
-
-    append_heading(&content, "YOUR THEMES");
-    let custom = gtk::FlowBox::builder()
-        .column_spacing(12)
-        .row_spacing(12)
-        .max_children_per_line(3)
-        .min_children_per_line(1)
-        .selection_mode(gtk::SelectionMode::None)
-        .homogeneous(true)
-        .build();
-    custom.add_css_class("theme-grid");
-    content.append(&custom);
-
-    let cards: ThemeCards = Rc::new(RefCell::new(Vec::new()));
-    let mut catalog_cards = Vec::new();
-    for theme in manager.themes() {
-        let custom_theme = theme.custom;
-        let name = theme.tokens.name.clone();
-        let light = theme_is_light(&theme.tokens);
-        let flow = if custom_theme { &custom } else { &packaged };
-        let child = append_theme_card(flow, theme, &manager, &follow, &cards);
-        if !custom_theme {
-            catalog_cards.push((child, name, light));
-        }
-    }
-    let catalog_cards = Rc::new(catalog_cards);
-    let appearance = Rc::new(Cell::new(ThemeAppearance::All));
-    let filtered_cards = catalog_cards.clone();
-    let filtered_appearance = appearance.clone();
-    let filter_search = theme_search.clone();
-    let apply_catalog_filter: Rc<dyn Fn()> = Rc::new(move || {
-        let query = filter_search.text();
-        let appearance = filtered_appearance.get();
-        for (child, name, light) in filtered_cards.iter() {
-            let appearance_matches = match appearance {
-                ThemeAppearance::All => true,
-                ThemeAppearance::Dark => !light,
-                ThemeAppearance::Light => *light,
-            };
-            child.set_visible(appearance_matches && theme_name_matches(name, &query));
-        }
-    });
-    let search_filter = apply_catalog_filter.clone();
-    theme_search.connect_changed(move |search| {
-        clear_search.set_visible(!search.text().is_empty());
-        search_filter();
-    });
-    for (button, value) in appearance_buttons.into_iter().zip([
-        ThemeAppearance::All,
-        ThemeAppearance::Light,
-        ThemeAppearance::Dark,
-    ]) {
-        let appearance = appearance.clone();
-        let apply_filter = apply_catalog_filter.clone();
-        button.connect_toggled(move |button| {
-            if button.is_active() {
-                appearance.set(value);
-                apply_filter();
-            }
-        });
-    }
-
-    let add = gtk::Button::new();
-    add.add_css_class("add-theme-card");
-    add.set_has_frame(false);
-    let add_content = gtk::Box::new(gtk::Orientation::Vertical, 7);
-    add_content.set_halign(gtk::Align::Center);
-    add_content.set_valign(gtk::Align::Center);
-    let plus = crate::assets::primary_icon(icons::PLUS, 22);
-    let add_label = gtk::Label::new(Some("Add a theme"));
-    add_content.append(&plus);
-    add_content.append(&add_label);
-    add.set_child(Some(&add_content));
-    custom.insert(&add, -1);
-
-    let (editor, editor_fields) = theme_editor(
-        manager.clone(),
-        custom.clone(),
-        follow.clone(),
-        cards.clone(),
-    );
-    editor.set_reveal_child(false);
-    content.append(&editor);
-    let shown_editor = editor.clone();
-    add.connect_clicked(move |_| shown_editor.set_reveal_child(true));
-
-    let scroller = scrollable_page(&content, None);
-    let manager_for_follow = manager;
-    follow.connect_active_notify(move |toggle| {
-        let active = toggle.is_active();
-        manager_for_follow.set_follow_omarchy(active);
-        let selected_id = manager_for_follow.selected_id();
-        for (id, card, check) in cards.borrow().iter() {
-            let selected = !active && id == &selected_id;
-            if selected {
-                card.add_css_class("selected");
-            } else {
-                card.remove_css_class("selected");
-            }
-            check.set_visible(selected);
-        }
-    });
-    (
-        scroller,
-        vec![(packaged, 3), (custom, 3), (editor_fields, 4)],
-    )
-}
-
-#[derive(Clone, Copy)]
-enum ThemeAppearance {
-    All,
-    Dark,
-    Light,
-}
-
-fn theme_name_matches(name: &str, query: &str) -> bool {
-    let query = query.trim().to_lowercase();
-    query.is_empty() || name.to_lowercase().contains(&query)
-}
-
-fn theme_is_light(tokens: &ThemeTokens) -> bool {
-    theme_background_is_light(&tokens.background)
-}
-
-fn theme_background_is_light(background: &str) -> bool {
-    let value = background.strip_prefix('#').unwrap_or_default();
-    let Ok(color) = u32::from_str_radix(value, 16) else {
-        return false;
-    };
-    let channel = |shift| {
-        let value = f64::from((color >> shift) & 0xff_u32) / 255.0;
-        if value <= 0.04045 {
-            value / 12.92
-        } else {
-            ((value + 0.055) / 1.055).powf(2.4)
-        }
-    };
-    let luminance = 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0);
-    luminance > 0.4
-}
-
-fn append_theme_card(
-    flow: &gtk::FlowBox,
-    theme: Theme,
-    manager: &Rc<ThemeManager>,
-    follow: &gtk::Switch,
-    cards: &ThemeCards,
-) -> gtk::FlowBoxChild {
-    let card = gtk::Button::new();
-    card.add_css_class("theme-card");
-    card.set_has_frame(false);
-    card.set_overflow(gtk::Overflow::Visible);
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    let preview = gtk::Overlay::new();
-    preview.set_child(Some(&theme_preview(&theme.tokens)));
-    let check = gtk::Image::from_icon_name(icons::CHECK_ON_PRIMARY);
-    check.add_css_class("theme-card-check");
-    check.set_halign(gtk::Align::End);
-    check.set_valign(gtk::Align::Start);
-    check.set_margin_top(8);
-    check.set_margin_end(8);
-    check.set_pixel_size(10);
-    preview.add_overlay(&check);
-    content.append(&preview);
-    let label_row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
-    let selected = !manager.follows_omarchy() && manager.selected_id() == theme.id;
-    check.set_visible(selected);
-    if selected {
-        card.add_css_class("selected");
-    }
-    let label = gtk::Label::new(Some(&theme.tokens.name));
-    label.set_xalign(0.0);
-    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    label_row.append(&label);
-    content.append(&label_row);
-    card.set_child(Some(&content));
-    cards
-        .borrow_mut()
-        .push((theme.id.clone(), card.clone(), check));
-
-    let theme_id = theme.id;
-    let manager = manager.clone();
-    let follow = follow.clone();
-    let cards = cards.clone();
-    card.connect_clicked(move |_| {
-        manager.select_theme(&theme_id);
-        follow.set_active(false);
-        for (id, candidate, check) in cards.borrow().iter() {
-            let selected = id == &theme_id;
-            if selected {
-                candidate.add_css_class("selected");
-            } else {
-                candidate.remove_css_class("selected");
-            }
-            check.set_visible(selected);
-        }
-    });
-    flow.insert(&card, -1);
-    card.parent()
-        .and_downcast::<gtk::FlowBoxChild>()
-        .expect("FlowBox must wrap inserted theme cards")
-}
-
-fn theme_preview(tokens: &ThemeTokens) -> gtk::DrawingArea {
-    let area = gtk::DrawingArea::new();
-    area.add_css_class("theme-preview");
-    area.set_content_width(190);
-    area.set_content_height(72);
-    let tokens = tokens.clone();
-    area.set_draw_func(move |_, context, width, height| {
-        let color = |value: &str| gdk::RGBA::parse(value).unwrap_or(gdk::RGBA::BLACK);
-        let paint = |context: &gtk::cairo::Context, value: &str| {
-            let value = color(value);
-            context.set_source_rgba(
-                f64::from(value.red()),
-                f64::from(value.green()),
-                f64::from(value.blue()),
-                1.0,
-            );
-        };
-        context.rounded_rectangle(0.0, 0.0, f64::from(width), f64::from(height), 6.0);
-        context.clip();
-        paint(context, &tokens.background);
-        context.rectangle(0.0, 0.0, f64::from(width), f64::from(height));
-        let _ = context.fill();
-        paint(context, &tokens.surface);
-        context.rectangle(0.0, 0.0, f64::from(width) * 0.40, f64::from(height));
-        let _ = context.fill();
-        for (x, y, w, value) in [
-            (10.0, 23.0, 45.0, &tokens.dim_text),
-            (10.0, 36.0, 59.0, &tokens.accent),
-            (10.0, 51.0, 39.0, &tokens.dim_text),
-            (f64::from(width) * 0.45, 23.0, 47.0, &tokens.accent),
-            (f64::from(width) * 0.45, 37.0, 83.0, &tokens.dim_text),
-            (f64::from(width) * 0.45, 51.0, 66.0, &tokens.dim_text),
-        ] {
-            paint(context, value);
-            context.rounded_rectangle(x, y, w, 5.0, 2.5);
-            let _ = context.fill();
-        }
-    });
-    area
-}
-
-fn theme_editor(
-    manager: Rc<ThemeManager>,
-    custom: gtk::FlowBox,
-    follow: gtk::Switch,
-    cards: ThemeCards,
-) -> (gtk::Revealer, gtk::FlowBox) {
-    let panel = gtk::Box::new(gtk::Orientation::Vertical, 12);
-    panel.add_css_class("theme-editor");
-    let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let title = gtk::Label::new(Some("Add a theme"));
-    title.add_css_class("settings-option-title");
-    title.set_xalign(0.0);
-    title.set_hexpand(true);
-    header.append(&title);
-    panel.append(&header);
-    let name = form_entry();
-    name.set_placeholder_text(Some("Theme name"));
-    panel.append(&name);
-
-    let values = Rc::new(RefCell::new(manager.starter_tokens()));
-    let fields = gtk::FlowBox::builder()
-        .column_spacing(18)
-        .row_spacing(10)
-        .max_children_per_line(4)
-        .min_children_per_line(1)
-        .selection_mode(gtk::SelectionMode::None)
-        .homogeneous(true)
-        .build();
-    fields.add_css_class("theme-color-fields");
-    for (label_text, field) in [
-        ("Background", ColorField::Background),
-        ("Surface", ColorField::Surface),
-        ("Text", ColorField::Text),
-        ("Accent", ColorField::Accent),
-        ("Danger", ColorField::Danger),
-        ("Muted", ColorField::Muted),
-        ("Highlight", ColorField::Highlight),
-        ("Border", ColorField::Border),
-        ("Dim text", ColorField::DimText),
-    ] {
-        let field_row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
-        let label = gtk::Label::new(Some(label_text));
-        label.set_xalign(0.0);
-        let dialog = gtk::ColorDialog::builder()
-            .title(format!("Choose {label_text}"))
-            .with_alpha(false)
-            .build();
-        let picker = gtk::ColorDialogButton::new(Some(dialog));
-        picker.add_css_class("theme-color-picker");
-        if let Ok(color) = gdk::RGBA::parse(field.get(&values.borrow())) {
-            picker.set_rgba(&color);
-        }
-        let values_for_color = values.clone();
-        let manager_for_color = manager.clone();
-        picker.connect_rgba_notify(move |picker| {
-            field.set(
-                &mut values_for_color.borrow_mut(),
-                picker.rgba().to_string(),
-            );
-            manager_for_color.preview(&values_for_color.borrow());
-        });
-        field_row.append(&picker);
-        field_row.append(&label);
-        fields.insert(&field_row, -1);
-    }
-    panel.append(&fields);
-    let error = gtk::Label::new(None);
-    error.add_css_class("theme-editor-error");
-    error.set_xalign(0.0);
-    error.set_visible(false);
-    panel.append(&error);
-    let actions = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    actions.set_halign(gtk::Align::End);
-    let cancel = gtk::Button::with_label("Cancel");
-    cancel.add_css_class("action-dialog-cancel");
-    let save = gtk::Button::with_label("Add theme");
-    save.add_css_class("action-dialog-confirm");
-    actions.append(&cancel);
-    actions.append(&save);
-    panel.append(&actions);
-    let revealer = gtk::Revealer::builder()
-        .transition_type(gtk::RevealerTransitionType::SlideDown)
-        .child(&panel)
-        .build();
-    let hidden = revealer.clone();
-    let manager_for_cancel = manager.clone();
-    cancel.connect_clicked(move |_| {
-        manager_for_cancel.cancel_preview();
-        hidden.set_reveal_child(false);
-    });
-    let hidden = revealer.clone();
-    save.connect_clicked(move |_| {
-        let mut tokens = values.borrow().clone();
-        tokens.name = name.text().trim().to_owned();
-        match manager.save_custom_theme(tokens.clone()) {
-            Ok(id) => {
-                error.set_visible(false);
-                append_theme_card(
-                    &custom,
-                    Theme {
-                        id,
-                        tokens,
-                        custom: true,
-                    },
-                    &manager,
-                    &follow,
-                    &cards,
-                );
-                hidden.set_reveal_child(false);
-            }
-            Err(message) => {
-                error.set_text(&message.to_string());
-                error.set_visible(true);
-            }
-        }
-    });
-    (revealer, fields)
-}
-
-#[derive(Clone, Copy)]
-enum ColorField {
-    Background,
-    Surface,
-    Text,
-    Accent,
-    Danger,
-    Muted,
-    Highlight,
-    Border,
-    DimText,
-}
-impl ColorField {
-    fn get(self, tokens: &ThemeTokens) -> &str {
-        match self {
-            Self::Background => &tokens.background,
-            Self::Surface => &tokens.surface,
-            Self::Text => &tokens.text,
-            Self::Accent => &tokens.accent,
-            Self::Danger => &tokens.danger,
-            Self::Muted => &tokens.muted,
-            Self::Highlight => &tokens.highlight,
-            Self::Border => &tokens.border,
-            Self::DimText => &tokens.dim_text,
-        }
-    }
-    fn set(self, tokens: &mut ThemeTokens, value: String) {
-        *match self {
-            Self::Background => &mut tokens.background,
-            Self::Surface => &mut tokens.surface,
-            Self::Text => &mut tokens.text,
-            Self::Accent => &mut tokens.accent,
-            Self::Danger => &mut tokens.danger,
-            Self::Muted => &mut tokens.muted,
-            Self::Highlight => &mut tokens.highlight,
-            Self::Border => &mut tokens.border,
-            Self::DimText => &mut tokens.dim_text,
-        } = value;
-    }
-}
-
 fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::Box) {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let icon_image = crate::assets::primary_icon(icon, 18);
@@ -2943,71 +2179,6 @@ fn page_content() -> gtk::Box {
     content
 }
 
-fn click_activation_option(
-    mode: &str,
-    activation: ClickActivation,
-) -> (
-    gtk::Box,
-    Vec<gtk::Box>,
-    Vec<gtk::ToggleButton>,
-    Vec<gtk::ToggleButton>,
-) {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-    row.add_css_class("click-activation-row");
-    let title = gtk::Label::new(Some(mode));
-    title.set_xalign(0.0);
-    title.set_width_chars(8);
-    title.add_css_class("settings-option-title");
-    row.append(&title);
-
-    let selected = |count| usize::from(count == ClickCount::Two);
-    let (file_control, file_buttons) =
-        segmented_control(&["1 click", "2 clicks"], selected(activation.files));
-    let (folder_control, folder_buttons) =
-        segmented_control(&["1 click", "2 clicks"], selected(activation.folders));
-    let mut options = Vec::new();
-    for (label, control) in [("Files", &file_control), ("Folders", &folder_control)] {
-        let option = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        option.set_hexpand(true);
-        let label = gtk::Label::new(Some(label));
-        label.set_xalign(0.0);
-        label.set_width_chars(7);
-        label.add_css_class("settings-option-description");
-        control.set_hexpand(true);
-        control.add_css_class("click-activation-control");
-        option.append(&label);
-        option.append(control);
-        row.append(&option);
-        options.push(option);
-    }
-    (row, options, file_buttons, folder_buttons)
-}
-
-fn connect_click_activation_buttons(
-    buttons: &[gtk::ToggleButton],
-    other_buttons: &[gtk::ToggleButton],
-    update: Rc<dyn Fn(ClickCount, ClickCount)>,
-) {
-    for button in buttons {
-        let buttons = buttons.to_vec();
-        let other_buttons = other_buttons.to_vec();
-        let update = update.clone();
-        button.connect_toggled(move |button| {
-            if !button.is_active() {
-                return;
-            }
-            let selected = |buttons: &[gtk::ToggleButton]| {
-                if buttons.get(1).is_some_and(gtk::ToggleButton::is_active) {
-                    ClickCount::Two
-                } else {
-                    ClickCount::One
-                }
-            };
-            update(selected(&buttons), selected(&other_buttons));
-        });
-    }
-}
-
 fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, gtk::Switch) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     row.add_css_class("settings-option");
@@ -3038,129 +2209,10 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
     (row, toggle)
 }
 
-fn video_preview_option(
-    description: &str,
-    active: bool,
-    toggle_sensitive: bool,
-    backend_sensitive: bool,
-    selected_backend: MediaPreviewBackend,
-    on_backend_selected: Rc<dyn Fn(MediaPreviewBackend)>,
-) -> (gtk::Box, gtk::Switch, gtk::MenuButton) {
-    let (row, toggle) = settings_option(
-        "Use hardware acceleration for video previews.",
-        description,
-        active,
-    );
-    row.remove(&toggle);
-
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    content.add_css_class("column-menu");
-    let options = [
-        ("Automatic", MediaPreviewBackend::Automatic),
-        ("VA-API", MediaPreviewBackend::VaApi),
-        ("Vulkan", MediaPreviewBackend::Vulkan),
-    ]
-    .map(|(label, value)| {
-        let (option, check) = menu_option(label, selected_backend == value);
-        content.append(&option);
-        (label, value, option, check)
-    });
-    let popover = gtk::Popover::builder()
-        .child(&content)
-        .has_arrow(false)
-        .halign(gtk::Align::End)
-        .position(gtk::PositionType::Bottom)
-        .build();
-    popover.add_css_class("column-popover");
-    let backend = gtk::MenuButton::builder()
-        .label(video_preview_backend_label(selected_backend))
-        .always_show_arrow(true)
-        .popover(&popover)
-        .build();
-    backend.add_css_class("form-control");
-    backend.set_sensitive(backend_sensitive);
-    backend.set_valign(gtk::Align::Center);
-    backend.update_property(&[
-        gtk::accessible::Property::Label("Video preview hardware backend"),
-        gtk::accessible::Property::Description(description),
-    ]);
-    let checks = Rc::new(
-        options
-            .iter()
-            .map(|(_, value, _, check)| (*value, check.clone()))
-            .collect::<Vec<_>>(),
-    );
-    for (label, value, option, _) in options {
-        let backend = backend.clone();
-        let checks = checks.clone();
-        let on_backend_selected = on_backend_selected.clone();
-        option.connect_clicked(move |_| {
-            backend.set_label(label);
-            for (candidate, check) in checks.iter() {
-                check.set_visible(*candidate == value);
-            }
-            backend.popdown();
-            on_backend_selected(value);
-        });
-    }
-    toggle.set_sensitive(toggle_sensitive);
-    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 10);
-    controls.set_valign(gtk::Align::Center);
-    controls.append(&backend);
-    controls.append(&toggle);
-    row.append(&controls);
-    (row, toggle, backend)
-}
-
-fn video_preview_backend_label(backend: MediaPreviewBackend) -> &'static str {
-    match backend {
-        MediaPreviewBackend::Automatic | MediaPreviewBackend::Software => "Automatic",
-        MediaPreviewBackend::VaApi => "VA-API",
-        MediaPreviewBackend::Vulkan => "Vulkan",
-    }
-}
-
-fn video_preview_control_state(enabled: bool) -> (bool, bool, bool) {
-    (enabled, true, enabled)
-}
-
 fn append_heading(container: &gtk::Box, text: &str) -> gtk::Label {
     let heading = gtk::Label::new(Some(text));
     heading.set_xalign(0.0);
     heading.add_css_class("menu-heading");
     container.append(&heading);
     heading
-}
-
-trait RoundedRectangle {
-    fn rounded_rectangle(&self, x: f64, y: f64, width: f64, height: f64, radius: f64);
-}
-impl RoundedRectangle for gtk::cairo::Context {
-    fn rounded_rectangle(&self, x: f64, y: f64, width: f64, height: f64, radius: f64) {
-        let degrees = std::f64::consts::PI / 180.0;
-        self.new_sub_path();
-        self.arc(x + width - radius, y + radius, radius, -90.0 * degrees, 0.0);
-        self.arc(
-            x + width - radius,
-            y + height - radius,
-            radius,
-            0.0,
-            90.0 * degrees,
-        );
-        self.arc(
-            x + radius,
-            y + height - radius,
-            radius,
-            90.0 * degrees,
-            180.0 * degrees,
-        );
-        self.arc(
-            x + radius,
-            y + radius,
-            radius,
-            180.0 * degrees,
-            270.0 * degrees,
-        );
-        self.close_path();
-    }
 }

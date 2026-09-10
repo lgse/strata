@@ -1,6 +1,10 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
-use std::{cmp::Ordering, ffi::OsString, path::PathBuf};
+use std::{
+    cmp::Ordering,
+    ffi::OsString,
+    path::{Path, PathBuf},
+};
 
 use gio::prelude::*;
 
@@ -75,15 +79,54 @@ impl Location {
         self.native_path().is_some_and(std::path::Path::is_absolute)
     }
 
+    /// Byte-safe file name for native paths, and the decoded final segment for URIs.
+    pub fn file_name(&self) -> Option<OsString> {
+        match &self.kind {
+            LocationKind::Native(path) => path.file_name().map(OsString::from),
+            LocationKind::Uri(uri) => gio::File::for_uri(uri)
+                .basename()?
+                .file_name()
+                .map(OsString::from),
+        }
+    }
+
+    /// Resolves a direct child by name, rejecting names that would escape `self`.
+    pub fn child(&self, name: &std::ffi::OsStr) -> Option<Self> {
+        if name.is_empty() || matches!(name.as_encoded_bytes(), b"." | b"..") {
+            return None;
+        }
+        if name.as_encoded_bytes().contains(&b'/') {
+            return None;
+        }
+        match &self.kind {
+            LocationKind::Native(path) => Some(Self::local(path.join(name))),
+            LocationKind::Uri(uri) => {
+                let child = gio::File::for_uri(uri).child(name);
+                Some(Self::uri(child.uri().to_string()))
+            }
+        }
+    }
+
+    /// Where an item lands when transferred into `destination` without renaming.
+    pub fn transfer_target(&self, destination: &Self) -> Option<Self> {
+        destination.child(&self.file_name()?)
+    }
+
     pub fn rebase(&self, from: &Self, to: &Self) -> Option<Self> {
         let suffix = self.native_path()?.strip_prefix(from.native_path()?).ok()?;
         Some(Self::local(to.native_path()?.join(suffix)))
     }
 
     pub fn is_within(&self, other: &Self) -> bool {
-        self.native_path()
-            .zip(other.native_path())
-            .is_some_and(|(path, parent)| path.starts_with(parent))
+        if let Some((path, parent)) = self.native_path().zip(other.native_path()) {
+            return path.starts_with(parent);
+        }
+        let (Some(uri), Some(parent_uri)) = (self.uri_value(), other.uri_value()) else {
+            return false;
+        };
+        let file = gio::File::for_uri(uri);
+        let parent = gio::File::for_uri(parent_uri);
+        file.equal(&parent) || file.has_prefix(&parent)
     }
 
     pub fn compare(&self, other: &Self) -> Ordering {
@@ -232,15 +275,24 @@ pub enum MetadataValue<T> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct FileEntry {
     pub location: Location,
+    /// Physical source for virtual entries; `location` remains their operational identity.
+    pub thumbnail_path: Option<PathBuf>,
     pub native_name: OsString,
     pub display_name: String,
     pub kind: EntryKind,
     pub size: MetadataValue<u64>,
     pub modified_unix_seconds: MetadataValue<i64>,
+    pub mode: MetadataValue<u32>,
     pub is_hidden: bool,
 }
 
 impl FileEntry {
+    pub fn local_thumbnail_path(&self) -> Option<&Path> {
+        self.location
+            .native_path()
+            .or(self.thumbnail_path.as_deref())
+    }
+
     pub fn is_directory(&self) -> bool {
         matches!(
             self.kind,
@@ -259,6 +311,115 @@ impl FileEntry {
 
     pub fn is_broken_symbolic_link(&self) -> bool {
         self.kind == EntryKind::SymbolicLink
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum FolderColor {
+    Red,
+    Orange,
+    Yellow,
+    Green,
+    Blue,
+    Purple,
+    Gray,
+}
+
+impl FolderColor {
+    pub const ALL: [FolderColor; 7] = [
+        FolderColor::Red,
+        FolderColor::Orange,
+        FolderColor::Yellow,
+        FolderColor::Green,
+        FolderColor::Blue,
+        FolderColor::Purple,
+        FolderColor::Gray,
+    ];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Red => "Red",
+            Self::Orange => "Orange",
+            Self::Yellow => "Yellow",
+            Self::Green => "Green",
+            Self::Blue => "Blue",
+            Self::Purple => "Purple",
+            Self::Gray => "Gray",
+        }
+    }
+
+    pub fn hex(self) -> &'static str {
+        match self {
+            Self::Red => "#e5484d",
+            Self::Orange => "#f76b15",
+            Self::Yellow => "#e5a50a",
+            Self::Green => "#30a46c",
+            Self::Blue => "#0090ff",
+            Self::Purple => "#8e4ec6",
+            Self::Gray => "#8b8d98",
+        }
+    }
+
+    pub fn css_class(self) -> &'static str {
+        match self {
+            Self::Red => "folder-color-red",
+            Self::Orange => "folder-color-orange",
+            Self::Yellow => "folder-color-yellow",
+            Self::Green => "folder-color-green",
+            Self::Blue => "folder-color-blue",
+            Self::Purple => "folder-color-purple",
+            Self::Gray => "folder-color-gray",
+        }
+    }
+
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "red" => Some(Self::Red),
+            "orange" => Some(Self::Orange),
+            "yellow" => Some(Self::Yellow),
+            "green" => Some(Self::Green),
+            "blue" => Some(Self::Blue),
+            "purple" => Some(Self::Purple),
+            "gray" | "grey" => Some(Self::Gray),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
+pub enum FolderColorValue {
+    Preset(FolderColor),
+    Custom(String),
+}
+
+impl FolderColorValue {
+    pub fn hex(&self) -> &str {
+        match self {
+            Self::Preset(color) => color.hex(),
+            Self::Custom(hex) => hex.as_str(),
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        let trimmed = s.trim();
+        if let Some(preset) = FolderColor::from_name(trimmed) {
+            Some(Self::Preset(preset))
+        } else if trimmed.starts_with('#')
+            && (trimmed.len() == 7 || trimmed.len() == 4 || trimmed.len() == 9)
+            && trimmed[1..].chars().all(|c| c.is_ascii_hexdigit())
+        {
+            Some(Self::Custom(trimmed.to_ascii_lowercase()))
+        } else {
+            None
+        }
+    }
+
+    pub fn to_preference_string(&self) -> String {
+        match self {
+            Self::Preset(preset) => preset.name().to_ascii_lowercase(),
+            Self::Custom(hex) => hex.to_ascii_lowercase(),
+        }
     }
 }
 

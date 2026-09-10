@@ -34,41 +34,55 @@ jobs:
               per_page: 100,
             });
 
-            const claudeName = /\bclaude(?:\s+(?:sonnet|opus|haiku))?\b/i;
-            const anthropicEmail = /@anthropic\.com$/i;
-            const coAuthor = /^\s*co-authored-by:.*(?:\bclaude\b|@anthropic\.com)/im;
-            const claudeMetadata = /^\s*claude-[a-z-]+\s*:/im;
+            // Match explicit coding-agent signatures without rejecting unrelated automation such as Dependabot.
+            const agentNames = String.raw`(?:claude(?:\s+(?:sonnet|opus|haiku|code))?|anthropic|cursor(?:\s+agent)?|junie|(?:openai\s+)?codex|chatgpt|github\s+copilot|copilot(?:\s+coding\s+agent)?|gemini(?:\s+code\s+assist)?|google(?:\s+labs)?\s+jules|jules|devin(?:\s+ai)?|windsurf(?:\s+agent)?|cascade|codeium|aider|cline|roo\s+code|qodo|amazon\s+q(?:\s+developer)?|openhands|swe-agent|sourcegraph\s+cody|replit\s+agent|ai\s+(?:coding\s+)?agent)`;
+            const agentIdentity = new RegExp(`\\b${agentNames}\\b`, "i");
+            const agentEmail = /(?:^|[+._-])(?:claude|anthropic|cursor(?:agent)?|junie|codex|chatgpt|copilot|gemini|jules|devin|windsurf|cascade|codeium|aider|cline|qodo|openhands|swe-agent)(?:[+._-]|@)|@(anthropic|cursor|openai|devin|codeium)\.(?:com|ai)$/i;
+            const agentLogin = /^(?:claude|anthropic-ai|cursor(?:agent)?|junie|codex|openai-codex|chatgpt|github-copilot|copilot(?:-swe-agent)?|gemini-code-assist|google-labs-jules|jules|devin-ai-integration|windsurf|codeium|aider|cline|roo-code|qodo|amazon-q-developer|openhands|swe-agent|sourcegraph-cody|replit-agent)(?:\[bot\])?$/i;
+            const allowedAutomationLogins = new Set(["dependabot[bot]"]);
+            const agentTrailer = new RegExp(`^\\s*(?:co-authored-by|signed-off-by):.*${agentNames}`, "im");
+            const agentMetadata = new RegExp(`^\\s*(?:[^A-Za-z0-9\\s]+\\s*)?(?:(?:claude|cursor|junie|codex|copilot|gemini|jules|devin|windsurf|cascade|codeium|aider|cline|qodo|openhands)-[a-z-]+\\s*:|generated (?:by|with)\\s*:?.*${agentNames})`, "im");
             const attributionFailures = [];
 
             for (const commit of commits) {
-              const identities = [
+              const gitIdentities = [
                 ["author", commit.commit.author],
                 ["committer", commit.commit.committer],
               ];
+              const githubIdentities = [
+                ["author", commit.author],
+                ["committer", commit.committer],
+              ];
 
               const reasons = [];
-              for (const [role, identity] of identities) {
-                if (claudeName.test(identity?.name ?? "") ||
-                    anthropicEmail.test(identity?.email ?? "")) {
+              for (const [role, identity] of gitIdentities) {
+                if (agentIdentity.test(identity?.name ?? "") ||
+                    agentEmail.test(identity?.email ?? "")) {
                   reasons.push(`${role} identity`);
+                }
+              }
+              for (const [role, identity] of githubIdentities) {
+                const login = identity?.login?.toLowerCase() ?? "";
+                if (!allowedAutomationLogins.has(login) && agentLogin.test(login)) {
+                  reasons.push(`${role} GitHub account`);
                 }
               }
 
               const message = commit.commit.message;
-              if (coAuthor.test(message)) reasons.push("Co-authored-by trailer");
-              if (claudeMetadata.test(message)) reasons.push("Claude metadata");
+              if (agentTrailer.test(message)) reasons.push("agent attribution trailer");
+              if (agentMetadata.test(message)) reasons.push("agent metadata");
 
               if (reasons.length > 0) {
-                attributionFailures.push(`${commit.sha.slice(0, 7)}: ${reasons.join(", ")}`);
+                attributionFailures.push(`${commit.sha.slice(0, 7)}: ${[...new Set(reasons)].join(", ")}`);
               }
             }
 
             if (attributionFailures.length > 0) {
-              errors.push(`Claude attribution found in ${attributionFailures.length} commit(s)`);
+              errors.push(`AI agent attribution found in ${attributionFailures.length} commit(s)`);
               core.summary
-                .addHeading("Claude attribution must be removed")
+                .addHeading("AI-agent-authored commits are not accepted")
                 .addList(attributionFailures)
-                .addRaw("Rewrite the listed commits to remove Claude/Anthropic author or co-author identities and Claude-* metadata, then force-push the pull request branch.");
+                .addRaw("Remove the listed commits, recreate the changes and commits as your own work under your own identity, then force-push the pull request branch.");
             }
 
             if (errors.length > 0) {

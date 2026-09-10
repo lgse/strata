@@ -8,24 +8,25 @@
 
 [![CI](https://github.com/lgse/strata/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/lgse/strata/actions/workflows/ci.yml)
 [![Latest release](https://img.shields.io/github/v/release/lgse/strata?display_name=tag&sort=semver)](https://github.com/lgse/strata/releases/latest)
-[![License: GPL-3.0-or-later](https://img.shields.io/github/license/lgse/strata)](LICENSE)
+[![License: MIT](https://img.shields.io/github/license/lgse/strata)](LICENSE)
 [![Linux](https://img.shields.io/badge/platform-Linux-FCC624?logo=linux&logoColor=black)](#technical-specifications)
 
 <picture>
   <source media="(prefers-reduced-motion: no-preference)" srcset="docs/assets/strata-demo.gif">
-  <img src="docs/assets/strata-columns.png" alt="Strata showing Miller-column navigation, fuzzy search, general settings, and theme selection" width="1280">
+  <img src="docs/assets/strata-columns.png" alt="Strata browsing files and showing settings, themes, Icons view, and folder creation" width="1280">
 </picture>
 
 <sub>The animation respects reduced-motion preferences. View the [static preview](docs/assets/strata-columns.png).</sub>
 
 </div>
 
-Strata combines spatial Miller-column navigation with familiar Grid and Explorer views, instant fuzzy filename search, rich previews, and native Linux desktop integration. It is designed for Omarchy and works on compatible GTK4 Linux environments.
+Strata combines spatial Miller-column navigation with familiar Icons and List views, instant fuzzy filename search, rich previews, and native Linux desktop integration. It is designed for Omarchy and works on compatible GTK4 Linux environments.
 
 ## Contents
 
 - [Features](#features)
 - [Installation](#installation)
+  - [Interactive installation](#interactive-installation)
   - [AI-assisted installation](#ai-assisted-installation)
   - [Manual installation](#manual-installation)
 - [Usage and desktop integration](#usage-and-desktop-integration)
@@ -45,19 +46,58 @@ Strata combines spatial Miller-column navigation with familiar Grid and Explorer
 
 ## Features
 
-- **Three browser modes:** navigable Miller columns, a thumbnail Grid, and a sortable Explorer table.
-- **Keyboard-first control:** Vim-style movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews.
-- **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed.
+- **Three browser modes:** navigable Columns, an Icons grid, and a sortable List table.
+- **Keyboard-first control:** Vim-style movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also highlights when files are available to paste. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md).
+- **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed. Global search covers Home and all mounted local drives, regardless of the current folder. Hover the search field to see the included locations. The dialog warns when results are incomplete; folder-scoped filtering/search remains separate. URI-native remote shares are not yet included.
 - **Rich previews and thumbnails:** bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
 - **Everyday file operations:** create folders, rename, cut, copy, paste, trash, permanent delete, sorting, hidden files, pins, and history.
 - **Remote locations:** browse GIO/GVfs locations such as authenticated SMB shares from the location field.
 - **Adaptive appearance:** compact or airy density, six bundled themes, custom themes, and live Omarchy Quattro theme following.
 - **Updates in the app:** opt-in automatic checks, release notes, verified downloads, and in-place installation for release binaries.
+- **System file chooser:** opt in through **Settings → General → System file chooser**, the installer, or `strata --install-portal`; see [portal setup](docs/portal-file-chooser.md).
 
 ## Installation
 
 Arch Linux and Omarchy are the primary supported environments. Current binaries require **glibc 2.39 or newer** and the runtime libraries listed below.
+
+### Interactive installation
+
+The interactive installer detects the Linux architecture, glibc version, Arch
+Linux, and Omarchy 3 or 4. It installs the latest verified stable release and
+offers optional desktop-menu, default-folder-handler, "Open file location", system
+file chooser, SMB, broader image/RAW, and Omarchy keybind integration:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lgse/strata/main/install.sh | bash
+```
+
+The installer shows every privileged package operation before asking to run it.
+It verifies both the published SHA-256 digest and GitHub Actions provenance before
+installing anything from the release archive. The binary is installed per-user at
+`~/.local/bin/strata`.
+
+For an unattended Arch or Omarchy installation, pass `--non-interactive`. This
+installs required dependencies and the binary without prompting; optional
+integrations remain disabled unless explicitly selected:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lgse/strata/main/install.sh \
+  | bash -s -- --non-interactive \
+      --with-smb \
+      --with-raw \
+      --with-desktop-entry \
+      --with-folder-association \
+      --with-omarchy-keybinds
+```
+
+Each `--with-*` flag implies `--non-interactive`, and folder association implies
+the desktop entry and `--with-file-manager`. Use `--with-file-manager` by itself
+to enable only "Open file location" integration. File chooser replacement is
+separate: use `--with-file-chooser` to opt in, or `--without-file-chooser` to keep
+your current chooser and dismiss the one-time in-app offer. Neither folder
+association nor an unattended install enables the chooser automatically.
+Non-interactive package installation requires passwordless sudo or cached credentials. Run `./install.sh --help` for the full option list.
 
 ### AI-assisted installation
 
@@ -89,13 +129,17 @@ Then:
   if yes, install the archive's io.github.lgse.Strata.desktop and io.github.lgse.Strata.svg
   under ~/.local/share, pointing Exec at the installed binary, then refresh the
   desktop database and icon cache.
+- Separately ask whether Strata should handle "Open file location" requests. If
+  yes, verify no other per-user service provides org.freedesktop.FileManager1,
+  then install the archive's io.github.lgse.Strata.FileManager1.service under
+  ~/.local/share/dbus-1/services with Exec pointing at the installed binary.
 - Launch `strata`, report its installed version/source release, and verify the
   desktop association if one was requested. Do not weaken the preview sandbox.
 ```
 
-### Manual release installation
+### Manual installation
 
-Install the release archive directly to receive stable releases as soon as they are published and to select any available release channel.
+Install the release archive directly if you prefer to perform each step yourself.
 
 #### 1. Check the architecture and install dependencies
 
@@ -113,12 +157,16 @@ On Arch Linux or Omarchy:
 
 ```bash
 sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gst-libav gst-plugins-good gtk4 gtksourceview5 poppler-glib
+  gst-libav gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
 # Optional SMB and broader camera RAW support:
 sudo pacman -S --needed gvfs-smb imagemagick libraw dcraw
 ```
 
 GTK **4.12 or newer** and glibc **2.39 or newer** are required. Other glibc-based distributions may work when they provide equivalent runtime libraries, but their package names and binary compatibility vary. Systems with an older glibc must [build Strata from source](#development-and-documentation).
+
+Device discovery requires the GVfs UDisks2 volume monitor (`gvfs` on Arch and
+Fedora; `gvfs-daemons` on Debian/Ubuntu). Without that backend, removable drives
+may be absent from Devices. SMB support remains optional.
 
 #### 2. Download and verify
 
@@ -148,11 +196,12 @@ Download the matching `strata-<version>-<target>.debug` asset from the same rele
 
 #### 3. Update or uninstall
 
-For a manual release installation, use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. Package-managed installations are updated only by their system package manager. To remove a per-user installation:
+For a manual installation, use **Settings → Updates** for verified in-app updates, or repeat the download, verification, and `install` steps for a newer release. An in-app update also refreshes an already installed desktop entry and application icon from the new archive; it never creates desktop metadata that was not installed before. If the user opted into Strata's system file chooser, the update restarts the portal frontend so subsequent dialogs use the newly installed build. Package-managed installations are updated only by their system package manager. To remove a per-user installation:
 
 ```bash
 rm -f ~/.local/bin/strata \
   ~/.local/share/applications/io.github.lgse.Strata.desktop \
+  ~/.local/share/dbus-1/services/io.github.lgse.Strata.FileManager1.service \
   ~/.local/share/icons/hicolor/scalable/apps/io.github.lgse.Strata.svg
 update-desktop-database ~/.local/share/applications 2>/dev/null || true
 gtk-update-icon-cache -qtf ~/.local/share/icons/hicolor 2>/dev/null || true
@@ -169,7 +218,7 @@ strata                 # home directory
 strata ~/Documents     # a specific directory
 ```
 
-Useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo the latest move to Trash, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation.
+Useful shortcuts include <kbd>Ctrl</kbd>+<kbd>K</kbd> for recursive search, <kbd>Ctrl</kbd>+<kbd>L</kbd> for a path or URI, <kbd>Ctrl</kbd>+<kbd>F</kbd> to filter the current pane, <kbd>Ctrl</kbd>+<kbd>Z</kbd> to undo the latest move or move to Trash, <kbd>Space</kbd> for preview, <kbd>F2</kbd> to rename, and <kbd>Alt</kbd>+arrow keys for history and parent navigation.
 
 ### Desktop entry
 
@@ -190,7 +239,43 @@ xdg-mime query default inode/directory
 
 The final command should print `io.github.lgse.Strata.desktop`. The desktop entry's filename matches the `io.github.lgse.Strata` application ID that Strata's windows report, so desktop shells match a running window to this entry and draw its `Icon` value. Log out and back in if a shell caches launcher icons.
 
-When building from source, `make install-local` installs the binary, icon, and desktop entry in the same locations, and `make uninstall-local` removes them.
+When building from source, `mise run install-local` installs the binary, icon, and desktop entry in the same locations, and `mise run uninstall-local` removes them.
+
+### "Open file location" from other applications
+
+Browsers and GTK/GNOME applications reveal a file by calling the `org.freedesktop.FileManager1` D-Bus interface instead of consulting the `inode/directory` association. The interactive installer offers this separately; for unattended installation, pass `--with-file-manager`. Folder association enables it automatically.
+
+For a source installation, enable Strata as the per-user activatable provider explicitly:
+
+```bash
+mise run install-file-manager
+```
+
+For an AUR package, copy its inactive service template into your per-user service directory:
+
+```bash
+install -Dm644 /usr/share/strata/io.github.lgse.Strata.FileManager1.service \
+  ~/.local/share/dbus-1/services/io.github.lgse.Strata.FileManager1.service
+```
+
+For a release archive installation, install the included service manually instead:
+
+```bash
+cd ~/Downloads/"${archive%.tar.gz}"
+install -d ~/.local/share/dbus-1/services
+sed "s|^Exec=/usr/bin/strata |Exec=$HOME/.local/bin/strata |" \
+  io.github.lgse.Strata.FileManager1.service \
+  > ~/.local/share/dbus-1/services/io.github.lgse.Strata.FileManager1.service
+```
+
+A per-user provider takes precedence over system providers shipped by other file managers. Before enabling Strata manually, remove any other per-user service whose `Name` is `org.freedesktop.FileManager1`; two providers for the same name in one service directory are chosen arbitrarily. If another file manager already owns the bus name, exit it before testing. Use `mise run uninstall-file-manager` for a source installation, or remove the per-user service file, to disable Strata again.
+
+Strata then answers `ShowFolders`, `ShowItems`, and `ShowItemProperties`, opening the directory that holds the named items with those items selected:
+
+```bash
+busctl --user call org.freedesktop.FileManager1 /org/freedesktop/FileManager1 \
+  org.freedesktop.FileManager1 ShowItems ass 1 "file://$HOME/Downloads" ""
+```
 
 ### Make Strata the Omarchy file manager
 
@@ -300,13 +385,15 @@ Plain-text and source previews are different: they stay in process because they 
 
 ## Development and documentation
 
-Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-config`, GTK 4.12+, GtkSourceView 5, Poppler GLib, and Fontconfig. On Arch:
+Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-config`, GTK 4.12+, GtkSourceView 5, Poppler GLib, and Fontconfig. [mise](https://mise.jdx.dev) pins that toolchain locally (`mise install`). On Arch:
 
 ```bash
-sudo pacman -S --needed base-devel rust bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gst-libav gst-plugins-good gtk4 gtksourceview5 poppler-glib
-make start-dev        # rebuild and restart as files change
-./scripts/check.sh    # format, compile, Clippy, tests, and optional policy checks
+sudo pacman -S --needed base-devel bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
+  gst-libav gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
+mise run start-dev        # rebuild and restart as files change
+mise run dev              # build and launch the main app once
+mise run chooser-dev      # build and open an isolated Save chooser with choices
+mise run check            # format, compile, Clippy, tests, and policy checks
 ```
 
 Start with [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Deeper references:
@@ -328,4 +415,4 @@ This image is generated from GitHub contribution data so new contributors appear
 
 ## License
 
-Strata is free software licensed under **[GPL-3.0-or-later](LICENSE)**. Bundled fonts, icons, and other third-party components retain their own notices in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).
+Strata is free software licensed under the **[MIT License](LICENSE)**. Bundled fonts, icons, and other third-party components retain their own notices in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

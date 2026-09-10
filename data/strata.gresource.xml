@@ -8,6 +8,7 @@
     <file>icons/scalable/actions/strata-arrow-up.svg</file>
     <file>icons/scalable/actions/strata-arrow-up-narrow-wide.svg</file>
     <file>icons/scalable/actions/strata-check.svg</file>
+    <file>icons/scalable/actions/strata-circle-check.svg</file>
     <file>icons/scalable/actions/strata-check-on-primary.svg</file>
     <file>icons/scalable/actions/strata-chevron-right.svg</file>
     <file>icons/scalable/actions/strata-clipboard-paste.svg</file>
@@ -25,12 +26,12 @@
     <file>icons/scalable/actions/strata-folder.svg</file>
     <file>icons/scalable/actions/strata-folder-plus.svg</file>
     <file>icons/scalable/actions/strata-funnel.svg</file>
-    <file>icons/scalable/actions/strata-grid.svg</file>
+    <file>icons/scalable/actions/strata-columns.svg</file>
+    <file>icons/scalable/actions/strata-icons.svg</file>
     <file>icons/scalable/actions/strata-hard-drive.svg</file>
     <file>icons/scalable/actions/strata-house.svg</file>
     <file>icons/scalable/actions/strata-image.svg</file>
     <file>icons/scalable/actions/strata-info.svg</file>
-    <file>icons/scalable/actions/strata-list-active.svg</file>
     <file>icons/scalable/actions/strata-list-checks.svg</file>
     <file>icons/scalable/actions/strata-list.svg</file>
     <file>icons/scalable/actions/strata-key.svg</file>
@@ -44,6 +45,7 @@
     <file>icons/scalable/actions/strata-pin.svg</file>
     <file>icons/scalable/actions/strata-play.svg</file>
     <file>icons/scalable/actions/strata-plus.svg</file>
+    <file>icons/scalable/actions/strata-printer.svg</file>
     <file>icons/scalable/actions/strata-rows.svg</file>
     <file>icons/scalable/actions/strata-scissors.svg</file>
     <file>icons/scalable/actions/strata-search.svg</file>

@@ -1,11 +1,16 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
+
+mod trash;
 
 use std::{
     error::Error,
     ffi::OsString,
     fs,
     io::{ErrorKind, Write},
-    os::unix::ffi::{OsStrExt, OsStringExt},
+    os::unix::{
+        ffi::{OsStrExt, OsStringExt},
+        fs::PermissionsExt,
+    },
     sync::{Arc, Mutex, MutexGuard},
     time::{Instant, SystemTime},
 };
@@ -179,12 +184,16 @@ fn missing_optional_attributes_use_safe_defaults() {
 
     assert!(!info_is_hidden(&info));
     assert!(!info_is_symlink(&info));
+    assert_eq!(info_mode(&info), MetadataValue::Unavailable);
 
     info.set_is_hidden(true);
     info.set_is_symlink(true);
 
     assert!(info_is_hidden(&info));
     assert!(info_is_symlink(&info));
+
+    info.set_attribute_uint32(gio::FILE_ATTRIBUTE_UNIX_MODE, 0);
+    assert_eq!(info_mode(&info), MetadataValue::Known(0));
 }
 
 #[test]
@@ -198,40 +207,6 @@ fn unmounted_network_shares_are_treated_as_directories() {
 
     assert_eq!(entry.kind, EntryKind::Directory);
     assert!(entry.is_directory());
-}
-
-#[test]
-fn native_files_are_located_by_their_real_path() {
-    let file = gio::File::for_path("/tmp");
-    assert_eq!(location_for_file(&file), Some(Location::local("/tmp")));
-}
-
-#[test]
-fn gvfs_backed_files_use_their_uri_even_when_a_fuse_path_exists() {
-    let file = gio::File::for_uri("smb://host/share");
-    assert!(!file.is_native(), "smb:// should never be reported native");
-    assert_eq!(location_for_file(&file), Some(Location::uri(file.uri())));
-}
-
-#[test]
-fn gio_files_with_embedded_credentials_are_sanitized() {
-    for uri in [
-        "smb://user%3Asecret@host/share",
-        "smb://user;password=secret@host/share",
-        "smb://user%3Bpassword=secret@host/share",
-        "smb://user:secret@host/share",
-    ] {
-        let location = location_for_file(&gio::File::for_uri(uri))
-            .expect("credential URI should produce a sanitized location");
-        assert_eq!(
-            location
-                .uri_value()
-                .expect("remote location should have a URI")
-                .trim_end_matches('/'),
-            "smb://user@host/share",
-            "did not sanitize {uri}"
-        );
-    }
 }
 
 #[test]
@@ -278,10 +253,10 @@ fn symlink_targets_and_broken_links_are_distinguished() -> Result<(), Box<dyn Er
 fn coalescing_preserves_a_move_when_metadata_follows_it() {
     let change = merge_pending_change(
         PendingMonitorChange::Move {
-            from: "/fixture/old".into(),
-            to: "/fixture/new".into(),
+            from: Location::local("/fixture/old"),
+            to: Location::local("/fixture/new"),
         },
-        PendingMonitorChange::Upsert("/fixture/new".into()),
+        PendingMonitorChange::Upsert(Location::local("/fixture/new")),
     );
 
     assert!(matches!(change, PendingMonitorChange::Move { .. }));
@@ -291,23 +266,23 @@ fn coalescing_preserves_a_move_when_metadata_follows_it() {
 fn large_monitor_bursts_collapse_to_one_rescan() {
     let mut pending = HashMap::new();
     for index in 0..=MAX_PENDING_MONITOR_CHANGES {
-        let path = PathBuf::from(format!("/fixture/{index}"));
+        let location = Location::local(format!("/fixture/{index}"));
         assert!(queue_monitor_change(
             &mut pending,
-            path.clone(),
-            PendingMonitorChange::Upsert(path),
+            Some(location.clone()),
+            PendingMonitorChange::Upsert(location),
         ));
     }
 
     assert_eq!(pending.len(), 1);
     assert!(matches!(
-        pending.get(Path::new("")),
+        pending.get(&None),
         Some(PendingMonitorChange::Rescan)
     ));
     assert!(!queue_monitor_change(
         &mut pending,
-        "/fixture/ignored".into(),
-        PendingMonitorChange::Remove("/fixture/ignored".into()),
+        Some(Location::local("/fixture/ignored")),
+        PendingMonitorChange::Remove(Location::local("/fixture/ignored")),
     ));
 }
 
@@ -315,13 +290,36 @@ fn large_monitor_bursts_collapse_to_one_rescan() {
 fn conflicting_move_events_fall_back_to_a_rescan() {
     let change = merge_pending_change(
         PendingMonitorChange::Move {
-            from: "/fixture/old".into(),
-            to: "/fixture/new".into(),
+            from: Location::local("/fixture/old"),
+            to: Location::local("/fixture/new"),
         },
-        PendingMonitorChange::Remove("/fixture/new".into()),
+        PendingMonitorChange::Remove(Location::local("/fixture/new")),
     );
 
     assert!(matches!(change, PendingMonitorChange::Rescan));
+}
+
+#[test]
+fn uri_monitor_changes_keep_their_uri_locations() {
+    let mut pending = HashMap::new();
+    let trashed = Location::uri("trash:///report.txt");
+    assert!(queue_monitor_change(
+        &mut pending,
+        Some(trashed.clone()),
+        PendingMonitorChange::Remove(trashed.clone()),
+    ));
+
+    let notified: Rc<RefCell<Vec<DirectoryChange>>> = Rc::new(RefCell::new(Vec::new()));
+    let collected = notified.clone();
+    let notify: Rc<dyn Fn(DirectoryChange)> =
+        Rc::new(move |change| collected.borrow_mut().push(change));
+    flush_monitor_changes(&RefCell::new(pending), &notify, &Rc::new(Cell::new(false)));
+
+    let changes = notified.borrow();
+    assert!(
+        matches!(changes.as_slice(), [DirectoryChange::Remove(location)] if location == &trashed),
+        "the trash URI should survive the flush unchanged"
+    );
 }
 
 #[test]
@@ -330,6 +328,78 @@ fn permission_errors_are_reported_as_inaccessible() {
     assert_eq!(
         map_validation_error(error),
         LocationValidationError::Inaccessible
+    );
+}
+
+#[test]
+fn a_directory_reporting_changes_against_itself_is_not_its_own_child() {
+    let watched = Location::uri("trash:///");
+    let child = Location::uri("trash:///report.txt");
+
+    assert_eq!(
+        monitored_change_target(
+            &watched,
+            Some(watched.clone()),
+            gio::FileMonitorEvent::Changed
+        ),
+        None
+    );
+    assert_eq!(
+        monitored_change_target(
+            &watched,
+            Some(watched.clone()),
+            gio::FileMonitorEvent::Deleted
+        ),
+        Some(watched.clone())
+    );
+    assert_eq!(
+        monitored_change_target(
+            &watched,
+            Some(child.clone()),
+            gio::FileMonitorEvent::Created
+        ),
+        Some(child)
+    );
+}
+
+#[test]
+fn watching_a_uri_location_reports_created_entries() {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("the async test lock should not be poisoned");
+    let directory = unique_fixture_root("uri-watch");
+    fs::create_dir_all(&directory).expect("the fixture directory should be created");
+    let uri = glib::filename_to_uri(&directory, None).expect("the fixture path should have a URI");
+
+    let changes: Rc<RefCell<Vec<DirectoryChange>>> = Rc::new(RefCell::new(Vec::new()));
+    let collected = changes.clone();
+    let handle = LocalFileSource
+        .watch(
+            Location::uri(uri.as_str()),
+            false,
+            Rc::new(move |change| collected.borrow_mut().push(change)),
+        )
+        .expect("a URI location should be monitored");
+
+    fs::write(directory.join("arrival.txt"), b"arrived")
+        .expect("the fixture file should be written");
+
+    let context = glib::MainContext::default();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while changes.borrow().is_empty() && Instant::now() < deadline {
+        while context.iteration(false) {}
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    drop(handle);
+    let observed = changes.borrow().clone();
+    fs::remove_dir_all(&directory).expect("the fixture directory should be removed");
+
+    assert!(
+        observed.iter().any(|change| matches!(
+            change,
+            DirectoryChange::Upsert(entry) if entry.native_name == "arrival.txt"
+        )),
+        "the monitor should report the new entry: {observed:?}"
     );
 }
 
@@ -416,6 +486,20 @@ fn finished_truncated(events: &[DirectoryEvent]) -> Option<bool> {
     })
 }
 
+fn finished_can_trash(events: &[DirectoryEvent]) -> Option<Option<bool>> {
+    events.iter().find_map(|event| match event {
+        DirectoryEvent::Finished { can_trash, .. } => Some(*can_trash),
+        _ => None,
+    })
+}
+
+fn finished_can_delete(events: &[DirectoryEvent]) -> Option<Option<bool>> {
+    events.iter().find_map(|event| match event {
+        DirectoryEvent::Finished { can_delete, .. } => Some(*can_delete),
+        _ => None,
+    })
+}
+
 #[test]
 fn enumerate_reports_truncated_once_the_entry_budget_is_exceeded() {
     let root = unique_fixture_root("entry-budget");
@@ -445,6 +529,62 @@ fn enumerate_reports_truncated_once_the_entry_budget_is_exceeded() {
         3,
         "loading should retain exactly the configured maximum"
     );
+}
+
+#[test]
+fn enumerate_resolves_can_trash_from_a_child_entry() {
+    let root = unique_fixture_root("can-trash");
+    fs::create_dir_all(&root).expect("the fixture directory should be created");
+    let child = root.join("child.txt");
+    fs::write(&child, b"content").expect("the fixture file should be written");
+    let expected = gio::File::for_path(&child)
+        .query_info(
+            gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH,
+            gio::FileQueryInfoFlags::NONE,
+            None::<&gio::Cancellable>,
+        )
+        .expect("the child capability query should succeed")
+        .boolean(gio::FILE_ATTRIBUTE_ACCESS_CAN_TRASH);
+
+    let events = run_enumerate(DirectoryRequest {
+        id: RequestId(1),
+        location: Location::local(&root),
+        batch_size: 64,
+        include_metadata: false,
+        max_entries: 10,
+        time_budget: Duration::from_secs(10),
+    });
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+
+    assert_eq!(finished_can_trash(&events), Some(Some(expected)));
+}
+
+#[test]
+fn enumerate_resolves_can_delete_from_a_child_entry() {
+    let root = unique_fixture_root("can-delete");
+    fs::create_dir_all(&root).expect("the fixture directory should be created");
+    let child = root.join("child.txt");
+    fs::write(&child, b"content").expect("the fixture file should be written");
+    let expected = gio::File::for_path(&child)
+        .query_info(
+            gio::FILE_ATTRIBUTE_ACCESS_CAN_DELETE,
+            gio::FileQueryInfoFlags::NONE,
+            None::<&gio::Cancellable>,
+        )
+        .expect("the child capability query should succeed")
+        .boolean(gio::FILE_ATTRIBUTE_ACCESS_CAN_DELETE);
+
+    let events = run_enumerate(DirectoryRequest {
+        id: RequestId(1),
+        location: Location::local(&root),
+        batch_size: 64,
+        include_metadata: false,
+        max_entries: 10,
+        time_budget: Duration::from_secs(10),
+    });
+    fs::remove_dir_all(&root).expect("the fixture directory should be removed");
+
+    assert_eq!(finished_can_delete(&events), Some(Some(expected)));
 }
 
 #[test]
@@ -646,7 +786,10 @@ fn cancelled_native_scan_returns_no_partial_result() {
 fn enumerate_with_metadata_fills_sizes_up_front() -> Result<(), Box<dyn Error>> {
     let root = unique_fixture_root("with-metadata");
     fs::create_dir_all(&root).expect("the fixture directory should be created");
-    fs::write(root.join("file-0.txt"), b"content").expect("the fixture file should be written");
+    let path = root.join("file-0.txt");
+    fs::write(&path, b"content").expect("the fixture file should be written");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o640))
+        .expect("the fixture permissions should be set");
 
     let with_metadata = run_enumerate(DirectoryRequest {
         id: RequestId(1),
@@ -666,14 +809,14 @@ fn enumerate_with_metadata_fills_sizes_up_front() -> Result<(), Box<dyn Error>> 
     });
     fs::remove_dir_all(&root).expect("the fixture directory should be removed");
 
-    let sizes = |events: &[DirectoryEvent]| {
+    let metadata = |events: &[DirectoryEvent]| {
         events
             .iter()
             .filter_map(|event| match event {
                 DirectoryEvent::Batch { entries, .. } => Some(
                     entries
                         .iter()
-                        .map(|entry| entry.size.clone())
+                        .map(|entry| (entry.size.clone(), entry.mode.clone()))
                         .collect::<Vec<_>>(),
                 ),
                 _ => None,
@@ -682,13 +825,13 @@ fn enumerate_with_metadata_fills_sizes_up_front() -> Result<(), Box<dyn Error>> 
             .collect::<Vec<_>>()
     };
     assert_eq!(
-        sizes(&with_metadata),
-        vec![MetadataValue::Known(7)],
+        metadata(&with_metadata),
+        vec![(MetadataValue::Known(7), MetadataValue::Known(0o100640))],
         "a metadata load should stat every entry up front"
     );
     assert_eq!(
-        sizes(&streaming),
-        vec![MetadataValue::Unknown],
+        metadata(&streaming),
+        vec![(MetadataValue::Unknown, MetadataValue::Unknown)],
         "a streaming load should leave sizes for the window fill"
     );
     Ok(())
@@ -840,23 +983,29 @@ fn fill_file_uri_stats_through_the_uri_form() -> Result<(), Box<dyn Error>> {
 fn fill_live_file_completes_with_a_chunk() -> Result<(), Box<dyn Error>> {
     let root = unique_fixture_root("fill-live");
     fs::create_dir_all(&root).expect("the fixture directory should be created");
-    fs::write(root.join("photo.jpg"), b"content").expect("the fixture file should be written");
+    let path = root.join("photo.jpg");
+    fs::write(&path, b"content").expect("the fixture file should be written");
+    fs::set_permissions(&path, fs::Permissions::from_mode(0o640))
+        .expect("the fixture permissions should be set");
 
     let events = run_fill(MetadataRequest {
         id: RequestId(1),
-        entries: vec![Location::local(root.join("photo.jpg"))],
+        entries: vec![Location::local(&path)],
         full: false,
         time_budget: Duration::from_secs(10),
     });
     assert_eq!(fill_outcome(&events), Some(MetadataOutcome::Complete));
     assert_eq!(fill_chunk_count(&events), 1);
-    let size = events.iter().find_map(|event| match event {
-        DirectoryEvent::MetadataFilled { updates, .. } => {
-            updates.first().map(|update| update.size.clone())
-        }
+    let metadata = events.iter().find_map(|event| match event {
+        DirectoryEvent::MetadataFilled { updates, .. } => updates
+            .first()
+            .map(|update| (update.size.clone(), update.mode.clone())),
         _ => None,
     });
-    assert_eq!(size, Some(MetadataValue::Known(7)));
+    assert_eq!(
+        metadata,
+        Some((MetadataValue::Known(7), MetadataValue::Known(0o100640)))
+    );
     Ok(())
 }
 

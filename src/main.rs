@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 mod adapters;
 mod app;
@@ -6,6 +6,8 @@ mod assets;
 mod build_info;
 mod metrics;
 mod model;
+mod portal;
+mod portal_setup;
 mod sandbox;
 mod sandbox_helper;
 mod services;
@@ -15,7 +17,7 @@ mod test_support;
 mod ui;
 mod util;
 
-use std::{os::unix::process::CommandExt, process::Stdio, time::Duration};
+use std::{ffi::OsString, os::unix::process::CommandExt, process::Stdio, time::Duration};
 
 use gtk::{gio, prelude::*};
 
@@ -25,30 +27,72 @@ const GVFS_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
 const GIO_FALLBACK_BACKENDS: [(&str, &str); 2] =
     [("GIO_USE_VFS", "local"), ("GIO_USE_VOLUME_MONITOR", "unix")];
 
-fn main() -> gtk::glib::ExitCode {
-    let arguments: Vec<_> = std::env::args().collect();
-    if arguments
-        .get(1)
-        .is_some_and(|value| value == "--preview-helper")
-    {
-        if let Err(error) = sandbox_helper::run(&arguments[2..]) {
-            eprintln!("Preview helper failed: {error}");
-            return gtk::glib::ExitCode::FAILURE;
-        }
-        return gtk::glib::ExitCode::SUCCESS;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LaunchMode {
+    PreviewHelper,
+    GvfsProbe,
+    Portal,
+    InstallPortal,
+    DismissPortalPrompt,
+    UninstallPortal,
+    Application,
+}
+
+/// Byte-safe: a non-UTF-8 path argument is an ordinary application launch,
+/// not a reason to abort before GIO ever sees it.
+fn launch_mode(arguments: &[OsString]) -> LaunchMode {
+    match arguments.get(1).and_then(|argument| argument.to_str()) {
+        Some("--preview-helper") => LaunchMode::PreviewHelper,
+        Some(GVFS_PROBE_ARGUMENT) => LaunchMode::GvfsProbe,
+        Some("--portal") => LaunchMode::Portal,
+        Some("--install-portal") => LaunchMode::InstallPortal,
+        Some("--dismiss-portal-prompt") => LaunchMode::DismissPortalPrompt,
+        Some("--uninstall-portal") => LaunchMode::UninstallPortal,
+        _ => LaunchMode::Application,
     }
-    if arguments
-        .get(1)
-        .is_some_and(|value| value == GVFS_PROBE_ARGUMENT)
-    {
-        let _vfs = gio::Vfs::default();
-        let _volumes = gio::VolumeMonitor::get();
-        return gtk::glib::ExitCode::SUCCESS;
+}
+
+/// Every location the launcher or shell asked to open, local or remote, in order.
+fn open_locations(files: &[gio::File]) -> Vec<model::Location> {
+    files
+        .iter()
+        .filter_map(adapters::location_for_file)
+        .collect()
+}
+
+fn main() -> gtk::glib::ExitCode {
+    let arguments: Vec<OsString> = std::env::args_os().collect();
+    match launch_mode(&arguments) {
+        LaunchMode::PreviewHelper => {
+            if let Err(error) = run_preview_helper(&arguments[2..]) {
+                eprintln!("Preview helper failed: {error}");
+                return gtk::glib::ExitCode::FAILURE;
+            }
+            return gtk::glib::ExitCode::SUCCESS;
+        }
+        LaunchMode::GvfsProbe => {
+            let _vfs = gio::Vfs::default();
+            let _volumes = gio::VolumeMonitor::get();
+            return gtk::glib::ExitCode::SUCCESS;
+        }
+        LaunchMode::Portal => {
+            restart_with_local_vfs_if_gvfs_is_unresponsive();
+            return portal::run();
+        }
+        LaunchMode::InstallPortal => return finish_portal_setup(portal_setup::install()),
+        LaunchMode::DismissPortalPrompt => {
+            return finish_portal_setup(portal_setup::dismiss_prompt());
+        }
+        LaunchMode::UninstallPortal => return finish_portal_setup(portal_setup::uninstall()),
+        LaunchMode::Application => {}
     }
 
     metrics::initialize();
     if let Err(error) = tracing_subscriber::fmt::try_init() {
         eprintln!("Unable to initialize logging: {error}");
+    }
+    if let Err(error) = portal_setup::refresh_stale_portal() {
+        tracing::warn!(%error, "could not refresh the stale Strata portal");
     }
 
     // Timed from here so `window presented` covers the whole launch, the way
@@ -75,12 +119,59 @@ fn main() -> gtk::glib::ExitCode {
         .flags(gio::ApplicationFlags::HANDLES_OPEN)
         .build();
 
+    application.connect_startup(export_file_manager_interface);
     application.connect_activate(ui::present);
     application.connect_open(|application, files, _| {
-        let location = files.first().and_then(gio::File::path);
-        ui::present_location(application, location);
+        let locations = open_locations(files);
+        if locations.is_empty() {
+            ui::present(application);
+        }
+        for location in locations {
+            ui::present_location(application, Some(location));
+        }
     });
     application.run()
+}
+
+fn run_preview_helper(arguments: &[OsString]) -> Result<(), String> {
+    let arguments = arguments
+        .iter()
+        .map(|argument| {
+            argument
+                .to_str()
+                .map(str::to_owned)
+                .ok_or_else(|| "Invalid UTF-8 in preview helper arguments".to_owned())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    sandbox_helper::run(&arguments)
+}
+
+fn finish_portal_setup(result: Result<String, String>) -> gtk::glib::ExitCode {
+    match result {
+        Ok(message) => {
+            println!("{message}");
+            gtk::glib::ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("{error}");
+            gtk::glib::ExitCode::FAILURE
+        }
+    }
+}
+
+/// Answers "Open file location" from browsers and other desktop apps, which
+/// call `org.freedesktop.FileManager1` instead of the `inode/directory`
+/// handler.
+fn export_file_manager_interface(application: &gtk::Application) {
+    let Some(connection) = application.dbus_connection() else {
+        return;
+    };
+    let target = application.clone();
+    if let Err(error) = adapters::export_file_manager(&connection, move |request| {
+        ui::present_reveal(&target, request);
+    }) {
+        tracing::warn!(%error, "unable to export the file manager interface");
+    }
 }
 
 fn restart_with_local_vfs_if_gvfs_is_unresponsive() {

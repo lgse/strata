@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     path::{Path, PathBuf},
@@ -11,7 +11,7 @@ use gdk_pixbuf::prelude::*;
 use super::{
     MediaBackend, bounded_output, bounded_output_with_timeout, bounded_surface_dimensions,
     media_backends, media_command, read_limited, render_pixbuf, render_raw, render_raw_thumbnail,
-    run, run_media_backends, scale_embedded_thumbnail,
+    render_simple_dcraw, run, run_media_backends, scale_embedded_thumbnail,
 };
 use crate::sandbox::MediaPreviewBackend;
 
@@ -297,6 +297,23 @@ fn preview_image_uses_raw_fallbacks() {
             assert_eq!(preview.expect_err("stub should fail RAW fallbacks"), raw);
         }
     }
+}
+
+#[test]
+fn concurrent_raw_fallbacks_do_not_share_staging_files() {
+    let directory = tempfile::tempdir().expect("tempdir");
+    let input = directory.path().join("photo.ARW");
+    std::fs::write(&input, b"not a camera file").expect("write stub");
+    let expected = render_simple_dcraw(&input, 256).expect_err("invalid RAW file");
+
+    std::thread::scope(|scope| {
+        let workers: Vec<_> = (0..8)
+            .map(|_| scope.spawn(|| render_simple_dcraw(&input, 256)))
+            .collect();
+        for worker in workers {
+            assert_eq!(worker.join().expect("worker"), Err(expected.clone()));
+        }
+    });
 }
 
 #[test]

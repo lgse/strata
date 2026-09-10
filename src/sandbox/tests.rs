@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     fs,
@@ -11,9 +11,79 @@ use std::{
 use super::{
     Cancellation, MAX_RASTER_INPUT_BYTES, MEDIA_WALL_TIME_LIMIT, MediaPreviewBackend,
     ParseOperation, PrivateOutput, WALL_TIME_LIMIT, gpu_devices, parse, polaris_gpu_available_at,
-    sandbox_command, sandbox_input_path, spawn_renderer, valid_output, wait_for_renderer,
-    wait_for_renderer_output,
+    resolve_renderer_executable, sandbox_command, sandbox_input_path, spawn_renderer, valid_output,
+    wait_for_renderer, wait_for_renderer_output,
 };
+
+#[test]
+fn renderer_outputs_are_never_read_through_symlinks() {
+    let dir = tempfile::tempdir().expect("scratch directory");
+    let real = dir.path().join("host-file");
+    fs::write(&real, b"2 5").expect("host file");
+    for name in ["result.png", "result.meta"] {
+        let link = dir.path().join(name);
+        std::os::unix::fs::symlink(&real, &link).expect("planted symlink");
+        assert!(super::read_private_output(&link, 256).is_err());
+        assert_eq!(super::read_metadata(&link), (0, 0));
+    }
+    assert_eq!(super::read_metadata(&real), (2, 5));
+    assert_eq!(fs::read(&real).expect("unchanged host file"), b"2 5");
+}
+
+#[test]
+fn renderer_outputs_require_nonempty_bounded_regular_files() {
+    let dir = tempfile::tempdir().expect("scratch directory");
+    let output = dir.path().join("result.png");
+    assert!(super::read_private_output(&output, 4).is_err());
+    assert!(super::read_private_output(dir.path(), 4).is_err());
+    for bytes in [b"".as_slice(), b"data", b"extra"] {
+        fs::write(&output, bytes).expect("renderer output");
+        let result = super::read_private_output(&output, 4);
+        if bytes.len() == 4 {
+            assert_eq!(result.expect("exact size limit is allowed"), bytes);
+        } else {
+            assert!(result.is_err());
+        }
+    }
+}
+
+#[test]
+fn renderer_output_fifo_is_rejected_without_blocking() {
+    let dir = tempfile::tempdir().expect("scratch directory");
+    let fifo = dir.path().join("result.png");
+    rustix::fs::mkfifoat(
+        rustix::fs::CWD,
+        &fifo,
+        rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR,
+    )
+    .expect("planted FIFO");
+    let (sender, receiver) = std::sync::mpsc::channel();
+    let reader = thread::spawn(move || {
+        let _sent = sender.send(super::read_private_output(&fifo, 256));
+    });
+    let result = receiver
+        .recv_timeout(Duration::from_secs(2))
+        .expect("opening a renderer FIFO must not wait for a writer");
+    assert!(result.is_err());
+    reader.join().expect("output reader");
+}
+
+#[test]
+fn renderer_metadata_is_bounded_and_requires_utf8() {
+    let dir = tempfile::tempdir().expect("scratch directory");
+    let output = dir.path().join("result.meta");
+    assert_eq!(super::read_metadata(&output), (0, 0));
+    assert_eq!(super::read_metadata(dir.path()), (0, 0));
+    for bytes in [b"".as_slice(), b"2 5 \xff"] {
+        fs::write(&output, bytes).expect("invalid metadata");
+        assert_eq!(super::read_metadata(&output), (0, 0));
+    }
+    let bounded = format!("2 5{}", " ".repeat(253));
+    fs::write(&output, &bounded).expect("metadata at size limit");
+    assert_eq!(super::read_metadata(&output), (2, 5));
+    fs::write(&output, format!("{bounded} ")).expect("oversized metadata");
+    assert_eq!(super::read_metadata(&output), (0, 0));
+}
 
 fn limit_from(arguments: &[String], flag: &str) -> u64 {
     arguments
@@ -412,6 +482,40 @@ fn accepts_only_bounded_png_webm_or_mp4_outputs() {
         ParseOperation::PreviewMedia,
         b"unrelated data"
     ));
+}
+
+#[test]
+fn renderer_uses_a_private_snapshot_after_the_original_executable_is_replaced() {
+    let directory = PrivateOutput::create().expect("create private output");
+    let running = directory.path().join("running-strata");
+    fs::write(&running, b"running executable").expect("write running executable");
+    let replaced = directory.path().join("replaced-strata");
+
+    let executable = resolve_renderer_executable(&replaced, &running, directory.path())
+        .expect("snapshot running executable");
+
+    assert_eq!(executable, directory.path().join("strata-preview-helper"));
+    assert_eq!(
+        fs::read(executable).expect("read snapshot"),
+        b"running executable"
+    );
+}
+
+#[test]
+fn renderer_uses_the_original_executable_while_it_is_available() {
+    let directory = PrivateOutput::create().expect("create private output");
+    let current = directory.path().join("strata");
+    fs::write(&current, b"current executable").expect("write current executable");
+
+    let executable = resolve_renderer_executable(
+        &current,
+        &directory.path().join("unused-running-strata"),
+        directory.path(),
+    )
+    .expect("resolve current executable");
+
+    assert_eq!(executable, current);
+    assert!(!directory.path().join("strata-preview-helper").exists());
 }
 
 #[test]

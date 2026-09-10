@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::RefCell,
@@ -11,12 +11,11 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
-    model::Location,
+    adapters::gio_file_for_location,
     sandbox::{Cancellation, MediaPreviewBackend, ParseOperation},
     services::{
         LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
-        content_family, has_plain_text_extension, is_extensionless_dotfile,
-        is_non_executable_extensionless_dotfile,
+        content_family, has_plain_text_extension, is_non_executable_extensionless_dotfile,
     },
 };
 
@@ -112,8 +111,7 @@ impl PreviewProvider for LocalPreviewProvider {
             let mut content = content_family(&content_type);
 
             if matches!(content, PreviewContent::Unsupported)
-                && (has_plain_text_extension(&entry.native_name)
-                    || is_extensionless_dotfile(&entry.native_name))
+                && has_plain_text_extension(&entry.native_name)
             {
                 content = PreviewContent::Text {
                     content: String::new(),
@@ -125,7 +123,7 @@ impl PreviewProvider for LocalPreviewProvider {
             if matches!(content, PreviewContent::Unsupported)
                 && (uncertain || entry.native_name.is_empty())
             {
-                let file = file_for_location(&entry.location);
+                let file = gio_file_for_location(&entry.location);
                 let info = match file
                     .query_info_future(
                         "standard::content-type,unix::mode",
@@ -317,7 +315,7 @@ impl PreviewProvider for LocalPreviewProvider {
                 }
                 return;
             } else if matches!(content, PreviewContent::Text { .. }) {
-                let file = file_for_location(&entry.location);
+                let file = gio_file_for_location(&entry.location);
                 let native_path = entry.location.native_path().map(ToOwned::to_owned);
                 content =
                     match read_text(&file, native_path.as_deref(), request.text_byte_limit).await {
@@ -367,13 +365,6 @@ async fn wait_for_full_render(has_placeholder: bool, cancellation: &Cancellation
         glib::timeout_future(settle_delay).await;
     }
     !cancellation.is_cancelled()
-}
-
-fn file_for_location(location: &Location) -> gio::File {
-    location
-        .native_path()
-        .map(gio::File::for_path)
-        .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()))
 }
 
 async fn read_text(

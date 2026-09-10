@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{
     PreviewContent, content_family, has_plain_text_extension, is_extensionless_dotfile,

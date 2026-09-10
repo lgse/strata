@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+printf '%s\n' 'Omarchy 4.0.0.alpha'
