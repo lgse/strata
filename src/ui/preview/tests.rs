@@ -11,13 +11,8 @@ use super::{
     format_media_time, media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
     preview_width_for_empty_space, print_fit, print_page_starts, print_progress_for_page,
 };
-use crate::{
-    model::{EntryKind, FileEntry, Location, MetadataValue},
-    services::{
-        LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
-        PreviewRequestId,
-    },
-};
+use crate::services::{LoadHandle, PreviewEvent, PreviewProvider, PreviewRequest};
+use crate::ui::theme::ThemeManager;
 
 struct UnusedPreviewProvider;
 
@@ -33,61 +28,25 @@ struct WeakMediaWidgets {
     media: glib::WeakRef<gtk::MediaFile>,
 }
 
-fn generated_media_data(content_type: &str) -> Vec<u8> {
-    if content_type == "image/gif" {
-        b"GIF89a\x01\0\x01\0\x80\0\0\0\0\0\xff\xff\xff!\xf9\x04\x01\0\0\0\0,\0\0\0\0\x01\0\x01\0\0\x02\x02D\x01\0;".to_vec()
-    } else {
-        let mut data = 24_u32.to_be_bytes().to_vec();
-        data.extend_from_slice(b"ftypisom\0\0\x02\0isomiso2");
-        data
-    }
-}
-
-fn render_media_widgets(drawer: &PreviewDrawer, content_type: &str) -> WeakMediaWidgets {
-    let filename = if content_type == "image/gif" {
-        "generated.gif"
-    } else {
-        "generated.mp4"
-    };
-    let entry = FileEntry {
-        location: Location::local(std::path::PathBuf::from(filename)),
-        native_name: filename.into(),
-        thumbnail_path: None,
-        display_name: filename.to_owned(),
-        kind: EntryKind::File,
-        size: MetadataValue::Known(0),
-        modified_unix_seconds: MetadataValue::Known(0),
-        mode: MetadataValue::Unknown,
-        is_hidden: false,
-    };
-    drawer.state.render(Preview {
-        request_id: PreviewRequestId(1),
-        entry,
-        content_type: content_type.to_owned(),
-        content: PreviewContent::SandboxedMedia {
-            data: generated_media_data(content_type),
-        },
-    });
-
-    let overlay = drawer
+fn render_media_widgets(drawer: &PreviewDrawer, is_gif: bool) -> WeakMediaWidgets {
+    let media = gtk::MediaFile::new();
+    drawer
         .state
-        .content
-        .first_child()
-        .and_downcast::<gtk::Overlay>()
-        .expect("production media overlay");
+        .media
+        .replace(Some(media.clone().upcast::<gtk::MediaStream>()));
+    let (overlay, center_play) = drawer.state.build_media_view(&media);
     let picture = overlay
         .child()
         .and_downcast::<gtk::Picture>()
         .expect("production media picture");
-    let media = drawer
-        .state
-        .media
-        .borrow()
-        .as_ref()
-        .expect("production media stream")
-        .clone()
-        .downcast::<gtk::MediaFile>()
-        .expect("media file");
+    drawer.state.content.append(&overlay);
+    drawer.state.append_media_controls(
+        &media,
+        &ThemeManager::shared(),
+        &overlay.clone().upcast(),
+        &center_play,
+        is_gif,
+    );
 
     WeakMediaWidgets {
         overlay: overlay.downgrade(),
@@ -249,7 +208,7 @@ fn closing_media_preview_finalizes_production_widget_tree() {
     const TEST: &str = "ui::preview::tests::closing_media_preview_finalizes_production_widget_tree";
     crate::test_support::gtk_test(TEST, || {
         let drawer = PreviewDrawer::new(Rc::new(UnusedPreviewProvider), false);
-        let widgets = render_media_widgets(&drawer, "image/gif");
+        let widgets = render_media_widgets(&drawer, true);
 
         drawer.close();
 
@@ -263,10 +222,11 @@ fn replacing_repeated_media_previews_finalizes_previous_widget_trees() {
         "ui::preview::tests::replacing_repeated_media_previews_finalizes_previous_widget_trees";
     crate::test_support::gtk_test(TEST, || {
         let drawer = PreviewDrawer::new(Rc::new(UnusedPreviewProvider), false);
-        let mut current = render_media_widgets(&drawer, "image/gif");
+        let mut current = render_media_widgets(&drawer, true);
 
-        for content_type in ["video/mp4", "image/gif", "video/mp4", "image/gif"] {
-            let next = render_media_widgets(&drawer, content_type);
+        for is_gif in [false, true, false, true] {
+            drawer.state.clear_content();
+            let next = render_media_widgets(&drawer, is_gif);
             assert_media_widgets_finalized(&current);
             current = next;
         }
