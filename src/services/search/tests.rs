@@ -12,8 +12,8 @@ use std::{
 mod scope;
 
 use super::{
-    SearchEvent, SearchItem, fuzzy_score_normalized, index_tree, index_trees,
-    index_trees_with_budget,
+    SearchEvent, SearchItem, fuzzy_score_normalized, fuzzy_subsequence_score, index_tree,
+    index_trees, index_trees_with_budget,
 };
 
 fn score_path(path: &str, query: &str, root: &Path) -> Option<i64> {
@@ -40,6 +40,17 @@ fn exact_names_rank_above_substrings_and_fuzzy_matches() {
         .expect("an ordered fuzzy subsequence should match");
     assert!(exact > substring);
     assert!(substring > fuzzy);
+}
+
+#[test]
+fn contiguous_multibyte_matches_outrank_separated_ones() {
+    let contiguous = fuzzy_subsequence_score("éa", "éa").expect("a contiguous match");
+    let separated = fuzzy_subsequence_score("é_a", "éa").expect("a separated match");
+    assert!(contiguous > separated);
+
+    let contiguous = fuzzy_subsequence_score("配置", "配置").expect("a contiguous match");
+    let separated = fuzzy_subsequence_score("配/置", "配置").expect("a separated match");
+    assert!(contiguous > separated);
 }
 
 #[test]
