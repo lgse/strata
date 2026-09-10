@@ -12,6 +12,10 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::model::EntryKind;
+
+use super::{is_hidden_name, native_hidden_names, native_kind};
+
 const RESULT_LIMIT: usize = 100;
 const PUBLISH_INTERVAL: Duration = Duration::from_millis(50);
 
