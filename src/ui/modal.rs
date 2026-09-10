@@ -220,7 +220,20 @@ pub(super) fn show_error_dialog_after_close(
     let Some(ModalHost {
         overlay: window_overlay,
         blurred_root,
-    }) = ModalHost::blurred_for(parent)
+    }) = ModalHost::blurred_for(parent).or_else(|| {
+        tracing::warn!(
+            "No window modal host is available; reporting the error on the requesting overlay"
+        );
+        parent
+            .as_ref()
+            .clone()
+            .downcast::<gtk::Overlay>()
+            .ok()
+            .map(|overlay| ModalHost {
+                overlay,
+                blurred_root: None,
+            })
+    })
     else {
         on_close();
         return;

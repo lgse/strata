@@ -65,3 +65,26 @@ pub(crate) fn gtk_test(name: &str, run: impl FnOnce()) {
         .expect("isolated GTK test starts");
     assert!(status.success(), "{name} failed");
 }
+
+pub(crate) fn distinct_device_dirs(name: &str) -> Option<(tempfile::TempDir, tempfile::TempDir)> {
+    use std::os::unix::fs::MetadataExt;
+    let dirs = (|| {
+        let first = tempfile::tempdir().ok()?;
+        let shm = std::path::Path::new("/dev/shm");
+        if !shm.is_dir() {
+            return None;
+        }
+        let second = tempfile::TempDir::new_in(shm).ok()?;
+        let first_dev = std::fs::metadata(first.path()).ok()?.dev();
+        let second_dev = std::fs::metadata(second.path()).ok()?.dev();
+        (first_dev != second_dev).then_some((first, second))
+    })();
+    if dirs.is_none() {
+        assert!(
+            std::env::var_os("STRATA_REQUIRE_DEVICE_TESTS").is_none(),
+            "{name} requires two filesystems: /dev/shm must be a distinct device from the temp dir"
+        );
+        eprintln!("Skipping {name}: /dev/shm is not a distinct device from the temp dir");
+    }
+    dirs
+}

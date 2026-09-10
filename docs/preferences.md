@@ -35,6 +35,7 @@ control that might be midway through synchronization.
 | --- | --- |
 | Folder peeking, single-click previews, mode, density, grouping, per-mode click counts, auto-refresh | Every browser binds at construction, including lazily rebuilt view modes. The chooser explicitly disallows folder peeking regardless of the saved value. |
 | Hidden files | Shared across existing browsers and new columns. |
+| Cross-device drag and drop | Drop dispatch reads the current Copy, Move, or Ask strategy; unresolved volume lookups follow the same cross-device policy. |
 | Sort key/direction, folders-first | Shared defaults for new columns; an existing column keeps its own sort, selection and navigation. Sorting a column updates the persisted defaults. |
 | Type-to-search, opening search results directly | Keyboard/search actions read the current manager value at dispatch. |
 | Include subfolders when filtering | Every pane filter binds at construction, including lazy view rebuilds. Enabled by default; disabling indexes only immediate files and folders, without traversing descendants. Live changes cancel pending queries and invalidate old result streams before refreshing the active filter. Global search remains recursive. |

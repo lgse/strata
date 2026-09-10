@@ -31,6 +31,9 @@ options=(--rm --platform=linux/amd64 --user "$user_id:$group_id" --shm-size=512m
 if [[ "$(basename "$engine")" == podman ]]; then
   options+=(--userns=keep-id --passwd=false)
 fi
+if [[ -n "${STRATA_REQUIRE_DEVICE_TESTS:-}" ]]; then
+  options+=(--env STRATA_REQUIRE_DEVICE_TESTS)
+fi
 exec "$engine" run "${options[@]}" \
   --mount "type=bind,source=$repository,target=/workspace" \
   --mount "type=bind,source=$accounts/passwd,target=/etc/passwd,readonly" \

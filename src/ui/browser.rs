@@ -49,7 +49,8 @@ mod trash;
 pub(in crate::ui) use crate::ui::browser::clipboard::drag_icon_with_count;
 pub(super) use crate::ui::browser::clipboard::file_drag_content;
 pub(crate) use crate::ui::browser::clipboard::{
-    drag_actions_for_modifiers, file_drop_action, locations_from_file_list_value,
+    PreparedFileDrop, drag_actions_for_modifiers, file_drop_action, file_drop_commit,
+    locations_from_file_list_value, prepare_file_drop_target,
 };
 pub(crate) use crate::ui::browser::collection::{
     activate_recursive_search_result, bind_filter_query, debounce_filter_entry,
@@ -183,7 +184,7 @@ pub(super) struct ViewState {
     pending_delete_entries: RefCell<Vec<FileEntry>>,
     pending_navigate: RefCell<Option<Location>>,
     pending_location_credentials: RefCell<Option<MountCredentials>>,
-    pending_trash_summary: RefCell<Option<LoadHandle>>,
+    pending_trash_lookup: RefCell<Option<LoadHandle>>,
     pending_empty_trash: RefCell<Option<LoadHandle>>,
     trash_loading: RefCell<Option<TrashLoadingView>>,
     auto_refresh: RefCell<Option<glib::SourceId>>,
@@ -369,7 +370,7 @@ impl BrowserView {
             pending_delete_entries: RefCell::new(Vec::new()),
             pending_navigate: RefCell::new(None),
             pending_location_credentials: RefCell::new(None),
-            pending_trash_summary: RefCell::new(None),
+            pending_trash_lookup: RefCell::new(None),
             pending_empty_trash: RefCell::new(None),
             trash_loading: RefCell::new(None),
             auto_refresh: RefCell::new(None),
@@ -405,9 +406,9 @@ impl BrowserView {
         if interactive {
             let weak_state = Rc::downgrade(&state);
             state.mode_views.borrow().set_transfer_handler(Rc::new(
-                move |destination, sources, move_sources| {
+                move |destination, sources, commit| {
                     if let Some(state) = weak_state.upgrade() {
-                        state.start_transfer(destination, sources, move_sources);
+                        state.commit_file_drop(destination, sources, commit);
                     }
                 },
             ));
@@ -465,14 +466,13 @@ impl BrowserView {
         self.state.browser.navigate(location);
     }
 
-    pub fn start_transfer(
+    pub fn commit_file_drop(
         &self,
         destination: Location,
         sources: Vec<Location>,
-        move_sources: bool,
+        commit: crate::services::DropCommit,
     ) {
-        self.state
-            .start_transfer(destination, sources, move_sources);
+        self.state.commit_file_drop(destination, sources, commit);
     }
 
     /// Selects `names` in the active column once it finishes loading,

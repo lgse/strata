@@ -2,6 +2,7 @@
 
 use super::*;
 
+mod drops;
 mod filter_scope;
 mod focus;
 mod loading;
@@ -9,6 +10,7 @@ mod navigate;
 mod paste;
 mod preferences;
 mod recursive_search;
+mod restore;
 mod sidebar;
 
 #[test]

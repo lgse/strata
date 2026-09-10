@@ -182,12 +182,20 @@ impl SidebarState {
         let browser = Rc::downgrade(&self.browser);
         let sidebar = self.widget.clone();
         let selected_row = row.clone();
+        let keyboard_activation = Rc::new(Cell::new(false));
+        let activating = keyboard_activation.clone();
+        row.connect_activate(move |_| activating.set(true));
         row.connect_clicked(move |_| {
+            let select_first = keyboard_activation.replace(false);
             select_sidebar_row(&sidebar, &selected_row);
             if let Some(browser) = browser.upgrade() {
                 match navigation {
-                    PlaceNavigation::Direct => browser.navigate(location.clone()),
-                    PlaceNavigation::Validate => browser.navigate_location(location.clone()),
+                    PlaceNavigation::Direct => {
+                        browser.navigate_with_selection(location.clone(), select_first);
+                    }
+                    PlaceNavigation::Validate => {
+                        browser.navigate_location(location.clone(), select_first);
+                    }
                 }
             }
         });
