@@ -58,11 +58,7 @@ impl Dispatcher {
         if !self.inline_editing_active() {
             return None;
         }
-        // Proceeding here (as for every other key while renaming) would let this
-        // capture-phase controller's own Ctrl+A also reach the surrounding
-        // ListView/GridView's default select-all binding on its way to the entry,
-        // selecting every row along with the entry's text. Handling it directly
-        // gets the entry-only selection without that side effect.
+        // Stop Ctrl+A before the collection view also applies its select-all binding.
         if event.control()
             && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
             && event.key == Key::a
