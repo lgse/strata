@@ -210,9 +210,10 @@ fn typing_and_backspace_after_arrows_edit_the_query_at_the_caret() {
         || {
             let (dialog, window) = mapped_dialog(Rc::new(|_| {}));
             dialog.state.field.set_text("quartely");
+            let items = search_items("typing", 3);
             render_results(
                 &dialog.state,
-                search_items("typing", 3),
+                items.clone(),
                 false,
                 SearchCoverage::default(),
             );
@@ -238,11 +239,12 @@ fn typing_and_backspace_after_arrows_edit_the_query_at_the_caret() {
             text.emit_by_name::<()>("insert-at-cursor", &[&"r"]);
             assert_eq!(dialog.state.field.text(), "quarterly");
             assert_eq!(dialog.state.field.position(), 7);
-            assert!(dialog.state.visible_results.borrow().is_empty());
+            assert_eq!(*dialog.state.visible_results.borrow(), items);
             assert!(!dialog.state.navigation_started.get());
             text.emit_by_name::<()>("backspace", &[]);
             assert_eq!(dialog.state.field.text(), "quartely");
             assert_eq!(dialog.state.field.position(), 6);
+            assert_eq!(*dialog.state.visible_results.borrow(), items);
             assert!(contains_keyboard_focus(dialog.state.field.upcast_ref()));
             window.destroy();
         },
@@ -768,8 +770,22 @@ fn deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset
             assert!(dialog.state.layer.is_visible());
 
             items.swap(4, 5);
+            render_results(
+                &dialog.state,
+                items.clone(),
+                true,
+                SearchCoverage::default(),
+            );
+            dialog.state.field.set_text("different");
+            adjustment.set_value(300.0);
+            drain_main_context();
+            assert_eq!(adjustment.value(), 300.0);
+            assert_eq!(*dialog.state.visible_results.borrow(), items);
+            assert!(!dialog.state.navigation_started.get());
+
+            items.swap(5, 6);
             render_results(&dialog.state, items, true, SearchCoverage::default());
-            begin_query(&dialog.state, "different");
+            dialog.state.field.set_text("");
             drain_main_context();
             assert_eq!(adjustment.value(), 0.0);
             assert!(dialog.state.visible_results.borrow().is_empty());
