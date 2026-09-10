@@ -2,7 +2,7 @@
 
 use std::{ffi::OsString, os::unix::ffi::OsStringExt, path::Path};
 
-use gtk::gio;
+use gtk::{gio, glib};
 
 use super::{
     GIO_FALLBACK_BACKENDS, LaunchMode, encode_daemon_pids, gvfs_daemon_pids,
@@ -61,39 +61,37 @@ fn preview_helper_rejects_non_utf8_instead_of_changing_paths() {
 
 #[test]
 fn open_requests_preserve_directory_and_remote_arguments() {
+    // Real smb/sftp hosts aren't reachable in tests; trash:// is a
+    // network-free non-native backend and is enough to prove classification
+    // isn't gated on `is_native()` any more.
     let non_utf8 = OsString::from_vec(b"/tmp/\xff".to_vec());
     let files = [
-        gio::File::for_uri("smb://host/share"),
         gio::File::for_path("/tmp/first"),
         gio::File::for_path("/tmp/second"),
         gio::File::for_path(&non_utf8),
-        gio::File::for_uri("sftp://host/share"),
         gio::File::for_uri("trash:///"),
     ];
 
-    let requests = open_requests(&files);
+    let requests = glib::MainContext::new().block_on(open_requests(&files));
     assert!(requests.iter().all(|request| request.selection.is_empty()));
     let locations: Vec<_> = requests.iter().map(|request| &request.directory).collect();
 
     assert_eq!(locations.len(), files.len());
+    assert_eq!(locations[0].native_path(), Some(Path::new("/tmp/first")));
+    assert_eq!(locations[1].native_path(), Some(Path::new("/tmp/second")));
+    assert_eq!(locations[2].native_path(), Some(Path::new(&non_utf8)));
     assert!(
-        locations[0]
+        locations[3]
             .uri_value()
-            .is_some_and(|uri| uri.starts_with("smb://host/share")),
+            .is_some_and(|uri| uri.starts_with("trash:")),
         "{:?}",
-        locations[0]
+        locations[3]
     );
-    assert_eq!(locations[1].native_path(), Some(Path::new("/tmp/first")));
-    assert_eq!(locations[2].native_path(), Some(Path::new("/tmp/second")));
-    assert_eq!(locations[3].native_path(), Some(Path::new(&non_utf8)));
-    for (location, scheme) in locations[4..].iter().zip(["sftp:", "trash:"]) {
-        assert!(
-            location
-                .uri_value()
-                .is_some_and(|uri| uri.starts_with(scheme))
-        );
-    }
-    assert!(open_requests(&[]).is_empty());
+    assert!(
+        glib::MainContext::new()
+            .block_on(open_requests(&[]))
+            .is_empty()
+    );
 }
 
 #[test]
@@ -122,7 +120,7 @@ fn open_requests_reveal_local_files_but_open_directories() {
         gio::File::for_path(&broken_link),
     ];
 
-    let requests = open_requests(&files);
+    let requests = glib::MainContext::new().block_on(open_requests(&files));
 
     assert_eq!(requests.len(), files.len());
     for (request, selection) in requests.iter().zip([
@@ -137,7 +135,8 @@ fn open_requests_reveal_local_files_but_open_directories() {
         assert!(!request.properties);
     }
     for path in [&directory_link, &missing] {
-        let requests = open_requests(&[gio::File::for_path(path)]);
+        let requests =
+            glib::MainContext::new().block_on(open_requests(&[gio::File::for_path(path)]));
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0].directory.native_path(), Some(path.as_path()));
         assert!(requests[0].selection.is_empty());

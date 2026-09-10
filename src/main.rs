@@ -19,7 +19,7 @@ mod util;
 
 use std::{ffi::OsString, os::unix::process::CommandExt, process::Stdio, time::Duration};
 
-use gtk::{gio, prelude::*};
+use gtk::{gio, glib, prelude::*};
 
 const APPLICATION_ID: &str = "io.github.lgse.Strata";
 const GVFS_PROBE_ARGUMENT: &str = "--gvfs-probe";
@@ -53,32 +53,58 @@ fn launch_mode(arguments: &[OsString]) -> LaunchMode {
 }
 
 /// Every target the launcher or shell asked to open, in argument order.
-fn open_requests(files: &[gio::File]) -> Vec<adapters::RevealRequest> {
-    files
-        .iter()
-        .filter_map(|file| {
-            // Do not probe remote URIs synchronously during startup.
-            let reveal = file.is_native()
-                && file
-                    .path()
-                    .is_some_and(|path| match std::fs::metadata(&path) {
-                        Ok(metadata) => metadata.is_file(),
-                        Err(_) => path.is_symlink(),
-                    });
-            let (directory, name) = match reveal.then(|| file.parent()).flatten() {
-                Some(parent) => (parent, file.basename()),
-                None => (file.clone(), None),
-            };
-            Some(adapters::RevealRequest {
-                directory: adapters::location_for_file(&directory)?,
-                selection: name
-                    .map(|name| name.to_string_lossy().into_owned())
-                    .into_iter()
-                    .collect(),
-                properties: false,
-            })
-        })
-        .collect()
+/// Classifies each argument with GIO's async `query_info`, off the GTK main
+/// thread, so a native path on a slow or dead network mount can't block
+/// startup the way a synchronous `stat` would — and, unlike a synchronous
+/// probe, this also works for non-native URIs (sftp://, smb://).
+async fn open_requests(files: &[gio::File]) -> Vec<adapters::RevealRequest> {
+    let mut requests = Vec::with_capacity(files.len());
+    for file in files {
+        let reveal = is_regular_file(file).await;
+        let (directory, name) = match reveal.then(|| file.parent()).flatten() {
+            Some(parent) => (parent, file.basename()),
+            None => (file.clone(), None),
+        };
+        let Some(directory) = adapters::location_for_file(&directory) else {
+            continue;
+        };
+        requests.push(adapters::RevealRequest {
+            directory,
+            selection: name
+                .map(|name| name.to_string_lossy().into_owned())
+                .into_iter()
+                .collect(),
+            properties: false,
+        });
+    }
+    requests
+}
+
+/// A broken symlink has no type GIO can resolve, so it falls back to a
+/// no-follow query for the link itself rather than being treated as a
+/// directory.
+async fn is_regular_file(file: &gio::File) -> bool {
+    match file
+        .query_info_future(
+            "standard::type",
+            gio::FileQueryInfoFlags::NONE,
+            glib::Priority::DEFAULT,
+        )
+        .await
+    {
+        Ok(info) => !matches!(
+            info.file_type(),
+            gio::FileType::Directory | gio::FileType::Mountable
+        ),
+        Err(_) => file
+            .query_info_future(
+                "standard::is-symlink",
+                gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+                glib::Priority::DEFAULT,
+            )
+            .await
+            .is_ok_and(|info| info.is_symlink()),
+    }
 }
 
 fn main() -> gtk::glib::ExitCode {
@@ -143,13 +169,17 @@ fn main() -> gtk::glib::ExitCode {
     application.connect_startup(export_file_manager_interface);
     application.connect_activate(ui::present);
     application.connect_open(|application, files, _| {
-        let requests = open_requests(files);
-        if requests.is_empty() {
-            ui::present(application);
-        }
-        for request in requests {
-            ui::present_reveal(application, request);
-        }
+        let application = application.clone();
+        let files = files.to_vec();
+        glib::MainContext::default().spawn_local(async move {
+            let requests = open_requests(&files).await;
+            if requests.is_empty() {
+                ui::present(&application);
+            }
+            for request in requests {
+                ui::present_reveal(&application, request);
+            }
+        });
     });
     application.run()
 }
