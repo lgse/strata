@@ -373,6 +373,29 @@ access. For iPhone/iPad, also check `systemctl status usbmuxd.service` while the
 phone is connected. If the newly installed backend still is not discovered after
 restarting Strata, log out and back in to refresh the desktop's GVfs services.
 
+#### iPhone appears but photo storage is empty
+
+Some recent iPhones can expose an empty camera/PTP store with libgphoto2 2.5.34,
+even when unlocked, trusted, and holding locally stored photos. This is a known
+[upstream libgphoto2 issue](https://github.com/gphoto/libgphoto2/issues/1254), not
+necessarily an empty photo library or a Strata display problem. The backend
+mishandles the folder-parent information returned by these devices.
+
+A read-only test with an iPhone reporting iOS 26.6.1 reproduced the problem:
+unmodified libgphoto2 2.5.34 listed **0 folders**, while the same version with
+[upstream fix `9f5d4f9`](https://github.com/gphoto/libgphoto2/commit/9f5d4f9ca0a7f58bac7987180a48154ea07c090f)
+listed **117 folders**. Both builds were temporary, with their actual library
+loading verified; no photos were downloaded or modified. This confirms folder
+listing with the fix on that device, not complete transfer or Strata GUI coverage.
+
+Use a distribution libgphoto2 update or backport containing that fix when
+available. Merely reinstalling `gvfs-gphoto2` or restarting Strata will not fix an
+affected libgphoto2 build. Strata's GVfs camera backend must load the corrected
+library; setting library paths only for Strata may not affect the separately
+launched GVfs process. This documentation change does **not** bundle or install
+the fix. Avoid replacing system libraries manually; any locally built workaround
+should be isolated and reversible.
+
 ### Network shares
 
 Press <kbd>Ctrl</kbd>+<kbd>L</kbd>, enter an address such as `smb://server/share`, and press <kbd>Enter</kbd>. Strata uses GIO/GVfs and prompts for credentials when required. Install your distribution's SMB GVfs backend (`gvfs-smb` on Arch) to enable SMB browsing.
