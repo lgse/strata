@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::model::Location;
+use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use crate::ui::browser::{BrowserView, PeekBehavior};
 use std::time::{Duration, Instant};
 
@@ -328,6 +328,121 @@ fn operation_cancelled_clears_archive_flag() {
             );
             window.destroy();
             browser.clear_observer();
+        },
+    );
+}
+
+#[test]
+fn operation_failed_password_prompt_drops_pending_navigate_for_later_completion() {
+    crate::test_support::gtk_test(
+        "ui::browser::events::tests::operation_failed_password_prompt_drops_pending_navigate_for_later_completion",
+        || {
+            let origin = tempfile::tempdir().expect("extract origin");
+            let leftover = tempfile::tempdir().expect("leftover destination");
+            let (view, browser, window, _overlay) = archive_view(origin.path());
+            let state = &view.state;
+            let entry = FileEntry {
+                location: Location::local(origin.path().join("encrypted.7z")),
+                thumbnail_path: None,
+                native_name: std::ffi::OsString::from("encrypted.7z"),
+                display_name: "encrypted.7z".into(),
+                kind: EntryKind::File,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
+                mode: MetadataValue::Unknown,
+            };
+            state
+                .pending_extract_retry
+                .replace(Some((entry, Location::local(leftover.path()))));
+            state
+                .pending_navigate
+                .replace(Some(Location::local(leftover.path())));
+
+            state.handle(&BrowserEvent::OperationFailed {
+                message: "archive is password protected".to_owned(),
+            });
+            assert!(
+                state.pending_navigate.borrow().is_none(),
+                "password failure must drop the abandoned Extract to… destination"
+            );
+
+            state.handle(&BrowserEvent::ArchiveCompleted {
+                select_name: "later.txt".to_owned(),
+            });
+            while glib::MainContext::default().iteration(false) {}
+            assert_eq!(
+                browser.active_location(),
+                Some(Location::local(origin.path())),
+                "later completion must not navigate into the leftover destination"
+            );
+            window.destroy();
+            browser.clear_observer();
+        },
+    );
+}
+
+fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
+    let mut widgets = vec![widget.clone()];
+    let mut child = widget.first_child();
+    while let Some(current) = child {
+        widgets.extend(descendants(&current));
+        child = current.next_sibling();
+    }
+    widgets
+}
+
+#[test]
+fn password_retry_preserves_extract_here_and_extract_to_navigation_intent() {
+    crate::test_support::gtk_test(
+        "ui::browser::events::tests::password_retry_preserves_extract_here_and_extract_to_navigation_intent",
+        || {
+            for navigate in [false, true] {
+                let origin = tempfile::tempdir().expect("extract origin");
+                let destination = Location::local(origin.path());
+                let (view, browser, window, _overlay) = archive_view(origin.path());
+                let state = &view.state;
+                let entry = FileEntry {
+                    location: Location::local(origin.path().join("encrypted.7z")),
+                    thumbnail_path: None,
+                    native_name: std::ffi::OsString::from("encrypted.7z"),
+                    display_name: "encrypted.7z".into(),
+                    kind: EntryKind::File,
+                    size: MetadataValue::Unknown,
+                    modified_unix_seconds: MetadataValue::Unknown,
+                    is_hidden: false,
+                    mode: MetadataValue::Unknown,
+                };
+                state
+                    .pending_extract_retry
+                    .replace(Some((entry, destination.clone())));
+                state
+                    .pending_navigate
+                    .replace(navigate.then(|| destination.clone()));
+                state.handle(&BrowserEvent::OperationFailed {
+                    message: "incorrect password".to_owned(),
+                });
+                assert!(state.pending_navigate.borrow().is_none());
+                let widgets = descendants(window.upcast_ref());
+                let password = widgets
+                    .iter()
+                    .find_map(|widget| widget.clone().downcast::<gtk::PasswordEntry>().ok())
+                    .expect("password field");
+                password.set_text("secret");
+                let confirm = widgets
+                    .iter()
+                    .filter_map(|widget| widget.clone().downcast::<gtk::Button>().ok())
+                    .find(|button| button.label().as_deref() == Some("Extract"))
+                    .expect("extract button");
+                confirm.emit_clicked();
+                assert_eq!(
+                    *state.pending_navigate.borrow(),
+                    navigate.then(|| destination.clone())
+                );
+                while glib::MainContext::default().iteration(false) {}
+                window.destroy();
+                browser.clear_observer();
+            }
         },
     );
 }

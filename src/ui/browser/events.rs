@@ -580,7 +580,13 @@ impl ViewState {
                     && extract_error_needs_password(message)
                 {
                     let invalid_password = message.to_lowercase().contains("incorrect");
-                    self.show_extract_password_dialog(entry, dest, invalid_password);
+                    let navigate_after_extract = self.pending_navigate.take();
+                    self.show_extract_password_dialog(
+                        entry,
+                        dest,
+                        invalid_password,
+                        navigate_after_extract,
+                    );
                     return;
                 }
                 show_error_dialog(&self.overlay, "Unable to complete operation", message);

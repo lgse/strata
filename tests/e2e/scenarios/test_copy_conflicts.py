@@ -82,7 +82,7 @@ def test_keep_both_applies_to_all_collisions_in_a_mixed_paste(strata):
     strata.open_directory("archive")
     strata.paste_into("archive")
     dialog = strata.wait_for_dialog()
-    apply_all = dialog.find(name="Apply this choice to all remaining conflicts")
+    apply_all = dialog.find(name="Apply to All")
     assert apply_all is not None, dialog.dump()
     strata.pointer.click(apply_all)
     strata.pointer.click(strata.dialog_button("Keep Both"))

@@ -255,10 +255,13 @@ impl ViewState {
         );
         let state = self.clone();
         // Move undo/reveal assumes an unrenamed `transfer_target`.
+        let apply_to_all_visible = !collisions.is_empty();
+        let skip_visible = !accepted.is_empty() || !collisions.is_empty();
         self.confirm_replace_conflict(
             &name,
             &explanation,
-            !collisions.is_empty(),
+            apply_to_all_visible,
+            skip_visible,
             !move_sources,
             Rc::new(move |choice, apply_to_all| {
                 let mut accepted = accepted.clone();
@@ -364,10 +367,13 @@ impl ViewState {
             compact_display_path(&parent)
         );
         let state = self.clone();
+        let apply_to_all_visible = !collisions.is_empty();
+        let skip_visible = !accepted.is_empty() || !collisions.is_empty();
         self.confirm_replace_conflict(
             &name,
             &explanation,
-            !collisions.is_empty(),
+            apply_to_all_visible,
+            skip_visible,
             false,
             Rc::new(move |choice, apply_to_all| {
                 let mut accepted = accepted.clone();
@@ -401,7 +407,8 @@ impl ViewState {
         self: &Rc<Self>,
         name: &str,
         explanation: &str,
-        has_more_conflicts: bool,
+        apply_to_all_visible: bool,
+        skip_visible: bool,
         allow_keep_both: bool,
         on_choice: Rc<dyn Fn(ConflictChoice, bool)>,
     ) {
@@ -421,11 +428,12 @@ impl ViewState {
             ModalTone::Danger,
         );
         layout.body.append(&message_dialog_description(explanation));
-        let apply_all = form_check_button("Apply this choice to all remaining conflicts");
-        apply_all.set_visible(has_more_conflicts);
-        layout.body.append(&apply_all);
+        let apply_all = form_check_button("Apply to All");
+        apply_all.set_visible(apply_to_all_visible);
+        layout.actions.prepend(&apply_all);
         let skip = gtk::Button::with_label("Skip");
         skip.add_css_class("action-dialog-cancel");
+        skip.set_visible(skip_visible);
         layout
             .actions
             .insert_child_after(&skip, Some(&layout.cancel));
