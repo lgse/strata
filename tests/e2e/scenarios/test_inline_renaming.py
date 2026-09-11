@@ -16,6 +16,7 @@ def test_long_rename_keeps_caret_visible(strata, mode, request):
     name = "synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt"
     strata.fixture.path(name).write_text("keep\n")
     strata.keyboard.press("F5")
+    strata.entry(name)
     strata.select_entry_with_keyboard(name)
     bounds = strata.window.window_bounds()
     width = 420 if mode == "Columns" else 640
@@ -120,8 +121,10 @@ def test_new_item_exists_before_typing_and_backspace_clears_its_selected_name(st
     assert path.is_dir() if kind == "folder" else path.is_file()
     if kind == "file":
         assert path.read_bytes() == b""
+    strata.keyboard.press("End")
+    strata.keyboard.press("ctrl+a")
     strata.keyboard.press("BackSpace")
-    strata.wait(lambda: field.text == "", "one Backspace to clear the entire default name")
+    strata.wait(lambda: field.text == "", "Ctrl+A and Backspace to clear the entire default name")
     strata.keyboard.press("Return")
     wait_for_edit_closed(strata)
     strata.entry(original)

@@ -47,7 +47,7 @@ Strata combines spatial Miller-column navigation with familiar Icons and List vi
 ## Features
 
 - **Three browser modes:** navigable Columns, an Icons grid, and a sortable List table.
-- **Keyboard-first control:** Vim-style movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also highlights when files are available to paste. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md).
+- **Keyboard-first control:** directional-key movement, navigation history, location entry, pane filtering, fuzzy search, file operations, and quick previews. An optional footer and F1 shortcut reference help you learn each mode; the footer also highlights when files are available to paste. See [keyboard navigation and paste destinations](docs/keyboard-navigation.md).
 - **Fast recursive search:** press <kbd>Ctrl</kbd>+<kbd>K</kbd> to find files and directories by name or path while the tree is still being indexed. Global search covers Home and all mounted local drives, regardless of the current folder. Hover the search field to see the included locations. The dialog warns when results are incomplete; folder-scoped filtering/search remains separate. URI-native remote shares are not yet included.
 - **Rich previews and thumbnails:** bounded previews for text, source code, images, camera RAW, PDF, audio, and video, with native parser-backed formats isolated from the application.
 - **Responsive filesystem work:** cancellable directory loading, bounded streaming, incremental monitoring, stable selection, and virtualized large directories.
@@ -120,9 +120,10 @@ Then:
   FFmpeg/GStreamer, and desktop-integration runtime dependencies using the system
   package manager. Add gvfs-smb only if I want SMB support.
 - Download the archive and its matching .sha256 file from the latest GitHub release.
-- Verify the checksum with sha256sum --check and verify GitHub Actions provenance
-  with `gh attestation verify <archive> --repo lgse/strata`. Stop on any failure;
-  never install an unverified binary.
+- Verify the checksum with sha256sum --check. If GitHub CLI is installed and
+  authenticated, also verify GitHub Actions provenance with
+  `gh attestation verify <archive> --repo lgse/strata`. Stop if either attempted
+  verification fails; never install a binary with an invalid checksum.
 - Extract it and install `strata` to ~/.local/bin/strata without overwriting an
   unrelated file. Ensure ~/.local/bin is on PATH.
 - Ask whether I want a per-user desktop entry and inode/directory association;
@@ -170,19 +171,26 @@ may be absent from Devices. SMB support remains optional.
 
 #### 2. Download and verify
 
-From the [latest release](https://github.com/lgse/strata/releases/latest), download the `.tar.gz` matching `$target` and its identically named `.sha256` file. Then verify both its digest and signed GitHub Actions provenance:
+From the [latest release](https://github.com/lgse/strata/releases/latest), download the `.tar.gz` matching `$target` and its identically named `.sha256` file over HTTPS. Then verify its digest:
 
 ```bash
 cd ~/Downloads
 archive="strata-<version>-${target}.tar.gz"
 sha256sum --check "${archive}.sha256"
-gh attestation verify "$archive" --repo lgse/strata
-tar -xzf "$archive"
 ```
 
-Both verification commands must succeed. Install the binary and confirm it starts:
+If GitHub CLI is installed and authenticated, you can additionally verify the
+archive's signed GitHub Actions provenance before extracting it:
 
 ```bash
+gh attestation verify "$archive" --repo lgse/strata
+```
+
+Every verification you run must succeed. Extract the archive, install the binary,
+and confirm it starts:
+
+```bash
+tar -xzf "$archive"
 install -Dm755 "${archive%.tar.gz}/strata" "$HOME/.local/bin/strata"
 command -v strata
 strata

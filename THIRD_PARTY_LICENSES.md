@@ -35,6 +35,18 @@ The SVGs retain Lucide geometry. Their foreground color was changed from `curren
 
 The bundled catalog contains curated Base16 palettes derived from this project alongside Strata's original themes. The Base16 mapping to Strata's semantic UI tokens is documented in the catalog.
 
+## GTK and GStreamer media-runtime patch kit
+
+- Projects: <https://gitlab.gnome.org/GNOME/gtk> and <https://gitlab.freedesktop.org/gstreamer/gstreamer>
+- Source versions: GTK 4.22.4 and gst-plugins-bad 1.28.6
+- License of the patched source files: LGPL-2.0-or-later (GTK's project license is LGPL-2.1-or-later)
+- Included material: source-context patches under `packaging/media-runtime/patches/`
+- Full licenses: [GTK](packaging/media-runtime/licenses/GTK-COPYING) and [GStreamer](packaging/media-runtime/licenses/GSTREAMER-COPYING)
+
+The experimental patch kit preserves upstream source notices and identifies pinned
+source archives. It does not bundle toolkit binaries or alter Strata's release
+artifacts. See its [build and redistribution requirements](packaging/media-runtime/README.md).
+
 ## Rust dependencies
 
 Rust dependency licenses are declared in each package's metadata and are validated in CI with `cargo-deny`. To review the current dependency graph locally, run:

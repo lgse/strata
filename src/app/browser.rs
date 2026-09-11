@@ -91,7 +91,6 @@ pub enum BrowserEvent {
     EntriesSpliced {
         depth: usize,
         splices: Vec<EntrySplice>,
-        selected: Option<usize>,
     },
     /// Refreshed entries for already-rendered rows; the order never changes here.
     MetadataFilled {
@@ -139,6 +138,9 @@ pub enum BrowserEvent {
         focused: Option<usize>,
     },
     PreviewRequested {
+        entry: FileEntry,
+    },
+    ExtractRequested {
         entry: FileEntry,
     },
     OpenRequested {
@@ -499,6 +501,7 @@ pub struct Browser {
     peek_load: RefCell<Option<LoadHandle>>,
     validation_load: RefCell<Option<LoadHandle>>,
     validation_generation: Cell<u64>,
+    navigation_cleanup: RefCell<Option<Box<dyn FnOnce()>>>,
     operation_provider: RefCell<Option<Rc<dyn OperationProvider>>>,
     operation_load: RefCell<Option<LoadHandle>>,
     current_operation: Cell<Option<OperationRequestId>>,
@@ -547,6 +550,7 @@ impl Browser {
             peek_load: RefCell::new(None),
             validation_load: RefCell::new(None),
             validation_generation: Cell::new(0),
+            navigation_cleanup: RefCell::new(None),
             operation_provider: RefCell::new(None),
             operation_load: RefCell::new(None),
             current_operation: Cell::new(None),
@@ -571,6 +575,12 @@ impl Browser {
 
     pub fn observe(&self, observer: impl Fn(&BrowserEvent) + 'static) {
         self.observers.borrow_mut().push(Rc::new(observer));
+    }
+
+    fn should_extract_on_activate(&self, entry: &FileEntry) -> bool {
+        !self.is_chooser_mode()
+            && entry.location.native_path().is_some()
+            && ArchiveFormat::from_extension(&entry.display_name).is_some()
     }
 
     pub fn set_chooser_mode(&self, chooser: bool) {
@@ -638,9 +648,7 @@ impl Browser {
     }
 
     fn navigate_validated(self: &Rc<Self>, location: Location, select_first: bool) {
-        let generation = self.validation_generation.get().saturating_add(1);
-        self.validation_generation.set(generation);
-        self.validation_load.borrow_mut().take();
+        let generation = self.bump_navigation_generation();
         let weak = Rc::downgrade(self);
         let pending_location = location.clone();
         let emit = Rc::new(move |result| {
@@ -667,6 +675,27 @@ impl Browser {
 
     pub(crate) fn navigation_generation(&self) -> u64 {
         self.validation_generation.get()
+    }
+
+    /// Invalidates work whose result is guarded by the navigation generation.
+    pub(crate) fn bump_navigation_generation(&self) -> u64 {
+        let generation = self.validation_generation.get().saturating_add(1);
+        self.validation_generation.set(generation);
+        self.validation_load.borrow_mut().take();
+        if let Some(cleanup) = self.navigation_cleanup.take() {
+            cleanup();
+        }
+        generation
+    }
+
+    pub(crate) fn set_navigation_cleanup(&self, cleanup: impl FnOnce() + 'static) {
+        if let Some(previous) = self.navigation_cleanup.replace(Some(Box::new(cleanup))) {
+            previous();
+        }
+    }
+
+    pub(crate) fn finish_navigation_cleanup(&self) {
+        self.navigation_cleanup.take();
     }
 
     pub fn active_depth(&self) -> Option<usize> {
@@ -726,9 +755,7 @@ impl Browser {
     }
 
     pub(crate) fn navigate_with_selection(self: &Rc<Self>, location: Location, select_first: bool) {
-        self.validation_generation
-            .set(self.validation_generation.get().saturating_add(1));
-        self.validation_load.borrow_mut().take();
+        self.bump_navigation_generation();
         if self.active_location().as_ref() == Some(&location) {
             return;
         }
@@ -765,9 +792,7 @@ impl Browser {
         location: Location,
         select_first_on_load: bool,
     ) {
-        self.validation_generation
-            .set(self.validation_generation.get().saturating_add(1));
-        self.validation_load.borrow_mut().take();
+        self.bump_navigation_generation();
         if self.is_open_child(parent_depth, &location) {
             return;
         }
@@ -785,9 +810,7 @@ impl Browser {
             return;
         }
 
-        let generation = self.validation_generation.get().saturating_add(1);
-        self.validation_generation.set(generation);
-        self.validation_load.borrow_mut().take();
+        let generation = self.bump_navigation_generation();
         let weak = Rc::downgrade(self);
         let pending_location = location.clone();
         let parent_location = self.location_at(parent_depth);
@@ -2129,6 +2152,8 @@ impl Browser {
         };
         if entry.is_directory() {
             self.navigate_with_selection(entry.location, select_first);
+        } else if self.should_extract_on_activate(&entry) {
+            self.emit(BrowserEvent::ExtractRequested { entry });
         } else {
             self.emit(BrowserEvent::OpenRequested {
                 location: entry.location,
@@ -2230,6 +2255,8 @@ impl Browser {
             } else {
                 self.descend_with_selection(depth, entry.location, select_first);
             }
+        } else if self.should_extract_on_activate(&entry) {
+            self.emit(BrowserEvent::ExtractRequested { entry });
         } else {
             self.emit(BrowserEvent::OpenRequested {
                 location: entry.location,
@@ -3090,6 +3117,7 @@ impl Browser {
         }
     }
 
+    #[cfg(test)]
     pub fn select_entries_by_name(self: &Rc<Self>, names: &[String]) {
         let Some(depth) = self.active_depth() else {
             return;
@@ -3104,12 +3132,13 @@ impl Browser {
         })
     }
 
-    pub fn select_entries_by_location(self: &Rc<Self>, locations: &[Location]) {
+    pub fn select_entries_by_location_at(
+        self: &Rc<Self>,
+        depth: usize,
+        locations: &[Location],
+    ) -> bool {
         let requested: HashSet<_> = locations.iter().collect();
-        let Some(depth) = self.active_depth() else {
-            return;
-        };
-        self.select_entries_matching_at(depth, |entry| requested.contains(&entry.location));
+        self.select_entries_matching_at(depth, |entry| requested.contains(&entry.location))
     }
 
     fn select_entries_matching_at(
@@ -3189,26 +3218,11 @@ impl Browser {
             .borrow_mut()
             .apply_directory_change(depth, watched, change);
         if let Some((splices, selected)) = application {
-            let positions = self.state.borrow().selected_positions(depth);
-            self.emit(BrowserEvent::EntriesSpliced {
-                depth,
-                splices,
-                selected,
-            });
-            if let Some(focused) = selected {
-                self.emit(BrowserEvent::SelectionSetChanged {
-                    depth,
-                    positions,
-                    focused,
-                    take_focus: false,
-                });
-            }
-            // Monitor updates to an ancestor must not reclaim focus after a
-            // transfer has revealed its destination in a child column.
-            if self.active_depth() == Some(depth) {
+            self.emit(BrowserEvent::EntriesSpliced { depth, splices });
+            if selected.is_none() && self.active_depth() == Some(depth) {
                 self.emit(BrowserEvent::FocusChanged {
                     depth,
-                    position: selected,
+                    position: None,
                 });
             }
         }

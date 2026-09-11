@@ -72,13 +72,6 @@ pub(super) fn column_rows(
         };
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.add_css_class("file-row");
-        row.add_css_class("file-appear");
-        let weak_row = row.downgrade();
-        glib::idle_add_local_once(move || {
-            if let Some(row) = weak_row.upgrade() {
-                row.remove_css_class("file-appear");
-            }
-        });
         let icon = crate::ui::thumbnail::ThumbnailSlot::new(17);
         icon.add_css_class("file-icon");
         let drag_icon = icon.clone();
@@ -393,11 +386,11 @@ pub(super) fn column_rows(
                     selection_for_click.select_item(position, true);
                 }
             }
-            if (control || shift)
-                && let Some(widget) = gesture.widget()
-                && crate::ui::pointer::hits_item_content(&widget, x, y)
-            {
-                if let Some(item_widget) = widget.parent() {
+            if control || shift {
+                if let Some(widget) = gesture.widget()
+                    && crate::ui::pointer::hits_item_content(&widget, x, y)
+                    && let Some(item_widget) = widget.parent()
+                {
                     item_widget.grab_focus();
                 }
                 gesture.set_state(gtk::EventSequenceState::Claimed);

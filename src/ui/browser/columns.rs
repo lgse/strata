@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::model::{FileEntry, Location};
+use crate::services::fold_for_search;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::clipboard::install_directory_drop_target;
 use crate::ui::browser::collection::{
@@ -148,6 +149,29 @@ pub(super) fn set_column_busy(column: &ColumnView, busy: bool) {
         .update_state(&[gtk::accessible::State::Busy(busy)]);
 }
 
+pub(super) fn prune_missing_search_results(column: &ColumnView) {
+    if column.search_handle.borrow().is_none() {
+        return;
+    }
+    let mut results = column.search_results.borrow_mut();
+    let before = results.len();
+    results.retain(|item| crate::ui::inline_search::search_path_present(&item.path));
+    if results.len() == before {
+        return;
+    }
+    let labels: Vec<_> = results.iter().map(|item| item.name.clone()).collect();
+    drop(results);
+    let labels: Vec<_> = labels.iter().map(String::as_str).collect();
+    column
+        .search_model
+        .splice(0, column.search_model.n_items(), &labels);
+    column.filtered_model.items_changed(
+        0,
+        column.search_model.n_items(),
+        column.search_model.n_items(),
+    );
+}
+
 pub(super) fn set_filter_placeholder(column: &ColumnView, count: usize) {
     let noun = if count == 1 { "item" } else { "items" };
     column
@@ -168,13 +192,39 @@ pub(super) fn scroll_column_to(column: &ColumnView, position: u32) {
     scroll_collection_when_allocated(column.list.upcast_ref(), position);
 }
 
-pub(super) fn set_column_selection(column: &ColumnView, position: u32) {
-    column.syncing_selection.set(true);
-    column.selection.unselect_all();
-    if position != gtk::INVALID_LIST_POSITION {
-        column.selection.select_item(position, true);
-    }
-    column.syncing_selection.set(false);
+pub(super) fn restore_column_cursor(column: &ColumnView, position: u32) {
+    let list = column.list.downgrade();
+    let rows = column.bound_rows.clone();
+    glib::idle_add_local_once(move || {
+        let Some(list) = list.upgrade() else { return };
+        let frames = Cell::new(0u8);
+        list.add_tick_callback(move |list, _| {
+            let focused = list.root().and_then(|root| root.focus());
+            if !focused
+                .as_ref()
+                .is_some_and(|focused| focused == list || list.is_ancestor(focused))
+            {
+                return glib::ControlFlow::Break;
+            }
+            let cursor = rows.borrow().iter().find_map(|bound| {
+                let item = bound.item.upgrade()?;
+                (item.position() == position)
+                    .then(|| bound.row.upgrade()?.parent())
+                    .flatten()
+                    .filter(|cursor| cursor.is_mapped())
+            });
+            if let Some(cursor) = cursor {
+                cursor.grab_focus();
+                return glib::ControlFlow::Break;
+            }
+            frames.set(frames.get().saturating_add(1));
+            if frames.get() >= 8 {
+                glib::ControlFlow::Break
+            } else {
+                glib::ControlFlow::Continue
+            }
+        });
+    });
 }
 
 pub(super) fn set_column_selections(column: &ColumnView, positions: &[u32]) {
@@ -231,7 +281,7 @@ pub(super) fn is_column_background(surface: &gtk::Widget, picked: &gtk::Widget) 
     false
 }
 
-fn should_preserve_drag_selection(clicked_selected: bool, selected_count: u64) -> bool {
+pub(crate) fn should_preserve_drag_selection(clicked_selected: bool, selected_count: u64) -> bool {
     clicked_selected && selected_count > 1
 }
 
@@ -519,8 +569,10 @@ impl ViewState {
         header.add_css_class("column-header");
         let heading_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         heading_box.set_hexpand(true);
+        heading_box.set_valign(gtk::Align::Center);
         let heading = gtk::Label::new(Some(&location.display_name()));
         heading.set_xalign(0.0);
+        heading.set_valign(gtk::Align::Center);
         heading.set_tooltip_text(Some(&location.display_path()));
         let truncated_hint = crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
         truncated_hint.set_tooltip_text(Some(
@@ -530,6 +582,7 @@ impl ViewState {
         heading_box.append(&heading);
         heading_box.append(&truncated_hint);
         let spinner = gtk::Spinner::new();
+        spinner.set_valign(gtk::Align::Center);
         spinner.set_visible(false);
         header.append(&heading_box);
         header.append(&spinner);
@@ -568,7 +621,7 @@ impl ViewState {
         filter_button.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::FUNNEL,
         )));
-        filter_button.add_css_class("column-header-action");
+        crate::ui::controls::pane_header_action(&filter_button);
         let shown_filter = filter_revealer.clone();
         let focused_filter = filter_entry.clone();
         filter_button.connect_toggled(move |button| {
@@ -585,7 +638,7 @@ impl ViewState {
                 .tooltip_text("Close this pane")
                 .build();
             close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
-            close.add_css_class("column-header-action");
+            crate::ui::controls::pane_header_action(&close);
             let weak_browser = Rc::downgrade(&self.browser);
             close.connect_clicked(move |_| {
                 if let Some(browser) = weak_browser.upgrade() {
@@ -596,6 +649,7 @@ impl ViewState {
         }
         // Homogeneous pages keep column geometry stable as the action target changes.
         let header_actions_stack = gtk::Stack::new();
+        header_actions_stack.set_valign(gtk::Align::Center);
         header_actions_stack.add_named(&header_actions, Some("actions"));
         header_actions_stack.add_named(
             &gtk::Box::new(gtk::Orientation::Horizontal, 0),
@@ -704,6 +758,8 @@ impl ViewState {
         let search_handle_for_changed = search_handle.clone();
         let search_gen_for_changed = search_generation.clone();
         let search_active_for_changed = recursive_search_active.clone();
+        let selection_for_search = selection.clone();
+        let syncing_for_search = syncing_selection.clone();
         let weak_filter_entry = filter_entry.downgrade();
         bind_filter_query(&filter_entry, move |text, recursive, restart| {
             if restart {
@@ -722,7 +778,7 @@ impl ViewState {
                     &filtered_model_for_search,
                     &filter,
                     &filter_query,
-                    text.to_lowercase(),
+                    fold_for_search(&text),
                 );
                 deactivate_recursive_search(
                     &search_active_for_changed,
@@ -733,7 +789,7 @@ impl ViewState {
                 );
                 return;
             }
-            *filter_query.borrow_mut() = text.to_lowercase();
+            *filter_query.borrow_mut() = fold_for_search(&text);
             search_active_for_changed.set(true);
             let weak_entry = weak_filter_entry.clone();
             let weak_state = weak_state_for_search.clone();
@@ -742,6 +798,8 @@ impl ViewState {
             let results = search_results_for_changed.clone();
             let handle = search_handle_for_changed.clone();
             let search_gen = search_gen_for_changed.clone();
+            let selection_for_poll = selection_for_search.clone();
+            let syncing_for_poll = syncing_for_search.clone();
             if handle.borrow().is_none() {
                 let Some(state) = weak_state.upgrade() else {
                     return;
@@ -766,9 +824,10 @@ impl ViewState {
                 filtered.set_model(Some(&sm));
                 let weak_entry = weak_entry.clone();
                 let weak_sm = sm.downgrade();
-                let weak_filtered = filtered.downgrade();
                 let results = results.clone();
                 let gen_check = search_gen.clone();
+                let selection_for_poll = selection_for_poll.clone();
+                let syncing_for_poll = syncing_for_poll.clone();
                 let _poll = glib::timeout_add_local(Duration::from_millis(16), move || {
                     if gen_check.get() != poll_gen {
                         return glib::ControlFlow::Break;
@@ -783,7 +842,9 @@ impl ViewState {
                             }
                         }
                     }
-                    if let Some(crate::services::SearchEvent::Results { query, items, .. }) = latest
+                    if let Some(crate::services::SearchEvent::Results {
+                        query, mut items, ..
+                    }) = latest
                         && let Some(entry) = weak_entry.upgrade()
                         && !query.is_empty()
                         && query == entry.text().trim()
@@ -791,13 +852,16 @@ impl ViewState {
                         let Some(sm) = weak_sm.upgrade() else {
                             return glib::ControlFlow::Break;
                         };
-                        let labels: Vec<_> = items.iter().map(|item| item.name.clone()).collect();
-                        results.replace(items);
-                        let labels: Vec<_> = labels.iter().map(String::as_str).collect();
-                        sm.splice(0, sm.n_items(), &labels);
-                        if let Some(fm) = weak_filtered.upgrade() {
-                            fm.items_changed(0, sm.n_items(), sm.n_items());
-                        }
+                        items.retain(|item| {
+                            crate::ui::inline_search::search_path_present(&item.path)
+                        });
+                        search::update_results(
+                            &sm,
+                            &results,
+                            &selection_for_poll,
+                            &syncing_for_poll,
+                            items,
+                        );
                     }
                     glib::ControlFlow::Continue
                 });
@@ -1313,6 +1377,7 @@ impl ViewState {
 }
 
 mod rows;
+mod search;
 
 #[cfg(test)]
 mod tests;

@@ -272,6 +272,53 @@ def test_sorting_by_size_reorders_the_files(strata, root):
     )
 
 
+def test_global_search_arrows_keep_typing_in_the_query_and_enter_opens_selection(strata):
+    names = [
+        "navigation-alpha",
+        "navigation-beta",
+        "navigation-final",
+        "navigation-gamma",
+    ]
+    for name in names:
+        (strata.environment.home / name).mkdir()
+
+    strata.keyboard.press("ctrl+k")
+    field = strata.editable_field()
+    strata.keyboard.type_text("nav")
+    strata.wait(lambda: field.text == "nav", "the initial global-search query")
+    strata.wait(
+        lambda: all(
+            strata.window.find(role="label", name=name) is not None for name in names
+        ),
+        "all navigation results to be indexed",
+    )
+
+    for _ in range(3):
+        strata.keyboard.press("Down")
+    strata.keyboard.type_text("igation-final")
+    strata.wait(
+        lambda: field.text == "navigation-final",
+        "typing after arrow navigation to extend the query",
+    )
+    result = strata.wait(
+        lambda: next(
+            (
+                node
+                for node in strata.window.find_all(role="list item")
+                if node.name.endswith("/navigation-final")
+            ),
+            None,
+        ),
+        "the refined selected result",
+    )
+    strata.wait(
+        lambda: result.has_state("selected"),
+        "the refined result to be selected",
+    )
+    strata.keyboard.press("Return")
+    strata.wait_for_directory("navigation-final")
+
+
 def test_global_search_finds_a_file_under_home(strata, root):
     """Ctrl+K searches the home directory, not the browsed location."""
 

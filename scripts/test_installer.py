@@ -2,6 +2,7 @@
 
 import os
 import pathlib
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -9,6 +10,7 @@ import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 INSTALLER = ROOT / "install.sh"
+BASH = shutil.which("bash")
 
 
 def bash(script: str, *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -17,7 +19,7 @@ def bash(script: str, *, env: dict[str, str] | None = None) -> subprocess.Comple
     if env:
         test_env.update(env)
     return subprocess.run(
-        ["bash", "-c", f'source "$1"; {script}', "bash", str(INSTALLER)],
+        [BASH, "-c", f'source "$1"; {script}', "bash", str(INSTALLER)],
         check=False,
         capture_output=True,
         text=True,
@@ -37,6 +39,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("gvfs", result.stdout.splitlines())
         self.assertNotIn("gvfs-smb", result.stdout.splitlines())
+        self.assertNotIn("github-cli", result.stdout.splitlines())
 
     def test_banner_remains_readable_without_terminal_color(self) -> None:
         result = bash("show_banner", env={"NO_COLOR": "1"})
@@ -45,6 +48,56 @@ class InstallerTests(unittest.TestCase):
         self.assertIn("Navigate every layer.", result.stdout)
         self.assertIn("Interactive installer", result.stdout)
         self.assertNotIn("\033", result.stdout)
+
+    def test_provenance_verification_is_optional_without_github_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            result = bash(
+                'PATH="$EMPTY_PATH"; verify_provenance /tmp/strata.tar.gz',
+                env={"EMPTY_PATH": directory},
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("GitHub CLI is unavailable", result.stderr)
+
+    def test_provenance_verification_is_optional_without_github_authentication(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_gh = pathlib.Path(directory) / "gh"
+            fake_gh.write_text(
+                '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\nexit 1\n', encoding="utf-8"
+            )
+            fake_gh.chmod(0o755)
+            calls = pathlib.Path(directory) / "calls"
+            result = bash(
+                'PATH="$FAKE_PATH"; verify_provenance /tmp/strata.tar.gz',
+                env={"FAKE_PATH": directory, "CALLS": str(calls)},
+            )
+            recorded_calls = calls.read_text().splitlines()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(recorded_calls, ["auth status --hostname github.com"])
+        self.assertIn("GitHub CLI is not authenticated", result.stderr)
+
+    def test_authenticated_provenance_verification_remains_mandatory(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_gh = pathlib.Path(directory) / "gh"
+            fake_gh.write_text(
+                '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLS"\n'
+                'case "$*" in "auth status"*) exit 0;; *) exit "$VERIFY_RESULT";; esac\n',
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+            calls = pathlib.Path(directory) / "calls"
+            result = bash(
+                'PATH="$FAKE_PATH"; verify_provenance /tmp/strata.tar.gz',
+                env={"FAKE_PATH": directory, "CALLS": str(calls), "VERIFY_RESULT": "9"},
+            )
+            recorded_calls = calls.read_text().splitlines()
+        self.assertEqual(result.returncode, 9, result.stderr)
+        self.assertEqual(
+            recorded_calls,
+            [
+                "auth status --hostname github.com",
+                "attestation verify /tmp/strata.tar.gz --repo lgse/strata",
+            ],
+        )
 
     def test_unattended_flags_select_only_requested_integrations(self) -> None:
         result = bash(
@@ -169,6 +222,40 @@ class InstallerTests(unittest.TestCase):
             result.stdout.splitlines(),
             ["-n", "pacman", "-S", "--needed", "--noconfirm", "--", "gvfs-smb"],
         )
+
+    def test_interactive_pacman_reads_from_the_terminal_not_stdin(self) -> None:
+        source = INSTALLER.read_text(encoding="utf-8")
+        self.assertIn('sudo pacman -S --needed -- "$@" </dev/tty', source)
+
+    def test_github_cli_requirement_is_skipped_when_gh_is_already_on_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_pacman = pathlib.Path(directory) / "pacman"
+            fake_pacman.write_text('#!/bin/sh\n[ "$1" = "-Q" ] && exit 1\nexit 0\n')
+            fake_pacman.chmod(0o755)
+            result = bash(
+                "REQUIRED_PACKAGES=(github-cli); NON_INTERACTIVE=yes; "
+                "gh() { :; }; "
+                'run_pacman() { printf "run_pacman called: %s\\n" "$*" >&2; }; '
+                "install_arch_dependencies",
+                env={"PATH": directory},
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("already installed", result.stdout)
+        self.assertNotIn("run_pacman called", result.stderr)
+
+    def test_github_cli_requirement_still_installs_when_gh_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            fake_pacman = pathlib.Path(directory) / "pacman"
+            fake_pacman.write_text('#!/bin/sh\n[ "$1" = "-Q" ] && exit 1\nexit 0\n')
+            fake_pacman.chmod(0o755)
+            result = bash(
+                "REQUIRED_PACKAGES=(github-cli); NON_INTERACTIVE=yes; "
+                'run_pacman() { printf "run_pacman called: %s\\n" "$*" >&2; }; '
+                "install_arch_dependencies",
+                env={"PATH": directory},
+            )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("run_pacman called: github-cli", result.stderr)
 
     def test_unknown_installer_option_is_rejected(self) -> None:
         result = bash("parse_args --definitely-unknown")

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod search;
 mod spinner;
 
 use super::*;
