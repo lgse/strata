@@ -37,24 +37,24 @@ fn common_applications_respect_uri_capability_and_hidden_defaults() {
                 "[Default Applications]\ntext/plain=strata-path.desktop;strata-uri.desktop;\ntext/markdown=strata-path.desktop;strata-uri.desktop;\n[Added Associations]\ntext/plain=strata-path.desktop;strata-uri.desktop;\ntext/markdown=strata-path.desktop;strata-uri.desktop;\n"
             ).expect("associations");
             let types = vec!["text/plain".to_owned(), "text/markdown".to_owned()];
-            let (local, default) = common_applications(&types, false);
+            let (local_rec, _local_other, default) = common_applications(&types, false);
             assert_eq!(
                 default.expect("local default").id().as_deref(),
                 Some("strata-path.desktop")
             );
             assert!(
-                local
+                local_rec
                     .iter()
                     .any(|app| app.id().as_deref() == Some("strata-path.desktop"))
             );
-            let (remote, default) = common_applications(&types, true);
+            let (remote_rec, _remote_other, default) = common_applications(&types, true);
             assert_eq!(
                 default.expect("URI default").id().as_deref(),
                 Some("strata-uri.desktop")
             );
-            assert!(remote.iter().all(|app| app.supports_uris()));
-            assert_eq!(remote[0].id().as_deref(), Some("strata-uri.desktop"));
-            assert!(!remote[0].should_show());
+            assert!(remote_rec.iter().all(|app| app.supports_uris()));
+            assert_eq!(remote_rec[0].id().as_deref(), Some("strata-uri.desktop"));
+            assert!(!remote_rec[0].should_show());
         },
     );
 }
@@ -65,7 +65,8 @@ fn prepared_selection_rejects_changed_targets() {
     let selection = OpenWithSelection {
         locations: vec![location.clone()],
         files: vec![gio_file_for_location(&location)],
-        apps: vec![],
+        recommended_apps: vec![],
+        other_apps: vec![],
         default: None,
     };
     assert!(selection.entries_match_target(&[entry(location)]));
@@ -129,10 +130,9 @@ fn preparation_preserves_uris_and_supports_folders() {
                     std::thread::sleep(Duration::from_millis(1));
                 }
                 assert_eq!(result.borrow().is_some(), expected, "{locations:?}");
-                let available = result
-                    .borrow()
-                    .as_ref()
-                    .is_some_and(|selection| !selection.apps.is_empty());
+                let available = result.borrow().as_ref().is_some_and(|selection| {
+                    !selection.recommended_apps.is_empty() || !selection.other_apps.is_empty()
+                });
                 assert_eq!(single.is_sensitive(), available);
                 assert_eq!(multiple.is_sensitive(), available);
                 assert_eq!(

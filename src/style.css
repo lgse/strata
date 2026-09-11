@@ -509,23 +509,23 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .delete-confirmation-list scrollbar {
-  padding: 0 !important;
+  padding: 0;
 }
 
 .delete-confirmation-list scrollbar.vertical {
-  min-width: 6px !important;
+  min-width: 6px;
 }
 
 .delete-confirmation-list scrollbar.vertical > range > trough {
-  background: transparent !important;
-  border: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
 }
 
 .delete-confirmation-list scrollbar.vertical > range > trough > slider {
-  margin: 0 !important;
-  min-width: 6px !important;
+  margin: 0;
+  min-width: 6px;
 }
 
 .delete-confirmation-files {
@@ -645,22 +645,69 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .open-with-dialog {
-  min-width: 460px;
+  min-width: 480px;
+  min-height: 460px;
 }
 
-.open-with-list {
+.open-with-search {
   background: alpha(@theme_bg, 0.42);
   border: 1px solid alpha(@theme_border, 0.28);
   border-radius: 6px;
   color: @theme_text;
-  margin-top: 2px;
-  padding: 4px;
+  margin-bottom: 8px;
+  min-height: 32px;
+  padding: 3px 8px;
+}
+
+.open-with-search image.clear,
+.open-with-search image.right,
+.open-with-search button.clear,
+.open-with-search button {
+  opacity: 0;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.open-with-search:focus,
+.open-with-search:focus-within {
+  border-color: @theme_accent;
+  outline: 2px solid alpha(@theme_accent, 0.3);
+}
+
+.open-with-search placeholder {
+  color: @theme_dim_text;
+}
+
+.open-with-heading-row {
+  background: transparent;
+  padding: 8px 6px 3px;
+}
+
+.open-with-heading {
+  color: @theme_dim_text;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.open-with-scroll {
+  background: alpha(@theme_bg, 0.42);
+  border: 1px solid alpha(@theme_border, 0.28);
+  border-radius: 6px;
+}
+
+.open-with-list {
+  background: transparent;
+  color: @theme_text;
+  padding: 3px;
 }
 
 .open-with-row {
   border-radius: 5px;
-  min-height: 44px;
-  padding: 7px 9px;
+  min-height: 36px;
+  padding: 4px 8px;
+  margin-bottom: 2px;
 }
 
 .open-with-row:hover {
@@ -688,16 +735,19 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .open-with-name {
   color: @theme_text;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.open-with-description,
+.open-with-description {
+  color: @theme_dim_text;
+  font-size: 11px;
+}
+
 .open-with-empty {
   color: @theme_dim_text;
-}
-
-.open-with-empty {
-  padding: 8px 2px 0;
+  font-size: 13px;
+  padding: 24px 12px;
 }
 
 .action-dialog-cancel {
