@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import tomllib
+from pathlib import Path
+
 import pytest
-from PIL import Image
+from PIL import Image, ImageColor
 
 from harness.fixtures import FixtureTree
 from harness.modes import ALL_MODES, SINGLE_PANE_MODES
@@ -37,6 +40,30 @@ def filter_results(strata):
     strata.keyboard.type_text("match-note")
     strata.wait(lambda: len(strata.matches()) == 4, "all recursive matches")
     return field
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_filter_text_selection_uses_the_active_theme(strata, mode, tmp_path):
+    field = filter_results(strata)
+    strata.keyboard.press("ctrl+a")
+    settings = tomllib.loads(strata.environment.settings_path.read_text())
+    catalog = Path(__file__).resolve().parents[3] / "data/themes/catalog.toml"
+    themes = tomllib.loads(catalog.read_text())["themes"]
+    theme = next(theme for theme in themes if theme["id"] == settings["theme"])
+    accent = ImageColor.getrgb(theme["accent"])
+
+    def selected_text_has_theme_background():
+        bounds = field.screen_bounds()
+        capture = strata.screenshot(tmp_path / "filter-selection.png")
+        with Image.open(capture) as image:
+            pixels = image.convert("RGB").crop((
+                bounds.x + 2, bounds.y + 2,
+                bounds.x + bounds.width - 2, bounds.y + bounds.height - 2,
+            ))
+            return sum(count for count, color in pixels.getcolors(pixels.width * pixels.height)
+                       if color == accent) > 100
+
+    strata.wait(selected_text_has_theme_background, "theme-colored filter text selection")
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)

@@ -2242,6 +2242,11 @@ menubutton.column-header-action > button:active {
   padding: 0;
 }
 
+.column-filter-entry selection {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
 .column-filter:focus-within {
   border-bottom-color: @theme_accent;
   box-shadow: inset 0 -1px alpha(@theme_accent, 0.42);
