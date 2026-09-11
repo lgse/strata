@@ -5,11 +5,41 @@ use gtk::prelude::*;
 use std::cell::RefCell;
 use std::collections::HashSet;
 use std::rc::Rc;
+use std::time::{Duration, Instant};
 
-pub(super) type Completion = Rc<RefCell<Option<Box<dyn FnOnce()>>>>;
-
-pub(super) fn completion(callback: impl FnOnce() + 'static) -> Completion {
-    Rc::new(RefCell::new(Some(Box::new(callback))))
+pub(super) fn animate(
+    widget: &impl IsA<gtk::Widget>,
+    duration: Duration,
+    frame: impl Fn(Duration) + 'static,
+    on_done: impl FnOnce() + 'static,
+) {
+    let started = Instant::now();
+    let callback = Rc::new(RefCell::new(Some(on_done)));
+    let tick_id = Rc::new(RefCell::new(None));
+    let callback_for_tick = callback.clone();
+    let id_for_tick = tick_id.clone();
+    let id = widget.add_tick_callback(move |_, _| {
+        let elapsed = started.elapsed();
+        frame(elapsed);
+        if elapsed < duration {
+            return gtk::glib::ControlFlow::Continue;
+        }
+        id_for_tick.take();
+        if let Some(callback) = callback_for_tick.take() {
+            callback();
+        }
+        gtk::glib::ControlFlow::Break
+    });
+    tick_id.replace(Some(id));
+    // Hidden windows stop ticking; file operations must still complete.
+    gtk::glib::timeout_add_local_once(duration + Duration::from_millis(100), move || {
+        if let Some(id) = tick_id.take() {
+            id.remove();
+        }
+        if let Some(callback) = callback.take() {
+            callback();
+        }
+    });
 }
 
 pub(super) fn sampled_indices(length: usize, limit: usize) -> Vec<usize> {
@@ -133,6 +163,9 @@ fn find_thumbnail(widget: &gtk::Widget) -> Option<crate::ui::thumbnail::Thumbnai
     }
     None
 }
+
+#[cfg(test)]
+mod tests;
 
 fn walk_widgets(widget: &gtk::Widget, visit: &mut dyn FnMut(&gtk::Widget)) {
     visit(widget);

@@ -3205,9 +3205,8 @@ impl Browser {
         let mut batches: Vec<_> = changes.into_iter().collect();
         batches.sort_by_key(|(depth, _)| *depth);
         if prefer_refresh {
-            for (depth, _) in batches {
-                self.refresh_column(depth);
-            }
+            // Monitor batches may cover only some of the operation's source directories.
+            self.refresh_all();
             return true;
         }
 

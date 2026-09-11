@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use super::entry_animation::{
-    EntryAnimationTarget, bounds_in_overlay, collect_entry_targets, completion,
+    EntryAnimationTarget, animate, bounds_in_overlay, collect_entry_targets,
     icon_center_in_overlay, sampled_indices,
 };
 use crate::model::FileEntry;
@@ -9,7 +9,7 @@ use crate::ui::browser::entry::entry_icon;
 use crate::ui::modal::window_overlay;
 use gtk::glib;
 use gtk::prelude::*;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const TRAVEL: Duration = Duration::from_millis(420);
 const BOUNCE: Duration = Duration::from_millis(280);
@@ -162,7 +162,6 @@ fn animate_flyers(
     reversed: bool,
     on_done: impl FnOnce() + 'static,
 ) {
-    let started = Instant::now();
     let total = TRAVEL
         + flyers
             .iter()
@@ -170,42 +169,40 @@ fn animate_flyers(
             .max()
             .unwrap_or_default();
     let overlay_for_cleanup = overlay.clone();
-    let callback = completion(on_done);
-    let _tick = overlay.clone().add_tick_callback(move |_, _| {
-        let elapsed = started.elapsed();
-        for flyer in &flyers {
-            let progress = elapsed.checked_sub(flyer.delay).map_or(0.0, |elapsed| {
-                (elapsed.as_secs_f64() / TRAVEL.as_secs_f64()).clamp(0.0, 1.0)
-            });
-            let position_progress = ease_in_out_cubic(progress);
-            let x = flyer.start.0 + (flyer.end.0 - flyer.start.0) * position_progress;
-            let y = flyer.start.1 + (flyer.end.1 - flyer.start.1) * position_progress
-                - flyer.arc_height * (std::f64::consts::PI * position_progress).sin();
-            flyer.widget.set_margin_start(x.round() as i32);
-            flyer.widget.set_margin_top(y.round() as i32);
-            flyer.icon.set_opacity(if reversed {
-                ease_out_cubic(progress)
-            } else {
-                1.0 - ease_in_cubic(progress)
-            });
-            if reversed && progress >= 0.08 {
-                flyer.widget.remove_css_class("fly-to-trash-contracted");
-            } else if !reversed && progress >= 0.58 {
-                flyer.widget.add_css_class("fly-to-trash-contracted");
+    let flyers_for_cleanup = flyers.clone();
+    animate(
+        overlay,
+        total,
+        move |elapsed| {
+            for flyer in &flyers {
+                let progress = elapsed.checked_sub(flyer.delay).map_or(0.0, |elapsed| {
+                    (elapsed.as_secs_f64() / TRAVEL.as_secs_f64()).clamp(0.0, 1.0)
+                });
+                let position_progress = ease_in_out_cubic(progress);
+                let x = flyer.start.0 + (flyer.end.0 - flyer.start.0) * position_progress;
+                let y = flyer.start.1 + (flyer.end.1 - flyer.start.1) * position_progress
+                    - flyer.arc_height * (std::f64::consts::PI * position_progress).sin();
+                flyer.widget.set_margin_start(x.round() as i32);
+                flyer.widget.set_margin_top(y.round() as i32);
+                flyer.icon.set_opacity(if reversed {
+                    ease_out_cubic(progress)
+                } else {
+                    1.0 - ease_in_cubic(progress)
+                });
+                if reversed && progress >= 0.08 {
+                    flyer.widget.remove_css_class("fly-to-trash-contracted");
+                } else if !reversed && progress >= 0.58 {
+                    flyer.widget.add_css_class("fly-to-trash-contracted");
+                }
             }
-        }
-
-        if elapsed < total {
-            return glib::ControlFlow::Continue;
-        }
-        for flyer in &flyers {
-            overlay_for_cleanup.remove_overlay(&flyer.widget);
-        }
-        if let Some(callback) = callback.borrow_mut().take() {
-            callback();
-        }
-        glib::ControlFlow::Break
-    });
+        },
+        move || {
+            for flyer in &flyers_for_cleanup {
+                overlay_for_cleanup.remove_overlay(&flyer.widget);
+            }
+            on_done();
+        },
+    );
 }
 
 fn impact_trash(button: &gtk::Button) {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use super::entry_animation::{bounds_in_overlay, collect_entry_targets, completion};
+use super::entry_animation::{animate, bounds_in_overlay, collect_entry_targets};
 use crate::model::FileEntry;
 use crate::ui::modal::window_overlay;
 use gtk::glib;
@@ -8,7 +8,7 @@ use gtk::gsk::prelude::IsRenderNode;
 use gtk::prelude::*;
 use gtk::subclass::prelude::*;
 use std::cell::{Cell, RefCell};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 const DURATION: Duration = Duration::from_millis(560);
 const MIN_FRAGMENT_BUDGET: usize = 80;
@@ -162,30 +162,26 @@ pub(in crate::ui) fn dissolve_delete(
         row.set_opacity(0.0);
     }
 
-    let started = Instant::now();
     let canvas_for_tick = canvas.clone();
     let overlay_for_cleanup = overlay.clone();
     let rows_for_cleanup = source_rows.clone();
-    let callback = completion(move || {
-        on_done(Box::new(move || {
-            for (row, opacity) in rows_for_cleanup {
-                row.set_opacity(opacity);
-            }
-        }));
-    });
-    let _tick = canvas.clone().add_tick_callback(move |_, _| {
-        let progress = (started.elapsed().as_secs_f64() / DURATION.as_secs_f64()).clamp(0.0, 1.0);
-        canvas_for_tick.set_progress(progress);
-        if progress < 1.0 {
-            return glib::ControlFlow::Continue;
-        }
-
-        overlay_for_cleanup.remove_overlay(&canvas_for_tick);
-        if let Some(callback) = callback.borrow_mut().take() {
-            callback();
-        }
-        glib::ControlFlow::Break
-    });
+    let canvas_for_cleanup = canvas.clone();
+    animate(
+        &canvas,
+        DURATION,
+        move |elapsed| {
+            let progress = (elapsed.as_secs_f64() / DURATION.as_secs_f64()).clamp(0.0, 1.0);
+            canvas_for_tick.set_progress(progress);
+        },
+        move || {
+            overlay_for_cleanup.remove_overlay(&canvas_for_cleanup);
+            on_done(Box::new(move || {
+                for (row, opacity) in rows_for_cleanup {
+                    row.set_opacity(opacity);
+                }
+            }));
+        },
+    );
 }
 
 fn snapshot_row(row: &gtk::Widget, width: f32, height: f32) -> Option<gtk::gsk::RenderNode> {

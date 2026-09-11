@@ -187,7 +187,6 @@ pub(super) fn dismiss_modal_layer_then(
     on_done: impl FnOnce() + 'static,
 ) {
     if layer.has_css_class("dismissing") {
-        on_done();
         return;
     }
     layer.add_css_class("dismissing");
