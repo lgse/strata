@@ -176,12 +176,7 @@ class Pointer:
         at: tuple[int, int] | None = None,
         modifiers: Sequence[str],
     ) -> None:
-        """Click after releasing modifiers between button-down and button-up.
-
-        `click(..., modifiers=)` keeps Shift/Ctrl held through mouse-up. GTK's
-        native list selection treats that unmodified release as a plain click
-        unless the press already claimed the sequence.
-        """
+        """GTK treats an unmodified release as a plain click unless press claimed it."""
 
         x, y = self._target(node, at)
         self.move_to(x, y)
