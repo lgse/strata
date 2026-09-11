@@ -33,6 +33,170 @@ fn deleted_trash_entries_refresh_the_trash_root() {
 }
 
 #[test]
+fn deletion_monitor_changes_publish_once_after_the_terminal_event() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let watched = Location::local("/fixture");
+    let first = batch_entry("first");
+    let second = batch_entry("second");
+    {
+        let mut state = browser.state.borrow_mut();
+        state.navigate(watched.clone(), RequestId(1));
+        let _ = state.apply_batch(RequestId(1), vec![first.clone(), second.clone()]);
+    }
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = OperationRequestId(9);
+    browser.current_operation.set(Some(request_id));
+    browser.deletion_operation.set(true);
+    let complete = browser.operation_callback(request_id, false, HashSet::new());
+
+    for entry in [&first, &second] {
+        browser.handle_directory_change(
+            0,
+            &watched,
+            DirectoryChange::Remove(entry.location.clone()),
+        );
+    }
+    complete(OperationEvent::DeleteProgress {
+        request_id,
+        completed: 1,
+        total: 2,
+        deleted_location: Some(first.location.clone()),
+    });
+
+    assert_eq!(
+        browser.column_snapshot(0).map(|column| column.count),
+        Some(2)
+    );
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::EntriesSpliced { .. }))
+    );
+
+    complete(OperationEvent::Deleted {
+        request_id,
+        locations: vec![first.location, second.location],
+    });
+
+    assert_eq!(
+        browser.column_snapshot(0).map(|column| column.count),
+        Some(0)
+    );
+    assert_eq!(
+        events
+            .borrow()
+            .iter()
+            .filter(|event| matches!(event, BrowserEvent::EntriesSpliced { .. }))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn large_deletion_refreshes_sources_missing_from_the_monitor_batch() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let watched = Location::local("/fixture");
+    let entries: Vec<_> = (0..65)
+        .map(|index| batch_entry(&index.to_string()))
+        .collect();
+    {
+        let mut state = browser.state.borrow_mut();
+        state.navigate(watched.clone(), RequestId(1));
+        let _ = state.apply_batch(RequestId(1), entries.clone());
+    }
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = OperationRequestId(11);
+    browser.current_operation.set(Some(request_id));
+    browser.deletion_operation.set(true);
+    let complete = browser.operation_callback(request_id, false, HashSet::new());
+    browser.handle_directory_change(
+        1,
+        &Location::local("/previous/child"),
+        DirectoryChange::Rescan,
+    );
+
+    complete(OperationEvent::Deleted {
+        request_id,
+        locations: entries.into_iter().map(|entry| entry.location).collect(),
+    });
+
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::ColumnReloaded { depth: 0 }))
+    );
+}
+
+#[test]
+fn restoration_monitor_changes_publish_once_after_the_terminal_event() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let watched = Location::uri("trash:///");
+    let first = trash_entry("first");
+    let second = trash_entry("second");
+    {
+        let mut state = browser.state.borrow_mut();
+        state.navigate(watched.clone(), RequestId(1));
+        let _ = state.apply_batch(RequestId(1), vec![first.clone(), second.clone()]);
+    }
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    let request_id = OperationRequestId(10);
+    browser.current_operation.set(Some(request_id));
+    browser.restoration_operation.set(true);
+    let complete = browser.operation_callback(request_id, false, HashSet::new());
+
+    for entry in [&first, &second] {
+        browser.handle_directory_change(
+            0,
+            &watched,
+            DirectoryChange::Remove(entry.location.clone()),
+        );
+    }
+    complete(OperationEvent::RestoreProgress {
+        request_id,
+        completed: 1,
+        total: 2,
+        restored_location: Some(first.location.clone()),
+    });
+
+    assert_eq!(
+        browser.column_snapshot(0).map(|column| column.count),
+        Some(2)
+    );
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::EntriesSpliced { .. }))
+    );
+
+    complete(OperationEvent::Restored {
+        request_id,
+        locations: vec![first.location, second.location],
+    });
+
+    assert_eq!(
+        browser.column_snapshot(0).map(|column| column.count),
+        Some(0)
+    );
+    assert_eq!(
+        events
+            .borrow()
+            .iter()
+            .filter(|event| matches!(event, BrowserEvent::EntriesSpliced { .. }))
+            .count(),
+        1
+    );
+}
+
+#[test]
 fn invalid_new_folder_names_are_rejected_before_an_operation_starts() {
     for name in [
         "../escaped",
@@ -2950,6 +3114,13 @@ fn batch_entry(name: &str) -> FileEntry {
         modified_unix_seconds: MetadataValue::Unknown,
         mode: MetadataValue::Unknown,
         is_hidden: false,
+    }
+}
+
+fn trash_entry(name: &str) -> FileEntry {
+    FileEntry {
+        location: Location::uri(format!("trash:///{name}")),
+        ..batch_entry(name)
     }
 }
 

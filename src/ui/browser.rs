@@ -32,8 +32,11 @@ mod context_menu;
 mod customization;
 mod desktop;
 mod destination;
+mod dissolve_delete;
 mod entry;
+mod entry_animation;
 mod events;
+mod fly_to_trash;
 mod inline_edit;
 mod location;
 mod pane_header;
@@ -184,12 +187,14 @@ pub(super) struct ViewState {
     /// failed only because the location doesn't support Trash can offer a
     /// permanent-delete retry for exactly those entries.
     pending_delete_entries: RefCell<Vec<FileEntry>>,
+    pending_delete_animation_cleanup: RefCell<Option<dissolve_delete::DissolveCleanup>>,
     pending_navigate: RefCell<Option<Location>>,
     pending_location_credentials: RefCell<Option<MountCredentials>>,
     pending_trash_lookup: RefCell<Option<LoadHandle>>,
     pending_empty_trash: RefCell<Option<LoadHandle>>,
     trash_loading: RefCell<Option<TrashLoadingView>>,
     auto_refresh: RefCell<Option<glib::SourceId>>,
+    trash_button: RefCell<Option<gtk::Button>>,
     browser: Rc<Browser>,
 }
 
@@ -492,12 +497,14 @@ impl BrowserView {
             pending_extract_retry: RefCell::new(None),
             pending_archive_destination: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
+            pending_delete_animation_cleanup: RefCell::new(None),
             pending_navigate: RefCell::new(None),
             pending_location_credentials: RefCell::new(None),
             pending_trash_lookup: RefCell::new(None),
             pending_empty_trash: RefCell::new(None),
             trash_loading: RefCell::new(None),
             auto_refresh: RefCell::new(None),
+            trash_button: RefCell::new(None),
             browser,
         });
 
@@ -656,6 +663,21 @@ impl BrowserView {
         WeakBrowserView(Rc::downgrade(&self.state))
     }
 
+    pub(super) fn can_trash_file_drop(sources: &[Location]) -> bool {
+        !sources.is_empty()
+            && sources
+                .iter()
+                .all(|source| source.parent().is_some() && !paths::is_trash_location(source))
+    }
+
+    pub(super) fn trash_file_drop(&self, sources: Vec<Location>) -> bool {
+        if !Self::can_trash_file_drop(&sources) {
+            return false;
+        }
+        self.state.trash_dropped_locations(sources);
+        true
+    }
+
     pub fn commit_file_drop(
         &self,
         destination: Location,
@@ -693,6 +715,10 @@ impl BrowserView {
 
     pub fn set_operation_provider(&self, provider: Rc<dyn OperationProvider>) {
         self.state.browser.set_operation_provider(provider);
+    }
+
+    pub fn set_trash_button(&self, button: gtk::Button) {
+        self.state.trash_button.replace(Some(button));
     }
 
     pub fn begin_rename(&self) -> bool {
@@ -1653,6 +1679,11 @@ impl ViewState {
             .map(|(depth, position, _)| (depth, position));
         for (depth, column) in self.columns.borrow().iter().enumerate() {
             let show_actions = destination == Some(depth);
+            if show_actions {
+                column.shell.add_css_class("active-column");
+            } else {
+                column.shell.remove_css_class("active-column");
+            }
             if !show_actions
                 && self
                     .overlay
