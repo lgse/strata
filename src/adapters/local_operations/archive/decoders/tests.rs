@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 
 use super::super::fixtures::{
+    RAR_COMMENT_HPW_FIXTURE, RAR_ENCRYPTED_FIXTURE, RAR_UNICODE_FIXTURE, RAR_VERSION_FIXTURE,
     always_cancelled, completed_extract, extract_zip, never_cancelled, patch_zip_uncompressed_size,
     write_7z, write_7z_entries, write_compression_fixture, write_tar, write_tar_entries, write_zip,
 };
 use super::{
-    ArchiveError, ArchiveOutcome, extract_7z_from_reader, extract_tar, extract_zip_from_archive,
+    ArchiveError, ArchiveOutcome, extract_7z_from_reader, extract_rar, extract_tar,
+    extract_zip_from_archive,
 };
 use crate::{model::Location, services::ArchiveFormat};
 use std::{
@@ -49,6 +51,7 @@ fn decode_fixture(
             progress,
             &cancelled,
         ),
+        ArchiveFormat::Rar => extract_rar(archive, destination, password, progress, &cancelled),
     }
 }
 
@@ -431,6 +434,7 @@ fn extraction_rejects_final_and_intermediate_symlinks() -> Result<(), Box<dyn Er
                 ArchiveFormat::Tar | ArchiveFormat::TarGz => {
                     write_tar(&archive, name, b"escaped", format == ArchiveFormat::TarGz)?;
                 }
+                ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
             }
             assert!(
                 decode_fixture(
@@ -782,6 +786,7 @@ fn pending_unsafe_names_are_omitted_by_every_decoder() -> Result<(), Box<dyn Err
                 b"contents",
                 format == ArchiveFormat::TarGz,
             )?,
+            ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
         }
         let destination = tempfile::tempdir()?;
         let cancelled = always_cancelled();
@@ -811,6 +816,7 @@ fn pending_unsafe_names_are_omitted_by_every_decoder() -> Result<(), Box<dyn Err
                 &progress,
                 &cancelled,
             )?,
+            ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
         };
         assert!(
             matches!(outcome, ArchiveOutcome::Cancelled { completed, failed, not_attempted }
@@ -929,6 +935,7 @@ fn highly_compressible_archives_extract_in_every_format() -> Result<(), Box<dyn 
             ArchiveFormat::Tar | ArchiveFormat::TarGz => {
                 write_tar(&archive, "zeros.bin", &zeros, true)?;
             }
+            ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
         }
         let ratio = SIZE / fs::metadata(&archive)?.len();
         assert!(
@@ -1389,4 +1396,236 @@ fn tar_extraction_skips_pax_global_headers() -> Result<(), Box<dyn Error>> {
         assert_eq!(fs::read_dir(&destination)?.count(), 1);
     }
     Ok(())
+}
+
+#[test]
+fn rar_extracts_simple_archive() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("version.rar");
+    fs::write(&archive, RAR_VERSION_FIXTURE)?;
+    let destination = root.path().join("destination");
+    fs::create_dir_all(&destination)?;
+    let progress = Arc::new(AtomicUsize::new(0));
+
+    assert_eq!(
+        completed_extract(extract_rar(
+            &archive,
+            &destination,
+            None,
+            &progress,
+            &never_cancelled(),
+        )?)?,
+        Some("VERSION".to_owned())
+    );
+    assert_eq!(progress.load(Ordering::Relaxed), 1);
+    assert_eq!(fs::read(destination.join("VERSION"))?, b"unrar-0.4.0");
+    Ok(())
+}
+
+#[test]
+fn rar_extracts_password_protected_archive() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("encrypted.rar");
+    fs::write(&archive, RAR_ENCRYPTED_FIXTURE)?;
+
+    // 1. Without password: fails with password required
+    let dest_no_pw = root.path().join("dest_no_pw");
+    fs::create_dir_all(&dest_no_pw)?;
+    let Err(err) = extract_rar(
+        &archive,
+        &dest_no_pw,
+        None,
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    ) else {
+        panic!("extracting password-protected archive without password must fail");
+    };
+    assert_eq!(
+        err.to_string(),
+        "A password is required to extract this archive."
+    );
+
+    // 2. With wrong password: fails with bad password
+    let dest_wrong_pw = root.path().join("dest_wrong_pw");
+    fs::create_dir_all(&dest_wrong_pw)?;
+    let Err(err) = extract_rar(
+        &archive,
+        &dest_wrong_pw,
+        Some("wrong-password"),
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    ) else {
+        panic!("extracting password-protected archive with wrong password must fail");
+    };
+    assert_eq!(err.to_string(), super::MAYBE_BAD_PASSWORD);
+
+    // 3. With correct password: succeeds
+    let dest_correct = root.path().join("dest_correct");
+    fs::create_dir_all(&dest_correct)?;
+    let progress = Arc::new(AtomicUsize::new(0));
+    assert_eq!(
+        completed_extract(extract_rar(
+            &archive,
+            &dest_correct,
+            Some("unrar"),
+            &progress,
+            &never_cancelled(),
+        )?)?,
+        Some(".gitignore".to_owned())
+    );
+    assert_eq!(progress.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        fs::read(dest_correct.join(".gitignore"))?,
+        b"target\nCargo.lock\n"
+    );
+    Ok(())
+}
+
+#[test]
+fn rar_extracts_encrypted_headers_archive() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("comment-hpw-password.rar");
+    fs::write(&archive, RAR_COMMENT_HPW_FIXTURE)?;
+
+    // 1. Without password: fails with password required
+    let dest_no_pw = root.path().join("dest_no_pw");
+    fs::create_dir_all(&dest_no_pw)?;
+    let Err(err) = extract_rar(
+        &archive,
+        &dest_no_pw,
+        None,
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    ) else {
+        panic!("extracting encrypted-headers archive without password must fail");
+    };
+    assert_eq!(
+        err.to_string(),
+        "A password is required to extract this archive."
+    );
+
+    // 2. With wrong password: fails with bad password
+    let dest_wrong_pw = root.path().join("dest_wrong_pw");
+    fs::create_dir_all(&dest_wrong_pw)?;
+    let Err(err) = extract_rar(
+        &archive,
+        &dest_wrong_pw,
+        Some("wrong-password"),
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    ) else {
+        panic!("extracting encrypted-headers archive with wrong password must fail");
+    };
+    assert_eq!(err.to_string(), super::MAYBE_BAD_PASSWORD);
+
+    // 3. With correct password: succeeds
+    let dest_correct = root.path().join("dest_correct");
+    fs::create_dir_all(&dest_correct)?;
+    let progress = Arc::new(AtomicUsize::new(0));
+    assert_eq!(
+        completed_extract(extract_rar(
+            &archive,
+            &dest_correct,
+            Some("password"),
+            &progress,
+            &never_cancelled(),
+        )?)?,
+        Some(".gitignore".to_owned())
+    );
+    assert_eq!(progress.load(Ordering::Relaxed), 1);
+    assert_eq!(
+        fs::read(dest_correct.join(".gitignore"))?,
+        b"target\nCargo.lock\n"
+    );
+    Ok(())
+}
+
+#[test]
+fn rar_extracts_unicode_archive() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("unicode.rar");
+    fs::write(&archive, RAR_UNICODE_FIXTURE)?;
+    let destination = root.path().join("destination");
+    fs::create_dir_all(&destination)?;
+    let progress = Arc::new(AtomicUsize::new(0));
+
+    completed_extract(extract_rar(
+        &archive,
+        &destination,
+        None,
+        &progress,
+        &never_cancelled(),
+    )?)?;
+    assert!(progress.load(Ordering::Relaxed) >= 1);
+    Ok(())
+}
+
+#[test]
+fn rar_corrupt_archive_fails() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("corrupt.rar");
+    fs::write(&archive, b"Rar!\x1a\x07\x00corrupt garbage data")?;
+    let destination = root.path().join("destination");
+    fs::create_dir_all(&destination)?;
+
+    let Err(err) = extract_rar(
+        &archive,
+        &destination,
+        None,
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    ) else {
+        panic!("corrupt archive extraction must fail");
+    };
+    assert_eq!(err.to_string(), super::INVALID_ARCHIVE);
+    Ok(())
+}
+
+#[test]
+fn rar_cancellation_stops_extraction() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("version.rar");
+    fs::write(&archive, RAR_VERSION_FIXTURE)?;
+    let destination = root.path().join("destination");
+    fs::create_dir_all(&destination)?;
+    let progress = Arc::new(AtomicUsize::new(0));
+
+    let outcome = extract_rar(&archive, &destination, None, &progress, &always_cancelled())?;
+    assert!(matches!(outcome, ArchiveOutcome::Cancelled { .. }));
+    Ok(())
+}
+
+#[test]
+fn rar_decode_error_mapping() {
+    use unrar::error::{Code, UnrarError, When};
+
+    let make_err = |code| UnrarError {
+        code,
+        when: When::Process,
+    };
+
+    assert_eq!(
+        super::unrar_decode_error(make_err(Code::MissingPassword), false).to_string(),
+        "A password is required to extract this archive."
+    );
+    assert_eq!(
+        super::unrar_decode_error(make_err(Code::BadPassword), true).to_string(),
+        super::MAYBE_BAD_PASSWORD
+    );
+    assert_eq!(
+        super::unrar_decode_error(make_err(Code::BadData), true).to_string(),
+        super::MAYBE_BAD_PASSWORD
+    );
+    assert_eq!(
+        super::unrar_decode_error(make_err(Code::BadData), false).to_string(),
+        super::INVALID_ARCHIVE
+    );
+    assert_eq!(
+        super::unrar_decode_error(make_err(Code::BadArchive), false).to_string(),
+        super::INVALID_ARCHIVE
+    );
+    assert_eq!(
+        super::unrar_decode_error(make_err(Code::UnknownFormat), false).to_string(),
+        super::INVALID_ARCHIVE
+    );
 }

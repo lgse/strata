@@ -29,6 +29,7 @@ pub(super) enum MemberContent<'a> {
 }
 
 /// Result of an extract that may stop after writing some members.
+#[derive(Debug)]
 pub(super) enum ArchiveOutcome<T> {
     Completed(T),
     Cancelled {

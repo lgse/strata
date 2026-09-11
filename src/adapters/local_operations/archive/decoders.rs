@@ -59,6 +59,21 @@ fn sevenz_decode_error(error: sevenz_rust2::Error) -> ArchiveError {
     }
 }
 
+fn unrar_decode_error(error: unrar::error::UnrarError, password_supplied: bool) -> ArchiveError {
+    use unrar::error::Code;
+    match error.code {
+        Code::MissingPassword => archive_failed("A password is required to extract this archive."),
+        Code::BadPassword => archive_failed(MAYBE_BAD_PASSWORD),
+        Code::BadData if password_supplied => archive_failed(MAYBE_BAD_PASSWORD),
+        Code::BadArchive | Code::UnknownFormat | Code::BadData => archive_failed(INVALID_ARCHIVE),
+        Code::EOpen | Code::ERead | Code::EClose => archive_failed(archive_read_error(
+            std::io::Error::other(error.to_string()),
+            password_supplied,
+        )),
+        _ => archive_failed(error),
+    }
+}
+
 fn archive_read_error(error: std::io::Error, password_supplied: bool) -> std::io::Error {
     use std::io::ErrorKind;
     let checksum_failed = matches!(
@@ -320,4 +335,55 @@ pub(super) fn extract_7z_from_reader(
             .map(|(_, entry)| entry.name.clone())
             .collect()
     })
+}
+
+pub(super) fn extract_rar(
+    archive_path: &Path,
+    dest_dir: &Path,
+    password: Option<&str>,
+    progress: &Arc<AtomicUsize>,
+    cancelled: &AtomicBool,
+) -> Result<ArchiveOutcome<Option<String>>, ArchiveError> {
+    let mut session = ExtractionSession::open(dest_dir, progress, cancelled)?;
+    let password_supplied = password.is_some();
+    let mut remaining = Vec::new();
+    let result = (|| -> Result<(), ArchiveError> {
+        let mut open_archive = match password {
+            Some(pw) => unrar::Archive::with_password(archive_path, pw),
+            None => unrar::Archive::new(archive_path),
+        }
+        .open_for_processing()
+        .map_err(|e| unrar_decode_error(e, password_supplied))?;
+
+        while let Some(file_archive) = open_archive
+            .read_header()
+            .map_err(|e| unrar_decode_error(e, password_supplied))?
+        {
+            if let Err(error) = session.check_cancelled() {
+                remaining.push(file_archive.entry().filename.to_string_lossy().into_owned());
+                return Err(error);
+            }
+            let header = file_archive.entry();
+            let name = header.filename.to_string_lossy().into_owned();
+            let is_dir = header.is_directory();
+            let unpacked_size = header.unpacked_size;
+
+            if is_dir {
+                session.extract_member(&name, MemberContent::Directory)?;
+                open_archive = file_archive
+                    .skip()
+                    .map_err(|e| unrar_decode_error(e, password_supplied))?;
+            } else {
+                let (bytes, next_archive) = file_archive
+                    .read()
+                    .map_err(|e| unrar_decode_error(e, password_supplied))?;
+                open_archive = next_archive;
+                let mut cursor = std::io::Cursor::new(bytes);
+                session
+                    .extract_member(&name, MemberContent::File(&mut cursor, Some(unpacked_size)))?;
+            }
+        }
+        Ok(())
+    })();
+    session.finish(result, || remaining)
 }

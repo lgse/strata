@@ -25,7 +25,7 @@ use crate::{
 use compression::{
     compress_7z, compress_tar, compress_zip, count_archive_files, write_staged_archive,
 };
-use decoders::{extract_7z_from_reader, extract_tar, extract_zip_from_archive};
+use decoders::{extract_7z_from_reader, extract_rar, extract_tar, extract_zip_from_archive};
 use extraction::ArchiveOutcome;
 use gtk::{gio, glib};
 use std::{
@@ -139,6 +139,9 @@ pub(super) fn compress(request: CompressRequest, emit: Rc<dyn Fn(OperationEvent)
                     ArchiveFormat::Tar => {
                         compress_tar(file, &entries, false, &work_progress, &work_cancelled)
                     }
+                    ArchiveFormat::Rar => Err(ArchiveError::Failed(
+                        "RAR compression is not supported".to_owned(),
+                    )),
                 }
             },
         )
@@ -263,6 +266,13 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
                 &archive_path,
                 &dest_dir,
                 false,
+                &work_progress,
+                &work_cancelled,
+            ),
+            Some(ArchiveFormat::Rar) => extract_rar(
+                &archive_path,
+                &dest_dir,
+                password.as_deref(),
                 &work_progress,
                 &work_cancelled,
             ),

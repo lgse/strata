@@ -42,6 +42,7 @@ ureq = { version = "3.4", features = ["json"] }
 zbus = { version = "5.19.0", default-features = false, features = ["async-io"] }
 zstd = "0.13.3"
 zip = "8.6.0"
+unrar = "0.5.8"
 
 [build-dependencies]
 glib-build-tools = "0.22.8"
