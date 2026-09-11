@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::model::{FileEntry, Location};
+use crate::services::fold_for_search;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::clipboard::install_directory_drop_target;
 use crate::ui::browser::collection::{
@@ -531,8 +532,10 @@ impl ViewState {
         header.add_css_class("column-header");
         let heading_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         heading_box.set_hexpand(true);
+        heading_box.set_valign(gtk::Align::Center);
         let heading = gtk::Label::new(Some(&location.display_name()));
         heading.set_xalign(0.0);
+        heading.set_valign(gtk::Align::Center);
         heading.set_tooltip_text(Some(&location.display_path()));
         let truncated_hint = crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
         truncated_hint.set_tooltip_text(Some(
@@ -542,6 +545,7 @@ impl ViewState {
         heading_box.append(&heading);
         heading_box.append(&truncated_hint);
         let spinner = gtk::Spinner::new();
+        spinner.set_valign(gtk::Align::Center);
         spinner.set_visible(false);
         header.append(&heading_box);
         header.append(&spinner);
@@ -580,7 +584,7 @@ impl ViewState {
         filter_button.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::FUNNEL,
         )));
-        filter_button.add_css_class("column-header-action");
+        crate::ui::controls::pane_header_action(&filter_button);
         let shown_filter = filter_revealer.clone();
         let focused_filter = filter_entry.clone();
         filter_button.connect_toggled(move |button| {
@@ -597,7 +601,7 @@ impl ViewState {
                 .tooltip_text("Close this pane")
                 .build();
             close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
-            close.add_css_class("column-header-action");
+            crate::ui::controls::pane_header_action(&close);
             let weak_browser = Rc::downgrade(&self.browser);
             close.connect_clicked(move |_| {
                 if let Some(browser) = weak_browser.upgrade() {
@@ -608,6 +612,7 @@ impl ViewState {
         }
         // Homogeneous pages keep column geometry stable as the action target changes.
         let header_actions_stack = gtk::Stack::new();
+        header_actions_stack.set_valign(gtk::Align::Center);
         header_actions_stack.add_named(&header_actions, Some("actions"));
         header_actions_stack.add_named(
             &gtk::Box::new(gtk::Orientation::Horizontal, 0),
@@ -734,7 +739,7 @@ impl ViewState {
                     &filtered_model_for_search,
                     &filter,
                     &filter_query,
-                    text.to_lowercase(),
+                    fold_for_search(&text),
                 );
                 deactivate_recursive_search(
                     &search_active_for_changed,
@@ -745,7 +750,7 @@ impl ViewState {
                 );
                 return;
             }
-            *filter_query.borrow_mut() = text.to_lowercase();
+            *filter_query.borrow_mut() = fold_for_search(&text);
             search_active_for_changed.set(true);
             let weak_entry = weak_filter_entry.clone();
             let weak_state = weak_state_for_search.clone();

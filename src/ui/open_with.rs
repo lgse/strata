@@ -19,6 +19,17 @@ pub(super) fn compatible_apps(content_type: &str, requires_uris: bool) -> Vec<gi
     )
 }
 
+// Non-native GVfs files can still provide FUSE paths for %f/%F handlers.
+pub(super) fn requires_uri_handlers(files: &[gio::File]) -> bool {
+    files
+        .iter()
+        .any(|file| path_requires_uri_handlers(file.path().as_deref()))
+}
+
+fn path_requires_uri_handlers(path: Option<&std::path::Path>) -> bool {
+    path.is_none()
+}
+
 fn filter_apps(
     apps: Vec<gio::AppInfo>,
     default: Option<gio::AppInfo>,
@@ -46,8 +57,8 @@ pub(super) fn launch(
     files: &[gio::File],
     context: Option<&impl IsA<gio::AppLaunchContext>>,
 ) -> Result<(), glib::Error> {
-    // GIO can silently drop non-native files when expanding %f/%F.
-    if !app.supports_uris() && files.iter().any(|file| !file.is_native()) {
+    // GIO drops files without a local path when expanding %f/%F.
+    if !app.supports_uris() && requires_uri_handlers(files) {
         return Err(glib::Error::new(
             gio::IOErrorEnum::NotSupported,
             "This application cannot open files at this location",
