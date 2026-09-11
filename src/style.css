@@ -1854,8 +1854,8 @@ paned > separator {
 
 .preview-header {
   border-bottom: 1px solid alpha(@theme_border, 0.32);
-  min-height: 42px;
-  padding: 0 12px;
+  min-height: 40px;
+  padding: 0 6px 0 12px;
 }
 
 .preview-title {
@@ -1865,7 +1865,8 @@ paned > separator {
 
 .preview-header-action {
   background: transparent;
-  border: 1px solid transparent;
+  background-image: none;
+  border: none;
   border-radius: 5px;
   box-shadow: none;
   color: @theme_accent;

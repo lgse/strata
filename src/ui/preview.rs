@@ -23,7 +23,7 @@ use crate::{
 use super::{blur::BlurBin, controls::modal_layout};
 
 const DEFAULT_WIDTH: i32 = 520;
-const MIN_WIDTH: i32 = 280;
+const MIN_WIDTH: i32 = 560;
 const MAX_WIDTH: i32 = 3_000;
 const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
 const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
@@ -119,9 +119,9 @@ impl PreviewDrawer {
         pane.set_hexpand(true);
         pane.set_vexpand(true);
 
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let header = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         header.add_css_class("preview-header");
-        let icon = crate::assets::primary_icon(crate::assets::icons::DOCUMENTS, 18);
+        let icon = crate::assets::chrome_icon(crate::assets::icons::DOCUMENTS);
         let title = gtk::Label::new(None);
         title.add_css_class("preview-title");
         title.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
@@ -155,6 +155,7 @@ impl PreviewDrawer {
         let header_handle = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         header_handle.add_css_class("preview-header-handle");
         header_handle.set_hexpand(true);
+        header_handle.set_margin_end(8);
         header_handle.set_cursor_from_name(Some("grab"));
         header_handle.append(&icon);
         header_handle.append(&title);
