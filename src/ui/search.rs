@@ -117,14 +117,21 @@ impl SearchDialog {
 
         let footer = gtk::Box::new(gtk::Orientation::Horizontal, 18);
         footer.add_css_class("search-footer");
-        let navigation = gtk::Label::new(Some("↑↓  navigate"));
+        let navigation =
+            gtk::Label::new(Some("↑↓  navigate · j/k in results · Ctrl+K  edit query"));
         let open = gtk::Box::new(gtk::Orientation::Horizontal, 5);
         open.set_valign(gtk::Align::Center);
         open.append(&crate::assets::primary_icon(
             crate::assets::icons::CORNER_DOWN_LEFT,
             13,
         ));
-        open.append(&gtk::Label::new(Some("open")));
+        let enter_hint = gtk::Label::new(Some("navigate results"));
+        open.append(&enter_hint);
+        let focus = gtk::EventControllerFocus::new();
+        let hint = enter_hint.clone();
+        focus.connect_enter(move |_| hint.set_text("navigate results"));
+        focus.connect_leave(move |_| enter_hint.set_text("open"));
+        field.add_controller(focus);
         navigation.add_css_class("search-hint");
         open.add_css_class("search-hint");
         footer.append(&navigation);
@@ -201,6 +208,12 @@ impl SearchDialog {
                 hide(&state);
                 return glib::Propagation::Stop;
             }
+            if modifiers == gdk::ModifierType::CONTROL_MASK
+                && matches!(key, gdk::Key::k | gdk::Key::K)
+            {
+                state.field.grab_focus_without_selecting();
+                return glib::Propagation::Stop;
+            }
             if modifiers.intersects(
                 gdk::ModifierType::CONTROL_MASK
                     | gdk::ModifierType::ALT_MASK
@@ -208,13 +221,27 @@ impl SearchDialog {
             ) {
                 return glib::Propagation::Proceed;
             }
-            if matches!(key, gdk::Key::Down | gdk::Key::Up)
+            let editing = contains_keyboard_focus(state.field.upcast_ref());
+            if (matches!(key, gdk::Key::Down | gdk::Key::Up)
+                || (!editing && matches!(key, gdk::Key::j | gdk::Key::k)))
                 && !modifiers.contains(gdk::ModifierType::SHIFT_MASK)
             {
-                move_selection(&state, if key == gdk::Key::Down { 1 } else { -1 });
+                move_selection(
+                    &state,
+                    if matches!(key, gdk::Key::Down | gdk::Key::j) {
+                        1
+                    } else {
+                        -1
+                    },
+                );
                 return glib::Propagation::Stop;
             }
-            if matches!(key, gdk::Key::Return | gdk::Key::KP_Enter) && activate_selected(&state) {
+            if matches!(key, gdk::Key::Return | gdk::Key::KP_Enter) {
+                if editing {
+                    focus_results(&state);
+                } else {
+                    activate_selected(&state);
+                }
                 return glib::Propagation::Stop;
             }
             glib::Propagation::Proceed
@@ -360,6 +387,10 @@ impl SearchDialog {
         });
     }
 
+    pub fn focus_query(&self) {
+        self.state.field.grab_focus_without_selecting();
+    }
+
     pub fn hide(&self) {
         hide(&self.state);
     }
@@ -410,6 +441,7 @@ fn render_results(
             .filter(|focused| **focused == row || focused.is_ancestor(&row))
             .map(|_| item.path.clone())
     });
+    let waiting_for_results = state.layer.has_focus();
     let had_result_focus = focused_path.is_some();
     let scroll_position = state.scroller.vadjustment().value();
 
@@ -521,8 +553,11 @@ fn render_results(
         {
             row.grab_focus();
         } else {
-            state.field.grab_focus_without_selecting();
+            state.layer.grab_focus();
         }
+    }
+    if waiting_for_results && has_results {
+        focus_results(state);
     }
 
     if results_changed {
@@ -654,11 +689,19 @@ fn record_interaction(state: &SearchState) {
         .set(state.interaction_revision.get() + 1);
 }
 
+fn focus_results(state: &SearchState) {
+    state.navigation_started.set(true);
+    if let Some(row) = state.list.selected_row() {
+        row.grab_focus();
+        scroll_row_into_view(state, &row);
+    } else {
+        state.layer.grab_focus();
+    }
+}
+
 fn move_selection(state: &SearchState, direction: i32) {
     record_interaction(state);
-    if !contains_keyboard_focus(state.field.upcast_ref()) {
-        state.field.grab_focus_without_selecting();
-    }
+    let editing = contains_keyboard_focus(state.field.upcast_ref());
     let count = state.visible_results.borrow().len() as i32;
     if count == 0 {
         return;
@@ -672,6 +715,9 @@ fn move_selection(state: &SearchState, direction: i32) {
     };
     if let Some(row) = state.list.row_at_index(next) {
         state.list.select_row(Some(&row));
+        if !editing {
+            row.grab_focus();
+        }
         scroll_row_into_view(state, &row);
     }
 }

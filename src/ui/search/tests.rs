@@ -470,7 +470,7 @@ fn arrows_with_empty_results_preserve_the_entry_caret() {
             let (dialog, window) = mapped_dialog(Rc::new(|_| {}));
             dialog.state.field.set_text("missing");
             dialog.state.field.set_position(3);
-            dialog.state.layer.grab_focus();
+            dialog.state.field.grab_focus_without_selecting();
 
             assert!(emit_key(
                 &dialog,
@@ -487,15 +487,17 @@ fn arrows_with_empty_results_preserve_the_entry_caret() {
 }
 
 #[test]
-fn enter_activates_the_default_result_directly_from_the_entry() {
+fn enter_focuses_results_before_opening_and_ctrl_k_resumes_editing() {
     crate::test_support::gtk_test(
-        "ui::search::tests::enter_activates_the_default_result_directly_from_the_entry",
+        "ui::search::tests::enter_focuses_results_before_opening_and_ctrl_k_resumes_editing",
         || {
             let activated = Rc::new(RefCell::new(None));
             let observed = activated.clone();
             let (dialog, window) = mapped_dialog(Rc::new(move |item| {
                 observed.replace(Some(item));
             }));
+            dialog.state.field.set_text("activation");
+            dialog.state.field.set_position(4);
             let items = search_items("activation", 3);
             render_results(
                 &dialog.state,
@@ -513,10 +515,95 @@ fn enter_activates_the_default_result_directly_from_the_entry() {
                     &gtk::gdk::ModifierType::empty(),
                 ],
             ));
+            assert!(activated.borrow().is_none());
+            assert!(contains_keyboard_focus(dialog.state.list.upcast_ref()));
+            assert!(emit_key(&dialog, gdk::Key::j, gdk::ModifierType::empty()));
+            assert_eq!(
+                dialog
+                    .state
+                    .list
+                    .selected_row()
+                    .expect("next result")
+                    .index(),
+                1
+            );
+            assert!(emit_key(&dialog, gdk::Key::k, gdk::ModifierType::empty()));
+            assert_eq!(
+                dialog
+                    .state
+                    .list
+                    .selected_row()
+                    .expect("previous result")
+                    .index(),
+                0
+            );
+            assert!(emit_key(
+                &dialog,
+                gdk::Key::k,
+                gdk::ModifierType::CONTROL_MASK
+            ));
+            assert!(contains_keyboard_focus(dialog.state.field.upcast_ref()));
+            assert_eq!(dialog.state.field.text(), "activation");
+            assert_eq!(dialog.state.field.position(), 4);
+            for key in [gdk::Key::h, gdk::Key::j, gdk::Key::k, gdk::Key::l] {
+                assert!(!emit_key(&dialog, key, gdk::ModifierType::empty()));
+            }
+            assert!(emit_key(
+                &dialog,
+                gdk::Key::KP_Enter,
+                gdk::ModifierType::empty()
+            ));
+            assert!(activated.borrow().is_none());
+            assert!(emit_key(&dialog, gdk::Key::j, gdk::ModifierType::empty()));
+            assert!(emit_key(
+                &dialog,
+                gdk::Key::Return,
+                gdk::ModifierType::empty()
+            ));
             assert_eq!(
                 activated.borrow().as_ref().expect("activated item").path,
-                items[0].path
+                items[1].path
             );
+            window.destroy();
+        },
+    );
+}
+
+#[test]
+fn enter_before_results_arrive_preserves_navigation_through_updates() {
+    crate::test_support::gtk_test(
+        "ui::search::tests::enter_before_results_arrive_preserves_navigation_through_updates",
+        || {
+            let (dialog, window) = mapped_dialog(Rc::new(|_| panic!("must not open")));
+            dialog.state.field.set_text("pending");
+            assert!(emit_key(
+                &dialog,
+                gdk::Key::Return,
+                gdk::ModifierType::empty()
+            ));
+            assert!(dialog.state.layer.has_focus());
+            let mut items = search_items("pending", 4);
+            render_results(
+                &dialog.state,
+                items.clone(),
+                true,
+                SearchCoverage::default(),
+            );
+            assert!(contains_keyboard_focus(dialog.state.list.upcast_ref()));
+            assert!(emit_key(&dialog, gdk::Key::j, gdk::ModifierType::empty()));
+            let selected = dialog.state.list.selected_row().expect("selected result");
+            let path = items[1].path.clone();
+            items.swap(1, 3);
+            render_results(
+                &dialog.state,
+                items.clone(),
+                false,
+                SearchCoverage::default(),
+            );
+            assert_eq!(dialog.state.list.selected_row(), Some(selected.clone()));
+            assert!(contains_keyboard_focus(selected.upcast_ref()));
+            assert_eq!(items[selected.index() as usize].path, path);
+            assert_eq!(dialog.state.field.text(), "pending");
             window.destroy();
         },
     );
@@ -560,9 +647,9 @@ fn unchanged_results_retain_exact_row_descendant_focus_and_scroll() {
 }
 
 #[test]
-fn removed_focused_result_focuses_the_fallback_then_the_entry_when_empty() {
+fn removed_focused_result_focuses_the_fallback_then_waits_when_empty() {
     crate::test_support::gtk_test(
-        "ui::search::tests::removed_focused_result_focuses_the_fallback_then_the_entry_when_empty",
+        "ui::search::tests::removed_focused_result_focuses_the_fallback_then_waits_when_empty",
         || {
             let (dialog, window) = mapped_dialog(Rc::new(|_| {}));
             dialog.state.field.set_text("remaining");
@@ -600,7 +687,7 @@ fn removed_focused_result_focuses_the_fallback_then_the_entry_when_empty() {
 
             render_results(&dialog.state, Vec::new(), false, SearchCoverage::default());
             assert!(dialog.state.list.selected_row().is_none());
-            assert!(contains_keyboard_focus(dialog.state.field.upcast_ref()));
+            assert!(dialog.state.layer.has_focus());
             assert_eq!(dialog.state.field.position(), 4);
             window.destroy();
         },

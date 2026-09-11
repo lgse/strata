@@ -241,7 +241,7 @@ def test_sorting_by_size_reorders_the_files(strata, root):
     )
 
 
-def test_global_search_arrows_keep_typing_in_the_query_and_enter_opens_selection(strata):
+def test_global_search_arrows_keep_typing_in_the_query_and_enter_focuses_selection(strata):
     names = [
         "navigation-alpha",
         "navigation-beta",
@@ -285,7 +285,55 @@ def test_global_search_arrows_keep_typing_in_the_query_and_enter_opens_selection
         "the refined result to be selected",
     )
     strata.keyboard.press("Return")
+    strata.wait(lambda: result.has_state("focused"), "Enter to focus, not open, the result")
+    assert field.text == "navigation-final"
+    strata.keyboard.press("Return")
     strata.wait_for_directory("navigation-final")
+
+
+@pytest.mark.preferences(type_to_search=False)
+def test_global_search_enter_then_vim_navigation_and_return_to_query(strata):
+    from harness.artifacts import ArtifactCollector
+
+    names = ["hjkl-alpha", "hjkl-beta", "hjkl-gamma"]
+    for name in names:
+        (strata.environment.home / name).mkdir()
+    strata.keyboard.press("ctrl+k")
+    field = strata.editable_field()
+    strata.keyboard.type_text("hjkl")
+    strata.wait(lambda: field.text == "hjkl", "Vim letters to edit the query")
+
+    def results():
+        return [
+            node for node in strata.window.find_all(role="list item")
+            if any(node.name.endswith("/" + name) for name in names)
+        ]
+
+    strata.wait(lambda: len(results()) == 3, "all matching directories")
+    evidence = ArtifactCollector("search-keyboard-navigation").directory
+    strata.screenshot(evidence / "editing.png")
+    strata.keyboard.press("Return")
+    strata.wait(lambda: results()[0].has_state("focused"), "Enter to focus results")
+    strata.keyboard.press("j")
+    strata.wait(lambda: results()[1].has_state("focused"), "j to focus the next match")
+    strata.keyboard.press("k")
+    strata.wait(lambda: results()[0].has_state("focused"), "k to focus the previous match")
+    strata.keyboard.press("j")
+    selected = results()[1]
+    strata.wait(lambda: selected.has_state("focused"), "the second match to regain focus")
+    assert field.text == "hjkl"
+    strata.screenshot(evidence / "navigating.png")
+    strata.keyboard.press("ctrl+k")
+    strata.wait(lambda: field.has_state("focused"), "Ctrl+K to edit the existing query")
+    assert field.text == "hjkl"
+    assert selected.has_state("selected")
+    strata.keyboard.type_text("-beta")
+    strata.wait(lambda: field.text == "hjkl-beta", "editing to extend the preserved query")
+    strata.wait(lambda: len(results()) == 1, "the refined result")
+    strata.keyboard.press("Return")
+    strata.wait(lambda: results()[0].has_state("focused"), "Enter to focus the refined result")
+    strata.keyboard.press("Return")
+    strata.wait_for_directory("hjkl-beta")
 
 
 def test_global_search_finds_a_file_under_home(strata, root):

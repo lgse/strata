@@ -130,11 +130,16 @@ fn search_button_and_action_share_one_dialog_and_dismissal_state() {
             button.emit_clicked();
             assert!(layer.is_visible());
             assert!(button.has_css_class("active"));
-            action.activate(None);
-            wait_until_hidden(&layer);
-            assert!(!button.has_css_class("active"));
+            let field_focus =
+                gtk::prelude::RootExt::focus(&fixture.window).expect("search query focus");
+            layer.grab_focus();
             action.activate(None);
             assert!(layer.is_visible());
+            assert!(button.has_css_class("active"));
+            assert_eq!(
+                gtk::prelude::RootExt::focus(&fixture.window),
+                Some(field_focus)
+            );
             button.emit_clicked();
             wait_until_hidden(&layer);
             assert!(!button.has_css_class("active"));
