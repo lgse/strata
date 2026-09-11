@@ -5,9 +5,9 @@ use crate::test_support::gtk_test;
 use gtk::{gdk, glib, prelude::*};
 
 #[test]
-fn card_places_the_first_filename_line_directly_below_the_icon() {
+fn card_centers_the_icon_and_visible_filename_lines() {
     gtk_test(
-        "ui::icons_cell::tests::card_places_the_first_filename_line_directly_below_the_icon",
+        "ui::icons_cell::tests::card_centers_the_icon_and_visible_filename_lines",
         || {
             let provider = gtk::CssProvider::new();
             provider.load_from_string(include_str!("../../style.css"));
@@ -38,15 +38,23 @@ fn card_places_the_first_filename_line_directly_below_the_icon() {
                     label.set_visible(true);
                     field.set_visible(false);
                     pump_until(|| icon.width() == size && label.width() > 0);
-                    let snapshot = gtk::Snapshot::new();
-                    card.snapshot_child(&icon, &snapshot);
-                    let drawn = snapshot.to_node().expect("rendered thumbnail").bounds();
-                    let thumbnail_bottom = drawn.y() + drawn.height();
-
                     let mut short_text: Option<(f32, f32)> = None;
                     for name in ["todo.txt", "a filename that wraps onto two lines.txt"] {
                         label.set_text(Some(name));
-                        pump_until(|| label.width() > 0);
+                        pump_frames(&card);
+                        let snapshot = gtk::Snapshot::new();
+                        card.snapshot_child(&icon, &snapshot);
+                        let drawn = snapshot.to_node().expect("rendered thumbnail").bounds();
+                        let thumbnail_bottom = drawn.y() + drawn.height();
+                        let icon_bounds = icon.compute_bounds(&card).expect("icon bounds");
+                        let label_bounds = label.compute_bounds(&card).expect("label bounds");
+                        let bottom =
+                            card.height() as f32 - label_bounds.y() - label_bounds.height();
+                        assert!(
+                            (icon_bounds.y() - bottom).abs() <= 1.0,
+                            "group must be centered: icon={icon_bounds:?}, label={label_bounds:?}, card height={}",
+                            card.height()
+                        );
                         let snapshot = gtk::Snapshot::new();
                         card.snapshot_child(&card.last_child().expect("labels"), &snapshot);
                         let text = snapshot.to_node().expect("rendered filename").bounds();
@@ -54,24 +62,25 @@ fn card_places_the_first_filename_line_directly_below_the_icon() {
                             text.y() >= thumbnail_bottom,
                             "filename must remain below an opaque thumbnail: size={size}, texture={texture_width}x{texture_height}, thumbnail={drawn:?}, text={text:?}"
                         );
-                        if let Some((short_y, short_bottom)) = short_text {
+                        if let Some((short_icon_y, short_height)) = short_text {
                             assert!(
-                                (text.y() - short_y).abs() <= 1.0,
-                                "short and wrapped names must start on the same line: short={short_y}, wrapped={}",
-                                text.y()
+                                icon_bounds.y() < short_icon_y,
+                                "a wrapped name must center the taller group higher in the same card"
                             );
                             assert!(
-                                text.y() + text.height() > short_bottom,
-                                "the unused second line must remain below a short name"
+                                text.height() > short_height,
+                                "wrapped name must retain its second line"
                             );
                         } else {
-                            short_text = Some((text.y(), text.y() + text.height()));
+                            short_text = Some((icon_bounds.y(), text.height()));
                         }
                     }
 
                     label.set_visible(false);
                     field.set_visible(true);
-                    pump_until(|| field.width() > 0);
+                    pump_frames(&card);
+                    let icon_bounds = icon.compute_bounds(&card).expect("icon bounds");
+                    let thumbnail_bottom = icon_bounds.y() + icon_bounds.height();
                     let field_bounds = field.compute_bounds(&card).expect("rename bounds");
                     assert!(
                         field_bounds.y() >= thumbnail_bottom,
@@ -80,9 +89,9 @@ fn card_places_the_first_filename_line_directly_below_the_icon() {
                 }
                 field.set_visible(false);
                 label.set_visible(true);
-                pump_until(|| label.height() >= 36);
+                pump_frames(&card);
                 assert_eq!(label.yalign(), 0.0);
-                assert_eq!(label.min_lines(), 2);
+                assert_eq!(label.min_lines(), 1);
                 assert_eq!(label.nat_lines(), 2);
                 assert_eq!(card.width_request(), size.max(116));
                 assert_eq!(card.height_request(), size + 43);
@@ -90,6 +99,20 @@ fn card_places_the_first_filename_line_directly_below_the_icon() {
             window.close();
         },
     );
+}
+
+fn pump_frames(widget: &impl IsA<gtk::Widget>) {
+    let frames = std::rc::Rc::new(std::cell::Cell::new(0));
+    let drawn = frames.clone();
+    widget.add_tick_callback(move |_, _| {
+        drawn.set(drawn.get() + 1);
+        if drawn.get() >= 2 {
+            glib::ControlFlow::Break
+        } else {
+            glib::ControlFlow::Continue
+        }
+    });
+    pump_until(|| frames.get() >= 2);
 }
 
 fn pump_until(ready: impl Fn() -> bool) {
@@ -135,7 +158,7 @@ fn allocated_default_is_square_and_airy_delta_stays_modest() {
                 .child(&root)
                 .build();
             window.present();
-            pump_until(|| card.width() > 0 && label.height() >= 36);
+            pump_until(|| card.width() > 0 && label.height() > 0);
             let compact = (card.width(), card.height());
             assert!(
                 (104..=116).contains(&compact.0),

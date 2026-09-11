@@ -59,6 +59,13 @@ fn browser_chrome_insets_and_list_name_alignment() {
             std::fs::create_dir(fixture.path().join("alpha")).expect("folder");
             std::fs::create_dir(fixture.path().join("beta")).expect("folder");
             std::fs::write(fixture.path().join("report.txt"), b"report").expect("file");
+            std::fs::write(
+                fixture
+                    .path()
+                    .join("a filename that wraps onto two lines.txt"),
+                b"wrapped",
+            )
+            .expect("file");
             let view = BrowserView::new(
                 Rc::new(crate::adapters::LocalFileSource),
                 PeekBehavior::default(),
@@ -86,21 +93,21 @@ fn browser_chrome_insets_and_list_name_alignment() {
             let row = by_class(&list, "list-row")
                 .parent()
                 .expect("list row wrapper");
-            let bounds = row
-                .compute_bounds(&list.parent().expect("scroller"))
-                .expect("row bounds");
-            let right = list.width() as f32 - bounds.x() - bounds.width();
-            assert!(
-                (bounds.x() - right).abs() <= 1.0,
-                "left {} right {right}",
-                bounds.x()
-            );
-            assert!(
-                (bounds.y() - bounds.x()).abs() <= 1.0,
-                "top {} left {}",
-                bounds.y(),
-                bounds.x()
-            );
+            let bounds = row.compute_bounds(&root).expect("row bounds");
+            let viewport = list
+                .parent()
+                .expect("scroller")
+                .compute_bounds(&root)
+                .expect("viewport bounds");
+            let left = bounds.x() - viewport.x();
+            let right = viewport.x() + viewport.width() - bounds.x() - bounds.width();
+            let top = bounds.y() - viewport.y();
+            assert!((left - right).abs() <= 1.0, "left {left} right {right}");
+            assert!((top - left).abs() <= 1.0, "top {top} left {left}");
+            let pane_header_height = by_class(&root, "mode-pane-header")
+                .compute_bounds(&root)
+                .expect("List toolbar bounds")
+                .height();
             let name = by_class(&root, "list-heading-button");
             let label = descendants(&name)
                 .into_iter()
@@ -114,6 +121,18 @@ fn browser_chrome_insets_and_list_name_alignment() {
             let icon = by_class(&list, "list-name-cell")
                 .first_child()
                 .expect("file icon");
+            let row_content = by_class(&list, "list-row");
+            let icon_in_row = icon.compute_bounds(&row_content).expect("icon inset");
+            let bottom_inset = row_content.height() as f32 - icon_in_row.y() - icon_in_row.height();
+            assert!(
+                (icon_in_row.y() - icon_in_row.x()).abs() <= 1.0,
+                "row vertical and horizontal content insets must match: {icon_in_row:?}"
+            );
+            assert!(
+                (bottom_inset - icon_in_row.x()).abs() <= 1.0,
+                "row bottom inset {bottom_inset}, left {}",
+                icon_in_row.x()
+            );
             let label_x = label.compute_bounds(&root).expect("label bounds").x();
             let icon_x = icon.compute_bounds(&root).expect("icon bounds").x();
             assert!(
@@ -131,10 +150,36 @@ fn browser_chrome_insets_and_list_name_alignment() {
             let last = actions.last().expect("header action");
             let bounds = last.compute_bounds(&root).expect("action bounds");
             let header_bounds = header.compute_bounds(&root).expect("header bounds");
+            assert_eq!(
+                header_bounds.height(),
+                pane_header_height,
+                "Columns and List toolbar heights must match"
+            );
+            let heading = header
+                .first_child()
+                .expect("heading box")
+                .first_child()
+                .expect("folder name");
+            let heading_center = heading
+                .compute_bounds(&root)
+                .expect("heading bounds")
+                .center()
+                .y();
+            assert!(
+                (heading_center - (header_bounds.y() + 3.0 + (pane_header_height - 4.0) / 2.0))
+                    .abs()
+                    <= 0.5,
+                "folder name must be centered inside the header border"
+            );
+            assert!(
+                (heading_center - bounds.center().y()).abs() <= 0.5,
+                "folder name and buttons must share a vertical center"
+            );
             let right = header_bounds.x() + header_bounds.width() - bounds.x() - bounds.width();
-            let top = bounds.y() - header_bounds.y();
+            let top = bounds.y() - header_bounds.y() - 3.0;
             assert!((top - right).abs() <= 1.0, "header top {top} right {right}");
-            let bottom = header_bounds.y() + header_bounds.height() - bounds.y() - bounds.height();
+            let bottom =
+                header_bounds.y() + header_bounds.height() - 1.0 - bounds.y() - bounds.height();
             assert!(
                 (bottom - right).abs() <= 1.0,
                 "header bottom {bottom} right {right}"
@@ -145,7 +190,42 @@ fn browser_chrome_insets_and_list_name_alignment() {
                     Some("pointer")
                 );
             }
+            let column = by_class(&root, "directory-column")
+                .compute_bounds(&root)
+                .expect("column bounds");
+            let first_row = by_class(&root, "file-row")
+                .parent()
+                .expect("column row")
+                .compute_bounds(&root)
+                .expect("column row bounds");
+            let left = first_row.x() - column.x();
+            let right = column.x() + column.width() - first_row.x() - first_row.width();
+            let top = first_row.y() - header_bounds.y() - header_bounds.height();
+            assert!(
+                (left - right).abs() <= 1.0,
+                "Columns left {left} right {right}"
+            );
+            assert!((top - left).abs() <= 1.0, "Columns top {top} left {left}");
             capture(&window, "columns");
+            for (density, expected_height) in
+                [(BrowserDensity::Compact, 26), (BrowserDensity::Airy, 42)]
+            {
+                view.set_density(density);
+                for (mode, class) in [
+                    (BrowserMode::Columns, "file-row"),
+                    (BrowserMode::List, "list-row"),
+                ] {
+                    view.set_view_mode(mode);
+                    settle();
+                    let row = by_class(&root, class).parent().expect("row wrapper");
+                    assert_eq!(
+                        row.height(),
+                        expected_height,
+                        "{density:?} {mode:?} row height"
+                    );
+                }
+            }
+            view.set_density(BrowserDensity::Compact);
             view.set_view_mode(BrowserMode::Icons);
             settle();
             capture(&window, "icons");
@@ -160,6 +240,23 @@ fn browser_chrome_insets_and_list_name_alignment() {
             scale.set_value(32.0);
             settle();
             capture(&window, "icons-32");
+            for card in descendants(&root)
+                .into_iter()
+                .filter(|widget| widget.has_css_class("icons-card") && widget.is_mapped())
+            {
+                assert!(
+                    card.height() >= card.height_request(),
+                    "GridView must retain the reserved card height"
+                );
+                let (icon, label) = crate::ui::icons_cell::parts(&card).expect("card parts");
+                let top = icon.compute_bounds(&card).expect("icon bounds").y();
+                let caption = label.compute_bounds(&card).expect("caption bounds");
+                let bottom = card.height() as f32 - caption.y() - caption.height();
+                assert!(
+                    (top - bottom).abs() <= 1.0,
+                    "card content top {top}, bottom {bottom}"
+                );
+            }
             view.set_view_mode(BrowserMode::List);
             view.set_view_mode(BrowserMode::Icons);
             settle();

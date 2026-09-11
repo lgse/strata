@@ -5,6 +5,7 @@ use super::*;
 mod drops;
 mod filter_scope;
 mod focus;
+mod hover;
 mod layout;
 mod loading;
 mod navigate;

@@ -2508,6 +2508,7 @@ fn build_list_pane(
         .build();
     scroll.add_css_class("fixed-scrollbar");
     scroll.add_css_class("browser-listing-scroll");
+    scroll.add_css_class("list-listing-scroll");
     let browser_for_settle = Rc::downgrade(&browser);
     let source_index_for_settle = source_index.clone();
     let sections_for_settle = Rc::downgrade(&sections);

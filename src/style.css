@@ -509,23 +509,23 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .delete-confirmation-list scrollbar {
-  padding: 0 !important;
+  padding: 0;
 }
 
 .delete-confirmation-list scrollbar.vertical {
-  min-width: 6px !important;
+  min-width: 6px;
 }
 
 .delete-confirmation-list scrollbar.vertical > range > trough {
-  background: transparent !important;
-  border: none !important;
-  padding: 0 !important;
-  margin: 0 !important;
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
 }
 
 .delete-confirmation-list scrollbar.vertical > range > trough > slider {
-  margin: 0 !important;
-  min-width: 6px !important;
+  margin: 0;
+  min-width: 6px;
 }
 
 .delete-confirmation-files {
@@ -2123,7 +2123,7 @@ entry.preview-command-entry selection {
 .destination-column .column-header {
   background: @theme_surface;
   color: @theme_text;
-  box-shadow: inset 0 3px @theme_accent;
+  border-top-color: @theme_accent;
 }
 
 .column-destination-hint {
@@ -2185,11 +2185,12 @@ entry.preview-command-entry selection {
 
 .column-header {
   background: transparent;
+  border-top: 3px solid transparent;
   border-bottom: 1px solid alpha(@theme_border, 0.6);
   color: alpha(@theme_accent, 0.58);
   font-weight: 700;
-  min-height: 36px;
-  padding: 4px 8px 4px 12px;
+  min-height: 37px;
+  padding: 0 5px 0 12px;
 }
 
 button.column-header-action,
@@ -2200,7 +2201,7 @@ menubutton.column-header-action > button {
   box-shadow: none;
   min-height: 24px;
   min-width: 24px;
-  padding: 2px;
+  padding: 2px 4px;
   transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
@@ -3000,10 +3001,10 @@ colorchooser colorswatch overlay {
   padding-top: 4px;
 }
 
-/* Row margins supply the remaining pixel of the eight-pixel listing inset. */
-.file-list-mode {
-  margin-top: 7px;
-  margin-bottom: 7px;
+/* Keep the inset outside the scrolling content so editor reveal uses its full viewport. */
+.list-listing-scroll {
+  padding-top: 7px;
+  padding-bottom: 7px;
 }
 
 .file-list row,
@@ -3014,6 +3015,11 @@ colorchooser colorswatch overlay {
   margin: 1px 8px;
   padding: 0;
   transition: background 160ms ease-out, color 160ms ease-out;
+}
+
+.file-list row {
+  margin-left: 5px;
+  margin-right: 5px;
 }
 
 .file-row,
@@ -3031,12 +3037,13 @@ colorchooser colorswatch overlay {
 .file-row {
   border-radius: 6px;
   color: @theme_text;
+  min-height: 26px;
   padding: 0 4px;
 }
 
 .file-row > * {
-  margin-bottom: 8px;
-  margin-top: 8px;
+  margin-bottom: 4px;
+  margin-top: 4px;
 }
 
 .file-row.cut {
@@ -3160,7 +3167,7 @@ colorchooser colorswatch overlay {
   color: @theme_dim_text;
   font-size: 0.9em;
   opacity: 0;
-  padding: 2px 7px;
+  padding: 0 7px;
   border-radius: 5px;
   transition: opacity 120ms ease-out;
 }
@@ -3205,6 +3212,23 @@ colorchooser colorswatch overlay {
 .file-list-mode:not(:focus-within):not(.context-selection) row:selected {
   background: alpha(@theme_highlight, 0.55);
   color: @theme_text;
+}
+
+.file-list row:selected:hover,
+.file-list-mode row:selected:hover,
+.directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected:hover,
+.file-list-mode:not(:focus-within):not(.context-selection) row:selected:hover {
+  background: alpha(@theme_accent, 0.30);
+}
+
+.keyboard-navigation .file-list row:selected:hover,
+.keyboard-navigation .file-list-mode row:selected:hover {
+  background: alpha(@theme_accent, 0.22);
+}
+
+.keyboard-navigation .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected:hover,
+.keyboard-navigation .file-list-mode:not(:focus-within):not(.context-selection) row:selected:hover {
+  background: alpha(@theme_highlight, 0.55);
 }
 
 .keyboard-navigation .file-list row:hover:not(:selected),
@@ -3672,7 +3696,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .file-icons {
-  padding: 3px;
+  padding: 0;
 }
 
 .file-icons > child {
@@ -3699,6 +3723,14 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   background: alpha(@theme_accent, 0.22);
   outline: 1px solid alpha(@theme_accent, 0.9);
   outline-offset: -1px;
+}
+
+.file-icons > child:selected:hover .icons-card {
+  background: alpha(@theme_accent, 0.30);
+}
+
+.keyboard-navigation .file-icons > child:selected:hover .icons-card {
+  background: alpha(@theme_accent, 0.22);
 }
 
 .file-icons > child:focus-visible .icons-card {
@@ -3747,7 +3779,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .mode-icons.density-airy .file-icons {
-  padding: 8px;
+  padding: 5px;
 }
 
 .mode-icons.density-airy .file-icons > child {
@@ -3889,7 +3921,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .list-row {
-  min-height: 36px;
+  min-height: 26px;
   padding: 0;
 }
 
@@ -3917,10 +3949,10 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .density-airy .file-row {
-  min-height: 38px;
+  min-height: 42px;
 }
 
 .density-airy .file-row > * {
-  margin-bottom: 9px;
-  margin-top: 9px;
+  margin-bottom: 8px;
+  margin-top: 8px;
 }
