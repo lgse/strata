@@ -60,6 +60,39 @@ fn common_applications_respect_uri_capability_and_hidden_defaults() {
 }
 
 #[test]
+fn mixed_types_keep_non_common_handlers_in_other_apps() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::open_with::mixed_types_keep_non_common_handlers_in_other_apps",
+        || {
+            let applications = glib::user_data_dir().join("applications");
+            std::fs::create_dir_all(&applications).expect("isolated applications");
+            for (id, mime) in [("text-only", "text/plain"), ("image-only", "image/png")] {
+                std::fs::write(applications.join(format!("{id}.desktop")), format!(
+                    "[Desktop Entry]\nType=Application\nName={id}\nExec=/bin/true %U\nMimeType={mime};\n"
+                )).expect("desktop entry");
+            }
+            std::fs::create_dir_all(glib::user_config_dir()).expect("isolated config");
+            std::fs::write(glib::user_config_dir().join("mimeapps.list"),
+                "[Added Associations]\ntext/plain=text-only.desktop;\nimage/png=image-only.desktop;\n"
+            ).expect("associations");
+            for types in [
+                vec!["text/plain".to_owned(), "image/png".to_owned()],
+                vec!["image/png".to_owned(), "text/plain".to_owned()],
+            ] {
+                let (recommended, other, _) = common_applications(&types, true);
+                assert!(recommended.is_empty());
+                for id in ["text-only.desktop", "image-only.desktop"] {
+                    assert!(
+                        other.iter().any(|app| app.id().as_deref() == Some(id)),
+                        "{id}"
+                    );
+                }
+            }
+        },
+    );
+}
+
+#[test]
 fn prepared_selection_rejects_changed_targets() {
     let location = Location::local("/fixture/alpha.txt");
     let selection = OpenWithSelection {

@@ -57,7 +57,7 @@ fn filter_apps(
     unique
 }
 
-fn filter_other_apps(
+pub(super) fn filter_other_apps(
     apps: Vec<gio::AppInfo>,
     recommended: &[gio::AppInfo],
     requires_uris: bool,
@@ -220,20 +220,6 @@ fn create_section_header(title: &str) -> gtk::ListBoxRow {
     row
 }
 
-fn hide_search_clear_button(search: &gtk::SearchEntry) {
-    let mut child = search.first_child();
-    while let Some(current) = child {
-        let next = current.next_sibling();
-        if current.has_css_class("clear")
-            || current.has_css_class("right")
-            || current.is::<gtk::Button>()
-        {
-            current.set_visible(false);
-        }
-        child = next;
-    }
-}
-
 fn create_app_row(app: &gio::AppInfo, display: &gtk::gdk::Display) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
     row.add_css_class("open-with-row");
@@ -307,7 +293,6 @@ pub(super) fn show(
     let search_entry = gtk::SearchEntry::new();
     search_entry.add_css_class("open-with-search");
     search_entry.set_placeholder_text(Some("Search applications…"));
-    hide_search_clear_button(&search_entry);
     layout.body.append(&search_entry);
 
     let list = gtk::ListBox::new();
@@ -503,8 +488,7 @@ pub(super) fn show(
     let rec_heading = recommended_heading_row;
     let oth_heading = other_heading_row;
 
-    search_entry.connect_search_changed(move |search| {
-        hide_search_clear_button(search);
+    search_entry.connect_changed(move |search| {
         let (Some(list), Some(list_scroll), Some(empty_label), Some(confirm)) = (
             list_for_filter.upgrade(),
             list_scroll_for_filter.upgrade(),

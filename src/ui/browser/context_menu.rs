@@ -345,10 +345,11 @@ pub(in crate::ui) fn install_folder_context_menu(
         let Some(state) = weak.upgrade() else {
             return;
         };
-        let requires_uris = open_with_location.native_path().is_none();
+        let file = gio_file_for_location(&open_with_location);
+        let requires_uris =
+            crate::ui::open_with::requires_uri_handlers(std::slice::from_ref(&file));
         let (recommended_apps, other_apps) =
             crate::ui::open_with::categorized_apps("inode/directory", requires_uris);
-        let file = gio_file_for_location(&open_with_location);
         let browser = Rc::downgrade(&state.browser);
         crate::ui::open_with::show(
             &state.overlay,
@@ -1542,7 +1543,7 @@ fn common_applications(
     let Some(first) = content_types.first() else {
         return (vec![], vec![], None);
     };
-    let (mut recommended, mut other) = crate::ui::open_with::categorized_apps(first, requires_uris);
+    let (mut recommended, _) = crate::ui::open_with::categorized_apps(first, requires_uris);
     let mut default = gio::AppInfo::default_for_type(first, requires_uris);
     for content_type in &content_types[1..] {
         let (next_rec, _) = crate::ui::open_with::categorized_apps(content_type, requires_uris);
@@ -1550,7 +1551,8 @@ fn common_applications(
         let next_default = gio::AppInfo::default_for_type(content_type, requires_uris);
         default = default.filter(|app| next_default.as_ref().is_some_and(|next| next.equal(app)));
     }
-    other.retain(|app| !recommended.iter().any(|rec| rec.equal(app)));
+    let other =
+        crate::ui::open_with::filter_other_apps(gio::AppInfo::all(), &recommended, requires_uris);
     (recommended, other, default)
 }
 

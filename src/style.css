@@ -659,17 +659,6 @@ headerbar menubutton.header-action > button:focus-visible {
   padding: 3px 8px;
 }
 
-.open-with-search image.clear,
-.open-with-search image.right,
-.open-with-search button.clear,
-.open-with-search button {
-  opacity: 0;
-  min-width: 0;
-  min-height: 0;
-  padding: 0;
-  margin: 0;
-}
-
 .open-with-search:focus,
 .open-with-search:focus-within {
   border-color: @theme_accent;

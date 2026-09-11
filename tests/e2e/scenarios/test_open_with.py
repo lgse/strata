@@ -118,7 +118,6 @@ def test_open_with_names_rows_and_tabs_out_of_the_list(chooser_apps, strata):
     assert recommended[1:] == sorted(recommended[1:], key=str.lower)
     assert all(recommended)
     assert "Other Desktop Viewer" not in [row.name for row in all_rows]
-    # The search entry is focused on open; Down enters the list at the selected row.
     strata.wait(
         lambda: strata.focused_node() is not None and "editable" in strata.focused_node().states,
         "search entry focused on open",
@@ -134,6 +133,51 @@ def test_open_with_names_rows_and_tabs_out_of_the_list(chooser_apps, strata):
     strata.keyboard.press("Tab")
     strata.keyboard.press("Tab")
     strata.wait(lambda: strata.focused_node().name == "Open", "Tab to reach Open")
+
+
+def test_open_with_search_filters_and_escape_clears(chooser_apps, strata, request):
+    from harness.artifacts import ArtifactCollector
+
+    strata.open_context_menu("todo.txt")
+    strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "MIME lookup")
+    strata.choose_menu_item("Open With…")
+    strata.wait_for_dialog()
+    strata.keyboard.type_text("ALTERNATIVE")
+    strata.keyboard.press("Down")
+    strata.wait(lambda: strata.focused_node().name == "Alternative Viewer", "filtered row focus")
+    strata.keyboard.press("Up")
+    strata.wait(lambda: "editable" in strata.focused_node().states, "return to search")
+    collector = ArtifactCollector(test_name=request.node.name)
+    strata.screenshot(collector.directory / "filtered-chooser.png")
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("no-such-application-821")
+    strata.wait(
+        lambda: "No matching applications were found." in strata.dialog().dump(),
+        "empty search feedback",
+    )
+    strata.keyboard.press("Return")
+    assert strata.dialog() is not None
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: "No matching applications were found." not in strata.dialog().dump(), "cleared search")
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.dialog() is None, "dismissed chooser")
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_open_with_background_launches_current_folder(open_with_app, strata, mode):
+    output, associations, contents = open_with_app
+    strata.pointer.right_click(strata.pane(), at=strata.background_point())
+    strata.wait(lambda: "Open With…" in strata.menu_items(), "folder menu")
+    strata.choose_menu_item("Open With…")
+    strata.wait_for_dialog()
+    strata.keyboard.press("Return")
+    strata.wait(lambda: output.exists() and output.read_text(), "folder launch")
+    received = output.read_text().splitlines()
+    assert len(received) == 1
+    assert Gio.File.new_for_commandline_arg(received[0]).equal(
+        Gio.File.new_for_path(str(strata.fixture.root))
+    )
+    assert associations.read_text() == contents
 
 
 @pytest.mark.parametrize("action", ["Open", "Open With…"])
@@ -229,6 +273,8 @@ def test_open_with_incompatible_types_offers_other_apps(incompatible_files, stra
     dump = dialog.dump()
     assert "Other Applications" in dump
     assert "Recommended Applications" not in dump
+    assert "Image Viewer" in dump
+    assert "Review Text Viewer" in dump
     strata.keyboard.press("Escape")
     strata.wait(lambda: strata.dialog() is None, "the chooser to close")
 

@@ -382,20 +382,19 @@ fn search_filtering_and_empty_state_and_keyboard_navigation() {
                 }
             };
 
-            // Filter for "viewer"
-            search.set_text("viewer");
+            search.set_text("VIEWER");
+            assert_eq!(count_visible_rows(&list), 2);
             wait_until(&|| count_visible_rows(&list) == 2);
             assert!(open_btn.is_sensitive());
 
-            // Filter with no match
             search.set_text("nonexistent-app-xyz");
+            assert!(!open_btn.is_sensitive());
+            assert!(list.selected_row().is_none());
             wait_until(&|| !open_btn.is_sensitive());
 
-            // Clear filter
             search.set_text("");
             wait_until(&|| open_btn.is_sensitive() && count_visible_rows(&list) == 5);
 
-            // Navigate into list and type-to-search
             if let Some(row) = list.selected_row() {
                 row.grab_focus();
             }
