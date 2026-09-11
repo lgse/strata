@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Range selection, toggle selection, and right-click selection behavior."""
 
 from __future__ import annotations
@@ -6,6 +6,16 @@ from __future__ import annotations
 import pytest
 
 from harness.modes import ALL_MODES
+
+ROW_MODES = [mode for mode in ALL_MODES if mode.id != "icons"]
+
+
+def _name_label_point(entry, *, leftover: bool) -> tuple[int, int]:
+    label = entry.find(role="label", name=entry.name)
+    assert label is not None
+    bounds = label.screen_bounds()
+    x = bounds.x + bounds.width - 2 if leftover else bounds.x + 4
+    return (x, bounds.center[1])
 
 
 @pytest.fixture
@@ -26,13 +36,14 @@ def test_shift_click_ranges_from_the_initial_listing(strata, mode, root):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_sidebar_navigation_initializes_the_range_anchor(strata, mode):
+def test_keyboard_selection_after_sidebar_navigation_initializes_the_range_anchor(strata, mode):
     home = strata.environment.home
     names = ["a.txt", "b.txt", "c.txt"]
     for name in names:
         (home / name).write_text(name)
     strata.pointer.click(strata.sidebar_button("Home"))
     strata.wait_for_directory(home.name)
+    strata.keyboard.press("Home")
     strata.wait_for_selection(["a.txt"], home.name)
     strata.click_entry_with("c.txt", ["shift"], directory=home.name)
     strata.wait_for_selection(names, home.name)
@@ -56,10 +67,10 @@ def test_shift_click_revisits_a_file_after_opening_a_folder(strata, root, target
     strata.wait_for_selection(["todo.txt"], root)
     click("documents")
     strata.wait_for_directory("documents")
-    strata.wait_for_selection(["notes.txt"], "documents")
-    strata.wait_for_focused_entry("notes.txt")
+    strata.wait_for_selection([], "documents")
     click("todo.txt", ("shift",))
-    strata.wait_for_focused_entry("todo.txt")
+    if target == "name":
+        strata.wait_for_focused_entry("todo.txt")
     names = [entry.name for entry in strata.entries(root)]
     strata.wait_for_selection(names[names.index("documents"):names.index("todo.txt") + 1], root)
 
@@ -161,7 +172,9 @@ def test_selecting_a_second_entry_replaces_the_first(strata, mode, root):
 @pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("target", ["content", "row-space"])
 def test_shift_click_ranges_from_the_entry_a_fresh_listing_selected(strata, mode, root, target):
-    strata.open_directory("documents", directory=root)
+    strata.select_entry_with_keyboard("documents")
+    strata.keyboard.press("Return")
+    strata.wait_for_directory("documents")
 
     entry = strata.entry("spreadsheet.csv", "documents")
     point = None
@@ -183,6 +196,53 @@ def test_shift_click_ranges_from_the_entry_a_fresh_listing_selected(strata, mode
         == ["notes.txt", "report.md", "spreadsheet.csv"],
         "a shift-click to range from the entry the listing selected on load",
     )
+
+
+@pytest.mark.parametrize("mode", ROW_MODES)
+@pytest.mark.parametrize("target", ["content", "row-space"])
+def test_shift_click_keeps_range_when_shift_releases_before_mouseup(
+    strata, mode, root, target
+):
+    strata.open_directory("documents", directory=root)
+    strata.select_entry("notes.txt", directory="documents")
+
+    entry = strata.entry("spreadsheet.csv", "documents")
+    point = _name_label_point(entry, leftover=(target == "row-space"))
+    strata.pointer.click_releasing_modifiers_before_up(
+        entry, at=point, modifiers=("shift",)
+    )
+
+    strata.wait_for_selection(
+        ["notes.txt", "report.md", "spreadsheet.csv"], "documents"
+    )
+
+
+@pytest.mark.preferences(browser_mode="columns")
+def test_control_click_leftover_toggles_when_ctrl_releases_before_mouseup(strata, root):
+    strata.open_directory("documents", directory=root)
+    strata.select_entry("notes.txt", directory="documents")
+
+    entry = strata.entry("spreadsheet.csv", "documents")
+    strata.pointer.click_releasing_modifiers_before_up(
+        entry,
+        at=_name_label_point(entry, leftover=True),
+        modifiers=("ctrl",),
+    )
+
+    strata.wait_for_selection(["notes.txt", "spreadsheet.csv"], "documents")
+
+
+@pytest.mark.parametrize("mode", ROW_MODES)
+def test_unmodified_leftover_click_replaces_the_selection(strata, mode, root):
+    strata.open_directory("documents", directory=root)
+    strata.select_entry("notes.txt", directory="documents")
+
+    entry = strata.entry("spreadsheet.csv", "documents")
+    strata.pointer.click(
+        entry, at=_name_label_point(entry, leftover=True)
+    )
+
+    strata.wait_for_selection(["spreadsheet.csv"], "documents")
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)

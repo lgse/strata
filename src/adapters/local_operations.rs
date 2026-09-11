@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 #[cfg(test)]
 mod tests;
@@ -24,7 +24,10 @@ use std::{
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
-    adapters::{gio_file_for_location, location_for_file},
+    adapters::{
+        gio_file_for_location, location_for_file,
+        trash_restore::{RestoreContext, plan_restore_for_location},
+    },
     model::{FileEntry, Location},
     services::{
         CancelledOperation, CompressRequest, CreateDirectoryRequest, CreateFileRequest,
@@ -401,11 +404,17 @@ fn open_local_copy_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<LocalCo
             let children = local_directory_children(&handle)?;
             Ok(LocalCopySource::Directory { handle, children })
         }
-        _ => {
+        rustix::fs::FileType::RegularFile => {
+            // NONBLOCK so an entry swapped for a FIFO between the stat above
+            // and this open cannot block waiting for a writer; the type is
+            // re-checked on the opened descriptor below. GIO copies through
+            // `/proc/self/fd`, so the flag never affects the copy itself.
             let file = rustix::fs::openat2(
                 parent,
                 name,
-                rustix::fs::OFlags::RDONLY | rustix::fs::OFlags::CLOEXEC,
+                rustix::fs::OFlags::RDONLY
+                    | rustix::fs::OFlags::CLOEXEC
+                    | rustix::fs::OFlags::NONBLOCK,
                 rustix::fs::Mode::empty(),
                 rustix::fs::ResolveFlags::BENEATH
                     | rustix::fs::ResolveFlags::NO_SYMLINKS
@@ -417,8 +426,23 @@ fn open_local_copy_source<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<LocalCo
                     name.to_string_lossy()
                 )
             })?;
+            let opened = rustix::fs::fstat(&file).map_err(|error| {
+                format!("Could not inspect {}: {error}", name.to_string_lossy())
+            })?;
+            if rustix::fs::FileType::from_raw_mode(opened.st_mode)
+                != rustix::fs::FileType::RegularFile
+            {
+                return Err(format!(
+                    "{} changed while it was being copied",
+                    name.to_string_lossy()
+                ));
+            }
             Ok(LocalCopySource::File(std::fs::File::from(file)))
         }
+        _ => Err(format!(
+            "Cannot copy {}: it is not a regular file, directory, or symbolic link",
+            name.to_string_lossy()
+        )),
     }
 }
 
@@ -1079,6 +1103,118 @@ fn move_local_path(
     })
 }
 
+async fn move_restore_path(
+    source_path: PathBuf,
+    target_path: PathBuf,
+    allowed_root: PathBuf,
+    cancellable: gio::Cancellable,
+) -> Result<(), glib::Error> {
+    move_restore_path_with(
+        source_path,
+        target_path,
+        allowed_root,
+        cancellable,
+        |source_parent, source_name, target_parent, target_name, flags| {
+            rustix::fs::renameat_with(
+                source_parent,
+                source_name,
+                target_parent,
+                target_name,
+                flags,
+            )
+        },
+    )
+    .await
+}
+
+async fn move_restore_path_with(
+    source_path: PathBuf,
+    target_path: PathBuf,
+    allowed_root: PathBuf,
+    cancellable: gio::Cancellable,
+    rename: impl FnOnce(
+        &OwnedFd,
+        &OsStr,
+        &OwnedFd,
+        &OsStr,
+        rustix::fs::RenameFlags,
+    ) -> rustix::io::Result<()>
+    + Send
+    + 'static,
+) -> Result<(), glib::Error> {
+    if cancellable.is_cancelled() {
+        return Err(cancelled_local_operation());
+    }
+    let Some(source_parent_path) = source_path.parent().map(Path::to_path_buf) else {
+        return Err(io_error("Cannot restore the filesystem root"));
+    };
+    let Some(source_name) = source_path.file_name().map(OsStr::to_os_string) else {
+        return Err(io_error("Invalid restore source"));
+    };
+    let Some(target_parent_path) = target_path.parent().map(Path::to_path_buf) else {
+        return Err(io_error("The restore destination has no parent directory"));
+    };
+    let Some(target_name) = target_path.file_name().map(OsStr::to_os_string) else {
+        return Err(io_error("Invalid restore destination"));
+    };
+
+    let source_parent =
+        run_local_fs_step(move || open_local_parent_directory(&source_parent_path)).await?;
+    let target_parent =
+        run_local_fs_step(move || open_local_parent_beneath(&target_parent_path, &allowed_root))
+            .await?;
+
+    let display_name = source_name.to_string_lossy().into_owned();
+    gio::spawn_blocking(move || {
+            if cancellable.is_cancelled() {
+                return Err(rustix::io::Errno::CANCELED);
+            }
+            // Never fall back to an unflagged rename: the no-clobber check must be atomic.
+            rename(
+                &source_parent,
+                &source_name,
+                &target_parent,
+                &target_name,
+                rustix::fs::RenameFlags::NOREPLACE,
+            )
+        })
+        .await
+        .map_err(|_| io_error("Restore task panicked"))?
+        .map_err(|error| match error {
+            rustix::io::Errno::XDEV => {
+                io_error(format!("Could not restore {display_name} across volumes"))
+            }
+            rustix::io::Errno::EXIST => io_error(format!(
+                "Could not restore {display_name}: something already exists at the destination"
+            )),
+            rustix::io::Errno::INVAL | rustix::io::Errno::NOSYS | rustix::io::Errno::OPNOTSUPP => io_error(format!(
+                "Could not restore {display_name}: this filesystem does not support atomic no-replace renames. The item remains in Trash. Copy it to a destination you choose instead."
+            )),
+            rustix::io::Errno::CANCELED => cancelled_local_operation(),
+            error => io_error(format!("Could not restore {display_name}: {error}")),
+        })
+}
+
+async fn move_restore(
+    source: gio::File,
+    target: gio::File,
+    allowed_root: PathBuf,
+    cancellable: gio::Cancellable,
+) -> Result<(), glib::Error> {
+    if cancellable.is_cancelled() {
+        return Err(cancelled_local_operation());
+    }
+    if source.is_native()
+        && target.is_native()
+        && let (Some(source_path), Some(target_path)) = (source.path(), target.path())
+    {
+        return move_restore_path(source_path, target_path, allowed_root, cancellable).await;
+    }
+    Err(io_error(
+        "Trash restore requires a local source and destination",
+    ))
+}
+
 async fn move_local(
     source: gio::File,
     target: gio::File,
@@ -1655,6 +1791,39 @@ fn open_local_parent_directory(parent_path: &Path) -> Result<OwnedFd, String> {
     .map_err(|error| format!("Could not safely open {}: {error}", parent_path.display()))
 }
 
+fn open_local_parent_beneath(parent_path: &Path, allowed_root: &Path) -> Result<OwnedFd, String> {
+    if !parent_path.is_absolute() || !allowed_root.is_absolute() {
+        return Err("A restore destination must use an absolute path".to_owned());
+    }
+    let root = rustix::fs::open(
+        allowed_root,
+        rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+    )
+    .map_err(|error| format!("Could not open the restore area: {error}"))?;
+    if parent_path == allowed_root {
+        return Ok(root);
+    }
+    let relative = parent_path
+        .strip_prefix(allowed_root)
+        .map_err(|_| "The restore destination is outside the trash volume".to_owned())?;
+    rustix::fs::openat2(
+        &root,
+        relative,
+        rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::empty(),
+        rustix::fs::ResolveFlags::BENEATH
+            | rustix::fs::ResolveFlags::NO_MAGICLINKS
+            | rustix::fs::ResolveFlags::NO_XDEV,
+    )
+    .map_err(|error| {
+        format!(
+            "Could not safely open restore destination {}: {error}",
+            parent_path.display()
+        )
+    })
+}
+
 /// Entry point for permanently deleting a local path: opens the target's
 /// parent directory once, then hands off to the descriptor-relative walk in
 /// [`permanently_delete_local`] for everything below it.
@@ -1781,6 +1950,8 @@ struct RestoreEntry {
     display_name: String,
     original_target: Option<Location>,
     trash_info: Option<PathBuf>,
+    confirmed_destination: Option<PathBuf>,
+    physical_path: Option<PathBuf>,
 }
 
 async fn trashed_entries_for_originals(
@@ -1867,6 +2038,8 @@ async fn trashed_entries_for_originals(
                         display_name,
                         original_target: None,
                         trash_info: None,
+                        confirmed_destination: None,
+                        physical_path: None,
                     })
             })
         })
@@ -1924,6 +2097,8 @@ fn home_trash_entries_at(
                 .unwrap_or_else(|| "Trashed item".to_owned()),
             original_target: Some(Location::local(&original_path)),
             trash_info: Some(info_path),
+            confirmed_destination: None,
+            physical_path: Some(source_path.clone()),
         };
         match newest.get(&original_path) {
             Some((current_date, _)) if current_date.as_str() >= deletion_date => {}
@@ -2281,7 +2456,9 @@ impl OperationProvider for LocalOperationProvider {
                 let is_duplicate = !request.move_sources && source.equal(&default_target);
                 let needs_unique_target =
                     is_duplicate || item.conflict == TransferConflict::KeepBoth;
-                if !is_duplicate && transfer_is_noop(&source, &destination, &default_target) {
+                if (!is_duplicate && transfer_is_noop(&source, &destination, &default_target))
+                    || (is_duplicate && item.conflict == TransferConflict::ReplaceExisting)
+                {
                     completed.push(item.source.clone());
                     progress.finish_item(item_started_at, item_sizes[index], None);
                     continue;
@@ -2587,13 +2764,15 @@ impl OperationProvider for LocalOperationProvider {
         let operation_cancellable = cancellable.clone();
         let _task = glib::MainContext::default().spawn_local(async move {
             let entries = match request.source {
-                RestoreSource::TrashEntries(entries) => entries
+                RestoreSource::TrashEntries(items) => items
                     .into_iter()
-                    .map(|entry| RestoreEntry {
-                        source: entry.location,
-                        display_name: entry.display_name,
+                    .map(|item| RestoreEntry {
+                        source: item.entry.location,
+                        display_name: item.entry.display_name,
                         original_target: None,
                         trash_info: None,
+                        confirmed_destination: Some(item.destination),
+                        physical_path: item.entry.thumbnail_path,
                     })
                     .collect(),
                 RestoreSource::OriginalLocations(locations) => {
@@ -2614,6 +2793,7 @@ impl OperationProvider for LocalOperationProvider {
             let mut restored_locations = Vec::new();
             let mut failed_locations = Vec::new();
             let mut affected_locations = HashSet::from([Location::uri("trash:///")]);
+            let context = RestoreContext::current();
             for (index, entry) in entries.iter().enumerate() {
                 if operation_cancellable.is_cancelled() {
                     emit(cancelled_event(
@@ -2628,49 +2808,49 @@ impl OperationProvider for LocalOperationProvider {
                     ));
                     return;
                 }
-                let source = gio_file_for_location(&entry.source);
-                let result = if let Some(original_target) = entry.original_target.clone() {
-                    let target = gio_file_for_location(&original_target);
-                    if let Some(parent) = original_target.parent() {
-                        affected_locations.insert(parent);
-                    }
-                    move_local(source, target, operation_cancellable.clone(), None).await
-                } else {
-                    match await_cancellable(
-                        &source,
-                        &operation_cancellable,
-                        |source, cancellable, result| {
-                            source.query_info_async(
-                                "trash::orig-path",
-                                gio::FileQueryInfoFlags::NONE,
-                                glib::Priority::DEFAULT,
-                                Some(cancellable),
-                                move |output| result.resolve(output),
-                            );
-                        },
-                    )
-                    .await
+                let result = match plan_restore_for_location(
+                    &entry.source,
+                    entry.original_target.as_ref(),
+                    entry.trash_info.as_deref(),
+                    entry.physical_path.as_deref(),
+                    &context,
+                )
+                .await
+                {
+                    Ok(plan)
+                        if entry
+                            .confirmed_destination
+                            .as_ref()
+                            .is_some_and(|confirmed| plan.destination != *confirmed) =>
                     {
-                        Ok(info) => match info.attribute_byte_string("trash::orig-path") {
-                            Some(original_path) => {
-                                let target = gio::File::for_path(std::path::Path::new(
-                                    original_path.as_str(),
-                                ));
-                                if let Some(parent) = location_for_file(&target)
-                                    .and_then(|location| location.parent())
-                                {
-                                    affected_locations.insert(parent);
-                                }
-                                move_local(source, target, operation_cancellable.clone(), None)
-                                    .await
-                            }
-                            None => Err(glib::Error::new(
-                                gio::IOErrorEnum::NotFound,
-                                "The original location is unavailable",
-                            )),
-                        },
-                        Err(error) => Err(error),
+                        Err(glib::Error::new(
+                            gio::IOErrorEnum::Failed,
+                            "The original location changed and no longer matches the confirmed destination",
+                        ))
                     }
+                    Ok(plan) => {
+                        if let Some(parent) = plan.destination.parent() {
+                            affected_locations.insert(Location::local(parent));
+                        }
+                        let source = gio::File::for_path(&plan.source_path);
+                        let target = gio::File::for_path(&plan.destination);
+                        let moved = move_restore(
+                            source,
+                            target,
+                            plan.allowed_root,
+                            operation_cancellable.clone(),
+                        )
+                        .await;
+                        if moved.is_ok()
+                            && let Some(info_path) =
+                                plan.trash_info.as_ref().or(entry.trash_info.as_ref())
+                            && let Err(error) = std::fs::remove_file(info_path)
+                        {
+                            tracing::warn!(%error, "unable to remove restored trash metadata");
+                        }
+                        moved
+                    }
+                    Err(error) => Err(glib::Error::new(gio::IOErrorEnum::Failed, error.message())),
                 };
                 let restored_location = if let Err(error) = result {
                     if was_cancelled(&error) {
@@ -2691,11 +2871,6 @@ impl OperationProvider for LocalOperationProvider {
                     failed_locations.push(entry.source.clone());
                     None
                 } else {
-                    if let Some(info_path) = &entry.trash_info
-                        && let Err(error) = std::fs::remove_file(info_path)
-                    {
-                        tracing::warn!(%error, "unable to remove restored trash metadata");
-                    }
                     restored_locations.push(entry.source.clone());
                     Some(entry.source.clone())
                 };

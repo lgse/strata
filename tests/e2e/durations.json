@@ -66,7 +66,7 @@
   "tests/e2e/scenarios/test_clipboard.py::test_paste_targets_a_single_selected_directory[columns]": 1.515,
   "tests/e2e/scenarios/test_clipboard.py::test_paste_targets_a_single_selected_directory[icons]": 1.717,
   "tests/e2e/scenarios/test_clipboard.py::test_paste_targets_a_single_selected_directory[list]": 1.817,
-  "tests/e2e/scenarios/test_clipboard.py::test_pasting_a_duplicate_name_asks_before_replacing": 3.146,
+  "tests/e2e/scenarios/test_clipboard.py::test_skipping_one_collision_still_pastes_the_rest": 3.146,
   "tests/e2e/scenarios/test_clipboard.py::test_replacing_on_a_duplicate_name_overwrites": 3.794,
   "tests/e2e/scenarios/test_clipboard.py::test_same_folder_copy_creates_a_numbered_duplicate[documents-documents (1)-duplicate-columns]": 1.184,
   "tests/e2e/scenarios/test_clipboard.py::test_same_folder_copy_creates_a_numbered_duplicate[documents-documents (1)-duplicate-icons]": 1.177,

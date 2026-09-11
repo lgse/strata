@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Run Rust GUI tests on a private display, never the developer's desktop."""
 
 import os
@@ -29,6 +29,7 @@ def main() -> int:
             "CARGO_HOME": os.environ.get("CARGO_HOME", str(Path.home() / ".cargo")),
             "RUSTUP_HOME": os.environ.get("RUSTUP_HOME", str(Path.home() / ".rustup")),
             "STRATA_REQUIRE_GTK_TESTS": "1",
+            "STRATA_REQUIRE_DEVICE_TESTS": "1",
             "GTK_A11Y": "none",
             "NO_AT_BRIDGE": "1",
         }

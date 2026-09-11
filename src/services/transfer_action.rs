@@ -1,0 +1,200 @@
+// SPDX-License-Identifier: MIT
+
+#[cfg(test)]
+mod tests;
+
+use gio::prelude::*;
+
+use crate::model::Location;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct VolumeIdentity {
+    pub filesystem_id: String,
+    /// GIO URI scheme; native paths and file URIs share the `file` namespace.
+    pub backend: String,
+}
+
+impl VolumeIdentity {
+    pub(crate) fn matches(&self, other: &Self) -> bool {
+        !self.filesystem_id.is_empty()
+            && self.filesystem_id == other.filesystem_id
+            && self.backend == other.backend
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum VolumeRelation {
+    Same,
+    Different,
+    Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DropOverride {
+    None,
+    ForceCopy,
+    ForceMove,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(crate) enum CrossVolumeDropStrategy {
+    Copy,
+    Move,
+    #[default]
+    Ask,
+}
+
+impl CrossVolumeDropStrategy {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Copy => "always-copy",
+            Self::Move => "always-move",
+            Self::Ask => "always-ask",
+        }
+    }
+
+    pub(crate) fn parse(value: &str) -> Self {
+        match value {
+            "always-copy" => Self::Copy,
+            "always-move" => Self::Move,
+            _ => Self::Ask,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum TransferKind {
+    Copy,
+    Move,
+    Forbidden,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum DropCommit {
+    Copy,
+    Move,
+    /// `Unknown` must not be presented as a confirmed device difference.
+    Ask {
+        default: TransferKind,
+        volume: VolumeRelation,
+    },
+    Forbidden,
+}
+
+impl DropCommit {
+    pub(crate) fn transfer_kind(self) -> TransferKind {
+        match self {
+            Self::Copy => TransferKind::Copy,
+            Self::Move => TransferKind::Move,
+            Self::Ask { default, .. } => default,
+            Self::Forbidden => TransferKind::Forbidden,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DropActionInput {
+    pub can_copy: bool,
+    pub can_move: bool,
+    pub volume: VolumeRelation,
+    pub override_with: DropOverride,
+    pub strategy: CrossVolumeDropStrategy,
+}
+
+pub(crate) fn volume_relation(
+    dest: Option<&VolumeIdentity>,
+    sources: &[Option<VolumeIdentity>],
+) -> VolumeRelation {
+    if sources.is_empty() {
+        return VolumeRelation::Unknown;
+    }
+    let Some(dest) = dest else {
+        return VolumeRelation::Unknown;
+    };
+    let mut any_different = false;
+    for source in sources {
+        let Some(source) = source else {
+            return VolumeRelation::Unknown;
+        };
+        if !dest.matches(source) {
+            any_different = true;
+        }
+    }
+    if any_different {
+        VolumeRelation::Different
+    } else {
+        VolumeRelation::Same
+    }
+}
+
+pub(crate) fn drop_commit(input: DropActionInput) -> DropCommit {
+    if !input.can_copy && !input.can_move {
+        return DropCommit::Forbidden;
+    }
+    match input.override_with {
+        DropOverride::ForceCopy if input.can_copy => return DropCommit::Copy,
+        DropOverride::ForceMove if input.can_move => return DropCommit::Move,
+        DropOverride::ForceCopy | DropOverride::ForceMove | DropOverride::None => {}
+    }
+    match input.volume {
+        VolumeRelation::Same => {
+            if input.can_move {
+                DropCommit::Move
+            } else {
+                DropCommit::Copy
+            }
+        }
+        VolumeRelation::Different | VolumeRelation::Unknown => cross_volume_commit(input),
+    }
+}
+
+fn cross_volume_commit(input: DropActionInput) -> DropCommit {
+    let preferred = if input.strategy == CrossVolumeDropStrategy::Move {
+        if input.can_move {
+            TransferKind::Move
+        } else {
+            TransferKind::Copy
+        }
+    } else if input.can_copy {
+        TransferKind::Copy
+    } else {
+        TransferKind::Move
+    };
+    if input.strategy == CrossVolumeDropStrategy::Ask && input.can_copy && input.can_move {
+        DropCommit::Ask {
+            default: TransferKind::Copy,
+            volume: input.volume,
+        }
+    } else {
+        match preferred {
+            TransferKind::Copy => DropCommit::Copy,
+            TransferKind::Move => DropCommit::Move,
+            TransferKind::Forbidden => DropCommit::Forbidden,
+        }
+    }
+}
+
+pub(crate) fn transferable_drop_sources(dest: &Location, sources: &[Location]) -> Vec<Location> {
+    let destination = gio_file(dest);
+    sources
+        .iter()
+        .filter(|location| {
+            let source = gio_file(location);
+            let Some(name) = source.basename() else {
+                return false;
+            };
+            let target = destination.child(name);
+            !source.equal(&target)
+                && !source.equal(&destination)
+                && !destination.has_prefix(&source)
+        })
+        .cloned()
+        .collect()
+}
+
+fn gio_file(location: &Location) -> gio::File {
+    location
+        .native_path()
+        .map(gio::File::for_path)
+        .unwrap_or_else(|| gio::File::for_uri(location.uri_value().unwrap_or_default()))
+}

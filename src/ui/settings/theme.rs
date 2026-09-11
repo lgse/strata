@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -371,19 +371,18 @@ fn theme_is_light(tokens: &ThemeTokens) -> bool {
 }
 
 pub(super) fn theme_background_is_light(background: &str) -> bool {
-    let value = background.strip_prefix('#').unwrap_or_default();
-    let Ok(color) = u32::from_str_radix(value, 16) else {
+    let Some(color) = crate::ui::theme::parse_rgb_channels(background) else {
         return false;
     };
-    let channel = |shift| {
-        let value = f64::from((color >> shift) & 0xff_u32) / 255.0;
+    let channel = |index: usize| {
+        let value = f64::from(color[index]) / 255.0;
         if value <= 0.04045 {
             value / 12.92
         } else {
             ((value + 0.055) / 1.055).powf(2.4)
         }
     };
-    let luminance = 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0);
+    let luminance = 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2);
     luminance > 0.4
 }
 

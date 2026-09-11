@@ -79,6 +79,21 @@ headerbar,
   padding: 0;
 }
 
+headerbar {
+  min-height: 40px;
+}
+
+headerbar > windowhandle > box {
+  min-height: 40px;
+  padding: 0;
+}
+
+headerbar button,
+headerbar menubutton {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
 .location-control {
   min-width: 8em;
 }
@@ -260,6 +275,82 @@ headerbar menubutton.header-action > button:focus-visible {
   min-height: 22px;
 }
 
+.breadcrumb-fade {
+  min-width: 24px;
+  min-height: 22px;
+  transition: opacity 150ms ease-out;
+}
+
+.breadcrumb-fade-left {
+  background: linear-gradient(to right, @theme_surface, transparent);
+}
+
+.breadcrumb-fade-right {
+  background: linear-gradient(to left, @theme_surface, transparent);
+}
+
+.breadcrumb-scroller scrollbar {
+  opacity: 0;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+}
+
+.breadcrumb-container {
+  min-height: 22px;
+}
+
+.breadcrumb-scrollbar {
+  min-height: 4px;
+  padding: 0;
+  margin: 1px 0 0 0;
+  background: transparent;
+  border: none;
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+
+.breadcrumb-container:hover .breadcrumb-scrollbar,
+.breadcrumb-container.hovered .breadcrumb-scrollbar,
+.breadcrumb-scrollbar.hovered,
+.breadcrumb-scrollbar:hover,
+.breadcrumb-scrollbar.scrolling,
+.breadcrumb-scrollbar:focus,
+.breadcrumb-scrollbar:active {
+  opacity: 1;
+}
+
+.breadcrumb-scrollbar > range > trough {
+  min-height: 4px;
+  padding: 0;
+  margin: 0;
+  background: alpha(@theme_border, 0.25);
+  border: none;
+  border-radius: 2px;
+}
+
+.breadcrumb-scrollbar:hover > range > trough {
+  background: alpha(@theme_border, 0.45);
+}
+
+.breadcrumb-scrollbar > range > trough > slider {
+  min-height: 4px;
+  min-width: 32px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 2px;
+  background: @theme_accent;
+}
+
+.breadcrumb-scrollbar > range > trough > slider:hover,
+.breadcrumb-scrollbar > range > trough > slider:active {
+  background: @theme_accent;
+}
+
 .breadcrumb {
   background: transparent;
   color: @theme_dim_text;
@@ -325,6 +416,45 @@ headerbar menubutton.header-action > button:focus-visible {
   padding: 0;
 }
 
+.breadcrumb-popover contents {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 9px;
+  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
+  padding: 0;
+}
+
+.breadcrumb-hierarchy-menu {
+  font-size: 0.88em;
+  min-width: 180px;
+  padding: 6px;
+}
+
+.breadcrumb-hierarchy-item {
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  box-shadow: none;
+  color: @theme_text;
+  min-height: 28px;
+  padding: 4px 8px;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+
+.breadcrumb-hierarchy-item:hover {
+  background: alpha(@theme_accent, 0.15);
+  color: @theme_text;
+}
+
+.breadcrumb-hierarchy-item:active {
+  background: alpha(@theme_accent, 0.25);
+}
+
+.breadcrumb-hierarchy-item.current {
+  color: @theme_accent;
+  font-weight: 700;
+}
+
 .search-backdrop {
   background: alpha(@theme_bg, 0.58);
   transition: opacity 200ms ease-out;
@@ -388,7 +518,6 @@ headerbar menubutton.header-action > button:focus-visible {
   border-bottom: 1px solid alpha(@theme_border, 0.28);
   color: @theme_text;
   padding: 0;
-  transition: background 160ms ease-out;
 }
 
 .search-result > box {
@@ -488,13 +617,30 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .delete-confirmation-list {
   background: alpha(@theme_highlight, 0.42);
-  border: 1px solid alpha(@theme_border, 0.42);
-  border-radius: 5px;
 }
 
 .delete-confirmation-list viewport {
   background: transparent;
-  border-radius: 5px;
+}
+
+.delete-confirmation-list scrollbar {
+  padding: 0;
+}
+
+.delete-confirmation-list scrollbar.vertical {
+  min-width: 6px;
+}
+
+.delete-confirmation-list scrollbar.vertical > range > trough {
+  background: transparent;
+  border: none;
+  padding: 0;
+  margin: 0;
+}
+
+.delete-confirmation-list scrollbar.vertical > range > trough > slider {
+  margin: 0;
+  min-width: 6px;
 }
 
 .delete-confirmation-files {
@@ -614,22 +760,68 @@ headerbar menubutton.header-action > button:focus-visible {
 }
 
 .open-with-dialog {
-  min-width: 460px;
+  min-width: 480px;
+  min-height: 460px;
 }
 
-.open-with-list {
+.open-with-search {
   background: alpha(@theme_bg, 0.42);
   border: 1px solid alpha(@theme_border, 0.28);
   border-radius: 6px;
   color: @theme_text;
-  margin-top: 2px;
-  padding: 4px;
+  margin-bottom: 8px;
+  min-height: 32px;
+  padding: 3px 8px;
+}
+
+.open-with-search:focus,
+.open-with-search:focus-within {
+  border-color: @theme_accent;
+  outline: 2px solid alpha(@theme_accent, 0.3);
+}
+
+.open-with-search image {
+  color: @theme_dim_text;
+}
+
+.open-with-search image:hover,
+.open-with-search image:active {
+  color: @theme_accent;
+  background: transparent;
+}
+
+.open-with-search placeholder {
+  color: @theme_dim_text;
+}
+
+.open-with-heading-row {
+  background: transparent;
+  padding: 8px 6px 3px;
+}
+
+.open-with-heading {
+  color: @theme_dim_text;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.open-with-scroll {
+  background: alpha(@theme_bg, 0.42);
+  border: 1px solid alpha(@theme_border, 0.28);
+  border-radius: 6px;
+}
+
+.open-with-list {
+  background: transparent;
+  color: @theme_text;
+  padding: 3px;
 }
 
 .open-with-row {
   border-radius: 5px;
-  min-height: 44px;
-  padding: 7px 9px;
+  min-height: 36px;
+  padding: 4px 8px;
+  margin-bottom: 2px;
 }
 
 .open-with-row:hover {
@@ -657,16 +849,19 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .open-with-name {
   color: @theme_text;
-  font-weight: 700;
+  font-size: 13px;
+  font-weight: 600;
 }
 
-.open-with-description,
+.open-with-description {
+  color: @theme_dim_text;
+  font-size: 11px;
+}
+
 .open-with-empty {
   color: @theme_dim_text;
-}
-
-.open-with-empty {
-  padding: 8px 2px 0;
+  font-size: 13px;
+  padding: 24px 12px;
 }
 
 .action-dialog-cancel {
@@ -790,6 +985,11 @@ headerbar menubutton.header-action > button:focus-visible {
   padding: 7px 9px;
 }
 
+.form-field-error {
+  color: @theme_danger;
+  font-size: 0.82em;
+}
+
 .portal-setup-dialog .form-message:not(.error) {
   padding: 0;
   color: @theme_text;
@@ -800,6 +1000,15 @@ headerbar menubutton.header-action > button:focus-visible {
   background: alpha(@theme_danger, 0.1);
   border: 1px solid alpha(@theme_danger, 0.5);
   color: @theme_danger;
+}
+
+.open-argument-connecting {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 8px;
+  box-shadow: 0 2px 10px alpha(@theme_bg, 0.4);
+  margin: 12px;
+  padding: 10px 12px;
 }
 
 .form-message.warning {
@@ -1421,6 +1630,15 @@ switch:checked slider {
   transition: none;
 }
 
+/* Opaque troughs conceal the sidebar paned handle beneath mode scrollers. */
+.mode-scroll scrollbar.horizontal > range > trough,
+.mode-scroll scrollbar.horizontal:hover > range > trough,
+.mode-scroll scrollbar.horizontal.hovering > range > trough,
+.mode-scroll scrollbar.horizontal.dragging > range > trough {
+  background: @theme_bg;
+  border: none;
+}
+
 /* The trough is widened to a practical grab target while slider margins keep the
    visible bar as narrow as before. */
 .fixed-scrollbar scrollbar.vertical {
@@ -1447,6 +1665,10 @@ scrollbar slider:active {
 .fixed-scrollbar scrollbar.horizontal > range > trough > slider {
   margin: 4px 0;
   min-height: 6px;
+}
+
+.columns-scroll scrollbar.horizontal {
+  background: @theme_bg;
 }
 
 .autoscroll-anchor {
@@ -1632,8 +1854,8 @@ paned > separator {
 
 .preview-header {
   border-bottom: 1px solid alpha(@theme_border, 0.32);
-  min-height: 42px;
-  padding: 0 12px;
+  min-height: 40px;
+  padding: 0 6px 0 12px;
 }
 
 .preview-title {
@@ -1643,7 +1865,8 @@ paned > separator {
 
 .preview-header-action {
   background: transparent;
-  border: 1px solid transparent;
+  background-image: none;
+  border: none;
   border-radius: 5px;
   box-shadow: none;
   color: @theme_accent;
@@ -2065,7 +2288,7 @@ entry.preview-command-entry selection {
 .destination-column .column-header {
   background: @theme_surface;
   color: @theme_text;
-  box-shadow: inset 0 3px @theme_accent;
+  border-top-color: @theme_accent;
 }
 
 .column-destination-hint {
@@ -2127,11 +2350,12 @@ entry.preview-command-entry selection {
 
 .column-header {
   background: transparent;
+  border-top: 3px solid transparent;
   border-bottom: 1px solid alpha(@theme_border, 0.6);
   color: alpha(@theme_accent, 0.58);
   font-weight: 700;
-  min-height: 36px;
-  padding: 4px 8px 4px 12px;
+  min-height: 37px;
+  padding: 0 5px 0 12px;
 }
 
 button.column-header-action,
@@ -2142,7 +2366,7 @@ menubutton.column-header-action > button {
   box-shadow: none;
   min-height: 24px;
   min-width: 24px;
-  padding: 4px;
+  padding: 2px 4px;
   transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
@@ -2181,6 +2405,11 @@ menubutton.column-header-action > button:active {
   min-height: 28px;
   outline: none;
   padding: 0;
+}
+
+.column-filter-entry selection {
+  background: @theme_accent;
+  color: @theme_bg;
 }
 
 .column-filter:focus-within {
@@ -2557,12 +2786,24 @@ popover.folder-context-popover.background {
   box-shadow: none;
 }
 
+.context-menu-scroll scrollbar,
+.context-menu-scroll scrollbar:hover,
+.context-menu-scroll scrollbar.hovering,
+.context-menu-scroll scrollbar.dragging {
+  background: transparent;
+  border: none;
+  padding: 0;
+  transition: none;
+}
+
 .context-menu-scroll scrollbar.vertical {
-  min-width: 6px;
+  min-width: 14px;
 }
 
 .context-menu-scroll scrollbar.vertical > range > trough > slider {
-  margin: 0;
+  border-width: 1px;
+  margin: 0 2px 0 4px;
+  min-width: 6px;
 }
 
 .folder-context-menu,
@@ -2930,14 +3171,25 @@ colorchooser colorswatch overlay {
   padding-top: 4px;
 }
 
+/* Keep the inset outside the scrolling content so editor reveal uses its full viewport. */
+.list-listing-scroll {
+  padding-top: 7px;
+  padding-bottom: 7px;
+}
+
 .file-list row,
 .file-list-mode row {
   background: transparent;
   color: @theme_text;
   border-radius: 6px;
   margin: 1px 8px;
-  padding: 4px 0;
+  padding: 0;
   transition: background 160ms ease-out, color 160ms ease-out;
+}
+
+.file-list row {
+  margin-left: 5px;
+  margin-right: 5px;
 }
 
 .file-row,
@@ -2955,7 +3207,13 @@ colorchooser colorswatch overlay {
 .file-row {
   border-radius: 6px;
   color: @theme_text;
-  padding: 4px;
+  min-height: 26px;
+  padding: 0 4px;
+}
+
+.file-row > * {
+  margin-bottom: 4px;
+  margin-top: 4px;
 }
 
 .file-row.cut {
@@ -3046,14 +3304,6 @@ colorchooser colorswatch overlay {
   animation: slide-out-up 240ms ease-out;
 }
 
-.file-appear {
-  opacity: 0;
-}
-
-.file-row.file-appear {
-  transform: translate(0, 6px);
-}
-
 .file-row:drop(active),
 .file-row.drop-destination {
   background: alpha(@theme_highlight, 0.72);
@@ -3141,7 +3391,7 @@ colorchooser colorswatch overlay {
   color: @theme_dim_text;
   font-size: 0.9em;
   opacity: 0;
-  padding: 2px 7px;
+  padding: 0 7px;
   border-radius: 5px;
   transition: opacity 120ms ease-out;
 }
@@ -3182,10 +3432,27 @@ colorchooser colorswatch overlay {
   outline-offset: -2px;
 }
 
-.directory-column:not(:focus-within) .file-list row:selected,
-.file-list-mode:not(:focus-within) row:selected {
+.directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected,
+.file-list-mode:not(:focus-within):not(.context-selection) row:selected {
   background: alpha(@theme_highlight, 0.55);
   color: @theme_text;
+}
+
+.file-list row:selected:hover,
+.file-list-mode row:selected:hover,
+.directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected:hover,
+.file-list-mode:not(:focus-within):not(.context-selection) row:selected:hover {
+  background: alpha(@theme_accent, 0.30);
+}
+
+.keyboard-navigation .file-list row:selected:hover,
+.keyboard-navigation .file-list-mode row:selected:hover {
+  background: alpha(@theme_accent, 0.22);
+}
+
+.keyboard-navigation .directory-column:not(:focus-within) .file-list:not(.context-selection) row:selected:hover,
+.keyboard-navigation .file-list-mode:not(:focus-within):not(.context-selection) row:selected:hover {
+  background: alpha(@theme_highlight, 0.55);
 }
 
 .keyboard-navigation .file-list row:hover:not(:selected),
@@ -3236,6 +3503,7 @@ colorchooser colorswatch overlay {
 .skeleton-miller .file-row {
   margin: 1px 8px;
   min-height: 18px;
+  padding: 4px;
 }
 
 .directory-feedback {
@@ -3652,7 +3920,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .file-icons {
-  padding: 3px;
+  padding: 0;
 }
 
 .file-icons > child {
@@ -3679,6 +3947,14 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   background: alpha(@theme_accent, 0.22);
   outline: 1px solid alpha(@theme_accent, 0.9);
   outline-offset: -1px;
+}
+
+.file-icons > child:selected:hover .icons-card {
+  background: alpha(@theme_accent, 0.30);
+}
+
+.keyboard-navigation .file-icons > child:selected:hover .icons-card {
+  background: alpha(@theme_accent, 0.22);
 }
 
 .file-icons > child:focus-visible .icons-card {
@@ -3727,7 +4003,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .mode-icons.density-airy .file-icons {
-  padding: 8px;
+  padding: 5px;
 }
 
 .mode-icons.density-airy .file-icons > child {
@@ -3735,9 +4011,7 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .mode-icons.density-airy .icons-card {
-  min-height: 130px;
-  min-width: 225px;
-  padding: 8px 10px;
+  padding: 5px 7px;
 }
 
 .type-group-heading {
@@ -3871,23 +4145,38 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 }
 
 .list-row {
-  min-height: 28px;
+  min-height: 26px;
   padding: 0;
 }
 
-.list-name-cell,
+.list-row > * {
+  margin-bottom: 4px;
+  margin-top: 4px;
+}
+
+/* Include the row's eight-pixel margin when aligning with the Name heading. */
+.list-name-cell {
+  padding-left: 4px;
+}
+
 .list-metadata-cell {
   padding-left: 12px;
 }
 
 .mode-list.density-airy .list-row {
   min-height: 42px;
-  padding-bottom: 4px;
-  padding-top: 4px;
+}
+
+.mode-list.density-airy .list-row > * {
+  margin-bottom: 8px;
+  margin-top: 8px;
 }
 
 .density-airy .file-row {
-  min-height: 38px;
-  padding-bottom: 5px;
-  padding-top: 5px;
+  min-height: 42px;
+}
+
+.density-airy .file-row > * {
+  margin-bottom: 8px;
+  margin-top: 8px;
 }

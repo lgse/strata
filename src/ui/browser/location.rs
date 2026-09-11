@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::adapters::gio_file_for_location;
 use crate::model::Location;
@@ -974,6 +974,111 @@ impl ViewState {
             }
         }
         self.location_stack.set_visible_child_name("breadcrumbs");
+        let hadjustment = self.breadcrumb_scroller.hadjustment();
+        hadjustment.set_value(hadjustment.upper() - hadjustment.page_size());
+        let scroller = self.breadcrumb_scroller.clone();
+        glib::idle_add_local_once(move || {
+            let hadjustment = scroller.hadjustment();
+            hadjustment.set_value(hadjustment.upper() - hadjustment.page_size());
+        });
+    }
+
+    pub(super) fn show_breadcrumb_hierarchy_menu(
+        self: &Rc<Self>,
+        anchor: &gtk::Widget,
+        x: f64,
+        y: f64,
+    ) {
+        let Some(active_location) = self.browser.active_location() else {
+            return;
+        };
+        let mut locations = active_location.breadcrumbs();
+        if locations.is_empty() {
+            return;
+        }
+        let home = Location::local(glib::home_dir());
+        if let Some(home_index) = locations.iter().position(|crumb| crumb == &home) {
+            locations.drain(..home_index);
+        }
+
+        locations.reverse();
+
+        let menu_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        menu_box.add_css_class("breadcrumb-hierarchy-menu");
+
+        let popover = gtk::Popover::builder()
+            .child(&menu_box)
+            .has_arrow(true)
+            .position(gtk::PositionType::Bottom)
+            .pointing_to(&gtk::gdk::Rectangle::new(x as i32, y as i32, 1, 1))
+            .build();
+        popover.add_css_class("breadcrumb-popover");
+        popover.set_parent(anchor);
+
+        for (i, crumb) in locations.iter().enumerate() {
+            let item_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            let icon_name = if *crumb == home {
+                crate::assets::icons::HOME
+            } else if crumb
+                .native_path()
+                .is_some_and(|path| path == Path::new("/"))
+            {
+                crate::assets::icons::HARD_DRIVE
+            } else if crumb.uri_value().is_some_and(|u| u.starts_with("trash://")) {
+                crate::assets::icons::TRASH
+            } else if crumb.uri_value().is_some() {
+                crate::assets::icons::NETWORK
+            } else {
+                crate::assets::icons::FOLDER
+            };
+
+            let icon = crate::assets::primary_icon(icon_name, 16);
+            let display_name = if *crumb == home {
+                "~".to_owned()
+            } else {
+                crumb.display_name()
+            };
+
+            let label = gtk::Label::new(Some(&display_name));
+            label.set_xalign(0.0);
+            label.set_hexpand(true);
+            label.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+            label.set_max_width_chars(32);
+
+            item_row.append(&icon);
+            item_row.append(&label);
+
+            let button = gtk::Button::builder()
+                .child(&item_row)
+                .has_frame(false)
+                .tooltip_text(crumb.display_path())
+                .build();
+            button.set_cursor_from_name(Some("pointer"));
+            button.add_css_class("breadcrumb-hierarchy-item");
+            if i == 0 {
+                button.add_css_class("current");
+            }
+
+            let weak_self = Rc::downgrade(self);
+            let weak_popover = popover.downgrade();
+            let target_crumb = crumb.clone();
+            button.connect_clicked(move |_| {
+                if let Some(popover) = weak_popover.upgrade() {
+                    popover.popdown();
+                }
+                if let Some(state) = weak_self.upgrade() {
+                    state.browser.navigate(target_crumb.clone());
+                }
+            });
+
+            menu_box.append(&button);
+        }
+
+        popover.connect_closed(move |popover| {
+            popover.unparent();
+        });
+
+        popover.popup();
     }
 }
 

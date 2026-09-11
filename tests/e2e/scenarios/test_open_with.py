@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 
 import pytest
 from gi.repository import Gio
@@ -16,12 +16,14 @@ def open_with_app(test_environment):
     launcher.chmod(0o755)
     (applications / "strata-review.desktop").write_text(
         "[Desktop Entry]\nType=Application\nName=Review Text Viewer\n"
-        f"Exec={launcher} %U\nMimeType=text/plain;\nNoDisplay=false\n"
+        f"Exec={launcher} %U\nMimeType=text/plain;inode/directory;\nNoDisplay=false\n"
     )
     associations = test_environment.config_home / "mimeapps.list"
     contents = (
         "[Default Applications]\ntext/plain=strata-review.desktop;\n"
+        "inode/directory=strata-review.desktop;\n"
         "[Added Associations]\ntext/plain=strata-review.desktop;\n"
+        "inode/directory=strata-review.desktop;\n"
     )
     associations.write_text(contents)
     return output, associations, contents
@@ -100,16 +102,36 @@ def test_open_with_names_rows_and_tabs_out_of_the_list(chooser_apps, strata):
     strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "MIME lookup")
     strata.choose_menu_item("Open With…")
     dialog = strata.wait_for_dialog()
-    rows = dialog.find_all(role="list item")
-    names = [row.name for row in rows]
-    assert names[0] == "Review Text Viewer"
-    assert {"Alternative Viewer", "Missing Icon Viewer"} <= set(names)
-    assert names[1:] == sorted(names[1:], key=str.lower)
-    assert all(names)
-    assert "Other Desktop Viewer" not in names
-    strata.wait(lambda: strata.focused_node().name == "Review Text Viewer", "initial row focus")
+    # Section headers are not selectable and carry their text in a child label.
+    all_rows = dialog.find_all(role="list item")
+    sections: dict[str, list[str]] = {}
+    current_section = None
+    for row in all_rows:
+        if "selectable" not in row.states:
+            current_section = next((c.name for c in row.children if c.name), "")
+            sections.setdefault(current_section, [])
+        elif current_section is not None:
+            sections[current_section].append(row.name)
+    recommended = sections.get("Recommended Applications", [])
+    assert recommended[0] == "Review Text Viewer"
+    assert {"Alternative Viewer", "Missing Icon Viewer"} <= set(recommended)
+    assert recommended[1:] == sorted(recommended[1:], key=str.lower)
+    assert all(recommended)
+    assert "Other Desktop Viewer" not in [row.name for row in all_rows]
+    strata.wait(
+        lambda: strata.focused_node() is not None and "editable" in strata.focused_node().states,
+        "search entry focused on open",
+    )
     strata.keyboard.press("Down")
-    strata.wait(lambda: strata.focused_node().name == "Alternative Viewer", "arrow navigation")
+    strata.wait(lambda: "editable" in strata.focused_node().states, "search retains focus")
+    strata.wait(
+        lambda: any(row.name == "Alternative Viewer" and "selected" in row.states
+                    for row in strata.dialog().find_all(role="list item")),
+        "arrow selection",
+    )
+    assert "editable" in strata.focused_node().states
+    strata.keyboard.press("Tab")
+    strata.wait(lambda: strata.focused_node().name == "Alternative Viewer", "Tab into list")
     strata.keyboard.press("Tab")
     strata.wait(lambda: strata.focused_node().name == "Cancel", "Tab to leave the list")
     strata.keyboard.press("shift+Tab")
@@ -117,6 +139,58 @@ def test_open_with_names_rows_and_tabs_out_of_the_list(chooser_apps, strata):
     strata.keyboard.press("Tab")
     strata.keyboard.press("Tab")
     strata.wait(lambda: strata.focused_node().name == "Open", "Tab to reach Open")
+
+
+def test_open_with_search_filters_and_escape_clears(chooser_apps, strata, request):
+    from harness.artifacts import ArtifactCollector
+
+    strata.open_context_menu("todo.txt")
+    strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "MIME lookup")
+    strata.choose_menu_item("Open With…")
+    strata.wait_for_dialog()
+    strata.keyboard.type_text("ALTERNATIVE")
+    strata.keyboard.press("Down")
+    strata.wait(lambda: "editable" in strata.focused_node().states, "search retains focus after Down")
+    strata.keyboard.press("Up")
+    assert "editable" in strata.focused_node().states
+    strata.keyboard.type_text("x")
+    strata.wait(
+        lambda: "No matching applications were found." in strata.dialog().dump(),
+        "typing after arrow navigation appends at the caret",
+    )
+    strata.keyboard.press("BackSpace")
+    strata.wait(lambda: "Alternative Viewer" in strata.dialog().dump(), "Backspace restores match")
+    collector = ArtifactCollector(test_name=request.node.name)
+    strata.screenshot(collector.directory / "filtered-chooser.png")
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("no-such-application-821")
+    strata.wait(
+        lambda: "No matching applications were found." in strata.dialog().dump(),
+        "empty search feedback",
+    )
+    strata.keyboard.press("Return")
+    assert strata.dialog() is not None
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: "No matching applications were found." not in strata.dialog().dump(), "cleared search")
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.dialog() is None, "dismissed chooser")
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_open_with_background_launches_current_folder(open_with_app, strata, mode):
+    output, associations, contents = open_with_app
+    strata.pointer.right_click(strata.pane(), at=strata.background_point())
+    strata.wait(lambda: "Open With…" in strata.menu_items(), "folder menu")
+    strata.choose_menu_item("Open With…")
+    strata.wait_for_dialog()
+    strata.keyboard.press("Return")
+    strata.wait(lambda: output.exists() and output.read_text(), "folder launch")
+    received = output.read_text().splitlines()
+    assert len(received) == 1
+    assert Gio.File.new_for_commandline_arg(received[0]).equal(
+        Gio.File.new_for_path(str(strata.fixture.root))
+    )
+    assert associations.read_text() == contents
 
 
 @pytest.mark.parametrize("action", ["Open", "Open With…"])
@@ -174,34 +248,65 @@ def incompatible_files(fixture_tree, open_with_app, test_environment):
     )
 
 
-@pytest.mark.parametrize("name", ["unknown.bin", "broken-link"])
-def test_open_with_no_handlers_is_disabled(incompatible_files, strata, name):
-    strata.open_context_menu(name)
-    reason = (
-        "Broken symbolic links cannot be opened with an application"
-        if name == "broken-link" else "No compatible applications were found"
+def test_open_with_broken_link_is_disabled(incompatible_files, strata):
+    strata.open_context_menu("broken-link")
+    strata.wait(
+        lambda: "Broken symbolic links cannot be opened with an application"
+        in strata.menu_item("Open With…").description,
+        "MIME lookup result",
     )
-    strata.wait(lambda: reason in strata.menu_item("Open With…").description, "MIME lookup result")
     option = strata.menu_item("Open With…")
     assert "sensitive" not in option.states
     strata.keyboard.press("Escape")
     assert strata.dialog() is None
 
 
-def test_open_with_incompatible_types_explain_unavailability(incompatible_files, strata):
+def test_open_with_unknown_type_offers_other_apps(incompatible_files, strata):
+    strata.open_context_menu("unknown.bin")
+    strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "other apps available")
+    strata.choose_menu_item("Open With…")
+    dialog = strata.wait_for_dialog()
+    dump = dialog.dump()
+    assert "Other Applications" in dump
+    assert "Recommended Applications" not in dump
+    assert "Image Viewer" in dump
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.dialog() is None, "the chooser to close")
+
+
+def test_open_with_incompatible_types_offers_other_apps(incompatible_files, strata):
     strata.select_entry("todo.txt")
     strata.pointer.click(strata.entry("image.png"), modifiers=["ctrl"])
     strata.wait_for_selection(["image.png", "todo.txt"])
     strata.open_context_menu("todo.txt")
-    strata.wait(
-        lambda: "No application can open all selected file types" in strata.menu_item("Open With…").description,
-        "the unavailable action explanation",
-    )
-    assert "sensitive" not in strata.menu_item("Open With…").states
+    strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "other apps available")
     assert "Open" not in strata.menu_items()
+    strata.choose_menu_item("Open With…")
+    dialog = strata.wait_for_dialog()
+    dump = dialog.dump()
+    assert "Other Applications" in dump
+    assert "Recommended Applications" not in dump
+    assert "Image Viewer" in dump
+    assert "Review Text Viewer" in dump
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.dialog() is None, "the chooser to close")
 
 
-def test_open_with_is_hidden_for_directories(strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_open_with_launches_selected_folder(open_with_app, strata, mode):
+    output, associations, contents = open_with_app
     strata.open_context_menu("documents")
-    assert "Open With…" not in strata.menu_items()
-    strata.dismiss_menu()
+    strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "MIME lookup")
+    strata.choose_menu_item("Open With…")
+    assert "Review Text Viewer" in strata.wait_for_dialog().dump()
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: output.exists() and output.read_text(),
+        "the selected application to receive the folder",
+    )
+    received = output.read_text().splitlines()
+    assert len(received) == 1
+    assert Gio.File.new_for_commandline_arg(received[0]).equal(
+        Gio.File.new_for_path(str(strata.fixture.path("documents")))
+    )
+    assert associations.read_text() == contents

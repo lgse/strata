@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::app::Browser;
 use crate::model::{SortDirection, SortKey};
@@ -19,7 +19,7 @@ pub(in crate::ui) fn pane_new_folder_button(
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::FOLDER_PLUS,
     )));
-    button.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&button);
     button.add_css_class("chooser-new-folder");
     button.update_property(&[gtk::accessible::Property::Label("New Folder")]);
     button.connect_clicked(move |_| {
@@ -37,7 +37,7 @@ pub(in crate::ui) fn pane_refresh_button(browser: &Rc<Browser>, depth: usize) ->
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::REFRESH,
     )));
-    button.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&button);
     let weak_browser = Rc::downgrade(browser);
     button.connect_clicked(move |_| {
         if let Some(browser) = weak_browser.upgrade() {
@@ -162,7 +162,7 @@ pub(in crate::ui) fn column_sort_menu(browser: &Rc<Browser>, depth: usize) -> gt
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::SETTINGS_2,
     )));
-    button.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&button);
     button
 }
 
@@ -177,7 +177,7 @@ pub(in crate::ui) fn column_sort_direction_toggle(
     let button = gtk::Button::new();
     let icon = crate::assets::chrome_icon(crate::assets::icons::ARROW_UP_NARROW_WIDE);
     button.set_child(Some(&icon));
-    button.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&button);
     sync_sort_direction_toggle(&button, &icon, direction);
 
     let weak_browser = Rc::downgrade(browser);
@@ -235,7 +235,7 @@ pub(in crate::ui) fn empty_trash_button(browser: &Rc<Browser>) -> gtk::Button {
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::TRASH,
     )));
-    button.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&button);
     let weak_browser = Rc::downgrade(browser);
     button.connect_clicked(move |_| {
         if let Some(browser) = weak_browser.upgrade() {

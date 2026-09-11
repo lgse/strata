@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Outside wheel ticks dismiss browser panels and only scroll the pointed listing."""
 
 import pytest

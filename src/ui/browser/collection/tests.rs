@@ -1,8 +1,11 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
+use crate::app::{Browser, BrowserEvent};
+use crate::services::SearchItem;
 use crate::ui::entry_list_model::EntryListModel;
 use gtk::glib;
+use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 #[test]
 fn recursive_search_arrows_select_and_clamp_results() {
@@ -12,6 +15,33 @@ fn recursive_search_arrows_select_and_clamp_results() {
     assert_eq!(search_result_navigation_position(Some(1), 3, 1), Some(2));
     assert_eq!(search_result_navigation_position(Some(2), 3, 1), Some(2));
     assert_eq!(search_result_navigation_position(None, 0, 1), None);
+}
+
+#[test]
+fn recursive_file_activation_emits_open_request() {
+    let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+    let opened = Rc::new(RefCell::new(None));
+    let opened_for_observer = opened.clone();
+    browser.observe(move |event| {
+        if let BrowserEvent::OpenRequested { location } = event {
+            opened_for_observer.replace(Some(location.clone()));
+        }
+    });
+    let path = PathBuf::from("/filtered.txt");
+    let results = RefCell::new(vec![SearchItem::for_test(path.clone(), false)]);
+
+    assert!(activate_recursive_search_result(
+        &Rc::downgrade(&browser),
+        &results,
+        0
+    ));
+    assert_eq!(
+        opened
+            .borrow()
+            .as_ref()
+            .and_then(|location| location.native_path()),
+        Some(path.as_path())
+    );
 }
 
 #[test]

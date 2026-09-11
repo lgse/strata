@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::ViewState;
@@ -15,6 +15,7 @@ use std::rc::Rc;
 use std::time::Duration;
 
 const PEEK_WIDTH: i32 = 256;
+pub(super) const PEEK_LABEL: &str = "Folder peek";
 
 const PEEK_GAP: f32 = 8.0;
 
@@ -281,9 +282,13 @@ impl ViewState {
             return;
         };
 
-        let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let content = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .accessible_role(gtk::AccessibleRole::Group)
+            .build();
         content.set_size_request(PEEK_WIDTH, -1);
         content.set_overflow(gtk::Overflow::Hidden);
+        crate::ui::accessibility::set_label(&content, PEEK_LABEL);
 
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         header.add_css_class("column-header");

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Opening locations directly and reacting to filesystem changes."""
 
 from __future__ import annotations
@@ -45,6 +45,33 @@ def test_a_breadcrumb_returns_to_the_parent(strata):
     strata.pointer.click(crumb)
 
     strata.wait_for_directory(strata.fixture.root.name)
+
+
+def test_current_breadcrumb_opens_hierarchy_instead_of_window_menu(strata):
+    path = strata.fixture.root
+    for index in range(6):
+        path = path / f"deep-breadcrumb-component-{index}"
+    path.mkdir(parents=True)
+    strata.entry("deep-breadcrumb-component-0")
+    strata.keyboard.press("ctrl+l")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(str(path))
+    strata.wait(lambda: field.text == str(path), "typed location")
+    strata.keyboard.press("Return")
+    strata.wait_for_directory(path.name)
+    label = strata.wait(
+        lambda: strata.window.find(role="label", name=path.name),
+        "current breadcrumb",
+    )
+    strata.pointer.click(label, button=3)
+    strata.wait(
+        lambda: strata.window.find(role="button", name=path.name),
+        "current hierarchy item",
+    )
+    item = strata.window.find_all(role="button", name=path.parent.name)[-1]
+    strata.pointer.click(item)
+    strata.wait_for_directory(path.parent.name)
 
 
 def test_a_sidebar_place_navigates_there(strata):

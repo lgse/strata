@@ -1,18 +1,18 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::{
     BrowserDensity, BrowserMode, ClickActivation, ClickCount, LIST_COLUMN_MIN_WIDTHS,
     LIST_COLUMN_WIDTHS, MAX_ICONS_THUMBNAIL_SIZE, MIN_ICONS_THUMBNAIL_SIZE, SourceIndexMap,
     compare_type_groups, icons_card_extent, icons_card_icon_slot, list_column_width,
-    metadata_fill_position, should_activate_pointer_click, type_group_sorter, type_groups_of,
-    value_type_group,
+    metadata_fill_position, should_activate_filtered_pointer, should_activate_pointer_click,
+    type_group_sorter, type_groups_of, value_type_group,
 };
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use crate::test_support::gtk_test;
 use gtk::{gio, prelude::*};
-use std::collections::HashSet;
 use std::path::PathBuf;
 use std::process::Command;
+use std::{cell::RefCell, collections::HashSet};
 
 impl super::ModeViews {
     pub(in crate::ui) fn assert_saved_preferences(&self, manager: &crate::ui::theme::ThemeManager) {
@@ -31,6 +31,64 @@ impl super::ModeViews {
             manager.click_activation(BrowserMode::List)
         );
     }
+}
+
+#[test]
+fn pointer_controls_cover_navigation_and_pane_actions() {
+    gtk_test(
+        "ui::browser_modes::tests::pointer_controls_cover_navigation_and_pane_actions",
+        || {
+            let browser =
+                crate::app::Browser::new(std::rc::Rc::new(crate::adapters::LocalFileSource));
+            let navigation = super::list_navigation(&browser);
+            let mut child = navigation.first_child();
+            let mut count = 0;
+            while let Some(button) = child {
+                assert_eq!(
+                    button.cursor().and_then(|cursor| cursor.name()).as_deref(),
+                    Some("pointer")
+                );
+                count += 1;
+                child = button.next_sibling();
+            }
+            assert_eq!(count, 3);
+            let headings = super::list_headings(&browser, 0, super::ListColumnLayout::new());
+            let mut child = headings.first_child();
+            let mut index = 0;
+            while let Some(cell) = child {
+                let button = cell
+                    .first_child()
+                    .expect("heading overlay")
+                    .downcast::<gtk::Overlay>()
+                    .expect("overlay")
+                    .child()
+                    .expect("heading button");
+                assert_eq!(
+                    button.cursor().and_then(|cursor| cursor.name()).as_deref(),
+                    if index == 1 { None } else { Some("pointer") }
+                );
+                index += 1;
+                child = cell.next_sibling();
+            }
+            assert_eq!(index, 5);
+            let controls = super::icons_controls(&browser, 0, 128);
+            assert_eq!(controls.thumbnail_scale.adjustment().lower(), 32.0);
+            controls.thumbnail_scale.set_value(32.0);
+            assert_eq!(controls.thumbnail_scale.value(), 32.0);
+            let mut child = controls.actions.first_child();
+            let mut count = 0;
+            while let Some(button) = child {
+                assert_eq!(button.valign(), gtk::Align::Center);
+                assert_eq!(
+                    button.cursor().and_then(|cursor| cursor.name()).as_deref(),
+                    Some("pointer")
+                );
+                count += 1;
+                child = button.next_sibling();
+            }
+            assert_eq!(count, 6);
+        },
+    );
 }
 
 /// Model values as the panes store them: kind, hidden flag, then the display name.
@@ -89,6 +147,26 @@ fn type_grouping_is_list_only() {
 }
 
 #[test]
+fn filtered_activation_ignores_click_preferences() {
+    let query = RefCell::new("report".to_owned());
+    for _activation in [
+        ClickActivation {
+            files: ClickCount::One,
+            folders: ClickCount::One,
+        },
+        ClickActivation {
+            files: ClickCount::Two,
+            folders: ClickCount::Two,
+        },
+    ] {
+        assert!(should_activate_filtered_pointer(1, &query));
+        assert!(!should_activate_filtered_pointer(2, &query));
+    }
+    query.replace(String::new());
+    assert!(!should_activate_filtered_pointer(1, &query));
+}
+
+#[test]
 fn single_click_activation_distinguishes_files_and_folders() {
     let activation = ClickActivation {
         files: ClickCount::Two,
@@ -131,9 +209,10 @@ fn icons_cards_keep_a_uniform_icon_slot_and_two_line_label() {
     assert_eq!(icons_card_icon_slot(26), MIN_ICONS_THUMBNAIL_SIZE);
     assert_eq!(icons_card_icon_slot(128), 128);
     assert_eq!(icons_card_icon_slot(512), MAX_ICONS_THUMBNAIL_SIZE);
-    assert_eq!(icons_card_extent(26), icons_card_extent(64));
-    assert_eq!(icons_card_extent(64), (156, 107));
-    assert_eq!(icons_card_extent(128), (156, 171));
+    assert_eq!(icons_card_extent(26), icons_card_extent(32));
+    assert_eq!(icons_card_extent(32), (116, 75));
+    assert_eq!(icons_card_extent(64), (116, 107));
+    assert_eq!(icons_card_extent(128), (128, 171));
     assert_eq!(icons_card_extent(256), (256, 299));
     assert_eq!(icons_card_extent(512), icons_card_extent(256));
 }
@@ -141,23 +220,23 @@ fn icons_cards_keep_a_uniform_icon_slot_and_two_line_label() {
 #[test]
 fn icons_columns_follow_viewport_width() {
     assert_eq!(
-        super::icons_columns_for_width(800, 160, BrowserDensity::Compact),
-        5
+        super::icons_columns_for_width(800, 120, BrowserDensity::Compact),
+        6
     );
     assert_eq!(
-        super::icons_columns_for_width(160, 160, BrowserDensity::Compact),
+        super::icons_columns_for_width(120, 120, BrowserDensity::Compact),
         1
     );
     assert_eq!(
-        super::icons_columns_for_width(80, 160, BrowserDensity::Compact),
+        super::icons_columns_for_width(80, 120, BrowserDensity::Compact),
         1
     );
     assert_eq!(
-        super::icons_columns_for_width(8000, 160, BrowserDensity::Compact),
+        super::icons_columns_for_width(8000, 120, BrowserDensity::Compact),
         20
     );
     assert_eq!(
-        super::icons_columns_for_width(8000, 160, BrowserDensity::Airy),
+        super::icons_columns_for_width(8000, 120, BrowserDensity::Airy),
         16
     );
 }
@@ -548,7 +627,7 @@ fn icons_scrolling_bind_still_requests_thumbnail_and_settle_fills_chrome() {
                 is_hidden: false,
             };
             let card = crate::ui::icons_cell::new_card(64);
-            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, true);
+            super::apply_icons_entry(None, &card, &entry, &HashSet::new(), 64, true, None);
             assert!(crate::ui::icons_cell::rename_field(&card).is_none());
             let (icon, label) = crate::ui::icons_cell::parts(&card).expect("icons card");
             assert!(label.tooltip_text().is_none());

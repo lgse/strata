@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -2154,6 +2154,7 @@ fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::
         .tooltip_text(label)
         .build();
     button.set_has_frame(false);
+    button.set_cursor_from_name(Some("pointer"));
     (button, text, content)
 }
 

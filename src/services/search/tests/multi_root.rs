@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
 
@@ -84,6 +84,33 @@ fn all_drives_get_a_turn_before_a_large_home_consumes_the_shared_entry_budget() 
     assert_eq!(items.len(), 3);
     assert!(items.iter().any(|item| item.path == usb_match));
     assert!(items.iter().any(|item| item.path == backup_match));
+}
+
+#[test]
+fn fair_directory_scheduling_makes_deep_progress_in_every_root() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let roots = [fixture.path().join("home"), fixture.path().join("USB")];
+    let mut expected = Vec::new();
+    for root in &roots {
+        for position in 0..80 {
+            fixture_file(root, &format!("storage/chunk-{position:03}.bin"));
+        }
+        expected.push(fixture_file(root, "Documents/demo/Cats/wanted.jpg"));
+    }
+    // Allow storage-first discovery in both roots, while still indexing less than half the fixture.
+    for ordered_roots in [roots.to_vec(), roots.into_iter().rev().collect()] {
+        let (search, events) =
+            index_trees_with_budget(ordered_roots, false, 80, 64, Duration::from_secs(10));
+        search.query("wanted");
+        let SearchEvent::Results {
+            items, coverage, ..
+        } = wait_for_results(&events).expect("results");
+        assert!(coverage.entry_limit);
+        for path in &expected {
+            assert!(items.iter().any(|item| &item.path == path));
+        }
+        drop(search);
+    }
 }
 
 #[test]

@@ -1,24 +1,29 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use gtk::prelude::*;
 
-pub(super) const MIN_ICONS_THUMBNAIL_SIZE: i32 = 64;
+mod layout;
+
+pub(super) const MIN_ICONS_THUMBNAIL_SIZE: i32 = 32;
 pub(super) const MAX_ICONS_THUMBNAIL_SIZE: i32 = 256;
-const FALLBACK_ICONS_COLUMN_WIDTH: i32 = 160;
+const FALLBACK_ICONS_COLUMN_WIDTH: i32 = 120;
 pub(super) const ICONS_CARD_SPACING: i32 = 4;
-const ICONS_CARD_LABEL_CHARS: i32 = 16;
+const ICONS_CARD_LABEL_CHARS: i32 = 12;
 const ICONS_CARD_LABEL_LINES: i32 = 2;
 const ICONS_CARD_LABEL_LINE_PX: i32 = 18;
 const ICONS_CARD_PAD_Y: i32 = 4;
+const ICONS_CARD_ICON_INSET: i32 = 0;
 
 pub(super) fn new_card(slot: i32) -> gtk::Box {
-    let card = gtk::Box::new(gtk::Orientation::Vertical, 3);
+    let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
     card.add_css_class("icons-card");
     card.set_overflow(gtk::Overflow::Hidden);
     card.set_halign(gtk::Align::Fill);
     card.set_valign(gtk::Align::Start);
 
     let icon = super::thumbnail::ThumbnailSlot::new(slot);
+    icon.set_content_inset(ICONS_CARD_ICON_INSET);
+    icon.limit_fallback_height_to_folder();
     icon.add_css_class("icons-card-icon");
     icon.set_halign(gtk::Align::Center);
     icon.set_valign(gtk::Align::Start);
@@ -34,6 +39,7 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
 
     card.append(&icon);
     card.append(&labels);
+    layout::install(&card, &label);
     set_slot(&card, slot);
     card
 }
@@ -86,9 +92,6 @@ pub(super) fn set_slot(card: &gtk::Box, thumbnail_size: i32) {
     if let Some((icon, _)) = parts(card) {
         icon.set_slot(slot);
     }
-    if let Some(labels) = card.last_child() {
-        labels.set_height_request(ICONS_CARD_LABEL_LINE_PX * ICONS_CARD_LABEL_LINES);
-    }
 }
 
 pub(super) fn icons_card_icon_slot(thumbnail_size: i32) -> i32 {
@@ -107,7 +110,7 @@ fn configure_label(label: &gtk::Inscription) {
     let lines = ICONS_CARD_LABEL_LINES as u32;
     label.set_min_chars(chars);
     label.set_nat_chars(chars);
-    label.set_min_lines(lines);
+    label.set_min_lines(1);
     label.set_nat_lines(lines);
     label.set_xalign(0.5);
     label.set_yalign(0.0);

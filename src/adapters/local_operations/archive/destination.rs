@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 //! Confined destination writes and extraction conflict naming.
 
@@ -71,22 +71,60 @@ pub(super) struct ExtractionDestination {
 }
 
 impl ExtractionDestination {
-    /// Opens `path` as a directory without following a final symbolic link.
+    /// Opens `path` as a directory. Ordinary symlinks along the path are
+    /// resolved, since users browse symlinked folders, but the resolved
+    /// directory is pinned so later replacement of any component cannot
+    /// redirect writes. This mirrors how copy and compress open their parents.
     ///
     /// # Errors
     ///
-    /// Returns an error if `path` cannot be opened as a directory.
+    /// Returns an error if `path` is not absolute or cannot be opened as a directory.
     pub(super) fn open(path: &Path) -> Result<Self, String> {
-        let root = rustix::fs::open(
-            path,
+        let relative = path
+            .strip_prefix("/")
+            .map_err(|_| "Extraction destination must use an absolute path".to_owned())?;
+        let filesystem_root = rustix::fs::open(
+            c"/",
+            rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
+            rustix::fs::Mode::empty(),
+        )
+        .map_err(|error| format!("Could not open the filesystem root: {error}"))?;
+        let relative = if relative.as_os_str().is_empty() {
+            Path::new(".")
+        } else {
+            relative
+        };
+        let root = rustix::fs::openat2(
+            &filesystem_root,
+            relative,
             rustix::fs::OFlags::RDONLY
                 | rustix::fs::OFlags::DIRECTORY
-                | rustix::fs::OFlags::NOFOLLOW
                 | rustix::fs::OFlags::CLOEXEC,
             rustix::fs::Mode::empty(),
+            rustix::fs::ResolveFlags::IN_ROOT | rustix::fs::ResolveFlags::NO_MAGICLINKS,
         )
         .map_err(|error| format!("Could not open extraction destination: {error}"))?;
         Ok(Self { root })
+    }
+
+    /// Uses [`fstatvfs`] on the pinned root so a swapped path cannot redirect
+    /// the query. A zero `f_blocks` means the filesystem does not report
+    /// capacity, so callers skip the check instead of refusing every extraction.
+    ///
+    /// [`fstatvfs`]: rustix::fs::fstatvfs
+    pub(super) fn available_bytes(&self) -> Result<Option<u64>, String> {
+        let stat = rustix::fs::fstatvfs(&self.root).map_err(|error| {
+            format!("Could not inspect free space at the extraction destination: {error}")
+        })?;
+        if stat.f_blocks == 0 {
+            return Ok(None);
+        }
+        let block = if stat.f_frsize > 0 {
+            stat.f_frsize
+        } else {
+            stat.f_bsize.max(1)
+        };
+        Ok(Some(stat.f_bavail.saturating_mul(block)))
     }
 
     /// Finds a name in `directory` that does not already exist.

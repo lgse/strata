@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
 
@@ -152,15 +152,21 @@ fn backdrop_keeps_progress_and_cancel_available_until_terminal_dismissal() {
                     "wait for cancellation to finish"
                 );
 
-                state.dismiss_file_operation_progress();
+                let dismissed = Rc::new(Cell::new(false));
+                let dismissed_callback = dismissed.clone();
+                state.dismiss_file_operation_progress_then(move || {
+                    dismissed_callback.set(true);
+                });
                 assert!(state.file_progress_view.borrow().is_none());
                 assert!(layer.has_css_class("dismissing"));
+                assert!(!dismissed.get());
                 let deadline = std::time::Instant::now() + Duration::from_secs(5);
                 while layer.parent().is_some() {
                     assert!(std::time::Instant::now() < deadline, "terminal dismissal");
                     glib::MainContext::default().iteration(false);
                     std::thread::sleep(Duration::from_millis(1));
                 }
+                assert!(dismissed.get());
             }
             let ordinary =
                 modal_layer(&gtk::Label::new(Some("Confirmation")), &overlay, None, None);

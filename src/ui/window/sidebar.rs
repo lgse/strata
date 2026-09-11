@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -94,6 +94,7 @@ fn update_notice() -> (gtk::Box, gtk::Button, gtk::Label) {
     ));
     let notice = gtk::Button::builder().child(&content).build();
     notice.add_css_class("sidebar-update");
+    notice.set_cursor_from_name(Some("pointer"));
     let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
     separator.add_css_class("sidebar-separator");
     separator.add_css_class("sidebar-update-separator");
@@ -121,7 +122,7 @@ impl SidebarState {
             mount_monitor: gio_unix::MountMonitor::get(),
             theme_manager,
             place_order: RefCell::new(place_order),
-            pinned_places: Rc::new(RefCell::new(load_pinned_places())),
+            pinned_places: Rc::new(RefCell::new(load_pinned_places().unwrap_or_default())),
             place_rows: RefCell::new(Vec::new()),
             trash_contents: Cell::new(TrashContents::Unknown),
             trash_menu_rows: RefCell::new(None),
@@ -182,12 +183,20 @@ impl SidebarState {
         let browser = Rc::downgrade(&self.browser);
         let sidebar = self.widget.clone();
         let selected_row = row.clone();
+        let keyboard_activation = Rc::new(Cell::new(false));
+        let activating = keyboard_activation.clone();
+        row.connect_activate(move |_| activating.set(true));
         row.connect_clicked(move |_| {
+            let select_first = keyboard_activation.replace(false);
             select_sidebar_row(&sidebar, &selected_row);
             if let Some(browser) = browser.upgrade() {
                 match navigation {
-                    PlaceNavigation::Direct => browser.navigate(location.clone()),
-                    PlaceNavigation::Validate => browser.navigate_location(location.clone()),
+                    PlaceNavigation::Direct => {
+                        browser.navigate_with_selection(location.clone(), select_first);
+                    }
+                    PlaceNavigation::Validate => {
+                        browser.navigate_location(location.clone(), select_first);
+                    }
                 }
             }
         });

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -125,6 +125,11 @@ impl Dispatcher {
             .or_else(|| self.filter_and_location_commands(&event))
             .or_else(|| self.video_controls(&event))
             .or_else(|| self.sidebar_commands(browser, &event))
+            .or_else(|| {
+                // Search rows own navigation; directory commands must not act on hidden selections.
+                (self.view.selected_search_results().is_some() && !event.text_has_focus())
+                    .then_some(Propagation::Proceed)
+            })
             .or_else(|| self.text_input(&event))
             .or_else(|| self.file_commands(browser, &event))
             .or_else(|| self.focus_navigation(browser, &mut event))

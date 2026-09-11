@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -434,7 +434,7 @@ fn navigation_shortcuts(mode: BrowserMode) -> Vec<Shortcut> {
             ),
             (
                 "h / j / k / l",
-                "Vim movement; l opens the item (type-to-search off)",
+                "Move between items; l opens the item (type-to-search off)",
             ),
         ],
         BrowserMode::Icons => vec![

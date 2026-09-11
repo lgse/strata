@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 #[cfg(test)]
 mod tests;
@@ -487,7 +487,11 @@ impl ChooserState {
                     self.show_error("Choose an accessible local folder");
                     return;
                 };
-                let entries = eligible_open_entries(browser.selected_entries(), *directory);
+                let entries = self
+                    .view
+                    .selected_search_results()
+                    .unwrap_or_else(|| browser.selected_entries());
+                let entries = eligible_open_entries(entries, *directory);
                 match open_selection(&entries, &current, *directory, *multiple) {
                     Ok(paths) => self.complete_paths(
                         paths,
@@ -643,7 +647,18 @@ impl ChooserState {
         match &self.request.kind {
             ChooserKind::Open {
                 directory: false, ..
-            } => self.accept(),
+            } => {
+                let Some(path) = location.native_path() else {
+                    self.show_error("Choose a local file");
+                    return;
+                };
+                self.complete_paths(
+                    vec![path.to_path_buf()],
+                    self.read_only
+                        .as_ref()
+                        .map(|read_only| writable_from_read_only(read_only.is_active())),
+                );
+            }
             ChooserKind::SaveFile { .. } => {
                 let Some((folder, name)) = location
                     .native_path()
@@ -800,10 +815,12 @@ fn build_chooser(
         .active(true)
         .tooltip_text("Toggle sidebar (Ctrl+B)")
         .build();
-    sidebar_toggle.set_child(Some(&crate::assets::chrome_icon(
+    sidebar_toggle.set_child(Some(&crate::assets::primary_icon(
         crate::assets::icons::PANEL_LEFT,
+        17,
     )));
     sidebar_toggle.add_css_class("sidebar-toggle");
+    sidebar_toggle.set_cursor_from_name(Some("pointer"));
     let location = view.location_widget();
     location.set_hexpand(true);
     let appearance = build_appearance_menu(&view, &browser, theme.clone());

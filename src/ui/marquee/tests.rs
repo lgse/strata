@@ -1,5 +1,6 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
+mod bounds;
 mod clicks;
 mod scrolling;
 mod virtualization;

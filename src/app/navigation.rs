@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cmp::Ordering,
@@ -430,8 +430,7 @@ impl NavigationState {
                 {
                     return None;
                 }
-                remove_monitored_entry(&mut column.entries, &entry.location, &mut splices);
-                insert_monitored_entry(&mut column.entries, entry, preferences, &mut splices);
+                upsert_monitored_entry(&mut column.entries, entry, preferences, &mut splices);
             }
             DirectoryChange::Remove(location) => {
                 let removed_position = column
@@ -458,10 +457,7 @@ impl NavigationState {
                     column.selected_locations.insert(entry.location.clone());
                 }
                 remove_monitored_entry(&mut column.entries, &from, &mut splices);
-                if entry.location != from {
-                    remove_monitored_entry(&mut column.entries, &entry.location, &mut splices);
-                }
-                insert_monitored_entry(&mut column.entries, entry, preferences, &mut splices);
+                upsert_monitored_entry(&mut column.entries, entry, preferences, &mut splices);
             }
             DirectoryChange::Rescan => return None,
         }
@@ -769,7 +765,12 @@ impl NavigationState {
             first_visible
         });
 
-        let focused = if direction < 0 {
+        // Escape clears filled selection without dropping the cursor or leftover
+        // range anchor. Start a new range from that cursor instead of stepping.
+        let starting_from_empty = column.selected_locations.is_empty();
+        let focused = if starting_from_empty {
+            current
+        } else if direction < 0 {
             column.entries[..current]
                 .iter()
                 .rposition(is_visible)
@@ -784,19 +785,21 @@ impl NavigationState {
             current
         };
 
-        let anchor = column
-            .selection_anchor
-            .as_ref()
-            .and_then(|location| {
-                column
-                    .entries
-                    .iter()
-                    .position(|entry| &entry.location == location)
-            })
-            .unwrap_or(current);
-        if column.selection_anchor.is_none() {
-            column.selection_anchor = Some(column.entries[anchor].location.clone());
-        }
+        let anchor = if starting_from_empty {
+            current
+        } else {
+            column
+                .selection_anchor
+                .as_ref()
+                .and_then(|location| {
+                    column
+                        .entries
+                        .iter()
+                        .position(|entry| &entry.location == location)
+                })
+                .unwrap_or(current)
+        };
+        column.selection_anchor = Some(column.entries[anchor].location.clone());
         let start = anchor.min(focused);
         let end = anchor.max(focused);
         let selected_positions: Vec<usize> = (start..=end)
@@ -1256,6 +1259,39 @@ fn remove_monitored_entry(
             entries: Vec::new(),
         });
     }
+}
+
+fn upsert_monitored_entry(
+    entries: &mut Vec<FileEntry>,
+    entry: FileEntry,
+    preferences: ViewPreferences,
+    splices: &mut Vec<EntrySplice>,
+) {
+    if let Some(existing_position) = entries.iter().position(|e| e.location == entry.location) {
+        let is_same_position = {
+            let left_ok = existing_position == 0
+                || compare_entries(&entries[existing_position - 1], &entry, preferences)
+                    != Ordering::Greater;
+            let right_ok = existing_position + 1 >= entries.len()
+                || compare_entries(&entry, &entries[existing_position + 1], preferences)
+                    != Ordering::Greater;
+            left_ok && right_ok
+        };
+
+        if is_same_position {
+            entries[existing_position] = entry.clone();
+            splices.push(EntrySplice {
+                position: existing_position,
+                removed: 1,
+                entries: vec![entry],
+            });
+            return;
+        }
+
+        remove_monitored_entry(entries, &entry.location, splices);
+    }
+
+    insert_monitored_entry(entries, entry, preferences, splices);
 }
 
 fn insert_monitored_entry(

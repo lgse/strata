@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
 
@@ -27,6 +27,7 @@ pub(super) fn build_index(
                 continue;
             }
         };
+        let hidden_names = native_hidden_names(&root);
         for entry in entries {
             if index.is_retired() {
                 return;
@@ -42,21 +43,26 @@ pub(super) fn build_index(
                     continue;
                 }
             };
-            if !show_hidden && entry.file_name().as_encoded_bytes().starts_with(b".") {
+            if !show_hidden && is_hidden_name(&entry.file_name(), &hidden_names) {
                 continue;
             }
             if count >= max_entries {
                 coverage.entry_limit = true;
                 break 'roots;
             }
-            let kind = match entry.file_type() {
-                Ok(kind) => kind,
+            let file_type = match entry.file_type() {
+                Ok(file_type) => file_type,
                 Err(_) => {
                     coverage.unreadable = true;
                     continue;
                 }
             };
-            pending.push(SearchItem::new(entry.path(), &root, kind.is_dir()));
+            let path = entry.path();
+            let is_directory = matches!(
+                native_kind(file_type, &path),
+                EntryKind::Directory | EntryKind::DirectorySymbolicLink
+            );
+            pending.push(SearchItem::new(path, &root, is_directory));
             count += 1;
             if pending.len() >= 256 {
                 append_index_items(index, &mut pending, true, coverage);

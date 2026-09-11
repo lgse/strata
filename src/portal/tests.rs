@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     ffi::{OsStr, OsString},
@@ -85,6 +85,38 @@ fn current_file_preserves_a_non_utf8_filename() {
     let suggestion =
         run_async(save_file_suggestion(Some(file), None, None)).expect("save suggestion");
     assert_eq!(suggestion, (current.path().to_path_buf(), Some(name)));
+}
+
+#[test]
+fn new_current_file_preserves_filename_and_directory() {
+    let current = tempfile::tempdir().expect("current directory");
+    for name in [
+        OsString::from("packing list 格式(2).xls"),
+        OsString::from_vec(vec![b'n', 0xff]),
+    ] {
+        let file = current.path().join(&name);
+        let suggestion = run_async(save_file_suggestion(
+            Some(file.clone()),
+            Some(current.path().to_path_buf()),
+            None,
+        ))
+        .expect("save suggestion");
+        assert_eq!(suggestion, (current.path().to_path_buf(), Some(name)));
+        assert!(!file.exists(), "suggesting a name must not create a file");
+    }
+}
+
+#[test]
+fn current_file_rejects_directories_and_missing_parents() {
+    let current = tempfile::tempdir().expect("current directory");
+    for file in [
+        current.path().to_path_buf(),
+        current.path().join("missing/new.txt"),
+    ] {
+        let suggestion =
+            run_async(save_file_suggestion(Some(file), None, None)).expect("save suggestion");
+        assert_eq!(suggestion, (crate::ui::home_directory(), None));
+    }
 }
 
 #[test]

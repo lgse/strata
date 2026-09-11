@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
 use std::time::{Duration, Instant};
@@ -37,24 +37,57 @@ fn common_applications_respect_uri_capability_and_hidden_defaults() {
                 "[Default Applications]\ntext/plain=strata-path.desktop;strata-uri.desktop;\ntext/markdown=strata-path.desktop;strata-uri.desktop;\n[Added Associations]\ntext/plain=strata-path.desktop;strata-uri.desktop;\ntext/markdown=strata-path.desktop;strata-uri.desktop;\n"
             ).expect("associations");
             let types = vec!["text/plain".to_owned(), "text/markdown".to_owned()];
-            let (local, default) = common_applications(&types, false);
+            let (local_rec, _local_other, default) = common_applications(&types, false);
             assert_eq!(
                 default.expect("local default").id().as_deref(),
                 Some("strata-path.desktop")
             );
             assert!(
-                local
+                local_rec
                     .iter()
                     .any(|app| app.id().as_deref() == Some("strata-path.desktop"))
             );
-            let (remote, default) = common_applications(&types, true);
+            let (remote_rec, _remote_other, default) = common_applications(&types, true);
             assert_eq!(
                 default.expect("URI default").id().as_deref(),
                 Some("strata-uri.desktop")
             );
-            assert!(remote.iter().all(|app| app.supports_uris()));
-            assert_eq!(remote[0].id().as_deref(), Some("strata-uri.desktop"));
-            assert!(!remote[0].should_show());
+            assert!(remote_rec.iter().all(|app| app.supports_uris()));
+            assert_eq!(remote_rec[0].id().as_deref(), Some("strata-uri.desktop"));
+            assert!(!remote_rec[0].should_show());
+        },
+    );
+}
+
+#[test]
+fn mixed_types_keep_non_common_handlers_in_other_apps() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::open_with::mixed_types_keep_non_common_handlers_in_other_apps",
+        || {
+            let applications = glib::user_data_dir().join("applications");
+            std::fs::create_dir_all(&applications).expect("isolated applications");
+            for (id, mime) in [("text-only", "text/plain"), ("image-only", "image/png")] {
+                std::fs::write(applications.join(format!("{id}.desktop")), format!(
+                    "[Desktop Entry]\nType=Application\nName={id}\nExec=/bin/true %U\nMimeType={mime};\n"
+                )).expect("desktop entry");
+            }
+            std::fs::create_dir_all(glib::user_config_dir()).expect("isolated config");
+            std::fs::write(glib::user_config_dir().join("mimeapps.list"),
+                "[Added Associations]\ntext/plain=text-only.desktop;\nimage/png=image-only.desktop;\n"
+            ).expect("associations");
+            for types in [
+                vec!["text/plain".to_owned(), "image/png".to_owned()],
+                vec!["image/png".to_owned(), "text/plain".to_owned()],
+            ] {
+                let (recommended, other, _) = common_applications(&types, true);
+                assert!(recommended.is_empty());
+                for id in ["text-only.desktop", "image-only.desktop"] {
+                    assert!(
+                        other.iter().any(|app| app.id().as_deref() == Some(id)),
+                        "{id}"
+                    );
+                }
+            }
         },
     );
 }
@@ -65,7 +98,8 @@ fn prepared_selection_rejects_changed_targets() {
     let selection = OpenWithSelection {
         locations: vec![location.clone()],
         files: vec![gio_file_for_location(&location)],
-        apps: vec![],
+        recommended_apps: vec![],
+        other_apps: vec![],
         default: None,
     };
     assert!(selection.entries_match_target(&[entry(location)]));
@@ -74,9 +108,9 @@ fn prepared_selection_rejects_changed_targets() {
 }
 
 #[test]
-fn preparation_preserves_file_uris_and_rejects_incompatible_or_stale_queries() {
+fn preparation_preserves_uris_and_supports_folders() {
     crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::open_with::preparation_preserves_file_uris_and_rejects_incompatible_or_stale_queries",
+        "ui::browser::context_menu::tests::open_with::preparation_preserves_uris_and_supports_folders",
         || {
             let fixture = tempfile::tempdir().expect("fixture");
             let text = fixture.path().join("alpha.txt");
@@ -98,7 +132,7 @@ fn preparation_preserves_file_uris_and_rejects_incompatible_or_stale_queries() {
                     false,
                     true,
                 ),
-                (vec![Location::local(fixture.path())], false, false),
+                (vec![Location::local(fixture.path())], false, true),
                 (vec![Location::local(&text)], true, false),
                 (
                     vec![Location::local(fixture.path().join("missing"))],
@@ -129,10 +163,9 @@ fn preparation_preserves_file_uris_and_rejects_incompatible_or_stale_queries() {
                     std::thread::sleep(Duration::from_millis(1));
                 }
                 assert_eq!(result.borrow().is_some(), expected, "{locations:?}");
-                let available = result
-                    .borrow()
-                    .as_ref()
-                    .is_some_and(|selection| !selection.apps.is_empty());
+                let available = result.borrow().as_ref().is_some_and(|selection| {
+                    !selection.recommended_apps.is_empty() || !selection.other_apps.is_empty()
+                });
                 assert_eq!(single.is_sensitive(), available);
                 assert_eq!(multiple.is_sensitive(), available);
                 assert_eq!(

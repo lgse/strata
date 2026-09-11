@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
 use crate::model::Location;
@@ -52,21 +52,271 @@ fn incoming_file_lists_sanitize_remote_credentials() {
 }
 
 #[test]
-fn local_file_drops_prefer_move_while_external_drops_prefer_copy() {
+fn multi_file_badge_grows_for_multi_digit_counts() {
+    let single_digit = badge_dimensions(7.0, 10.0);
+    let four_digits = badge_dimensions(28.0, 10.0);
+
+    assert!(four_digits.0 > single_digit.0);
+    assert_eq!(single_digit.1, four_digits.1);
+    assert!(single_digit.0 >= single_digit.1);
+}
+
+#[test]
+fn badge_text_uses_the_more_contrasting_semantic_color() {
+    let accent = gtk::gdk::RGBA::new(0.1, 0.2, 0.8, 1.0);
+    let light_text = gtk::gdk::RGBA::WHITE;
+    let dark_surface = gtk::gdk::RGBA::BLACK;
+
+    assert_eq!(
+        contrasting_badge_text(&accent, &light_text, &dark_surface),
+        light_text
+    );
+}
+
+#[test]
+fn drag_actions_follow_copy_and_move_modifiers() {
     let both = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
 
     assert_eq!(
-        preferred_file_drop_action(both, true),
-        gtk::gdk::DragAction::MOVE
+        drag_actions_for_modifiers(gtk::gdk::ModifierType::empty()),
+        both
     );
     assert_eq!(
-        preferred_file_drop_action(both, false),
+        drag_actions_for_modifiers(gtk::gdk::ModifierType::CONTROL_MASK),
         gtk::gdk::DragAction::COPY
     );
     assert_eq!(
-        preferred_file_drop_action(gtk::gdk::DragAction::MOVE, false),
+        drag_actions_for_modifiers(gtk::gdk::ModifierType::SHIFT_MASK),
         gtk::gdk::DragAction::MOVE
     );
+}
+
+#[test]
+fn file_drop_action_follows_volume_relation_not_local_vs_external() {
+    let both = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
+    let ask = crate::services::CrossVolumeDropStrategy::Ask;
+
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Same,
+            false,
+            ask,
+        )),
+        gtk::gdk::DragAction::MOVE
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Different,
+            false,
+            ask,
+        )),
+        gtk::gdk::DragAction::COPY
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Unknown,
+            false,
+            ask,
+        )),
+        gtk::gdk::DragAction::COPY
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            gtk::gdk::DragAction::MOVE,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Different,
+            false,
+            ask,
+        )),
+        gtk::gdk::DragAction::MOVE
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            crate::services::DropOverride::ForceCopy,
+            crate::services::VolumeRelation::Same,
+            false,
+            ask,
+        )),
+        gtk::gdk::DragAction::COPY
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            crate::services::DropOverride::ForceMove,
+            crate::services::VolumeRelation::Different,
+            false,
+            ask,
+        )),
+        gtk::gdk::DragAction::MOVE
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Same,
+            true,
+            ask,
+        )),
+        gtk::gdk::DragAction::empty()
+    );
+}
+
+#[test]
+fn file_drop_action_hover_matches_cross_volume_strategy() {
+    let both = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
+    let none = crate::services::DropOverride::None;
+    let different = crate::services::VolumeRelation::Different;
+
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            none,
+            different,
+            false,
+            crate::services::CrossVolumeDropStrategy::Move,
+        )),
+        gtk::gdk::DragAction::MOVE
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            both,
+            none,
+            different,
+            false,
+            crate::services::CrossVolumeDropStrategy::Copy,
+        )),
+        gtk::gdk::DragAction::COPY
+    );
+    assert_eq!(
+        preferred_file_drop_commit(
+            both,
+            none,
+            different,
+            false,
+            crate::services::CrossVolumeDropStrategy::Ask,
+        ),
+        crate::services::DropCommit::Ask {
+            default: crate::services::TransferKind::Copy,
+            volume: different,
+        }
+    );
+    assert_eq!(
+        preferred_file_drop_commit(
+            both,
+            none,
+            crate::services::VolumeRelation::Same,
+            false,
+            crate::services::CrossVolumeDropStrategy::Ask,
+        ),
+        crate::services::DropCommit::Move
+    );
+}
+
+#[test]
+fn move_only_protocol_still_copies_across_volumes() {
+    let dest = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
+    let offered = offered_file_actions(dest, gtk::gdk::DragAction::MOVE);
+    assert!(offered.contains(gtk::gdk::DragAction::COPY));
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            offered,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Different,
+            false,
+            crate::services::CrossVolumeDropStrategy::Ask,
+        )),
+        gtk::gdk::DragAction::COPY
+    );
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            offered,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Same,
+            false,
+            crate::services::CrossVolumeDropStrategy::Ask,
+        )),
+        gtk::gdk::DragAction::MOVE
+    );
+}
+
+#[test]
+fn copy_only_source_does_not_move_on_the_same_volume() {
+    let dest = gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE;
+    let offered = offered_file_actions(dest, gtk::gdk::DragAction::COPY);
+    assert_eq!(
+        drop_commit_action(preferred_file_drop_commit(
+            offered,
+            crate::services::DropOverride::None,
+            crate::services::VolumeRelation::Same,
+            false,
+            crate::services::CrossVolumeDropStrategy::Ask,
+        )),
+        gtk::gdk::DragAction::COPY
+    );
+}
+
+#[test]
+fn file_drop_sites_commit_through_drop_strategy() {
+    let clipboard = include_str!("../clipboard.rs");
+    let drop_fn = function_source(clipboard, "fn transfer_dropped_files");
+    assert!(drop_fn.contains("file_drop_commit"));
+    assert!(drop_fn.contains("commit_file_drop"));
+    assert!(!drop_fn.contains("start_transfer"));
+
+    let paste_fn = function_source(clipboard, "fn paste_into");
+    assert!(paste_fn.contains("start_transfer"));
+    assert!(!paste_fn.contains("commit_file_drop"));
+
+    let rows = include_str!("../columns/rows.rs");
+    assert!(rows.contains("commit_file_drop"));
+    assert!(rows.contains("file_drop_commit"));
+    assert!(!rows.contains("start_transfer"));
+
+    let modes = include_str!("../../browser_modes.rs");
+    assert!(modes.contains("file_drop_commit"));
+    assert!(
+        !function_source(modes, "fn install_mode_directory_drop_target").contains("start_transfer")
+    );
+    assert!(!function_source(modes, "fn install_list_drag_drop").contains("start_transfer"));
+
+    let window = include_str!("../../window.rs");
+    assert!(function_source(window, "fn install_sidebar_file_drop").contains("commit_file_drop"));
+    assert!(function_source(window, "fn install_sidebar_file_drop").contains("file_drop_commit"));
+
+    let browser = include_str!("../../browser.rs");
+    assert!(browser.contains("commit_file_drop"));
+}
+
+fn function_source<'a>(source: &'a str, signature: &str) -> &'a str {
+    let start = source
+        .find(signature)
+        .unwrap_or_else(|| panic!("missing {signature}"));
+    let rest = &source[start..];
+    let mut depth = 0usize;
+    let mut started = false;
+    for (index, ch) in rest.char_indices() {
+        match ch {
+            '{' => {
+                started = true;
+                depth += 1;
+            }
+            '}' => {
+                depth = depth.saturating_sub(1);
+                if started && depth == 0 {
+                    return &rest[..=index];
+                }
+            }
+            _ => {}
+        }
+    }
+    rest
 }
 
 #[test]

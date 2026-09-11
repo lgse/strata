@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """Conservative GUI concurrency from resources available to this process."""
 
 from __future__ import annotations

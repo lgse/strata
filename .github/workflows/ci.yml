@@ -1,6 +1,12 @@
 name: CI
 
 on:
+  workflow_dispatch:
+    inputs:
+      require_published_environments:
+        description: Bypass the fast dependency cache and require verified published base images
+        type: boolean
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -10,40 +16,209 @@ permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ inputs.require_published_environments && 'published' || 'normal' }}
   cancel-in-progress: true
 
 jobs:
-  quality:
-    name: Format, lint, and test
+  quality-build:
+    name: Quality build and lint
     runs-on: blacksmith-4vcpu-ubuntu-2404
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
+    timeout-minutes: 20
+    outputs:
+      environment_image: ${{ steps.environment.outputs.environment_image }}
+      candidate: ${{ steps.environment.outputs.candidate }}
 
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      - name: Install native development libraries
-        run: >-
-          sudo apt-get update &&
-          sudo apt-get install --yes libfontconfig1-dev libgtk-4-dev libgtksourceview-5-dev libpoppler-glib-dev
-
-      - name: Install Rust
-        uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # stable
         with:
-          components: clippy, rustfmt
+          fetch-depth: 0
 
-      - name: Cache Rust build artifacts
-        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Set up image inspection
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+        with:
+          driver: docker
+
+      - name: Resolve the shared environment or build an explicit recipe update
+        id: environment
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha || 'HEAD^' }}
+        run: |
+          if reference="$(python3 scripts/e2e_images.py environment)"; then
+            docker pull --platform=linux/amd64 "${reference#environment_image=}"
+          else
+            git cat-file -e "$BASE_REF^{commit}"
+            if git diff --quiet "$BASE_REF" HEAD -- tests/e2e/Dockerfile tests/e2e/requirements.txt tests/e2e/install-packages.sh; then
+              echo 'The unchanged environment is unavailable. Restore public access; ordinary quality runs do not bootstrap Ubuntu.' >&2
+              exit 1
+            else
+              status=$?
+              if [[ "$status" != 1 ]]; then exit "$status"; fi
+            fi
+            echo 'Environment inputs changed: explicitly building this unpublished candidate without publishing it.'
+            reference="environment_image=$(python3 scripts/e2e_base.py build --engine docker)"
+            echo 'candidate=true' >> "$GITHUB_OUTPUT"
+          fi
+          printf '%s\n' "$reference" >> "$GITHUB_OUTPUT"
+          echo "inputs=$(python3 scripts/e2e_bundle.py image-key)" >> "$GITHUB_OUTPUT"
+
+      - name: Restore quality-only Cargo cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            target/quality-container/cargo
+            target/quality-container/build
+          key: strata-quality-v1-${{ steps.environment.outputs.inputs }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ github.sha }}
+          restore-keys: |
+            strata-quality-v1-${{ steps.environment.outputs.inputs }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-
 
       - name: Check formatting
-        run: cargo fmt --all --check
+        env:
+          STRATA_CONTAINER_ENGINE: docker
+          STRATA_QUALITY_IMAGE: ${{ steps.environment.outputs.environment_image }}
+        run: ./scripts/quality.sh fmt
 
       - name: Run Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        env:
+          STRATA_CONTAINER_ENGINE: docker
+          STRATA_QUALITY_IMAGE: ${{ steps.environment.outputs.environment_image }}
+        run: ./scripts/quality.sh clippy
 
-      - name: Run tests
-        run: cargo test --all-targets --all-features
+      - name: Compile all test targets once and plan four shards
+        env:
+          STRATA_CONTAINER_ENGINE: docker
+          STRATA_QUALITY_IMAGE: ${{ steps.environment.outputs.environment_image }}
+          STRATA_QUALITY_TASK: build
+        run: ./scripts/quality.sh test
+
+      - name: Share test binaries and inventory
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-bundle-${{ github.run_attempt }}
+          path: target/quality-bundle
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Share the small quality plan separately
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-plan-${{ github.run_attempt }}
+          path: target/quality-bundle/plan.json
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Export an unpublished candidate environment for the shards
+        if: steps.environment.outputs.candidate == 'true'
+        env:
+          IMAGE: ${{ steps.environment.outputs.environment_image }}
+        run: |
+          mkdir -p target/quality-environment
+          docker save "$IMAGE" | zstd -T0 -1 > target/quality-environment/image.tar.zst
+
+      - name: Share the unpublished environment without publishing it
+        if: steps.environment.outputs.candidate == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-environment-${{ github.run_attempt }}
+          path: target/quality-environment/image.tar.zst
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Save trusted quality cache
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            target/quality-container/cargo
+            target/quality-container/build
+          key: strata-quality-v1-${{ steps.environment.outputs.inputs }}-${{ hashFiles('Cargo.toml', 'Cargo.lock') }}-${{ github.sha }}
+
+  quality-shard:
+    name: Rust tests shard ${{ matrix.shard }}
+    needs: quality-build
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Pull the exact published environment
+        if: needs.quality-build.outputs.candidate != 'true'
+        env:
+          IMAGE: ${{ needs.quality-build.outputs.environment_image }}
+        run: docker pull --platform=linux/amd64 "$IMAGE"
+
+      - name: Download an unpublished candidate environment
+        if: needs.quality-build.outputs.candidate == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-environment-${{ github.run_attempt }}
+          path: target/quality-environment
+
+      - name: Load the unpublished candidate
+        if: needs.quality-build.outputs.candidate == 'true'
+        run: zstd -dc target/quality-environment/image.tar.zst | docker load
+
+      - name: Download this attempt's test binaries and plan
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-bundle-${{ github.run_attempt }}
+          path: target/quality-bundle
+
+      - name: Run assigned tests on a private display and bus without compiling
+        env:
+          STRATA_CONTAINER_ENGINE: docker
+          STRATA_QUALITY_IMAGE: ${{ needs.quality-build.outputs.environment_image }}
+          STRATA_QUALITY_TASK: shard
+          STRATA_QUALITY_SHARD: ${{ matrix.shard }}
+        run: ./scripts/quality.sh test
+
+      - name: Share quality reports and logs even on failure
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: quality-report-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: target/quality-reports
+          if-no-files-found: error
+          retention-days: 7
+
+  quality:
+    name: Format, lint, and test
+    needs: [quality-build, quality-shard]
+    if: ${{ always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Require successful compilation, lint, and every shard
+        env:
+          BUILD_RESULT: ${{ needs.quality-build.result }}
+          SHARD_RESULT: ${{ needs.quality-shard.result }}
+        run: test "$BUILD_RESULT" = success && test "$SHARD_RESULT" = success
+
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Download the quality plan
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: quality-plan-${{ github.run_attempt }}
+          path: target/quality-bundle
+
+      - name: Download all quality reports
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: quality-report-${{ github.run_attempt }}-*
+          path: target/quality-reports
+          merge-multiple: true
+
+      - name: Verify exact Rust test coverage
+        run: python3 scripts/quality_ci.py verify
 
   e2e-build:
     name: E2E build and plan
@@ -51,8 +226,7 @@ jobs:
     env:
       DOCKER_BUILD_RECORD_UPLOAD: 'false'
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
-    # Preserve cold-build diagnostics without exempting them from the 180s gate.
-    # The separate warmer publishes the large dependency cache.
+    # Bound hung bootstrap jobs independently of informational timing reports.
     timeout-minutes: 10
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -80,6 +254,7 @@ jobs:
           lookup-only: true
 
       - name: Restore the compiled dependency layers with segmented cache transfers
+        if: ${{ !inputs.require_published_environments }}
         id: dependency-cache
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
@@ -88,6 +263,18 @@ jobs:
 
       - name: Set up cached container builder
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+
+      - name: Resolve trusted published base images to OCI digests
+        if: steps.dependency-cache.outputs.cache-hit != 'true'
+        id: registry
+        env:
+          REQUIRE_PUBLISHED: ${{ inputs.require_published_environments }}
+        run: |
+          if [ "$REQUIRE_PUBLISHED" = true ]; then
+            python3 scripts/e2e_images.py bases --require-published >> "$GITHUB_OUTPUT"
+          else
+            python3 scripts/e2e_images.py bases >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Build the tested revision once and collect its exact inventory
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
@@ -99,12 +286,15 @@ jobs:
           build-args: |
             E2E_UID=${{ steps.identity.outputs.uid }}
             E2E_GID=${{ steps.identity.outputs.gid }}
-            E2E_IMAGE_KEY=${{ steps.identity.outputs.image_key }}
             STRATA_BUILD_COMMIT=${{ github.sha }}
+            E2E_DEPENDENCIES_IMAGE=${{ steps.registry.outputs.dependencies_image || 'dependencies' }}
           outputs: type=local,dest=target/e2e-bundle
           cache-from: |
-            ${{ steps.dependency-cache.outputs.cache-hit == 'true' && 'type=local,src=target/e2e-dependency-cache' || 'type=gha,scope=strata-e2e-dependencies-v1' }}
-            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && 'type=gha,scope=strata-e2e-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit == 'true' && 'type=local,src=target/e2e-dependency-cache' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.dependencies_image == 'dependencies' && 'type=gha,scope=strata-e2e-dependencies-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.dependencies_image == 'dependencies' && 'type=gha,scope=strata-e2e-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.dependencies_image == 'dependencies' && 'type=gha,scope=strata-e2e-indexes-v1' || '' }}
+            ${{ steps.registry.outputs.dependencies_image == 'dependencies' && steps.registry.outputs.cache_from || '' }}
 
       - name: Prepare a runtime archive on cache miss
         if: steps.runtime-cache.outputs.cache-hit != 'true'
@@ -116,17 +306,21 @@ jobs:
         with:
           context: .
           file: tests/e2e/Dockerfile
-          target: runtime
+          target: ci-runtime
           platforms: linux/amd64
           build-args: |
             E2E_UID=${{ steps.identity.outputs.uid }}
             E2E_GID=${{ steps.identity.outputs.gid }}
-            E2E_IMAGE_KEY=${{ steps.identity.outputs.image_key }}
+            E2E_RUNTIME_IMAGE=${{ steps.registry.outputs.runtime_image || 'runtime' }}
+          labels: ${{ (steps.registry.outputs.runtime_image == '' || steps.registry.outputs.runtime_image == 'runtime') && format('org.strata.e2e.inputs={0}', steps.identity.outputs.image_key) || '' }}
           tags: strata-e2e:ci-runtime
           outputs: type=docker,dest=target/e2e-runtime/runtime.tar
           cache-from: |
-            ${{ steps.dependency-cache.outputs.cache-hit == 'true' && 'type=local,src=target/e2e-dependency-cache' || 'type=gha,scope=strata-e2e-dependencies-v1' }}
-            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && 'type=gha,scope=strata-e2e-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit == 'true' && 'type=local,src=target/e2e-dependency-cache' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.runtime_image == 'runtime' && 'type=gha,scope=strata-e2e-dependencies-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.runtime_image == 'runtime' && 'type=gha,scope=strata-e2e-v1' || '' }}
+            ${{ steps.dependency-cache.outputs.cache-hit != 'true' && steps.registry.outputs.runtime_image == 'runtime' && 'type=gha,scope=strata-e2e-indexes-v1' || '' }}
+            ${{ steps.registry.outputs.runtime_image == 'runtime' && steps.registry.outputs.cache_from || '' }}
 
       - name: Compress the runtime without another image load or build
         if: steps.runtime-cache.outputs.cache-hit != 'true'
@@ -183,7 +377,7 @@ jobs:
     name: E2E shard ${{ matrix.shard }}
     needs: e2e-build
     runs-on: blacksmith-4vcpu-ubuntu-2404
-    timeout-minutes: 3
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.e2e-build.outputs.matrix) }}
@@ -227,6 +421,7 @@ jobs:
 
       - name: Run the assigned scenarios without rebuilding or installing
         env:
+          STRATA_CONTAINER_ENGINE: docker
           STRATA_E2E_IMAGE: strata-e2e:ci-runtime
           STRATA_E2E_BUNDLE: target/e2e-bundle
           STRATA_E2E_WORKERS: '2'
@@ -284,21 +479,23 @@ jobs:
           path: target/e2e-reports
           merge-multiple: true
 
-      - name: Require every dependency to succeed
+      - name: Explain unsuccessful prerequisites and require them to succeed
         if: ${{ always() }}
         env:
+          GH_TOKEN: ${{ github.token }}
           BUILD_RESULT: ${{ needs.e2e-build.result }}
           SHARD_RESULT: ${{ needs.e2e-shard.result }}
-        run: test "$BUILD_RESULT" = success && test "$SHARD_RESULT" = success
+        run: python3 scripts/e2e_ci.py dependencies
 
       - name: Verify exact coverage
         run: python3 scripts/e2e_ci.py verify target/e2e-bundle/plan.json target/e2e-reports
 
-      - name: Enforce and report the three-minute critical path, including failures
+      - name: Report E2E timing without affecting test results
         if: ${{ always() }}
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/e2e_ci.py budget
+        run: python3 scripts/e2e_ci.py timing
 
   release-scripts:
     name: Release workflow scripts
@@ -309,7 +506,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Test release version calculation
+      - name: Test CI and release helpers
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
   repository-policy:

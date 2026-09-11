@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 mod dbus;
 mod window_geometry;
@@ -556,20 +556,23 @@ async fn resolve_save_file_suggestion(
     current_name: Option<String>,
 ) -> (PathBuf, Option<OsString>) {
     if let Some(file) = current_file {
-        let file_type = if file.is_absolute() {
-            gio::File::for_path(&file)
+        let valid_save_target = if file.is_absolute() {
+            match gio::File::for_path(&file)
                 .query_info_future(
                     gio::FILE_ATTRIBUTE_STANDARD_TYPE,
                     gio::FileQueryInfoFlags::NONE,
                     glib::Priority::DEFAULT,
                 )
                 .await
-                .ok()
-                .map(|info| info.file_type())
+            {
+                Ok(info) => info.file_type() == gio::FileType::Regular,
+                // Qt also supplies current_file for a destination that is new.
+                Err(error) => error.matches(gio::IOErrorEnum::NotFound),
+            }
         } else {
-            None
+            false
         };
-        if file_type == Some(gio::FileType::Regular)
+        if valid_save_target
             && let (Some(parent), Some(name)) = (file.parent(), file.file_name())
             && safe_filename(name)
             && directory_is_accessible(parent).await

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -16,6 +16,8 @@ use gtk::{gio, glib, prelude::*};
 
 use crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT;
 
+mod restore_safety;
+
 use super::{
     LocalOperationProvider, TransferProgressTracker, await_cancellable, copy_failure_after_cleanup,
     copy_new_recursively, copy_new_remote_file_with, copy_recursively, deletion_error_message,
@@ -28,7 +30,7 @@ use crate::{
     services::{
         DeleteRequest, LoadHandle, MoveRecord, OperationEvent, OperationProvider,
         OperationRequestId, PasteItem, PasteRequest, RestoreRequest, RestoreSource,
-        TransferConflict, UndoMoveItem, UndoMoveRequest,
+        RestoreTrashItem, TransferConflict, UndoMoveItem, UndoMoveRequest,
     },
 };
 
@@ -1895,7 +1897,10 @@ fn cancelling_restore_before_io_reports_every_item_as_unattempted() -> Result<()
         .map_err(|error| error.to_string())?;
     let events = Rc::new(RefCell::new(Vec::new()));
     let emitted = events.clone();
-    let entries = vec![file_entry(std::path::Path::new("/fixture/trashed.txt"))];
+    let entries = vec![RestoreTrashItem {
+        entry: file_entry(std::path::Path::new("/fixture/trashed.txt")),
+        destination: PathBuf::from("/fixture/trashed.txt"),
+    }];
     let operation = LocalOperationProvider.restore(
         RestoreRequest {
             id: OperationRequestId(9),
@@ -1914,8 +1919,218 @@ fn cancelling_restore_before_io_reports_every_item_as_unattempted() -> Result<()
         [OperationEvent::Cancelled { result, .. }]
             if result.completed.is_empty()
                 && result.failed.is_empty()
-                && result.not_attempted == [entries[0].location.clone()]
+                && result.not_attempted == [entries[0].entry.location.clone()]
     ));
+    Ok(())
+}
+
+fn wait_for_restore(events: &Rc<RefCell<Vec<OperationEvent>>>) {
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Restored { .. }
+                | OperationEvent::RestoreCompletedWithErrors { .. }
+                | OperationEvent::Failed { .. }
+                | OperationEvent::Cancelled { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+}
+
+fn volume_trash_entry(
+    root: &Path,
+    name: &str,
+    orig_path: &str,
+    contents: &[u8],
+) -> Result<(PathBuf, FileEntry), Box<dyn Error>> {
+    let uid = rustix::process::getuid().as_raw();
+    let trash = root.join(format!(".Trash-{uid}"));
+    fs::create_dir_all(trash.join("files"))?;
+    fs::create_dir_all(trash.join("info"))?;
+    let source = trash.join("files").join(name);
+    fs::write(&source, contents)?;
+    fs::write(
+        trash.join("info").join(format!("{name}.trashinfo")),
+        format!("[Trash Info]\nPath={orig_path}\nDeletionDate=2026-01-01T00:00:00\n"),
+    )?;
+    Ok((source.clone(), file_entry(&source)))
+}
+
+#[test]
+fn restore_rejects_a_volume_orig_path_on_another_device() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let Some((home, stick)) = crate::test_support::distinct_device_dirs(
+        "restore_rejects_a_volume_orig_path_on_another_device",
+    ) else {
+        return Ok(());
+    };
+    let dest = home.path().join(".config/autostart/payload.desktop");
+    let (source, entry) = volume_trash_entry(
+        stick.path(),
+        "payload",
+        &dest.to_string_lossy(),
+        b"ssh-ed25519 AAAA attacker",
+    )?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.restore(
+        RestoreRequest {
+            id: OperationRequestId(478),
+            source: RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry,
+                destination: dest.clone(),
+            }]),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    wait_for_restore(&events);
+
+    assert!(
+        matches!(
+            events.borrow().last(),
+            Some(OperationEvent::RestoreCompletedWithErrors { message, .. })
+                if message.contains("outside the trash volume")
+        ),
+        "{:?}",
+        events.borrow()
+    );
+    assert!(source.exists());
+    assert_eq!(fs::read(&source)?, b"ssh-ed25519 AAAA attacker");
+    assert!(!dest.exists());
+    Ok(())
+}
+
+#[test]
+fn restore_returns_a_volume_item_to_a_path_on_the_same_volume() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let fixture = tempfile::tempdir()?;
+    fs::create_dir_all(fixture.path().join("Documents"))?;
+    let (source, entry) = volume_trash_entry(
+        fixture.path(),
+        "report.txt",
+        "Documents/report.txt",
+        b"notes",
+    )?;
+    let destination = fixture.path().canonicalize()?.join("Documents/report.txt");
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.restore(
+        RestoreRequest {
+            id: OperationRequestId(479),
+            source: RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry,
+                destination: destination.clone(),
+            }]),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    wait_for_restore(&events);
+
+    assert!(
+        matches!(
+            events.borrow().last(),
+            Some(OperationEvent::Restored { .. })
+        ),
+        "{:?}",
+        events.borrow()
+    );
+    assert_eq!(fs::read(&destination)?, b"notes");
+    assert!(!source.exists());
+    Ok(())
+}
+
+#[test]
+fn restore_fails_when_the_confirmed_destination_no_longer_matches() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let fixture = tempfile::tempdir()?;
+    fs::create_dir_all(fixture.path().join("Documents"))?;
+    let (source, entry) = volume_trash_entry(
+        fixture.path(),
+        "report.txt",
+        "Documents/report.txt",
+        b"notes",
+    )?;
+    let confirmed = fixture.path().canonicalize()?.join("Documents/other.txt");
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.restore(
+        RestoreRequest {
+            id: OperationRequestId(480),
+            source: RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry,
+                destination: confirmed.clone(),
+            }]),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    wait_for_restore(&events);
+
+    assert!(
+        matches!(
+            events.borrow().last(),
+            Some(OperationEvent::RestoreCompletedWithErrors { message, .. })
+                if message.contains("no longer matches the confirmed destination")
+        ),
+        "{:?}",
+        events.borrow()
+    );
+    assert!(source.exists());
+    assert!(!confirmed.exists());
+    assert!(!fixture.path().join("Documents/report.txt").exists());
+    Ok(())
+}
+
+#[test]
+fn restore_uses_the_trash_entry_target_path_as_the_physical_source() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let fixture = tempfile::tempdir()?;
+    fs::create_dir_all(fixture.path().join("Documents"))?;
+    let (source, mut entry) = volume_trash_entry(
+        fixture.path(),
+        "report.txt",
+        "Documents/report.txt",
+        b"notes",
+    )?;
+    entry.location = Location::uri("trash:///report.txt");
+    entry.thumbnail_path = Some(source.clone());
+    let destination = fixture.path().canonicalize()?.join("Documents/report.txt");
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.restore(
+        RestoreRequest {
+            id: OperationRequestId(481),
+            source: RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry,
+                destination: destination.clone(),
+            }]),
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    wait_for_restore(&events);
+
+    assert!(
+        matches!(
+            events.borrow().last(),
+            Some(OperationEvent::Restored { .. })
+        ),
+        "{:?}",
+        events.borrow()
+    );
+    assert_eq!(fs::read(&destination)?, b"notes");
+    assert!(!source.exists());
     Ok(())
 }
 
@@ -2712,6 +2927,261 @@ fn mixed_conflict_choices_apply_independently_across_a_multi_item_paste()
     );
     assert_eq!(fs::read(destination.join("keep.txt"))?, b"old keep");
     assert_eq!(fs::read(destination.join("keep (1).txt"))?, b"new keep");
+    Ok(())
+}
+
+#[test]
+fn copying_a_tree_with_a_named_pipe_fails_instead_of_blocking() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("source");
+    let target = root.path().join("target");
+    fs::create_dir_all(&source)?;
+    fs::write(source.join("before.txt"), b"before")?;
+    rustix::fs::mkfifoat(
+        rustix::fs::CWD,
+        source.join("pipe"),
+        rustix::fs::Mode::from_bits_truncate(0o600),
+    )?;
+
+    let result = glib::MainContext::default().block_on(copy_recursively(
+        gio::File::for_path(&source),
+        gio::File::for_path(&target),
+        false,
+        gio::Cancellable::new(),
+        None,
+    ));
+
+    let error = result.expect_err("a named pipe cannot be copied as a regular file");
+    assert!(
+        error.to_string().contains("pipe"),
+        "the error should name the entry: {error}"
+    );
+    assert!(!target.join("pipe").exists());
+    Ok(())
+}
+
+#[test]
+fn hidden_file_copy_suffix_parsing_preserves_dot_prefix() {
+    assert_eq!(
+        parse_copy_suffix(OsStr::new(".gitignore")),
+        (OsStr::new(".gitignore"), None)
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new(".gitignore (1)")),
+        (OsStr::new(".gitignore"), Some(1))
+    );
+    assert_eq!(
+        duplicate_candidate_name(OsStr::new(".gitignore"), None, 1),
+        OsString::from(".gitignore (1)")
+    );
+    assert_eq!(
+        duplicate_candidate_name(OsStr::new(".config"), None, 2),
+        OsString::from(".config (2)")
+    );
+}
+
+#[test]
+fn multi_extension_copy_suffix_parsing_preserves_full_extension() {
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("archive")),
+        (OsStr::new("archive"), None)
+    );
+    assert_eq!(
+        parse_copy_suffix(OsStr::new("archive (1)")),
+        (OsStr::new("archive"), Some(1))
+    );
+    assert_eq!(
+        duplicate_candidate_name(OsStr::new("archive"), Some(OsStr::new("tar.gz")), 1),
+        OsString::from("archive (1).tar.gz")
+    );
+    assert_eq!(
+        duplicate_candidate_name(OsStr::new("archive"), Some(OsStr::new("tar.gz")), 3),
+        OsString::from("archive (3).tar.gz")
+    );
+    assert_eq!(
+        duplicate_candidate_name(OsStr::new("backup.tar"), Some(OsStr::new("gz")), 1),
+        OsString::from("backup.tar (1).gz")
+    );
+}
+
+#[test]
+fn duplicating_hidden_file_generates_correct_numbered_name() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source = destination.join(".gitignore");
+    fs::write(&source, b"target/")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(30),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(source.exists());
+    assert_eq!(fs::read(destination.join(".gitignore (1)"))?, b"target/");
+    Ok(())
+}
+
+#[test]
+fn duplicating_multi_extension_file_uses_last_extension_for_candidate_name()
+-> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source = destination.join("backup.tar.gz");
+    fs::write(&source, b"contents")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(31),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::FailIfExists,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(source.exists());
+    assert_eq!(
+        fs::read(destination.join("backup.tar (1).gz"))?,
+        b"contents"
+    );
+    Ok(())
+}
+
+#[test]
+fn pasting_onto_itself_with_replace_is_a_noop() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source = destination.join("todo.txt");
+    fs::write(&source, b"existing\n")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(32),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::ReplaceExisting,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(source.exists());
+    assert_eq!(fs::read(&source)?, b"existing\n");
+    assert!(!destination.join("todo (1).txt").exists());
+    Ok(())
+}
+
+#[test]
+fn pasting_onto_itself_with_keep_both_creates_numbered_copy() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().to_path_buf();
+    let source = destination.join("todo.txt");
+    fs::write(&source, b"existing\n")?;
+
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let _operation = LocalOperationProvider.paste(
+        PasteRequest {
+            id: OperationRequestId(33),
+            destination: Location::local(&destination),
+            items: vec![PasteItem {
+                source: Location::local(&source),
+                conflict: TransferConflict::KeepBoth,
+            }],
+            move_sources: false,
+        },
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+
+    assert!(matches!(
+        events.borrow().last(),
+        Some(OperationEvent::Pasted { .. })
+    ));
+    assert!(source.exists());
+    assert_eq!(fs::read(&source)?, b"existing\n");
+    assert_eq!(fs::read(destination.join("todo (1).txt"))?, b"existing\n");
     Ok(())
 }
 

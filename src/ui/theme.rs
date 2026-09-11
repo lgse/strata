@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use std::{
     cell::{Cell, RefCell},
@@ -16,7 +16,7 @@ use sourceview5::prelude::BufferExt as _;
 use crate::{
     model::{FolderColorValue, SortDirection, SortKey, ViewPreferences},
     sandbox::MediaPreviewBackend,
-    services::Channel,
+    services::{Channel, CrossVolumeDropStrategy},
 };
 
 mod bindings;
@@ -139,6 +139,8 @@ struct Preferences {
     preview_volume: f64,
     #[serde(default)]
     auto_refresh_interval: u32,
+    #[serde(default = "default_cross_volume_drop_strategy")]
+    cross_volume_drop_strategy: String,
     #[serde(default = "default_release_channel")]
     release_channel: String,
     #[serde(default, skip_serializing_if = "HashMap::is_empty")]
@@ -180,6 +182,7 @@ impl Default for Preferences {
             preview_muted: false,
             preview_volume: default_full_volume(),
             auto_refresh_interval: 0,
+            cross_volume_drop_strategy: default_cross_volume_drop_strategy(),
             release_channel: default_release_channel(),
             folder_colors: HashMap::new(),
             custom_icons: HashMap::new(),
@@ -298,6 +301,10 @@ fn default_full_volume() -> f64 {
     1.0
 }
 
+fn default_cross_volume_drop_strategy() -> String {
+    CrossVolumeDropStrategy::Ask.as_str().to_owned()
+}
+
 fn normalized_volume(volume: f64) -> f64 {
     if volume.is_finite() {
         volume.clamp(0.0, 1.0)
@@ -316,6 +323,7 @@ pub struct ThemeManager {
     previewing: Cell<bool>,
     changes: bindings::PreferenceChanges,
     persistence_dirty: Cell<bool>,
+    persistence_enabled: bool,
 }
 
 impl ThemeManager {
@@ -333,7 +341,13 @@ impl ThemeManager {
     fn load() -> Rc<Self> {
         let themes = merge_builtin_and_custom_themes(builtins(), load_custom_themes());
         let omarchy_available = load_omarchy_theme().is_some();
-        let mut preferences = read_preferences().unwrap_or_default();
+        let loaded = read_preferences();
+        let persistence_enabled = loaded.is_ok();
+        let mut preferences = loaded.unwrap_or_else(|error| {
+            tracing::warn!(%error, path = %settings_path().display(),
+                "unable to load settings; using temporary defaults without saving; fix the file and restart Strata");
+            Preferences::default()
+        });
         preferences.preview_volume = normalized_volume(preferences.preview_volume);
         if !themes.iter().any(|theme| theme.id == preferences.theme) {
             preferences.theme = "azure-glow".to_owned();
@@ -350,6 +364,7 @@ impl ThemeManager {
             themes: RefCell::new(themes),
             changes: bindings::PreferenceChanges::new(preferences.clone()),
             persistence_dirty: Cell::new(false),
+            persistence_enabled,
             preferences: RefCell::new(preferences),
             omarchy_available,
             omarchy_monitor: RefCell::new(None),
@@ -605,6 +620,18 @@ impl ThemeManager {
 
     pub fn set_auto_refresh_interval(&self, secs: u32) {
         self.preferences.borrow_mut().auto_refresh_interval = secs;
+        self.save_preferences();
+    }
+
+    pub fn cross_volume_drop_strategy(&self) -> CrossVolumeDropStrategy {
+        CrossVolumeDropStrategy::parse(&self.preferences.borrow().cross_volume_drop_strategy)
+    }
+
+    pub fn set_cross_volume_drop_strategy(&self, strategy: CrossVolumeDropStrategy) {
+        if self.cross_volume_drop_strategy() == strategy {
+            return;
+        }
+        self.preferences.borrow_mut().cross_volume_drop_strategy = strategy.as_str().to_owned();
         self.save_preferences();
     }
 
@@ -902,6 +929,12 @@ impl ThemeManager {
         if !changed && !self.persistence_dirty.get() {
             return;
         }
+        if !self.persistence_enabled {
+            if changed {
+                self.changes.notify(self);
+            }
+            return;
+        }
         self.persistence_dirty.set(true);
         let path = settings_path();
         let result = (|| -> io::Result<()> {
@@ -1055,8 +1088,44 @@ fn load_custom_themes() -> Vec<Theme> {
     themes
 }
 
-fn read_preferences() -> Option<Preferences> {
-    toml::from_str(&fs::read_to_string(settings_path()).ok()?).ok()
+fn read_preferences() -> io::Result<Preferences> {
+    let contents = match fs::read_to_string(settings_path()) {
+        Ok(contents) => contents,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(Preferences::default()),
+        Err(error) => return Err(error),
+    };
+    let table: toml::Table = toml::from_str(&contents)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+    match table.clone().try_into() {
+        Ok(preferences) => Ok(preferences),
+        Err(error) => {
+            tracing::warn!(%error, "settings file has invalid entries; keeping the valid ones");
+            Ok(salvage_preferences(table))
+        }
+    }
+}
+
+/// Rebuilds preferences from every entry that deserializes on its own, so one
+/// malformed value does not reset the rest (and, on the next save, overwrite
+/// them with defaults).
+fn salvage_preferences(saved: toml::Table) -> Preferences {
+    let Ok(mut merged) = toml::Table::try_from(Preferences::default()) else {
+        return Preferences::default();
+    };
+    for (key, value) in saved {
+        let previous = merged.insert(key.clone(), value);
+        if merged.clone().try_into::<Preferences>().is_err() {
+            match previous {
+                Some(previous) => {
+                    merged.insert(key, previous);
+                }
+                None => {
+                    merged.remove(&key);
+                }
+            }
+        }
+    }
+    merged.try_into().unwrap_or_default()
 }
 
 fn sort_preferences(preferences: &Preferences) -> ViewPreferences {
@@ -1260,15 +1329,15 @@ fn source_style_scheme_xml(tokens: &ThemeTokens) -> String {
   <style name="def:error" foreground="background" background="accent" bold="true"/>
 </style-scheme>
 "#,
-        tokens.background,
-        tokens.surface,
-        tokens.text,
-        tokens.accent,
-        tokens.highlight,
-        tokens.dim_text,
-        string,
-        constant,
-        type_color,
+        color_to_hex(&tokens.background),
+        color_to_hex(&tokens.surface),
+        color_to_hex(&tokens.text),
+        color_to_hex(&tokens.accent),
+        color_to_hex(&tokens.highlight),
+        color_to_hex(&tokens.dim_text),
+        color_to_hex(&string),
+        color_to_hex(&constant),
+        color_to_hex(&type_color),
     )
 }
 
@@ -1320,17 +1389,39 @@ fn tokens_css(tokens: &ThemeTokens, root_font_px: f64) -> String {
     )
 }
 
+/// Parses colours GTK accepts (`#rgb`, `#rrggbb`, `rgb(...)`, names) into 8-bit
+/// channels. Strata emits these channels as `#rrggbb` in GtkSourceView schemes.
+pub(crate) fn parse_rgb_channels(value: &str) -> Option<[u8; 3]> {
+    let color = gdk::RGBA::parse(value).ok()?;
+    let channel = |component: f32| (f64::from(component).clamp(0.0, 1.0) * 255.0).round() as u8;
+    Some([
+        channel(color.red()),
+        channel(color.green()),
+        channel(color.blue()),
+    ])
+}
+
+fn hex_from_channels(channels: [u8; 3]) -> String {
+    format!("#{:02x}{:02x}{:02x}", channels[0], channels[1], channels[2])
+}
+
+/// Canonicalizes a colour token to Strata's `#rrggbb` scheme representation.
+pub(crate) fn color_to_hex(value: &str) -> String {
+    parse_rgb_channels(value)
+        .map(hex_from_channels)
+        .unwrap_or_else(|| value.to_owned())
+}
+
 fn blend(left: &str, right: &str, amount: f64) -> String {
-    let parse = |value: &str| u32::from_str_radix(value.trim_start_matches('#'), 16).ok();
-    let (Some(left), Some(right)) = (parse(left), parse(right)) else {
+    let (Some(left), Some(right)) = (parse_rgb_channels(left), parse_rgb_channels(right)) else {
         return right.to_owned();
     };
-    let channel = |shift| {
-        let a = f64::from((left >> shift) & 0xff_u32);
-        let b = f64::from((right >> shift) & 0xff_u32);
+    let channel = |index: usize| {
+        let a = f64::from(left[index]);
+        let b = f64::from(right[index]);
         (a + (b - a) * amount).round() as u32
     };
-    format!("#{:02x}{:02x}{:02x}", channel(16), channel(8), channel(0))
+    format!("#{:02x}{:02x}{:02x}", channel(0), channel(1), channel(2))
 }
 
 fn slugify(name: &str) -> String {

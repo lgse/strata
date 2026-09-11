@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-License-Identifier: MIT
 """An isolated, deterministic HOME and XDG environment for one test."""
 
 from __future__ import annotations
@@ -59,6 +59,7 @@ DEFAULT_PREFERENCES: dict[str, object] = {
     "sort_direction": "ascending",
     "check_for_updates": False,
     "auto_refresh_interval": 0,
+    "cross_volume_drop_strategy": "always-ask",
     "release_channel": "stable",
     "video_preview_backend": "automatic",
     "preview_muted": True,

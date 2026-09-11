@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
 
@@ -27,6 +27,19 @@ fn uri_locations_remain_explicit_and_have_one_breadcrumb() {
     assert_eq!(trash.display_path(), "trash:///");
     assert_eq!(trash.breadcrumbs(), vec![trash.clone()]);
     assert_eq!(trash.parent(), None);
+}
+
+#[test]
+fn uri_display_names_are_percent_decoded() {
+    assert_eq!(
+        Location::uri("smb://server/share/My%20Share").display_name(),
+        "My Share"
+    );
+    assert_eq!(
+        Location::uri("sftp://host/caf%C3%A9/").display_name(),
+        "café"
+    );
+    assert_eq!(Location::uri("sftp://host/").display_name(), "host");
 }
 
 #[test]

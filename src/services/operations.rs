@@ -1,9 +1,9 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 #[cfg(test)]
 mod tests;
 
-use std::{collections::HashSet, rc::Rc};
+use std::{collections::HashSet, path::PathBuf, rc::Rc};
 
 use crate::model::{FileEntry, Location};
 
@@ -103,8 +103,14 @@ pub struct DeleteRequest {
 }
 
 #[derive(Clone, Debug)]
+pub struct RestoreTrashItem {
+    pub entry: FileEntry,
+    pub destination: PathBuf,
+}
+
+#[derive(Clone, Debug)]
 pub enum RestoreSource {
-    TrashEntries(Vec<FileEntry>),
+    TrashEntries(Vec<RestoreTrashItem>),
     OriginalLocations(Vec<Location>),
 }
 

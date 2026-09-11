@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
 use super::*;
 use crate::{app::BrowserEvent, ui::browser::columns::is_column_background};
@@ -12,6 +12,107 @@ fn wait_until(condition: impl Fn() -> bool) {
         glib::MainContext::default().iteration(false);
         std::thread::sleep(Duration::from_millis(2));
     }
+}
+
+#[test]
+fn background_splices_preserve_column_multiselection_and_pending_properties() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::background_splices_preserve_column_multiselection_and_pending_properties",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            for name in ["alpha", "bravo", "charlie"] {
+                std::fs::write(fixture.path().join(name), name).expect("fixture file");
+            }
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            browser.set_selection(0, &[0, 2], Some(2));
+            view.state.handle(&BrowserEvent::EntriesSpliced {
+                depth: 0,
+                splices: Vec::new(),
+            });
+            let columns = view.state.columns.borrow();
+            assert!(columns[0].selection.is_selected(0));
+            assert!(!columns[0].selection.is_selected(1));
+            assert!(columns[0].selection.is_selected(2));
+            assert_eq!(browser.selected_positions(0), vec![0, 2]);
+            drop(columns);
+
+            view.state.pending_select.replace(vec!["alpha".into()]);
+            view.state.pending_select_properties.set(true);
+            view.state.handle(&BrowserEvent::LoadFinished {
+                depth: 1,
+                truncated: false,
+            });
+            assert!(view.state.pending_select_properties.get());
+            assert_eq!(*view.state.pending_select.borrow(), vec!["alpha"]);
+            browser.clear_observer();
+        },
+    );
+}
+
+#[test]
+fn replacement_column_rows_are_visible_without_waiting_for_idle() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::replacement_column_rows_are_visible_without_waiting_for_idle",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            let factory = view.state.columns.borrow()[0]
+                .list
+                .factory()
+                .expect("factory");
+            let item: gtk::ListItem = glib::Object::new();
+            factory.emit_by_name::<()>("setup", &[&item]);
+            let row = item.child().expect("row");
+            assert!(!row.has_css_class("file-appear"));
+            assert_eq!(row.opacity(), 1.0);
+            browser.clear_observer();
+        },
+    );
+}
+
+#[test]
+fn cursor_recovery_allows_focus_callbacks_to_update_bound_rows() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::cursor_recovery_allows_focus_callbacks_to_update_bound_rows",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            std::fs::write(fixture.path().join("entry.txt"), "entry").expect("fixture file");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            let window = gtk::Window::builder().child(&view.widget()).build();
+            window.present();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            let list = view.state.columns.borrow()[0].list.clone();
+            wait_until(|| list.is_mapped() && list.height() > 0);
+            gtk::prelude::RootExt::set_focus(&window, Some(&list));
+            {
+                let columns = view.state.columns.borrow();
+                crate::ui::browser::columns::restore_column_cursor(&columns[0], 0);
+            }
+            wait_until(|| {
+                gtk::prelude::RootExt::focus(&window)
+                    .is_some_and(|focused| focused != list && focused.is_ancestor(&list))
+            });
+            window.close();
+            browser.clear_observer();
+        },
+    );
 }
 
 fn assert_column_header_actions(view: &BrowserView, active_depth: usize) {

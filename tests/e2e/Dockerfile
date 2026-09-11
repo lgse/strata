@@ -1,10 +1,12 @@
+ARG E2E_DEPENDENCIES_IMAGE=dependencies
+ARG E2E_RUNTIME_IMAGE=runtime
+
 FROM docker.io/library/ubuntu:24.04@sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316 AS certificates
 
 RUN apt-get update && apt-get install --yes --no-install-recommends ca-certificates=20260601~24.04.1
 
-FROM docker.io/library/ubuntu:24.04@sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316 AS runtime
+FROM docker.io/library/ubuntu:24.04@sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316 AS snapshot-base
 COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
-COPY tests/e2e/install-packages.sh /opt/e2e-install-packages.sh
 ENV STRATA_E2E_SNAPSHOT_URL=http://snapshot.ubuntu.com/ubuntu/20260901T000000Z
 
 RUN printf '%s\n' \
@@ -12,12 +14,22 @@ RUN printf '%s\n' \
     "deb [check-valid-until=no] $STRATA_E2E_SNAPSHOT_URL noble-updates main universe" \
     "deb [check-valid-until=no] $STRATA_E2E_SNAPSHOT_URL noble-security main universe" \
     > /etc/apt/sources.list \
-    && rm /etc/apt/sources.list.d/ubuntu.sources \
-    && apt-get update --error-on=any \
+    && rm /etc/apt/sources.list.d/ubuntu.sources
+
+FROM snapshot-base AS package-indexes
+RUN apt-get update --error-on=any
+
+FROM snapshot-base AS runtime
+COPY tests/e2e/install-packages.sh /opt/e2e-install-packages.sh
+# Reuse authenticated indexes without retaining them in the runtime image.
+RUN --mount=type=bind,from=package-indexes,source=/var/lib/apt/lists,target=/opt/e2e-apt-lists \
+    cp -a /opt/e2e-apt-lists/. /var/lib/apt/lists/ \
     && DEBIAN_FRONTEND=noninteractive sh /opt/e2e-install-packages.sh \
-    at-spi2-core ca-certificates dbus-bin dbus-daemon fonts-cantarell \
-    gir1.2-atspi-2.0 gir1.2-gtk-4.0 imagemagick libfontconfig1 libgtk-4-1 \
-    libgtksourceview-5-0 libpoppler-glib8 librsvg2-common python3-gi python3-venv \
+    at-spi2-core bubblewrap ca-certificates dbus-bin dbus-daemon ffmpeg fonts-cantarell \
+    gir1.2-atspi-2.0 gir1.2-gtk-4.0 gstreamer1.0-libav gstreamer1.0-plugins-base \
+    gstreamer1.0-plugins-good imagemagick libfontconfig1 libgtk-4-1 \
+    libgtk-4-media-gstreamer libgtksourceview-5-0 libpoppler-glib8 librsvg2-common \
+    python3-gi python3-venv \
     xauth xvfb \
     && rm -rf /var/lib/apt/lists/*
 
@@ -34,11 +46,9 @@ RUN (getent group "$E2E_GID" || groupadd --gid "$E2E_GID" strata-e2e) \
         --gid "$E2E_GID" --home-dir /tmp/strata-build-home --no-create-home strata-e2e)
 
 ENV STRATA_E2E_VENV=/opt/e2e-venv
-ARG E2E_IMAGE_KEY
-LABEL org.strata.e2e.inputs=$E2E_IMAGE_KEY
-
 FROM runtime AS toolchain
-RUN apt-get update --error-on=any \
+RUN --mount=type=bind,from=package-indexes,source=/var/lib/apt/lists,target=/opt/e2e-apt-lists \
+    cp -a /opt/e2e-apt-lists/. /var/lib/apt/lists/ \
     && DEBIAN_FRONTEND=noninteractive sh /opt/e2e-install-packages.sh \
         build-essential libfontconfig1-dev libgtk-4-dev libgtksourceview-5-dev \
         libpoppler-glib-dev pkg-config rustup \
@@ -57,7 +67,12 @@ RUN mkdir src && printf 'fn main() {}\n' > src/main.rs \
     && rm -rf src build.rs target/debug/strata target/debug/deps/strata* \
         target/debug/.fingerprint/strata-* target/debug/build/strata-*
 
-FROM dependencies AS application
+FROM ${E2E_RUNTIME_IMAGE} AS ci-runtime
+
+FROM ${E2E_DEPENDENCIES_IMAGE} AS application
+COPY Cargo.toml Cargo.lock /tmp/strata-e2e-manifests/
+RUN cmp Cargo.toml /tmp/strata-e2e-manifests/Cargo.toml \
+    && cmp Cargo.lock /tmp/strata-e2e-manifests/Cargo.lock
 COPY src ./src
 COPY data ./data
 COPY build.rs ./
