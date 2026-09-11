@@ -559,6 +559,7 @@ impl ViewState {
         entry: FileEntry,
         destination: Location,
         invalid_password: bool,
+        navigate_after_extract: Option<Location>,
     ) {
         let password_entry = form_password_entry();
         password_entry.set_show_peek_icon(true);
@@ -606,10 +607,9 @@ impl ViewState {
                     .pending_extract_retry
                     .replace(Some((entry.clone(), destination.clone())));
             }
-            // Re-arm navigation so a successful retry still reveals the destination.
             extract_state
                 .pending_navigate
-                .replace(Some(destination.clone()));
+                .replace(navigate_after_extract.clone());
             dismiss_for_confirm();
             browser.extract(entry.clone(), destination.clone(), Some(pw));
         });

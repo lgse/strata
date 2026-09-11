@@ -580,9 +580,13 @@ impl ViewState {
                     let lower = message.to_lowercase();
                     if lower.contains("password") || lower.contains("encrypt") {
                         let invalid_password = lower.contains("incorrect");
-                        // Drop the abandoned destination; retry re-arms it on confirm.
-                        self.pending_navigate.take();
-                        self.show_extract_password_dialog(entry, dest, invalid_password);
+                        let navigate_after_extract = self.pending_navigate.take();
+                        self.show_extract_password_dialog(
+                            entry,
+                            dest,
+                            invalid_password,
+                            navigate_after_extract,
+                        );
                         return;
                     }
                 }

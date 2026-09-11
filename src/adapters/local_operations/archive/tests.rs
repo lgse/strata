@@ -509,8 +509,6 @@ fn failed_extraction_removes_a_newly_created_empty_destination() -> Result<(), B
     let root = tempfile::tempdir()?;
     let archive = root.path().join("fake.zip");
     fs::write(&archive, b"not an archive")?;
-    // The backend must create the destination and remove the empty folder on
-    // failure so a cancelled password prompt leaves no leftover (issue #808).
     let destination = root.path().join("leftover");
     let events = run_extraction(ExtractRequest {
         id: OperationRequestId(908),
