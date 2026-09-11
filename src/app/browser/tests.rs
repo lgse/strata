@@ -2677,7 +2677,6 @@ fn activating_non_archive_file_or_remote_archive_opens_externally() {
     browser.observe(move |event| observed.borrow_mut().push(event.clone()));
     browser.navigate(Location::local("/fixture"));
 
-    // Non-archive file at position 1
     events.borrow_mut().clear();
     browser.activate(0, 1);
     assert!(events.borrow().iter().any(|event| matches!(
@@ -2686,7 +2685,6 @@ fn activating_non_archive_file_or_remote_archive_opens_externally() {
             if location == &Location::local("/fixture/notes.txt")
     )));
 
-    // Remote archive at position 2
     events.borrow_mut().clear();
     browser.activate(0, 2);
     assert!(events.borrow().iter().any(|event| matches!(
