@@ -1060,10 +1060,12 @@ impl ViewState {
             }
 
             let weak_self = Rc::downgrade(self);
-            let popover_clone = popover.clone();
+            let weak_popover = popover.downgrade();
             let target_crumb = crumb.clone();
             button.connect_clicked(move |_| {
-                popover_clone.popdown();
+                if let Some(popover) = weak_popover.upgrade() {
+                    popover.popdown();
+                }
                 if let Some(state) = weak_self.upgrade() {
                     state.browser.navigate(target_crumb.clone());
                 }

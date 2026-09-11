@@ -223,6 +223,38 @@ fn breadcrumbs_render_full_labels_with_external_scroller() {
     );
 }
 
+#[test]
+fn breadcrumb_adjustment_does_not_retain_widgets() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::breadcrumb_adjustment_does_not_retain_widgets",
+        || {
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let adjustment = view.state.breadcrumb_scroller.hadjustment();
+            let container = view
+                .state
+                .location_stack
+                .child_by_name("breadcrumbs")
+                .expect("breadcrumb container");
+            let scrollbar = descendants(&container)
+                .into_iter()
+                .filter(|widget| widget.has_css_class("breadcrumb-scrollbar"))
+                .find_map(|widget| widget.downcast::<gtk::Scrollbar>().ok())
+                .expect("external scrollbar");
+            let weak_scrollbar = scrollbar.downgrade();
+            container
+                .downcast::<gtk::Box>()
+                .expect("vertical breadcrumb container")
+                .remove(&scrollbar);
+            drop(scrollbar);
+            assert!(weak_scrollbar.upgrade().is_none());
+            adjustment.set_value(1.0);
+        },
+    );
+}
+
 fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
     let mut widgets = vec![widget.clone()];
     let mut child = widget.first_child();

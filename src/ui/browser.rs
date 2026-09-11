@@ -334,21 +334,28 @@ impl BrowserView {
         breadcrumb_container.set_hexpand(true);
 
         let motion_controller = gtk::EventControllerMotion::new();
-        let scrollbar_clone = breadcrumb_scrollbar.clone();
+        let weak_scrollbar = breadcrumb_scrollbar.downgrade();
         motion_controller.connect_enter(move |_, _, _| {
-            scrollbar_clone.add_css_class("hovered");
+            if let Some(scrollbar) = weak_scrollbar.upgrade() {
+                scrollbar.add_css_class("hovered");
+            }
         });
-        let scrollbar_clone = breadcrumb_scrollbar.clone();
+        let weak_scrollbar = breadcrumb_scrollbar.downgrade();
         motion_controller.connect_leave(move |_| {
-            scrollbar_clone.remove_css_class("hovered");
+            if let Some(scrollbar) = weak_scrollbar.upgrade() {
+                scrollbar.remove_css_class("hovered");
+            }
         });
         breadcrumb_container.add_controller(motion_controller);
 
         let scroll_timer: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
         let flash_scrollbar = {
-            let breadcrumb_scrollbar = breadcrumb_scrollbar.clone();
+            let breadcrumb_scrollbar = breadcrumb_scrollbar.downgrade();
             let scroll_timer = scroll_timer.clone();
             move || {
+                let Some(breadcrumb_scrollbar) = breadcrumb_scrollbar.upgrade() else {
+                    return;
+                };
                 breadcrumb_scrollbar.add_css_class("scrolling");
                 if let Some(source) = scroll_timer.borrow_mut().take() {
                     source.remove();
@@ -369,11 +376,17 @@ impl BrowserView {
         };
 
         let update_overflow = {
-            let fade_left = fade_left.clone();
-            let fade_right = fade_right.clone();
-            let breadcrumb_scrollbar = breadcrumb_scrollbar.clone();
-            let hadjustment = hadjustment.clone();
-            move || {
+            let fade_left = fade_left.downgrade();
+            let fade_right = fade_right.downgrade();
+            let breadcrumb_scrollbar = breadcrumb_scrollbar.downgrade();
+            move |hadjustment: &gtk::Adjustment| {
+                let (Some(fade_left), Some(fade_right), Some(breadcrumb_scrollbar)) = (
+                    fade_left.upgrade(),
+                    fade_right.upgrade(),
+                    breadcrumb_scrollbar.upgrade(),
+                ) else {
+                    return;
+                };
                 let value = hadjustment.value();
                 let upper = hadjustment.upper();
                 let page_size = hadjustment.page_size();
@@ -390,12 +403,12 @@ impl BrowserView {
         hadjustment.connect_value_changed({
             let update_overflow = update_overflow.clone();
             let flash_scrollbar = flash_scrollbar.clone();
-            move |_| {
-                update_overflow();
+            move |adjustment| {
+                update_overflow(adjustment);
                 flash_scrollbar();
             }
         });
-        hadjustment.connect_changed(move |_| update_overflow());
+        hadjustment.connect_changed(update_overflow);
 
         let location_stack = gtk::Stack::builder()
             .hhomogeneous(false)
@@ -566,8 +579,10 @@ impl BrowserView {
 
         let hierarchy_menu = gtk::GestureClick::new();
         hierarchy_menu.set_button(gtk::gdk::BUTTON_SECONDARY);
+        hierarchy_menu.set_propagation_phase(gtk::PropagationPhase::Capture);
         let weak_state = Rc::downgrade(&state);
-        hierarchy_menu.connect_released(move |gesture, _, x, y| {
+        hierarchy_menu.connect_pressed(move |gesture, _, x, y| {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
             if let Some(state) = weak_state.upgrade()
                 && let Some(widget) = gesture.widget()
             {
