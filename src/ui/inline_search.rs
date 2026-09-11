@@ -101,6 +101,27 @@ impl InlineSearch {
         Some(entries)
     }
 
+    pub fn focus_result(&self, path: &Path) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return false;
+        }
+        let position = state
+            .items
+            .borrow()
+            .iter()
+            .position(|item| item.path == path);
+        let Some(row) = position.and_then(|position| state.list.row_at_index(position as i32))
+        else {
+            return false;
+        };
+        state.list.select_row(Some(&row));
+        row.set_focusable(true);
+        row.grab_focus()
+    }
+
     pub fn prune_missing(&self) {
         let Some(state) = self.state.as_ref() else {
             return;
@@ -464,7 +485,7 @@ fn result_row(
     recursive: bool,
 ) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
-    // Keep keyboard focus in the query, away from file-operation shortcuts.
+    // Focus stays in the query unless an explicit return from Rename focuses this row.
     row.set_focusable(false);
     super::accessibility::set_label(&row, &item.name);
     let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);

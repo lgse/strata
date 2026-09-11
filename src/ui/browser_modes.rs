@@ -765,6 +765,11 @@ impl ModeViews {
         self.single_pane()?.search.selected_entry()
     }
 
+    pub fn focus_search_result(&self, path: &std::path::Path) -> bool {
+        self.single_pane()
+            .is_some_and(|pane| pane.search.focus_result(path))
+    }
+
     pub fn selected_search_results(&self) -> Option<Vec<FileEntry>> {
         self.single_pane()?.search.selected_entries()
     }

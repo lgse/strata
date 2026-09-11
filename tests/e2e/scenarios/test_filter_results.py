@@ -113,6 +113,21 @@ def test_filtered_rename_targets_the_nested_duplicate(strata, mode, trigger, foc
             strata.pointer.click(field)
         strata.keyboard.press(trigger)
     strata.wait_for_dialog()
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.dialog() is None, "rename dialog to close")
+    strata.wait(
+        lambda: result(strata, "beta/match-note.txt").has_state("focused"),
+        "focus to return to the originating result",
+    )
+    assert result(strata, "beta/match-note.txt").has_state("selected")
+    assert field.text == "match-note"
+    assert strata.fixture.path("beta/match-note.txt").read_text() == "beta source\n"
+    strata.keyboard.press("Delete")
+    strata.settle(result(strata, "beta/match-note.txt"))
+    assert strata.dialog() is None
+    assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
+    strata.keyboard.press("F2")
+    strata.wait_for_dialog()
     strata.editable_field()
     strata.keyboard.press("ctrl+a")
     strata.keyboard.type_text("renamed.txt")
