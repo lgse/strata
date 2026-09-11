@@ -12,8 +12,8 @@ use gdk_pixbuf::prelude::*;
 
 use super::{
     MediaBackend, bounded_output, bounded_output_with_timeout, bounded_surface_dimensions,
-    media_backends, media_command, probe_saw_video, read_limited, render_pixbuf, render_raw, render_raw_thumbnail,
-    render_simple_dcraw, run, run_media_backends, scale_embedded_thumbnail,
+    media_backends, media_command, probe_saw_video, read_limited, render_pixbuf, render_raw,
+    render_raw_thumbnail, render_simple_dcraw, run, run_media_backends, scale_embedded_thumbnail,
 };
 use crate::{sandbox::MediaPreviewBackend, services::MediaPreviewSize};
 
@@ -290,11 +290,16 @@ fn audio_only_media_commands_emit_webm_audio_without_video_options() {
         MediaBackend::SoftwareH264,
         MediaBackend::SoftwareVp8,
     ] {
-        let command = media_command(&backend, Path::new("/input"), MediaPreviewSize::new(640, 800), false)
-            .get_args()
-            .map(|argument| argument.to_string_lossy())
-            .collect::<Vec<_>>()
-            .join(" ");
+        let command = media_command(
+            &backend,
+            Path::new("/input"),
+            MediaPreviewSize::new(640, 800),
+            false,
+        )
+        .get_args()
+        .map(|argument| argument.to_string_lossy())
+        .collect::<Vec<_>>()
+        .join(" ");
         assert!(!command.contains("-hwaccel"));
         assert!(!command.contains("-vf"));
         assert!(!command.contains("-c:v"));

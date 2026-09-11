@@ -5,8 +5,8 @@ use std::{fs, path::Path, process::Command, time::Duration};
 use crate::{
     sandbox::{MAX_OUTPUT_BYTES, MediaPreviewBackend},
     sandbox_helper::{
-        MediaBackend, bounded_output_with_timeout, media_backends, media_command,
-        media_preview_size, run_media_backends,
+        MediaBackend, bounded_output_with_timeout, input_has_video, media_backends, media_command,
+        media_preview_size, render_media_preview, run_media_backends,
     },
     services::MediaPreviewSize,
 };
@@ -96,11 +96,65 @@ fn preview(
     backend: &MediaBackend,
     size: MediaPreviewSize,
 ) -> serde_json::Value {
-    let data = successful_output(&mut media_command(backend, input, size));
+    let data = successful_output(&mut media_command(backend, input, size, true));
     assert!(!data.is_empty());
     assert!(data.len() as u64 <= MAX_OUTPUT_BYTES);
     fs::write(output, data).expect("normalized media");
     probe(output)
+}
+
+#[test]
+fn audio_only_inputs_normalize_to_opus_for_every_backend_policy() {
+    let directory = tempfile::tempdir().expect("audio fixtures");
+    let input = directory.path().join("tone.ogg");
+    let output = directory.path().join("preview.webm");
+    successful_output(
+        Command::new("ffmpeg")
+            .args(["-nostdin", "-v", "error", "-f", "lavfi", "-i"])
+            .arg("sine=frequency=660:duration=1")
+            .arg(&input),
+    );
+    assert!(!input_has_video(&input));
+    for policy in [
+        MediaPreviewBackend::Automatic,
+        MediaPreviewBackend::Software,
+        MediaPreviewBackend::VaApi,
+        MediaPreviewBackend::Vulkan,
+    ] {
+        let data = render_media_preview(&input, policy, MediaPreviewSize::new(520, 800))
+            .expect("audio-only normalization");
+        assert!(data.starts_with(b"\x1a\x45\xdf\xa3"));
+        fs::write(&output, data).expect("normalized audio");
+        let metadata = probe(&output);
+        let streams = metadata["streams"].as_array().expect("audio streams");
+        assert_eq!(streams.len(), 1);
+        assert_eq!(streams[0]["codec_type"], "audio");
+        assert_eq!(streams[0]["codec_name"], "opus");
+    }
+}
+
+#[test]
+fn video_and_unreadable_inputs_keep_the_video_pipeline() {
+    let directory = tempfile::tempdir().expect("video fixtures");
+    let input = directory.path().join("clip.mkv");
+    fixture(&input, "64x48", 1, 1, true);
+    assert!(input_has_video(&input));
+    assert!(input_has_video(&directory.path().join("missing.mkv")));
+    let output = directory.path().join("preview.mp4");
+    fs::write(
+        &output,
+        render_media_preview(
+            &input,
+            MediaPreviewBackend::Software,
+            MediaPreviewSize::new(520, 800),
+        )
+        .expect("video normalization"),
+    )
+    .expect("normalized video");
+    let metadata = probe(&output);
+    let streams = metadata["streams"].as_array().expect("video streams");
+    assert!(streams.iter().any(|stream| stream["codec_type"] == "video"));
+    assert!(streams.iter().any(|stream| stream["codec_type"] == "audio"));
 }
 
 #[test]

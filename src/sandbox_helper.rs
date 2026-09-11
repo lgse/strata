@@ -327,8 +327,7 @@ fn input_has_video(path: &Path) -> bool {
 }
 
 fn probe_saw_video(output: Option<Output>) -> bool {
-    // Failed probes cannot rule out a video stream, so they keep the video-first pipeline;
-    // only a clean empty probe proves the input has no video stream.
+    // An inconclusive probe must preserve the existing video fallback.
     match output {
         Some(output) if output.status.success() => !output.stdout.is_empty(),
         _ => true,
