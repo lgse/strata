@@ -123,8 +123,9 @@ Then:
   FFmpeg/GStreamer, and desktop-integration runtime dependencies using the system
   package manager. Add gvfs-smb only if I want SMB support.
 - Ask whether I want phone access. On Arch/Omarchy, add gvfs-afc and usbmuxd for
-  iPhone/iPad, or gvfs-mtp for Android, only if requested. Other distributions
-  need their equivalent GVfs backends.
+  iPhone/iPad app documents, gvfs-gphoto2 for camera/PTP photo access, or gvfs-mtp
+  for Android file transfers, only if requested. Other distributions need their
+  equivalent GVfs backends.
 - Download the archive and its matching .sha256 file from the latest GitHub release.
 - Verify the checksum with sha256sum --check. If GitHub CLI is installed and
   authenticated, also verify GitHub Actions provenance with
@@ -337,17 +338,25 @@ are optional and are not installed by `install.sh`. On Arch Linux or Omarchy,
 install only the support you need:
 
 ```bash
-# iPhone or iPad (AFC):
+# iPhone or iPad app documents (AFC):
 sudo pacman -S --needed gvfs-afc usbmuxd
+# Camera/PTP photo access, including compatible iPhones:
+sudo pacman -S --needed gvfs-gphoto2
 # Android (MTP):
 sudo pacman -S --needed gvfs-mtp
 ```
 
-Other distributions need equivalent GVfs AFC or MTP backends; package names vary.
+Other distributions need equivalent GVfs AFC, gphoto2/PTP, or MTP backends;
+package names vary.
 
 - **iPhone/iPad:** unlock the device, connect it with a USB data cable, and accept
-  **Trust This Computer** (enter the device passcode if requested). iOS exposes
-  only the media and app documents it permits, not unrestricted internal storage.
+  **Trust This Computer** (enter the device passcode if requested). AFC can expose
+  an app document-sharing view containing folders named after apps; this is not
+  the photo library. For photos, install the gphoto2 backend and look for a
+  separate camera/device entry with **DCIM**, if exposed by the phone. Accept any
+  photo-access prompt. Photos stored only in iCloud may not be available over USB.
+  Access depends on the iOS version and backend support; iOS does not expose
+  unrestricted internal storage.
 - **Android:** unlock the device, connect it with a USB data cable, and select
   **File transfer / Android Auto** or **MTP** in its USB preferences rather than
   charging-only mode. Accept any file-access prompt. Only storage exposed by the
