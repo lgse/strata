@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod animation;
 mod search;
 mod spinner;
 
@@ -51,7 +52,7 @@ fn deferred_pointer_activation_requires_an_unchanged_item_without_drag_motion() 
         location: location.clone(),
         press: (10.0, 20.0),
         moved: false,
-        preview: false,
+        kind: PendingActivationKind::Standard { preview: false },
     };
 
     pending.update(18.0, 12.0, 8);
@@ -70,7 +71,7 @@ fn deferred_pointer_activation_remembers_prior_drag_motion() {
         location: location.clone(),
         press: (10.0, 20.0),
         moved: false,
-        preview: true,
+        kind: PendingActivationKind::Standard { preview: true },
     };
 
     pending.update(10.0, 29.0, 8);

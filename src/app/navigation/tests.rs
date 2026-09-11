@@ -401,6 +401,35 @@ fn monitor_updates_reposition_only_the_changed_entry() {
 }
 
 #[test]
+fn monitor_updates_to_existing_entry_at_same_position_uses_single_splice() {
+    let mut state = NavigationState::default();
+    let watched = location("/home");
+    state.navigate(watched.clone(), RequestId(1));
+    state.apply_batch(
+        RequestId(1),
+        vec![
+            named_entry("/home/alpha", "alpha"),
+            named_entry("/home/bravo", "bravo"),
+            named_entry("/home/charlie", "charlie"),
+        ],
+    );
+
+    let mut updated = named_entry("/home/bravo", "bravo");
+    updated.size = MetadataValue::Known(9999);
+
+    let (splices, _) = state
+        .apply_directory_change(0, &watched, DirectoryChange::Upsert(updated))
+        .expect("updating an existing entry's metadata should change the column");
+
+    assert_eq!(splices.len(), 1);
+    assert_eq!(splices[0].position, 1);
+    assert_eq!(splices[0].removed, 1);
+    assert_eq!(splices[0].entries.len(), 1);
+    assert_eq!(splices[0].entries[0].size, MetadataValue::Known(9999));
+    assert_eq!(state.columns[0].entries[1].size, MetadataValue::Known(9999));
+}
+
+#[test]
 fn monitor_removals_preserve_selection_by_native_location() {
     let mut state = NavigationState::default();
     let watched = location("/home");

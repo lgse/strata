@@ -228,7 +228,6 @@ fn busy_insertions_and_splices_preserve_distinct_presentation_rules() {
                 assert_eq!(pane.spinner.tooltip_text().as_deref(), Some("Sorting…"));
                 fixture.views.handle(&BrowserEvent::EntriesSpliced {
                     depth: 0,
-                    selected: None,
                     splices: vec![EntrySplice {
                         position: 0,
                         removed: 1,

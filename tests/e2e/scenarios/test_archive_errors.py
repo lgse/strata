@@ -8,6 +8,8 @@ from pathlib import Path
 
 import pytest
 
+from harness.artifacts import ArtifactCollector
+
 
 ARCHIVE_FIXTURES = Path(__file__).parents[1] / "fixtures"
 
@@ -84,6 +86,40 @@ def test_wrong_extract_password_reopens_dialog_until_password_is_correct(strata)
     strata.wait(lambda: extracted.exists(), "the archive to extract with the correct password")
     assert extracted.read_text() == "password retry works\n"
     strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
+
+
+def test_cancelled_extract_to_does_not_hijack_later_extract_here(strata):
+    fixture = strata.fixture
+    archive_name = "content-encrypted.7z"
+    shutil.copyfile(ARCHIVE_FIXTURES / archive_name, fixture.path(archive_name))
+    with zipfile.ZipFile(fixture.path("later.zip"), "w") as archive:
+        archive.writestr("later.txt", "later extraction\n")
+    strata.keyboard.press("ctrl+r")
+    strata.open_context_menu(archive_name)
+    strata.choose_menu_item("Extract to…")
+    destination = fixture.path("leftover")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(str(destination))
+    strata.wait(lambda: field.text == str(destination), "the destination field")
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: (dialog := strata.dialog()) is not None and dialog.name == "Extract",
+        "the password prompt",
+    )
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.dialog() is None, "password prompt cancellation")
+    assert not destination.exists()
+    strata.open_context_menu("later.zip")
+    strata.choose_menu_item("Extract here")
+    strata.wait(lambda: fixture.path("later.txt").exists(), "later extraction")
+    strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
+    assert strata.current_directory() == fixture.root.name
+    assert fixture.path("later.txt").read_text() == "later extraction\n"
+    assert not destination.exists()
+    strata.entry("later.txt")
+    collector = ArtifactCollector(test_name="cancelled-extract-to")
+    strata.screenshot(collector.directory / "after.png")
 
 
 _CRCTABLE = None

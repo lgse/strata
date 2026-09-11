@@ -30,8 +30,6 @@ use std::time::{Duration, Instant};
 
 pub(super) const COLUMN_WIDTH: i32 = 300;
 
-const COLUMN_OFFSET: i32 = 24;
-
 const COLUMN_TRANSITION: Duration = Duration::from_millis(220);
 
 pub(super) struct BoundRow {
@@ -40,12 +38,21 @@ pub(super) struct BoundRow {
     pub(super) rename_label: glib::WeakRef<gtk::Label>,
 }
 
+#[derive(Clone, Copy)]
+pub(super) enum PendingActivationKind {
+    Standard { preview: bool },
+    ChooserSearchNavigate,
+    RecursiveSearch,
+    Mapped,
+}
+
 struct PendingPointerActivation {
+    // Source-model index for Standard/Mapped; search-result index otherwise.
     pub(super) position: usize,
     pub(super) location: Location,
     pub(super) press: (f64, f64),
     pub(super) moved: bool,
-    pub(super) preview: bool,
+    pub(super) kind: PendingActivationKind,
 }
 
 impl PendingPointerActivation {
@@ -181,13 +188,39 @@ pub(super) fn scroll_column_to(column: &ColumnView, position: u32) {
     scroll_collection_when_allocated(column.list.upcast_ref(), position);
 }
 
-pub(super) fn set_column_selection(column: &ColumnView, position: u32) {
-    column.syncing_selection.set(true);
-    column.selection.unselect_all();
-    if position != gtk::INVALID_LIST_POSITION {
-        column.selection.select_item(position, true);
-    }
-    column.syncing_selection.set(false);
+pub(super) fn restore_column_cursor(column: &ColumnView, position: u32) {
+    let list = column.list.downgrade();
+    let rows = column.bound_rows.clone();
+    glib::idle_add_local_once(move || {
+        let Some(list) = list.upgrade() else { return };
+        let frames = Cell::new(0u8);
+        list.add_tick_callback(move |list, _| {
+            let focused = list.root().and_then(|root| root.focus());
+            if !focused
+                .as_ref()
+                .is_some_and(|focused| focused == list || list.is_ancestor(focused))
+            {
+                return glib::ControlFlow::Break;
+            }
+            let cursor = rows.borrow().iter().find_map(|bound| {
+                let item = bound.item.upgrade()?;
+                (item.position() == position)
+                    .then(|| bound.row.upgrade()?.parent())
+                    .flatten()
+                    .filter(|cursor| cursor.is_mapped())
+            });
+            if let Some(cursor) = cursor {
+                cursor.grab_focus();
+                return glib::ControlFlow::Break;
+            }
+            frames.set(frames.get().saturating_add(1));
+            if frames.get() >= 8 {
+                glib::ControlFlow::Break
+            } else {
+                glib::ControlFlow::Continue
+            }
+        });
+    });
 }
 
 pub(super) fn set_column_selections(column: &ColumnView, positions: &[u32]) {
@@ -286,36 +319,22 @@ pub(super) fn set_cut_path_style(row: &gtk::Box, cut: bool) {
     }
 }
 
-fn animate_column_entry(shell: &gtk::Box, column: &gtk::Box, generation: &Rc<Cell<u64>>) {
+fn animate_column_entry(column: &gtk::Box, generation: &Rc<Cell<u64>>) {
     let animation_id = generation.get().saturating_add(1);
     generation.set(animation_id);
+    column.remove_css_class("column-entering");
     if !animations_enabled() {
-        column.set_opacity(1.0);
-        column.set_margin_start(0);
         return;
     }
 
-    column.set_opacity(0.0);
-    column.set_margin_start(COLUMN_OFFSET);
-    let started = Instant::now();
-    let shell = shell.clone();
-    let column = column.clone();
+    column.add_css_class("column-entering");
+    let column = column.downgrade();
     let generation = generation.clone();
-    let _tick = shell.add_tick_callback(move |_, _| {
-        if generation.get() != animation_id {
-            return glib::ControlFlow::Break;
-        }
-        let progress =
-            (started.elapsed().as_secs_f64() / COLUMN_TRANSITION.as_secs_f64()).clamp(0.0, 1.0);
-        let eased = emphasized_deceleration(progress);
-        column.set_opacity(eased);
-        column.set_margin_start((f64::from(COLUMN_OFFSET) * (1.0 - eased)).round() as i32);
-        if progress >= 1.0 {
-            column.set_opacity(1.0);
-            column.set_margin_start(0);
-            glib::ControlFlow::Break
-        } else {
-            glib::ControlFlow::Continue
+    glib::timeout_add_local_once(COLUMN_TRANSITION, move || {
+        if generation.get() == animation_id
+            && let Some(column) = column.upgrade()
+        {
+            column.remove_css_class("column-entering");
         }
     });
 }
@@ -534,8 +553,13 @@ impl ViewState {
         heading_box.set_hexpand(true);
         heading_box.set_valign(gtk::Align::Center);
         let heading = gtk::Label::new(Some(&location.display_name()));
+        heading.add_css_class("column-heading");
         heading.set_xalign(0.0);
+        heading.set_yalign(0.5);
         heading.set_valign(gtk::Align::Center);
+        heading.set_hexpand(true);
+        heading.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        heading.set_max_width_chars(1);
         heading.set_tooltip_text(Some(&location.display_path()));
         let truncated_hint = crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
         truncated_hint.set_tooltip_text(Some(
@@ -1193,7 +1217,7 @@ impl ViewState {
             arm_column_spinner(column);
         }
         self.refresh_active_path_rows();
-        animate_column_entry(&shell, &column, &animation_generation);
+        animate_column_entry(&column, &animation_generation);
         self.reveal_column(shell);
     }
 

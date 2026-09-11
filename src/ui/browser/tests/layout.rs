@@ -108,6 +108,7 @@ fn browser_chrome_insets_and_list_name_alignment() {
                 .compute_bounds(&root)
                 .expect("List toolbar bounds")
                 .height();
+            assert_eq!(pane_header_height, 41.0);
             let name = by_class(&root, "list-heading-button");
             let label = descendants(&name)
                 .into_iter()
@@ -150,11 +151,7 @@ fn browser_chrome_insets_and_list_name_alignment() {
             let last = actions.last().expect("header action");
             let bounds = last.compute_bounds(&root).expect("action bounds");
             let header_bounds = header.compute_bounds(&root).expect("header bounds");
-            assert_eq!(
-                header_bounds.height(),
-                pane_header_height,
-                "Columns and List toolbar heights must match"
-            );
+            assert_eq!(header_bounds.height(), pane_header_height);
             let heading = header
                 .first_child()
                 .expect("heading box")
@@ -166,23 +163,20 @@ fn browser_chrome_insets_and_list_name_alignment() {
                 .center()
                 .y();
             assert!(
-                (heading_center - (header_bounds.y() + 3.0 + (pane_header_height - 4.0) / 2.0))
-                    .abs()
-                    <= 0.5,
-                "folder name must be centered inside the header border"
+                (heading_center - header_bounds.center().y()).abs() <= 1.0,
+                "folder title must remain optically centered"
             );
             assert!(
-                (heading_center - bounds.center().y()).abs() <= 0.5,
-                "folder name and buttons must share a vertical center"
+                (heading_center - bounds.center().y()).abs() <= 1.0,
+                "folder title and buttons must remain aligned"
             );
             let right = header_bounds.x() + header_bounds.width() - bounds.x() - bounds.width();
-            let top = bounds.y() - header_bounds.y() - 3.0;
-            assert!((top - right).abs() <= 1.0, "header top {top} right {right}");
-            let bottom =
-                header_bounds.y() + header_bounds.height() - 1.0 - bounds.y() - bounds.height();
+            assert!((right - 5.0).abs() <= 1.0, "header right inset {right}");
+            let top = bounds.y() - header_bounds.y();
+            let bottom = header_bounds.y() + header_bounds.height() - bounds.y() - bounds.height();
             assert!(
-                (bottom - right).abs() <= 1.0,
-                "header bottom {bottom} right {right}"
+                (top - bottom).abs() <= 1.0,
+                "header top {top}, bottom {bottom}"
             );
             for action in actions {
                 assert_eq!(

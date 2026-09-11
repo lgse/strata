@@ -16,6 +16,7 @@ def test_long_rename_keeps_caret_visible(strata, mode, request):
     name = "synthetic-quarterly-report-with-a-very-long-descriptive-basename-2026.txt"
     strata.fixture.path(name).write_text("keep\n")
     strata.keyboard.press("F5")
+    strata.entry(name)
     strata.select_entry_with_keyboard(name)
     bounds = strata.window.window_bounds()
     width = 420 if mode == "Columns" else 640

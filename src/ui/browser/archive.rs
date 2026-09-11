@@ -531,14 +531,6 @@ impl ViewState {
                 confirm_field.grab_focus();
                 return;
             }
-            if !path.exists()
-                && let Err(e) = std::fs::create_dir_all(&path)
-            {
-                confirm_error.set_text(&format!("Could not create folder: {e}"));
-                confirm_error.set_visible(true);
-                confirm_field.add_css_class("error");
-                return;
-            }
             let dest = Location::local(path);
             let format = ArchiveFormat::from_extension(&extract_entry.display_name);
             if format.map(|f| f.supports_password()).unwrap_or(false) {
@@ -567,6 +559,7 @@ impl ViewState {
         entry: FileEntry,
         destination: Location,
         invalid_password: bool,
+        navigate_after_extract: Option<Location>,
     ) {
         let password_entry = form_password_entry();
         password_entry.set_show_peek_icon(true);
@@ -614,6 +607,9 @@ impl ViewState {
                     .pending_extract_retry
                     .replace(Some((entry.clone(), destination.clone())));
             }
+            extract_state
+                .pending_navigate
+                .replace(navigate_after_extract.clone());
             dismiss_for_confirm();
             browser.extract(entry.clone(), destination.clone(), Some(pw));
         });

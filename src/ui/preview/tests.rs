@@ -165,7 +165,8 @@ fn media_errors_explain_missing_runtime_plugins() {
 #[test]
 fn initial_preview_uses_most_of_the_unoccupied_width() {
     assert_eq!(preview_width_for_empty_space(2_000, 500), 1_350);
-    assert_eq!(preview_width_for_empty_space(700, 650), 280);
+    assert_eq!(preview_width_for_empty_space(700, 650), 560);
+    assert_eq!(preview_width_for_empty_space(500, 500), 560);
 }
 
 #[test]

@@ -130,7 +130,7 @@ fn media_requests_use_the_opening_target_and_each_windows_resized_pane() {
         || {
             ThemeManager::shared().set_reduce_motion(false);
             let mut windows = Vec::new();
-            for (allow_external_open, window_width) in [(true, 1000), (false, 1200)] {
+            for (allow_external_open, window_width) in [(true, 1400), (false, 1600)] {
                 let requests = Rc::new(RefCell::new(Vec::new()));
                 let drawer = PreviewDrawer::new(
                     Rc::new(RecordingProvider(requests.clone())),
@@ -160,9 +160,10 @@ fn media_requests_use_the_opening_target_and_each_windows_resized_pane() {
                 );
                 assert!(first.height > 16);
                 wait_until(|| !drawer.state.animating.get() && drawer.state.content.height() > 0);
-                split.set_position(split.width() - 320);
+                split.set_position(split.width() - super::super::MIN_WIDTH);
                 wait_until(|| {
-                    drawer.state.content.width() > 0 && drawer.state.content.width() <= 320
+                    drawer.state.content.width() > 0
+                        && drawer.state.content.width() <= super::super::MIN_WIDTH
                 });
                 drawer.show(entry("second.mp4"));
                 let second = requests.borrow()[1].media_size;

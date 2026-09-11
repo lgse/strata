@@ -15,7 +15,7 @@ def test_archive_activation_extracts_in_place(strata, mode, activation):
     fixture = strata.fixture
     with zipfile.ZipFile(fixture.path("activation.zip"), "w") as archive:
         archive.writestr("activated.txt", "extracted by activation\n")
-    strata.keyboard.press("ctrl+r")
+    strata.keyboard.press("F5")
     strata.entry("activation.zip")
 
     if activation == "keyboard":

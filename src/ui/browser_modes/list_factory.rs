@@ -53,9 +53,6 @@ impl ListFactory {
             return;
         };
         let widget = assemble_list_row();
-        if !self.scrolling.get() {
-            animate_appearance(&widget);
-        }
         let Some(row) = ListRow::from_widget(widget) else {
             return;
         };
@@ -146,16 +143,6 @@ impl ListFactory {
             binding.refresh_details(&row);
         }
     }
-}
-
-fn animate_appearance(row: &gtk::Box) {
-    row.add_css_class("file-appear");
-    let weak = row.downgrade();
-    glib::idle_add_local_once(move || {
-        if let Some(row) = weak.upgrade() {
-            row.remove_css_class("file-appear");
-        }
-    });
 }
 
 struct ListRow {
