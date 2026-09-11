@@ -236,8 +236,9 @@ In recursive search (<kbd>Ctrl</kbd>+<kbd>K</kbd>), type your query, then press
 <kbd>Enter</kbd> again to open the selected result. Press <kbd>Ctrl</kbd>+<kbd>K</kbd>
 to resume editing the existing query; <kbd>Escape</kbd> closes search.
 Arrow keys also select results while the query retains focus for continued typing.
-The footer indicates whether Enter navigates or opens. This works with “Type to
-search” disabled; Vim-style movement is navigation, not a full Vim editing mode.
+The footer indicates whether Enter navigates or opens. Result highlights are hidden
+while the query has focus. This works with “Type to search” disabled; Vim-style
+movement is navigation, not a full Vim editing mode.
 Pane filtering (<kbd>Ctrl</kbd>+<kbd>F</kbd>) retains its existing keyboard behavior.
 [See the query-to-results focus transition](docs/assets/strata-search-navigation.gif).
 

@@ -129,8 +129,16 @@ impl SearchDialog {
         open.append(&enter_hint);
         let focus = gtk::EventControllerFocus::new();
         let hint = enter_hint.clone();
-        focus.connect_enter(move |_| hint.set_text("navigate results"));
-        focus.connect_leave(move |_| enter_hint.set_text("open"));
+        let editing_results = list.clone();
+        focus.connect_enter(move |_| {
+            hint.set_text("navigate results");
+            editing_results.add_css_class("query-editing");
+        });
+        let navigating_results = list.clone();
+        focus.connect_leave(move |_| {
+            enter_hint.set_text("open");
+            navigating_results.remove_css_class("query-editing");
+        });
         field.add_controller(focus);
         navigation.add_css_class("search-hint");
         open.add_css_class("search-hint");

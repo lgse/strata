@@ -421,6 +421,11 @@ headerbar menubutton.header-action > button:focus-visible {
   outline-offset: -1px;
 }
 
+.search-results.query-editing > .search-result {
+  background: transparent;
+  outline: none;
+}
+
 .search-result-thumbnail {
   min-height: 32px;
   min-width: 32px;
@@ -436,7 +441,7 @@ headerbar menubutton.header-action > button:focus-visible {
   font-size: 0.84em;
 }
 
-.search-result:selected .search-result-path {
+.search-results:not(.query-editing) > .search-result:selected .search-result-path {
   color: @theme_text;
   opacity: 0.72;
 }

@@ -293,6 +293,8 @@ def test_global_search_arrows_keep_typing_in_the_query_and_enter_focuses_selecti
 
 @pytest.mark.preferences(type_to_search=False)
 def test_global_search_enter_then_vim_navigation_and_return_to_query(strata):
+    from PIL import Image
+
     from harness.artifacts import ArtifactCollector
 
     names = ["hjkl-alpha", "hjkl-beta", "hjkl-gamma"]
@@ -309,9 +311,18 @@ def test_global_search_enter_then_vim_navigation_and_return_to_query(strata):
             if any(node.name.endswith("/" + name) for name in names)
         ]
 
+    def row_backgrounds(capture):
+        with Image.open(capture) as image:
+            pixels = image.convert("RGB")
+            return [
+                pixels.getpixel((bounds.x + bounds.width - 8, bounds.y + 8))
+                for bounds in (row.screen_bounds() for row in results())
+            ]
+
     strata.wait(lambda: len(results()) == 3, "all matching directories")
     evidence = ArtifactCollector("search-keyboard-navigation").directory
-    strata.screenshot(evidence / "editing.png")
+    backgrounds = row_backgrounds(strata.screenshot(evidence / "editing.png"))
+    assert len(set(backgrounds)) == 1, "query focus must hide the default selection highlight"
     strata.keyboard.press("Return")
     strata.wait(lambda: results()[0].has_state("focused"), "Enter to focus results")
     strata.keyboard.press("j")
@@ -322,11 +333,14 @@ def test_global_search_enter_then_vim_navigation_and_return_to_query(strata):
     selected = results()[1]
     strata.wait(lambda: selected.has_state("focused"), "the second match to regain focus")
     assert field.text == "hjkl"
-    strata.screenshot(evidence / "navigating.png")
+    backgrounds = row_backgrounds(strata.screenshot(evidence / "navigating.png"))
+    assert backgrounds[1] != backgrounds[0], "result focus must reveal the selection highlight"
     strata.keyboard.press("ctrl+k")
     strata.wait(lambda: field.has_state("focused"), "Ctrl+K to edit the existing query")
     assert field.text == "hjkl"
     assert selected.has_state("selected")
+    backgrounds = row_backgrounds(strata.screenshot(evidence / "editing-again.png"))
+    assert len(set(backgrounds)) == 1, "returning to the query must hide the retained selection"
     strata.keyboard.type_text("-beta")
     strata.wait(lambda: field.text == "hjkl-beta", "editing to extend the preserved query")
     strata.wait(lambda: len(results()) == 1, "the refined result")
