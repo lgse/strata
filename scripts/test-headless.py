@@ -32,11 +32,7 @@ def main() -> int:
             "STRATA_REQUIRE_DEVICE_TESTS": "1",
             "GTK_A11Y": "none",
             "NO_AT_BRIDGE": "1",
-            "MISE_YES": "1",
-            "MISE_OFFLINE": "1",
         }
-        cargo_bin = str(Path(environment["CARGO_HOME"]) / "bin")
-        environment["PATH"] = f"{cargo_bin}:{environment.get('PATH', '')}"
         child = subprocess.Popen(
             ["cargo", "test", "--all-targets", "--all-features", *sys.argv[1:]],
             cwd=REPOSITORY,

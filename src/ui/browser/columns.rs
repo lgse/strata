@@ -817,65 +817,13 @@ impl ViewState {
                         items.retain(|item| {
                             crate::ui::inline_search::search_path_present(&item.path)
                         });
-                        let old_items = results.borrow();
-                        let n_old = old_items.len();
-                        let n_new = items.len();
-
-                        let selected_pos = bitset_positions(&selection_for_poll.selection())
-                            .first()
-                            .copied();
-                        let selected_path = selected_pos
-                            .and_then(|pos| old_items.get(pos as usize).map(|it| it.path.clone()));
-
-                        let mut prefix = 0;
-                        while prefix < n_old
-                            && prefix < n_new
-                            && old_items[prefix].path == items[prefix].path
-                            && old_items[prefix].name == items[prefix].name
-                            && old_items[prefix].is_directory == items[prefix].is_directory
-                        {
-                            prefix += 1;
-                        }
-
-                        let mut suffix = 0;
-                        while suffix < (n_old - prefix) && suffix < (n_new - prefix) {
-                            let old_idx = n_old - 1 - suffix;
-                            let new_idx = n_new - 1 - suffix;
-                            if old_items[old_idx].path == items[new_idx].path
-                                && old_items[old_idx].name == items[new_idx].name
-                                && old_items[old_idx].is_directory == items[new_idx].is_directory
-                            {
-                                suffix += 1;
-                            } else {
-                                break;
-                            }
-                        }
-
-                        let removals = (n_old - prefix - suffix) as u32;
-                        let additions: Vec<String> = items[prefix..n_new - suffix]
-                            .iter()
-                            .map(|item| item.name.clone())
-                            .collect();
-                        let additions_refs: Vec<&str> =
-                            additions.iter().map(String::as_str).collect();
-
-                        drop(old_items);
-                        results.replace(items);
-
-                        if removals > 0 || !additions.is_empty() {
-                            sm.splice(prefix as u32, removals, &additions_refs);
-                        }
-
-                        if let Some(selected_path) = selected_path {
-                            let results_ref = results.borrow();
-                            if let Some(new_pos) =
-                                results_ref.iter().position(|it| it.path == selected_path)
-                            {
-                                syncing_for_poll.set(true);
-                                selection_for_poll.select_item(new_pos as u32, true);
-                                syncing_for_poll.set(false);
-                            }
-                        }
+                        search::update_results(
+                            &sm,
+                            &results,
+                            &selection_for_poll,
+                            &syncing_for_poll,
+                            items,
+                        );
                     }
                     glib::ControlFlow::Continue
                 });
@@ -1391,6 +1339,7 @@ impl ViewState {
 }
 
 mod rows;
+mod search;
 
 #[cfg(test)]
 mod tests;

@@ -72,7 +72,7 @@ def test_filtered_item_menu_previews_and_copies_the_real_location(strata, mode):
     assert strata.fixture.path("alpha/match-note.txt").read_text() == "alpha source\n"
 
 
-@pytest.mark.parametrize("mode", SINGLE_PANE_MODES)
+@pytest.mark.parametrize("mode", ALL_MODES)
 def test_query_updates_retain_selection_focus_preview_and_background_menu(strata, mode):
     field = filter_results(strata)
     row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
@@ -91,7 +91,7 @@ def test_query_updates_retain_selection_focus_preview_and_background_menu(strata
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview() is None, "Space to close after updates")
     assert field.text == "match-note"
-    strata.pointer.right_click(strata.pane(), at=strata.empty_point())
+    strata.pointer.right_click(strata.pane(), at=strata.background_point())
     strata.wait(strata.context_menu, "the empty-space menu")
     assert "New Folder" in strata.menu_items()
     assert "Quick preview" not in strata.menu_items()
