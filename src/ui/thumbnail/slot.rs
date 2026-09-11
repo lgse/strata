@@ -11,6 +11,8 @@ mod imp {
     pub struct ThumbnailSlot {
         pub slot: Cell<i32>,
         pub content_inset: Cell<i32>,
+        pub limit_fallback_height: Cell<bool>,
+        pub fallback_scale: Cell<f64>,
         pub texture: RefCell<Option<gdk::Texture>>,
         pub fallback: RefCell<Option<gdk::Texture>>,
         pub fallback_icon: RefCell<Option<String>>,
@@ -56,17 +58,22 @@ mod imp {
             let Some(texture) = texture else {
                 return;
             };
+            let scale = if self.texture.borrow().is_none() {
+                self.fallback_scale.get()
+            } else {
+                1.0
+            };
             let inset = f64::from(self.content_inset.get())
                 .min((width - 1.0) / 2.0)
                 .min((height - 1.0) / 2.0);
             snapshot.save();
-            snapshot.translate(&graphene::Point::new(inset as f32, inset as f32));
-            snapshot_texture(
-                snapshot,
-                &texture,
-                width - 2.0 * inset,
-                height - 2.0 * inset,
-            );
+            let draw_width = (width - 2.0 * inset) * scale;
+            let draw_height = (height - 2.0 * inset) * scale;
+            snapshot.translate(&graphene::Point::new(
+                ((width - draw_width) / 2.0) as f32,
+                ((height - draw_height) / 2.0) as f32,
+            ));
+            snapshot_texture(snapshot, &texture, draw_width, draw_height);
             snapshot.restore();
         }
     }
@@ -87,6 +94,21 @@ fn snapshot_texture(snapshot: &gtk::Snapshot, texture: &gdk::Texture, width: f64
         texture,
         &graphene::Rect::new(x, y, draw_w as f32, draw_h as f32),
     );
+}
+
+fn folder_height_scale(texture: &gdk::Texture) -> f64 {
+    let mut downloader = gdk::TextureDownloader::new(texture);
+    downloader.set_format(gdk::MemoryFormat::R8g8b8a8);
+    let (pixels, stride) = downloader.download_bytes();
+    let width = texture.width() as usize;
+    let visible = |row: usize| (0..width).any(|column| pixels[row * stride + column * 4 + 3] > 0);
+    let height = texture.height() as usize;
+    let Some(first) = (0..height).find(|row| visible(*row)) else {
+        return 1.0;
+    };
+    let last = (first..height).rfind(|row| visible(*row)).unwrap_or(first);
+    // Lucide's folder ink spans y=2..21, including its stroke, in a 24-unit viewBox.
+    (19.0 / 24.0 * height as f64 / (last - first + 1) as f64).min(1.0)
 }
 
 fn same_texture(left: Option<&gdk::Texture>, right: Option<&gdk::Texture>) -> bool {
@@ -110,6 +132,7 @@ impl ThumbnailSlot {
     pub(crate) fn new(slot: i32) -> Self {
         let widget: Self = glib::Object::new();
         widget.set_overflow(gtk::Overflow::Hidden);
+        widget.imp().fallback_scale.set(1.0);
         widget.set_slot(slot);
         widget
     }
@@ -138,6 +161,10 @@ impl ThumbnailSlot {
         }
     }
 
+    pub(crate) fn limit_fallback_height_to_folder(&self) {
+        self.imp().limit_fallback_height.set(true);
+    }
+
     pub(crate) fn set_texture(&self, texture: &gdk::Texture) {
         if same_texture(self.imp().texture.borrow().as_ref(), Some(texture)) {
             return;
@@ -154,6 +181,13 @@ impl ThumbnailSlot {
             return;
         }
         self.imp().texture.replace(None);
+        let scale =
+            if self.imp().limit_fallback_height.get() && icon != crate::assets::icons::FOLDER {
+                texture.map_or(1.0, folder_height_scale)
+            } else {
+                1.0
+            };
+        self.imp().fallback_scale.set(scale);
         self.imp().fallback_icon.replace(Some(icon.to_owned()));
         self.imp().fallback.replace(texture.cloned());
         self.queue_draw();

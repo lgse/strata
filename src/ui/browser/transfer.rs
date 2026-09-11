@@ -398,7 +398,7 @@ impl ViewState {
 
     /// Cancelling abandons the whole operation without calling `on_choice`.
     fn confirm_replace_conflict(
-        &self,
+        self: &Rc<Self>,
         name: &str,
         explanation: &str,
         has_more_conflicts: bool,
@@ -439,6 +439,14 @@ impl ViewState {
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
         window_overlay.add_overlay(&layer);
+        let browser = Rc::downgrade(&self.browser);
+        layer.connect_parent_notify(move |layer| {
+            if layer.parent().is_none()
+                && let Some(browser) = browser.upgrade()
+            {
+                browser.focus_active();
+            }
+        });
         let cancel_layer = layer.clone();
         let cancel_overlay = window_overlay.clone();
         let cancel_root = blurred_root.clone();

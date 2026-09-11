@@ -430,8 +430,7 @@ impl NavigationState {
                 {
                     return None;
                 }
-                remove_monitored_entry(&mut column.entries, &entry.location, &mut splices);
-                insert_monitored_entry(&mut column.entries, entry, preferences, &mut splices);
+                upsert_monitored_entry(&mut column.entries, entry, preferences, &mut splices);
             }
             DirectoryChange::Remove(location) => {
                 let removed_position = column
@@ -458,10 +457,7 @@ impl NavigationState {
                     column.selected_locations.insert(entry.location.clone());
                 }
                 remove_monitored_entry(&mut column.entries, &from, &mut splices);
-                if entry.location != from {
-                    remove_monitored_entry(&mut column.entries, &entry.location, &mut splices);
-                }
-                insert_monitored_entry(&mut column.entries, entry, preferences, &mut splices);
+                upsert_monitored_entry(&mut column.entries, entry, preferences, &mut splices);
             }
             DirectoryChange::Rescan => return None,
         }
@@ -1263,6 +1259,39 @@ fn remove_monitored_entry(
             entries: Vec::new(),
         });
     }
+}
+
+fn upsert_monitored_entry(
+    entries: &mut Vec<FileEntry>,
+    entry: FileEntry,
+    preferences: ViewPreferences,
+    splices: &mut Vec<EntrySplice>,
+) {
+    if let Some(existing_position) = entries.iter().position(|e| e.location == entry.location) {
+        let is_same_position = {
+            let left_ok = existing_position == 0
+                || compare_entries(&entries[existing_position - 1], &entry, preferences)
+                    != Ordering::Greater;
+            let right_ok = existing_position + 1 >= entries.len()
+                || compare_entries(&entry, &entries[existing_position + 1], preferences)
+                    != Ordering::Greater;
+            left_ok && right_ok
+        };
+
+        if is_same_position {
+            entries[existing_position] = entry.clone();
+            splices.push(EntrySplice {
+                position: existing_position,
+                removed: 1,
+                entries: vec![entry],
+            });
+            return;
+        }
+
+        remove_monitored_entry(entries, &entry.location, splices);
+    }
+
+    insert_monitored_entry(entries, entry, preferences, splices);
 }
 
 fn insert_monitored_entry(

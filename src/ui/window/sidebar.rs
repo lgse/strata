@@ -94,6 +94,7 @@ fn update_notice() -> (gtk::Box, gtk::Button, gtk::Label) {
     ));
     let notice = gtk::Button::builder().child(&content).build();
     notice.add_css_class("sidebar-update");
+    notice.set_cursor_from_name(Some("pointer"));
     let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
     separator.add_css_class("sidebar-separator");
     separator.add_css_class("sidebar-update-separator");

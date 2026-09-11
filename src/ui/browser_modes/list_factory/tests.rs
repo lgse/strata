@@ -357,9 +357,9 @@ fn unbind_cancels_pending_thumbnail_work() {
 }
 
 #[test]
-fn appearance_animation_is_suppressed_while_scrolling() {
+fn replacement_rows_are_visible_without_waiting_for_idle() {
     gtk_test(
-        "ui::browser_modes::list_factory::tests::appearance_animation_is_suppressed_while_scrolling",
+        "ui::browser_modes::list_factory::tests::replacement_rows_are_visible_without_waiting_for_idle",
         || {
             let fixture = Fixture::new();
             for scrolling in [false, true] {
@@ -367,8 +367,8 @@ fn appearance_animation_is_suppressed_while_scrolling() {
                 let item: gtk::ListItem = glib::Object::new();
                 fixture.factory.emit_by_name::<()>("setup", &[&item]);
                 let row = item.child().expect("row");
-                assert_eq!(row.has_css_class("file-appear"), !scrolling);
-                pump_until(|| !row.has_css_class("file-appear"));
+                assert!(!row.has_css_class("file-appear"));
+                assert_eq!(row.opacity(), 1.0);
             }
         },
     );

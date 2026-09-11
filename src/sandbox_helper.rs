@@ -13,11 +13,16 @@ use std::{
 use gdk_pixbuf::prelude::*;
 use gtk::gio;
 
-use crate::sandbox::{MAX_OUTPUT_BYTES, MediaPreviewBackend, gpu_devices, numbered_name};
+use crate::{
+    sandbox::{MAX_OUTPUT_BYTES, MediaPreviewBackend, gpu_devices, numbered_name},
+    services::MediaPreviewSize,
+};
 
 const HARDWARE_ATTEMPT_TIME_LIMIT: Duration = Duration::from_secs(8);
 const HARDWARE_TOTAL_TIME_LIMIT: Duration = Duration::from_secs(12);
 const MEDIA_TOTAL_TIME_LIMIT: Duration = Duration::from_secs(28);
+const MEDIA_PROBE_TIME_LIMIT: Duration = Duration::from_secs(4);
+const SOFTWARE_H264_TIME_LIMIT: Duration = Duration::from_secs(8);
 const MAX_MEDIA_ALLOCATION_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_MEDIA_DECODE_PIXELS: u64 = 50_000_000;
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
@@ -26,7 +31,8 @@ const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
 enum MediaBackend {
     VaApi(PathBuf),
     Vulkan(usize),
-    Software,
+    SoftwareH264,
+    SoftwareVp8,
 }
 
 pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
@@ -35,11 +41,16 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     };
     let input = Path::new(input);
     let output = Path::new(output);
+    let media_backend = MediaPreviewBackend::from_argument(media_backend)
+        .ok_or_else(|| "Invalid media preview backend".to_owned())?;
+    if operation == "preview-media" {
+        let size = media_preview_size(value)?;
+        let data = render_media_preview(input, media_backend, size)?;
+        return fs::write(output, data).map_err(|error| error.to_string());
+    }
     let value = value
         .parse::<i32>()
         .map_err(|_| "Invalid preview helper size or page".to_owned())?;
-    let media_backend = MediaPreviewBackend::from_argument(media_backend)
-        .ok_or_else(|| "Invalid media preview backend".to_owned())?;
 
     let (png, metadata) = match operation.as_str() {
         "thumbnail-image" => (render_pixbuf(input, value.clamp(16, 256))?, None),
@@ -51,7 +62,6 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
             let (png, page, pages) = render_pdf_page(input, value)?;
             (png, Some(format!("{page} {pages}")))
         }
-        "preview-media" => (render_media_preview(input, media_backend)?, None),
         _ => return Err("Unknown preview helper operation".to_owned()),
     };
     fs::write(output, png).map_err(|error| error.to_string())?;
@@ -253,28 +263,75 @@ fn bounded_surface_dimensions(
     (width, height, scale)
 }
 
-fn render_media_preview(path: &Path, policy: MediaPreviewBackend) -> Result<Vec<u8>, String> {
-    let backends = media_backends(&gpu_devices(Path::new("/dev"), policy), policy);
+fn media_preview_size(value: &str) -> Result<MediaPreviewSize, String> {
+    if value == "0" {
+        return Ok(MediaPreviewSize::new(1280, 1280));
+    }
+    let (width, height) = value
+        .split_once('x')
+        .ok_or_else(|| "Invalid media preview dimensions".to_owned())?;
+    let parse = |dimension: &str| {
+        dimension
+            .parse::<i32>()
+            .map_err(|_| "Invalid media preview dimensions".to_owned())
+    };
+    Ok(MediaPreviewSize::new(parse(width)?, parse(height)?))
+}
+
+fn render_media_preview(
+    path: &Path,
+    policy: MediaPreviewBackend,
+    size: MediaPreviewSize,
+) -> Result<Vec<u8>, String> {
     let started = Instant::now();
+    let has_video = input_has_video(path);
+    let backends = if has_video {
+        media_backends(&gpu_devices(Path::new("/dev"), policy), policy)
+    } else {
+        vec![MediaBackend::SoftwareVp8]
+    };
     let hardware_started = Instant::now();
     run_media_backends(&backends, |backend| {
         let total_remaining = MEDIA_TOTAL_TIME_LIMIT.saturating_sub(started.elapsed());
-        let timeout = if *backend == MediaBackend::Software {
-            total_remaining
-        } else {
-            let hardware_remaining =
-                HARDWARE_TOTAL_TIME_LIMIT.saturating_sub(hardware_started.elapsed());
-            HARDWARE_ATTEMPT_TIME_LIMIT
-                .min(hardware_remaining)
-                .min(total_remaining)
+        let timeout = match backend {
+            MediaBackend::SoftwareVp8 => total_remaining,
+            MediaBackend::SoftwareH264 => SOFTWARE_H264_TIME_LIMIT.min(total_remaining),
+            MediaBackend::VaApi(_) | MediaBackend::Vulkan(_) => {
+                let hardware_remaining =
+                    HARDWARE_TOTAL_TIME_LIMIT.saturating_sub(hardware_started.elapsed());
+                HARDWARE_ATTEMPT_TIME_LIMIT
+                    .min(hardware_remaining)
+                    .min(total_remaining)
+            }
         };
-        let mut command = media_command(backend, path);
+        let mut command = media_command(backend, path, size, has_video);
         bounded_output_with_timeout(&mut command, MAX_OUTPUT_BYTES, timeout).map(|result| {
             result.and_then(|output| {
                 (output.status.success() && !output.stdout.is_empty()).then_some(output.stdout)
             })
         })
     })
+}
+
+fn input_has_video(path: &Path) -> bool {
+    let mut command = Command::new("ffprobe");
+    command
+        .args(["-v", "error", "-select_streams", "v"])
+        .args(["-show_entries", "stream=index", "-of", "csv=p=0"])
+        .arg(path);
+    let output =
+        bounded_output_with_timeout(&mut command, MAX_OUTPUT_BYTES, MEDIA_PROBE_TIME_LIMIT)
+            .ok()
+            .flatten();
+    probe_saw_video(output)
+}
+
+fn probe_saw_video(output: Option<Output>) -> bool {
+    // An inconclusive probe must preserve the existing video fallback.
+    match output {
+        Some(output) if output.status.success() => !output.stdout.is_empty(),
+        _ => true,
+    }
 }
 
 fn media_backends(devices: &[PathBuf], policy: MediaPreviewBackend) -> Vec<MediaBackend> {
@@ -310,17 +367,31 @@ fn media_backends(devices: &[PathBuf], policy: MediaPreviewBackend) -> Vec<Media
     ) {
         backends.extend((0..vulkan_devices).map(MediaBackend::Vulkan));
     }
-    backends.push(MediaBackend::Software);
+    backends.extend([MediaBackend::SoftwareH264, MediaBackend::SoftwareVp8]);
     backends
 }
 
-fn media_command(backend: &MediaBackend, path: &Path) -> Command {
+fn media_command(
+    backend: &MediaBackend,
+    path: &Path,
+    size: MediaPreviewSize,
+    has_video: bool,
+) -> Command {
+    let MediaPreviewSize { width, height } = MediaPreviewSize::new(size.width, size.height);
     let mut command = Command::new("ffmpeg");
     command
         .args(["-nostdin", "-v", "error", "-max_alloc"])
         .arg(MAX_MEDIA_ALLOCATION_BYTES.to_string())
         .arg("-max_pixels")
         .arg(MAX_MEDIA_DECODE_PIXELS.to_string());
+    if !has_video {
+        command
+            .arg("-i")
+            .arg(path)
+            .args(["-map", "0:a:0?", "-vn", "-sn", "-dn", "-t", "30"])
+            .args(["-c:a", "libopus", "-b:a", "96k", "-f", "webm", "pipe:1"]);
+        return command;
+    }
     match backend {
         MediaBackend::VaApi(device) => {
             command
@@ -353,7 +424,7 @@ fn media_command(backend: &MediaBackend, path: &Path) -> Command {
                     "vulkan",
                 ]);
         }
-        MediaBackend::Software => {
+        MediaBackend::SoftwareH264 | MediaBackend::SoftwareVp8 => {
             command.args(["-threads", "2"]);
         }
     }
@@ -363,17 +434,14 @@ fn media_command(backend: &MediaBackend, path: &Path) -> Command {
         .args(["-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn", "-t", "30"]);
     match backend {
         MediaBackend::VaApi(_) => {
-            command.args([
-                "-vf",
-                "scale_vaapi=w=1280:h=1280:force_original_aspect_ratio=decrease:force_divisible_by=16:format=nv12",
-                "-c:v",
-                "h264_vaapi",
-            ]);
+            command.arg("-vf").arg(format!(
+                "scale_vaapi=w='min(iw,{width})':h='min(ih,{height})':force_original_aspect_ratio=decrease:force_divisible_by=16:format=nv12"
+            )).args(["-c:v", "h264_vaapi"]);
         }
         MediaBackend::Vulkan(_) => {
-            command.args([
-                "-vf",
-                "scale_vulkan=w='max(16,trunc(min(iw,iw*1280/max(iw,ih))/16)*16)':h='max(16,trunc(min(ih,ih*1280/max(iw,ih))/16)*16)':format=nv12",
+            command.arg("-vf").arg(format!(
+                "scale_vulkan=w='max(16,trunc(iw*min(1,min({width}/iw,{height}/ih))/16)*16)':h='max(16,trunc(ih*min(1,min({width}/iw,{height}/ih))/16)*16)':format=nv12"
+            )).args([
                 "-c:v",
                 "h264_vulkan",
                 "-usage",
@@ -382,37 +450,52 @@ fn media_command(backend: &MediaBackend, path: &Path) -> Command {
                 "ull",
             ]);
         }
-        MediaBackend::Software => {
-            command.args([
-                "-vf",
-                "scale=w=1280:h=1280:force_original_aspect_ratio=decrease,format=yuv420p",
-                "-c:v",
-                "libvpx",
-                "-auto-alt-ref",
-                "0",
-                "-threads",
-                "2",
-                "-deadline",
-                "realtime",
-                "-cpu-used",
-                "8",
-            ]);
+        MediaBackend::SoftwareH264 | MediaBackend::SoftwareVp8 => {
+            command.arg("-vf").arg(format!(
+                "scale=w='min(iw,{width})':h='min(ih,{height})':force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p"
+            ));
+            if *backend == MediaBackend::SoftwareH264 {
+                command.args([
+                    "-c:v",
+                    "libx264",
+                    "-threads",
+                    "2",
+                    "-preset",
+                    "ultrafast",
+                    "-tune",
+                    "zerolatency",
+                ]);
+            } else {
+                command.args([
+                    "-c:v",
+                    "libvpx",
+                    "-auto-alt-ref",
+                    "0",
+                    "-threads",
+                    "2",
+                    "-deadline",
+                    "realtime",
+                    "-cpu-used",
+                    "8",
+                ]);
+            }
         }
     }
     command.args(["-fpsmax", "30"]);
     command.args(["-b:v", "2M", "-maxrate", "3M", "-bufsize", "4M"]);
     match backend {
-        MediaBackend::Software => command.args(["-c:a", "libopus", "-b:a", "96k", "-f", "webm"]),
-        MediaBackend::VaApi(_) | MediaBackend::Vulkan(_) => command.args([
-            "-c:a",
-            "aac",
-            "-b:a",
-            "96k",
-            "-movflags",
-            "+frag_keyframe+empty_moov",
-            "-f",
-            "mp4",
-        ]),
+        MediaBackend::SoftwareVp8 => command.args(["-c:a", "libopus", "-b:a", "96k", "-f", "webm"]),
+        MediaBackend::VaApi(_) | MediaBackend::Vulkan(_) | MediaBackend::SoftwareH264 => command
+            .args([
+                "-c:a",
+                "aac",
+                "-b:a",
+                "96k",
+                "-movflags",
+                "+frag_keyframe+empty_moov",
+                "-f",
+                "mp4",
+            ]),
     };
     command.arg("pipe:1");
     command

@@ -64,7 +64,10 @@ fn normalized_name_offsets_support_unicode_and_non_utf8_paths() {
         std::ffi::OsString::from_vec(b"invalid-\xff-name.txt".to_vec()),
     ] {
         let item = SearchItem::new(root.join("配置").join(name), root, false);
-        assert_eq!(item.search_name(), item.name.to_lowercase());
+        assert_eq!(
+            item.search_name(),
+            crate::services::search::fold_for_search(&item.name)
+        );
         assert!(fuzzy_score_normalized(&item, item.search_name()).is_some());
     }
 }

@@ -91,7 +91,6 @@ pub enum BrowserEvent {
     EntriesSpliced {
         depth: usize,
         splices: Vec<EntrySplice>,
-        selected: Option<usize>,
     },
     /// Refreshed entries for already-rendered rows; the order never changes here.
     MetadataFilled {
@@ -139,6 +138,9 @@ pub enum BrowserEvent {
         focused: Option<usize>,
     },
     PreviewRequested {
+        entry: FileEntry,
+    },
+    ExtractRequested {
         entry: FileEntry,
     },
     OpenRequested {
@@ -573,6 +575,12 @@ impl Browser {
 
     pub fn observe(&self, observer: impl Fn(&BrowserEvent) + 'static) {
         self.observers.borrow_mut().push(Rc::new(observer));
+    }
+
+    fn should_extract_on_activate(&self, entry: &FileEntry) -> bool {
+        !self.is_chooser_mode()
+            && entry.location.native_path().is_some()
+            && ArchiveFormat::from_extension(&entry.display_name).is_some()
     }
 
     pub fn set_chooser_mode(&self, chooser: bool) {
@@ -2144,6 +2152,8 @@ impl Browser {
         };
         if entry.is_directory() {
             self.navigate_with_selection(entry.location, select_first);
+        } else if self.should_extract_on_activate(&entry) {
+            self.emit(BrowserEvent::ExtractRequested { entry });
         } else {
             self.emit(BrowserEvent::OpenRequested {
                 location: entry.location,
@@ -2245,6 +2255,8 @@ impl Browser {
             } else {
                 self.descend_with_selection(depth, entry.location, select_first);
             }
+        } else if self.should_extract_on_activate(&entry) {
+            self.emit(BrowserEvent::ExtractRequested { entry });
         } else {
             self.emit(BrowserEvent::OpenRequested {
                 location: entry.location,
@@ -3105,6 +3117,7 @@ impl Browser {
         }
     }
 
+    #[cfg(test)]
     pub fn select_entries_by_name(self: &Rc<Self>, names: &[String]) {
         let Some(depth) = self.active_depth() else {
             return;
@@ -3119,12 +3132,13 @@ impl Browser {
         })
     }
 
-    pub fn select_entries_by_location(self: &Rc<Self>, locations: &[Location]) {
+    pub fn select_entries_by_location_at(
+        self: &Rc<Self>,
+        depth: usize,
+        locations: &[Location],
+    ) -> bool {
         let requested: HashSet<_> = locations.iter().collect();
-        let Some(depth) = self.active_depth() else {
-            return;
-        };
-        self.select_entries_matching_at(depth, |entry| requested.contains(&entry.location));
+        self.select_entries_matching_at(depth, |entry| requested.contains(&entry.location))
     }
 
     fn select_entries_matching_at(
@@ -3204,26 +3218,11 @@ impl Browser {
             .borrow_mut()
             .apply_directory_change(depth, watched, change);
         if let Some((splices, selected)) = application {
-            let positions = self.state.borrow().selected_positions(depth);
-            self.emit(BrowserEvent::EntriesSpliced {
-                depth,
-                splices,
-                selected,
-            });
-            if let Some(focused) = selected {
-                self.emit(BrowserEvent::SelectionSetChanged {
-                    depth,
-                    positions,
-                    focused,
-                    take_focus: false,
-                });
-            }
-            // Monitor updates to an ancestor must not reclaim focus after a
-            // transfer has revealed its destination in a child column.
-            if self.active_depth() == Some(depth) {
+            self.emit(BrowserEvent::EntriesSpliced { depth, splices });
+            if selected.is_none() && self.active_depth() == Some(depth) {
                 self.emit(BrowserEvent::FocusChanged {
                     depth,
-                    position: selected,
+                    position: None,
                 });
             }
         }

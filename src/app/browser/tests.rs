@@ -325,6 +325,62 @@ impl FileSource for FilePreviewSource {
     }
 }
 
+struct ArchiveFileSource;
+
+impl FileSource for ArchiveFileSource {
+    fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
+        Ok(())
+    }
+
+    fn enumerate(&self, request: DirectoryRequest, emit: Rc<dyn Fn(DirectoryEvent)>) -> LoadHandle {
+        emit(DirectoryEvent::Batch {
+            request_id: request.id,
+            entries: vec![
+                FileEntry {
+                    location: Location::local("/fixture/archive.zip"),
+                    native_name: OsString::from("archive.zip"),
+                    thumbnail_path: None,
+                    display_name: "archive.zip".into(),
+                    kind: EntryKind::File,
+                    size: MetadataValue::Known(100),
+                    modified_unix_seconds: MetadataValue::Known(1),
+                    is_hidden: false,
+                    mode: MetadataValue::Unknown,
+                },
+                FileEntry {
+                    location: Location::local("/fixture/notes.txt"),
+                    native_name: OsString::from("notes.txt"),
+                    thumbnail_path: None,
+                    display_name: "notes.txt".into(),
+                    kind: EntryKind::File,
+                    size: MetadataValue::Known(20),
+                    modified_unix_seconds: MetadataValue::Known(1),
+                    is_hidden: false,
+                    mode: MetadataValue::Unknown,
+                },
+                FileEntry {
+                    location: Location::uri("sftp://example.com/remote-archive.zip"),
+                    native_name: OsString::from("remote-archive.zip"),
+                    thumbnail_path: None,
+                    display_name: "remote-archive.zip".into(),
+                    kind: EntryKind::File,
+                    size: MetadataValue::Known(50),
+                    modified_unix_seconds: MetadataValue::Known(1),
+                    is_hidden: false,
+                    mode: MetadataValue::Unknown,
+                },
+            ],
+        });
+        emit(DirectoryEvent::Finished {
+            request_id: request.id,
+            truncated: false,
+            can_trash: None,
+            can_delete: None,
+        });
+        LoadHandle::new(|| {})
+    }
+}
+
 impl FileSource for OpenChildBesideFileSource {
     fn validate_location(&self, _location: &Location) -> Result<(), LocationValidationError> {
         Ok(())
@@ -1779,24 +1835,22 @@ fn filesystem_notifications_update_the_affected_column_incrementally() {
     }));
 
     assert!(
-        events
+        !events
             .borrow()
             .iter()
-            .any(|event| matches!(event, BrowserEvent::FocusChanged { depth: 0, .. }))
+            .any(|event| matches!(event, BrowserEvent::FocusChanged { .. }))
     );
     assert!(events.borrow().iter().any(|event| matches!(
         event,
         BrowserEvent::EntriesSpliced { depth: 0, splices, .. }
             if splices.len() == 1 && splices[0].removed == 0 && splices[0].entries.len() == 1
     )));
-    assert!(events.borrow().iter().any(|event| matches!(
-        event,
-        BrowserEvent::SelectionSetChanged {
-            depth: 0,
-            take_focus: false,
-            ..
-        }
-    )));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::SelectionSetChanged { .. }))
+    );
     assert!(
         !events
             .borrow()
@@ -1837,14 +1891,46 @@ fn background_directory_removal_does_not_request_focus() {
             .iter()
             .any(|event| matches!(event, BrowserEvent::EntriesSpliced { depth: 0, .. }))
     );
-    assert!(events.borrow().iter().any(|event| matches!(
-        event,
-        BrowserEvent::SelectionSetChanged {
-            depth: 0,
-            take_focus: false,
-            ..
-        }
-    )));
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::SelectionSetChanged { .. }))
+    );
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::FocusChanged { .. }))
+    );
+}
+
+#[test]
+fn active_directory_background_change_does_not_request_focus() {
+    let browser = Browser::new(Rc::new(FakeFileSource));
+    let parent = Location::local("/fixture");
+    browser.navigate(parent.clone());
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("alpha")));
+    assert_eq!(browser.active_depth(), Some(0));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+
+    browser.handle_directory_change(0, &parent, DirectoryChange::Upsert(batch_entry("beta")));
+
+    assert_eq!(browser.active_depth(), Some(0));
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::EntriesSpliced { depth: 0, .. }))
+    );
+    assert!(
+        !events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::SelectionSetChanged { .. }))
+    );
     assert!(
         !events
             .borrow()
@@ -2549,6 +2635,92 @@ fn preview_and_open_are_distinct_file_actions() {
         event,
         BrowserEvent::OpenRequested { location }
             if location == &Location::local("/fixture/example.conf")
+    )));
+}
+
+#[test]
+fn activating_recognized_local_archive_requests_extraction() {
+    let browser = Browser::new(Rc::new(ArchiveFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    browser.navigate(Location::local("/fixture"));
+
+    events.borrow_mut().clear();
+    browser.activate(0, 0);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::ExtractRequested { entry }
+            if entry.location == Location::local("/fixture/archive.zip")
+    )));
+
+    events.borrow_mut().clear();
+    browser.activate_in_place(0, 0);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::ExtractRequested { entry }
+            if entry.location == Location::local("/fixture/archive.zip")
+    )));
+
+    events.borrow_mut().clear();
+    browser.select(0, 0);
+    browser.activate_focused();
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::ExtractRequested { entry }
+            if entry.location == Location::local("/fixture/archive.zip")
+    )));
+
+    events.borrow_mut().clear();
+    browser.select(0, 0);
+    browser.activate_focused_in_place();
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::ExtractRequested { entry }
+            if entry.location == Location::local("/fixture/archive.zip")
+    )));
+}
+
+#[test]
+fn activating_archive_in_chooser_mode_opens_for_selection() {
+    let browser = Browser::new(Rc::new(ArchiveFileSource));
+    browser.set_chooser_mode(true);
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    browser.navigate(Location::local("/fixture"));
+
+    events.borrow_mut().clear();
+    browser.activate(0, 0);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::OpenRequested { location }
+            if location == &Location::local("/fixture/archive.zip")
+    )));
+}
+
+#[test]
+fn activating_non_archive_file_or_remote_archive_opens_externally() {
+    let browser = Browser::new(Rc::new(ArchiveFileSource));
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let observed = events.clone();
+    browser.observe(move |event| observed.borrow_mut().push(event.clone()));
+    browser.navigate(Location::local("/fixture"));
+
+    events.borrow_mut().clear();
+    browser.activate(0, 1);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::OpenRequested { location }
+            if location == &Location::local("/fixture/notes.txt")
+    )));
+
+    events.borrow_mut().clear();
+    browser.activate(0, 2);
+    assert!(events.borrow().iter().any(|event| matches!(
+        event,
+        BrowserEvent::OpenRequested { location }
+            if location == &Location::uri("sftp://example.com/remote-archive.zip")
     )));
 }
 

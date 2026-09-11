@@ -1,6 +1,9 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
+import tomllib
+from pathlib import Path
+
 import pytest
-from PIL import Image
+from PIL import Image, ImageColor
 
 from harness.fixtures import FixtureTree
 from harness.modes import ALL_MODES, SINGLE_PANE_MODES
@@ -40,6 +43,30 @@ def filter_results(strata):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
+def test_filter_text_selection_uses_the_active_theme(strata, mode, tmp_path):
+    field = filter_results(strata)
+    strata.keyboard.press("ctrl+a")
+    settings = tomllib.loads(strata.environment.settings_path.read_text())
+    catalog = Path(__file__).resolve().parents[3] / "data/themes/catalog.toml"
+    themes = tomllib.loads(catalog.read_text())["themes"]
+    theme = next(theme for theme in themes if theme["id"] == settings["theme"])
+    accent = ImageColor.getrgb(theme["accent"])
+
+    def selected_text_has_theme_background():
+        bounds = field.screen_bounds()
+        capture = strata.screenshot(tmp_path / "filter-selection.png")
+        with Image.open(capture) as image:
+            pixels = image.convert("RGB").crop((
+                bounds.x + 2, bounds.y + 2,
+                bounds.x + bounds.width - 2, bounds.y + bounds.height - 2,
+            ))
+            return sum(count for count, color in pixels.getcolors(pixels.width * pixels.height)
+                       if color == accent) > 100
+
+    strata.wait(selected_text_has_theme_background, "theme-colored filter text selection")
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
 def test_filtered_item_menu_previews_and_copies_the_real_location(strata, mode):
     field = filter_results(strata)
     row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
@@ -72,7 +99,7 @@ def test_filtered_item_menu_previews_and_copies_the_real_location(strata, mode):
     assert strata.fixture.path("alpha/match-note.txt").read_text() == "alpha source\n"
 
 
-@pytest.mark.parametrize("mode", SINGLE_PANE_MODES)
+@pytest.mark.parametrize("mode", ALL_MODES)
 def test_query_updates_retain_selection_focus_preview_and_background_menu(strata, mode):
     field = filter_results(strata)
     row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
@@ -91,7 +118,7 @@ def test_query_updates_retain_selection_focus_preview_and_background_menu(strata
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview() is None, "Space to close after updates")
     assert field.text == "match-note"
-    strata.pointer.right_click(strata.pane(), at=strata.empty_point())
+    strata.pointer.right_click(strata.pane(), at=strata.background_point())
     strata.wait(strata.context_menu, "the empty-space menu")
     assert "New Folder" in strata.menu_items()
     assert "Quick preview" not in strata.menu_items()
