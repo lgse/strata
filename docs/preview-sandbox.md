@@ -1,38 +1,174 @@
 # Preview sandbox
 
-Strata treats files shown while browsing as untrusted. Native parsers do not receive the user's normal filesystem or network access.
+Strata treats files shown while browsing as untrusted. Original-file native
+parsing and decoding run inside bubblewrap, never in the application.
 
-## Sandboxed providers
+## Providers
 
-The following providers run in a short-lived helper process:
+- GDK Pixbuf/camera RAW, Poppler PDF, ImageMagick, and dcraw fallbacks normalize
+  images to dimension- and size-bounded PNGs.
+- `ffmpegthumbnailer` produces bounded media thumbnails. One helper serves at most
+  64 queued unique requests; duplicate requests share work, obsolete targets
+  cancel it, and failures are cached for 30 seconds.
+- Media previews use the incremental decoded-frame transport described below.
+- Plain text stays in-process, invokes no native format parser, and is capped at
+  1 MiB.
 
-- GDK Pixbuf image and camera RAW loaders;
-- Poppler PDF thumbnail and page rendering;
-- ImageMagick and `dcraw`/`simple_dcraw` RAW fallbacks; and
-- `ffmpegthumbnailer` media thumbnails.
+## Incremental media playback
 
-Image previews are normalized to PNG by the helper. Video previews are limited to the first 30 seconds of content, even for hour-long sources, and at most 30 frames per second. The requested video size follows the preview pane and display scale at load time, capped at 1280 pixels on either axis. Scaling fits that rectangle without enlarging smaller sources, subject to codec minimum dimensions and alignment. Resizing does not interrupt playback; the next load uses the new size. Recent media cache entries distinguish requested sizes and backend preferences.
+```text
+One original local file (read-only)
+  -> bubblewrap: ffprobe + FFmpeg video/audio decoding and scaling
+  -> bounded, validated RGBA frames and PCM blocks
+  -> Strata GtkMediaStream: GTK MemoryTexture presentation
+                         + GStreamer appsrc raw-audio output
+```
 
-Hardware acceleration is enabled by default except when an unset preference is paired with an AMD Polaris GPU; those systems start with software previews but can opt in from General settings. Automatic mode tries VA-API, then Vulkan, then software. A selected VA-API or Vulkan backend falls directly back to software if it fails. Hardware paths produce H.264/AAC MP4 with both dimensions aligned to 16 pixels. Software first tries H.264/AAC MP4 using libx264's ultrafast, zero-latency preset, then falls back to VP8/Opus WebM if unavailable or unsuccessful. Software dimensions are aligned to two pixels. Every path still decodes and re-encodes inside the sandbox; it never stream-copies the original compressed media. Playback currently waits for the complete normalized clip. A worker prepares that clip in a mode-0600 temporary file because GTK 4.14's GStreamer backend does not support input streams. The recent-preview cache and active player share ownership without copying the clip; the file is removed when its last owner is released. The cache's existing byte and entry limits include these files. This keeps GStreamer from parsing the selected untrusted file directly. Plain-text previews remain in-process and are limited to 1 MB; they do not invoke a native format parser.
+There is no compressed-video encoding, normalized MP4/WebM temporary file,
+`GtkMediaFile`, `GstPlay`, compressed-media pipeline, or original-file URI in the
+player. FFmpeg's `rawvideo` output packs RGBA pixels; `pcm_s16le` packs decoded
+samples. GStreamer receives only application-constructed `audio/x-raw` caps and
+validated samples through `appsrc ! audioconvert ! audioresample ! volume !
+autoaudiosink`. No decoder-provided path, pipeline, caps string, or compressed
+packet crosses into an unsandboxed media parser.
 
-Thumbnail rendering uses one helper at a time and queues at most 64 unique requests. Live rows deferred by a full queue are retried as capacity opens, duplicate requests share one render, rows leaving the view cancel work that has no remaining targets, and failed renders are cached for 30 seconds to prevent retry loops.
+A media worker uses separate FFmpeg video and audio processes when both tracks
+exist. Each decodes only its selected track. This avoids cross-output pipe
+deadlocks with sparse/VFR video or attached cover art. Both processes remain in
+one sandbox, with access to the same single input. Cover art is decoded once in
+software and retained alongside audio; audio-only inputs need no video decoder.
+Video timing is normalized **inside the sandbox** to 30 fps, including holding
+VFR/GIF frames. Audio is 48 kHz, stereo, interleaved signed 16-bit little-endian
+PCM. Resampling preserves gaps/offsets relative to the common source timeline.
 
-## Isolation and limits
+The preview interval is always **the original file's first 30 seconds**, including
+hour-long sources. Seeking never opens a fresh 30-second interval at the seek
+point. It restarts the sandbox at a bounded position rounded down to the 30-fps
+grid. Video retains decoder preroll so a seek into a VFR gap can show the frame
+covering that point. Short GIFs loop inside a single 30-second generation, with
+seeks mapped to their original animation phase, avoiding a process restart every
+animation cycle. Longer GIFs repeat only their first 30 seconds.
 
-Strata starts its own executable in a bubblewrap sandbox. The sandbox has:
+The decode rectangle follows the pane's logical size times display scale, capped
+at 1280 pixels on either axis. Frames preserve display aspect ratio, including
+sample aspect ratio/right-angle rotation, without unnecessarily enlarging small
+sources. Resizes settle for 250 ms before restarting at the current playback
+position; the previous texture remains visible. Changes that would not materially
+change the fitted frame size do not restart decoding. A paused resize/seek stays
+paused. Mute/volume preferences initialize and update every player's raw-audio
+output live; backend preference changes apply on the next preview request.
 
-- a new user, mount, PID, IPC, UTS, cgroup, and network namespace;
-- read-only access to `/usr`, required runtime libraries and font/ImageMagick configuration, the Strata executable, and exactly one canonicalized input file;
-- writable access only to private mode-0700 output and temporary directories;
-- an empty environment with a nonexistent home directory;
-- a 512 MB input limit for raster and PDF parsing, a 2 GB address-space limit allowing modern image loaders to start their isolated worker threads, a 512 MB sandbox file-size limit for decoder buffers, and a 32 MB parent-side output limit;
-- a 12-second wall-clock limit for image, PDF, and thumbnail rendering, plus a 10-second CPU limit; and
-- a 30-second wall-clock limit for media previews, which have no cumulative CPU limit because FFmpeg uses multiple threads. Hardware attempts are limited to 8 seconds each and 12 seconds collectively. The software H.264 attempt is limited to 8 seconds, leaving the remaining helper budget for VP8 fallback; adding that attempt does not extend the overall deadline.
+## Wire validation and budgets
 
-Accelerated media previews receive only the devices required by their policy: VA-API gets safe `/dev/dri/renderD<digits>` nodes, while Vulkan and Automatic may also get `/dev/nvidia<digits>` and `/dev/nvidiactl`. They receive read-only `/sys` access for driver discovery. Software media previews, image, PDF, and thumbnail helpers receive no GPU devices or `/sys` mount.
+The versioned `STRRAW01` little-endian protocol has a 40-byte header: magic,
+width, height, exact RGBA stride, audio-present flag, duration in microseconds,
+starting tick, and a zero reserved field. Each 24-byte record contains its type,
+tick, timestamp, and video/audio lengths. Frame records are followed by exactly
+those payloads; an explicit end record has no payload. EOF alone is not success.
 
-Strata reads PCI vendor and device IDs from `/sys/class/drm/renderD*/device` to detect AMD Polaris 10, 11, and 12 devices (`0x67c0–0x67df`, `0x67e0–0x67ff`, and `0x6980–0x699f`). Because preview encoding can hang on them, an unset acceleration preference resolves to software when any Polaris render node is present. The settings remain available as an explicit opt-in, after which the selected hardware policy receives the render node normally. Nodes with unreadable metadata retain the non-Polaris default.
+The parent independently checks:
 
-GPU acceleration expands the media helper's attack surface into the installed userspace and kernel GPU drivers; policy-specific device access keeps that exposure media-only and the existing namespaces and resource limits still apply.
+- version/reserved fields, flags, requested dimensions, stride, and arithmetic;
+- duration `0 < duration <= 30,000,000 us` and the requested start tick;
+- strictly consecutive ticks, exact `floor(tick * 1,000,000 / 30)` timestamps,
+  and at most 900 ticks, regardless of helper claims;
+- video length exactly `width * height * 4`, at most 6,553,600 bytes;
+- PCM length exactly 6,400 bytes per tick (1,600 stereo samples), with the last
+  block truncated to the advertised content duration before audio output;
+- end timestamp/lengths, no trailing output, and successful helper exit.
 
-External thumbnail providers have bounded stdout and discarded stderr. The parent accepts only a size- and dimension-bounded PNG, MP4 with an `ftyp` signature, or WebM with an EBML signature. Failed or unavailable hardware attempts advance to the next backend, while a failed final software attempt produces the normal unavailable-preview result. Cancellation or timeout kills the renderer process group and bubblewrap, whose PID namespace also tears down descendants that create a new process group. A missing bubblewrap installation, renderer crash, malformed result, timeout, or permission failure is fail-closed and produces the normal fallback icon or **Preview unavailable** message.
+Lengths are checked **before allocation**. Helper buffers cannot mutate textures:
+pipe reads create owned buffers, and the texture owns its `glib::Bytes` until its
+last reference is released. There is no shared writable memory.
+
+The worker-to-GTK queue holds three records, the presentation queue three frames,
+and a worker may hold one pending frame. Including the displayed CPU texture,
+that is at most eight directly application-held frames (50 MiB at the maximum
+square size), plus small audio buffers and bounded kernel pipes. FFmpeg's input
+and output packet queues are limited to two packets each. GStreamer's appsrc
+queue is capped at 38,400 bytes / 200 ms; no unbounded queue element is inserted.
+GTK/driver rendering caches and codec working memory are additional, not part of
+that application-buffer claim. A full maximum-size generation transfers at most
+900 frames (5,898,240,000 video bytes) and 5,760,000 PCM bytes, incrementally—not
+stored as a complete clip. Seeking/looping begins a new bounded generation.
+
+There is **no whole-clip media cache**. Closing or revisiting a file requires a new
+decode. The existing byte/entry-bounded image/PDF preview cache is unchanged.
+
+## Scheduling and deadlines
+
+At most **four media sessions per application process** may own workers, across
+browser windows and choosers sharing that process. Each owns one parent reader
+thread and at most two FFmpeg decoding processes. A fifth request reports busy
+instead of interrupting another player. The slot is retained through buffered
+playback, so a fifth player cannot steal it between GIF loops. A short 250-ms
+acquisition grace allows
+an obsolete worker to finish cancellation. Separate application/portal processes
+have separate limits, not a machine-global scheduler.
+
+| State | Bound / behavior |
+| --- | --- |
+| Startup or seek | 22 seconds from request to first frame; includes a 4-second probe, hardware attempts of at most 4 seconds each / 8 seconds combined, and up to 8 seconds for software. |
+| Active decoding | 8 seconds for a complete next record, not a deadline restarted by each byte. A stalled audio playback clock also fails after 8 seconds. |
+| Backpressure | A full queue stops consumption and propagates pressure through bounded pipes; it does not accumulate a whole clip. Waiting for the consumer is not charged as decoder progress time. |
+| Paused | Keep position, frame and bounded queues for 30 seconds, then cancel the worker, drop PCM output/queues, and stop the polling timer. The displayed frame and position remain. Resume or a paused seek starts a new bounded decode. |
+| Close / selection change / destruction | Cancel promptly; pipe/queue waits check cancellation at 10–20-ms intervals. Kill/reap the renderer and its sandbox descendants. No join of a blocked pipe reader on the GTK thread. |
+| End / malformed output / failure | Release the worker; malformed/truncated output, unavailable decoding and unsuccessful exit fail closed. No unsandboxed fallback. End-of-audio allows only sample-grid rounding (at most 22 µs), not a stalled clock. |
+
+The old batch-conversion wall timeout does not govern a paused real-time player.
+The limits do not promise instant startup, zero-latency seeking, or a total RAM
+plateau for every toolkit/driver. See [measurements and manual checks](evidence/824/README.md).
+
+## Isolation and hardware policy
+
+Bubblewrap retains the existing namespace/mount policy:
+
+- new user, mount, PID, IPC, UTS, cgroup, and network namespaces;
+- read-only `/usr`, required runtime libraries and font/ImageMagick configuration,
+  the Strata executable, and exactly one canonicalized regular input file;
+- writable private mode-0700 output directories for image providers and a
+  size-limited (512 MiB) private `/tmp`; media uses pipes, not output mounts;
+- an empty environment, nonexistent home, and no desktop, session-bus, or
+  audio-server sockets. Only the application handles presentation/audio output.
+
+Image/PDF parsing has a 512-MiB input cap, 2-GiB address-space cap, 512-MiB file
+cap, 32-MiB parent output cap, 12-second wall limit and 10-second CPU limit.
+Media retains the 512-MiB input cap but has no cumulative CPU limit. Each software FFmpeg process has a 2-GiB
+address-space limit; all decoding processes disable core dumps and cap files and
+individual media allocations at 512 MiB and source frames at 50 million pixels.
+Accelerated decoders retain the existing exemption from the address-space limit
+because drivers reserve large virtual ranges; this is not a hardware RSS cap.
+
+Automatic tries VA-API, then Vulkan, then software. Explicit VA-API/Vulkan falls
+directly back to software when its hardware attempts fail before output begins.
+A failure after playback starts fails closed rather than silently splicing a new
+backend into the stream. VA-API receives only safe `/dev/dri/renderD<digits>`
+nodes; Vulkan/Automatic may also receive `/dev/nvidia<digits>` and `/dev/nvidiactl`.
+Accelerated helpers receive read-only `/sys` for discovery. Software/image/PDF/
+thumbnail helpers receive no GPU devices or `/sys` mount.
+
+The conservative AMD Polaris default remains unchanged: an unset acceleration
+preference resolves to software for PCI IDs `0x67c0–0x67df`, `0x67e0–0x67ff`, or
+`0x6980–0x699f`. Explicit opt-in remains available. Removing the old encoder path
+is not evidence for changing device defaults or declaring driver issues fixed.
+GPU access still expands the helper's attack surface into driver code.
+
+## Compatibility scope
+
+GStreamer app/base development libraries are now direct build dependencies;
+installed systems need their runtime libraries and raw-audio/output plugins.
+In particular, the core and app/base libraries are now required to **launch**
+Strata, even when no preview is open. Minimal installations that self-update only
+the executable must install these packages before updating. Installer/AUR metadata
+retains the legacy codec-plugin recommendation for currently published binaries;
+the new player does not use those decoders.
+Toolkit versions and the opt-in patches in
+[`packaging/media-runtime`](../packaging/media-runtime/README.md) are unchanged.
+The new player does not use the two patched `GtkGstSink`/`GstPlay` paths, but this
+change neither applies nor retires that patch kit or claims to fix all RAM growth.
+
+By explicit owner decision, the Ubuntu runtime-library alias problem
+[#806](https://github.com/lgse/strata/issues/806) remains outside this change.
+No additional filesystem mounts have been added to work around it. Affected
+installations still fail closed at sandbox startup, before this playback path can
+run; direct helper/GTK tests are not proof that this platform problem is fixed.

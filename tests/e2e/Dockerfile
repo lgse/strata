@@ -51,7 +51,7 @@ RUN --mount=type=bind,from=package-indexes,source=/var/lib/apt/lists,target=/opt
     cp -a /opt/e2e-apt-lists/. /var/lib/apt/lists/ \
     && DEBIAN_FRONTEND=noninteractive sh /opt/e2e-install-packages.sh \
         build-essential libfontconfig1-dev libgtk-4-dev libgtksourceview-5-dev \
-        libpoppler-glib-dev pkg-config rustup \
+        libpoppler-glib-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev pkg-config rustup \
     && rm -rf /var/lib/apt/lists/*
 ENV RUSTUP_HOME=/opt/rustup RUSTUP_TOOLCHAIN=1.98.1
 RUN rustup toolchain install 1.98.1 --no-self-update --profile minimal --component clippy,rustfmt \

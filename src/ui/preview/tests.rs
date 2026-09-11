@@ -5,14 +5,14 @@ mod preferences;
 
 use std::rc::Rc;
 
-use gtk::{gio, glib, prelude::*};
+use gtk::{glib, prelude::*};
 
 use super::{
     MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, PreviewDrawer, format_file_size,
     format_media_time, media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
     preview_width_for_empty_space, print_fit, print_page_starts, print_progress_for_page,
 };
-use crate::services::{LoadHandle, PreviewEvent, PreviewProvider, PreviewRequest, SandboxedMedia};
+use crate::services::{LoadHandle, PreviewEvent, PreviewProvider, PreviewRequest};
 use crate::ui::theme::ThemeManager;
 
 struct UnusedPreviewProvider;
@@ -26,23 +26,23 @@ impl PreviewProvider for UnusedPreviewProvider {
 struct WeakMediaWidgets {
     overlay: glib::WeakRef<gtk::Overlay>,
     picture: glib::WeakRef<gtk::Picture>,
-    media: glib::WeakRef<gtk::MediaFile>,
+    media: glib::WeakRef<crate::ui::media::DecodedMedia>,
 }
 
 fn render_media_widgets(drawer: &PreviewDrawer, is_gif: bool) -> WeakMediaWidgets {
-    let media = gtk::MediaFile::new();
+    let media = crate::ui::media::tests::player(false, 1_000_000);
     drawer
         .state
         .media
         .replace(Some(media.clone().upcast::<gtk::MediaStream>()));
-    let (overlay, center_play) = drawer.state.build_media_view(&media);
+    let (overlay, center_play) = drawer.state.build_media_view(media.upcast_ref());
     let picture = overlay
         .child()
         .and_downcast::<gtk::Picture>()
         .expect("production media picture");
     drawer.state.content.append(&overlay);
     drawer.state.append_media_controls(
-        &media,
+        media.upcast_ref(),
         &ThemeManager::shared(),
         &overlay.clone().upcast(),
         &center_play,
@@ -155,10 +155,6 @@ fn media_errors_explain_missing_runtime_plugins() {
     assert_eq!(title, "Additional media support required");
     assert!(detail.contains("GStreamer plugins"));
     assert_eq!(command, Some(MEDIA_PLUGIN_INSTALL_COMMAND));
-    assert_eq!(
-        command,
-        Some("sudo pacman -S --needed gst-plugins-good gst-libav")
-    );
 
     let (title, detail, command) = media_error_feedback("The media data is corrupt");
     assert_eq!(title, "Preview unavailable");
@@ -181,30 +177,19 @@ fn pdf_scroll_zoom_stays_within_its_supported_range() {
 }
 
 #[test]
-fn clear_content_detaches_and_removes_the_normalized_media_file() {
+fn clear_content_cancels_decoding_and_releases_the_displayed_frame() {
     const TEST: &str =
-        "ui::preview::tests::clear_content_detaches_and_removes_the_normalized_media_file";
+        "ui::preview::tests::clear_content_cancels_decoding_and_releases_the_displayed_frame";
     crate::test_support::gtk_test(TEST, || {
-        let source = SandboxedMedia::from_normalized(b"media fixture").expect("normalized fixture");
-        let path = source.path().to_path_buf();
-        let media = gtk::MediaFile::for_file(&gio::File::for_path(&path));
+        let media = crate::ui::media::tests::player(false, 30_000_000);
         let drawer = PreviewDrawer::new(Rc::new(UnusedPreviewProvider), false);
-        drawer.state.media_source.replace(Some(source));
-        drawer
-            .state
-            .media
-            .replace(Some(media.clone().upcast::<gtk::MediaStream>()));
-
-        assert!(media.file().is_some());
+        drawer.state.media.replace(Some(media.clone().upcast()));
+        media.play();
+        crate::ui::media::tests::wait(|| media.timestamp() > 0);
         drawer.state.clear_content();
-
         assert!(drawer.state.media.borrow().is_none());
-        assert!(drawer.state.media_source.borrow().is_none());
-        assert!(
-            media.file().is_none(),
-            "clearing preview content must detach the media source"
-        );
-        assert!(!path.exists(), "unreferenced media must be removed");
+        assert_eq!(media.intrinsic_width(), 0);
+        assert!(!media.is_playing());
     });
 }
 

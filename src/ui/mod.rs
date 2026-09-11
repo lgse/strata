@@ -13,6 +13,7 @@ mod inline_search;
 mod input_ownership;
 mod loading_skeleton;
 mod marquee;
+mod media;
 mod modal;
 mod motion;
 mod open_with;

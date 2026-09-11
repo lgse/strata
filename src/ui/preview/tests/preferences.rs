@@ -11,21 +11,24 @@ fn saved_and_live_audio_preferences_reach_every_open_player() {
             ThemeManager::seed_saved_preferences_for_test();
             let manager = ThemeManager::shared();
             let mut players = Vec::new();
-            for _ in 0..2 {
+            for browser in [true, false] {
                 let drawer = PreviewDrawer::new(
                     Rc::new(crate::adapters::LocalPreviewProvider::new(Rc::new(|| {
                         crate::sandbox::MediaPreviewBackend::Software
                     }))),
-                    false,
+                    browser,
                 );
-                let media = gtk::MediaFile::new();
+                let media = crate::ui::media::tests::player(true, 30_000_000);
+                drawer.state.media.replace(Some(media.clone().upcast()));
                 drawer.state.append_media_controls(
-                    &media,
+                    media.upcast_ref(),
                     &manager,
                     &gtk::Box::new(gtk::Orientation::Vertical, 0).upcast(),
                     &gtk::Button::new(),
                     false,
                 );
+                media.play();
+                crate::ui::media::tests::wait(|| media.timestamp() > 0);
                 let slider = drawer
                     .state
                     .media_volume_slider
