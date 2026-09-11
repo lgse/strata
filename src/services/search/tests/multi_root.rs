@@ -97,9 +97,10 @@ fn fair_directory_scheduling_makes_deep_progress_in_every_root() {
         }
         expected.push(fixture_file(root, "Documents/demo/Cats/wanted.jpg"));
     }
+    // Allow storage-first discovery in both roots, while still indexing less than half the fixture.
     for ordered_roots in [roots.to_vec(), roots.into_iter().rev().collect()] {
         let (search, events) =
-            index_trees_with_budget(ordered_roots, false, 40, 64, Duration::from_secs(10));
+            index_trees_with_budget(ordered_roots, false, 80, 64, Duration::from_secs(10));
         search.query("wanted");
         let SearchEvent::Results {
             items, coverage, ..

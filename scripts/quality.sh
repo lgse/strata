@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-unset DISPLAY WAYLAND_DISPLAY NOTIFY_SOCKET
+unset DISPLAY WAYLAND_DISPLAY NOTIFY_SOCKET DBUS_SESSION_BUS_ADDRESS DBUS_STARTER_ADDRESS
 repository="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 phase="${1:-all}"
 case "$phase" in all|fmt|clippy|test) ;; *) echo 'Usage: scripts/quality.sh [all|fmt|clippy|test]' >&2; exit 2 ;; esac
@@ -34,6 +34,9 @@ fi
 if [[ -n "${STRATA_REQUIRE_DEVICE_TESTS:-}" ]]; then
   options+=(--env STRATA_REQUIRE_DEVICE_TESTS)
 fi
+for variable in STRATA_QUALITY_TASK STRATA_QUALITY_SHARD; do
+  if [[ -n "${!variable:-}" ]]; then options+=(--env "$variable"); fi
+done
 exec "$engine" run "${options[@]}" \
   --mount "type=bind,source=$repository,target=/workspace" \
   --mount "type=bind,source=$accounts/passwd,target=/etc/passwd,readonly" \
@@ -43,15 +46,27 @@ exec "$engine" run "${options[@]}" \
   --env CARGO_HOME=/workspace/target/quality-container/cargo \
   --env CARGO_TARGET_DIR=/workspace/target/quality-container/build \
   --env CARGO_PROFILE_DEV_DEBUG=0 --env CARGO_INCREMENTAL=0 \
+  --env "STRATA_QUALITY_COMMIT=$(git -C "$repository" rev-parse HEAD)" \
   "$image" bash -euc '
     mkdir -p "$HOME" "$CARGO_HOME"
     rustc --version
     case "$1" in all|fmt) cargo fmt --all --check ;; esac
     case "$1" in all|clippy) cargo clippy --locked --all-targets --all-features -- -D warnings ;; esac
     case "$1" in all|test)
-      xvfb-run -a env -u WAYLAND_DISPLAY GDK_BACKEND=x11 \
-        GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
-        cargo test --locked --all-targets --all-features
+      case "${STRATA_QUALITY_TASK:-test}" in
+        build) python3 scripts/quality_ci.py build ;;
+        shard)
+          xvfb-run -a dbus-run-session -- env -u WAYLAND_DISPLAY GDK_BACKEND=x11 \
+            GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
+            STRATA_REQUIRE_DEVICE_TESTS=1 python3 scripts/quality_ci.py run
+          ;;
+        test)
+          xvfb-run -a dbus-run-session -- env -u WAYLAND_DISPLAY GDK_BACKEND=x11 \
+            GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1 \
+            cargo test --locked --all-targets --all-features
+          ;;
+        *) echo "Invalid STRATA_QUALITY_TASK" >&2; exit 2 ;;
+      esac
       ;;
     esac
   ' bash "$phase"

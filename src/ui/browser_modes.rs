@@ -396,6 +396,12 @@ impl ModeViews {
         }
     }
 
+    pub fn prune_stale_search_results(&self) {
+        if let Some(pane) = self.single_pane() {
+            pane.search.prune_missing();
+        }
+    }
+
     pub fn header_has_focus(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
         self.single_pane()
@@ -757,6 +763,11 @@ impl ModeViews {
 
     pub fn selected_search_result(&self) -> Option<FileEntry> {
         self.single_pane()?.search.selected_entry()
+    }
+
+    pub fn focus_search_result(&self, path: &std::path::Path) -> bool {
+        self.single_pane()
+            .is_some_and(|pane| pane.search.focus_result(path))
     }
 
     pub fn selected_search_results(&self) -> Option<Vec<FileEntry>> {

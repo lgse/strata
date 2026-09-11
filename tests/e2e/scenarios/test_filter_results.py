@@ -98,12 +98,35 @@ def test_query_updates_retain_selection_focus_preview_and_background_menu(strata
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_filtered_rename_targets_the_nested_duplicate(strata, mode):
+@pytest.mark.parametrize("trigger", ["menu", "F2", "ctrl+r"])
+@pytest.mark.parametrize("focus_filter", [False, True])
+def test_filtered_rename_targets_the_nested_duplicate(strata, mode, trigger, focus_filter):
     field = filter_results(strata)
     row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
-    strata.pointer.right_click(row)
-    strata.wait(strata.context_menu, "the result menu")
-    strata.choose_menu_item("Rename")
+    if trigger == "menu":
+        strata.pointer.right_click(row)
+        strata.wait(strata.context_menu, "the result menu")
+        strata.choose_menu_item("Rename")
+    else:
+        strata.pointer.click(row, modifiers=("ctrl",))
+        if focus_filter:
+            strata.pointer.click(field)
+        strata.keyboard.press(trigger)
+    strata.wait_for_dialog()
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.dialog() is None, "rename dialog to close")
+    strata.wait(
+        lambda: result(strata, "beta/match-note.txt").has_state("focused"),
+        "focus to return to the originating result",
+    )
+    assert result(strata, "beta/match-note.txt").has_state("selected")
+    assert field.text == "match-note"
+    assert strata.fixture.path("beta/match-note.txt").read_text() == "beta source\n"
+    strata.keyboard.press("Delete")
+    strata.settle(result(strata, "beta/match-note.txt"))
+    assert strata.dialog() is None
+    assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
+    strata.keyboard.press("F2")
     strata.wait_for_dialog()
     strata.editable_field()
     strata.keyboard.press("ctrl+a")
@@ -115,6 +138,30 @@ def test_filtered_rename_targets_the_nested_duplicate(strata, mode):
     assert strata.fixture.path("alpha/match-note.txt").read_text() == "alpha source\n"
     assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
     assert field.text == "match-note"
+    strata.wait(lambda: result(strata, "beta/match-note.txt") is None, "the stale hit to disappear")
+    strata.pointer.click(field)
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("match-note.t")
+    strata.wait(lambda: len(strata.matches()) == 2, "only the surviving matches after a query change")
+    assert result(strata, "beta/match-note.txt") is None
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("query", ["", "no-such-result"])
+def test_filter_rename_shortcuts_do_not_target_the_hidden_directory_selection(strata, mode, query):
+    strata.select_entry("match-note.txt")
+    strata.keyboard.press("ctrl+f")
+    field = strata.editable_field()
+    if query:
+        strata.keyboard.type_text(query)
+        strata.wait(lambda: len(strata.matches()) == 0, "no matching results")
+    for shortcut in ["F2", "ctrl+r"]:
+        strata.keyboard.press(shortcut)
+        strata.settle(field)
+        assert strata.dialog() is None
+        assert field.has_state("focused")
+        assert field.text == query
+    assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
 
 
 @pytest.mark.parametrize("mode", SINGLE_PANE_MODES)

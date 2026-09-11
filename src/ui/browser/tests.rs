@@ -11,6 +11,7 @@ mod paste;
 mod preferences;
 mod recursive_search;
 mod restore;
+mod search_result_mutations;
 mod sidebar;
 
 #[test]

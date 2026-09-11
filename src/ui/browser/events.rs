@@ -8,9 +8,9 @@ use crate::model::FileEntry;
 use crate::services::LocationValidationError;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::columns::{
-    column_size_text, scroll_column_to, set_column_busy, set_column_selection,
-    set_column_selections, set_filter_placeholder, stop_column_spinner, touch_source_model,
-    update_empty_trash_sensitivity,
+    column_size_text, prune_missing_search_results, scroll_column_to, set_column_busy,
+    set_column_selection, set_column_selections, set_filter_placeholder, stop_column_spinner,
+    touch_source_model, update_empty_trash_sensitivity,
 };
 use crate::ui::browser::desktop::open_location;
 use crate::ui::browser::entry::item_count_label;
@@ -465,6 +465,7 @@ impl ViewState {
             }
             BrowserEvent::RenameCompleted { request_id } => {
                 self.complete_pending_rename(*request_id);
+                self.prune_stale_search_results();
             }
             BrowserEvent::RenameAbandoned { request_id } => {
                 self.abandon_pending_rename(*request_id);
@@ -507,6 +508,7 @@ impl ViewState {
                     self.complete_cut_transfer(moved_locations);
                 }
                 self.dismiss_file_operation_progress();
+                self.prune_stale_search_results();
             }
             BrowserEvent::DeletionStarted { total } => {
                 let browser = self.browser.clone();
@@ -521,7 +523,10 @@ impl ViewState {
             BrowserEvent::DeletionProgress { completed, total } => {
                 self.update_item_progress(*completed, *total);
             }
-            BrowserEvent::DeletionFinished => self.dismiss_file_operation_progress(),
+            BrowserEvent::DeletionFinished => {
+                self.dismiss_file_operation_progress();
+                self.prune_stale_search_results();
+            }
             BrowserEvent::RestorationStarted { total } => {
                 let browser = self.browser.clone();
                 self.show_file_operation_progress(
@@ -848,6 +853,13 @@ impl ViewState {
                 .borrow()
                 .reveal_selected_entry(depth, position);
         }
+    }
+
+    fn prune_stale_search_results(&self) {
+        for column in self.columns.borrow().iter() {
+            prune_missing_search_results(column);
+        }
+        self.mode_views.borrow().prune_stale_search_results();
     }
 
     fn event_refreshes_active_path(event: &BrowserEvent) -> bool {

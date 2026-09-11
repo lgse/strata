@@ -137,6 +137,29 @@ pub(super) fn set_column_busy(column: &ColumnView, busy: bool) {
         .update_state(&[gtk::accessible::State::Busy(busy)]);
 }
 
+pub(super) fn prune_missing_search_results(column: &ColumnView) {
+    if column.search_handle.borrow().is_none() {
+        return;
+    }
+    let mut results = column.search_results.borrow_mut();
+    let before = results.len();
+    results.retain(|item| crate::ui::inline_search::search_path_present(&item.path));
+    if results.len() == before {
+        return;
+    }
+    let labels: Vec<_> = results.iter().map(|item| item.name.clone()).collect();
+    drop(results);
+    let labels: Vec<_> = labels.iter().map(String::as_str).collect();
+    column
+        .search_model
+        .splice(0, column.search_model.n_items(), &labels);
+    column.filtered_model.items_changed(
+        0,
+        column.search_model.n_items(),
+        column.search_model.n_items(),
+    );
+}
+
 pub(super) fn set_filter_placeholder(column: &ColumnView, count: usize) {
     let noun = if count == 1 { "item" } else { "items" };
     column
@@ -772,7 +795,9 @@ impl ViewState {
                             }
                         }
                     }
-                    if let Some(crate::services::SearchEvent::Results { query, items, .. }) = latest
+                    if let Some(crate::services::SearchEvent::Results {
+                        query, mut items, ..
+                    }) = latest
                         && let Some(entry) = weak_entry.upgrade()
                         && !query.is_empty()
                         && query == entry.text().trim()
@@ -780,6 +805,9 @@ impl ViewState {
                         let Some(sm) = weak_sm.upgrade() else {
                             return glib::ControlFlow::Break;
                         };
+                        items.retain(|item| {
+                            crate::ui::inline_search::search_path_present(&item.path)
+                        });
                         let labels: Vec<_> = items.iter().map(|item| item.name.clone()).collect();
                         results.replace(items);
                         let labels: Vec<_> = labels.iter().map(String::as_str).collect();

@@ -26,6 +26,8 @@ struct State {
     positions: RefCell<HashMap<gtk::ListBoxRow, usize>>,
     handle: RefCell<Option<SearchHandle>>,
     generation: Cell<u64>,
+    root: PathBuf,
+    recursive: Cell<bool>,
 }
 
 #[derive(Clone)]
@@ -98,6 +100,47 @@ impl InlineSearch {
             .collect();
         Some(entries)
     }
+
+    pub fn focus_result(&self, path: &Path) -> bool {
+        let Some(state) = self.state.as_ref() else {
+            return false;
+        };
+        if state.stack.visible_child_name().as_deref() != Some("search") {
+            return false;
+        }
+        let position = state
+            .items
+            .borrow()
+            .iter()
+            .position(|item| item.path == path);
+        let Some(row) = position.and_then(|position| state.list.row_at_index(position as i32))
+        else {
+            return false;
+        };
+        state.list.select_row(Some(&row));
+        row.set_focusable(true);
+        row.grab_focus()
+    }
+
+    pub fn prune_missing(&self) {
+        let Some(state) = self.state.as_ref() else {
+            return;
+        };
+        if state.handle.borrow().is_none() {
+            return;
+        }
+        let pruned: Vec<_> = state
+            .items
+            .borrow()
+            .iter()
+            .filter(|item| search_path_present(&item.path))
+            .cloned()
+            .collect();
+        if pruned.len() != state.items.borrow().len() {
+            let recursive = state.recursive.get();
+            update_rows(state, pruned, &state.root, recursive);
+        }
+    }
 }
 
 /// Keeps the view's normal presentation intact when the recursive query is dismissed.
@@ -141,6 +184,8 @@ pub(super) fn wrap(
         positions: RefCell::new(HashMap::new()),
         handle: RefCell::new(None),
         generation: Cell::new(0),
+        root: root.clone(),
+        recursive: Cell::new(false),
     });
     let weak = Rc::downgrade(&state);
     state.list.set_sort_func(move |left, right| {
@@ -263,6 +308,7 @@ pub(super) fn wrap(
         state: Some(state.clone()),
     };
     super::browser::bind_filter_query(entry, move |text, recursive, restart| {
+        state.recursive.set(recursive);
         if restart {
             state.generation.set(state.generation.get().wrapping_add(1));
             state.handle.borrow_mut().take();
@@ -311,13 +357,14 @@ pub(super) fn wrap(
             }
             if let Some(SearchEvent::Results {
                 query: returned,
-                items,
+                mut items,
                 indexing,
                 coverage,
             }) = latest
                 && !returned.is_empty()
                 && returned == entry.text().trim()
             {
+                items.retain(|item| search_path_present(&item.path));
                 state
                     .status
                     .set_visible(items.is_empty() || coverage.is_partial());
@@ -334,6 +381,14 @@ pub(super) fn wrap(
         });
     });
     search
+}
+
+pub(super) fn search_path_present(path: &Path) -> bool {
+    // Preserve dangling symlinks and uncertain paths; only confirmed absence removes a hit.
+    path.symlink_metadata().map_or_else(
+        |error| error.kind() != std::io::ErrorKind::NotFound,
+        |_| true,
+    )
 }
 
 fn result_at_widget(state: &State, picked: &gtk::Widget) -> Option<gtk::ListBoxRow> {
@@ -430,7 +485,7 @@ fn result_row(
     recursive: bool,
 ) -> gtk::ListBoxRow {
     let row = gtk::ListBoxRow::new();
-    // Keep keyboard focus in the query, away from file-operation shortcuts.
+    // Focus stays in the query unless an explicit return from Rename focuses this row.
     row.set_focusable(false);
     super::accessibility::set_label(&row, &item.name);
     let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
