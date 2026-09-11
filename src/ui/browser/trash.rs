@@ -130,6 +130,31 @@ fn delete_confirmation_overflow_label(hidden: usize) -> Option<String> {
 }
 
 impl ViewState {
+    pub(super) fn trash_dropped_locations(self: &Rc<Self>, sources: Vec<Location>) {
+        let weak = Rc::downgrade(self);
+        glib::MainContext::default().spawn_local(async move {
+            let mut entries = Vec::with_capacity(sources.len());
+            for source in sources {
+                match crate::adapters::query_file_entry(source).await {
+                    Ok(entry) => entries.push(entry),
+                    Err(error) => {
+                        if let Some(state) = weak.upgrade() {
+                            show_error_dialog(
+                                &state.overlay,
+                                "Unable to move to Trash",
+                                &error.to_string(),
+                            );
+                        }
+                        return;
+                    }
+                }
+            }
+            if let Some(state) = weak.upgrade() {
+                state.request_delete(entries, false);
+            }
+        });
+    }
+
     pub(super) fn clear_delete_animation(&self) {
         if let Some(cleanup) = self.pending_delete_animation_cleanup.take() {
             cleanup();

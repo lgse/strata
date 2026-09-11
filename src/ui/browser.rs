@@ -663,6 +663,21 @@ impl BrowserView {
         WeakBrowserView(Rc::downgrade(&self.state))
     }
 
+    pub(super) fn can_trash_file_drop(sources: &[Location]) -> bool {
+        !sources.is_empty()
+            && sources
+                .iter()
+                .all(|source| source.parent().is_some() && !paths::is_trash_location(source))
+    }
+
+    pub(super) fn trash_file_drop(&self, sources: Vec<Location>) -> bool {
+        if !Self::can_trash_file_drop(&sources) {
+            return false;
+        }
+        self.state.trash_dropped_locations(sources);
+        true
+    }
+
     pub fn commit_file_drop(
         &self,
         destination: Location,
@@ -1664,6 +1679,11 @@ impl ViewState {
             .map(|(depth, position, _)| (depth, position));
         for (depth, column) in self.columns.borrow().iter().enumerate() {
             let show_actions = destination == Some(depth);
+            if show_actions {
+                column.shell.add_css_class("active-column");
+            } else {
+                column.shell.remove_css_class("active-column");
+            }
             if !show_actions
                 && self
                     .overlay

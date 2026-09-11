@@ -109,6 +109,17 @@ fn info_mode(info: &gio::FileInfo) -> MetadataValue<u32> {
     }
 }
 
+pub(crate) async fn query_file_entry(location: Location) -> Result<FileEntry, glib::Error> {
+    let info = gio_file_for_location(&location)
+        .query_info_future(
+            FULL_ATTRIBUTES,
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            glib::Priority::DEFAULT,
+        )
+        .await?;
+    Ok(entry_from_info(location, info))
+}
+
 fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
     let native_name = info.name().into_os_string();
     let kind = match (info.file_type(), info_is_symlink(&info)) {

@@ -822,6 +822,26 @@ fn sidebar_file_drops_accept_local_places_but_not_virtual_locations() {
 }
 
 #[test]
+fn trash_drops_reject_empty_roots_and_already_trashed_sources() {
+    use crate::ui::browser::BrowserView;
+
+    assert!(BrowserView::can_trash_file_drop(&[
+        Location::local("/home/user/first.txt"),
+        Location::local("/home/user/second.txt"),
+        Location::local("/home/user/third.txt"),
+    ]));
+    assert!(!BrowserView::can_trash_file_drop(&[]));
+    assert!(!BrowserView::can_trash_file_drop(&[Location::local("/")]));
+    assert!(!BrowserView::can_trash_file_drop(&[Location::uri(
+        "trash:///"
+    )]));
+    assert!(!BrowserView::can_trash_file_drop(&[
+        Location::local("/home/user/first.txt"),
+        Location::uri("trash:///second.txt"),
+    ]));
+}
+
+#[test]
 fn the_empty_trash_row_and_its_separator_appear_only_for_confirmed_non_empty_trash() {
     assert_eq!(
         trash_menu_visibility(TrashContents::NonEmpty),

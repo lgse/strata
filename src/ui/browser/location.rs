@@ -974,13 +974,24 @@ impl ViewState {
             }
         }
         self.location_stack.set_visible_child_name("breadcrumbs");
-        let hadjustment = self.breadcrumb_scroller.hadjustment();
-        hadjustment.set_value(hadjustment.upper() - hadjustment.page_size());
-        let scroller = self.breadcrumb_scroller.clone();
-        glib::idle_add_local_once(move || {
-            let hadjustment = scroller.hadjustment();
-            hadjustment.set_value(hadjustment.upper() - hadjustment.page_size());
-        });
+        let Some(last) = self.breadcrumbs.last_child() else {
+            return;
+        };
+        let last = last.downgrade();
+        let _tick = self
+            .breadcrumb_scroller
+            .add_tick_callback(move |scroller, _| {
+                let Some(last) = last.upgrade() else {
+                    return glib::ControlFlow::Break;
+                };
+                // The adjustment's upper bound is stale until the new crumbs are allocated.
+                if last.width() <= 0 {
+                    return glib::ControlFlow::Continue;
+                }
+                let adjustment = scroller.hadjustment();
+                adjustment.set_value(adjustment.upper() - adjustment.page_size());
+                glib::ControlFlow::Break
+            });
     }
 
     pub(super) fn show_breadcrumb_hierarchy_menu(

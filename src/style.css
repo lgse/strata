@@ -2281,11 +2281,20 @@ entry.preview-command-entry selection {
   color: @theme_text;
 }
 
+@keyframes column-enter {
+  from { transform: translate(-24px, 0); opacity: 0; }
+  to { transform: translate(0, 0); opacity: 1; }
+}
+
+.directory-column.column-entering {
+  animation: column-enter 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 .directory-column:focus-within .column-header {
   color: @theme_text;
 }
 
-.destination-column .column-header {
+.active-column .column-header {
   background: @theme_surface;
   color: @theme_text;
   border-top-color: @theme_accent;
@@ -2354,8 +2363,14 @@ entry.preview-command-entry selection {
   border-bottom: 1px solid alpha(@theme_border, 0.6);
   color: alpha(@theme_accent, 0.58);
   font-weight: 700;
-  min-height: 37px;
-  padding: 0 5px 0 12px;
+  min-height: 31px;
+  /* Balance the three-pixel top indicator against the one-pixel bottom border. */
+  padding: 2px 5px 4px 12px;
+}
+
+.column-heading {
+  /* Center title glyphs optically against the square action icons. */
+  padding-top: 2px;
 }
 
 button.column-header-action,
@@ -4179,4 +4194,9 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 .density-airy .file-row > * {
   margin-bottom: 8px;
   margin-top: 8px;
+}
+
+.density-airy .file-row > .file-row-content {
+  margin-bottom: 4px;
+  margin-top: 4px;
 }

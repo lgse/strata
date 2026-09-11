@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod animation;
 mod search;
 mod spinner;
 
