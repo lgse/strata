@@ -99,6 +99,9 @@ your current chooser and dismiss the one-time in-app offer. Neither folder
 association nor an unattended install enables the chooser automatically.
 Non-interactive package installation requires passwordless sudo or cached credentials. Run `./install.sh --help` for the full option list.
 
+Phone backends are not installed by the script. For optional iPhone/iPad or Android
+access, follow [Connecting phones](#connecting-phones) after installation.
+
 ### AI-assisted installation
 
 Use this option to have a coding agent install and verify the latest release archive.
@@ -119,6 +122,9 @@ Then:
 - Install the required GTK4, GtkSourceView 5, Poppler GLib, Fontconfig, Bubblewrap,
   FFmpeg/GStreamer, and desktop-integration runtime dependencies using the system
   package manager. Add gvfs-smb only if I want SMB support.
+- Ask whether I want phone access. On Arch/Omarchy, add gvfs-afc and usbmuxd for
+  iPhone/iPad, or gvfs-mtp for Android, only if requested. Other distributions
+  need their equivalent GVfs backends.
 - Download the archive and its matching .sha256 file from the latest GitHub release.
 - Verify the checksum with sha256sum --check. If GitHub CLI is installed and
   authenticated, also verify GitHub Actions provenance with
@@ -167,7 +173,8 @@ GTK **4.12 or newer** and glibc **2.39 or newer** are required. Other glibc-base
 
 Device discovery requires the GVfs UDisks2 volume monitor (`gvfs` on Arch and
 Fedora; `gvfs-daemons` on Debian/Ubuntu). Without that backend, removable drives
-may be absent from Devices. SMB support remains optional.
+may be absent from Devices. SMB support remains optional. Phones need additional
+backends; see [Connecting phones](#connecting-phones).
 
 #### 2. Download and verify
 
@@ -322,6 +329,40 @@ omarchy menu keybindings --print | grep -i "file manager"
 ```
 
 `hyprctl configerrors` should produce no errors. These user overrides survive Omarchy updates; do not edit files under `/usr/share/omarchy/`.
+
+### Connecting phones
+
+Strata discovers and mounts phones through GIO/GVfs. The required phone backends
+are optional and are not installed by `install.sh`. On Arch Linux or Omarchy,
+install only the support you need:
+
+```bash
+# iPhone or iPad (AFC):
+sudo pacman -S --needed gvfs-afc usbmuxd
+# Android (MTP):
+sudo pacman -S --needed gvfs-mtp
+```
+
+Other distributions need equivalent GVfs AFC or MTP backends; package names vary.
+
+- **iPhone/iPad:** unlock the device, connect it with a USB data cable, and accept
+  **Trust This Computer** (enter the device passcode if requested). iOS exposes
+  only the media and app documents it permits, not unrestricted internal storage.
+- **Android:** unlock the device, connect it with a USB data cable, and select
+  **File transfer / Android Auto** or **MTP** in its USB preferences rather than
+  charging-only mode. Accept any file-access prompt. Only storage exposed by the
+  phone is available, not protected system files or private app data.
+
+After installing a backend, fully quit Strata (all windows) and reopen it.
+Reconnect the unlocked phone if necessary, then click its entry under **Devices**.
+For Android, open **Internal storage** (the label varies by device).
+
+If the phone is missing, check the backend package, try another data cable or USB
+port, and confirm the trust/file-transfer setting. On Arch/Omarchy, `lsusb` (from
+`usbutils`) can confirm USB detection, but detection alone does not establish file
+access. For iPhone/iPad, also check `systemctl status usbmuxd.service` while the
+phone is connected. If the newly installed backend still is not discovered after
+restarting Strata, log out and back in to refresh the desktop's GVfs services.
 
 ### Network shares
 
