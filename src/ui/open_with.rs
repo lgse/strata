@@ -19,9 +19,7 @@ pub(super) fn compatible_apps(content_type: &str, requires_uris: bool) -> Vec<gi
     )
 }
 
-/// Path-only handlers (`%f`/`%F`) can open a file when GIO provides a local
-/// path, including GVfs FUSE mounts. URI-capable handlers are required only
-/// when there is no path (Trash, unmounted remotes).
+// Non-native GVfs files can still provide FUSE paths for %f/%F handlers.
 pub(super) fn requires_uri_handlers(files: &[gio::File]) -> bool {
     files
         .iter()
