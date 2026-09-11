@@ -101,10 +101,6 @@ impl InlineSearch {
         Some(entries)
     }
 
-    /// Drops results whose path no longer exists, e.g. after a rename, delete, or move
-    /// dispatched from that result's own context menu. `query()` only re-scores the snapshot
-    /// `index_filter` took when the search started, so a mutated hit otherwise lingers until the
-    /// query itself changes.
     pub fn prune_missing(&self) {
         let Some(state) = self.state.as_ref() else {
             return;
@@ -116,7 +112,7 @@ impl InlineSearch {
             .items
             .borrow()
             .iter()
-            .filter(|item| item.path.try_exists().unwrap_or(true))
+            .filter(|item| search_path_present(&item.path))
             .cloned()
             .collect();
         if pruned.len() != state.items.borrow().len() {
@@ -340,13 +336,14 @@ pub(super) fn wrap(
             }
             if let Some(SearchEvent::Results {
                 query: returned,
-                items,
+                mut items,
                 indexing,
                 coverage,
             }) = latest
                 && !returned.is_empty()
                 && returned == entry.text().trim()
             {
+                items.retain(|item| search_path_present(&item.path));
                 state
                     .status
                     .set_visible(items.is_empty() || coverage.is_partial());
@@ -363,6 +360,14 @@ pub(super) fn wrap(
         });
     });
     search
+}
+
+pub(super) fn search_path_present(path: &Path) -> bool {
+    // Preserve dangling symlinks and uncertain paths; only confirmed absence removes a hit.
+    path.symlink_metadata().map_or_else(
+        |error| error.kind() != std::io::ErrorKind::NotFound,
+        |_| true,
+    )
 }
 
 fn result_at_widget(state: &State, picked: &gtk::Widget) -> Option<gtk::ListBoxRow> {

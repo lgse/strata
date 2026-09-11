@@ -115,6 +115,12 @@ def test_filtered_rename_targets_the_nested_duplicate(strata, mode):
     assert strata.fixture.path("alpha/match-note.txt").read_text() == "alpha source\n"
     assert strata.fixture.path("match-note.txt").read_text() == "root decoy\n"
     assert field.text == "match-note"
+    strata.wait(lambda: result(strata, "beta/match-note.txt") is None, "the stale hit to disappear")
+    strata.pointer.click(field)
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text("match-note.t")
+    strata.wait(lambda: len(strata.matches()) == 2, "only the surviving matches after a query change")
+    assert result(strata, "beta/match-note.txt") is None
 
 
 @pytest.mark.parametrize("mode", SINGLE_PANE_MODES)

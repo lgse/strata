@@ -35,8 +35,7 @@ fn with_filtered_result(
 ) {
     let fixture = tempfile::tempdir().expect("fixture");
     std::fs::write(fixture.path().join("needle.txt"), b"body").expect("fixture file");
-    // A non-matching sibling keeps the directory (and the active search) non-empty after the
-    // mutation, so a passing test can't be explained by unrelated "folder went empty" behavior.
+    // Keep empty-directory handling from masking stale search results.
     std::fs::write(fixture.path().join("other.txt"), b"body").expect("fixture file");
     let view = BrowserView::new(
         Rc::new(crate::adapters::LocalFileSource),
@@ -63,6 +62,13 @@ fn with_filtered_result(
     assert!(view.show_filter_with_query("needle"));
     wait_until(|| shows_match(&view.widget(), "needle.txt"));
     run(&view, fixture.path(), entry);
+    assert!(view.show_filter_with_query("nee"));
+    let deadline = Instant::now() + Duration::from_millis(500);
+    while Instant::now() < deadline {
+        glib::MainContext::default().iteration(false);
+        assert!(!shows_match(&view.widget(), "needle.txt"));
+        std::thread::sleep(Duration::from_millis(2));
+    }
     view.browser().clear_observer();
     window.close();
 }
