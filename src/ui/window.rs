@@ -690,6 +690,7 @@ pub(super) fn build_appearance_menu(
     popover.set_child(Some(&content));
     button.set_child(Some(&button_icon));
     button.add_css_class("header-action");
+    button.set_cursor_from_name(Some("pointer"));
     button
 }
 
@@ -1192,7 +1193,7 @@ impl SidebarState {
         on_drop: impl Fn(&Rc<Self>, &str, bool) -> bool + 'static,
     ) {
         row.add_css_class("reorderable");
-        row.set_cursor_from_name(Some("grab"));
+        row.set_cursor_from_name(Some("pointer"));
 
         let drag = gtk::DragSource::builder()
             .actions(gtk::gdk::DragAction::MOVE)
@@ -1208,7 +1209,7 @@ impl SidebarState {
         let dragged_row = row.clone();
         drag.connect_drag_end(move |_, _, _| {
             dragged_row.remove_css_class("dragging");
-            dragged_row.set_cursor_from_name(Some("grab"));
+            dragged_row.set_cursor_from_name(Some("pointer"));
         });
         row.add_controller(drag);
 
@@ -1969,6 +1970,7 @@ fn sidebar_button(icon: &str, name: &str) -> gtk::Button {
         .halign(gtk::Align::Fill)
         .build();
     row.add_css_class("sidebar-row");
+    row.set_cursor_from_name(Some("pointer"));
     row.set_has_frame(false);
     row
 }
@@ -1982,6 +1984,7 @@ fn sidebar_eject_button(action: MediaRelease, on_release: impl Fn() + 'static) -
         14,
     )));
     button.add_css_class("sidebar-eject");
+    button.set_cursor_from_name(Some("pointer"));
     button.set_has_frame(false);
     button.set_valign(gtk::Align::Center);
     button.connect_clicked(move |_| on_release());

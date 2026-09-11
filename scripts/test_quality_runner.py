@@ -95,6 +95,12 @@ class QualityRunnerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("--userns=keep-id", calls[-1]["args"])
 
+    def test_quality_checkout_retains_base_commits_beyond_the_merge_parents(self):
+        workflow = (REPOSITORY / ".github/workflows/ci.yml").read_text()
+        build = workflow.split("\n  quality-build:", 1)[1].split("\n  quality-shard:", 1)[0]
+        checkout = build.split("uses: actions/checkout@", 1)[1].split("\n      - ", 1)[0]
+        self.assertIn("fetch-depth: 0", checkout)
+
     def test_ci_builds_only_deliberate_unpublished_recipe_changes(self):
         workflow = (REPOSITORY / ".github/workflows/ci.yml").read_text()
         step = workflow.split("- name: Resolve the shared environment or build an explicit recipe update", 1)[1]

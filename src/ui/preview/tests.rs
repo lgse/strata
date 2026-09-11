@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 
+mod media_size;
 mod preferences;
 
 use std::rc::Rc;
@@ -11,7 +12,7 @@ use super::{
     format_media_time, media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
     preview_width_for_empty_space, print_fit, print_page_starts, print_progress_for_page,
 };
-use crate::services::{LoadHandle, PreviewEvent, PreviewProvider, PreviewRequest};
+use crate::services::{LoadHandle, PreviewEvent, PreviewProvider, PreviewRequest, SandboxedMedia};
 use crate::ui::theme::ThemeManager;
 
 struct UnusedPreviewProvider;
@@ -180,26 +181,30 @@ fn pdf_scroll_zoom_stays_within_its_supported_range() {
 }
 
 #[test]
-fn clear_content_clears_media_file_input_stream() {
-    const TEST: &str = "ui::preview::tests::clear_content_clears_media_file_input_stream";
+fn clear_content_detaches_and_removes_the_normalized_media_file() {
+    const TEST: &str =
+        "ui::preview::tests::clear_content_detaches_and_removes_the_normalized_media_file";
     crate::test_support::gtk_test(TEST, || {
-        let bytes = glib::Bytes::from_static(b"media fixture");
-        let input = gio::MemoryInputStream::from_bytes(&bytes);
-        let media = gtk::MediaFile::for_input_stream(&input);
+        let source = SandboxedMedia::from_normalized(b"media fixture").expect("normalized fixture");
+        let path = source.path().to_path_buf();
+        let media = gtk::MediaFile::for_file(&gio::File::for_path(&path));
         let drawer = PreviewDrawer::new(Rc::new(UnusedPreviewProvider), false);
+        drawer.state.media_source.replace(Some(source));
         drawer
             .state
             .media
             .replace(Some(media.clone().upcast::<gtk::MediaStream>()));
 
-        assert!(media.input_stream().is_some());
+        assert!(media.file().is_some());
         drawer.state.clear_content();
 
         assert!(drawer.state.media.borrow().is_none());
+        assert!(drawer.state.media_source.borrow().is_none());
         assert!(
-            media.input_stream().is_none(),
+            media.file().is_none(),
             "clearing preview content must detach the media source"
         );
+        assert!(!path.exists(), "unreferenced media must be removed");
     });
 }
 

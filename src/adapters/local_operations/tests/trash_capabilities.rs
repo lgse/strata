@@ -102,6 +102,7 @@ fn isolated_trash_supports_read_copy_move_restore_and_delete() {
             },
             text_byte_limit: 100,
             pdf_page: 0,
+            media_size: crate::services::MediaPreviewSize::new(1280, 1280),
         },
         Rc::new(move |event| emitted.borrow_mut().push(event)),
     );
