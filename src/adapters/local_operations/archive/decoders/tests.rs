@@ -1272,7 +1272,7 @@ fn unencrypted_zip_checksum_failure_stays_damaged() -> Result<(), Box<dyn Error>
     super::super::fixtures::write_zip_stored(&archive, &[("file.txt", b"checksum-payload")])?;
     let mut bytes = fs::read(&archive)?;
     let offset = bytes
-        .windows(16)
+        .windows(b"checksum-payload".len())
         .position(|bytes| bytes == b"checksum-payload")
         .expect("stored payload");
     bytes[offset] ^= 1;
