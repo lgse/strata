@@ -35,6 +35,26 @@ fn navigation_reference_matches_each_mode() {
 }
 
 #[test]
+fn shortcut_text_describes_keys_without_editor_specific_wording() {
+    assert!(navigation_shortcuts(BrowserMode::Columns).contains(&(
+        "h / j / k / l",
+        "Move between items; l opens the item (type-to-search off)",
+    )));
+
+    let mut visible_text = [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List]
+        .into_iter()
+        .flat_map(|mode| {
+            navigation_shortcuts(mode)
+                .into_iter()
+                .chain(summary_shortcuts(mode))
+        })
+        .chain(FILES.iter().copied())
+        .chain(TOOLS.iter().copied())
+        .flat_map(|(key, action)| [key, action]);
+    assert!(visible_text.all(|text| !text.to_ascii_lowercase().contains("vim")));
+}
+
+#[test]
 fn reference_lists_rename_and_refresh_bindings_without_overlap() {
     assert!(FILES.contains(&("F2 / Ctrl+R", "Rename")));
     assert!(TOOLS.contains(&("F5", "Refresh")));
