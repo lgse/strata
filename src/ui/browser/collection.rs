@@ -2,6 +2,7 @@
 
 use crate::app::Browser;
 use crate::model::Location;
+use crate::services::fold_for_search;
 use crate::ui::browser::entry::entry_matches;
 use crate::ui::entry_list_model::EntryListModel;
 use gtk::prelude::*;
@@ -306,7 +307,7 @@ pub(crate) fn notify_filter_query(
     query: &RefCell<String>,
     text: String,
 ) {
-    let settled = text.to_lowercase();
+    let settled = fold_for_search(&text);
     let previous = query.borrow().clone();
     if previous == settled {
         return;

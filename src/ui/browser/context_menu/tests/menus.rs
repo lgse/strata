@@ -344,6 +344,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                                 "New Folder",
                                 "New File",
                                 "Paste",
+                                "Open With…",
                                 "Open in Terminal",
                                 "Customize…",
                             ],
@@ -354,6 +355,7 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                             &[
                                 "New Folder",
                                 "New File",
+                                "Open With…",
                                 "Paste",
                                 "Open in Terminal",
                                 "Customize…",

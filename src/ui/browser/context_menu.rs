@@ -187,6 +187,7 @@ pub(in crate::ui) fn install_folder_context_menu(
         "Ctrl+Shift+N",
     );
     let new_file = context_menu_option(crate::assets::icons::FILE_PLUS, "New File", "");
+    let open_with = context_menu_option(crate::assets::icons::EXTERNAL_LINK, "Open With…", "");
     let open_terminal =
         context_menu_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
     let paste = context_menu_option(crate::assets::icons::CLIPBOARD_PASTE, "Paste", "Ctrl+V");
@@ -212,10 +213,12 @@ pub(in crate::ui) fn install_folder_context_menu(
     customize.set_visible(!in_trash && location.native_path().is_some());
     new_folder.set_visible(!in_trash);
     new_file.set_visible(!in_trash);
+    open_with.set_visible(!in_trash);
     open_terminal.set_visible(!in_trash);
     paste.set_visible(!in_trash);
     content.append(&new_folder);
     content.append(&new_file);
+    content.append(&open_with);
     content.append(&open_terminal);
     if !in_trash {
         content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
@@ -331,6 +334,34 @@ pub(in crate::ui) fn install_folder_context_menu(
         if let Some(state) = weak.upgrade() {
             state.show_folder_properties(&properties_location);
         }
+    });
+    let weak = Rc::downgrade(state);
+    let open_with_popover = popover.downgrade();
+    let open_with_location = location.clone();
+    open_with.connect_clicked(move |_| {
+        if let Some(popover) = open_with_popover.upgrade() {
+            popover.popdown();
+        }
+        let Some(state) = weak.upgrade() else {
+            return;
+        };
+        let file = gio_file_for_location(&open_with_location);
+        let requires_uris =
+            crate::ui::open_with::requires_uri_handlers(std::slice::from_ref(&file));
+        let (recommended_apps, other_apps) =
+            crate::ui::open_with::categorized_apps("inode/directory", requires_uris);
+        let browser = Rc::downgrade(&state.browser);
+        crate::ui::open_with::show(
+            &state.overlay,
+            vec![file],
+            recommended_apps,
+            other_apps,
+            Rc::new(move || {
+                if let Some(browser) = browser.upgrade() {
+                    browser.focus_active();
+                }
+            }),
+        );
     });
     let weak = Rc::downgrade(state);
     let terminal_popover = popover.downgrade();
@@ -674,7 +705,8 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             crate::ui::open_with::show(
                 &state.overlay,
                 selection.files,
-                selection.apps,
+                selection.recommended_apps,
+                selection.other_apps,
                 Rc::new(move || {
                     if let Some(browser) = browser.upgrade() {
                         browser.focus_active();
@@ -702,7 +734,8 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             crate::ui::open_with::show(
                 &state.overlay,
                 selection.files,
-                selection.apps,
+                selection.recommended_apps,
+                selection.other_apps,
                 Rc::new(move || {
                     if let Some(browser) = browser.upgrade() {
                         browser.focus_active();
@@ -1385,7 +1418,8 @@ fn permanently_delete_is_visible(in_trash: bool, can_delete: Option<bool>) -> bo
 struct OpenWithSelection {
     locations: Vec<Location>,
     files: Vec<gio::File>,
-    apps: Vec<gio::AppInfo>,
+    recommended_apps: Vec<gio::AppInfo>,
+    other_apps: Vec<gio::AppInfo>,
     default: Option<gio::AppInfo>,
 }
 
@@ -1477,8 +1511,9 @@ fn prepare_open_with(
             return;
         }
         let requires_uris = crate::ui::open_with::requires_uri_handlers(&files);
-        let (apps, default) = common_applications(&content_types, requires_uris);
-        let available = !apps.is_empty();
+        let (recommended_apps, other_apps, default) =
+            common_applications(&content_types, requires_uris);
+        let available = !recommended_apps.is_empty() || !other_apps.is_empty();
         let explanation = if available {
             None
         } else if content_types.len() > 1 {
@@ -1490,7 +1525,8 @@ fn prepare_open_with(
         result.replace(Some(OpenWithSelection {
             locations,
             files,
-            apps,
+            recommended_apps,
+            other_apps,
             default,
         }));
         for button in [&single_button, &multiple_button] {
@@ -1503,19 +1539,21 @@ fn prepare_open_with(
 fn common_applications(
     content_types: &[String],
     requires_uris: bool,
-) -> (Vec<gio::AppInfo>, Option<gio::AppInfo>) {
+) -> (Vec<gio::AppInfo>, Vec<gio::AppInfo>, Option<gio::AppInfo>) {
     let Some(first) = content_types.first() else {
-        return (vec![], None);
+        return (vec![], vec![], None);
     };
-    let mut apps = crate::ui::open_with::compatible_apps(first, requires_uris);
+    let (mut recommended, _) = crate::ui::open_with::categorized_apps(first, requires_uris);
     let mut default = gio::AppInfo::default_for_type(first, requires_uris);
     for content_type in &content_types[1..] {
-        let next = crate::ui::open_with::compatible_apps(content_type, requires_uris);
-        apps.retain(|app| next.iter().any(|candidate| candidate.equal(app)));
+        let (next_rec, _) = crate::ui::open_with::categorized_apps(content_type, requires_uris);
+        recommended.retain(|app| next_rec.iter().any(|candidate| candidate.equal(app)));
         let next_default = gio::AppInfo::default_for_type(content_type, requires_uris);
         default = default.filter(|app| next_default.as_ref().is_some_and(|next| next.equal(app)));
     }
-    (apps, default)
+    let other =
+        crate::ui::open_with::filter_other_apps(gio::AppInfo::all(), &recommended, requires_uris);
+    (recommended, other, default)
 }
 
 #[cfg(test)]
