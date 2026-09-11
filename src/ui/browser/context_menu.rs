@@ -855,7 +855,22 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
     });
     for button in [&restore, &restore_multiple] {
         connect_selection_action(button, &popover, state, &target, |state, entries| {
-            state.request_restore(entries);
+            if let Some(trash_button) = state.trash_button.borrow().as_ref() {
+                let weak = Rc::downgrade(state);
+                let entries_for_restore = std::rc::Rc::new(entries.clone());
+                super::fly_to_trash::fly_from_trash(
+                    state.overlay.upcast_ref(),
+                    &entries,
+                    trash_button,
+                    move || {
+                        if let Some(state) = weak.upgrade() {
+                            state.request_restore((*entries_for_restore).clone());
+                        }
+                    },
+                );
+            } else {
+                state.request_restore(entries);
+            }
         });
     }
     for (button, moving) in [

@@ -116,11 +116,13 @@ pub(super) fn column_rows(
         let size = gtk::Label::new(None);
         size.add_css_class("file-size");
         size.set_halign(gtk::Align::End);
-        size.set_valign(gtk::Align::Center);
+        size.set_valign(gtk::Align::Fill);
         size.set_xalign(1.0);
+        size.set_yalign(0.5);
         let middle = gtk::Overlay::new();
+        middle.add_css_class("file-row-content");
         middle.set_hexpand(true);
-        middle.set_valign(gtk::Align::Center);
+        middle.set_valign(gtk::Align::Fill);
         let path = gtk::Label::builder()
             .xalign(0.0)
             .wrap(true)
@@ -131,6 +133,7 @@ pub(super) fn column_rows(
             .build();
         path.add_css_class("file-search-path");
         let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        content.set_valign(gtk::Align::Center);
         content.append(&editor);
         content.append(&path);
         middle.set_child(Some(&content));

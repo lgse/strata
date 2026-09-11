@@ -554,6 +554,7 @@ impl ViewState {
                 self.update_item_progress(*completed, *total);
             }
             BrowserEvent::DeletionFinished => {
+                self.clear_delete_animation();
                 self.dismiss_file_operation_progress();
                 self.prune_stale_search_results();
             }
@@ -573,6 +574,7 @@ impl ViewState {
             BrowserEvent::RestorationFinished => self.dismiss_file_operation_progress(),
             BrowserEvent::OperationFailed { message } => {
                 self.pending_new_entry.take();
+                self.clear_delete_animation();
                 self.dismiss_file_operation_progress();
                 self.pending_archive_destination.take();
                 let retry = self.pending_extract_retry.take();
