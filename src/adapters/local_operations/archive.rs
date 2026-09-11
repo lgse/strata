@@ -209,6 +209,17 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
             });
             return;
         };
+        // Create the destination if it doesn't exist; clean up the empty dir on
+        // failure so a cancelled password prompt leaves no leftover folder.
+        let created_dest = !dest_dir.exists();
+        if created_dest && let Err(e) = std::fs::create_dir_all(&dest_dir) {
+            emit(OperationEvent::Failed {
+                request_id: request.id,
+                message: format!("Could not create folder: {e}"),
+            });
+            return;
+        }
+        let dest_dir_for_cleanup = dest_dir.clone();
         let format = ArchiveFormat::from_extension(&request.entry.display_name);
         let password = request.password.clone();
         let display_name = request.entry.display_name.clone();
@@ -263,6 +274,13 @@ pub(super) fn extract(request: ExtractRequest, emit: Rc<dyn Fn(OperationEvent)>)
         })
         .await;
         timer_id.remove();
+        if created_dest
+            && !matches!(result, Ok(Ok(ArchiveOutcome::Completed(_))))
+            && std::fs::read_dir(&dest_dir_for_cleanup)
+                .is_ok_and(|mut entries| entries.next().is_none())
+        {
+            let _ = std::fs::remove_dir(&dest_dir_for_cleanup);
+        }
         match result {
             Ok(Ok(ArchiveOutcome::Completed(first_name))) => emit(OperationEvent::Extracted {
                 request_id: request.id,
