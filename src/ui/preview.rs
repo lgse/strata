@@ -891,7 +891,6 @@ impl PreviewState {
             }
             PreviewContent::SandboxedMedia { media: source } => {
                 // GTK 4.14's GStreamer backend supports files, not input streams.
-                // This private file contains only the sandbox-normalized clip.
                 let file = gio::File::for_path(source.path());
                 self.media_source.replace(Some(source));
                 let media = gtk::MediaFile::for_file(&file);
