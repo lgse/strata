@@ -240,12 +240,13 @@ def test_skipping_one_collision_still_pastes_the_rest(strata):
     assert not fixture.path("archive/notes (1).txt").exists(), (
         "skipping must not create a numbered copy"
     )
-    assert fixture.path("archive/report.md").is_file(), (
-        "non-conflicting items must still be pasted"
-    )
-    assert fixture.path("archive/spreadsheet.csv").is_file(), (
-        "non-conflicting items must still be pasted"
-    )
+    for name in ("report.md", "spreadsheet.csv"):
+        source = fixture.path(f"documents/{name}")
+        copied = fixture.path(f"archive/{name}")
+        strata.wait(
+            lambda: copied.is_file() and copied.read_bytes() == source.read_bytes(),
+            f"the non-conflicting {name} copy to finish",
+        )
 
 
 def test_replacing_on_a_duplicate_name_overwrites(strata):

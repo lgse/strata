@@ -2456,8 +2456,6 @@ impl OperationProvider for LocalOperationProvider {
                 let is_duplicate = !request.move_sources && source.equal(&default_target);
                 let needs_unique_target =
                     is_duplicate || item.conflict == TransferConflict::KeepBoth;
-                // Replacing a pasted item with itself (same-directory Replace) is a no-op;
-                // keep-both still gets the numbered copy below.
                 if (!is_duplicate && transfer_is_noop(&source, &destination, &default_target))
                     || (is_duplicate && item.conflict == TransferConflict::ReplaceExisting)
                 {

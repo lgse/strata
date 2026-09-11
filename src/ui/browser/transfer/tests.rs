@@ -340,7 +340,7 @@ fn same_folder_paste_creates_a_numbered_copy_without_a_dialog() {
             let window = gtk::Window::builder().child(&overlay).build();
             window.present();
 
-            view.start_transfer(
+            view.state.start_transfer(
                 Location::local(&folder),
                 vec![Location::local(folder.join("photo.jpg"))],
                 false,
@@ -389,7 +389,7 @@ fn conflict_dialog_offers_skip_for_a_multi_item_paste() {
             let window = gtk::Window::builder().child(&overlay).build();
             window.present();
 
-            view.start_transfer(
+            view.state.start_transfer(
                 Location::local(&destination),
                 vec![
                     Location::local(source_dir.join("a.txt")),
@@ -443,7 +443,7 @@ fn skipping_the_only_collision_still_transfers_accepted_items() {
             let window = gtk::Window::builder().child(&overlay).build();
             window.present();
 
-            view.start_transfer(
+            view.state.start_transfer(
                 Location::local(&destination),
                 vec![
                     Location::local(source_dir.join("a.txt")),
@@ -474,10 +474,14 @@ fn skipping_the_only_collision_still_transfers_accepted_items() {
             click_button(&overlay, "Skip");
             for name in ["b.txt", "c.txt", "d.txt"] {
                 let copied = destination.join(name);
-                wait_until(|| copied.exists(), "the non-conflicting transfer to finish");
+                let expected = std::fs::read(source_dir.join(name)).expect("source contents");
+                wait_until(
+                    || std::fs::read(&copied).is_ok_and(|contents| contents == expected),
+                    "the non-conflicting transfer to finish",
+                );
                 assert_eq!(
                     std::fs::read(&copied).expect("copied contents"),
-                    std::fs::read(source_dir.join(name)).expect("source contents"),
+                    expected,
                     "the accepted items must still be pasted"
                 );
             }
@@ -522,7 +526,7 @@ fn skip_stays_visible_for_the_final_conflict_after_keep_both() {
             let window = gtk::Window::builder().child(&overlay).build();
             window.present();
 
-            view.start_transfer(
+            view.state.start_transfer(
                 Location::local(&destination),
                 vec![
                     Location::local(source_dir.join("a.txt")),
@@ -555,7 +559,10 @@ fn skip_stays_visible_for_the_final_conflict_after_keep_both() {
             click_button(&overlay, "Skip");
 
             let kept_both = destination.join("a (1).txt");
-            wait_until(|| kept_both.exists(), "the first Keep Both copy");
+            wait_until(
+                || std::fs::read(&kept_both).is_ok_and(|contents| contents == b"new a"),
+                "the first Keep Both copy",
+            );
             assert_eq!(
                 std::fs::read(&kept_both).expect("kept-both copy"),
                 b"new a",
@@ -600,7 +607,7 @@ fn undo_move_keeps_skip_visible_for_a_partial_restore() {
             let window = gtk::Window::builder().child(&overlay).build();
             window.present();
 
-            view.start_transfer(
+            view.state.start_transfer(
                 Location::local(&current),
                 vec![
                     Location::local(original.join("a.txt")),
@@ -689,7 +696,7 @@ fn conflict_dialog_verifies_theme_following() {
             let window = gtk::Window::builder().child(&overlay).build();
             window.present();
 
-            view.start_transfer(
+            view.state.start_transfer(
                 Location::local(&destination),
                 vec![Location::local(source_dir.join("cast.txt"))],
                 false,
