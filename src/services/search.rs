@@ -46,8 +46,6 @@ const INDEX_TIME_BUDGET: Duration = Duration::from_secs(10);
 const INITIAL_DIRECTORY_BATCH: usize = 1;
 const MAX_PENDING_DIRECTORIES: usize = 4_096;
 
-/// Lowers the text and normalizes it to NFC so a precomposed query matches a
-/// combining-sequence filename and the other way around.
 pub fn fold_for_search(text: &str) -> String {
     if text.is_ascii() {
         return text.to_ascii_lowercase();
