@@ -2,7 +2,7 @@
 
 use std::{
     path::{Path, PathBuf},
-    process::Command,
+    process::{Command, Output},
     time::{Duration, Instant},
 };
 
@@ -10,13 +10,13 @@ use gdk_pixbuf::prelude::*;
 
 use super::{
     MediaBackend, bounded_output, bounded_output_with_timeout, bounded_surface_dimensions,
-    media_backends, media_command, read_limited, render_pixbuf, render_raw, render_raw_thumbnail,
-    render_simple_dcraw, run, run_media_backends, scale_embedded_thumbnail,
+    media_backends, media_command, probe_saw_video, read_limited, render_pixbuf, render_raw,
+    render_raw_thumbnail, render_simple_dcraw, run, run_media_backends, scale_embedded_thumbnail,
 };
 use crate::sandbox::MediaPreviewBackend;
 
-fn arguments(backend: &MediaBackend) -> String {
-    media_command(backend, Path::new("/input"))
+fn arguments(backend: &MediaBackend, has_video: bool) -> String {
+    media_command(backend, Path::new("/input"), has_video)
         .get_args()
         .map(|argument| argument.to_string_lossy())
         .collect::<Vec<_>>()
@@ -210,13 +210,13 @@ fn media_commands_select_the_backend_and_preserve_limits() {
         MediaBackend::Vulkan(1),
     ] {
         assert!(
-            media_command(&backend, Path::new("/input"))
+            media_command(&backend, Path::new("/input"), true)
                 .get_envs()
                 .any(|(name, value)| name == "MALLOC_ARENA_MAX" && value == Some("1".as_ref()))
         );
     }
 
-    let vaapi = arguments(&MediaBackend::VaApi("/dev/dri/renderD129".into()));
+    let vaapi = arguments(&MediaBackend::VaApi("/dev/dri/renderD129".into()), true);
     assert!(vaapi.contains("-threads 1 -filter_threads 1"));
     assert!(vaapi.contains("-hwaccel vaapi -hwaccel_device /dev/dri/renderD129"));
     assert!(vaapi.contains("-hwaccel_output_format vaapi"));
@@ -227,7 +227,7 @@ fn media_commands_select_the_backend_and_preserve_limits() {
     );
     assert!(vaapi.contains("-c:a aac -b:a 96k -movflags +frag_keyframe+empty_moov -f mp4"));
 
-    let vulkan = arguments(&MediaBackend::Vulkan(1));
+    let vulkan = arguments(&MediaBackend::Vulkan(1), true);
     assert!(vulkan.contains("-threads 1 -filter_threads 1"));
     assert!(vulkan.contains("-init_hw_device vulkan=vk:1 -filter_hw_device vk"));
     assert!(vulkan.contains("-hwaccel vulkan -hwaccel_device vk"));
@@ -237,7 +237,7 @@ fn media_commands_select_the_backend_and_preserve_limits() {
     assert!(vulkan.contains("-usage transcode -tune ull"));
     assert!(vulkan.contains("-c:a aac -b:a 96k -movflags +frag_keyframe+empty_moov -f mp4"));
 
-    let software = arguments(&MediaBackend::Software);
+    let software = arguments(&MediaBackend::Software, true);
     assert!(software.contains(
         "-vf scale=w=1280:h=1280:force_original_aspect_ratio=decrease,format=yuv420p -c:v libvpx -auto-alt-ref 0"
     ));
@@ -251,6 +251,43 @@ fn media_commands_select_the_backend_and_preserve_limits() {
         assert!(command.contains("-b:v 2M -maxrate 3M -bufsize 4M"));
         assert!(command.ends_with("pipe:1"));
     }
+}
+
+#[test]
+fn audio_only_media_commands_emit_webm_audio_without_video_options() {
+    for backend in [
+        MediaBackend::VaApi("/dev/dri/renderD129".into()),
+        MediaBackend::Vulkan(1),
+        MediaBackend::Software,
+    ] {
+        let command = arguments(&backend, false);
+        assert!(!command.contains("-hwaccel"));
+        assert!(!command.contains("-vf"));
+        assert!(!command.contains("-c:v"));
+        assert!(!command.contains("0:v:0"));
+        assert!(!command.contains("-fpsmax"));
+        assert!(!command.contains("-b:v"));
+        assert!(command.contains("-max_alloc 536870912 -max_pixels 50000000"));
+        assert!(command.contains("-map 0:a:0? -vn -sn -dn -t 30"));
+        assert!(command.contains("-c:a libopus -b:a 96k -f webm"));
+        assert!(command.ends_with("pipe:1"));
+    }
+}
+
+#[test]
+fn video_probe_output_only_succeeds_on_detected_video_streams() {
+    use std::os::unix::process::ExitStatusExt;
+
+    let output = |status: i32, stdout: &[u8]| Output {
+        status: std::process::ExitStatus::from_raw(status),
+        stdout: stdout.to_vec(),
+        stderr: Vec::new(),
+    };
+
+    assert!(probe_saw_video(Some(output(0, b"0\n"))));
+    assert!(!probe_saw_video(Some(output(0, b""))));
+    assert!(probe_saw_video(Some(output(1, b"0\n"))));
+    assert!(probe_saw_video(None));
 }
 
 #[test]

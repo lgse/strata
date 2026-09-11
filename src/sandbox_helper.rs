@@ -18,6 +18,7 @@ use crate::sandbox::{MAX_OUTPUT_BYTES, MediaPreviewBackend, gpu_devices, numbere
 const HARDWARE_ATTEMPT_TIME_LIMIT: Duration = Duration::from_secs(8);
 const HARDWARE_TOTAL_TIME_LIMIT: Duration = Duration::from_secs(12);
 const MEDIA_TOTAL_TIME_LIMIT: Duration = Duration::from_secs(28);
+const MEDIA_PROBE_TIME_LIMIT: Duration = Duration::from_secs(4);
 const MAX_MEDIA_ALLOCATION_BYTES: u64 = 512 * 1024 * 1024;
 const MAX_MEDIA_DECODE_PIXELS: u64 = 50_000_000;
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(20);
@@ -254,7 +255,12 @@ fn bounded_surface_dimensions(
 }
 
 fn render_media_preview(path: &Path, policy: MediaPreviewBackend) -> Result<Vec<u8>, String> {
-    let backends = media_backends(&gpu_devices(Path::new("/dev"), policy), policy);
+    let has_video = input_has_video(path);
+    let backends = if has_video {
+        media_backends(&gpu_devices(Path::new("/dev"), policy), policy)
+    } else {
+        vec![MediaBackend::Software]
+    };
     let started = Instant::now();
     let hardware_started = Instant::now();
     run_media_backends(&backends, |backend| {
@@ -268,13 +274,35 @@ fn render_media_preview(path: &Path, policy: MediaPreviewBackend) -> Result<Vec<
                 .min(hardware_remaining)
                 .min(total_remaining)
         };
-        let mut command = media_command(backend, path);
+        let mut command = media_command(backend, path, has_video);
         bounded_output_with_timeout(&mut command, MAX_OUTPUT_BYTES, timeout).map(|result| {
             result.and_then(|output| {
                 (output.status.success() && !output.stdout.is_empty()).then_some(output.stdout)
             })
         })
     })
+}
+
+fn input_has_video(path: &Path) -> bool {
+    let mut command = Command::new("ffprobe");
+    command
+        .args(["-v", "error", "-select_streams", "v"])
+        .args(["-show_entries", "stream=index", "-of", "csv=p=0"])
+        .arg(path);
+    let output =
+        bounded_output_with_timeout(&mut command, MAX_OUTPUT_BYTES, MEDIA_PROBE_TIME_LIMIT)
+            .ok()
+            .flatten();
+    probe_saw_video(output)
+}
+
+fn probe_saw_video(output: Option<Output>) -> bool {
+    // Failed probes cannot rule out a video stream, so they keep the video-first pipeline;
+    // only a clean empty probe proves the input has no video stream.
+    match output {
+        Some(output) if output.status.success() => !output.stdout.is_empty(),
+        _ => true,
+    }
 }
 
 fn media_backends(devices: &[PathBuf], policy: MediaPreviewBackend) -> Vec<MediaBackend> {
@@ -314,106 +342,116 @@ fn media_backends(devices: &[PathBuf], policy: MediaPreviewBackend) -> Vec<Media
     backends
 }
 
-fn media_command(backend: &MediaBackend, path: &Path) -> Command {
+fn media_command(backend: &MediaBackend, path: &Path, has_video: bool) -> Command {
     let mut command = Command::new("ffmpeg");
     command
         .args(["-nostdin", "-v", "error", "-max_alloc"])
         .arg(MAX_MEDIA_ALLOCATION_BYTES.to_string())
         .arg("-max_pixels")
         .arg(MAX_MEDIA_DECODE_PIXELS.to_string());
-    match backend {
-        MediaBackend::VaApi(device) => {
-            command
-                .env("MALLOC_ARENA_MAX", "1")
-                .args([
-                    "-threads",
-                    "1",
-                    "-filter_threads",
-                    "1",
-                    "-hwaccel",
-                    "vaapi",
-                    "-hwaccel_device",
-                ])
-                .arg(device)
-                .args(["-hwaccel_output_format", "vaapi"]);
+    if has_video {
+        match backend {
+            MediaBackend::VaApi(device) => {
+                command
+                    .env("MALLOC_ARENA_MAX", "1")
+                    .args([
+                        "-threads",
+                        "1",
+                        "-filter_threads",
+                        "1",
+                        "-hwaccel",
+                        "vaapi",
+                        "-hwaccel_device",
+                    ])
+                    .arg(device)
+                    .args(["-hwaccel_output_format", "vaapi"]);
+            }
+            MediaBackend::Vulkan(index) => {
+                command
+                    .env("MALLOC_ARENA_MAX", "1")
+                    .args(["-threads", "1", "-filter_threads", "1", "-init_hw_device"])
+                    .arg(format!("vulkan=vk:{index}"))
+                    .args([
+                        "-filter_hw_device",
+                        "vk",
+                        "-hwaccel",
+                        "vulkan",
+                        "-hwaccel_device",
+                        "vk",
+                        "-hwaccel_output_format",
+                        "vulkan",
+                    ]);
+            }
+            MediaBackend::Software => {
+                command.args(["-threads", "2"]);
+            }
         }
-        MediaBackend::Vulkan(index) => {
-            command
-                .env("MALLOC_ARENA_MAX", "1")
-                .args(["-threads", "1", "-filter_threads", "1", "-init_hw_device"])
-                .arg(format!("vulkan=vk:{index}"))
-                .args([
-                    "-filter_hw_device",
-                    "vk",
-                    "-hwaccel",
-                    "vulkan",
-                    "-hwaccel_device",
-                    "vk",
-                    "-hwaccel_output_format",
-                    "vulkan",
+        command
+            .arg("-i")
+            .arg(path)
+            .args(["-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn", "-t", "30"]);
+        match backend {
+            MediaBackend::VaApi(_) => {
+                command.args([
+                    "-vf",
+                    "scale_vaapi=w=1280:h=1280:force_original_aspect_ratio=decrease:force_divisible_by=16:format=nv12",
+                    "-c:v",
+                    "h264_vaapi",
                 ]);
+            }
+            MediaBackend::Vulkan(_) => {
+                command.args([
+                    "-vf",
+                    "scale_vulkan=w='max(16,trunc(min(iw,iw*1280/max(iw,ih))/16)*16)':h='max(16,trunc(min(ih,ih*1280/max(iw,ih))/16)*16)':format=nv12",
+                    "-c:v",
+                    "h264_vulkan",
+                    "-usage",
+                    "transcode",
+                    "-tune",
+                    "ull",
+                ]);
+            }
+            MediaBackend::Software => {
+                command.args([
+                    "-vf",
+                    "scale=w=1280:h=1280:force_original_aspect_ratio=decrease,format=yuv420p",
+                    "-c:v",
+                    "libvpx",
+                    "-auto-alt-ref",
+                    "0",
+                    "-threads",
+                    "2",
+                    "-deadline",
+                    "realtime",
+                    "-cpu-used",
+                    "8",
+                ]);
+            }
         }
-        MediaBackend::Software => {
-            command.args(["-threads", "2"]);
-        }
+        command.args(["-fpsmax", "30"]);
+        command.args(["-b:v", "2M", "-maxrate", "3M", "-bufsize", "4M"]);
+        match backend {
+            MediaBackend::Software => {
+                command.args(["-c:a", "libopus", "-b:a", "96k", "-f", "webm"])
+            }
+            MediaBackend::VaApi(_) | MediaBackend::Vulkan(_) => command.args([
+                "-c:a",
+                "aac",
+                "-b:a",
+                "96k",
+                "-movflags",
+                "+frag_keyframe+empty_moov",
+                "-f",
+                "mp4",
+            ]),
+        };
+    } else {
+        command
+            .arg("-i")
+            .arg(path)
+            .args(["-map", "0:a:0?", "-vn", "-sn", "-dn", "-t", "30"])
+            .args(["-c:a", "libopus", "-b:a", "96k", "-f", "webm"]);
     }
-    command
-        .arg("-i")
-        .arg(path)
-        .args(["-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn", "-t", "30"]);
-    match backend {
-        MediaBackend::VaApi(_) => {
-            command.args([
-                "-vf",
-                "scale_vaapi=w=1280:h=1280:force_original_aspect_ratio=decrease:force_divisible_by=16:format=nv12",
-                "-c:v",
-                "h264_vaapi",
-            ]);
-        }
-        MediaBackend::Vulkan(_) => {
-            command.args([
-                "-vf",
-                "scale_vulkan=w='max(16,trunc(min(iw,iw*1280/max(iw,ih))/16)*16)':h='max(16,trunc(min(ih,ih*1280/max(iw,ih))/16)*16)':format=nv12",
-                "-c:v",
-                "h264_vulkan",
-                "-usage",
-                "transcode",
-                "-tune",
-                "ull",
-            ]);
-        }
-        MediaBackend::Software => {
-            command.args([
-                "-vf",
-                "scale=w=1280:h=1280:force_original_aspect_ratio=decrease,format=yuv420p",
-                "-c:v",
-                "libvpx",
-                "-auto-alt-ref",
-                "0",
-                "-threads",
-                "2",
-                "-deadline",
-                "realtime",
-                "-cpu-used",
-                "8",
-            ]);
-        }
-    }
-    command.args(["-fpsmax", "30"]);
-    command.args(["-b:v", "2M", "-maxrate", "3M", "-bufsize", "4M"]);
-    match backend {
-        MediaBackend::Software => command.args(["-c:a", "libopus", "-b:a", "96k", "-f", "webm"]),
-        MediaBackend::VaApi(_) | MediaBackend::Vulkan(_) => command.args([
-            "-c:a",
-            "aac",
-            "-b:a",
-            "96k",
-            "-movflags",
-            "+frag_keyframe+empty_moov",
-            "-f",
-            "mp4",
-        ]),
-    };
     command.arg("pipe:1");
     command
 }
