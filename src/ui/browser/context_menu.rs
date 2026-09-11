@@ -1072,6 +1072,42 @@ pub(super) fn preview_context_entry(
     }
 }
 
+fn focus_search_result(state: &ViewState, depth: usize, entry: &FileEntry) {
+    let Some(path) = entry.location.native_path() else {
+        return;
+    };
+    if state.mode_views.borrow().mode() != crate::ui::browser_modes::BrowserMode::Columns {
+        state.mode_views.borrow().focus_search_result(path);
+        return;
+    }
+    let Some(column) = state.columns.borrow().get(depth).cloned() else {
+        return;
+    };
+    if column.search_handle.borrow().is_none() {
+        return;
+    }
+    let position = column
+        .search_results
+        .borrow()
+        .iter()
+        .position(|item| item.path == path);
+    let Some(position) = position else {
+        return;
+    };
+    let row = column.bound_rows.borrow().iter().find_map(|bound| {
+        let item = bound.item.upgrade()?;
+        (item.position() == position as u32)
+            .then(|| bound.row.upgrade())
+            .flatten()
+    });
+    if let Some(row) = row.filter(|row| row.is_mapped()) {
+        column.selection.select_item(position as u32, true);
+        if let Some(item) = row.parent() {
+            item.grab_focus();
+        }
+    }
+}
+
 pub(super) fn rename_context_entry(
     state: &Rc<ViewState>,
     depth: usize,
@@ -1118,6 +1154,22 @@ pub(super) fn rename_context_entry(
         host.blurred_root.clone(),
         None,
     );
+    let submitted = Rc::new(Cell::new(false));
+    let submitted_on_unmap = submitted.clone();
+    let weak_state = Rc::downgrade(state);
+    let origin = entry.clone();
+    layer.connect_unmap(move |layer| {
+        if submitted_on_unmap.get() || !layer.has_css_class("dismissing") {
+            return;
+        }
+        let weak_state = weak_state.clone();
+        let origin = origin.clone();
+        glib::idle_add_local_once(move || {
+            if let Some(state) = weak_state.upgrade() {
+                focus_search_result(&state, depth, &origin);
+            }
+        });
+    });
     let weak_layer = layer.downgrade();
     let dismiss = Rc::new(move || {
         if let Some(layer) = weak_layer.upgrade() {
@@ -1145,6 +1197,7 @@ pub(super) fn rename_context_entry(
     layout.confirm.connect_clicked(move |_| {
         if super::update_basename_validation(&field_for_submit) {
             let name = field_for_submit.text().to_string();
+            submitted.set(true);
             dismiss();
             if let Some(state) = weak.upgrade() {
                 super::queue_rename(&state.browser, entry.clone(), name);
@@ -1423,7 +1476,7 @@ fn prepare_open_with(
         if generation.get() != expected_generation {
             return;
         }
-        let requires_uris = files.iter().any(|file| !file.is_native());
+        let requires_uris = crate::ui::open_with::requires_uri_handlers(&files);
         let (apps, default) = common_applications(&content_types, requires_uris);
         let available = !apps.is_empty();
         let explanation = if available {

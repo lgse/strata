@@ -542,6 +542,22 @@ impl BrowserView {
     }
 
     pub fn begin_rename(&self) -> bool {
+        if self.filter_has_focus() || self.selected_search_results().is_some() {
+            let Some(entry) = self.selected_search_result() else {
+                return false;
+            };
+            if self.state.rename_operation_pending() {
+                return false;
+            }
+            self.state.cancel_new_entry();
+            context_menu::rename_context_entry(
+                &self.state,
+                self.state.destination_depth().unwrap_or(0),
+                None,
+                entry,
+            );
+            return true;
+        }
         self.state.begin_rename()
     }
 

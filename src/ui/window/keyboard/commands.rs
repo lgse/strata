@@ -44,10 +44,11 @@ impl Dispatcher {
 
     pub(super) fn inline_editing(&self, event: &KeyEvent) -> KeyResult {
         if is_rename_shortcut(event.key, event.modifiers)
-            && !event
-                .focused
-                .as_ref()
-                .is_some_and(crate::ui::focus_navigation::editable)
+            && (self.view.filter_has_focus()
+                || !event
+                    .focused
+                    .as_ref()
+                    .is_some_and(crate::ui::focus_navigation::editable))
             && self.view.begin_rename()
         {
             return Some(Propagation::Stop);

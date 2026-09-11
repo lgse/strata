@@ -137,6 +137,29 @@ pub(super) fn set_column_busy(column: &ColumnView, busy: bool) {
         .update_state(&[gtk::accessible::State::Busy(busy)]);
 }
 
+pub(super) fn prune_missing_search_results(column: &ColumnView) {
+    if column.search_handle.borrow().is_none() {
+        return;
+    }
+    let mut results = column.search_results.borrow_mut();
+    let before = results.len();
+    results.retain(|item| crate::ui::inline_search::search_path_present(&item.path));
+    if results.len() == before {
+        return;
+    }
+    let labels: Vec<_> = results.iter().map(|item| item.name.clone()).collect();
+    drop(results);
+    let labels: Vec<_> = labels.iter().map(String::as_str).collect();
+    column
+        .search_model
+        .splice(0, column.search_model.n_items(), &labels);
+    column.filtered_model.items_changed(
+        0,
+        column.search_model.n_items(),
+        column.search_model.n_items(),
+    );
+}
+
 pub(super) fn set_filter_placeholder(column: &ColumnView, count: usize) {
     let noun = if count == 1 { "item" } else { "items" };
     column
@@ -508,8 +531,10 @@ impl ViewState {
         header.add_css_class("column-header");
         let heading_box = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         heading_box.set_hexpand(true);
+        heading_box.set_valign(gtk::Align::Center);
         let heading = gtk::Label::new(Some(&location.display_name()));
         heading.set_xalign(0.0);
+        heading.set_valign(gtk::Align::Center);
         heading.set_tooltip_text(Some(&location.display_path()));
         let truncated_hint = crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
         truncated_hint.set_tooltip_text(Some(
@@ -519,6 +544,7 @@ impl ViewState {
         heading_box.append(&heading);
         heading_box.append(&truncated_hint);
         let spinner = gtk::Spinner::new();
+        spinner.set_valign(gtk::Align::Center);
         spinner.set_visible(false);
         header.append(&heading_box);
         header.append(&spinner);
@@ -557,7 +583,7 @@ impl ViewState {
         filter_button.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::FUNNEL,
         )));
-        filter_button.add_css_class("column-header-action");
+        crate::ui::controls::pane_header_action(&filter_button);
         let shown_filter = filter_revealer.clone();
         let focused_filter = filter_entry.clone();
         filter_button.connect_toggled(move |button| {
@@ -574,7 +600,7 @@ impl ViewState {
                 .tooltip_text("Close this pane")
                 .build();
             close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
-            close.add_css_class("column-header-action");
+            crate::ui::controls::pane_header_action(&close);
             let weak_browser = Rc::downgrade(&self.browser);
             close.connect_clicked(move |_| {
                 if let Some(browser) = weak_browser.upgrade() {
@@ -585,6 +611,7 @@ impl ViewState {
         }
         // Homogeneous pages keep column geometry stable as the action target changes.
         let header_actions_stack = gtk::Stack::new();
+        header_actions_stack.set_valign(gtk::Align::Center);
         header_actions_stack.add_named(&header_actions, Some("actions"));
         header_actions_stack.add_named(
             &gtk::Box::new(gtk::Orientation::Horizontal, 0),
@@ -777,7 +804,9 @@ impl ViewState {
                             }
                         }
                     }
-                    if let Some(crate::services::SearchEvent::Results { query, items, .. }) = latest
+                    if let Some(crate::services::SearchEvent::Results {
+                        query, mut items, ..
+                    }) = latest
                         && let Some(entry) = weak_entry.upgrade()
                         && !query.is_empty()
                         && query == entry.text().trim()
@@ -785,6 +814,9 @@ impl ViewState {
                         let Some(sm) = weak_sm.upgrade() else {
                             return glib::ControlFlow::Break;
                         };
+                        items.retain(|item| {
+                            crate::ui::inline_search::search_path_present(&item.path)
+                        });
                         let old_items = results.borrow();
                         let n_old = old_items.len();
                         let n_new = items.len();
