@@ -2,7 +2,8 @@
 
 use crate::model::{EntryKind, FileEntry};
 use crate::services::{
-    PreviewContent, content_family, has_plain_text_extension, is_extensionless_dotfile,
+    PreviewContent, content_family, fold_for_search, has_plain_text_extension,
+    is_extensionless_dotfile,
 };
 use gtk::gio;
 use gtk::prelude::*;
@@ -187,10 +188,10 @@ pub(in crate::ui) fn entry_icon(entry: &FileEntry) -> &'static str {
     icon_for_name(&entry.display_name)
 }
 
-/// `query` must already be folded to lowercase by the caller.
+/// `query` must already be folded through `fold_for_search` by the caller.
 pub(super) fn entry_matches(value: &str, show_hidden: bool, query: &str) -> bool {
     (show_hidden || !model_is_hidden(value))
-        && (query.is_empty() || model_display_name(value).to_lowercase().contains(query))
+        && (query.is_empty() || fold_for_search(model_display_name(value)).contains(query))
 }
 
 pub(super) fn icon_for_name(name: &str) -> &'static str {

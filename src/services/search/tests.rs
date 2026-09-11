@@ -19,7 +19,8 @@ use super::{
 };
 
 fn score_path(path: &str, query: &str, root: &Path) -> Option<i64> {
-    fuzzy_score_normalized(&SearchItem::new(PathBuf::from(path), root, false), query)
+    let query = crate::services::search::fold_for_search(query);
+    fuzzy_score_normalized(&SearchItem::new(PathBuf::from(path), root, false), &query)
 }
 
 fn index_tree_with_budget(
@@ -214,6 +215,49 @@ fn background_index_returns_results_for_queries_received_while_walking() {
     drop(search);
     fs::remove_dir_all(root).expect("the search fixture should be removed");
     assert!(found, "the worker should publish the matching indexed file");
+}
+
+#[test]
+fn nfc_queries_match_nfd_names_in_both_directions() {
+    let root = Path::new("/fixture");
+    let nfc = "/fixture/r\u{e9}sum\u{e9}.txt";
+    let nfd = "/fixture/re\u{301}sume\u{301}.txt";
+    let nfc_query = "r\u{e9}sum\u{e9}";
+    let nfd_query = "re\u{301}sume\u{301}";
+    for (path, query) in [(nfc, nfd_query), (nfd, nfc_query), (nfd, nfd_query)] {
+        let score = score_path(path, query, root).expect("the normalized query should match");
+        let substring =
+            score_path(path, "sum", root).expect("the ascii substring should still match");
+        assert!(score > substring, "{path:?}, {query:?}");
+    }
+    let nfc_name_score = score_path(nfc, nfc_query, root).expect("the NFC name should match");
+    let nfd_name_score = score_path(nfd, nfd_query, root).expect("the NFD name should match");
+    assert_eq!(nfc_name_score, nfd_name_score);
+}
+
+#[test]
+fn background_index_returns_nfc_queries_against_nfd_filenames() {
+    let root = unique_fixture_root("nfc-nfd-matching");
+    fs::create_dir_all(&root).expect("the search fixture should be created");
+    fs::write(root.join("re\u{301}sume\u{301}.txt"), b"fixture")
+        .expect("create the NFD fixture file");
+
+    let (search, events) = index_tree(root.clone(), false);
+    search.query("r\u{e9}sum\u{e9}");
+    let event = wait_for_results(&events);
+
+    drop(search);
+    fs::remove_dir_all(&root).expect("remove fixture");
+
+    let Some(SearchEvent::Results { items, .. }) = event else {
+        panic!("the worker should publish a result for a non-empty query");
+    };
+    assert!(
+        items
+            .iter()
+            .any(|item| item.name == "re\u{301}sume\u{301}.txt"),
+        "an NFC query should match the NFD filename"
+    );
 }
 
 #[test]
