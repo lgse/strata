@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::model::{FileEntry, Location};
+use crate::services::{DropCommit, TransferKind};
 use std::path::Path;
 
 fn visible_texts(overlay: &gtk::Overlay) -> Vec<String> {
@@ -130,6 +131,32 @@ fn resolved_dialog_surface(overlay: &gtk::Overlay) -> String {
 }
 
 #[test]
+fn drop_commit_kind_describes_the_pending_cursor_action() {
+    assert_eq!(DropCommit::Copy.transfer_kind(), TransferKind::Copy);
+    assert_eq!(DropCommit::Move.transfer_kind(), TransferKind::Move);
+    assert_eq!(
+        DropCommit::Ask {
+            default: TransferKind::Copy,
+            volume: VolumeRelation::Different,
+        }
+        .transfer_kind(),
+        TransferKind::Copy
+    );
+}
+
+#[test]
+fn cross_volume_prompt_only_claims_another_device_when_the_lookup_resolved() {
+    assert_eq!(
+        cross_volume_drop_description(VolumeRelation::Different),
+        "The destination is on a different device."
+    );
+    assert_eq!(
+        cross_volume_drop_description(VolumeRelation::Unknown),
+        "Strata could not determine whether the destination is on the same device."
+    );
+}
+
+#[test]
 fn duplicate_transfer_uses_the_selected_entries_parent() {
     let entry = |path: &str| FileEntry {
         location: Location::local(path),
@@ -233,9 +260,10 @@ fn start_transfer_skips_noops_before_emitting_progress() {
                 });
 
                 for destination in [source.clone(), Location::local(&nested_path)] {
-                    view.start_transfer(destination, vec![source.clone()], moving);
+                    view.state
+                        .start_transfer(destination, vec![source.clone()], moving);
                 }
-                view.start_transfer(
+                view.state.start_transfer(
                     Location::local(fixture.path()),
                     vec![source.clone(), Location::local(&other_path)],
                     true,
@@ -243,7 +271,7 @@ fn start_transfer_skips_noops_before_emitting_progress() {
                 assert!(started.borrow().is_empty());
                 assert!(!finished.get());
 
-                view.start_transfer(
+                view.state.start_transfer(
                     source.clone(),
                     vec![source, Location::local(&other_path)],
                     moving,

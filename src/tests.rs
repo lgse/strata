@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use std::{ffi::OsString, os::unix::ffi::OsStringExt, path::Path};
-
-use gtk::gio;
+use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
 use super::{
     GIO_FALLBACK_BACKENDS, LaunchMode, encode_daemon_pids, gvfs_daemon_pids,
-    gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, launch_mode, open_locations,
-    run_preview_helper,
+    gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, launch_mode, run_preview_helper,
 };
 
 #[test]
@@ -57,41 +54,6 @@ fn preview_helper_rejects_non_utf8_instead_of_changing_paths() {
         run_preview_helper(&arguments),
         Err("Invalid UTF-8 in preview helper arguments".to_owned())
     );
-}
-
-#[test]
-fn every_opened_argument_becomes_a_location() {
-    let non_utf8 = OsString::from_vec(b"/tmp/\xff".to_vec());
-    let files = [
-        gio::File::for_uri("smb://host/share"),
-        gio::File::for_path("/tmp/first"),
-        gio::File::for_path("/tmp/second"),
-        gio::File::for_path(&non_utf8),
-        gio::File::for_uri("sftp://host/share"),
-        gio::File::for_uri("trash:///"),
-    ];
-
-    let locations = open_locations(&files);
-
-    assert_eq!(locations.len(), files.len());
-    assert!(
-        locations[0]
-            .uri_value()
-            .is_some_and(|uri| uri.starts_with("smb://host/share")),
-        "{:?}",
-        locations[0]
-    );
-    assert_eq!(locations[1].native_path(), Some(Path::new("/tmp/first")));
-    assert_eq!(locations[2].native_path(), Some(Path::new("/tmp/second")));
-    assert_eq!(locations[3].native_path(), Some(Path::new(&non_utf8)));
-    for (location, scheme) in locations[4..].iter().zip(["sftp:", "trash:"]) {
-        assert!(
-            location
-                .uri_value()
-                .is_some_and(|uri| uri.starts_with(scheme))
-        );
-    }
-    assert!(open_locations(&[]).is_empty());
 }
 
 fn fake_proc(label: &str, processes: &[(&str, &str)]) -> std::path::PathBuf {

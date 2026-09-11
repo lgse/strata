@@ -100,3 +100,47 @@ def test_escape_dismisses_transient_before_selection(strata, mode, surface):
     strata.keyboard.press("Escape")
     strata.wait_for_selection([], root)
     assert strata.pane_names() == [root]
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.preferences(single_click_previews=False)
+def test_shift_after_escape_starts_on_the_focused_entry(strata, mode):
+    root = strata.fixture.root.name
+    next_key = NEXT_ENTRY_KEY[mode]
+    strata.wait_for_focused_entry("archive")
+    strata.wait_for_selection(["archive"], root)
+    strata.keyboard.press("Escape")
+    strata.wait_for_selection([], root)
+    strata.wait_for_focused_entry("archive")
+
+    strata.keyboard.press(f"shift+{next_key}")
+    strata.wait_for_selection(["archive"], root)
+    strata.wait_for_focused_entry("archive")
+
+    strata.keyboard.press(f"shift+{next_key}")
+    strata.wait_for_selection(["archive", "documents"], root)
+    strata.wait_for_focused_entry("documents")
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.preferences(single_click_previews=False)
+def test_shift_after_escape_does_not_reuse_a_range_anchor(strata, mode):
+    root = strata.fixture.root.name
+    next_key = NEXT_ENTRY_KEY[mode]
+    strata.wait_for_focused_entry("archive")
+    strata.wait_for_selection(["archive"], root)
+    strata.keyboard.press(f"shift+{next_key}")
+    strata.wait_for_selection(["archive", "documents"], root)
+    strata.wait_for_focused_entry("documents")
+
+    strata.keyboard.press("Escape")
+    strata.wait_for_selection([], root)
+    strata.wait_for_focused_entry("documents")
+
+    strata.keyboard.press(f"shift+{next_key}")
+    strata.wait_for_selection(["documents"], root)
+    strata.wait_for_focused_entry("documents")
+
+    strata.keyboard.press(f"shift+{next_key}")
+    strata.wait_for_selection(["documents", "pictures"], root)
+    strata.wait_for_focused_entry("pictures")

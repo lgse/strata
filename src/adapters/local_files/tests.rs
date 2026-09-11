@@ -263,6 +263,57 @@ fn coalescing_preserves_a_move_when_metadata_follows_it() {
 }
 
 #[test]
+fn metadata_update_followed_by_move_preserves_source_removal() {
+    let mut pending = HashMap::new();
+    let temp = Location::local("/fixture/file.tmp");
+    let dest = Location::local("/fixture/file");
+    assert!(queue_monitor_change(
+        &mut pending,
+        Some(temp.clone()),
+        PendingMonitorChange::Upsert(temp),
+    ));
+    assert!(queue_monitor_change(
+        &mut pending,
+        Some(dest.clone()),
+        PendingMonitorChange::Move {
+            from: Location::local("/fixture/file.tmp"),
+            to: dest.clone(),
+        },
+    ));
+    assert_eq!(pending.len(), 1);
+    assert!(matches!(
+        pending.get(&Some(dest)),
+        Some(PendingMonitorChange::Move { from, .. })
+            if *from == Location::local("/fixture/file.tmp")
+    ));
+}
+
+#[test]
+fn move_does_not_discard_a_pending_source_removal() {
+    let mut pending = HashMap::new();
+    let from = Location::local("/fixture/source");
+    let to = Location::local("/fixture/destination");
+    queue_monitor_change(
+        &mut pending,
+        Some(from.clone()),
+        PendingMonitorChange::Remove(from.clone()),
+    );
+    queue_monitor_change(
+        &mut pending,
+        Some(to.clone()),
+        PendingMonitorChange::Move {
+            from: from.clone(),
+            to,
+        },
+    );
+    assert!(matches!(
+        pending.get(&Some(from)),
+        Some(PendingMonitorChange::Remove(_))
+    ));
+    assert_eq!(pending.len(), 2);
+}
+
+#[test]
 fn large_monitor_bursts_collapse_to_one_rescan() {
     let mut pending = HashMap::new();
     for index in 0..=MAX_PENDING_MONITOR_CHANGES {

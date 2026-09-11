@@ -66,6 +66,38 @@ fn retryable_delete_entries_is_empty_when_nothing_matches() {
 }
 
 #[test]
+fn restore_confirmation_shows_the_full_destination_path() {
+    assert_eq!(
+        restore_destination_text(std::path::Path::new(
+            "/home/user/Documents/Projects/report.txt"
+        )),
+        "/home/user/Documents/Projects/report.txt"
+    );
+}
+
+#[test]
+fn restore_confirmation_names_the_item_count_and_destination_action() {
+    assert_eq!(restore_confirmation_title(1), "Restore 1 item?");
+    assert_eq!(restore_confirmation_title(3), "Restore 3 items?");
+    assert_eq!(restore_confirmation_confirm_label(1), "Restore");
+    assert_eq!(restore_confirmation_confirm_label(2), "Restore 2 items");
+}
+
+#[test]
+fn restore_error_summary_includes_the_failure_reason() {
+    assert_eq!(
+        restore_error_summary(&[
+            "notes.txt: The original location is outside the trash volume and cannot be restored"
+                .to_owned()
+        ]),
+        "notes.txt: The original location is outside the trash volume and cannot be restored"
+    );
+    let summary = restore_error_summary(&["a: denied".to_owned(), "b: denied".to_owned()]);
+    assert!(summary.starts_with("2 items could not be restored."));
+    assert!(summary.contains("a: denied"));
+}
+
+#[test]
 fn delete_confirmation_renders_every_row_for_a_small_selection() {
     let entries = (0..7).map(confirmation_entry).collect::<Vec<_>>();
 

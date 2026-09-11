@@ -820,6 +820,7 @@ fn build_chooser(
         17,
     )));
     sidebar_toggle.add_css_class("sidebar-toggle");
+    sidebar_toggle.set_cursor_from_name(Some("pointer"));
     let location = view.location_widget();
     location.set_hexpand(true);
     let appearance = build_appearance_menu(&view, &browser, theme.clone());

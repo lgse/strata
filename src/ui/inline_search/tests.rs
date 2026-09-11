@@ -7,6 +7,22 @@ use std::{
     time::{Instant, SystemTime},
 };
 
+#[test]
+fn search_presence_preserves_dangling_symlinks_but_not_removed_entries() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let target = fixture.path().join("target");
+    let link = fixture.path().join("link");
+    fs::write(&target, b"body").expect("target");
+    std::os::unix::fs::symlink(&target, &link).expect("symlink");
+    assert!(search_path_present(&target));
+    assert!(search_path_present(&link));
+    fs::remove_file(&target).expect("remove target");
+    assert!(!search_path_present(&target));
+    assert!(search_path_present(&link));
+    fs::remove_file(&link).expect("remove link");
+    assert!(!search_path_present(&link));
+}
+
 fn labels(widget: &gtk::Widget) -> Vec<String> {
     let mut result = Vec::new();
     if let Some(label) = widget.downcast_ref::<gtk::Label>() {

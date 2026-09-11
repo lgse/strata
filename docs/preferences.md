@@ -15,7 +15,12 @@ changes to its selected value. There is no separate startup initializer to keep
 in sync with the change handler. Every setter goes through `save_preferences`,
 which deduplicates unchanged preferences and publishes changes through the same
 notification mechanism. Failed writes are logged, still apply in memory, and
-are retried on the next save attempt.
+are retried on the next save attempt. If an existing settings file cannot be read
+or parsed as TOML, startup logs a warning and uses temporary defaults. Preference
+changes still apply in memory, but saving is disabled for that manager's lifetime
+to preserve the original file. Fix the file and restart Strata to resume saving.
+Missing files allow normal first-run saves; invalid values in otherwise valid
+TOML still use the existing per-entry recovery.
 
 Bindings use weak widget anchors and remove their listeners when the anchor is
 destroyed. Callbacks must capture weak references to any owned widget/state or
@@ -35,6 +40,7 @@ control that might be midway through synchronization.
 | --- | --- |
 | Folder peeking, single-click previews, mode, density, grouping, per-mode click counts, auto-refresh | Every browser binds at construction, including lazily rebuilt view modes. The chooser explicitly disallows folder peeking regardless of the saved value. |
 | Hidden files | Shared across existing browsers and new columns. |
+| Cross-device drag and drop | Drop dispatch reads the current Copy, Move, or Ask strategy; unresolved volume lookups follow the same cross-device policy. |
 | Sort key/direction, folders-first | Shared defaults for new columns; an existing column keeps its own sort, selection and navigation. Sorting a column updates the persisted defaults. |
 | Type-to-search, opening search results directly | Keyboard/search actions read the current manager value at dispatch. |
 | Include subfolders when filtering | Every pane filter binds at construction, including lazy view rebuilds. Enabled by default; disabling indexes only immediate files and folders, without traversing descendants. Live changes cancel pending queries and invalidate old result streams before refreshing the active filter. Global search remains recursive. |

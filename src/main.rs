@@ -52,14 +52,6 @@ fn launch_mode(arguments: &[OsString]) -> LaunchMode {
     }
 }
 
-/// Every location the launcher or shell asked to open, local or remote, in order.
-fn open_locations(files: &[gio::File]) -> Vec<model::Location> {
-    files
-        .iter()
-        .filter_map(adapters::location_for_file)
-        .collect()
-}
-
 fn main() -> gtk::glib::ExitCode {
     let arguments: Vec<OsString> = std::env::args_os().collect();
     match launch_mode(&arguments) {
@@ -122,12 +114,11 @@ fn main() -> gtk::glib::ExitCode {
     application.connect_startup(export_file_manager_interface);
     application.connect_activate(ui::present);
     application.connect_open(|application, files, _| {
-        let locations = open_locations(files);
-        if locations.is_empty() {
+        if files.is_empty() {
             ui::present(application);
         }
-        for location in locations {
-            ui::present_location(application, Some(location));
+        for file in files {
+            ui::present_open(application, file.clone());
         }
     });
     application.run()

@@ -21,6 +21,7 @@ pub(super) use super::icons_cell::{
 use crate::{
     app::{Browser, BrowserColumnSnapshot},
     model::{FileEntry, Location, MetadataValue, SortDirection, SortKey},
+    services::DropCommit,
     ui::browser::paths::is_trash_location,
 };
 
@@ -33,7 +34,7 @@ const LIST_COLUMN_WIDTHS: [i32; 5] = [160, 160, 90, 120, 150];
 const LIST_COLUMN_MIN_WIDTHS: [i32; 5] = [160, 80, 70, 80, 110];
 const DEFAULT_ICONS_THUMBNAIL_SIZE: i32 = 64;
 const SCROLL_SETTLE_DELAY: std::time::Duration = std::time::Duration::from_millis(80);
-const FALLBACK_ICONS_COLUMN_WIDTH: i32 = 160;
+const FALLBACK_ICONS_COLUMN_WIDTH: i32 = 120;
 
 #[derive(Clone)]
 struct ListColumnLayout {
@@ -52,7 +53,7 @@ impl ListColumnLayout {
     }
 }
 
-type TransferHandler = Rc<dyn Fn(Location, Vec<Location>, bool)>;
+type TransferHandler = Rc<dyn Fn(Location, Vec<Location>, DropCommit)>;
 type TransferHandlerSlot = Rc<RefCell<Option<TransferHandler>>>;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -395,6 +396,12 @@ impl ModeViews {
         }
     }
 
+    pub fn prune_stale_search_results(&self) {
+        if let Some(pane) = self.single_pane() {
+            pane.search.prune_missing();
+        }
+    }
+
     pub fn header_has_focus(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
         self.single_pane()
@@ -656,6 +663,7 @@ impl ModeViews {
         let widget = pane.item_sections().iter().find_map(|section| {
             let position =
                 view_position_for_source(&pane.model, Some(&section.view_model), source_position)?;
+            super::browser::prepare_collection_inline_edit(&section.view, position);
             section.bound_items.borrow().iter().find_map(|bound| {
                 let item = bound.item.upgrade()?;
                 (item.position() == position).then(|| {
@@ -666,7 +674,7 @@ impl ModeViews {
                 })?
             })
         });
-        let Some((widget, collection, position)) = widget else {
+        let Some((widget, collection, _)) = widget else {
             return false;
         };
         if !widget.is_mapped() || widget.width() <= 0 || pane.stack.is_transition_running() {
@@ -687,7 +695,6 @@ impl ModeViews {
         let Some(field) = field else {
             return false;
         };
-        super::browser::prepare_collection_inline_edit(&collection, position);
         field.set_text(&entry.display_name);
         field.set_visible(true);
         label.set_visible(false);
@@ -756,6 +763,11 @@ impl ModeViews {
 
     pub fn selected_search_result(&self) -> Option<FileEntry> {
         self.single_pane()?.search.selected_entry()
+    }
+
+    pub fn focus_search_result(&self, path: &std::path::Path) -> bool {
+        self.single_pane()
+            .is_some_and(|pane| pane.search.focus_result(path))
     }
 
     pub fn selected_search_results(&self) -> Option<Vec<FileEntry>> {
@@ -927,19 +939,22 @@ impl ModeViews {
         }
     }
 
-    pub fn resume_native_selection(&self) {
+    pub fn resume_native_selection(&self) -> bool {
         let Some((depth, focused, _)) = self.browser.focused_item() else {
-            return;
+            return false;
         };
         if !self.browser.selected_positions(depth).is_empty() {
-            return;
+            return false;
         }
         // Seed GTK's empty selection before the arrow moves it, without scheduling
         // a focus restore that would undo the native move after key dispatch.
         for pane in self.panes_at(depth) {
             set_selections(pane, &[focused]);
+            reset_native_range_origin(pane, focused);
         }
         self.browser.set_selection(depth, &[focused], Some(focused));
+        self.browser.set_selection_anchor(depth, focused);
+        true
     }
 
     pub fn focused_position(&self) -> Option<(usize, usize)> {
@@ -1416,7 +1431,7 @@ fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButt
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::FUNNEL,
     )));
-    button.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&button);
     let shown_filter = revealer.clone();
     let focused_filter = entry.clone();
     button.connect_toggled(move |button| {
@@ -1477,7 +1492,7 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
         .tooltip_text("Thumbnail size")
         .popover(&thumbnail_popover)
         .build();
-    thumbnail_menu.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&thumbnail_menu);
     thumbnail_menu.add_css_class("icons-thumbnail-menu");
     thumbnail_menu.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::PICTURES,
@@ -2149,6 +2164,7 @@ fn list_headings(browser: &Rc<Browser>, depth: usize, columns: ListColumnLayout)
         button.add_css_class("list-heading-button");
         button.set_hexpand(true);
         if let Some(key) = key {
+            button.set_cursor_from_name(Some("pointer"));
             let weak_browser = Rc::downgrade(browser);
             let sorting_for_click = sorting.clone();
             let arrows_for_click = arrows.clone();
@@ -2323,6 +2339,7 @@ fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
             .build();
         button.set_child(Some(&crate::assets::chrome_icon(icon)));
         button.add_css_class("list-navigation-button");
+        button.set_cursor_from_name(Some("pointer"));
         let weak_browser = Rc::downgrade(browser);
         button.connect_clicked(move |_| {
             if let Some(browser) = weak_browser.upgrade() {
@@ -2435,6 +2452,9 @@ fn build_list_pane(
     // GTK bundles single-click activation with hover selection, which collapses
     // multi-selection. Per-row gestures honor the configured click behavior instead.
     view.set_single_click_activate(false);
+    if let Some(destination) = browser.location_at(depth) {
+        install_mode_directory_drop_target(&view, destination, transfer_handler.clone());
+    }
     let weak_browser = Rc::downgrade(&browser);
     let source_index_for_activation = source_index.clone();
     let view_model_for_activation = view_model_object.clone();
@@ -2499,6 +2519,7 @@ fn build_list_pane(
         .build();
     scroll.add_css_class("fixed-scrollbar");
     scroll.add_css_class("browser-listing-scroll");
+    scroll.add_css_class("list-listing-scroll");
     let browser_for_settle = Rc::downgrade(&browser);
     let source_index_for_settle = source_index.clone();
     let sections_for_settle = Rc::downgrade(&sections);
@@ -2585,7 +2606,7 @@ fn icons_loading_skeleton(thumbnail_size: i32, density: BrowserDensity) -> gtk::
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
         };
-        let card = gtk::Box::new(gtk::Orientation::Vertical, 3);
+        let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
         card.add_css_class("icons-card");
         card.set_halign(gtk::Align::Fill);
         ensure_icons_card_slot(&card, thumbnail_size);
@@ -2863,12 +2884,21 @@ fn install_mode_directory_drop_target(
         return;
     }
     widget.add_css_class("file-drop-zone");
-    let drop = gtk::DropTarget::new(
-        gtk::gdk::FileList::static_type(),
-        gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
-    );
-    drop.connect_enter(|target, _, _| super::browser::file_drop_action(target));
-    drop.connect_motion(|target, _, _| super::browser::file_drop_action(target));
+    let super::browser::PreparedFileDrop {
+        target: drop,
+        state: drop_state,
+    } = super::browser::prepare_file_drop_target({
+        let destination = destination.clone();
+        move || Some(destination.clone())
+    });
+    let state_for_enter = drop_state.clone();
+    drop.connect_enter(move |target, _, _| {
+        super::browser::file_drop_action(target, &state_for_enter)
+    });
+    let state_for_motion = drop_state.clone();
+    drop.connect_motion(move |target, _, _| {
+        super::browser::file_drop_action(target, &state_for_motion)
+    });
     drop.connect_drop(move |target, value, _, _| {
         let Some(sources) = super::browser::locations_from_file_list_value(value) else {
             return false;
@@ -2876,11 +2906,8 @@ fn install_mode_directory_drop_target(
         let Some(handler) = transfer_handler.borrow().clone() else {
             return false;
         };
-        handler(
-            destination.clone(),
-            sources,
-            super::browser::file_drop_action(target) == gtk::gdk::DragAction::MOVE,
-        );
+        let commit = super::browser::file_drop_commit(target, &destination, &sources, &drop_state);
+        handler(destination.clone(), sources, commit);
         true
     });
     widget.add_controller(drop);
@@ -3002,23 +3029,43 @@ fn install_list_drag_drop(
     // on content must not deny this drag before it reaches the threshold.
     drag.group_with(content_click);
 
-    let drop = gtk::DropTarget::new(
-        gtk::gdk::FileList::static_type(),
-        gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
-    );
+    let dest_for_row = {
+        let dropped_item = item.downgrade();
+        let browser_for_dest = browser.clone();
+        let map_for_dest = position_map.clone();
+        move || {
+            let browser = browser_for_dest.upgrade()?;
+            let dropped_item = dropped_item.upgrade()?;
+            let position = dropped_item.position();
+            let position = map_for_dest.as_ref().map_or(
+                (position != gtk::INVALID_LIST_POSITION).then_some(position as usize),
+                |(map, view)| source_position_for_view(map, Some(view), position),
+            );
+            position
+                .and_then(|position| browser.entry_at(depth, position))
+                .filter(FileEntry::is_directory)
+                .map(|entry| entry.location)
+        }
+    };
+    let super::browser::PreparedFileDrop {
+        target: drop,
+        state: drop_state,
+    } = super::browser::prepare_file_drop_target(dest_for_row);
     let highlighted_row = row.downgrade();
+    let state_for_enter = drop_state.clone();
     drop.connect_enter(move |target, _, _| {
         if let Some(row) = highlighted_row.upgrade() {
             row.add_css_class("drop-destination");
         }
-        super::browser::file_drop_action(target)
+        super::browser::file_drop_action(target, &state_for_enter)
     });
     let highlighted_row = row.downgrade();
+    let state_for_motion = drop_state.clone();
     drop.connect_motion(move |target, _, _| {
         if let Some(row) = highlighted_row.upgrade() {
             row.add_css_class("drop-destination");
         }
-        super::browser::file_drop_action(target)
+        super::browser::file_drop_action(target, &state_for_motion)
     });
     let highlighted_row = row.downgrade();
     drop.connect_leave(move |_| {
@@ -3049,30 +3096,12 @@ fn install_list_drag_drop(
                 .formats()
                 .contains_type(gtk::gdk::FileList::static_type())
     });
-    let dropped_item = item.downgrade();
-    let browser_for_drop = browser;
-    let map_for_drop = position_map;
     let dropped_row = row.downgrade();
     drop.connect_drop(move |target, value, _, _| {
         if let Some(row) = dropped_row.upgrade() {
             row.remove_css_class("drop-destination");
         }
-        let Some(browser) = browser_for_drop.upgrade() else {
-            return false;
-        };
-        let Some(dropped_item) = dropped_item.upgrade() else {
-            return false;
-        };
-        let position = dropped_item.position();
-        let position = map_for_drop.as_ref().map_or(
-            (position != gtk::INVALID_LIST_POSITION).then_some(position as usize),
-            |(map, view)| source_position_for_view(map, Some(view), position),
-        );
-        let Some(destination) = position
-            .and_then(|position| browser.entry_at(depth, position))
-            .filter(FileEntry::is_directory)
-            .map(|entry| entry.location)
-        else {
+        let Some(destination) = drop_state.destination() else {
             return false;
         };
         let Some(sources) = super::browser::locations_from_file_list_value(value) else {
@@ -3081,11 +3110,8 @@ fn install_list_drag_drop(
         let Some(handler) = transfer_handler.borrow().clone() else {
             return false;
         };
-        handler(
-            destination,
-            sources,
-            super::browser::file_drop_action(target) == gtk::gdk::DragAction::MOVE,
-        );
+        let commit = super::browser::file_drop_commit(target, &destination, &sources, &drop_state);
+        handler(destination, sources, commit);
         true
     });
     row.add_controller(drop);
@@ -3141,6 +3167,12 @@ fn install_modified_selection_click(
         let modifiers = gesture.current_event_state();
         let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        let preserve_group = !control
+            && !shift
+            && super::browser::should_preserve_drag_selection(
+                selection.is_selected(position),
+                selection.selection().size(),
+            );
         if shift {
             let anchor = browser
                 .selection_anchor_position(depth)
@@ -3158,16 +3190,18 @@ fn install_modified_selection_click(
             }
         } else {
             anchor_at(&browser, depth, &positions, position);
+            if !preserve_group {
+                selection.select_item(position, true);
+            }
             return;
         }
         if let Some(widget) = gesture.widget()
             && super::pointer::hits_item_content(&widget, x, y)
+            && let Some(item_widget) = widget.parent()
         {
-            if let Some(item_widget) = widget.parent() {
-                item_widget.grab_focus();
-            }
-            gesture.set_state(gtk::EventSequenceState::Claimed);
+            item_widget.grab_focus();
         }
+        gesture.set_state(gtk::EventSequenceState::Claimed);
     });
     click.connect_released(|gesture, _, _, _| {
         if gesture
@@ -3436,6 +3470,27 @@ fn set_selections(pane: &Pane, positions: &[usize]) {
                 section.selection.select_item(position, false);
             }
         }
+        section.syncing.set(false);
+    }
+}
+
+fn reset_native_range_origin(pane: &Pane, source_position: usize) {
+    for section in pane.item_sections() {
+        let Some(position) =
+            view_position_for_source(&pane.model, Some(&section.view_model), source_position)
+        else {
+            continue;
+        };
+        // MultiSelection bits do not move GtkListView/GridView's Shift range
+        // origin; list.select-item does.
+        section.syncing.set(true);
+        section
+            .view
+            .activate_action(
+                "list.select-item",
+                Some(&(position, false, false).to_variant()),
+            )
+            .expect("ListView and GridView expose list.select-item");
         section.syncing.set(false);
     }
 }
