@@ -2216,6 +2216,7 @@ fn constrain_page_text(widget: &gtk::Widget) {
     {
         label.set_wrap(true);
         label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+        label.set_natural_wrap_mode(gtk::NaturalWrapMode::None);
     }
     if let Some(entry) = widget.downcast_ref::<gtk::Entry>() {
         entry.set_width_chars(1);

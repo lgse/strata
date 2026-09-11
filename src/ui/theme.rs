@@ -1376,7 +1376,8 @@ fn snapped_root_font_px(root_font_px: u32, scale_factor: f64) -> f64 {
 fn tokens_css(tokens: &ThemeTokens, root_font_px: f64) -> String {
     let scale = root_font_px / 13.0;
     let header = (40.0 * scale).round();
-    let column_header = header - 3.0;
+    // Column headers add six pixels of padding and three extra border pixels.
+    let column_header = header - 9.0;
     let control = (24.0 * scale).round();
     let sizing = format!(
         "headerbar, headerbar > windowhandle > box, .mode-pane-header, .preview-header {{ min-height: {header}px; }}\n.column-header {{ min-height: {column_header}px; }}\nheaderbar .sidebar-toggle, headerbar button.header-action, headerbar menubutton.header-action > button, .preview-header-action, button.column-header-action, menubutton.column-header-action > button {{ min-width: {control}px; min-height: {control}px; }}\n"

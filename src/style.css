@@ -1353,8 +1353,8 @@ menubutton.form-control:disabled > button {
 
 .settings-titlebar {
   border-bottom: 1px solid alpha(@theme_border, 0.24);
-  min-height: 46px;
-  padding: 0 14px 0 20px;
+  min-height: 0;
+  padding: 6px 6px 6px 20px;
 }
 
 .settings-title {

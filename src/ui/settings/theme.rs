@@ -196,7 +196,6 @@ fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     input.add_css_class("settings-single-line");
     input.set_halign(gtk::Align::Start);
     input.append(&text_size_control);
-    input.append(&gtk::Label::new(Some("px")));
     let reset = gtk::Button::with_label("Reset");
     reset.add_css_class("action-dialog-cancel");
     reset.add_css_class("settings-single-line");
@@ -205,6 +204,9 @@ fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     reset.set_tooltip_text(Some("Reset text size to 13 px"));
     let reset_manager = manager.clone();
     reset.connect_clicked(move |_| reset_manager.set_text_size(TextSize::default()));
+    let control_height = gtk::SizeGroup::new(gtk::SizeGroupMode::Vertical);
+    control_height.add_widget(&text_size_control);
+    control_height.add_widget(&reset);
     let controls = gtk::FlowBox::builder()
         .selection_mode(gtk::SelectionMode::None)
         .min_children_per_line(1)
