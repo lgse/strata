@@ -1428,7 +1428,6 @@ fn rar_extracts_password_protected_archive() -> Result<(), Box<dyn Error>> {
     let archive = root.path().join("encrypted.rar");
     fs::write(&archive, RAR_ENCRYPTED_FIXTURE)?;
 
-    // 1. Without password: fails with password required
     let dest_no_pw = root.path().join("dest_no_pw");
     fs::create_dir_all(&dest_no_pw)?;
     let Err(err) = extract_rar(
@@ -1445,7 +1444,6 @@ fn rar_extracts_password_protected_archive() -> Result<(), Box<dyn Error>> {
         "A password is required to extract this archive."
     );
 
-    // 2. With wrong password: fails with bad password
     let dest_wrong_pw = root.path().join("dest_wrong_pw");
     fs::create_dir_all(&dest_wrong_pw)?;
     let Err(err) = extract_rar(
@@ -1459,7 +1457,6 @@ fn rar_extracts_password_protected_archive() -> Result<(), Box<dyn Error>> {
     };
     assert_eq!(err.to_string(), super::MAYBE_BAD_PASSWORD);
 
-    // 3. With correct password: succeeds
     let dest_correct = root.path().join("dest_correct");
     fs::create_dir_all(&dest_correct)?;
     let progress = Arc::new(AtomicUsize::new(0));
@@ -1487,7 +1484,6 @@ fn rar_extracts_encrypted_headers_archive() -> Result<(), Box<dyn Error>> {
     let archive = root.path().join("comment-hpw-password.rar");
     fs::write(&archive, RAR_COMMENT_HPW_FIXTURE)?;
 
-    // 1. Without password: fails with password required
     let dest_no_pw = root.path().join("dest_no_pw");
     fs::create_dir_all(&dest_no_pw)?;
     let Err(err) = extract_rar(
@@ -1504,7 +1500,6 @@ fn rar_extracts_encrypted_headers_archive() -> Result<(), Box<dyn Error>> {
         "A password is required to extract this archive."
     );
 
-    // 2. With wrong password: fails with bad password
     let dest_wrong_pw = root.path().join("dest_wrong_pw");
     fs::create_dir_all(&dest_wrong_pw)?;
     let Err(err) = extract_rar(
@@ -1518,7 +1513,6 @@ fn rar_extracts_encrypted_headers_archive() -> Result<(), Box<dyn Error>> {
     };
     assert_eq!(err.to_string(), super::MAYBE_BAD_PASSWORD);
 
-    // 3. With correct password: succeeds
     let dest_correct = root.path().join("dest_correct");
     fs::create_dir_all(&dest_correct)?;
     let progress = Arc::new(AtomicUsize::new(0));

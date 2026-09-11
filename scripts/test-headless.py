@@ -32,7 +32,6 @@ def main() -> int:
             "STRATA_REQUIRE_DEVICE_TESTS": "1",
             "GTK_A11Y": "none",
             "NO_AT_BRIDGE": "1",
-            "MISE_YES": "1",
         }
         child = subprocess.Popen(
             ["cargo", "test", "--all-targets", "--all-features", *sys.argv[1:]],

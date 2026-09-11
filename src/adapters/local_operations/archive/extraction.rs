@@ -21,11 +21,13 @@ use super::{
 #[cfg(test)]
 mod tests;
 
-/// Output classification, not a complete archive entry type. Decoders currently
-/// flatten non-directory entries into file streams; this is a provisional boundary.
+pub(super) type MemberSink<'a> = dyn FnMut(&[u8]) -> Result<(), ArchiveError> + 'a;
+pub(super) type MemberDecoder<'a> = dyn FnMut(&mut MemberSink<'_>) -> Result<(), ArchiveError> + 'a;
+
 pub(super) enum MemberContent<'a> {
     Directory,
     File(&'a mut dyn Read, Option<u64>),
+    Decoded(&'a mut MemberDecoder<'a>, u64),
 }
 
 /// Result of an extract that may stop after writing some members.
@@ -155,7 +157,9 @@ impl<'a> ExtractionSession<'a> {
             )));
             return Err(error);
         }
-        if let MemberContent::File(_, Some(declared)) = &content {
+        if let MemberContent::File(_, Some(declared)) | MemberContent::Decoded(_, declared) =
+            &content
+        {
             self.ensure_member_fits(name, *declared)?;
         }
         let outpath = self.resolver.resolve(&self.directory, &path)?;
@@ -170,16 +174,28 @@ impl<'a> ExtractionSession<'a> {
                 self.directory.create_directories(&outpath)?;
                 outpath
             }
-            MemberContent::File(reader, declared_size) => {
+            content => {
                 let (mut file, created) = self.directory.create_file(&outpath)?;
-                match copy_member(
-                    name,
-                    reader,
-                    &mut file,
-                    self.cancelled,
-                    declared_size,
-                    self.remaining(),
-                ) {
+                let result = match content {
+                    MemberContent::File(reader, declared_size) => copy_member(
+                        name,
+                        reader,
+                        &mut file,
+                        self.cancelled,
+                        declared_size,
+                        self.remaining(),
+                    ),
+                    MemberContent::Decoded(decode, declared) => decode_member(
+                        name,
+                        decode,
+                        &mut file,
+                        self.cancelled,
+                        declared,
+                        self.remaining(),
+                    ),
+                    MemberContent::Directory => unreachable!(),
+                };
+                match result {
                     Ok(copied) => {
                         self.written = self.written.saturating_add(copied);
                         created
@@ -262,6 +278,37 @@ fn destination_full(name: &str, available: u64) -> ArchiveError {
     archive_failed(format!(
         "Not enough free space at the destination to extract `{name}` ({available} bytes available)"
     ))
+}
+
+fn decode_member(
+    name: &str,
+    decode: &mut MemberDecoder<'_>,
+    writer: &mut impl Write,
+    cancelled: &AtomicBool,
+    declared: u64,
+    remaining_disk: Option<u64>,
+) -> Result<u64, ArchiveError> {
+    let mut written = 0u64;
+    decode(&mut |bytes| {
+        check_archive_cancelled(cancelled)?;
+        let length = bytes.len() as u64;
+        if length > declared.saturating_sub(written) {
+            return Err(declared_size_exceeded(name, declared));
+        }
+        if let Some(available) = remaining_disk
+            && length > available.saturating_sub(written)
+        {
+            return Err(destination_full(name, available));
+        }
+        writer.write_all(bytes).map_err(archive_failed)?;
+        written += length;
+        Ok(())
+    })?;
+    check_archive_cancelled(cancelled)?;
+    if written != declared {
+        return Err(declared_size_short(name, declared, written));
+    }
+    Ok(written)
 }
 
 /// An extra byte past either limit is probed before it can be written.

@@ -1926,6 +1926,7 @@ dependencies = [
  "tracing-subscriber",
  "unicode-normalization",
  "unrar",
+ "unrar_sys",
  "ureq",
  "yeslogic-fontconfig-sys",
  "zbus",
