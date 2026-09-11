@@ -34,7 +34,7 @@ const LIST_COLUMN_WIDTHS: [i32; 5] = [160, 160, 90, 120, 150];
 const LIST_COLUMN_MIN_WIDTHS: [i32; 5] = [160, 80, 70, 80, 110];
 const DEFAULT_ICONS_THUMBNAIL_SIZE: i32 = 64;
 const SCROLL_SETTLE_DELAY: std::time::Duration = std::time::Duration::from_millis(80);
-const FALLBACK_ICONS_COLUMN_WIDTH: i32 = 160;
+const FALLBACK_ICONS_COLUMN_WIDTH: i32 = 120;
 
 #[derive(Clone)]
 struct ListColumnLayout {
@@ -393,6 +393,12 @@ impl ModeViews {
             BrowserMode::Columns => None,
             BrowserMode::Icons => self.icons_panes.first(),
             BrowserMode::List => self.list_pane.as_ref(),
+        }
+    }
+
+    pub fn prune_stale_search_results(&self) {
+        if let Some(pane) = self.single_pane() {
+            pane.search.prune_missing();
         }
     }
 
@@ -759,6 +765,11 @@ impl ModeViews {
         self.single_pane()?.search.selected_entry()
     }
 
+    pub fn focus_search_result(&self, path: &std::path::Path) -> bool {
+        self.single_pane()
+            .is_some_and(|pane| pane.search.focus_result(path))
+    }
+
     pub fn selected_search_results(&self) -> Option<Vec<FileEntry>> {
         self.single_pane()?.search.selected_entries()
     }
@@ -928,19 +939,22 @@ impl ModeViews {
         }
     }
 
-    pub fn resume_native_selection(&self) {
+    pub fn resume_native_selection(&self) -> bool {
         let Some((depth, focused, _)) = self.browser.focused_item() else {
-            return;
+            return false;
         };
         if !self.browser.selected_positions(depth).is_empty() {
-            return;
+            return false;
         }
         // Seed GTK's empty selection before the arrow moves it, without scheduling
         // a focus restore that would undo the native move after key dispatch.
         for pane in self.panes_at(depth) {
             set_selections(pane, &[focused]);
+            reset_native_range_origin(pane, focused);
         }
         self.browser.set_selection(depth, &[focused], Some(focused));
+        self.browser.set_selection_anchor(depth, focused);
+        true
     }
 
     pub fn focused_position(&self) -> Option<(usize, usize)> {
@@ -1417,7 +1431,7 @@ fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButt
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::FUNNEL,
     )));
-    button.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&button);
     let shown_filter = revealer.clone();
     let focused_filter = entry.clone();
     button.connect_toggled(move |button| {
@@ -1478,7 +1492,7 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
         .tooltip_text("Thumbnail size")
         .popover(&thumbnail_popover)
         .build();
-    thumbnail_menu.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&thumbnail_menu);
     thumbnail_menu.add_css_class("icons-thumbnail-menu");
     thumbnail_menu.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::PICTURES,
@@ -2150,6 +2164,7 @@ fn list_headings(browser: &Rc<Browser>, depth: usize, columns: ListColumnLayout)
         button.add_css_class("list-heading-button");
         button.set_hexpand(true);
         if let Some(key) = key {
+            button.set_cursor_from_name(Some("pointer"));
             let weak_browser = Rc::downgrade(browser);
             let sorting_for_click = sorting.clone();
             let arrows_for_click = arrows.clone();
@@ -2324,6 +2339,7 @@ fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
             .build();
         button.set_child(Some(&crate::assets::chrome_icon(icon)));
         button.add_css_class("list-navigation-button");
+        button.set_cursor_from_name(Some("pointer"));
         let weak_browser = Rc::downgrade(browser);
         button.connect_clicked(move |_| {
             if let Some(browser) = weak_browser.upgrade() {
@@ -2503,6 +2519,7 @@ fn build_list_pane(
         .build();
     scroll.add_css_class("fixed-scrollbar");
     scroll.add_css_class("browser-listing-scroll");
+    scroll.add_css_class("list-listing-scroll");
     let browser_for_settle = Rc::downgrade(&browser);
     let source_index_for_settle = source_index.clone();
     let sections_for_settle = Rc::downgrade(&sections);
@@ -2589,7 +2606,7 @@ fn icons_loading_skeleton(thumbnail_size: i32, density: BrowserDensity) -> gtk::
         let Some(item) = item.downcast_ref::<gtk::ListItem>() else {
             return;
         };
-        let card = gtk::Box::new(gtk::Orientation::Vertical, 3);
+        let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
         card.add_css_class("icons-card");
         card.set_halign(gtk::Align::Fill);
         ensure_icons_card_slot(&card, thumbnail_size);
@@ -3150,6 +3167,12 @@ fn install_modified_selection_click(
         let modifiers = gesture.current_event_state();
         let control = modifiers.contains(gtk::gdk::ModifierType::CONTROL_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
+        let preserve_group = !control
+            && !shift
+            && super::browser::should_preserve_drag_selection(
+                selection.is_selected(position),
+                selection.selection().size(),
+            );
         if shift {
             let anchor = browser
                 .selection_anchor_position(depth)
@@ -3167,16 +3190,18 @@ fn install_modified_selection_click(
             }
         } else {
             anchor_at(&browser, depth, &positions, position);
+            if !preserve_group {
+                selection.select_item(position, true);
+            }
             return;
         }
         if let Some(widget) = gesture.widget()
             && super::pointer::hits_item_content(&widget, x, y)
+            && let Some(item_widget) = widget.parent()
         {
-            if let Some(item_widget) = widget.parent() {
-                item_widget.grab_focus();
-            }
-            gesture.set_state(gtk::EventSequenceState::Claimed);
+            item_widget.grab_focus();
         }
+        gesture.set_state(gtk::EventSequenceState::Claimed);
     });
     click.connect_released(|gesture, _, _, _| {
         if gesture
@@ -3445,6 +3470,27 @@ fn set_selections(pane: &Pane, positions: &[usize]) {
                 section.selection.select_item(position, false);
             }
         }
+        section.syncing.set(false);
+    }
+}
+
+fn reset_native_range_origin(pane: &Pane, source_position: usize) {
+    for section in pane.item_sections() {
+        let Some(position) =
+            view_position_for_source(&pane.model, Some(&section.view_model), source_position)
+        else {
+            continue;
+        };
+        // MultiSelection bits do not move GtkListView/GridView's Shift range
+        // origin; list.select-item does.
+        section.syncing.set(true);
+        section
+            .view
+            .activate_action(
+                "list.select-item",
+                Some(&(position, false, false).to_variant()),
+            )
+            .expect("ListView and GridView expose list.select-item");
         section.syncing.set(false);
     }
 }

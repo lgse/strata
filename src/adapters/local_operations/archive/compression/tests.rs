@@ -489,3 +489,31 @@ fn zip_and_seven_z_refuse_non_utf8_names_instead_of_mangling_them() -> Result<()
     )?;
     Ok(())
 }
+
+#[test]
+fn encrypted_seven_z_archives_are_still_compressed() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("zeros.bin");
+    fs::write(&source, vec![0u8; 4 << 20])?;
+    let plain = root.path().join("plain.7z");
+    let encrypted = root.path().join("encrypted.7z");
+    write_compression_fixture(
+        &plain,
+        std::slice::from_ref(&source),
+        ArchiveFormat::SevenZ,
+        None,
+    )?;
+    write_compression_fixture(
+        &encrypted,
+        std::slice::from_ref(&source),
+        ArchiveFormat::SevenZ,
+        Some("secret"),
+    )?;
+    let plain_len = fs::metadata(&plain)?.len();
+    let encrypted_len = fs::metadata(&encrypted)?.len();
+    assert!(
+        encrypted_len < 1 << 20,
+        "encrypted archive should compress ({encrypted_len} bytes, plain {plain_len} bytes)"
+    );
+    Ok(())
+}

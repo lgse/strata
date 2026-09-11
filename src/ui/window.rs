@@ -19,8 +19,9 @@ use crate::{
 
 use super::{
     browser::{
-        BrowserView, PeekBehavior, PinStatus, PreparedFileDrop, file_drop_action, file_drop_commit,
-        locations_from_file_list_value, prepare_file_drop_target, show_error_dialog,
+        BrowserView, PeekBehavior, PinStatus, PreparedFileDrop, WeakBrowserView, file_drop_action,
+        file_drop_commit, locations_from_file_list_value, prepare_file_drop_target,
+        show_error_dialog,
     },
     browser_modes::{BrowserDensity, BrowserMode},
     motion::{animations_enabled, emphasized_deceleration},
@@ -30,7 +31,10 @@ use super::{
 mod composition;
 mod devices;
 mod keyboard;
+mod open_argument;
 mod sidebar;
+
+pub use open_argument::present_open;
 
 use sidebar::PlaceNavigation;
 pub(super) use sidebar::build_sidebar;
@@ -80,7 +84,7 @@ fn mouse_history_action(button: u32) -> Option<MouseHistoryAction> {
 }
 
 pub fn present(application: &gtk::Application) {
-    present_target(application, None, Vec::new(), false);
+    present_target(application, None, Vec::new(), false, true);
 }
 
 /// Opens the requested directory with the named items selected.
@@ -90,6 +94,7 @@ pub fn present_reveal(application: &gtk::Application, request: RevealRequest) {
         Some(request.directory),
         request.selection,
         request.properties,
+        true,
     );
 }
 
@@ -119,12 +124,13 @@ fn browser_for_window() -> BrowserView {
     browser
 }
 
-fn present_target(
+pub(super) fn present_target(
     application: &gtk::Application,
     location: Option<Location>,
     selection: Vec<String>,
     properties: bool,
-) {
+    auto_navigate: bool,
+) -> BrowserView {
     let present_started = std::time::Instant::now();
     crate::assets::register_icon_theme();
     let theme_manager = super::theme::ThemeManager::shared();
@@ -144,25 +150,29 @@ fn present_target(
     let content = composition::WindowContent::new(&window, &theme_manager);
     let update_notice = content.bind(&window, &theme_manager);
     let browser = content.browser.clone();
+    browser.connect_navigation_cleanup(window.upcast_ref());
     schedule_after_first_paint(&window, &content.sidebar);
     content.connect_cleanup(&window);
     window.present();
     crate::metrics::mark_window_presented();
-    let pending_location = location.unwrap_or_else(|| Location::local(home_directory()));
-    if !selection.is_empty() {
-        browser.select_after_load(selection, properties);
+    if auto_navigate {
+        let pending_location = location.unwrap_or_else(|| Location::local(home_directory()));
+        if !selection.is_empty() {
+            browser.select_after_load(selection, properties);
+        }
+        let idle_browser = browser.clone();
+        glib::idle_add_local_once(move || {
+            let started = std::time::Instant::now();
+            idle_browser.navigate_location(pending_location);
+            tracing::debug!(
+                elapsed_ms = started.elapsed().as_millis() as u64,
+                "present navigation started"
+            );
+        });
     }
-    let idle_browser = browser.clone();
-    glib::idle_add_local_once(move || {
-        let started = std::time::Instant::now();
-        idle_browser.navigate_location(pending_location);
-        tracing::debug!(
-            elapsed_ms = started.elapsed().as_millis() as u64,
-            "present navigation started"
-        );
-    });
     super::portal_preferences::schedule_offer(&window);
     schedule_due_update_check(&theme_manager, &update_notice);
+    browser
 }
 
 fn schedule_after_first_paint(window: &gtk::ApplicationWindow, sidebar: &SidebarView) {
@@ -680,6 +690,7 @@ pub(super) fn build_appearance_menu(
     popover.set_child(Some(&content));
     button.set_child(Some(&button_icon));
     button.add_css_class("header-action");
+    button.set_cursor_from_name(Some("pointer"));
     button
 }
 
@@ -1182,7 +1193,7 @@ impl SidebarState {
         on_drop: impl Fn(&Rc<Self>, &str, bool) -> bool + 'static,
     ) {
         row.add_css_class("reorderable");
-        row.set_cursor_from_name(Some("grab"));
+        row.set_cursor_from_name(Some("pointer"));
 
         let drag = gtk::DragSource::builder()
             .actions(gtk::gdk::DragAction::MOVE)
@@ -1198,7 +1209,7 @@ impl SidebarState {
         let dragged_row = row.clone();
         drag.connect_drag_end(move |_, _, _| {
             dragged_row.remove_css_class("dragging");
-            dragged_row.set_cursor_from_name(Some("grab"));
+            dragged_row.set_cursor_from_name(Some("pointer"));
         });
         row.add_controller(drag);
 
@@ -1959,6 +1970,7 @@ fn sidebar_button(icon: &str, name: &str) -> gtk::Button {
         .halign(gtk::Align::Fill)
         .build();
     row.add_css_class("sidebar-row");
+    row.set_cursor_from_name(Some("pointer"));
     row.set_has_frame(false);
     row
 }
@@ -1972,6 +1984,7 @@ fn sidebar_eject_button(action: MediaRelease, on_release: impl Fn() + 'static) -
         14,
     )));
     button.add_css_class("sidebar-eject");
+    button.set_cursor_from_name(Some("pointer"));
     button.set_has_frame(false);
     button.set_valign(gtk::Align::Center);
     button.connect_clicked(move |_| on_release());

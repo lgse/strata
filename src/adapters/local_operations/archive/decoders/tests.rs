@@ -11,7 +11,7 @@ use crate::{model::Location, services::ArchiveFormat};
 use std::{
     error::Error,
     fs,
-    io::{self, Cursor, Read, Seek, SeekFrom},
+    io::{self, Cursor, Read, Seek, SeekFrom, Write},
     path::Path,
     sync::{
         Arc,
@@ -1056,9 +1056,18 @@ fn error_translation_preserves_passwords_unsupported_formats_and_io_failures() {
         let expected = error.to_string();
         assert_eq!(super::zip_error(error).to_string(), expected);
     }
+    assert_eq!(
+        super::sevenz_decode_error(SevenZError::PasswordRequired).to_string(),
+        "A password is required to extract this archive."
+    );
+    assert_eq!(
+        super::sevenz_decode_error(SevenZError::MaybeBadPassword(
+            io::ErrorKind::InvalidData.into()
+        ))
+        .to_string(),
+        "The password may be incorrect."
+    );
     for error in [
-        SevenZError::PasswordRequired,
-        SevenZError::MaybeBadPassword(io::ErrorKind::InvalidData.into()),
         SevenZError::UnsupportedVersion { major: 9, minor: 0 },
         SevenZError::UnsupportedCompressionMethod("unknown".into()),
         SevenZError::Unsupported("unsupported encryption".into()),
@@ -1078,10 +1087,269 @@ fn error_translation_preserves_passwords_unsupported_formats_and_io_failures() {
         io::ErrorKind::Other,
     ] {
         let error = io::Error::new(kind, "injected I/O failure");
-        let translated = super::archive_read_error(error);
+        let translated = super::archive_read_error(error, false);
         assert_eq!(translated.kind(), kind);
         assert_eq!(translated.to_string(), "injected I/O failure");
     }
+}
+
+fn write_zipcrypto(
+    path: &Path,
+    password: &[u8],
+    name: &str,
+    contents: &[u8],
+    compression: zip::CompressionMethod,
+) -> Result<(), Box<dyn Error>> {
+    use zip::unstable::write::FileOptionsExt;
+    let mut writer = zip::ZipWriter::new(fs::File::create(path)?);
+    let options = zip::write::SimpleFileOptions::default()
+        .compression_method(compression)
+        .with_deprecated_encryption(password)?;
+    writer.start_file(name, options)?;
+    writer.write_all(contents)?;
+    writer.finish()?;
+    Ok(())
+}
+
+fn zipcrypto_crc_collision(archive_path: &Path) -> Result<String, Box<dyn Error>> {
+    for candidate in 0..4096u32 {
+        let password = candidate.to_string();
+        let file = fs::File::open(archive_path)?;
+        let mut archive = zip::ZipArchive::new(file)?;
+        let options = zip::read::ZipReadOptions::new().password(Some(password.as_bytes()));
+        let mut entry = match archive.by_index_with_options(0, options) {
+            Err(zip::result::ZipError::InvalidPassword) => continue,
+            Err(error) => return Err(error.into()),
+            Ok(entry) => entry,
+        };
+        let mut buf = Vec::new();
+        if entry.read_to_end(&mut buf).is_err() {
+            return Ok(password);
+        }
+    }
+    Err("no ZipCrypto CRC collision in 0..4096".into())
+}
+
+fn zipcrypto_fixture(root: &Path) -> Result<std::path::PathBuf, Box<dyn Error>> {
+    let archive = root.join("password.zip");
+    write_zipcrypto(
+        &archive,
+        b"zipsecret",
+        "some.txt",
+        b"hello from zipcrypto",
+        zip::CompressionMethod::Stored,
+    )?;
+    Ok(archive)
+}
+
+fn zipcrypto_collision_is_retryable(
+    compression: zip::CompressionMethod,
+    contents: &[u8],
+) -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("password.zip");
+    write_zipcrypto(&archive, b"zipsecret", "some.txt", contents, compression)?;
+    let collision = zipcrypto_crc_collision(&archive)?;
+
+    let destination = tempfile::tempdir()?;
+    let Err(error) = decode_fixture(
+        &archive,
+        destination.path(),
+        ArchiveFormat::Zip,
+        Some(&collision),
+        &Arc::new(AtomicUsize::new(0)),
+    ) else {
+        panic!("ZipCrypto {compression:?} collision {collision} extracted");
+    };
+    assert_eq!(error.to_string(), super::MAYBE_BAD_PASSWORD);
+    assert!(destination.path().read_dir()?.next().is_none());
+
+    let correct = tempfile::tempdir()?;
+    completed_extract(decode_fixture(
+        &archive,
+        correct.path(),
+        ArchiveFormat::Zip,
+        Some("zipsecret"),
+        &Arc::new(AtomicUsize::new(0)),
+    )?)?;
+    assert_eq!(fs::read(correct.path().join("some.txt"))?, contents);
+    Ok(())
+}
+
+#[test]
+fn zipcrypto_header_collision_is_retryable() -> Result<(), Box<dyn Error>> {
+    zipcrypto_collision_is_retryable(zip::CompressionMethod::Stored, b"hello from zipcrypto")
+}
+
+#[test]
+fn zipcrypto_deflated_header_collision_is_retryable() -> Result<(), Box<dyn Error>> {
+    zipcrypto_collision_is_retryable(
+        zip::CompressionMethod::Deflated,
+        &b"hello from zipcrypto\n".repeat(64),
+    )
+}
+
+#[test]
+fn zipcrypto_wrong_password_stays_invalid_password() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = zipcrypto_fixture(root.path())?;
+    let destination = tempfile::tempdir()?;
+    let Err(error) = decode_fixture(
+        &archive,
+        destination.path(),
+        ArchiveFormat::Zip,
+        Some("wrong"),
+        &Arc::new(AtomicUsize::new(0)),
+    ) else {
+        panic!("ZipCrypto accepted a non-colliding wrong password");
+    };
+    assert_eq!(error.to_string(), "provided password is incorrect");
+    assert!(destination.path().read_dir()?.next().is_none());
+    Ok(())
+}
+
+#[test]
+fn zipcrypto_without_password_still_requires_one() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = zipcrypto_fixture(root.path())?;
+    let destination = tempfile::tempdir()?;
+    let Err(error) = decode_fixture(
+        &archive,
+        destination.path(),
+        ArchiveFormat::Zip,
+        None,
+        &Arc::new(AtomicUsize::new(0)),
+    ) else {
+        panic!("ZipCrypto extracted without a password");
+    };
+    assert!(error.to_string().contains("Password required"), "{error}");
+    assert!(destination.path().read_dir()?.next().is_none());
+    Ok(())
+}
+
+#[test]
+fn aes_zip_wrong_password_stays_invalid_password() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("file.txt");
+    fs::write(&source, b"contents")?;
+    let archive = root.path().join("archive.zip");
+    write_compression_fixture(
+        &archive,
+        &[source],
+        ArchiveFormat::Zip,
+        Some("test-password"),
+    )?;
+
+    let destination = tempfile::tempdir()?;
+    let Err(error) = decode_fixture(
+        &archive,
+        destination.path(),
+        ArchiveFormat::Zip,
+        Some("wrong"),
+        &Arc::new(AtomicUsize::new(0)),
+    ) else {
+        panic!("AES zip accepted a wrong password");
+    };
+    assert_eq!(error.to_string(), "provided password is incorrect");
+    assert!(destination.path().read_dir()?.next().is_none());
+
+    let correct = tempfile::tempdir()?;
+    completed_extract(decode_fixture(
+        &archive,
+        correct.path(),
+        ArchiveFormat::Zip,
+        Some("test-password"),
+        &Arc::new(AtomicUsize::new(0)),
+    )?)?;
+    assert_eq!(fs::read(correct.path().join("file.txt"))?, b"contents");
+    Ok(())
+}
+
+#[test]
+fn unencrypted_zip_checksum_failure_stays_damaged() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("archive.zip");
+    super::super::fixtures::write_zip_stored(&archive, &[("file.txt", b"checksum-payload")])?;
+    let mut bytes = fs::read(&archive)?;
+    let offset = bytes
+        .windows(b"checksum-payload".len())
+        .position(|bytes| bytes == b"checksum-payload")
+        .expect("stored payload");
+    bytes[offset] ^= 1;
+    fs::write(&archive, &bytes)?;
+
+    let destination = tempfile::tempdir()?;
+    let Err(error) = decode_fixture(
+        &archive,
+        destination.path(),
+        ArchiveFormat::Zip,
+        None,
+        &Arc::new(AtomicUsize::new(0)),
+    ) else {
+        panic!("accepted a checksum-damaged zip");
+    };
+    assert_eq!(error.to_string(), super::INVALID_ARCHIVE);
+    assert!(destination.path().read_dir()?.next().is_none());
+    Ok(())
+}
+
+#[test]
+fn wrong_password_for_content_encrypted_7z_is_retryable() -> Result<(), Box<dyn Error>> {
+    // Generated with `7z a -psecret -mhe=off` using 7-Zip 26.02.
+    let archive = include_bytes!("fixtures/content-encrypted.7z");
+    let wrong_destination = tempfile::tempdir()?;
+    let Err(error) = extract_7z_from_reader(
+        Cursor::new(archive),
+        wrong_destination.path(),
+        "wrong".into(),
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    ) else {
+        panic!("a wrong password must fail extraction");
+    };
+    assert_eq!(error.to_string(), super::MAYBE_BAD_PASSWORD);
+    assert!(wrong_destination.path().read_dir()?.next().is_none());
+
+    let correct_destination = tempfile::tempdir()?;
+    completed_extract(extract_7z_from_reader(
+        Cursor::new(archive),
+        correct_destination.path(),
+        "secret".into(),
+        &Arc::new(AtomicUsize::new(0)),
+        &never_cancelled(),
+    )?)?;
+    assert_eq!(
+        fs::read(correct_destination.path().join("document.txt"))?,
+        b"private contents"
+    );
+    Ok(())
+}
+
+#[test]
+fn checksum_failure_without_a_password_remains_damaged() {
+    let error = io::Error::other(sevenz_rust2::Error::ChecksumVerificationFailed);
+    assert_eq!(
+        super::archive_read_error(error, false).to_string(),
+        super::INVALID_ARCHIVE
+    );
+}
+
+#[test]
+fn corrupt_deflate_stream_without_a_password_stays_damaged() {
+    let error = io::Error::new(io::ErrorKind::InvalidInput, "corrupt deflate stream");
+    assert_eq!(
+        super::archive_read_error(error, false).to_string(),
+        super::INVALID_ARCHIVE
+    );
+}
+
+#[test]
+fn corrupt_deflate_stream_after_a_password_is_retryable() {
+    let error = io::Error::new(io::ErrorKind::InvalidInput, "corrupt deflate stream");
+    assert_eq!(
+        super::archive_read_error(error, true).to_string(),
+        super::MAYBE_BAD_PASSWORD
+    );
 }
 
 #[test]

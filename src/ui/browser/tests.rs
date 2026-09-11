@@ -5,12 +5,15 @@ use super::*;
 mod drops;
 mod filter_scope;
 mod focus;
+mod hover;
+mod layout;
 mod loading;
 mod navigate;
 mod paste;
 mod preferences;
 mod recursive_search;
 mod restore;
+mod search_result_mutations;
 mod sidebar;
 
 #[test]

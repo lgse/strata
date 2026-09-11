@@ -2,7 +2,7 @@
 
 use std::{
     cmp::Reverse,
-    collections::{BinaryHeap, HashMap, HashSet},
+    collections::{BinaryHeap, HashMap, HashSet, VecDeque},
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex, OnceLock, RwLock, Weak,
@@ -11,6 +11,11 @@ use std::{
     },
     time::{Duration, Instant},
 };
+
+use crate::model::EntryKind;
+use unicode_normalization::UnicodeNormalization;
+
+use super::{is_hidden_name, native_hidden_names, native_kind};
 
 const RESULT_LIMIT: usize = 100;
 const PUBLISH_INTERVAL: Duration = Duration::from_millis(50);
@@ -32,12 +37,21 @@ const GENERATED_TREE_GLOBS: [&str; 12] = [
 ];
 
 /// Bounds worst-case index memory on an adversarially large tree. Each retained `SearchItem`
-/// stores full path strings, so cost scales with path length, not just entry count: roughly
-/// 60-140 MB at this cap for typical paths, but up to ~1.5-2 GB for paths near `PATH_MAX`.
+/// and its traversal-wide deduplication key store full path strings, so cost scales with path
+/// length, not just entry count: roughly 80-180 MB at this cap for typical paths, but up to
+/// ~2.5 GB for paths near `PATH_MAX`.
 const MAX_INDEX_ENTRIES: usize = 200_000;
 const MAX_INDEX_DEPTH: usize = 64;
-const PRIORITY_INDEX_DEPTH: usize = 2;
 const INDEX_TIME_BUDGET: Duration = Duration::from_secs(10);
+const INITIAL_DIRECTORY_BATCH: usize = 1;
+const MAX_PENDING_DIRECTORIES: usize = 4_096;
+
+pub fn fold_for_search(text: &str) -> String {
+    if text.is_ascii() {
+        return text.to_ascii_lowercase();
+    }
+    text.to_lowercase().nfc().collect()
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SearchItem {
@@ -71,7 +85,7 @@ impl SearchItem {
             .count()
             .saturating_sub(1)
             .min(MAX_INDEX_DEPTH) as u8;
-        let search_path = relative.to_string_lossy().to_lowercase();
+        let search_path = fold_for_search(&relative.to_string_lossy());
         let search_name_start = search_path
             .rfind(std::path::MAIN_SEPARATOR)
             .map_or(0, |position| {
@@ -95,6 +109,7 @@ impl SearchItem {
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct SearchCoverage {
     pub entry_limit: bool,
+    pub directory_limit: bool,
     pub depth_limit: bool,
     pub time_limit: bool,
     pub unreadable: bool,
@@ -109,6 +124,9 @@ impl SearchCoverage {
         let mut reasons = Vec::new();
         if self.entry_limit {
             reasons.push("entry limit reached");
+        }
+        if self.directory_limit {
+            reasons.push("some folders were omitted");
         }
         if self.depth_limit {
             reasons.push("depth limit reached");
@@ -335,15 +353,39 @@ fn index_trees_with_budget(
     max_depth: usize,
     time_budget: Duration,
 ) -> (SearchHandle, Receiver<SearchEvent>) {
-    let index = Arc::new(SharedIndex::new());
-    start_indexer(
-        index.clone(),
+    index_trees_with_scheduler_budget(
         roots,
         show_hidden,
         max_entries,
         max_depth,
         time_budget,
-        true,
+        INITIAL_DIRECTORY_BATCH,
+        MAX_PENDING_DIRECTORIES,
+    )
+}
+
+#[cfg(test)]
+fn index_trees_with_scheduler_budget(
+    roots: Vec<PathBuf>,
+    show_hidden: bool,
+    max_entries: usize,
+    max_depth: usize,
+    time_budget: Duration,
+    initial_directory_batch: usize,
+    max_pending_directories: usize,
+) -> (SearchHandle, Receiver<SearchEvent>) {
+    let index = Arc::new(SharedIndex::new());
+    build_index(
+        &index,
+        roots,
+        show_hidden,
+        TraversalBudget {
+            max_entries,
+            max_depth,
+            time_budget,
+            initial_directory_batch,
+            max_pending_directories,
+        },
     );
     start_search_session(index)
 }
@@ -408,7 +450,7 @@ fn run_search_session(
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(query) = next_query {
-            progress.normalized_query = query.to_lowercase();
+            progress.normalized_query = fold_for_search(&query);
             progress.query = query;
             progress.matches = if progress.normalized_query.is_empty() {
                 Vec::new()
@@ -451,9 +493,13 @@ fn start_indexer(
                     &worker_index,
                     roots,
                     show_hidden,
-                    max_entries,
-                    max_depth,
-                    time_budget,
+                    TraversalBudget {
+                        max_entries,
+                        max_depth,
+                        time_budget,
+                        initial_directory_batch: INITIAL_DIRECTORY_BATCH,
+                        max_pending_directories: MAX_PENDING_DIRECTORIES,
+                    },
                 );
             } else {
                 directory::build_index(&worker_index, roots, show_hidden, max_entries, time_budget);
@@ -474,78 +520,97 @@ fn start_indexer(
     }
 }
 
-struct RootWalker {
+struct DirectoryTask {
+    path: PathBuf,
     root: PathBuf,
-    builder: ignore::WalkBuilder,
-    walker: ignore::Walk,
-    priority_depth: usize,
-    priority_pass: bool,
-    has_deeper_entries: bool,
-    finished: bool,
+    depth: usize,
+    probe_only: bool,
+    skipped_entries: usize,
+    batch_size: usize,
+    virtual_work: usize,
 }
 
-impl RootWalker {
-    fn new(
-        root: PathBuf,
-        boundaries: Arc<HashSet<PathBuf>>,
-        show_hidden: bool,
-        max_depth: usize,
-    ) -> Self {
-        let mut overrides = ignore::overrides::OverrideBuilder::new(&root);
-        for generated_tree in GENERATED_TREE_GLOBS {
-            overrides
-                .add(generated_tree)
-                .expect("valid generated-tree prune glob");
-        }
-        let priority_depth = PRIORITY_INDEX_DEPTH.min(max_depth);
-        let mut builder = ignore::WalkBuilder::new(&root);
-        builder
-            .follow_links(false)
-            .standard_filters(true)
-            // `standard_filters` resets hidden-file filtering.
-            .hidden(!show_hidden)
-            .require_git(false)
-            .overrides(overrides.build().expect("valid generated-tree prune globs"))
-            .max_depth(Some(priority_depth))
-            // Nested mounts are walked separately, never through both roots.
-            .filter_entry(move |entry| entry.depth() == 0 || !boundaries.contains(entry.path()));
-        let walker = builder.build();
-        // Probe one level beyond the cap to distinguish empty folders from omitted children.
-        builder.max_depth(Some(max_depth.saturating_add(1)));
-        Self {
-            root,
-            builder,
-            walker,
-            priority_depth,
-            priority_pass: true,
-            has_deeper_entries: false,
-            finished: false,
-        }
-    }
+struct ScheduledDirectory {
+    task: DirectoryTask,
+    sequence: u64,
+}
 
-    fn next(&mut self) -> Option<Result<ignore::DirEntry, ignore::Error>> {
-        if self.finished {
-            return None;
-        }
-        if let Some(result) = self.walker.next() {
-            if self.priority_pass
-                && result.as_ref().is_ok_and(|entry| {
-                    entry.depth() == self.priority_depth
-                        && entry.file_type().is_some_and(|kind| kind.is_dir())
-                })
-            {
-                self.has_deeper_entries = true;
-            }
-            return Some(result);
-        }
-        if self.priority_pass && self.has_deeper_entries {
-            self.priority_pass = false;
-            self.walker = self.builder.build();
-            self.walker.next()
-        } else {
-            self.finished = true;
-            None
-        }
+impl PartialEq for ScheduledDirectory {
+    fn eq(&self, other: &Self) -> bool {
+        self.task.virtual_work == other.task.virtual_work && self.sequence == other.sequence
+    }
+}
+
+impl Eq for ScheduledDirectory {}
+
+impl PartialOrd for ScheduledDirectory {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ScheduledDirectory {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        other
+            .task
+            .virtual_work
+            .cmp(&self.task.virtual_work)
+            .then_with(|| other.sequence.cmp(&self.sequence))
+    }
+}
+
+fn directory_walker(
+    task: &DirectoryTask,
+    boundaries: Arc<HashSet<PathBuf>>,
+    show_hidden: bool,
+) -> ignore::Walk {
+    let mut overrides = ignore::overrides::OverrideBuilder::new(&task.root);
+    for generated_tree in GENERATED_TREE_GLOBS {
+        overrides
+            .add(generated_tree)
+            .expect("valid generated-tree prune glob");
+    }
+    let mut builder = ignore::WalkBuilder::new(&task.path);
+    builder
+        .follow_links(false)
+        .standard_filters(true)
+        // `standard_filters` resets hidden-file filtering.
+        .hidden(!show_hidden)
+        .require_git(false)
+        .overrides(overrides.build().expect("valid generated-tree prune globs"))
+        .max_depth(Some(1))
+        // Nested mounts are walked separately, never through both roots.
+        .filter_entry(move |entry| entry.depth() == 0 || !boundaries.contains(entry.path()));
+    builder.build()
+}
+
+struct TraversalBudget {
+    max_entries: usize,
+    max_depth: usize,
+    time_budget: Duration,
+    initial_directory_batch: usize,
+    max_pending_directories: usize,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum PathAdmission {
+    Unique,
+    Duplicate,
+    EntryLimit,
+}
+
+fn admit_path(
+    indexed_paths: &mut HashSet<PathBuf>,
+    path: &Path,
+    max_entries: usize,
+) -> PathAdmission {
+    if indexed_paths.contains(path) {
+        PathAdmission::Duplicate
+    } else if indexed_paths.len() >= max_entries {
+        PathAdmission::EntryLimit
+    } else {
+        indexed_paths.insert(path.to_path_buf());
+        PathAdmission::Unique
     }
 }
 
@@ -553,11 +618,17 @@ fn build_index(
     index: &SharedIndex,
     roots: Vec<PathBuf>,
     show_hidden: bool,
-    max_entries: usize,
-    max_depth: usize,
-    time_budget: Duration,
+    budget: TraversalBudget,
 ) {
+    let TraversalBudget {
+        max_entries,
+        max_depth,
+        time_budget,
+        initial_directory_batch,
+        max_pending_directories,
+    } = budget;
     let mut indexed_entries = 0;
+    let mut indexed_paths = HashSet::new();
     let mut pending_items = Vec::with_capacity(256);
     let mut coverage = SearchCoverage::default();
     let mut last_publish = Instant::now();
@@ -568,15 +639,49 @@ fn build_index(
         .filter(|root| seen.insert(root.clone()))
         .collect();
     let boundaries = Arc::new(seen);
-    let mut walkers: Vec<_> = roots
-        .into_iter()
-        .map(|root| RootWalker::new(root, boundaries.clone(), show_hidden, max_depth))
-        .collect();
-    // Interleave roots so Home cannot exhaust the budget before mounted drives get a turn.
-    let mut walking = true;
-    'walk: while walking {
-        walking = false;
-        for walker in &mut walkers {
+    let initial_directory_batch = initial_directory_batch.max(1);
+    let max_pending_directories = max_pending_directories.max(1);
+    let mut pending_branches = VecDeque::new();
+    let mut pending_directory_count = 0_usize;
+    let mut next_sequence = 0_u64;
+    for root in roots {
+        if pending_directory_count >= max_pending_directories {
+            coverage.directory_limit = true;
+            continue;
+        }
+        let mut branch = BinaryHeap::new();
+        branch.push(ScheduledDirectory {
+            task: DirectoryTask {
+                path: root.clone(),
+                root,
+                depth: 0,
+                probe_only: max_depth == 0,
+                skipped_entries: 0,
+                batch_size: initial_directory_batch,
+                virtual_work: 0,
+            },
+            sequence: next_sequence,
+        });
+        next_sequence = next_sequence.wrapping_add(1);
+        pending_branches.push_back(branch);
+        pending_directory_count += 1;
+    }
+
+    'walk: while let Some(mut branch) = pending_branches.pop_front() {
+        let Some(scheduled) = branch.pop() else {
+            continue;
+        };
+        pending_directory_count = pending_directory_count.saturating_sub(1);
+        let mut directory = scheduled.task;
+        let mut new_branches = Vec::new();
+        if index.is_retired() {
+            return;
+        }
+        let mut walker = directory_walker(&directory, boundaries.clone(), show_hidden);
+        let mut seen_entries = 0;
+        let mut processed_entries = 0;
+        let mut slice_work = 0_usize;
+        let exhausted = loop {
             if index.is_retired() {
                 return;
             }
@@ -584,10 +689,12 @@ fn build_index(
                 coverage.time_limit = true;
                 break 'walk;
             }
+            if processed_entries >= directory.batch_size {
+                break false;
+            }
             let Some(result) = walker.next() else {
-                continue;
+                break true;
             };
-            walking = true;
             let entry = match result {
                 Ok(entry) => entry,
                 Err(_) => {
@@ -595,29 +702,70 @@ fn build_index(
                     continue;
                 }
             };
+            if entry.depth() == 0 {
+                if entry.error().is_some() {
+                    coverage.unreadable = true;
+                }
+                continue;
+            }
+            if seen_entries < directory.skipped_entries {
+                seen_entries += 1;
+                continue;
+            }
+            seen_entries += 1;
+            processed_entries += 1;
             if entry.error().is_some() {
                 coverage.unreadable = true;
             }
-            if entry.depth() == 0
-                || (!walker.priority_pass && entry.depth() <= walker.priority_depth)
-            {
-                continue;
-            }
-            if entry.depth() > max_depth {
+            let is_directory = entry.file_type().is_some_and(|kind| kind.is_dir());
+            // Structural entries are cheap within a branch so nested documents progress
+            // before dense runs of regular files consume the shared entry budget.
+            slice_work = slice_work.saturating_add(if is_directory { 1 } else { 8 });
+            if directory.probe_only {
                 coverage.depth_limit = true;
                 continue;
             }
-            if indexed_entries >= max_entries {
-                coverage.entry_limit = true;
-                break 'walk;
+            let path = entry.into_path();
+            match admit_path(&mut indexed_paths, &path, max_entries) {
+                PathAdmission::Duplicate => continue,
+                PathAdmission::EntryLimit => {
+                    coverage.entry_limit = true;
+                    break 'walk;
+                }
+                PathAdmission::Unique => {}
             }
-            let is_directory = entry.file_type().is_some_and(|kind| kind.is_dir());
-            pending_items.push(SearchItem::new(
-                entry.into_path(),
-                &walker.root,
-                is_directory,
-            ));
+            let entry_depth = directory.depth.saturating_add(1);
+            pending_items.push(SearchItem::new(path.clone(), &directory.root, is_directory));
             indexed_entries += 1;
+            if is_directory {
+                // Keep one queue slot available for this slice's continuation. A child that
+                // cannot be admitted is omitted, while already queued work still completes.
+                if pending_directory_count < max_pending_directories.saturating_sub(1) {
+                    let child = ScheduledDirectory {
+                        task: DirectoryTask {
+                            path,
+                            root: directory.root.clone(),
+                            depth: entry_depth,
+                            probe_only: entry_depth >= max_depth,
+                            skipped_entries: 0,
+                            batch_size: initial_directory_batch,
+                            virtual_work: directory.virtual_work.saturating_add(slice_work),
+                        },
+                        sequence: next_sequence,
+                    };
+                    next_sequence = next_sequence.wrapping_add(1);
+                    pending_directory_count += 1;
+                    if directory.depth == 0 {
+                        let mut child_branch = BinaryHeap::new();
+                        child_branch.push(child);
+                        new_branches.push(child_branch);
+                    } else {
+                        branch.push(child);
+                    }
+                } else {
+                    coverage.directory_limit = true;
+                }
+            }
             if pending_items.len() >= 256 {
                 append_index_items(index, &mut pending_items, true, coverage);
             }
@@ -626,7 +774,23 @@ fn build_index(
                 index.broadcast_change();
                 last_publish = Instant::now();
             }
+        };
+        drop(walker);
+        if !exhausted {
+            directory.skipped_entries = directory.skipped_entries.saturating_add(processed_entries);
+            directory.batch_size = directory.batch_size.saturating_mul(2);
+            directory.virtual_work = directory.virtual_work.saturating_add(slice_work);
+            branch.push(ScheduledDirectory {
+                task: directory,
+                sequence: next_sequence,
+            });
+            next_sequence = next_sequence.wrapping_add(1);
+            pending_directory_count += 1;
         }
+        if !branch.is_empty() {
+            pending_branches.push_back(branch);
+        }
+        pending_branches.extend(new_branches);
     }
     append_index_items(index, &mut pending_items, false, coverage);
     if coverage.is_partial() {
@@ -780,12 +944,12 @@ fn fuzzy_subsequence_score(haystack: &str, needle: &str) -> Option<i64> {
         return fuzzy_ascii_subsequence_score(haystack.as_bytes(), needle.as_bytes());
     }
     let mut chars = haystack.char_indices();
-    let mut previous = None;
+    let mut previous_end = None;
     let mut score = 1_000i64;
     for wanted in needle.chars() {
         let (position, _) = chars.find(|(_, candidate)| *candidate == wanted)?;
         score -= position as i64;
-        if previous.is_some_and(|previous| previous + wanted.len_utf8() == position) {
+        if previous_end == Some(position) {
             score += 80;
         }
         if position == 0
@@ -796,7 +960,7 @@ fn fuzzy_subsequence_score(haystack: &str, needle: &str) -> Option<i64> {
         {
             score += 45;
         }
-        previous = Some(position);
+        previous_end = Some(position + wanted.len_utf8());
     }
     Some(score)
 }

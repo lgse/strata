@@ -1,0 +1,16 @@
+--- a/gtk/media/gtkgstsink.c
++++ b/gtk/media/gtkgstsink.c
+@@ -1137,11 +1137,12 @@
+ 
+   g_clear_pointer (&self->color_state, gdk_color_state_unref);
+   g_clear_object (&self->paintable);
++  g_clear_object (&self->pool);
++  g_clear_object (&self->gst_context);
+   g_clear_object (&self->gst_gdk_context);
+   g_clear_object (&self->gst_display);
+   g_clear_object (&self->gdk_context);
+   g_clear_object (&self->gdk_display);
+-  g_clear_object (&self->pool);
+ 
+   G_OBJECT_CLASS (gtk_gst_sink_parent_class)->dispose (object);
+ }

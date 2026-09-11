@@ -15,17 +15,18 @@ use crate::{
     app::{Browser, BrowserEvent},
     model::{EntryKind, FileEntry, MetadataValue},
     services::{
-        LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
-        PreviewRequestId,
+        LoadHandle, MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider,
+        PreviewRequest, PreviewRequestId, SandboxedMedia,
     },
 };
 
 use super::{blur::BlurBin, controls::modal_layout};
 
 const DEFAULT_WIDTH: i32 = 520;
-const MIN_WIDTH: i32 = 280;
+const MIN_WIDTH: i32 = 560;
 const MAX_WIDTH: i32 = 3_000;
 const TEXT_BYTE_LIMIT: usize = 1024 * 1024;
+const PREVIEW_SPINNER_DELAY: Duration = Duration::from_millis(120);
 const PRINT_TEXT_BYTE_LIMIT: usize = 16 * 1024 * 1024;
 const TRANSITION: Duration = Duration::from_millis(260);
 const PDF_PAGE_GAP: i32 = 6;
@@ -80,6 +81,7 @@ struct PreviewState {
     content: gtk::Box,
     print: gtk::Button,
     media: RefCell<Option<gtk::MediaStream>>,
+    media_source: RefCell<Option<SandboxedMedia>>,
     media_signals: RefCell<Vec<glib::SignalHandlerId>>,
     media_volume_slider: RefCell<Option<gtk::Scale>>,
     media_volume_icon: RefCell<Option<gtk::Image>>,
@@ -88,6 +90,7 @@ struct PreviewState {
     occupied_width: RefCell<Option<Rc<dyn Fn() -> i32>>>,
     current: RefCell<Option<FileEntry>>,
     load: RefCell<Option<LoadHandle>>,
+    loading_delay: RefCell<Option<glib::SourceId>>,
     pdf_loads: Rc<RefCell<HashMap<i32, LoadHandle>>>,
     print_load: RefCell<Option<LoadHandle>>,
     print_progress: RefCell<Option<PrintProgress>>,
@@ -116,9 +119,9 @@ impl PreviewDrawer {
         pane.set_hexpand(true);
         pane.set_vexpand(true);
 
-        let header = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let header = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         header.add_css_class("preview-header");
-        let icon = crate::assets::primary_icon(crate::assets::icons::DOCUMENTS, 18);
+        let icon = crate::assets::chrome_icon(crate::assets::icons::DOCUMENTS);
         let title = gtk::Label::new(None);
         title.add_css_class("preview-title");
         title.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
@@ -152,6 +155,7 @@ impl PreviewDrawer {
         let header_handle = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         header_handle.add_css_class("preview-header-handle");
         header_handle.set_hexpand(true);
+        header_handle.set_margin_end(8);
         header_handle.set_cursor_from_name(Some("grab"));
         header_handle.append(&icon);
         header_handle.append(&title);
@@ -196,6 +200,7 @@ impl PreviewDrawer {
             content,
             print: print.clone(),
             media: RefCell::new(None),
+            media_source: RefCell::new(None),
             media_signals: RefCell::new(Vec::new()),
             media_volume_slider: RefCell::new(None),
             media_volume_icon: RefCell::new(None),
@@ -204,6 +209,7 @@ impl PreviewDrawer {
             occupied_width: RefCell::new(None),
             current: RefCell::new(None),
             load: RefCell::new(None),
+            loading_delay: RefCell::new(None),
             pdf_loads: Rc::new(RefCell::new(HashMap::new())),
             print_load: RefCell::new(None),
             print_progress: RefCell::new(None),
@@ -495,6 +501,7 @@ impl PreviewState {
             .set(self.animation_generation.get().saturating_add(1));
         self.current_request.set(None);
         self.load.borrow_mut().take();
+        self.cancel_loading();
         self.pdf_loads.borrow_mut().clear();
         self.cancel_print();
         self.clear_content();
@@ -657,6 +664,7 @@ impl PreviewState {
                 entry,
                 text_byte_limit: PRINT_TEXT_BYTE_LIMIT,
                 pdf_page,
+                media_size: self.media_preview_size(),
             },
             emit,
         );
@@ -727,6 +735,38 @@ impl PreviewState {
         }
     }
 
+    fn media_preview_size(&self) -> MediaPreviewSize {
+        let split = self.split.borrow();
+        let width = split
+            .as_ref()
+            .filter(|split| split.width() > 0)
+            .map(|split| {
+                if self.animating.get() {
+                    self.opening_width(split.width())
+                } else {
+                    split.width().saturating_sub(split.position())
+                }
+            })
+            .filter(|width| *width > 0)
+            .unwrap_or_else(|| {
+                if self.content.width() > 0 {
+                    self.content.width()
+                } else {
+                    DEFAULT_WIDTH
+                }
+            });
+        let height = if self.content.height() > 0 {
+            self.content.height()
+        } else {
+            split
+                .as_ref()
+                .map(|split| split.height())
+                .filter(|height| *height > 0)
+                .unwrap_or(DEFAULT_WIDTH)
+        };
+        MediaPreviewSize::for_viewport(width, height, self.pane.scale_factor())
+    }
+
     fn load(self: &Rc<Self>, entry: FileEntry, pdf_page: i32) {
         self.current.replace(Some(entry.clone()));
         crate::assets::set_primary_icon(&self.icon, super::browser::entry_icon(&entry));
@@ -736,7 +776,6 @@ impl PreviewState {
         self.size.set_text(&metadata_size(&entry));
         crate::util::set_modified_date(&self.modified, Some(&entry), "—");
         self.content_type.set_text(file_extension(&entry));
-        self.show_loading();
         self.load.borrow_mut().take();
         self.pdf_loads.borrow_mut().clear();
 
@@ -744,6 +783,7 @@ impl PreviewState {
         self.next_request
             .set(self.next_request.get().saturating_add(1));
         self.current_request.set(Some(request_id));
+        self.show_loading(request_id);
         let weak = Rc::downgrade(self);
         let emit = Rc::new(move |event| {
             let Some(state) = weak.upgrade() else {
@@ -757,6 +797,7 @@ impl PreviewState {
                 entry,
                 text_byte_limit: TEXT_BYTE_LIMIT,
                 pdf_page,
+                media_size: self.media_preview_size(),
             },
             emit,
         );
@@ -769,8 +810,7 @@ impl PreviewState {
         }
         match event {
             PreviewEvent::Ready(preview) if preview.request_id == expected => {
-                self.current_request.set(None);
-                self.load.borrow_mut().take();
+                self.cancel_loading();
                 self.render(preview);
             }
             PreviewEvent::Failed {
@@ -780,6 +820,7 @@ impl PreviewState {
             } if request_id == expected => {
                 self.current_request.set(None);
                 self.load.borrow_mut().take();
+                self.cancel_loading();
                 self.title.set_text(&entry.display_name);
                 self.show_message("Preview unavailable", &message);
             }
@@ -849,10 +890,11 @@ impl PreviewState {
                     Err(error) => self.show_message("Preview unavailable", &error.to_string()),
                 }
             }
-            PreviewContent::SandboxedMedia { data } => {
-                let bytes = glib::Bytes::from_owned(data);
-                let stream = gio::MemoryInputStream::from_bytes(&bytes);
-                let media = gtk::MediaFile::for_input_stream(&stream);
+            PreviewContent::SandboxedMedia { media: source } => {
+                // GTK 4.14's GStreamer backend supports files, not input streams.
+                let file = gio::File::for_path(source.path());
+                self.media_source.replace(Some(source));
+                let media = gtk::MediaFile::for_file(&file);
                 let is_gif = preview.content_type == "image/gif";
                 self.media.replace(Some(media.clone().upcast()));
                 let weak = Rc::downgrade(self);
@@ -865,50 +907,7 @@ impl PreviewState {
                     }
                 });
 
-                let picture = gtk::Picture::for_paintable(&media);
-                picture.add_css_class("preview-media");
-                picture.set_content_fit(gtk::ContentFit::Contain);
-                picture.set_hexpand(true);
-                picture.set_vexpand(true);
-                picture.set_cursor_from_name(Some("grab"));
-                install_preview_drag(&picture, self);
-
-                let overlay = gtk::Overlay::new();
-                overlay.set_child(Some(&picture));
-                overlay.set_focusable(true);
-                overlay.set_can_target(true);
-
-                let center_play = gtk::Button::new();
-                center_play.add_css_class("preview-media-center");
-                center_play.set_halign(gtk::Align::Center);
-                center_play.set_valign(gtk::Align::Center);
-                center_play.set_visible(false);
-                let center_icon = crate::assets::primary_icon(crate::assets::icons::PLAY, 48);
-                center_play.set_child(Some(&center_icon));
-                overlay.add_overlay(&center_play);
-
-                let media_for_center = media.clone();
-                center_play.connect_clicked(move |_| {
-                    if media_for_center.is_playing() {
-                        media_for_center.pause();
-                    } else {
-                        media_for_center.play();
-                    }
-                });
-
-                let media_for_click = media.clone();
-                let overlay_for_focus = overlay.clone();
-                let click = gtk::GestureClick::new();
-                click.connect_pressed(move |_, _, _, _| {
-                    overlay_for_focus.grab_focus();
-                    if media_for_click.is_playing() {
-                        media_for_click.pause();
-                    } else {
-                        media_for_click.play();
-                    }
-                });
-                picture.add_controller(click);
-
+                let (overlay, center_play) = self.build_media_view(&media);
                 self.content.append(&overlay);
 
                 if is_gif {
@@ -972,6 +971,56 @@ impl PreviewState {
                 );
             }
         }
+    }
+
+    fn build_media_view(self: &Rc<Self>, media: &gtk::MediaFile) -> (gtk::Overlay, gtk::Button) {
+        let picture = gtk::Picture::for_paintable(media);
+        picture.add_css_class("preview-media");
+        picture.set_content_fit(gtk::ContentFit::Contain);
+        picture.set_hexpand(true);
+        picture.set_vexpand(true);
+        picture.set_cursor_from_name(Some("grab"));
+        install_preview_drag(&picture, self);
+
+        let overlay = gtk::Overlay::new();
+        overlay.set_child(Some(&picture));
+        overlay.set_focusable(true);
+        overlay.set_can_target(true);
+
+        let center_play = gtk::Button::new();
+        center_play.add_css_class("preview-media-center");
+        center_play.set_halign(gtk::Align::Center);
+        center_play.set_valign(gtk::Align::Center);
+        center_play.set_visible(false);
+        let center_icon = crate::assets::primary_icon(crate::assets::icons::PLAY, 48);
+        center_play.set_child(Some(&center_icon));
+        overlay.add_overlay(&center_play);
+
+        let media_for_center = media.clone();
+        center_play.connect_clicked(move |_| {
+            if media_for_center.is_playing() {
+                media_for_center.pause();
+            } else {
+                media_for_center.play();
+            }
+        });
+
+        let media_for_click = media.clone();
+        let overlay_for_focus = overlay.downgrade();
+        let click = gtk::GestureClick::new();
+        click.connect_pressed(move |_, _, _, _| {
+            if let Some(overlay) = overlay_for_focus.upgrade() {
+                overlay.grab_focus();
+            }
+            if media_for_click.is_playing() {
+                media_for_click.pause();
+            } else {
+                media_for_click.play();
+            }
+        });
+        picture.add_controller(click);
+
+        (overlay, center_play)
     }
 
     fn render_pdf_viewer(
@@ -1111,6 +1160,7 @@ impl PreviewState {
                     entry: entry_for_bind.clone(),
                     text_byte_limit: TEXT_BYTE_LIMIT,
                     pdf_page: page_index,
+                    media_size: MediaPreviewSize::new(1280, 1280),
                 },
                 emit,
             );
@@ -1371,10 +1421,12 @@ impl PreviewState {
         });
         let seeking_for_end = seeking.clone();
         let media_for_drag_end = media.clone();
-        let seek_for_drag_end = seek.clone();
+        let seek_for_drag_end = seek.downgrade();
         drag.connect_drag_end(move |_, _, _| {
             seeking_for_end.set(false);
-            media_for_drag_end.seek(seek_for_drag_end.value() as i64);
+            if let Some(seek) = seek_for_drag_end.upgrade() {
+                media_for_drag_end.seek(seek.value() as i64);
+            }
         });
         seek.add_controller(drag);
 
@@ -1435,7 +1487,11 @@ impl PreviewState {
                 stream.disconnect(handler);
             }
             stream.set_playing(false);
+            if let Some(media_file) = stream.downcast_ref::<gtk::MediaFile>() {
+                media_file.clear();
+            }
         }
+        self.media_source.borrow_mut().take();
         self.media_toggle_mute.replace(None);
         self.media_volume_slider.replace(None);
         self.media_volume_icon.replace(None);
@@ -1443,15 +1499,33 @@ impl PreviewState {
         clear_box(&self.content);
     }
 
-    fn show_loading(&self) {
+    fn show_loading(self: &Rc<Self>, request_id: PreviewRequestId) {
         self.clear_content();
-        let spinner = gtk::Spinner::new();
-        spinner.add_css_class("preview-spinner");
-        spinner.set_halign(gtk::Align::Center);
-        spinner.set_valign(gtk::Align::Center);
-        spinner.set_vexpand(true);
-        spinner.start();
-        self.content.append(&spinner);
+        self.cancel_loading();
+        let weak = Rc::downgrade(self);
+        let source = glib::timeout_add_local_once(PREVIEW_SPINNER_DELAY, move || {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.loading_delay.borrow_mut().take();
+            if state.current_request.get() != Some(request_id) {
+                return;
+            }
+            let spinner = gtk::Spinner::new();
+            spinner.add_css_class("preview-spinner");
+            spinner.set_halign(gtk::Align::Center);
+            spinner.set_valign(gtk::Align::Center);
+            spinner.set_vexpand(true);
+            spinner.start();
+            state.content.append(&spinner);
+        });
+        self.loading_delay.replace(Some(source));
+    }
+
+    fn cancel_loading(&self) {
+        if let Some(source) = self.loading_delay.borrow_mut().take() {
+            source.remove();
+        }
     }
 
     fn show_media_error(&self, error: &glib::Error) {

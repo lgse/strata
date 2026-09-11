@@ -117,6 +117,27 @@ pass before merge.
   Timing is informational; test failures, incomplete coverage, and invalid
   provenance still fail CI. See `docs/e2e-testing.md`.
 
+## Private media runtime patches
+
+- Before changing GTK, GStreamer, GLib, their Rust bindings, media plugins, or
+  release/build images, review `packaging/media-runtime/README.md` and the pinned
+  patches/source hashes. These are version-specific toolkit patches, not Cargo
+  patches; updating Rust crates alone does not apply or retire them.
+- For each runtime update, inspect upstream fixes and the affected ownership paths.
+  Record whether each patch is still required, needs rebasing, or is superseded.
+  Never silently drop a patch or accept a fuzzy application. Update source hashes,
+  notices, build requirements, and evidence together when changing the baseline.
+- Rebuild and rerun the standalone lifetime and GTK lifecycle regressions against
+  both the unpatched and patched candidate baseline. Confirm actual private-library
+  loading and test supported architectures, plugins, sandbox helpers, and installed
+  upgrade/rollback paths before promoting a runtime-bearing release. Preserve GUI
+  isolation; owner-operated GPU captures require the documented explicit consent.
+- The current patch kit is opt-in source material, not integrated into release
+  builds or installation. Do not claim the next release contains these fixes until
+  the build applies them, the artifact includes the runtime, and installed-artifact
+  tests verify it is loaded. Keep unresolved RAM growth separate from demonstrated
+  crash/GL-resource improvements.
+
 ## Issues and pull requests
 
 - Automated agents must follow the same issue-first workflow and pull request template as human contributors; do not remove or bypass template sections.

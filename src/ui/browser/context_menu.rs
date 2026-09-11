@@ -187,6 +187,7 @@ pub(in crate::ui) fn install_folder_context_menu(
         "Ctrl+Shift+N",
     );
     let new_file = context_menu_option(crate::assets::icons::FILE_PLUS, "New File", "");
+    let open_with = context_menu_option(crate::assets::icons::EXTERNAL_LINK, "Open With…", "");
     let open_terminal =
         context_menu_option(crate::assets::icons::TERMINAL, "Open in Terminal", "Ctrl+T");
     let paste = context_menu_option(crate::assets::icons::CLIPBOARD_PASTE, "Paste", "Ctrl+V");
@@ -206,14 +207,18 @@ pub(in crate::ui) fn install_folder_context_menu(
         },
         "Ctrl+H",
     );
+    let customize = context_menu_option(crate::assets::icons::PALETTE, "Customize…", "");
     let properties = context_menu_option(crate::assets::icons::INFO, "Properties", "");
     let in_trash = is_trash_location(&location);
+    customize.set_visible(!in_trash && location.native_path().is_some());
     new_folder.set_visible(!in_trash);
     new_file.set_visible(!in_trash);
+    open_with.set_visible(!in_trash);
     open_terminal.set_visible(!in_trash);
     paste.set_visible(!in_trash);
     content.append(&new_folder);
     content.append(&new_file);
+    content.append(&open_with);
     content.append(&open_terminal);
     if !in_trash {
         content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
@@ -223,6 +228,7 @@ pub(in crate::ui) fn install_folder_context_menu(
     content.append(&refresh);
     content.append(&toggle_hidden);
     content.append(&gtk::Separator::new(gtk::Orientation::Horizontal));
+    content.append(&customize);
     content.append(&properties);
 
     let pending_new_entry = Rc::new(Cell::new(None));
@@ -299,6 +305,26 @@ pub(in crate::ui) fn install_folder_context_menu(
         }
     });
     let weak = Rc::downgrade(state);
+    let customize_popover = popover.downgrade();
+    let customize_location = location.clone();
+    customize.connect_clicked(move |_| {
+        if let Some(popover) = customize_popover.upgrade() {
+            popover.popdown();
+        }
+        let Some(state) = weak.upgrade() else {
+            return;
+        };
+        let Some(path) = customize_location.native_path() else {
+            return;
+        };
+        show_customize_modal(
+            &state.overlay,
+            path.to_path_buf(),
+            true,
+            crate::assets::icons::FOLDER,
+        );
+    });
+    let weak = Rc::downgrade(state);
     let properties_popover = popover.downgrade();
     let properties_location = location.clone();
     properties.connect_clicked(move |_| {
@@ -308,6 +334,34 @@ pub(in crate::ui) fn install_folder_context_menu(
         if let Some(state) = weak.upgrade() {
             state.show_folder_properties(&properties_location);
         }
+    });
+    let weak = Rc::downgrade(state);
+    let open_with_popover = popover.downgrade();
+    let open_with_location = location.clone();
+    open_with.connect_clicked(move |_| {
+        if let Some(popover) = open_with_popover.upgrade() {
+            popover.popdown();
+        }
+        let Some(state) = weak.upgrade() else {
+            return;
+        };
+        let file = gio_file_for_location(&open_with_location);
+        let requires_uris =
+            crate::ui::open_with::requires_uri_handlers(std::slice::from_ref(&file));
+        let (recommended_apps, other_apps) =
+            crate::ui::open_with::categorized_apps("inode/directory", requires_uris);
+        let browser = Rc::downgrade(&state.browser);
+        crate::ui::open_with::show(
+            &state.overlay,
+            vec![file],
+            recommended_apps,
+            other_apps,
+            Rc::new(move || {
+                if let Some(browser) = browser.upgrade() {
+                    browser.focus_active();
+                }
+            }),
+        );
     });
     let weak = Rc::downgrade(state);
     let terminal_popover = popover.downgrade();
@@ -651,7 +705,8 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             crate::ui::open_with::show(
                 &state.overlay,
                 selection.files,
-                selection.apps,
+                selection.recommended_apps,
+                selection.other_apps,
                 Rc::new(move || {
                     if let Some(browser) = browser.upgrade() {
                         browser.focus_active();
@@ -679,7 +734,8 @@ pub(in crate::ui) fn install_resolved_item_context_menu(
             crate::ui::open_with::show(
                 &state.overlay,
                 selection.files,
-                selection.apps,
+                selection.recommended_apps,
+                selection.other_apps,
                 Rc::new(move || {
                     if let Some(browser) = browser.upgrade() {
                         browser.focus_active();
@@ -1049,6 +1105,42 @@ pub(super) fn preview_context_entry(
     }
 }
 
+fn focus_search_result(state: &ViewState, depth: usize, entry: &FileEntry) {
+    let Some(path) = entry.location.native_path() else {
+        return;
+    };
+    if state.mode_views.borrow().mode() != crate::ui::browser_modes::BrowserMode::Columns {
+        state.mode_views.borrow().focus_search_result(path);
+        return;
+    }
+    let Some(column) = state.columns.borrow().get(depth).cloned() else {
+        return;
+    };
+    if column.search_handle.borrow().is_none() {
+        return;
+    }
+    let position = column
+        .search_results
+        .borrow()
+        .iter()
+        .position(|item| item.path == path);
+    let Some(position) = position else {
+        return;
+    };
+    let row = column.bound_rows.borrow().iter().find_map(|bound| {
+        let item = bound.item.upgrade()?;
+        (item.position() == position as u32)
+            .then(|| bound.row.upgrade())
+            .flatten()
+    });
+    if let Some(row) = row.filter(|row| row.is_mapped()) {
+        column.selection.select_item(position as u32, true);
+        if let Some(item) = row.parent() {
+            item.grab_focus();
+        }
+    }
+}
+
 pub(super) fn rename_context_entry(
     state: &Rc<ViewState>,
     depth: usize,
@@ -1095,6 +1187,22 @@ pub(super) fn rename_context_entry(
         host.blurred_root.clone(),
         None,
     );
+    let submitted = Rc::new(Cell::new(false));
+    let submitted_on_unmap = submitted.clone();
+    let weak_state = Rc::downgrade(state);
+    let origin = entry.clone();
+    layer.connect_unmap(move |layer| {
+        if submitted_on_unmap.get() || !layer.has_css_class("dismissing") {
+            return;
+        }
+        let weak_state = weak_state.clone();
+        let origin = origin.clone();
+        glib::idle_add_local_once(move || {
+            if let Some(state) = weak_state.upgrade() {
+                focus_search_result(&state, depth, &origin);
+            }
+        });
+    });
     let weak_layer = layer.downgrade();
     let dismiss = Rc::new(move || {
         if let Some(layer) = weak_layer.upgrade() {
@@ -1122,6 +1230,7 @@ pub(super) fn rename_context_entry(
     layout.confirm.connect_clicked(move |_| {
         if super::update_basename_validation(&field_for_submit) {
             let name = field_for_submit.text().to_string();
+            submitted.set(true);
             dismiss();
             if let Some(state) = weak.upgrade() {
                 super::queue_rename(&state.browser, entry.clone(), name);
@@ -1309,7 +1418,8 @@ fn permanently_delete_is_visible(in_trash: bool, can_delete: Option<bool>) -> bo
 struct OpenWithSelection {
     locations: Vec<Location>,
     files: Vec<gio::File>,
-    apps: Vec<gio::AppInfo>,
+    recommended_apps: Vec<gio::AppInfo>,
+    other_apps: Vec<gio::AppInfo>,
     default: Option<gio::AppInfo>,
 }
 
@@ -1400,9 +1510,10 @@ fn prepare_open_with(
         if generation.get() != expected_generation {
             return;
         }
-        let requires_uris = files.iter().any(|file| !file.is_native());
-        let (apps, default) = common_applications(&content_types, requires_uris);
-        let available = !apps.is_empty();
+        let requires_uris = crate::ui::open_with::requires_uri_handlers(&files);
+        let (recommended_apps, other_apps, default) =
+            common_applications(&content_types, requires_uris);
+        let available = !recommended_apps.is_empty() || !other_apps.is_empty();
         let explanation = if available {
             None
         } else if content_types.len() > 1 {
@@ -1414,7 +1525,8 @@ fn prepare_open_with(
         result.replace(Some(OpenWithSelection {
             locations,
             files,
-            apps,
+            recommended_apps,
+            other_apps,
             default,
         }));
         for button in [&single_button, &multiple_button] {
@@ -1427,19 +1539,21 @@ fn prepare_open_with(
 fn common_applications(
     content_types: &[String],
     requires_uris: bool,
-) -> (Vec<gio::AppInfo>, Option<gio::AppInfo>) {
+) -> (Vec<gio::AppInfo>, Vec<gio::AppInfo>, Option<gio::AppInfo>) {
     let Some(first) = content_types.first() else {
-        return (vec![], None);
+        return (vec![], vec![], None);
     };
-    let mut apps = crate::ui::open_with::compatible_apps(first, requires_uris);
+    let (mut recommended, _) = crate::ui::open_with::categorized_apps(first, requires_uris);
     let mut default = gio::AppInfo::default_for_type(first, requires_uris);
     for content_type in &content_types[1..] {
-        let next = crate::ui::open_with::compatible_apps(content_type, requires_uris);
-        apps.retain(|app| next.iter().any(|candidate| candidate.equal(app)));
+        let (next_rec, _) = crate::ui::open_with::categorized_apps(content_type, requires_uris);
+        recommended.retain(|app| next_rec.iter().any(|candidate| candidate.equal(app)));
         let next_default = gio::AppInfo::default_for_type(content_type, requires_uris);
         default = default.filter(|app| next_default.as_ref().is_some_and(|next| next.equal(app)));
     }
-    (apps, default)
+    let other =
+        crate::ui::open_with::filter_other_apps(gio::AppInfo::all(), &recommended, requires_uris);
+    (recommended, other, default)
 }
 
 #[cfg(test)]
