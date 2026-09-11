@@ -1431,7 +1431,7 @@ fn filter_controls(tooltip: &str) -> (gtk::Entry, gtk::Revealer, gtk::ToggleButt
     button.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::FUNNEL,
     )));
-    button.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&button);
     let shown_filter = revealer.clone();
     let focused_filter = entry.clone();
     button.connect_toggled(move |button| {
@@ -1492,7 +1492,7 @@ fn icons_controls(browser: &Rc<Browser>, depth: usize, thumbnail_size: i32) -> I
         .tooltip_text("Thumbnail size")
         .popover(&thumbnail_popover)
         .build();
-    thumbnail_menu.add_css_class("column-header-action");
+    crate::ui::controls::pane_header_action(&thumbnail_menu);
     thumbnail_menu.add_css_class("icons-thumbnail-menu");
     thumbnail_menu.set_child(Some(&crate::assets::chrome_icon(
         crate::assets::icons::PICTURES,
@@ -2164,6 +2164,7 @@ fn list_headings(browser: &Rc<Browser>, depth: usize, columns: ListColumnLayout)
         button.add_css_class("list-heading-button");
         button.set_hexpand(true);
         if let Some(key) = key {
+            button.set_cursor_from_name(Some("pointer"));
             let weak_browser = Rc::downgrade(browser);
             let sorting_for_click = sorting.clone();
             let arrows_for_click = arrows.clone();
@@ -2338,6 +2339,7 @@ fn list_navigation(browser: &Rc<Browser>) -> gtk::Box {
             .build();
         button.set_child(Some(&crate::assets::chrome_icon(icon)));
         button.add_css_class("list-navigation-button");
+        button.set_cursor_from_name(Some("pointer"));
         let weak_browser = Rc::downgrade(browser);
         button.connect_clicked(move |_| {
             if let Some(browser) = weak_browser.upgrade() {
@@ -2517,6 +2519,7 @@ fn build_list_pane(
         .build();
     scroll.add_css_class("fixed-scrollbar");
     scroll.add_css_class("browser-listing-scroll");
+    scroll.add_css_class("list-listing-scroll");
     let browser_for_settle = Rc::downgrade(&browser);
     let source_index_for_settle = source_index.clone();
     let sections_for_settle = Rc::downgrade(&sections);
