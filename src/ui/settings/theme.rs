@@ -17,7 +17,7 @@ use crate::{
 
 use super::{
     append_heading,
-    bindings::{bind_choice, bind_switch},
+    bindings::{bind_number, bind_switch},
     page_content, scrollable_page,
 };
 
@@ -168,13 +168,28 @@ fn append_follow_omarchy_option(content: &gtk::Box, manager: &ThemeManager) -> g
 
 fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     append_heading(content, "TYPOGRAPHY");
-    let text_sizes = [TextSize::Small, TextSize::Medium, TextSize::Large];
-    let active_text_size = text_sizes
-        .iter()
-        .position(|&size| size == manager.text_size())
-        .unwrap_or(1);
-    let (text_size_control, text_size_buttons) =
-        segmented_control(&["Small", "Medium", "Large"], active_text_size);
+    let text_size_control =
+        gtk::SpinButton::with_range(f64::from(TextSize::MIN), f64::from(TextSize::MAX), 1.0);
+    text_size_control.set_numeric(true);
+    text_size_control.set_width_chars(3);
+    text_size_control.set_update_policy(gtk::SpinButtonUpdatePolicy::IfValid);
+    text_size_control.add_css_class("form-control");
+    crate::ui::accessibility::set_label(&text_size_control, "Text size in pixels");
+    bind_number(
+        manager,
+        &text_size_control,
+        |manager| f64::from(manager.text_size().root_font_px()),
+        |manager, value| manager.set_text_size(TextSize::new(value as u32)),
+    );
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    controls.append(&text_size_control);
+    controls.append(&gtk::Label::new(Some("px")));
+    let reset = gtk::Button::with_label("Reset");
+    reset.add_css_class("appearance-option");
+    reset.set_tooltip_text(Some("Reset text size to 13 px"));
+    let reset_manager = manager.clone();
+    reset.connect_clicked(move |_| reset_manager.set_text_size(TextSize::default()));
+    controls.append(&reset);
     let text_size_row = gtk::Box::new(gtk::Orientation::Vertical, 8);
     text_size_row.add_css_class("settings-option");
     let text_size_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
@@ -183,7 +198,7 @@ fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     text_size_title.set_xalign(0.0);
     text_size_title.add_css_class("settings-option-title");
     let text_size_description = gtk::Label::new(Some(
-        "Scale interface text across menus, labels, and lists.",
+        "Choose 8–48 logical pixels for interface text. Your display scaling applies on top. Use Ctrl++ / Ctrl+− to adjust and Ctrl+0 to reset.",
     ));
     text_size_description.set_xalign(0.0);
     text_size_description.set_wrap(true);
@@ -191,17 +206,8 @@ fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     text_size_copy.append(&text_size_title);
     text_size_copy.append(&text_size_description);
     text_size_row.append(&text_size_copy);
-    text_size_row.append(&text_size_control);
+    text_size_row.append(&controls);
     content.append(&text_size_row);
-    for (button, size) in text_size_buttons.into_iter().zip(text_sizes) {
-        bind_choice(
-            manager,
-            &button,
-            size,
-            ThemeManager::text_size,
-            ThemeManager::set_text_size,
-        );
-    }
 }
 
 fn theme_grid() -> gtk::FlowBox {

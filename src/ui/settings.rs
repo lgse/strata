@@ -209,6 +209,7 @@ mod responsive_bin {
     #[derive(Default)]
     pub struct ResponsiveBin {
         pub compact_navigation: Cell<bool>,
+        pub typography_scale: Cell<f64>,
         pub navigation: RefCell<Option<gtk::Box>>,
         pub navigation_heading: RefCell<Option<gtk::Label>>,
         pub navigation_labels: RefCell<Vec<gtk::Label>>,
@@ -249,7 +250,9 @@ mod responsive_bin {
                 return;
             };
             let (child_width, child_height) = responsive_dialog_size(width, height);
-            let compact = uses_compact_navigation(child_width);
+            let compact = uses_compact_navigation(
+                (f64::from(child_width) / self.typography_scale.get().max(0.1)) as i32,
+            );
             if self.compact_navigation.replace(compact) != compact {
                 if let Some(navigation) = self.navigation.borrow().as_ref() {
                     if compact {
@@ -348,6 +351,13 @@ impl ResponsiveBin {
         imp.responsive_activation_rows
             .replace(responsive.activation_rows);
         child.set_parent(&bin);
+        ThemeManager::shared().bind_interface_scale(&bin, |widget, scale| {
+            let bin = widget
+                .downcast_ref::<ResponsiveBin>()
+                .expect("settings bin");
+            bin.imp().typography_scale.set(scale);
+            bin.queue_allocate();
+        });
         bin
     }
 
@@ -421,6 +431,8 @@ pub fn build_layer(
     title.set_xalign(0.0);
     title.set_hexpand(true);
     title.add_css_class("settings-title");
+    title.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    title.set_max_width_chars(1);
     let close = gtk::Button::builder()
         .tooltip_text("Close settings")
         .build();
@@ -550,7 +562,13 @@ pub fn build_layer(
         navigation.append(&button);
     }
 
-    panel.append(&navigation);
+    let navigation_scroll = gtk::ScrolledWindow::builder()
+        .hscrollbar_policy(gtk::PolicyType::Never)
+        .vscrollbar_policy(gtk::PolicyType::Automatic)
+        .propagate_natural_width(true)
+        .child(&navigation)
+        .build();
+    panel.append(&navigation_scroll);
     panel.append(&page);
     responsive_panel.set_hexpand(false);
     responsive_panel.set_vexpand(false);
@@ -2155,6 +2173,7 @@ fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::
         .build();
     button.set_has_frame(false);
     button.set_cursor_from_name(Some("pointer"));
+    super::accessibility::set_label(&button, label);
     (button, text, content)
 }
 
@@ -2162,7 +2181,7 @@ fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
     content.set_hexpand(true);
     let scroller = gtk::ScrolledWindow::builder()
         .child(content)
-        .hscrollbar_policy(gtk::PolicyType::Never)
+        .hscrollbar_policy(gtk::PolicyType::Automatic)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
         .hexpand(true)
         .vexpand(true)

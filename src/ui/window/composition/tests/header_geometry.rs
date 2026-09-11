@@ -43,7 +43,7 @@ fn icon_and_list_subheaders_preserve_compact_hierarchy() {
                 .navigate(crate::model::Location::local(
                     directory.path().to_path_buf(),
                 ));
-            for size in [TextSize::Small, TextSize::Medium, TextSize::Large] {
+            for size in [11, 13, 15, 24, 32].map(TextSize::new) {
                 fixture.preferences.set_text_size(size);
                 for mode in [BrowserMode::Icons, BrowserMode::List, BrowserMode::Icons] {
                     fixture.preferences.set_browser_mode(mode);
@@ -68,7 +68,9 @@ fn icon_and_list_subheaders_preserve_compact_hierarchy() {
                         main_bounds.height(),
                         "{size:?}, {mode:?}"
                     );
-                    assert_eq!(main_bounds.height(), 41.0, "compact header: {size:?}");
+                    if size == TextSize::default() {
+                        assert_eq!(main_bounds.height(), 41.0, "compact header: {size:?}");
+                    }
                     let toggle_icon = fixture
                         .content
                         .header
@@ -76,7 +78,10 @@ fn icon_and_list_subheaders_preserve_compact_hierarchy() {
                         .child()
                         .expect("toggle icon");
                     let toggle_image = toggle_icon.downcast::<gtk::Image>().expect("toggle image");
-                    assert_eq!(toggle_image.pixel_size(), 17);
+                    assert_eq!(
+                        toggle_image.pixel_size(),
+                        (17.0 * size.root_font_px() as f64 / 13.0).round() as i32
+                    );
                     let main_button = fixture
                         .content
                         .header
@@ -87,8 +92,9 @@ fn icon_and_list_subheaders_preserve_compact_hierarchy() {
                         .expect("main header icon")
                         .compute_bounds(&fixture.window)
                         .expect("main icon bounds");
-                    assert_eq!(main_icon.width(), 16.0);
-                    assert_eq!(main_icon.height(), 16.0);
+                    let icon_size = (16.0 * size.root_font_px() as f64 / 13.0).round() as f32;
+                    assert_eq!(main_icon.width(), icon_size);
+                    assert_eq!(main_icon.height(), icon_size);
                     let close = descendant(&main_header, "header-actions")
                         .expect("main actions")
                         .last_child()
@@ -115,15 +121,17 @@ fn icon_and_list_subheaders_preserve_compact_hierarchy() {
                         let bounds = button
                             .compute_bounds(&fixture.window)
                             .expect("pane button bounds");
-                        assert_eq!(
-                            bounds.height(),
-                            if class == "column-header-action" {
-                                28.0
-                            } else {
-                                main_button.height()
-                            },
-                            "{size:?}, {mode:?}, {class}"
-                        );
+                        if size == TextSize::default() {
+                            assert_eq!(
+                                bounds.height(),
+                                if class == "column-header-action" {
+                                    28.0
+                                } else {
+                                    main_button.height()
+                                },
+                                "{size:?}, {mode:?}, {class}"
+                            );
+                        }
                         let icon = descendant(&button, "chrome-icon")
                             .expect("pane toolbar icon")
                             .compute_bounds(&fixture.window)
@@ -171,7 +179,7 @@ fn preview_header_matches_column_height_and_navigation_controls() {
                 mode: crate::model::MetadataValue::Unknown,
                 is_hidden: false,
             });
-            for size in [TextSize::Small, TextSize::Medium, TextSize::Large] {
+            for size in [11, 13, 15, 24, 32].map(TextSize::new) {
                 fixture.preferences.set_text_size(size);
                 settle();
                 let root = fixture.window.clone().upcast::<gtk::Widget>();
@@ -198,7 +206,7 @@ fn preview_header_matches_column_height_and_navigation_controls() {
                 let icon = descendant(&close, "chrome-icon").expect("chrome-icon");
                 let preview_icon = descendant(&preview_close, "chrome-icon").expect("chrome-icon");
                 assert_eq!(dimensions(&preview_icon), dimensions(&icon));
-                if size == TextSize::Medium
+                if size == TextSize::default()
                     && let Some(output) = std::env::var_os("STRATA_PREVIEW_HEADER_CAPTURE")
                 {
                     let snapshot = gtk::Snapshot::new();

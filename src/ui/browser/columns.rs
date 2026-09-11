@@ -1107,6 +1107,14 @@ impl ViewState {
 
         let shell = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         shell.set_size_request(COLUMN_WIDTH, -1);
+        let previous_scale = Cell::new(1.0);
+        crate::ui::theme::ThemeManager::shared().bind_interface_scale(
+            &shell,
+            move |shell, scale| {
+                let ratio = scale / previous_scale.replace(scale);
+                shell.set_width_request((f64::from(shell.width_request()) * ratio).round() as i32);
+            },
+        );
         shell.set_vexpand(true);
         shell.set_overflow(gtk::Overflow::Hidden);
         let column_overlay = gtk::Overlay::new();

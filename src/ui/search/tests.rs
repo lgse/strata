@@ -871,13 +871,30 @@ fn search_items(prefix: &str, count: usize) -> Vec<SearchItem> {
 }
 
 fn drain_main_context() {
-    while glib::MainContext::default().iteration(false) {}
+    settle_layout();
 }
 
 fn settle_layout() {
-    for _ in 0..20 {
-        glib::MainContext::default().iteration(false);
-    }
+    let Some(window) = gtk::Window::list_toplevels()
+        .into_iter()
+        .find(|window| window.is_mapped())
+    else {
+        while glib::MainContext::default().iteration(false) {}
+        return;
+    };
+    // Ready GLib sources alone are not a barrier for GTK's frame-clock layout.
+    let frames = Rc::new(Cell::new(0));
+    let observed = frames.clone();
+    window.add_tick_callback(move |_, _| {
+        observed.set(observed.get() + 1);
+        if observed.get() >= 3 {
+            glib::ControlFlow::Break
+        } else {
+            glib::ControlFlow::Continue
+        }
+    });
+    wait_until(|| frames.get() >= 3);
+    wait_until(|| !glib::MainContext::default().iteration(false));
 }
 
 #[test]

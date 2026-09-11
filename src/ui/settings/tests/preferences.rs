@@ -134,13 +134,20 @@ fn theme_hint_and_channel_controls_follow_external_changes() {
             manager.set_follow_omarchy(false);
             assert_eq!(active_switches(&first), [false]);
             assert_eq!(active_switches(&second), [false]);
-            manager.set_text_size(TextSize::Small);
+            for pixels in [32, 11] {
+                manager.set_text_size(TextSize::new(pixels));
+                for page in [&first, &second] {
+                    let control = descendants::<gtk::SpinButton>(page).remove(0);
+                    assert_eq!(control.value_as_int(), pixels as i32);
+                }
+            }
             for page in [&first, &second] {
-                let small = descendants::<gtk::ToggleButton>(page)
-                    .into_iter()
-                    .find(|button| button.label().as_deref() == Some("Small"))
-                    .expect("text size control");
-                assert!(small.is_active());
+                let control = descendants::<gtk::SpinButton>(page).remove(0);
+                control.set_value(27.0);
+                assert_eq!(manager.text_size(), TextSize::new(27));
+                for other in [&first, &second] {
+                    assert_eq!(descendants::<gtk::SpinButton>(other)[0].value_as_int(), 27);
+                }
                 let selected_cards = descendants::<gtk::Button>(page)
                     .into_iter()
                     .filter(|button| {

@@ -41,6 +41,7 @@ struct ListColumnLayout {
     widths: Rc<Vec<Cell<i32>>>,
     cells: Rc<Vec<RefCell<Vec<glib::WeakRef<gtk::Widget>>>>>,
     name_manually_resized: Rc<Cell<bool>>,
+    scale: Rc<Cell<f64>>,
 }
 
 impl ListColumnLayout {
@@ -49,6 +50,7 @@ impl ListColumnLayout {
             widths: Rc::new(LIST_COLUMN_WIDTHS.into_iter().map(Cell::new).collect()),
             cells: Rc::new((0..5).map(|_| RefCell::new(Vec::new())).collect()),
             name_manually_resized: Rc::new(Cell::new(false)),
+            scale: Rc::new(Cell::new(1.0)),
         }
     }
 }
@@ -2149,6 +2151,8 @@ fn list_headings(browser: &Rc<Browser>, depth: usize, columns: ListColumnLayout)
         let label = gtk::Label::new(Some(text));
         label.set_xalign(0.0);
         label.set_hexpand(true);
+        label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        label.set_max_width_chars(1);
         let arrow = crate::assets::primary_icon(
             if preferences.sort_direction == SortDirection::Ascending {
                 crate::assets::icons::ARROW_UP
@@ -2205,6 +2209,21 @@ fn list_headings(browser: &Rc<Browser>, depth: usize, columns: ListColumnLayout)
         cell.append(&button_overlay);
         headings.append(&cell);
     }
+    let scaled_columns = columns.clone();
+    super::theme::ThemeManager::shared().bind_interface_scale(&headings, move |_, scale| {
+        let ratio = scale / scaled_columns.scale.replace(scale);
+        for (index, width) in scaled_columns.widths.iter().enumerate() {
+            let scaled = (f64::from(width.get()) * ratio).round() as i32;
+            width.set(scaled);
+            scaled_columns.cells[index].borrow_mut().retain(|weak| {
+                let Some(cell) = weak.upgrade() else {
+                    return false;
+                };
+                cell.set_width_request(scaled);
+                true
+            });
+        }
+    });
     headings
 }
 
@@ -2710,6 +2729,10 @@ fn pane_base(
     heading_box.set_valign(gtk::Align::Center);
     let heading = gtk::Label::new(Some(title));
     heading.set_xalign(0.0);
+    heading.set_hexpand(true);
+    heading.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+    heading.set_max_width_chars(1);
+    heading.set_tooltip_text(Some(title));
     let spinner = gtk::Spinner::new();
     spinner.set_valign(gtk::Align::Center);
     spinner.start();
@@ -3687,6 +3710,8 @@ fn assemble_list_row() -> gtk::Box {
     let name_cell = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     name_cell.add_css_class("list-name-cell");
     let icon = super::thumbnail::ThumbnailSlot::new(18);
+    icon.add_css_class("list-file-icon");
+    icon.set_valign(gtk::Align::Center);
     let name = gtk::Label::new(None);
     name.add_css_class("alternate-rename-label");
     name.set_xalign(0.0);

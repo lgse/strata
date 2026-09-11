@@ -2,6 +2,16 @@
   font-family: "JetBrains Mono", "JetBrainsMono Nerd Font", monospace;
 }
 
+.file-icon {
+  min-width: 1.307692rem;
+  min-height: 1.307692rem;
+}
+
+.list-file-icon {
+  min-width: 1.384615rem;
+  min-height: 1.384615rem;
+}
+
 window {
   background: @theme_bg;
   color: @theme_text;
@@ -95,7 +105,7 @@ headerbar menubutton {
 }
 
 .location-control {
-  min-width: 8em;
+  min-width: 104px;
 }
 
 .global-activity-spinner {
@@ -801,7 +811,7 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .open-with-heading {
   color: @theme_dim_text;
-  font-size: 11px;
+  font-size: 0.846154em;
   font-weight: 700;
 }
 
@@ -849,18 +859,18 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .open-with-name {
   color: @theme_text;
-  font-size: 13px;
+  font-size: 1em;
   font-weight: 600;
 }
 
 .open-with-description {
   color: @theme_dim_text;
-  font-size: 11px;
+  font-size: 0.846154em;
 }
 
 .open-with-empty {
   color: @theme_dim_text;
-  font-size: 13px;
+  font-size: 1em;
   padding: 24px 12px;
 }
 
@@ -1035,6 +1045,58 @@ headerbar menubutton.header-action > button:focus-visible {
   border: none;
   border-radius: 4px;
   min-height: 8px;
+}
+
+spinbutton.form-control {
+  background: @theme_bg;
+  color: @theme_text;
+  border: 1px solid @theme_border;
+  border-radius: 5px;
+}
+
+spinbutton.form-control text {
+  background: transparent;
+  color: @theme_text;
+  caret-color: @theme_accent;
+}
+
+spinbutton.form-control text selection {
+  background: @theme_accent;
+  color: @theme_bg;
+}
+
+spinbutton.form-control button {
+  background: @theme_surface;
+  background-image: none;
+  color: @theme_accent;
+  border-color: @theme_border;
+  box-shadow: none;
+}
+
+spinbutton.form-control button image {
+  color: @theme_accent;
+}
+
+spinbutton.form-control:hover,
+spinbutton.form-control:focus-within {
+  border-color: @theme_accent;
+}
+
+spinbutton.form-control:focus-within {
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
+}
+
+spinbutton.form-control button:hover,
+spinbutton.form-control button:active {
+  background: @theme_highlight;
+  color: @theme_text;
+}
+
+spinbutton.form-control:disabled,
+spinbutton.form-control button:disabled {
+  color: @theme_dim_text;
+  opacity: 0.55;
 }
 
 entry.form-control {

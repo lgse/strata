@@ -5,6 +5,53 @@ use crate::test_support::gtk_test;
 use gtk::{gdk, glib, prelude::*};
 
 #[test]
+fn custom_text_size_keeps_grid_captions_and_editors_inside_cards() {
+    gtk_test(
+        "ui::icons_cell::tests::custom_text_size_keeps_grid_captions_and_editors_inside_cards",
+        || {
+            crate::ui::prepare_portal_ui();
+            let themes = crate::ui::theme::ThemeManager::shared();
+            let card = new_card(64);
+            let (icon, label) = parts(&card).expect("card parts");
+            label.set_text(Some("A long filename that wraps onto two lines.txt"));
+            let field = ensure_rename_field(&card).expect("rename field");
+            field.set_text("A long filename that wraps onto two lines.txt");
+            let window = gtk::Window::builder().child(&card).build();
+            window.present();
+            for pixels in [13, 24, 32, 48, 8, 13] {
+                themes.set_text_size(crate::ui::theme::TextSize::new(pixels));
+                for editing in [false, true] {
+                    label.set_visible(!editing);
+                    field.set_visible(editing);
+                    pump_frames(&card);
+                    let caption: &gtk::Widget = if editing {
+                        field.upcast_ref()
+                    } else {
+                        label.upcast_ref()
+                    };
+                    let bounds = caption.compute_bounds(&card).expect("caption bounds");
+                    let icon_bounds = icon.compute_bounds(&card).expect("icon bounds");
+                    assert_eq!(icon.width(), 64, "text size must not change thumbnail zoom");
+                    assert!(bounds.y() >= icon_bounds.y() + icon_bounds.height());
+                    assert!(
+                        bounds.y() + bounds.height() <= card.height() as f32,
+                        "{pixels}px editing={editing}: {bounds:?} card={}",
+                        card.height()
+                    );
+                    assert!(
+                        bounds.height()
+                            >= caption
+                                .measure(gtk::Orientation::Vertical, caption.width())
+                                .0 as f32
+                    );
+                }
+            }
+            window.close();
+        },
+    );
+}
+
+#[test]
 fn card_centers_the_icon_and_visible_filename_lines() {
     gtk_test(
         "ui::icons_cell::tests::card_centers_the_icon_and_visible_filename_lines",

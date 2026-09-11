@@ -2,6 +2,26 @@
 
 use super::*;
 
+pub(super) fn bind_number(
+    manager: &Rc<ThemeManager>,
+    control: &gtk::SpinButton,
+    read: fn(&ThemeManager) -> f64,
+    write: fn(&ThemeManager, f64),
+) {
+    manager.bind_preference(control, read, |widget, value| {
+        if let Some(control) = widget.downcast_ref::<gtk::SpinButton>() {
+            control.set_value(value);
+        }
+    });
+    let manager = manager.clone();
+    control.connect_value_changed(move |control| {
+        let value = control.value();
+        if read(&manager) != value {
+            write(&manager, value);
+        }
+    });
+}
+
 pub(super) fn bind_switch(
     manager: &Rc<ThemeManager>,
     toggle: &gtk::Switch,

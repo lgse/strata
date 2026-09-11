@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 mod preferences;
+mod typography;
 
 use std::rc::Rc;
 

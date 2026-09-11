@@ -162,6 +162,7 @@ fn browser_split(
     content.set_start_child(Some(&sidebar.widget));
     content.set_end_child(Some(&browser.widget()));
     bind_sidebar_toggle(&content, &sidebar.widget, toggle);
+    super::super::bind_sidebar_text_size(&content);
     content
 }
 

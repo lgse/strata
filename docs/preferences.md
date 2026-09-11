@@ -61,6 +61,33 @@ Synchronization between independently running application processes, or manual
 external edits to `settings.toml` while Strata runs, is not supported by this
 in-process binding mechanism. External edits are read on the next launch.
 
+## Text size and display scaling
+
+In **Settings → Theme & appearance → Typography**, enter an integer text size
+from **8 to 48 logical pixels**. The default is **13 px**. The setting applies
+immediately across windows, file views, settings, menus, dialogs, and text
+previews; opening Settings is not required to initialize it. **Appearance** also
+has decrease/increase controls and a size button that resets to the default.
+Use **Ctrl++** (or **Ctrl+=**), **Ctrl+−**, and **Ctrl+0** to increase, decrease,
+and reset, including while an inline editor or Settings is open.
+
+The size is saved numerically, for example `text_size = 27`. Existing `"small"`,
+`"medium"`, and `"large"` settings still load as 11, 13, and 15 px. Out-of-range
+integers are clamped; unknown legacy names use 13 px.
+
+Desktop text scaling multiplies the chosen size once. GTK/compositor monitor
+scaling then converts logical coordinates to device pixels; Strata does not
+multiply widget geometry by a monitor's scale factor. Moving between monitors
+therefore does not overwrite the saved size. Toolbar/row icons and initial
+column widths follow typography. Grid captions reserve their measured space,
+Settings compacts its navigation relative to text size, and oversized dialogs
+and settings content remain scrollable within the available window.
+
+Thumbnail zoom, image/PDF zoom, media decode resolution, volume, and playback
+position remain independent of interface text size. At extreme sizes on small
+logical displays, scrolling or resizing panes may be necessary. Physical
+mixed-DPI monitor transitions still need compositor-specific manual testing.
+
 ## Filter scope
 
 In **Settings → General → Browsing**, **Include subfolders when filtering** is

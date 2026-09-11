@@ -46,7 +46,24 @@ mod imp {
                 child = current.next_sibling();
             }
             if orientation == gtk::Orientation::Vertical {
-                let reserved = natural.max(widget.height_request());
+                let caption = widget
+                    .last_child()
+                    .map_or(0, |labels| {
+                        labels.measure(gtk::Orientation::Vertical, for_size).1
+                    })
+                    .max(
+                        super::super::rename_field(widget)
+                            .filter(gtk::prelude::WidgetExt::is_visible)
+                            .map_or(0, |field| {
+                                field.measure(gtk::Orientation::Vertical, for_size).1
+                            }),
+                    );
+                let reserved = natural.max(widget.height_request()).max(
+                    super::super::parts(widget).map_or(0, |(icon, _)| icon.slot_size())
+                        + caption
+                        + super::super::ICONS_CARD_PAD_Y
+                        + 3,
+                );
                 return (reserved, reserved, -1, -1);
             }
             (minimum, natural, -1, -1)

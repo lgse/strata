@@ -45,6 +45,9 @@ pub(super) fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
 
     append_heading(&content, "VIEW");
     append_keybinding(&content, "Toggle hidden files", "Ctrl + H  or  Ctrl + .");
+    append_keybinding(&content, "Increase text size", "Ctrl + +");
+    append_keybinding(&content, "Decrease text size", "Ctrl + −");
+    append_keybinding(&content, "Reset text size", "Ctrl + 0");
 
     append_heading(&content, "FILE OPERATIONS");
     for (label, keys) in [
@@ -77,7 +80,9 @@ fn append_keybinding(content: &gtk::Box, label: &str, keys: &str) {
     let label = gtk::Label::new(Some(label));
     label.set_xalign(0.0);
     label.set_hexpand(true);
+    label.set_wrap(true);
     let keys = gtk::Label::new(Some(keys));
+    keys.set_wrap(true);
     keys.add_css_class("keybinding-keys");
     row.append(&label);
     row.append(&keys);
