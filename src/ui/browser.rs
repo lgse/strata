@@ -137,6 +137,7 @@ pub(super) struct ViewState {
     global_activity_spinner: gtk::Spinner,
     global_activity: RefCell<GlobalActivityState>,
     breadcrumbs: gtk::Box,
+    breadcrumb_scroller: gtk::ScrolledWindow,
     location_entry: gtk::Entry,
     columns_widget: gtk::Box,
     scroller: gtk::ScrolledWindow,
@@ -292,18 +293,117 @@ impl BrowserView {
         breadcrumbs.add_css_class("breadcrumbs");
         let breadcrumb_scroller = gtk::ScrolledWindow::builder()
             .child(&breadcrumbs)
-            .hscrollbar_policy(gtk::PolicyType::Automatic)
+            .hscrollbar_policy(gtk::PolicyType::External)
             .vscrollbar_policy(gtk::PolicyType::Never)
             .hexpand(true)
             .build();
-        breadcrumb_scroller.add_css_class("fixed-scrollbar");
+        breadcrumb_scroller.add_css_class("breadcrumb-scroller");
+
+        let fade_left = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        fade_left.add_css_class("breadcrumb-fade");
+        fade_left.add_css_class("breadcrumb-fade-left");
+        fade_left.set_halign(gtk::Align::Start);
+        fade_left.set_valign(gtk::Align::Fill);
+        fade_left.set_can_target(false);
+        fade_left.set_opacity(0.0);
+
+        let fade_right = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        fade_right.add_css_class("breadcrumb-fade");
+        fade_right.add_css_class("breadcrumb-fade-right");
+        fade_right.set_halign(gtk::Align::End);
+        fade_right.set_valign(gtk::Align::Fill);
+        fade_right.set_can_target(false);
+        fade_right.set_opacity(0.0);
+
+        let breadcrumb_overlay = gtk::Overlay::new();
+        breadcrumb_overlay.set_child(Some(&breadcrumb_scroller));
+        breadcrumb_overlay.add_overlay(&fade_left);
+        breadcrumb_overlay.add_overlay(&fade_right);
+        breadcrumb_overlay.set_hexpand(true);
+
+        let hadjustment = breadcrumb_scroller.hadjustment();
+        let breadcrumb_scrollbar =
+            gtk::Scrollbar::new(gtk::Orientation::Horizontal, Some(&hadjustment));
+        breadcrumb_scrollbar.add_css_class("breadcrumb-scrollbar");
+        breadcrumb_scrollbar.set_visible(false);
+
+        let breadcrumb_container = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        breadcrumb_container.add_css_class("breadcrumb-container");
+        breadcrumb_container.append(&breadcrumb_overlay);
+        breadcrumb_container.append(&breadcrumb_scrollbar);
+        breadcrumb_container.set_hexpand(true);
+
+        let motion_controller = gtk::EventControllerMotion::new();
+        let scrollbar_clone = breadcrumb_scrollbar.clone();
+        motion_controller.connect_enter(move |_, _, _| {
+            scrollbar_clone.add_css_class("hovered");
+        });
+        let scrollbar_clone = breadcrumb_scrollbar.clone();
+        motion_controller.connect_leave(move |_| {
+            scrollbar_clone.remove_css_class("hovered");
+        });
+        breadcrumb_container.add_controller(motion_controller);
+
+        let scroll_timer: Rc<RefCell<Option<glib::SourceId>>> = Rc::new(RefCell::new(None));
+        let flash_scrollbar = {
+            let breadcrumb_scrollbar = breadcrumb_scrollbar.clone();
+            let scroll_timer = scroll_timer.clone();
+            move || {
+                breadcrumb_scrollbar.add_css_class("scrolling");
+                if let Some(source) = scroll_timer.borrow_mut().take() {
+                    source.remove();
+                }
+                let weak_scrollbar = breadcrumb_scrollbar.downgrade();
+                let timer_cell = scroll_timer.clone();
+                let source = glib::timeout_add_local_once(
+                    std::time::Duration::from_millis(1200),
+                    move || {
+                        timer_cell.borrow_mut().take();
+                        if let Some(sb) = weak_scrollbar.upgrade() {
+                            sb.remove_css_class("scrolling");
+                        }
+                    },
+                );
+                *scroll_timer.borrow_mut() = Some(source);
+            }
+        };
+
+        let update_overflow = {
+            let fade_left = fade_left.clone();
+            let fade_right = fade_right.clone();
+            let breadcrumb_scrollbar = breadcrumb_scrollbar.clone();
+            let hadjustment = hadjustment.clone();
+            move || {
+                let value = hadjustment.value();
+                let upper = hadjustment.upper();
+                let page_size = hadjustment.page_size();
+                let max_scroll = (upper - page_size).max(0.0);
+                let has_overflow = max_scroll > 1.0;
+                breadcrumb_scrollbar.set_visible(has_overflow);
+                let show_left = value > 1.0;
+                let show_right = has_overflow && value < max_scroll - 1.0;
+                fade_left.set_opacity(if show_left { 1.0 } else { 0.0 });
+                fade_right.set_opacity(if show_right { 1.0 } else { 0.0 });
+            }
+        };
+
+        hadjustment.connect_value_changed({
+            let update_overflow = update_overflow.clone();
+            let flash_scrollbar = flash_scrollbar.clone();
+            move |_| {
+                update_overflow();
+                flash_scrollbar();
+            }
+        });
+        hadjustment.connect_changed(move |_| update_overflow());
+
         let location_stack = gtk::Stack::builder()
             .hhomogeneous(false)
             .vhomogeneous(false)
             .transition_type(gtk::StackTransitionType::Crossfade)
             .transition_duration(100)
             .build();
-        location_stack.add_named(&breadcrumb_scroller, Some("breadcrumbs"));
+        location_stack.add_named(&breadcrumb_container, Some("breadcrumbs"));
         location_stack.add_named(&entry_control, Some("entry"));
         location_stack.set_visible_child_name("breadcrumbs");
         location_stack.set_hexpand(true);
@@ -338,6 +438,7 @@ impl BrowserView {
             global_activity_spinner,
             global_activity: RefCell::new(GlobalActivityState::default()),
             breadcrumbs,
+            breadcrumb_scroller: breadcrumb_scroller.clone(),
             location_entry,
             columns_widget,
             scroller,
@@ -462,6 +563,44 @@ impl BrowserView {
             }
         });
         breadcrumb_scroller.add_controller(edit_location);
+
+        let hierarchy_menu = gtk::GestureClick::new();
+        hierarchy_menu.set_button(gtk::gdk::BUTTON_SECONDARY);
+        let weak_state = Rc::downgrade(&state);
+        hierarchy_menu.connect_released(move |gesture, _, x, y| {
+            if let Some(state) = weak_state.upgrade()
+                && let Some(widget) = gesture.widget()
+            {
+                state.show_breadcrumb_hierarchy_menu(&widget, x, y);
+            }
+        });
+        breadcrumb_scroller.add_controller(hierarchy_menu);
+
+        let scroll_controller =
+            gtk::EventControllerScroll::new(gtk::EventControllerScrollFlags::BOTH_AXES);
+        let hadjustment_for_scroll = breadcrumb_scroller.hadjustment();
+        scroll_controller.connect_scroll(move |controller, dx, dy| {
+            let delta = if dx.abs() > 0.001 { dx } else { dy };
+            if delta.abs() > 0.001 {
+                let unit = controller.unit();
+                let step = delta
+                    * match unit {
+                        gtk::gdk::ScrollUnit::Wheel => {
+                            hadjustment_for_scroll.page_size().powf(2.0 / 3.0).max(30.0)
+                        }
+                        gtk::gdk::ScrollUnit::Surface => 2.5,
+                        _ => 1.0,
+                    };
+                let current = hadjustment_for_scroll.value();
+                let max =
+                    (hadjustment_for_scroll.upper() - hadjustment_for_scroll.page_size()).max(0.0);
+                hadjustment_for_scroll.set_value((current + step).clamp(0.0, max));
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        breadcrumb_scroller.add_controller(scroll_controller);
 
         let view = Self { state };
         view.bind_preferences(&preferences);

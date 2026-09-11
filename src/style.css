@@ -275,6 +275,82 @@ headerbar menubutton.header-action > button:focus-visible {
   min-height: 22px;
 }
 
+.breadcrumb-fade {
+  min-width: 24px;
+  min-height: 22px;
+  transition: opacity 150ms ease-out;
+}
+
+.breadcrumb-fade-left {
+  background: linear-gradient(to right, @theme_surface, transparent);
+}
+
+.breadcrumb-fade-right {
+  background: linear-gradient(to left, @theme_surface, transparent);
+}
+
+.breadcrumb-scroller scrollbar {
+  opacity: 0;
+  min-height: 0;
+  min-width: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+}
+
+.breadcrumb-container {
+  min-height: 22px;
+}
+
+.breadcrumb-scrollbar {
+  min-height: 4px;
+  padding: 0;
+  margin: 1px 0 0 0;
+  background: transparent;
+  border: none;
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+
+.breadcrumb-container:hover .breadcrumb-scrollbar,
+.breadcrumb-container.hovered .breadcrumb-scrollbar,
+.breadcrumb-scrollbar.hovered,
+.breadcrumb-scrollbar:hover,
+.breadcrumb-scrollbar.scrolling,
+.breadcrumb-scrollbar:focus,
+.breadcrumb-scrollbar:active {
+  opacity: 1;
+}
+
+.breadcrumb-scrollbar > range > trough {
+  min-height: 4px;
+  padding: 0;
+  margin: 0;
+  background: alpha(@theme_border, 0.25);
+  border: none;
+  border-radius: 2px;
+}
+
+.breadcrumb-scrollbar:hover > range > trough {
+  background: alpha(@theme_border, 0.45);
+}
+
+.breadcrumb-scrollbar > range > trough > slider {
+  min-height: 4px;
+  min-width: 32px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 2px;
+  background: @theme_accent;
+}
+
+.breadcrumb-scrollbar > range > trough > slider:hover,
+.breadcrumb-scrollbar > range > trough > slider:active {
+  background: @theme_accent;
+}
+
 .breadcrumb {
   background: transparent;
   color: @theme_dim_text;
@@ -338,6 +414,45 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .breadcrumb.breadcrumb-root {
   padding: 0;
+}
+
+.breadcrumb-popover contents {
+  background: @theme_surface;
+  border: 1px solid alpha(@theme_border, 0.6);
+  border-radius: 9px;
+  box-shadow: 0 0 14px alpha(@theme_accent, 0.24);
+  padding: 0;
+}
+
+.breadcrumb-hierarchy-menu {
+  font-size: 0.88em;
+  min-width: 180px;
+  padding: 6px;
+}
+
+.breadcrumb-hierarchy-item {
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  box-shadow: none;
+  color: @theme_text;
+  min-height: 28px;
+  padding: 4px 8px;
+  transition: background 120ms ease-out, color 120ms ease-out;
+}
+
+.breadcrumb-hierarchy-item:hover {
+  background: alpha(@theme_accent, 0.15);
+  color: @theme_text;
+}
+
+.breadcrumb-hierarchy-item:active {
+  background: alpha(@theme_accent, 0.25);
+}
+
+.breadcrumb-hierarchy-item.current {
+  color: @theme_accent;
+  font-weight: 700;
 }
 
 .search-backdrop {
