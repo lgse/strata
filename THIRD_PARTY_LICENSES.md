@@ -47,6 +47,21 @@ The experimental patch kit preserves upstream source notices and identifies pinn
 source archives. It does not bundle toolkit binaries or alter Strata's release
 artifacts. See its [build and redistribution requirements](packaging/media-runtime/README.md).
 
+## UnRAR
+
+- Project: <https://www.rarlab.com/rar_add.htm>
+- Bundled source: UnRAR 7.01 (2024-05-12), statically linked by `unrar_sys` 0.5.8
+- Copyright: Alexander Roshal
+- License: custom UnRAR license; **not** MIT or Apache-2.0
+- Full license: [`data/licenses/UnRAR.txt`](data/licenses/UnRAR.txt), also shipped as `UnRAR.txt` in release archives
+
+UnRAR permits RAR extraction but prohibits using its source to develop a
+RAR-compatible archiver or recreate the proprietary RAR compression algorithm.
+The wrapper crates' permissive metadata does not cover this native implementation.
+The pinned crate archive has SHA-256
+`8b77675b883cfbe6bf41e6b7a5cd6008e0a83ba497de3d96e41a064bbeead765`.
+Strata does not modify its vendored source.
+
 ## Rust dependencies
 
 Rust dependency licenses are declared in each package's metadata and are validated in CI with `cargo-deny`. To review the current dependency graph locally, run:
