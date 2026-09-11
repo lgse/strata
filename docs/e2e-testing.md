@@ -165,10 +165,15 @@ each libtest inventory, including the explicitly ignored tests, and assigns ever
 entry to one of four shards. Timing hints in `scripts/quality-durations.json`
 come from successful GTK child runs in
 [run 34560353003](https://github.com/lgse/strata/actions/runs/34560353003).
-Longest-first scheduling keeps slow tests apart; unknown tests receive a
-one-second weight and always participate. Timing hints are not an allowlist.
-The 154-second deferred-scroll regression remains unchanged and limits the
-possible speedup; sharding does not shorten an individual test.
+Shard 0 is reserved exclusively for
+`ui::search::tests::deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset`.
+Every other test is balanced longest-first across shards 1–3; unknown tests
+receive a one-second weight and always participate. Timing hints are not an
+allowlist and cannot put another test into shard 0. Validation rejects mixed
+assignments or a missing, duplicated, or ignored isolated test, so renaming or
+removing it requires updating `ISOLATED_TEST` and the reservation policy.
+The roughly 160-second deferred-scroll regression remains unchanged and limits
+the possible speedup; sharding does not shorten an individual test.
 
 Each **Rust tests shard N** verifies the checkout revision, application/Rust-test source
 fingerprint, image inputs, executable checksums, and the entire libtest inventory

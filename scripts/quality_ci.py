@@ -19,6 +19,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BUNDLE = ROOT / "target/quality-bundle"
 REPORTS = ROOT / "target/quality-reports"
 SHARDS = 4
+ISOLATED_TEST = (
+    "ui::search::tests::"
+    "deferred_scroll_restoration_yields_to_updates_wheel_scrollbar_and_query_reset"
+)
 SUMMARY = re.compile(
     r"^test result: ok\. (\d+) passed; 0 failed; (\d+) ignored; 0 measured; \d+ filtered out;.*$",
     re.MULTILINE,
@@ -50,7 +54,10 @@ def partition(tests, durations):
     loads = [0.0] * SHARDS
     assignments = [[] for _ in loads]
     for test in sorted(tests, key=lambda name: (-durations.get(name, 1.0), name)):
-        shard = min(range(SHARDS), key=lambda index: (loads[index], index))
+        if test == ISOLATED_TEST:
+            assignments[0].append(test)
+            continue
+        shard = min(range(1, SHARDS), key=lambda index: (loads[index], index))
         assignments[shard].append(test)
         loads[shard] += durations.get(test, 1.0)
     return [sorted(names) for names in assignments]
@@ -113,8 +120,12 @@ def validate_plan(plan):
             raise ValueError("Invalid ignored inventory or shard count")
         if Counter(test for shard in shards for test in shard) != Counter(tests):
             raise ValueError("Missing, extra, or duplicate assignment")
+        if shards[0] != ([ISOLATED_TEST] if ISOLATED_TEST in tests else []):
+            raise ValueError("Shard 0 must contain only the isolated test")
         for index, shard in enumerate(shards):
             totals[index] += len(set(shard) - set(ignored))
+    if totals[0] != 1:
+        raise ValueError("Expected exactly one runnable isolated test in shard 0")
     if len(files) != len(set(files)) or not all(totals):
         raise ValueError("Duplicate binary or empty runnable shard")
 
