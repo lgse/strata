@@ -907,15 +907,16 @@ impl ViewState {
     }
 }
 
-/// Whether an extract failure message reports a password or encryption problem.
-///
-/// Backtick-quoted spans hold archive member names, which extraction can quote
-/// verbatim in unrelated size/free-space errors (e.g. `` `passwords.txt` ``);
-/// strip them before matching so such names can't be mistaken for the keyword.
 fn extract_error_needs_password(message: &str) -> bool {
-    let without_member_names: String = message.split('`').step_by(2).collect();
-    let lower = without_member_names.to_lowercase();
-    lower.contains("password") || lower.contains("encrypt")
+    // Member diagnostics quote one unescaped filename, which can itself contain backticks.
+    let (prefix, suffix) = match (message.find('`'), message.rfind('`')) {
+        (Some(start), Some(end)) if start < end => (&message[..start], &message[end + 1..]),
+        _ => (message, ""),
+    };
+    [prefix, suffix].iter().any(|text| {
+        let lower = text.to_lowercase();
+        lower.contains("password") || lower.contains("encrypt")
+    })
 }
 
 #[cfg(test)]
