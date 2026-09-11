@@ -17,6 +17,35 @@ fn desktop_app(name: &str, arguments: &str, extra: &str) -> gio::AppInfo {
         .upcast()
 }
 
+fn path_only_app() -> gio::AppInfo {
+    let app = gio::AppInfo::create_from_commandline(
+        "/bin/true %F",
+        Some("Path handler"),
+        gio::AppInfoCreateFlags::NONE,
+    )
+    .expect("application");
+    assert!(!app.supports_uris());
+    app
+}
+
+fn mounted_non_native_file_with_path() -> Option<gio::File> {
+    gio::VolumeMonitor::get()
+        .mounts()
+        .into_iter()
+        .map(|mount| mount.root())
+        .find(|file| !file.is_native() && file.path().is_some())
+}
+
+fn assert_requires_uri_handlers(file: &gio::File) {
+    assert!(!file.is_native());
+    assert!(
+        file.path().is_none(),
+        "{} should have no local path",
+        file.uri()
+    );
+    assert!(requires_uri_handlers(std::slice::from_ref(file)));
+}
+
 #[test]
 fn compatible_handlers_include_hidden_defaults_but_require_uri_support() {
     let path = desktop_app("Path", "%F", "");
@@ -40,7 +69,50 @@ fn compatible_handlers_include_hidden_defaults_but_require_uri_support() {
 }
 
 #[test]
-fn path_only_launch_rejects_non_native_files_before_spawning() {
+fn uri_handlers_are_required_only_without_a_local_path() {
+    let native = gio::File::for_path("/tmp/notes.txt");
+    assert!(native.is_native());
+    assert!(native.path().is_some());
+    assert!(!requires_uri_handlers(std::slice::from_ref(&native)));
+
+    let trash = gio::File::for_uri("trash:///notes.txt");
+    assert_requires_uri_handlers(&trash);
+
+    for uri in [
+        "sftp://example.invalid/notes.txt",
+        "smb://example.invalid/share/notes.txt",
+    ] {
+        assert_requires_uri_handlers(&gio::File::for_uri(uri));
+    }
+
+    assert!(requires_uri_handlers(&[native, trash]));
+}
+
+#[test]
+fn fuse_backed_non_native_files_allow_path_handlers() {
+    let Some(fuse) = mounted_non_native_file_with_path() else {
+        eprintln!(
+            "Skipping ui::open_with::tests::fuse_backed_non_native_files_allow_path_handlers: no GVfs FUSE mount with a local path"
+        );
+        return;
+    };
+    assert!(!fuse.is_native());
+    assert!(fuse.path().is_some());
+    assert!(!requires_uri_handlers(std::slice::from_ref(&fuse)));
+
+    let trash = gio::File::for_uri("trash:///notes.txt");
+    assert!(requires_uri_handlers(&[fuse.clone(), trash]));
+
+    launch(
+        &path_only_app(),
+        std::slice::from_ref(&fuse),
+        None::<&gio::AppLaunchContext>,
+    )
+    .expect("FUSE path launch");
+}
+
+#[test]
+fn path_only_launch_rejects_files_without_a_local_path() {
     let app = desktop_app("Path", "%F", "");
     let local = gio::File::for_path("/tmp/local.txt");
     let remote = gio::File::for_uri("trash:///remote.txt");
@@ -52,6 +124,17 @@ fn path_only_launch_rejects_non_native_files_before_spawning() {
             .message()
             .contains("cannot open files at this location")
     );
+}
+
+#[test]
+fn path_only_launch_allows_files_with_a_local_path() {
+    let local = gio::File::for_path("/tmp/local.txt");
+    launch(
+        &path_only_app(),
+        std::slice::from_ref(&local),
+        None::<&gio::AppLaunchContext>,
+    )
+    .expect("path launch");
 }
 
 #[test]
