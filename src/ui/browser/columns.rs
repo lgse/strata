@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use crate::model::{FileEntry, Location};
+use crate::services::fold_for_search;
 use crate::ui::browser::ViewState;
 use crate::ui::browser::clipboard::install_directory_drop_target;
 use crate::ui::browser::collection::{
@@ -738,7 +739,7 @@ impl ViewState {
                     &filtered_model_for_search,
                     &filter,
                     &filter_query,
-                    text.to_lowercase(),
+                    fold_for_search(&text),
                 );
                 deactivate_recursive_search(
                     &search_active_for_changed,
@@ -749,7 +750,7 @@ impl ViewState {
                 );
                 return;
             }
-            *filter_query.borrow_mut() = text.to_lowercase();
+            *filter_query.borrow_mut() = fold_for_search(&text);
             search_active_for_changed.set(true);
             let weak_entry = weak_filter_entry.clone();
             let weak_state = weak_state_for_search.clone();

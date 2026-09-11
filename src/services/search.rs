@@ -13,6 +13,7 @@ use std::{
 };
 
 use crate::model::EntryKind;
+use unicode_normalization::UnicodeNormalization;
 
 use super::{is_hidden_name, native_hidden_names, native_kind};
 
@@ -44,6 +45,13 @@ const MAX_INDEX_DEPTH: usize = 64;
 const INDEX_TIME_BUDGET: Duration = Duration::from_secs(10);
 const INITIAL_DIRECTORY_BATCH: usize = 1;
 const MAX_PENDING_DIRECTORIES: usize = 4_096;
+
+pub fn fold_for_search(text: &str) -> String {
+    if text.is_ascii() {
+        return text.to_ascii_lowercase();
+    }
+    text.to_lowercase().nfc().collect()
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SearchItem {
@@ -77,7 +85,7 @@ impl SearchItem {
             .count()
             .saturating_sub(1)
             .min(MAX_INDEX_DEPTH) as u8;
-        let search_path = relative.to_string_lossy().to_lowercase();
+        let search_path = fold_for_search(&relative.to_string_lossy());
         let search_name_start = search_path
             .rfind(std::path::MAIN_SEPARATOR)
             .map_or(0, |position| {
@@ -442,7 +450,7 @@ fn run_search_session(
             .read()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         if let Some(query) = next_query {
-            progress.normalized_query = query.to_lowercase();
+            progress.normalized_query = fold_for_search(&query);
             progress.query = query;
             progress.matches = if progress.normalized_query.is_empty() {
                 Vec::new()
