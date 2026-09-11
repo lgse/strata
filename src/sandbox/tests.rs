@@ -8,6 +8,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::services::MediaPreviewSize;
+
+const MEDIA_PREVIEW: super::ParseOperation =
+    super::ParseOperation::PreviewMedia(MediaPreviewSize {
+        width: 640,
+        height: 800,
+    });
+
 use super::{
     Cancellation, MAX_RASTER_INPUT_BYTES, MEDIA_WALL_TIME_LIMIT, MediaPreviewBackend,
     ParseOperation, PrivateOutput, WALL_TIME_LIMIT, gpu_devices, parse, polaris_gpu_available_at,
@@ -168,7 +176,7 @@ fn sandbox_exposes_only_runtime_input_and_private_output() {
 
 #[test]
 fn media_previews_use_bounded_streaming_instead_of_driver_wide_resource_limits() {
-    let operation = ParseOperation::PreviewMedia;
+    let operation = MEDIA_PREVIEW;
     let command = sandbox_command(
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
@@ -277,7 +285,7 @@ fn every_polaris_range_uses_the_safe_default_but_remains_available_for_opt_in() 
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
-        ParseOperation::PreviewMedia,
+        MEDIA_PREVIEW,
         0,
         MediaPreviewBackend::Automatic,
         &devices,
@@ -356,7 +364,7 @@ fn media_sandbox_exposes_only_supplied_gpu_devices_and_sysfs() {
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
-        ParseOperation::PreviewMedia,
+        MEDIA_PREVIEW,
         0,
         MediaPreviewBackend::Automatic,
         &devices,
@@ -383,7 +391,7 @@ fn software_media_sandbox_exposes_no_gpu_devices_or_sysfs() {
         Path::new("/tmp/strata"),
         Path::new("/home/alice/Videos/untrusted.mkv"),
         Path::new("/tmp/private-output"),
-        ParseOperation::PreviewMedia,
+        MEDIA_PREVIEW,
         0,
         MediaPreviewBackend::Software,
         &["/dev/dri/renderD128".into(), "/dev/nvidia0".into()],
@@ -396,7 +404,7 @@ fn software_media_sandbox_exposes_no_gpu_devices_or_sysfs() {
 
     assert!(!joined.contains("--dev-bind-try"));
     assert!(!joined.contains("/sys"));
-    assert!(joined.ends_with("0 software"));
+    assert!(joined.ends_with("640x800 software"));
 }
 
 #[test]
@@ -469,19 +477,10 @@ fn accepts_only_bounded_png_webm_or_mp4_outputs() {
         ParseOperation::PreviewImage,
         b"\x89PNG\r\n\x1a\n"
     ));
-    assert!(valid_output(
-        ParseOperation::PreviewMedia,
-        b"\x1a\x45\xdf\xa3content"
-    ));
-    assert!(valid_output(
-        ParseOperation::PreviewMedia,
-        b"\0\0\0\x18ftypisom"
-    ));
-    assert!(!valid_output(ParseOperation::PreviewMedia, b""));
-    assert!(!valid_output(
-        ParseOperation::PreviewMedia,
-        b"unrelated data"
-    ));
+    assert!(valid_output(MEDIA_PREVIEW, b"\x1a\x45\xdf\xa3content"));
+    assert!(valid_output(MEDIA_PREVIEW, b"\0\0\0\x18ftypisom"));
+    assert!(!valid_output(MEDIA_PREVIEW, b""));
+    assert!(!valid_output(MEDIA_PREVIEW, b"unrelated data"));
 }
 
 #[test]

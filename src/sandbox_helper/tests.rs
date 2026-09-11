@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+mod media;
+
 use std::{
     path::{Path, PathBuf},
     process::Command,
@@ -13,14 +15,18 @@ use super::{
     media_backends, media_command, read_limited, render_pixbuf, render_raw, render_raw_thumbnail,
     render_simple_dcraw, run, run_media_backends, scale_embedded_thumbnail,
 };
-use crate::sandbox::MediaPreviewBackend;
+use crate::{sandbox::MediaPreviewBackend, services::MediaPreviewSize};
 
 fn arguments(backend: &MediaBackend) -> String {
-    media_command(backend, Path::new("/input"))
-        .get_args()
-        .map(|argument| argument.to_string_lossy())
-        .collect::<Vec<_>>()
-        .join(" ")
+    media_command(
+        backend,
+        Path::new("/input"),
+        MediaPreviewSize::new(640, 800),
+    )
+    .get_args()
+    .map(|argument| argument.to_string_lossy())
+    .collect::<Vec<_>>()
+    .join(" ")
 }
 
 #[test]
@@ -39,7 +45,8 @@ fn media_backends_are_deterministic_and_ordered() {
             MediaBackend::VaApi("/dev/dri/renderD129".into()),
             MediaBackend::Vulkan(0),
             MediaBackend::Vulkan(1),
-            MediaBackend::Software,
+            MediaBackend::SoftwareH264,
+            MediaBackend::SoftwareVp8,
         ]
     );
     assert_eq!(
@@ -47,7 +54,8 @@ fn media_backends_are_deterministic_and_ordered() {
         [
             MediaBackend::VaApi("/dev/dri/renderD128".into()),
             MediaBackend::VaApi("/dev/dri/renderD129".into()),
-            MediaBackend::Software,
+            MediaBackend::SoftwareH264,
+            MediaBackend::SoftwareVp8,
         ]
     );
     assert_eq!(
@@ -55,19 +63,24 @@ fn media_backends_are_deterministic_and_ordered() {
         [
             MediaBackend::Vulkan(0),
             MediaBackend::Vulkan(1),
-            MediaBackend::Software,
+            MediaBackend::SoftwareH264,
+            MediaBackend::SoftwareVp8,
         ]
     );
     assert_eq!(
         media_backends(&devices, MediaPreviewBackend::Software),
-        [MediaBackend::Software]
+        [MediaBackend::SoftwareH264, MediaBackend::SoftwareVp8]
     );
     assert_eq!(
         media_backends(
             &["/dev/nvidia0".into(), "/dev/nvidiactl".into()],
             MediaPreviewBackend::Automatic,
         ),
-        [MediaBackend::Vulkan(0), MediaBackend::Software]
+        [
+            MediaBackend::Vulkan(0),
+            MediaBackend::SoftwareH264,
+            MediaBackend::SoftwareVp8
+        ]
     );
 }
 
@@ -76,7 +89,8 @@ fn hardware_failures_fall_back_and_first_success_stops() {
     let backends = [
         MediaBackend::VaApi("/dev/dri/renderD128".into()),
         MediaBackend::Vulkan(0),
-        MediaBackend::Software,
+        MediaBackend::SoftwareH264,
+        MediaBackend::SoftwareVp8,
     ];
     let mut attempts = Vec::new();
     let result = run_media_backends(&backends, |backend| {
@@ -84,12 +98,13 @@ fn hardware_failures_fall_back_and_first_success_stops() {
         match backend {
             MediaBackend::VaApi(_) => Err(()),
             MediaBackend::Vulkan(_) => Ok(None),
-            MediaBackend::Software => Ok(Some("software")),
+            MediaBackend::SoftwareH264 => Ok(Some("software")),
+            MediaBackend::SoftwareVp8 => panic!("successful H.264 must not run VP8"),
         }
     });
 
     assert_eq!(result, Ok("software"));
-    assert_eq!(attempts, backends);
+    assert_eq!(attempts, backends[..3]);
 
     attempts.clear();
     let result = run_media_backends(&backends, |backend| {
@@ -103,7 +118,10 @@ fn hardware_failures_fall_back_and_first_success_stops() {
 #[test]
 fn final_software_failure_returns_the_normalization_error() {
     assert_eq!(
-        run_media_backends(&[MediaBackend::Software], |_| Ok::<Option<()>, ()>(None)),
+        run_media_backends(
+            &[MediaBackend::SoftwareH264, MediaBackend::SoftwareVp8],
+            |_| Ok::<Option<()>, ()>(None)
+        ),
         Err("Unable to normalize media preview".to_owned())
     );
 }
@@ -117,10 +135,10 @@ fn forced_backend_failure_goes_directly_to_software() {
         let mut attempts = Vec::new();
         run_media_backends(&backends, |backend| {
             attempts.push(backend.clone());
-            Ok::<_, ()>((*backend == MediaBackend::Software).then_some(()))
+            Ok::<_, ()>((*backend == MediaBackend::SoftwareH264).then_some(()))
         })
         .expect("software fallback should succeed");
-        assert_eq!(attempts, backends);
+        assert_eq!(attempts, backends[..2]);
         assert_eq!(attempts.len(), 2);
     }
 }
@@ -210,9 +228,13 @@ fn media_commands_select_the_backend_and_preserve_limits() {
         MediaBackend::Vulkan(1),
     ] {
         assert!(
-            media_command(&backend, Path::new("/input"))
-                .get_envs()
-                .any(|(name, value)| name == "MALLOC_ARENA_MAX" && value == Some("1".as_ref()))
+            media_command(
+                &backend,
+                Path::new("/input"),
+                MediaPreviewSize::new(640, 800)
+            )
+            .get_envs()
+            .any(|(name, value)| name == "MALLOC_ARENA_MAX" && value == Some("1".as_ref()))
         );
     }
 
@@ -222,7 +244,7 @@ fn media_commands_select_the_backend_and_preserve_limits() {
     assert!(vaapi.contains("-hwaccel_output_format vaapi"));
     assert!(
         vaapi.contains(
-            "-vf scale_vaapi=w=1280:h=1280:force_original_aspect_ratio=decrease:force_divisible_by=16:format=nv12 -c:v h264_vaapi"
+            "-vf scale_vaapi=w='min(iw,640)':h='min(ih,800)':force_original_aspect_ratio=decrease:force_divisible_by=16:format=nv12 -c:v h264_vaapi"
         )
     );
     assert!(vaapi.contains("-c:a aac -b:a 96k -movflags +frag_keyframe+empty_moov -f mp4"));
@@ -232,19 +254,24 @@ fn media_commands_select_the_backend_and_preserve_limits() {
     assert!(vulkan.contains("-init_hw_device vulkan=vk:1 -filter_hw_device vk"));
     assert!(vulkan.contains("-hwaccel vulkan -hwaccel_device vk"));
     assert!(vulkan.contains(
-        "-vf scale_vulkan=w='max(16,trunc(min(iw,iw*1280/max(iw,ih))/16)*16)':h='max(16,trunc(min(ih,ih*1280/max(iw,ih))/16)*16)':format=nv12 -c:v h264_vulkan"
+        "-vf scale_vulkan=w='max(16,trunc(iw*min(1,min(640/iw,800/ih))/16)*16)':h='max(16,trunc(ih*min(1,min(640/iw,800/ih))/16)*16)':format=nv12 -c:v h264_vulkan"
     ));
     assert!(vulkan.contains("-usage transcode -tune ull"));
     assert!(vulkan.contains("-c:a aac -b:a 96k -movflags +frag_keyframe+empty_moov -f mp4"));
 
-    let software = arguments(&MediaBackend::Software);
-    assert!(software.contains(
-        "-vf scale=w=1280:h=1280:force_original_aspect_ratio=decrease,format=yuv420p -c:v libvpx -auto-alt-ref 0"
-    ));
-    assert!(software.contains("-threads 2 -deadline realtime -cpu-used 8"));
-    assert!(software.contains("-c:a libopus -b:a 96k -f webm"));
+    let h264 = arguments(&MediaBackend::SoftwareH264);
+    assert!(h264.contains("-c:v libx264 -threads 2 -preset ultrafast -tune zerolatency"));
+    assert!(h264.contains("-c:a aac -b:a 96k -movflags +frag_keyframe+empty_moov -f mp4"));
+    let vp8 = arguments(&MediaBackend::SoftwareVp8);
+    assert!(vp8.contains("-c:v libvpx -auto-alt-ref 0 -threads 2 -deadline realtime -cpu-used 8"));
+    assert!(vp8.contains("-c:a libopus -b:a 96k -f webm"));
+    for command in [&h264, &vp8] {
+        assert!(command.contains(
+            "-vf scale=w='min(iw,640)':h='min(ih,800)':force_original_aspect_ratio=decrease:force_divisible_by=2,format=yuv420p"
+        ));
+    }
 
-    for command in [vaapi, vulkan, software] {
+    for command in [vaapi, vulkan, h264, vp8] {
         assert!(command.contains("-max_alloc 536870912 -max_pixels 50000000"));
         assert!(command.contains("-map 0:v:0 -map 0:a:0? -sn -dn -t 30"));
         assert!(command.contains("-fpsmax 30"));

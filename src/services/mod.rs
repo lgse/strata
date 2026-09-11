@@ -28,7 +28,8 @@ pub use operations::{
     validate_basename,
 };
 pub use preview::{
-    Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest, PreviewRequestId,
+    MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
+    PreviewRequestId, SandboxedMedia,
 };
 pub(crate) use preview::{
     content_family, has_plain_text_extension, is_extensionless_dotfile,

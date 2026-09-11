@@ -50,7 +50,10 @@ fn shared_thumbnail_lookup_is_limited_to_supported_placeholders() {
     assert!(uses_shared_thumbnail(ParseOperation::PreviewImage, 0));
     assert!(uses_shared_thumbnail(ParseOperation::PreviewPdf, 0));
     assert!(!uses_shared_thumbnail(ParseOperation::PreviewPdf, 1));
-    assert!(!uses_shared_thumbnail(ParseOperation::PreviewMedia, 0));
+    assert!(!uses_shared_thumbnail(
+        ParseOperation::PreviewMedia(MediaPreviewSize::new(640, 800)),
+        0
+    ));
 }
 
 #[test]
@@ -83,6 +86,7 @@ fn preview_cache_stores_and_retrieves_entries() {
         path: PathBuf::from("test1.png"),
         modified: 100,
         pdf_page: None,
+        media: None,
     };
     let content1 = PreviewContent::Rasterized {
         png: vec![1, 2, 3, 4],
@@ -95,6 +99,7 @@ fn preview_cache_stores_and_retrieves_entries() {
         path: PathBuf::from("test2.txt"),
         modified: 200,
         pdf_page: None,
+        media: None,
     };
     let content2 = PreviewContent::Text {
         content: "hello world".to_owned(),
@@ -108,11 +113,13 @@ fn preview_cache_stores_and_retrieves_entries() {
         path: PathBuf::from("doc.pdf"),
         modified: 300,
         pdf_page: Some(0),
+        media: None,
     };
     let pdf_page_1 = PreviewCacheKey {
         path: PathBuf::from("doc.pdf"),
         modified: 300,
         pdf_page: Some(1),
+        media: None,
     };
     let page0_content = PreviewContent::Pdf {
         png: vec![10, 20],
@@ -142,6 +149,7 @@ fn preview_cache_evicts_the_least_recent_entry() {
             path: PathBuf::from(format!("image-{index}.png")),
             modified: index as i64,
             pdf_page: None,
+            media: None,
         })
         .collect();
 
@@ -171,6 +179,7 @@ fn replacing_a_preview_cache_entry_updates_its_byte_count() {
         path: PathBuf::from("image.png"),
         modified: 1,
         pdf_page: None,
+        media: None,
     };
 
     cache.insert(key.clone(), PreviewContent::Rasterized { png: vec![0; 8] });
@@ -178,6 +187,47 @@ fn replacing_a_preview_cache_entry_updates_its_byte_count() {
 
     assert_eq!(cache.byte_count, 3);
     assert_eq!(cache.entries.len(), 1);
+}
+
+#[test]
+fn media_preview_cache_separates_pane_sizes_and_backend_preferences() {
+    let mut cache = PreviewCache {
+        entries: HashMap::new(),
+        recent: VecDeque::new(),
+        byte_count: 0,
+    };
+    let key = PreviewCacheKey {
+        path: PathBuf::from("clip.mp4"),
+        modified: 1,
+        pdf_page: None,
+        media: Some((
+            MediaPreviewSize::new(520, 800),
+            MediaPreviewBackend::Software,
+        )),
+    };
+    let content = PreviewContent::SandboxedMedia {
+        media: SandboxedMedia::from_normalized(&[1, 2]).expect("normalized fixture"),
+    };
+    cache.insert(key.clone(), content.clone());
+
+    for media in [
+        Some((
+            MediaPreviewSize::new(1040, 1280),
+            MediaPreviewBackend::Software,
+        )),
+        Some((MediaPreviewSize::new(520, 800), MediaPreviewBackend::Vulkan)),
+        None,
+    ] {
+        assert!(
+            cache
+                .get(&PreviewCacheKey {
+                    media,
+                    ..key.clone()
+                })
+                .is_none()
+        );
+    }
+    assert_eq!(cache.get(&key), Some(content));
 }
 
 #[test]
@@ -195,7 +245,9 @@ fn preview_content_size_computes_accurately() {
         80
     );
     assert_eq!(
-        preview_content_size(&PreviewContent::SandboxedMedia { data: vec![0; 50] }),
+        preview_content_size(&PreviewContent::SandboxedMedia {
+            media: SandboxedMedia::from_normalized(&[0; 50]).expect("normalized fixture"),
+        }),
         50
     );
     assert_eq!(

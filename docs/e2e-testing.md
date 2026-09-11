@@ -108,7 +108,17 @@ from native builds. Artifacts remain in `target/e2e-artifacts` and are owned by
 the invoking user. Minimal generated passwd/group files provide the invoking
 UID/GID to D-Bus, so one published environment works across local user IDs without
 rebuilding it or mounting the host's account database.
-The image includes bubblewrap for sandboxed thumbnail decoding. Rootless Podman
+The image includes bubblewrap for sandboxed thumbnail decoding, FFmpeg/ffprobe,
+and GTK's GStreamer media backend with the base/good/libav plugins. Rust media
+regressions exercise actual normalization, playback, and long-source duration
+limits rather than skipping when optional host tools are missing. These packages
+come from the existing dated Ubuntu snapshot; the GTK/GLib baseline and Rust
+compiler are unchanged. This test-only dependency addition does not apply or
+retire the version-specific GTK 4.22.4/GstPlay 1.28.6 patches in
+`packaging/media-runtime/`; that opt-in kit remains unchanged and is not shipped
+by this image update.
+
+Rootless Podman
 runs unmask `/proc/*` inside the test container so bubblewrap can mount its own
 private `/proc`; the decoder's sandbox and the container's seccomp policy remain
 enabled. Docker's outer seccomp/AppArmor profiles and system-path masks must be
