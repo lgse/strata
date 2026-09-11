@@ -17,6 +17,35 @@ fn desktop_app(name: &str, arguments: &str, extra: &str) -> gio::AppInfo {
         .upcast()
 }
 
+fn path_only_app() -> gio::AppInfo {
+    let app = gio::AppInfo::create_from_commandline(
+        "/bin/true %F",
+        Some("Path handler"),
+        gio::AppInfoCreateFlags::NONE,
+    )
+    .expect("application");
+    assert!(!app.supports_uris());
+    app
+}
+
+fn mounted_non_native_file_with_path() -> Option<gio::File> {
+    gio::VolumeMonitor::get()
+        .mounts()
+        .into_iter()
+        .map(|mount| mount.root())
+        .find(|file| !file.is_native() && file.path().is_some())
+}
+
+fn assert_requires_uri_handlers(file: &gio::File) {
+    assert!(!file.is_native());
+    assert!(
+        file.path().is_none(),
+        "{} should have no local path",
+        file.uri()
+    );
+    assert!(requires_uri_handlers(std::slice::from_ref(file)));
+}
+
 #[test]
 fn compatible_handlers_include_hidden_defaults_but_require_uri_support() {
     let path = desktop_app("Path", "%F", "");
@@ -40,7 +69,50 @@ fn compatible_handlers_include_hidden_defaults_but_require_uri_support() {
 }
 
 #[test]
-fn path_only_launch_rejects_non_native_files_before_spawning() {
+fn uri_handlers_are_required_only_without_a_local_path() {
+    let native = gio::File::for_path("/tmp/notes.txt");
+    assert!(native.is_native());
+    assert!(native.path().is_some());
+    assert!(!requires_uri_handlers(std::slice::from_ref(&native)));
+
+    let trash = gio::File::for_uri("trash:///notes.txt");
+    assert_requires_uri_handlers(&trash);
+
+    for uri in [
+        "sftp://example.invalid/notes.txt",
+        "smb://example.invalid/share/notes.txt",
+    ] {
+        assert_requires_uri_handlers(&gio::File::for_uri(uri));
+    }
+
+    assert!(requires_uri_handlers(&[native, trash]));
+}
+
+#[test]
+fn fuse_backed_non_native_files_allow_path_handlers() {
+    let Some(fuse) = mounted_non_native_file_with_path() else {
+        eprintln!(
+            "Skipping ui::open_with::tests::fuse_backed_non_native_files_allow_path_handlers: no GVfs FUSE mount with a local path"
+        );
+        return;
+    };
+    assert!(!fuse.is_native());
+    assert!(fuse.path().is_some());
+    assert!(!requires_uri_handlers(std::slice::from_ref(&fuse)));
+
+    let trash = gio::File::for_uri("trash:///notes.txt");
+    assert!(requires_uri_handlers(&[fuse.clone(), trash]));
+
+    launch(
+        &path_only_app(),
+        std::slice::from_ref(&fuse),
+        None::<&gio::AppLaunchContext>,
+    )
+    .expect("FUSE path launch");
+}
+
+#[test]
+fn path_only_launch_rejects_files_without_a_local_path() {
     let app = desktop_app("Path", "%F", "");
     let local = gio::File::for_path("/tmp/local.txt");
     let remote = gio::File::for_uri("trash:///remote.txt");
@@ -52,6 +124,17 @@ fn path_only_launch_rejects_non_native_files_before_spawning() {
             .message()
             .contains("cannot open files at this location")
     );
+}
+
+#[test]
+fn path_only_launch_allows_files_with_a_local_path() {
+    let local = gio::File::for_path("/tmp/local.txt");
+    launch(
+        &path_only_app(),
+        std::slice::from_ref(&local),
+        None::<&gio::AppLaunchContext>,
+    )
+    .expect("path launch");
 }
 
 #[test]
@@ -129,6 +212,22 @@ fn missing_and_unresolvable_icons_use_the_live_themed_fallback() {
 }
 
 #[test]
+fn other_apps_filter_excludes_recommended_and_hidden() {
+    let path = desktop_app("Path", "%F", "");
+    let uri = desktop_app("URI", "%U", "");
+    let hidden = desktop_app("Hidden", "%U", "NoDisplay=true");
+    let extra = desktop_app("Extra", "%U", "");
+    let apps = vec![path.clone(), uri.clone(), hidden.clone(), extra.clone()];
+    let recommended = vec![path.clone(), uri.clone()];
+    let other = filter_other_apps(apps.clone(), &recommended, false);
+    assert_eq!(other.len(), 1);
+    assert!(other[0].equal(&extra));
+    let other_remote = filter_other_apps(apps, &recommended, true);
+    assert_eq!(other_remote.len(), 1);
+    assert!(other_remote[0].equal(&extra));
+}
+
+#[test]
 fn empty_chooser_disables_open_and_restores_focus_after_backdrop_dismissal() {
     crate::test_support::gtk_test(
         "ui::open_with::tests::empty_chooser_disables_open_and_restores_focus_after_backdrop_dismissal",
@@ -143,6 +242,7 @@ fn empty_chooser_disables_open_and_restores_focus_after_backdrop_dismissal() {
             let result = closed.clone();
             show(
                 &parent,
+                vec![],
                 vec![],
                 vec![],
                 Rc::new(move || result.set(result.get() + 1)),
@@ -172,6 +272,134 @@ fn empty_chooser_disables_open_and_restores_focus_after_backdrop_dismissal() {
                     .expect("Open button")
                     .is_sensitive()
             );
+            dismiss_modal_layer(&layer, &overlay, None);
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while closed.get() == 0 {
+                assert!(Instant::now() < deadline);
+                glib::MainContext::default().iteration(false);
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            assert_eq!(closed.get(), 1);
+            window.close();
+        },
+    );
+}
+
+#[test]
+fn search_filtering_and_empty_state_and_keyboard_navigation() {
+    crate::test_support::gtk_test(
+        "ui::open_with::tests::search_filtering_and_empty_state_and_keyboard_navigation",
+        || {
+            let parent = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let overlay = gtk::Overlay::new();
+            overlay.set_child(Some(&parent));
+            let window = gtk::Window::new();
+            window.set_child(Some(&overlay));
+            window.present();
+
+            let text_editor = desktop_app("Text Editor", "%U", "Comment=Edit plain text\n");
+            let image_viewer = desktop_app("Image Viewer", "%U", "Comment=View photos\n");
+            let web_browser = desktop_app("Web Browser", "%U", "Comment=Browse the internet\n");
+
+            let closed = Rc::new(Cell::new(0));
+            let result = closed.clone();
+            show(
+                &parent,
+                vec![],
+                vec![text_editor.clone()],
+                vec![image_viewer.clone(), web_browser.clone()],
+                Rc::new(move || result.set(result.get() + 1)),
+            );
+            let layer = overlay
+                .last_child()
+                .expect("modal layer")
+                .downcast::<gtk::Box>()
+                .expect("layer box");
+
+            fn find_widget_by_class<T: IsA<gtk::Widget>>(
+                root: &gtk::Widget,
+                class_name: &str,
+            ) -> Option<T> {
+                if root.has_css_class(class_name)
+                    && let Some(w) = root.downcast_ref::<T>()
+                {
+                    return Some(w.clone());
+                }
+                let mut child = root.first_child();
+                while let Some(current) = child {
+                    if let Some(found) = find_widget_by_class(&current, class_name) {
+                        return Some(found);
+                    }
+                    child = current.next_sibling();
+                }
+                None
+            }
+
+            fn find_open(widget: &gtk::Widget) -> Option<gtk::Button> {
+                if let Some(button) = widget.downcast_ref::<gtk::Button>()
+                    && button.label().as_deref() == Some("Open")
+                {
+                    return Some(button.clone());
+                }
+                let mut child = widget.first_child();
+                while let Some(widget) = child {
+                    if let Some(button) = find_open(&widget) {
+                        return Some(button);
+                    }
+                    child = widget.next_sibling();
+                }
+                None
+            }
+
+            let search: gtk::SearchEntry =
+                find_widget_by_class(layer.upcast_ref(), "open-with-search").expect("search entry");
+            let list: gtk::ListBox =
+                find_widget_by_class(layer.upcast_ref(), "open-with-list").expect("list box");
+            let open_btn = find_open(layer.upcast_ref()).expect("open button");
+
+            assert!(open_btn.is_sensitive());
+
+            let count_visible_rows = |list: &gtk::ListBox| -> usize {
+                let mut count = 0;
+                let mut child = list.first_child();
+                while let Some(w) = child {
+                    if let Some(row) = w.downcast_ref::<gtk::ListBoxRow>()
+                        && row.is_visible()
+                    {
+                        count += 1;
+                    }
+                    child = w.next_sibling();
+                }
+                count
+            };
+
+            let wait_until = |condition: &dyn Fn() -> bool| {
+                let deadline = Instant::now() + Duration::from_secs(3);
+                while !condition() {
+                    assert!(Instant::now() < deadline, "search update timed out");
+                    glib::MainContext::default().iteration(false);
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            };
+
+            search.set_text("VIEWER");
+            assert_eq!(count_visible_rows(&list), 2);
+            wait_until(&|| count_visible_rows(&list) == 2);
+            assert!(open_btn.is_sensitive());
+
+            search.set_text("nonexistent-app-xyz");
+            assert!(!open_btn.is_sensitive());
+            assert!(list.selected_row().is_none());
+            wait_until(&|| !open_btn.is_sensitive());
+
+            search.set_text("");
+            wait_until(&|| open_btn.is_sensitive() && count_visible_rows(&list) == 5);
+
+            if let Some(row) = list.selected_row() {
+                row.grab_focus();
+            }
+            glib::MainContext::default().iteration(false);
+
             dismiss_modal_layer(&layer, &overlay, None);
             let deadline = Instant::now() + Duration::from_secs(3);
             while closed.get() == 0 {

@@ -117,7 +117,11 @@ fn icon_and_list_subheaders_preserve_compact_hierarchy() {
                             .expect("pane button bounds");
                         assert_eq!(
                             bounds.height(),
-                            main_button.height(),
+                            if class == "column-header-action" {
+                                28.0
+                            } else {
+                                main_button.height()
+                            },
                             "{size:?}, {mode:?}, {class}"
                         );
                         let icon = descendant(&button, "chrome-icon")

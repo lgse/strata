@@ -2,6 +2,12 @@
 
 use gtk::prelude::*;
 
+pub(super) fn pane_header_action(widget: &impl IsA<gtk::Widget>) {
+    widget.add_css_class("column-header-action");
+    widget.set_valign(gtk::Align::Center);
+    widget.set_cursor_from_name(Some("pointer"));
+}
+
 pub(super) fn form_entry() -> gtk::Entry {
     let entry = gtk::Entry::new();
     entry.add_css_class("form-control");
