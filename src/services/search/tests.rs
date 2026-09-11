@@ -406,8 +406,12 @@ fn bounded_index_reaches_a_deep_file_while_broad_folders_compete() {
     let pictures = root.join("Pictures");
     roots.push(pictures.clone());
     fs::create_dir_all(&pictures).expect("create Pictures fixture");
+    // Keep root discovery small regardless of readdir order; this tests scheduling discovered branches.
     for position in 0..15 {
-        fixture_file(&pictures, format!("screenshot-{position:02}.png"));
+        fixture_file(
+            &pictures,
+            format!("screenshots/screenshot-{position:02}.png"),
+        );
     }
     let target = fixture_file(&pictures, "test/dsds/le-cat.jpeg");
 
