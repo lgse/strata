@@ -368,6 +368,11 @@ impl ResponsiveBin {
     }
 
     fn add_flow(&self, flow: gtk::FlowBox, columns: u32) {
+        flow.set_max_children_per_line(if self.imp().compact_navigation.get() {
+            1
+        } else {
+            columns
+        });
         self.imp()
             .responsive_flows
             .borrow_mut()
@@ -375,6 +380,12 @@ impl ResponsiveBin {
     }
 
     fn add_action(&self, row: gtk::Box, button: gtk::Button) {
+        row.set_orientation(if self.imp().compact_navigation.get() {
+            gtk::Orientation::Vertical
+        } else {
+            gtk::Orientation::Horizontal
+        });
+        button.set_halign(gtk::Align::Fill);
         self.imp()
             .responsive_actions
             .borrow_mut()
@@ -2178,10 +2189,11 @@ fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::
 }
 
 fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
+    constrain_page_text(content.upcast_ref());
     content.set_hexpand(true);
     let scroller = gtk::ScrolledWindow::builder()
         .child(content)
-        .hscrollbar_policy(gtk::PolicyType::Automatic)
+        .hscrollbar_policy(gtk::PolicyType::Never)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
         .hexpand(true)
         .vexpand(true)
@@ -2191,6 +2203,28 @@ fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
         scroller.add_css_class(class);
     }
     scroller.upcast()
+}
+
+// Prose wraps to the viewport; long editable values scroll inside their entry,
+// rather than making the whole settings page wider.
+fn constrain_page_text(widget: &gtk::Widget) {
+    if widget.has_css_class("settings-single-line") {
+        return;
+    }
+    if let Some(label) = widget.downcast_ref::<gtk::Label>()
+        && label.ellipsize() == gtk::pango::EllipsizeMode::None
+    {
+        label.set_wrap(true);
+        label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    }
+    if let Some(entry) = widget.downcast_ref::<gtk::Entry>() {
+        entry.set_width_chars(1);
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        constrain_page_text(&widget);
+    }
 }
 
 fn page_content() -> gtk::Box {

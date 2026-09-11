@@ -1060,6 +1060,21 @@ spinbutton.form-control text {
   caret-color: @theme_accent;
 }
 
+spinbutton.text-size-control text {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+spinbutton.text-size-control button.down {
+  border-left: none;
+  border-right: 1px solid @theme_border;
+  border-radius: 4px 0 0 4px;
+}
+
+.text-size-actions > flowboxchild {
+  padding: 0;
+}
+
 spinbutton.form-control text selection {
   background: @theme_accent;
   color: @theme_bg;
