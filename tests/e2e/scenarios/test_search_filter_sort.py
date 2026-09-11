@@ -151,12 +151,6 @@ def test_recursive_file_double_click_launches_once(launch_counter, strata, mode)
 
 @pytest.mark.preferences(browser_mode="columns")
 def test_filtered_columns_result_waits_for_release_before_launching(launch_counter, strata):
-    """A press-and-drag on a filtered Columns row must not launch the file.
-
-    Regression test for #718: the filtered branch used to activate on press,
-    ahead of the drag threshold check the unfiltered path already applies.
-    """
-
     strata.keyboard.press("ctrl+f")
     field = strata.editable_field()
     strata.keyboard.type_text("spreadsheet")

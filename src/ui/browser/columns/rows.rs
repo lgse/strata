@@ -399,8 +399,6 @@ pub(super) fn column_rows(
 
             let filtered = search_active_for_click.get() || map_for_click.has_query();
             if filtered {
-                // Defer to release, like the unfiltered path below, so a
-                // press-and-move can start a drag instead of opening the file.
                 if press_count == 1
                     && !control
                     && !shift
