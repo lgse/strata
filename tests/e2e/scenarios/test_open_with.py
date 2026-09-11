@@ -102,13 +102,28 @@ def test_open_with_names_rows_and_tabs_out_of_the_list(chooser_apps, strata):
     strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "MIME lookup")
     strata.choose_menu_item("Open With…")
     dialog = strata.wait_for_dialog()
-    rows = dialog.find_all(role="list item")
-    names = [row.name for row in rows]
-    assert names[0] == "Review Text Viewer"
-    assert {"Alternative Viewer", "Missing Icon Viewer"} <= set(names)
-    assert names[1:] == sorted(names[1:], key=str.lower)
-    assert all(names)
-    assert "Other Desktop Viewer" not in names
+    # Section headers are not selectable and carry their text in a child label.
+    all_rows = dialog.find_all(role="list item")
+    sections: dict[str, list[str]] = {}
+    current_section = None
+    for row in all_rows:
+        if "selectable" not in row.states:
+            current_section = next((c.name for c in row.children if c.name), "")
+            sections.setdefault(current_section, [])
+        elif current_section is not None:
+            sections[current_section].append(row.name)
+    recommended = sections.get("Recommended Applications", [])
+    assert recommended[0] == "Review Text Viewer"
+    assert {"Alternative Viewer", "Missing Icon Viewer"} <= set(recommended)
+    assert recommended[1:] == sorted(recommended[1:], key=str.lower)
+    assert all(recommended)
+    assert "Other Desktop Viewer" not in [row.name for row in all_rows]
+    # The search entry is focused on open; Down enters the list at the selected row.
+    strata.wait(
+        lambda: strata.focused_node() is not None and "editable" in strata.focused_node().states,
+        "search entry focused on open",
+    )
+    strata.keyboard.press("Down")
     strata.wait(lambda: strata.focused_node().name == "Review Text Viewer", "initial row focus")
     strata.keyboard.press("Down")
     strata.wait(lambda: strata.focused_node().name == "Alternative Viewer", "arrow navigation")
@@ -176,31 +191,46 @@ def incompatible_files(fixture_tree, open_with_app, test_environment):
     )
 
 
-@pytest.mark.parametrize("name", ["unknown.bin", "broken-link"])
-def test_open_with_no_handlers_is_disabled(incompatible_files, strata, name):
-    strata.open_context_menu(name)
-    reason = (
-        "Broken symbolic links cannot be opened with an application"
-        if name == "broken-link" else "No compatible applications were found"
+def test_open_with_broken_link_is_disabled(incompatible_files, strata):
+    strata.open_context_menu("broken-link")
+    strata.wait(
+        lambda: "Broken symbolic links cannot be opened with an application"
+        in strata.menu_item("Open With…").description,
+        "MIME lookup result",
     )
-    strata.wait(lambda: reason in strata.menu_item("Open With…").description, "MIME lookup result")
     option = strata.menu_item("Open With…")
     assert "sensitive" not in option.states
     strata.keyboard.press("Escape")
     assert strata.dialog() is None
 
 
-def test_open_with_incompatible_types_explain_unavailability(incompatible_files, strata):
+def test_open_with_unknown_type_offers_other_apps(incompatible_files, strata):
+    strata.open_context_menu("unknown.bin")
+    strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "other apps available")
+    strata.choose_menu_item("Open With…")
+    dialog = strata.wait_for_dialog()
+    dump = dialog.dump()
+    assert "Other Applications" in dump
+    assert "Recommended Applications" not in dump
+    assert "Image Viewer" in dump
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.dialog() is None, "the chooser to close")
+
+
+def test_open_with_incompatible_types_offers_other_apps(incompatible_files, strata):
     strata.select_entry("todo.txt")
     strata.pointer.click(strata.entry("image.png"), modifiers=["ctrl"])
     strata.wait_for_selection(["image.png", "todo.txt"])
     strata.open_context_menu("todo.txt")
-    strata.wait(
-        lambda: "No application can open all selected file types" in strata.menu_item("Open With…").description,
-        "the unavailable action explanation",
-    )
-    assert "sensitive" not in strata.menu_item("Open With…").states
+    strata.wait(lambda: "sensitive" in strata.menu_item("Open With…").states, "other apps available")
     assert "Open" not in strata.menu_items()
+    strata.choose_menu_item("Open With…")
+    dialog = strata.wait_for_dialog()
+    dump = dialog.dump()
+    assert "Other Applications" in dump
+    assert "Recommended Applications" not in dump
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.dialog() is None, "the chooser to close")
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
