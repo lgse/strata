@@ -286,6 +286,87 @@ class InstallerTests(unittest.TestCase):
             )
             self.assertEqual(result.stdout.strip(), "4")
 
+    def test_omarchy_major_from_requires_a_whole_version_token(self) -> None:
+        cases = [
+            ("4.0.0-1", "4"),
+            ("4.0.0.alpha", "4"),
+            ("Omarchy 2.3.1", ""),
+            ("5.4.0", ""),
+            ("dev (b280f130)", ""),
+        ]
+        for output, expected in cases:
+            with self.subTest(output=output):
+                result = bash(f'omarchy_major_from "{output}"')
+                self.assertEqual(result.stdout.strip(), expected)
+                if expected:
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                else:
+                    self.assertNotEqual(result.returncode, 0)
+
+    def test_omarchy_dev_hash_is_not_a_major(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            result = bash(
+                "detect_omarchy_major",
+                env={
+                    "HOME": home,
+                    "PATH": f"{ROOT / 'scripts' / 'testdata' / 'omarchy-dev'}:{os.environ['PATH']}",
+                },
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "")
+
+    def test_omarchy_2_3_1_command_is_not_major_3(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            home = pathlib.Path(directory) / "home"
+            home.mkdir()
+            fake = pathlib.Path(directory) / "omarchy"
+            fake.write_text("#!/bin/sh\nprintf '%s\\n' 'Omarchy 2.3.1'\n", encoding="utf-8")
+            fake.chmod(0o755)
+            result = bash(
+                "detect_omarchy_major",
+                env={"HOME": str(home), "PATH": f"{directory}:{os.environ['PATH']}"},
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "")
+
+    def test_omarchy_dev_command_falls_back_to_version_file(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            version = pathlib.Path(home) / ".local" / "share" / "omarchy" / "version"
+            version.parent.mkdir(parents=True)
+            version.write_text("4.0.0.alpha\n", encoding="utf-8")
+            result = bash(
+                "detect_omarchy_major",
+                env={
+                    "HOME": home,
+                    "PATH": f"{ROOT / 'scripts' / 'testdata' / 'omarchy-dev'}:{os.environ['PATH']}",
+                },
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout.strip(), "4")
+
+    def test_detected_omarchy_4_from_version_file_writes_lua_bindings(self) -> None:
+        with tempfile.TemporaryDirectory() as home:
+            version = pathlib.Path(home) / ".local" / "share" / "omarchy" / "version"
+            version.parent.mkdir(parents=True)
+            version.write_text("4.0.0.alpha\n", encoding="utf-8")
+            result = bash(
+                'BIN_PATH="$HOME/.local/bin/strata"; '
+                "major=$(detect_omarchy_major); "
+                'configure_omarchy_bindings "$major"',
+                env={
+                    "HOME": home,
+                    "HYPRLAND_INSTANCE_SIGNATURE": "",
+                    "PATH": f"{ROOT / 'scripts' / 'testdata' / 'omarchy-dev'}:{os.environ['PATH']}",
+                },
+            )
+            lua = pathlib.Path(home) / ".config" / "hypr" / "bindings.lua"
+            conf = pathlib.Path(home) / ".config" / "hypr" / "bindings.conf"
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertTrue(lua.is_file())
+            self.assertFalse(conf.exists())
+            self.assertIn("strata-installer: file-manager start", lua.read_text())
+            self.assertIn("Omarchy 4 file-manager shortcuts now open Strata.", result.stdout)
+
     def test_omarchy_detection_without_command_is_not_an_error(self) -> None:
         with tempfile.TemporaryDirectory() as home:
             result = bash(
@@ -293,6 +374,7 @@ class InstallerTests(unittest.TestCase):
                 env={"HOME": home},
             )
             self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(result.stdout, "")
 
     def test_generated_omarchy_bindings_are_idempotent(self) -> None:
         for major, suffix in (("3", "conf"), ("4", "lua")):
