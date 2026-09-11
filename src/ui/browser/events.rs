@@ -455,6 +455,11 @@ impl ViewState {
                 }
             }
             BrowserEvent::PreviewRequested { .. } => {}
+            BrowserEvent::ExtractRequested { entry } => {
+                if self.interactive {
+                    self.extract_entry(entry.clone());
+                }
+            }
             BrowserEvent::OpenRequested { location } => {
                 if self.interactive {
                     open_location(location, &self.overlay);

@@ -30,8 +30,12 @@ def main() -> int:
             "RUSTUP_HOME": os.environ.get("RUSTUP_HOME", str(Path.home() / ".rustup")),
             "STRATA_REQUIRE_GTK_TESTS": "1",
             "STRATA_REQUIRE_DEVICE_TESTS": "1",
+            "PATH": f"{Path.home() / '.cargo/bin'}:{os.environ.get('PATH', os.defpath)}",
             "GTK_A11Y": "none",
             "NO_AT_BRIDGE": "1",
+            "MISE_YES": "1",
+            "MISE_OFFLINE": "1",
+            "MISE_NO_NETWORK": "1",
         }
         child = subprocess.Popen(
             ["cargo", "test", "--all-targets", "--all-features", *sys.argv[1:]],
