@@ -722,6 +722,14 @@ Review and commit the changes. Reports must cover every test and shard; partial 
 failed runs cannot overwrite scheduling measurements. Durations are scheduling
 hints, never an allowlist: new tests always participate without editing this file.
 
+### Coverage audit (#837)
+
+The [test-suite audit](test-suite-audit.md) records the subsequent reduction from
+812 to 770 collected pytest cases (766 to 724 GUI scenarios; 46 harness cases
+unchanged), plus 43 fewer Rust test functions. It maps each consolidation to its
+retained behavioral owner and distinguishes retired cosmetic assertions from
+functional layout, input-routing and lifecycle regressions.
+
 ### Coverage audit (#607)
 
 154 GUI cases were removed from the 729-test inventory (six new harness tests

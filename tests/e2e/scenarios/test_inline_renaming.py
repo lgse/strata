@@ -181,6 +181,8 @@ def test_leaving_a_valid_name_commits_it(strata, mode, kind, new, target):
         assert renamed.is_dir()
         if not new:
             assert (renamed / "marker.txt").read_text() == "keep\n"
+    if target == "enter":
+        strata.entry("renamed.item")
     if target == "sidebar":
         strata.wait_for_directory(strata.environment.home.name)
         assert not (strata.environment.home / "renamed.item").exists()

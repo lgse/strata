@@ -39,17 +39,6 @@ def unavailable_location_window(strata, requested):
     )
 
 
-def test_missing_argument_names_the_unavailable_location_and_offers_retry(strata):
-    missing = strata.fixture.path("requested-missing")
-    launch_argument(strata, str(missing))
-
-    window = strata.wait(
-        lambda: unavailable_location_window(strata, str(missing)),
-        "the unavailable-location error",
-    )
-    assert window.find(role="button", name="Retry") is not None
-
-
 def test_missing_directory_can_be_restored_and_retried(strata):
     missing = strata.fixture.path("requested-missing")
     launch_argument(strata, str(missing))
