@@ -123,9 +123,15 @@ def test_open_with_names_rows_and_tabs_out_of_the_list(chooser_apps, strata):
         "search entry focused on open",
     )
     strata.keyboard.press("Down")
-    strata.wait(lambda: strata.focused_node().name == "Review Text Viewer", "initial row focus")
-    strata.keyboard.press("Down")
-    strata.wait(lambda: strata.focused_node().name == "Alternative Viewer", "arrow navigation")
+    strata.wait(lambda: "editable" in strata.focused_node().states, "search retains focus")
+    strata.wait(
+        lambda: any(row.name == "Alternative Viewer" and "selected" in row.states
+                    for row in strata.dialog().find_all(role="list item")),
+        "arrow selection",
+    )
+    assert "editable" in strata.focused_node().states
+    strata.keyboard.press("Tab")
+    strata.wait(lambda: strata.focused_node().name == "Alternative Viewer", "Tab into list")
     strata.keyboard.press("Tab")
     strata.wait(lambda: strata.focused_node().name == "Cancel", "Tab to leave the list")
     strata.keyboard.press("shift+Tab")
@@ -144,9 +150,16 @@ def test_open_with_search_filters_and_escape_clears(chooser_apps, strata, reques
     strata.wait_for_dialog()
     strata.keyboard.type_text("ALTERNATIVE")
     strata.keyboard.press("Down")
-    strata.wait(lambda: strata.focused_node().name == "Alternative Viewer", "filtered row focus")
+    strata.wait(lambda: "editable" in strata.focused_node().states, "search retains focus after Down")
     strata.keyboard.press("Up")
-    strata.wait(lambda: "editable" in strata.focused_node().states, "return to search")
+    assert "editable" in strata.focused_node().states
+    strata.keyboard.type_text("x")
+    strata.wait(
+        lambda: "No matching applications were found." in strata.dialog().dump(),
+        "typing after arrow navigation appends at the caret",
+    )
+    strata.keyboard.press("BackSpace")
+    strata.wait(lambda: "Alternative Viewer" in strata.dialog().dump(), "Backspace restores match")
     collector = ArtifactCollector(test_name=request.node.name)
     strata.screenshot(collector.directory / "filtered-chooser.png")
     strata.keyboard.press("ctrl+a")

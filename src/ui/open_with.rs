@@ -403,16 +403,56 @@ pub(super) fn show(
     }
 
     let search_keys = gtk::EventControllerKey::new();
+    search_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
     let list_for_search = list.downgrade();
-    search_keys.connect_key_pressed(move |_, key, _, _| {
-        if key == gtk::gdk::Key::Down
-            && let Some(list) = list_for_search.upgrade()
-            && let Some(row) = list.selected_row()
+    let scroll_for_search = list_scroll.downgrade();
+    search_keys.connect_key_pressed(move |_, key, _, modifiers| {
+        if !matches!(key, gtk::gdk::Key::Down | gtk::gdk::Key::Up)
+            || modifiers.intersects(
+                gtk::gdk::ModifierType::CONTROL_MASK
+                    | gtk::gdk::ModifierType::ALT_MASK
+                    | gtk::gdk::ModifierType::SUPER_MASK
+                    | gtk::gdk::ModifierType::SHIFT_MASK,
+            )
         {
-            row.grab_focus();
-            return glib::Propagation::Stop;
+            return glib::Propagation::Proceed;
         }
-        glib::Propagation::Proceed
+        if let (Some(list), Some(scroll)) = (list_for_search.upgrade(), scroll_for_search.upgrade())
+            && let Some(selected) = list.selected_row()
+        {
+            let mut row = selected.clone();
+            let mut sibling = if key == gtk::gdk::Key::Down {
+                selected.next_sibling()
+            } else {
+                selected.prev_sibling()
+            };
+            while let Some(candidate) = sibling {
+                if candidate.is_visible()
+                    && let Some(candidate_row) = candidate.downcast_ref::<gtk::ListBoxRow>()
+                    && candidate_row.is_selectable()
+                {
+                    row = candidate_row.clone();
+                    break;
+                }
+                sibling = if key == gtk::gdk::Key::Down {
+                    candidate.next_sibling()
+                } else {
+                    candidate.prev_sibling()
+                };
+            }
+            list.select_row(Some(&row));
+            if let Some(bounds) = row.compute_bounds(&list) {
+                let adjustment = scroll.vadjustment();
+                let top = f64::from(bounds.y());
+                let bottom = top + f64::from(bounds.height());
+                if top < adjustment.value() {
+                    adjustment.set_value(top);
+                } else if bottom > adjustment.value() + adjustment.page_size() {
+                    adjustment.set_value(bottom - adjustment.page_size());
+                }
+            }
+        }
+        glib::Propagation::Stop
     });
     search_entry.add_controller(search_keys);
 

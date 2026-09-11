@@ -665,6 +665,16 @@ headerbar menubutton.header-action > button:focus-visible {
   outline: 2px solid alpha(@theme_accent, 0.3);
 }
 
+.open-with-search image {
+  color: @theme_dim_text;
+}
+
+.open-with-search image:hover,
+.open-with-search image:active {
+  color: @theme_accent;
+  background: transparent;
+}
+
 .open-with-search placeholder {
   color: @theme_dim_text;
 }
