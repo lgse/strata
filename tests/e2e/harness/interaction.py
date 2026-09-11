@@ -168,6 +168,42 @@ class Pointer:
                 time.sleep(EVENT_GAP)
         time.sleep(POINTER_GAP)
 
+    def click_releasing_modifiers_before_up(
+        self,
+        node: Node,
+        *,
+        button: int = 1,
+        at: tuple[int, int] | None = None,
+        modifiers: Sequence[str],
+    ) -> None:
+        """Click after releasing modifiers between button-down and button-up.
+
+        `click(..., modifiers=)` keeps Shift/Ctrl held through mouse-up. GTK's
+        native list selection treats that unmodified release as a plain click
+        unless the press already claimed the sequence.
+        """
+
+        x, y = self._target(node, at)
+        self.move_to(x, y)
+        held = [MODIFIER_KEYSYMS[modifier.lower()] for modifier in modifiers]
+        for modifier in held:
+            self.connection.key(modifier, True)
+            time.sleep(EVENT_GAP)
+        try:
+            self.connection.button(button, True)
+            time.sleep(EVENT_GAP)
+            for modifier in reversed(held):
+                self.connection.key(modifier, False)
+                time.sleep(EVENT_GAP)
+            self.connection.button(button, False)
+            self._last_release = time.monotonic()
+            time.sleep(EVENT_GAP)
+        finally:
+            for modifier in reversed(held):
+                self.connection.key(modifier, False)
+                time.sleep(EVENT_GAP)
+        time.sleep(POINTER_GAP)
+
     def double_click(self, node: Node, *, at: tuple[int, int] | None = None) -> None:
         x, y = self._target(node, at)
         self.move_to(x, y)

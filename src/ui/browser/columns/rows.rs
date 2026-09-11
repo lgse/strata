@@ -393,11 +393,11 @@ pub(super) fn column_rows(
                     selection_for_click.select_item(position, true);
                 }
             }
-            if (control || shift)
-                && let Some(widget) = gesture.widget()
-                && crate::ui::pointer::hits_item_content(&widget, x, y)
-            {
-                if let Some(item_widget) = widget.parent() {
+            if control || shift {
+                if let Some(widget) = gesture.widget()
+                    && crate::ui::pointer::hits_item_content(&widget, x, y)
+                    && let Some(item_widget) = widget.parent()
+                {
                     item_widget.grab_focus();
                 }
                 gesture.set_state(gtk::EventSequenceState::Claimed);
