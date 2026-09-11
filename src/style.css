@@ -2200,7 +2200,7 @@ menubutton.column-header-action > button {
   box-shadow: none;
   min-height: 24px;
   min-width: 24px;
-  padding: 4px;
+  padding: 2px;
   transition: transform 160ms ease-out, background 160ms ease-out;
 }
 
@@ -2998,6 +2998,12 @@ colorchooser colorswatch overlay {
   background: @theme_bg;
   color: @theme_text;
   padding-top: 4px;
+}
+
+/* Row margins supply the remaining pixel of the eight-pixel listing inset. */
+.file-list-mode {
+  margin-top: 7px;
+  margin-bottom: 7px;
 }
 
 .file-list row,
@@ -3892,7 +3898,11 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   margin-top: 4px;
 }
 
-.list-name-cell,
+/* Include the row's eight-pixel margin when aligning with the Name heading. */
+.list-name-cell {
+  padding-left: 4px;
+}
+
 .list-metadata-cell {
   padding-left: 12px;
 }

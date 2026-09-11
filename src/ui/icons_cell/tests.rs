@@ -21,7 +21,7 @@ fn card_places_the_first_filename_line_directly_below_the_icon() {
             let field = ensure_rename_field(&card).expect("rename field");
             let window = gtk::Window::builder().child(&card).build();
             window.present();
-            for size in [64, 256] {
+            for size in [32, 64, 256] {
                 set_slot(&card, size);
                 for (texture_width, texture_height) in [(16, 16), (16, 8), (8, 16)] {
                     let pixels =

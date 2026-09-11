@@ -557,7 +557,7 @@ impl ViewState {
         filter_button.set_child(Some(&crate::assets::chrome_icon(
             crate::assets::icons::FUNNEL,
         )));
-        filter_button.add_css_class("column-header-action");
+        crate::ui::controls::pane_header_action(&filter_button);
         let shown_filter = filter_revealer.clone();
         let focused_filter = filter_entry.clone();
         filter_button.connect_toggled(move |button| {
@@ -574,7 +574,7 @@ impl ViewState {
                 .tooltip_text("Close this pane")
                 .build();
             close.set_child(Some(&crate::assets::chrome_icon(crate::assets::icons::X)));
-            close.add_css_class("column-header-action");
+            crate::ui::controls::pane_header_action(&close);
             let weak_browser = Rc::downgrade(&self.browser);
             close.connect_clicked(move |_| {
                 if let Some(browser) = weak_browser.upgrade() {

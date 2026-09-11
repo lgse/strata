@@ -32,6 +32,21 @@ use super::{
 };
 
 #[test]
+fn pointer_controls_cover_sidebar_navigation() {
+    gtk_test(
+        "ui::window::tests::pointer_controls_cover_sidebar_navigation",
+        || {
+            use gtk::prelude::*;
+            let button = super::sidebar_button(crate::assets::icons::FOLDER, "Folder");
+            assert_eq!(
+                button.cursor().and_then(|cursor| cursor.name()).as_deref(),
+                Some("pointer")
+            );
+        },
+    );
+}
+
+#[test]
 fn startup_applies_disabled_single_click_previews_before_the_first_click() {
     gtk_test(
         "ui::window::tests::startup_applies_disabled_single_click_previews_before_the_first_click",

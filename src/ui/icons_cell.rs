@@ -2,7 +2,7 @@
 
 use gtk::prelude::*;
 
-pub(super) const MIN_ICONS_THUMBNAIL_SIZE: i32 = 64;
+pub(super) const MIN_ICONS_THUMBNAIL_SIZE: i32 = 32;
 pub(super) const MAX_ICONS_THUMBNAIL_SIZE: i32 = 256;
 const FALLBACK_ICONS_COLUMN_WIDTH: i32 = 120;
 pub(super) const ICONS_CARD_SPACING: i32 = 4;
@@ -21,6 +21,7 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
 
     let icon = super::thumbnail::ThumbnailSlot::new(slot);
     icon.set_content_inset(ICONS_CARD_ICON_INSET);
+    icon.limit_fallback_height_to_folder();
     icon.add_css_class("icons-card-icon");
     icon.set_halign(gtk::Align::Center);
     icon.set_valign(gtk::Align::Start);
