@@ -153,6 +153,27 @@ pass before merge.
 - Put module unit tests in an adjacent test module, such as `src/app/navigation/tests.rs`, and declare it from the implementation with `#[cfg(test)] mod tests;`.
 - Use the top-level `tests/` directory for integration tests that exercise the crate through its public API.
 
+### Test value
+
+- Test observable behavior, not implementation echoes. Do not add tests whose
+  only purpose is to repeat constants or setter assignments, match CSS text,
+  count incidental widget children, or enforce cosmetic pixel sizes, spacing,
+  and alignment.
+- Keep functional geometry regressions: clipped editors/carets, obscured names,
+  broken hit targets or scrolling, and unreachable controls are real failures.
+  Visual baselines and lifecycle, filesystem-safety, and live-preference coverage
+  are not cosmetic duplicates.
+- Before adding a test, identify the existing coverage owner. Extend a matching
+  setup or use table-driven inputs instead of duplicating default/round-trip
+  assertions or adding another E2E smoke launch. Preserve separate cases where
+  initial state, input route, view mode, or lifecycle exercises distinct behavior.
+- Every parameter and loop dimension must affect the exercised behavior or an
+  assertion. Do not add unused axes that merely run identical cases again.
+- Keep one-off screenshot generators outside the test suite. When consolidating
+  tests, preserve meaningful assertions and document the retained coverage owner;
+  fewer functions alone is not an improvement. See the
+  [test-suite coverage audit](docs/test-suite-audit.md) for examples.
+
 ## Saved preferences
 
 - Follow `docs/preferences.md` when adding or changing application-wide settings.
