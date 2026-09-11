@@ -1210,6 +1210,7 @@ impl SidebarState {
         self.apply_trash_menu_visibility();
         self.watch_trash();
         self.refresh_trash_contents();
+        self.view.set_trash_button(row.clone());
         let popover = gtk::Popover::builder()
             .child(&menu)
             .autohide(true)
@@ -1626,6 +1627,10 @@ fn install_sidebar_file_drop(
     row: &impl IsA<gtk::Widget>,
     destination: Location,
 ) {
+    if destination == Location::uri("trash:///") {
+        install_sidebar_trash_drop(view, row);
+        return;
+    }
     if !sidebar_accepts_file_drop(&destination) {
         return;
     }
@@ -1653,6 +1658,39 @@ fn install_sidebar_file_drop(
         let commit = file_drop_commit(target, &destination, &sources, &drop_state);
         view.commit_file_drop(destination.clone(), sources, commit);
         true
+    });
+    row.add_controller(drop);
+}
+
+fn trash_file_drop_action(target: &gtk::DropTarget) -> gtk::gdk::DragAction {
+    if target.value().as_ref().is_some_and(|value| {
+        locations_from_file_list_value(value)
+            .is_none_or(|sources| !BrowserView::can_trash_file_drop(&sources))
+    }) {
+        gtk::gdk::DragAction::empty()
+    } else {
+        gtk::gdk::DragAction::MOVE
+    }
+}
+
+fn install_sidebar_trash_drop(view: &BrowserView, row: &impl IsA<gtk::Widget>) {
+    row.add_css_class("file-drop-zone");
+    let drop = gtk::DropTarget::new(
+        gtk::gdk::FileList::static_type(),
+        gtk::gdk::DragAction::MOVE,
+    );
+    drop.set_preload(true);
+    drop.set_propagation_phase(gtk::PropagationPhase::Capture);
+    drop.connect_enter(|target, _, _| trash_file_drop_action(target));
+    drop.connect_motion(|target, _, _| trash_file_drop_action(target));
+    drop.connect_value_notify(|target| {
+        if let Some(offered) = target.current_drop() {
+            offered.status(target.actions(), trash_file_drop_action(target));
+        }
+    });
+    let view = view.clone();
+    drop.connect_drop(move |_, value, _, _| {
+        locations_from_file_list_value(value).is_some_and(|sources| view.trash_file_drop(sources))
     });
     row.add_controller(drop);
 }

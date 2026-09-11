@@ -165,6 +165,15 @@ pub(super) fn dismiss_modal_layer(
     overlay: &gtk::Overlay,
     root: Option<&BlurBin>,
 ) {
+    dismiss_modal_layer_then(layer, overlay, root, || {});
+}
+
+pub(super) fn dismiss_modal_layer_then(
+    layer: &gtk::Box,
+    overlay: &gtk::Overlay,
+    root: Option<&BlurBin>,
+    on_done: impl FnOnce() + 'static,
+) {
     if layer.has_css_class("dismissing") {
         return;
     }
@@ -181,6 +190,7 @@ pub(super) fn dismiss_modal_layer(
         {
             root.set_blurred(false);
         }
+        on_done();
     });
 }
 

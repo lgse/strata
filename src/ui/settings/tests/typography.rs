@@ -186,17 +186,30 @@ fn custom_text_size_settings_remain_reachable_on_small_logical_displays() {
                     .expect("text size control");
                 assert!(control.is_mapped() && control.grab_focus());
                 assert_eq!(control.value_as_int(), pixels as i32);
-                let text = control.first_child().expect("decrement")
-                    .next_sibling().and_downcast::<gtk::Text>().expect("numeric entry");
+                let text = control
+                    .first_child()
+                    .expect("decrement")
+                    .next_sibling()
+                    .and_downcast::<gtk::Text>()
+                    .expect("numeric entry");
                 let start = text.compute_cursor_extents(0).0;
                 let end = text.compute_cursor_extents(text.text().chars().count()).0;
                 let center = (start.x() + end.x()) / 2.0;
-                assert!((center - text.width() as f32 / 2.0).abs() <= 1.0,
-                    "{pixels}px: number center {center}, entry width {}", text.width());
-                let reset = widgets.iter().filter_map(|widget| widget.downcast_ref::<gtk::Button>())
-                    .find(|button| button.label().as_deref() == Some("Reset")).expect("reset");
+                assert!(
+                    (center - text.width() as f32 / 2.0).abs() <= 1.0,
+                    "{pixels}px: number center {center}, entry width {}",
+                    text.width()
+                );
+                let reset = widgets
+                    .iter()
+                    .filter_map(|widget| widget.downcast_ref::<gtk::Button>())
+                    .find(|button| button.label().as_deref() == Some("Reset"))
+                    .expect("reset");
                 assert!(reset.has_css_class("action-dialog-cancel"));
-                let label = reset.child().and_downcast::<gtk::Label>().expect("reset label");
+                let label = reset
+                    .child()
+                    .and_downcast::<gtk::Label>()
+                    .expect("reset label");
                 assert!(!label.wraps());
                 assert_eq!(label.layout().line_count(), 1);
                 for grid in widgets
