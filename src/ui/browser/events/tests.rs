@@ -55,6 +55,52 @@ fn progress_layer(overlay: &gtk::Overlay) -> gtk::Box {
 }
 
 #[test]
+fn extract_error_needs_password_ignores_quoted_member_names() {
+    assert!(extract_error_needs_password("Invalid password"));
+    for message in [
+        "Unsupported encryption method",
+        "A password is required to extract this archive.",
+        "The password may be incorrect.",
+        "PASSWORD_REQUIRED",
+        "Archive member `file.txt`: invalid password",
+    ] {
+        assert!(extract_error_needs_password(message), "{message}");
+    }
+    assert!(!extract_error_needs_password(
+        "Archive member `passwords.txt` declared 4 bytes but produced more"
+    ));
+    assert!(!extract_error_needs_password(
+        "Archive member `passwords.txt` declared 10 bytes, but only 2 bytes are free at the destination"
+    ));
+    assert!(!extract_error_needs_password(
+        "Not enough free space at the destination to extract `encrypted-notes.md` (0 bytes available)"
+    ));
+}
+
+#[test]
+fn extract_error_needs_password_ignores_backticks_inside_member_names() {
+    for name in [
+        "note`passwords.txt",
+        "a`encrypted`notes.md",
+        "`password`",
+        "passwords.txt",
+    ] {
+        for message in [
+            format!("Archive member `{name}` declared 4 bytes but produced more"),
+            format!("Archive member `{name}` declared 8 bytes but produced 4 bytes"),
+            format!(
+                "Archive member `{name}` declared 10 bytes, but only 2 bytes are free at the destination"
+            ),
+            format!(
+                "Not enough free space at the destination to extract `{name}` (0 bytes available)"
+            ),
+        ] {
+            assert!(!extract_error_needs_password(&message), "{message}");
+        }
+    }
+}
+
+#[test]
 fn completed_archive_does_not_restore_a_superseded_destination_after_modal_dismissal() {
     crate::test_support::gtk_test(
         "ui::browser::events::tests::completed_archive_does_not_restore_a_superseded_destination_after_modal_dismissal",
