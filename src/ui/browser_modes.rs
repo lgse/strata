@@ -396,6 +396,12 @@ impl ModeViews {
         }
     }
 
+    pub fn prune_stale_search_results(&self) {
+        if let Some(pane) = self.single_pane() {
+            pane.search.prune_missing();
+        }
+    }
+
     pub fn header_has_focus(&self) -> bool {
         let focused = self.stack.root().and_then(|root| root.focus());
         self.single_pane()

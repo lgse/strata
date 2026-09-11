@@ -26,6 +26,8 @@ struct State {
     positions: RefCell<HashMap<gtk::ListBoxRow, usize>>,
     handle: RefCell<Option<SearchHandle>>,
     generation: Cell<u64>,
+    root: PathBuf,
+    recursive: Cell<bool>,
 }
 
 #[derive(Clone)]
@@ -98,6 +100,30 @@ impl InlineSearch {
             .collect();
         Some(entries)
     }
+
+    /// Drops results whose path no longer exists, e.g. after a rename, delete, or move
+    /// dispatched from that result's own context menu. `query()` only re-scores the snapshot
+    /// `index_filter` took when the search started, so a mutated hit otherwise lingers until the
+    /// query itself changes.
+    pub fn prune_missing(&self) {
+        let Some(state) = self.state.as_ref() else {
+            return;
+        };
+        if state.handle.borrow().is_none() {
+            return;
+        }
+        let pruned: Vec<_> = state
+            .items
+            .borrow()
+            .iter()
+            .filter(|item| item.path.try_exists().unwrap_or(true))
+            .cloned()
+            .collect();
+        if pruned.len() != state.items.borrow().len() {
+            let recursive = state.recursive.get();
+            update_rows(state, pruned, &state.root, recursive);
+        }
+    }
 }
 
 /// Keeps the view's normal presentation intact when the recursive query is dismissed.
@@ -141,6 +167,8 @@ pub(super) fn wrap(
         positions: RefCell::new(HashMap::new()),
         handle: RefCell::new(None),
         generation: Cell::new(0),
+        root: root.clone(),
+        recursive: Cell::new(false),
     });
     let weak = Rc::downgrade(&state);
     state.list.set_sort_func(move |left, right| {
@@ -263,6 +291,7 @@ pub(super) fn wrap(
         state: Some(state.clone()),
     };
     super::browser::bind_filter_query(entry, move |text, recursive, restart| {
+        state.recursive.set(recursive);
         if restart {
             state.generation.set(state.generation.get().wrapping_add(1));
             state.handle.borrow_mut().take();
