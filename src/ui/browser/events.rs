@@ -578,19 +578,18 @@ impl ViewState {
                 self.dismiss_file_operation_progress();
                 self.pending_archive_destination.take();
                 let retry = self.pending_extract_retry.take();
-                if let Some((entry, dest)) = retry {
-                    let lower = message.to_lowercase();
-                    if lower.contains("password") || lower.contains("encrypt") {
-                        let invalid_password = lower.contains("incorrect");
-                        let navigate_after_extract = self.pending_navigate.take();
-                        self.show_extract_password_dialog(
-                            entry,
-                            dest,
-                            invalid_password,
-                            navigate_after_extract,
-                        );
-                        return;
-                    }
+                if let Some((entry, dest)) = retry
+                    && extract_error_needs_password(message)
+                {
+                    let invalid_password = message.to_lowercase().contains("incorrect");
+                    let navigate_after_extract = self.pending_navigate.take();
+                    self.show_extract_password_dialog(
+                        entry,
+                        dest,
+                        invalid_password,
+                        navigate_after_extract,
+                    );
+                    return;
                 }
                 show_error_dialog(&self.overlay, "Unable to complete operation", message);
             }
@@ -914,6 +913,18 @@ impl ViewState {
                 | BrowserEvent::EntriesReplaced { .. }
         )
     }
+}
+
+fn extract_error_needs_password(message: &str) -> bool {
+    // Member diagnostics quote one unescaped filename, which can itself contain backticks.
+    let (prefix, suffix) = match (message.find('`'), message.rfind('`')) {
+        (Some(start), Some(end)) if start < end => (&message[..start], &message[end + 1..]),
+        _ => (message, ""),
+    };
+    [prefix, suffix].iter().any(|text| {
+        let lower = text.to_lowercase();
+        lower.contains("password") || lower.contains("encrypt")
+    })
 }
 
 #[cfg(test)]
