@@ -8,8 +8,8 @@ use std::{
 use gdk_pixbuf::prelude::*;
 
 use super::{
-    bounded_output, bounded_output_with_timeout, bounded_surface_dimensions, read_limited,
-    render_pixbuf, render_raw, render_raw_thumbnail, render_simple_dcraw, run,
+    bounded_output, bounded_output_with_timeout, bounded_surface_dimensions, pdf_render_request,
+    read_limited, render_pixbuf, render_raw, render_raw_thumbnail, render_simple_dcraw, run,
     scale_embedded_thumbnail,
 };
 
@@ -40,6 +40,22 @@ fn timed_bounded_commands_stop_and_report_failure_at_their_deadline() {
         Duration::from_secs(1),
     );
     assert!(oversized.is_err());
+}
+
+#[test]
+fn pdf_preview_requests_carry_a_bounded_page_and_viewport() {
+    assert_eq!(
+        pdf_render_request("12:640x800"),
+        Ok((12, crate::sandbox::PdfRenderSize::new(640, 800)))
+    );
+    assert_eq!(
+        pdf_render_request("0:99999x1"),
+        Ok((0, crate::sandbox::PdfRenderSize::new(99999, 1)))
+    );
+    assert!(pdf_render_request("12").is_err());
+    assert!(pdf_render_request("12:0").is_err());
+    assert!(pdf_render_request("page:640x800").is_err());
+    assert!(pdf_render_request("12:wide").is_err());
 }
 
 #[test]
