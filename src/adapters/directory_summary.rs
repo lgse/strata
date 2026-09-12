@@ -29,7 +29,7 @@ impl DirectorySummary {
 }
 
 const DIRECTORY_ATTRIBUTES: &str =
-    "standard::name,standard::type,standard::is-symlink,standard::size";
+    "standard::name,standard::type,standard::is-symlink,standard::size,standard::is-hidden";
 const MAX_ENTRIES: usize = 200_000;
 const MAX_DEPTH: usize = 64;
 const TIME_BUDGET: Duration = Duration::from_secs(5);
@@ -39,6 +39,7 @@ struct MeasurementBudget {
     deadline: Instant,
     max_entries: usize,
     max_depth: usize,
+    skip_hidden: bool,
     total_size: Cell<u64>,
     reported_size: Cell<u64>,
     on_progress: Box<dyn Fn(u64)>,
@@ -67,14 +68,23 @@ async fn enumerate_children(file: &gio::File) -> Result<gio::FileEnumerator, gli
 }
 
 pub(crate) async fn summarize_directory(root: &gio::File) -> Result<DirectorySummary, glib::Error> {
-    summarize_directory_with_progress(root, |_| {}).await
+    summarize_directory_with_progress(root, false, |_| {}).await
 }
 
 pub(crate) async fn summarize_directory_with_progress(
     root: &gio::File,
+    skip_hidden: bool,
     on_progress: impl Fn(u64) + 'static,
 ) -> Result<DirectorySummary, glib::Error> {
-    summarize_directory_with_budget(root, MAX_ENTRIES, MAX_DEPTH, TIME_BUDGET, on_progress).await
+    summarize_directory_with_budget(
+        root,
+        MAX_ENTRIES,
+        MAX_DEPTH,
+        TIME_BUDGET,
+        skip_hidden,
+        on_progress,
+    )
+    .await
 }
 
 async fn summarize_directory_with_budget(
@@ -82,6 +92,7 @@ async fn summarize_directory_with_budget(
     max_entries: usize,
     max_depth: usize,
     time_budget: Duration,
+    skip_hidden: bool,
     on_progress: impl Fn(u64) + 'static,
 ) -> Result<DirectorySummary, glib::Error> {
     on_progress(0);
@@ -91,6 +102,7 @@ async fn summarize_directory_with_budget(
         deadline: Instant::now() + time_budget,
         max_entries,
         max_depth,
+        skip_hidden,
         total_size: Cell::new(0),
         reported_size: Cell::new(0),
         on_progress: Box::new(on_progress),
@@ -157,6 +169,9 @@ fn measure_entry(
     budget: Rc<MeasurementBudget>,
 ) -> MeasurementFuture {
     Box::pin(async move {
+        if budget.skip_hidden && info.is_hidden() {
+            return Ok(DirectorySummary::default());
+        }
         budget.visited.set(budget.visited.get() + 1);
         let mut summary = DirectorySummary {
             item_count: 1,

@@ -15,7 +15,8 @@ async fn summarize_directory_with_budget(
     max_depth: usize,
     time_budget: Duration,
 ) -> Result<DirectorySummary, glib::Error> {
-    super::summarize_directory_with_budget(root, max_entries, max_depth, time_budget, |_| {}).await
+    super::summarize_directory_with_budget(root, max_entries, max_depth, time_budget, false, |_| {})
+        .await
 }
 
 fn unique_fixture_root(label: &str) -> std::path::PathBuf {
@@ -174,6 +175,7 @@ fn directory_summary_treats_a_directory_removed_before_measurement_as_truncated_
             deadline: Instant::now() + TIME_BUDGET,
             max_entries: MAX_ENTRIES,
             max_depth: MAX_DEPTH,
+            skip_hidden: false,
             total_size: Cell::new(0),
             reported_size: Cell::new(0),
             on_progress: Box::new(|_| {}),
@@ -220,6 +222,7 @@ fn aborting_a_directory_measurement_stops_it_mid_flight() {
                 deadline: Instant::now() + TIME_BUDGET,
                 max_entries: MAX_ENTRIES,
                 max_depth: MAX_DEPTH,
+                skip_hidden: false,
                 total_size: Cell::new(0),
                 reported_size: Cell::new(0),
                 on_progress: Box::new(|_| {}),

@@ -49,7 +49,7 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
             window.present();
 
             for (path, expected) in [
-                (root.path().to_path_buf(), "205 B"),
+                (root.path().to_path_buf(), "200 B"),
                 (root.path().join("empty"), "0 B"),
                 (root.path().join("missing"), "Unavailable"),
             ] {
@@ -81,7 +81,7 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
                 }
                 assert_eq!(size.text(), expected);
                 assert!(!spinner.is_visible());
-                if expected == "205 B" {
+                if expected == "200 B" {
                     assert!(
                         saw_partial_size.get(),
                         "size must update while the spinner is running"

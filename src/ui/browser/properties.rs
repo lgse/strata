@@ -315,6 +315,7 @@ impl ViewState {
         size_spinner.set_spinning(measuring_directory);
         size_spinner.set_visible(measuring_directory);
         let size = properties_size_row(&details, &initial_size, &size_spinner);
+        let items = measuring_directory.then(|| properties_row(&details, "ITEMS", "—"));
         let modified = properties_row(&details, "MODIFIED", "—");
         crate::util::set_modified_date(&modified, entry.as_ref(), "—");
         let opens_with = properties_row(&details, "OPENS WITH", "—");
@@ -513,11 +514,12 @@ impl ViewState {
         if measuring_directory {
             let weak_size = size.downgrade();
             let weak_spinner = size_spinner.downgrade();
+            let weak_items = items.as_ref().map(|items| items.downgrade());
             let directory = gio_file_for_location(&location);
             let task = glib::MainContext::default().spawn_local(async move {
                 let progress_size = weak_size.clone();
                 let progress_throttle = SizeProgressThrottle::default();
-                let summary = summarize_directory_with_progress(&directory, move |total| {
+                let summary = summarize_directory_with_progress(&directory, true, move |total| {
                     if total > 0
                         && progress_throttle.should_update(Instant::now())
                         && let Some(size) = progress_size.upgrade()
@@ -537,10 +539,14 @@ impl ViewState {
                     Ok(summary) => {
                         let prefix = if summary.truncated { "≥ " } else { "" };
                         size.set_text(&format!("{prefix}{}", format_file_size(summary.total_size)));
-                        size.set_tooltip_text(Some(&format!(
-                            "{prefix}{}",
-                            item_count_label(summary.item_count)
-                        )));
+                        if let Some(items) = weak_items.as_ref().and_then(|w| w.upgrade()) {
+                            let count = if summary.truncated {
+                                format!("≥ {}", item_count_label(summary.item_count))
+                            } else {
+                                item_count_label(summary.item_count)
+                            };
+                            items.set_text(&count);
+                        }
                     }
                     Err(_) => size.set_text("Unavailable"),
                 }
