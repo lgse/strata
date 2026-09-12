@@ -167,7 +167,9 @@ pub(super) fn focus_context_entry(
     if let Some(position) = current_context_position(state, depth, position, entry) {
         let positions = state.browser.selected_positions(depth);
         state.browser.commit_selection();
-        state.browser.set_selection(depth, &positions, Some(position));
+        state
+            .browser
+            .set_selection(depth, &positions, Some(position));
     } else {
         focus_search_result(state, depth, entry);
     }

@@ -250,9 +250,7 @@ fn remember_properties_focus(layer: &gtk::Box, overlay: &gtk::Overlay) -> Rc<Cel
     let restore_on_close = restore.clone();
     // Restore after removal, when the modal focus trap no longer redirects focus.
     layer.connect_parent_notify(move |layer| {
-        if layer.parent().is_some()
-            || !layer.has_css_class("dismissing")
-            || !restore_on_close.get()
+        if layer.parent().is_some() || !layer.has_css_class("dismissing") || !restore_on_close.get()
         {
             return;
         }

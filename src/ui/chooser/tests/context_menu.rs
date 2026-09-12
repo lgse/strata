@@ -195,7 +195,11 @@ fn chooser_routes_menu_shortcuts_and_preserves_completion_on_escape() {
                     .expect("Properties close button")
                     .emit_clicked();
                 wait_until(|| visible_modal_layer(&state.window).is_none());
-                assert_eq!(focused(&state), origin, "Properties must restore chooser focus");
+                assert_eq!(
+                    focused(&state),
+                    origin,
+                    "Properties must restore chooser focus"
+                );
                 assert_eq!(browser.selected_positions(0), [0, 1]);
                 assert!(state.completion.borrow().is_some());
 

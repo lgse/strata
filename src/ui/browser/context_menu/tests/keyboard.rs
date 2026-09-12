@@ -263,8 +263,11 @@ fn menu_keys_skip_inactive_actions_wrap_scroll_and_activate() {
                     "{key:?} must visibly focus Action {index} after the focus indicator expires"
                 );
                 wait_until(|| {
-                    let bounds = buttons[index].compute_bounds(&scroll).expect("button bounds");
-                    bounds.y() >= -0.5 && bounds.y() + bounds.height() <= scroll.height() as f32 + 0.5
+                    let bounds = buttons[index]
+                        .compute_bounds(&scroll)
+                        .expect("button bounds");
+                    bounds.y() >= -0.5
+                        && bounds.y() + bounds.height() <= scroll.height() as f32 + 0.5
                 });
             }
             for (index, key) in [Key::Return, Key::KP_Enter, Key::space]
