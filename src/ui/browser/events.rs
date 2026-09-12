@@ -55,6 +55,30 @@ impl ViewState {
                     self.append_column(*depth, location);
                 }
             }
+            BrowserEvent::ColumnsRelocated { from_depth } => {
+                if self.mode_views.borrow().mode() == BrowserMode::Columns {
+                    let refocus = self
+                        .focused_column_depth()
+                        .is_some_and(|depth| depth >= *from_depth);
+                    let active = self.browser.active_depth();
+                    self.rebuild_columns_from(*from_depth);
+                    // A rename is not navigation: keep the user's horizontal viewport.
+                    self.horizontal_scroll_generation
+                        .set(self.horizontal_scroll_generation.get().saturating_add(1));
+                    if let Some(depth) = active {
+                        self.browser.set_active_column(depth);
+                        if refocus {
+                            self.browser.focus_active();
+                        }
+                    }
+                }
+                if let Some(location) = (0..)
+                    .map_while(|depth| self.browser.location_at(depth))
+                    .last()
+                {
+                    self.set_location(&location);
+                }
+            }
             BrowserEvent::EntriesInserted { depth, insertions } => {
                 let render_started = Instant::now();
                 let entry_count = insertions
@@ -905,6 +929,7 @@ impl ViewState {
             BrowserEvent::Reset
                 | BrowserEvent::ColumnAdded { .. }
                 | BrowserEvent::ColumnsTruncated { .. }
+                | BrowserEvent::ColumnsRelocated { .. }
                 | BrowserEvent::FocusChanged { .. }
                 | BrowserEvent::SelectionSetChanged { .. }
                 | BrowserEvent::EntriesInserted { .. }

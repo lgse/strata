@@ -32,6 +32,22 @@ impl ModeViews {
                 self.clear_list();
             }
             BrowserEvent::ColumnsTruncated { .. } => self.rebuild_active_mode(),
+            BrowserEvent::ColumnsRelocated { from_depth } => {
+                if let Some(depth) = self
+                    .browser
+                    .active_depth()
+                    .filter(|depth| depth >= from_depth)
+                {
+                    let refocus = self
+                        .panes_at(depth)
+                        .iter()
+                        .any(|pane| pane_holds_keyboard_focus(pane));
+                    self.rebuild_active_mode();
+                    if refocus {
+                        self.focus_visible_pane(depth);
+                    }
+                }
+            }
             BrowserEvent::ColumnAdded { depth, .. } => {
                 if self.browser.active_depth() == Some(*depth) {
                     self.rebuild_active_mode();

@@ -139,7 +139,6 @@ pub(super) struct PendingEntryRename {
     depth: usize,
     parent: Location,
     reveal_generation: u64,
-    is_directory: bool,
 }
 
 // Empty fields are an ordinary editing state, although they cannot be submitted.
@@ -342,8 +341,10 @@ impl ViewState {
             };
             let row = column.bound_rows.borrow().iter().find_map(|bound| {
                 (bound.item.upgrade()?.position() == position)
-                    .then(|| bound.row.upgrade().map(|row| row.upcast::<gtk::Widget>()))
+                    .then(|| bound.row.upgrade())
                     .flatten()
+                    .filter(|row| row.is_mapped() && row.is_ancestor(&column.list))
+                    .map(|row| row.upcast::<gtk::Widget>())
             });
             (
                 position,
@@ -722,14 +723,24 @@ impl ViewState {
             if let Some(value) = scroll_value.get() {
                 scroll.vadjustment().set_value(value);
             }
-            // Focus the native item, not ListView's stale pre-sort keyboard cursor.
+            // GTK may keep a removed native row as root focus after a splice.
+            // Recover it without taking focus from an attached outside control.
             if let Some(focus) = list.root().and_then(|root| root.focus())
-                && (focus == *list || focus.is_ancestor(list))
+                && (focus == *list
+                    || focus.is_ancestor(list)
+                    || list.is_ancestor(&focus)
+                    || focus.root().is_none())
                 && let Some(cursor) = row.parent()
             {
                 let adjustment = scroll.vadjustment();
                 let value = adjustment.value();
-                cursor.grab_focus();
+                if focus.root().is_none() {
+                    if let Some(root) = list.root() {
+                        root.set_focus(Some(&cursor));
+                    }
+                } else {
+                    cursor.grab_focus();
+                }
                 adjustment.set_value(value);
             }
             let allocated = reveal_rename_row(&row, &scroll, footer.as_ref());
@@ -871,26 +882,14 @@ impl ViewState {
                 .flatten();
             if let Some(position) = position {
                 if !selected.replace(true) {
-                    let in_columns = state.mode_views.borrow().mode() == BrowserMode::Columns;
-                    if pending.is_directory && in_columns {
-                        // Mirrors a real row click: opens the new folder as the child
-                        // column and refreshes the breadcrumb, rather than leaving a
-                        // stale child column from whatever was previously open. Only
-                        // for directories -- activating a file would try to open it.
-                        state.browser.activate(pending.depth, position);
+                    if state.mode_views.borrow().mode() == BrowserMode::Columns {
+                        state.browser.reveal_created_entry(pending.depth, position);
+                        // Revealing the child synchronously truncates columns and cancels
+                        // pending editors. Retain this creation's authority for the next frame.
+                        state.pending_new_entry.replace(Some(pending.clone()));
                     } else {
                         state.browser.select(pending.depth, position);
-                        if in_columns {
-                            // A new file has no children; close any child column left
-                            // open from whatever was previously selected here.
-                            state.browser.close_column(pending.depth + 1);
-                        }
                     }
-                    // `activate`/`close_column` truncate columns, which clears
-                    // `pending_new_entry` as a side effect (ColumnsTruncated cancels
-                    // any pending new-entry state), so re-arm it to keep this wait
-                    // loop alive for the rename that follows.
-                    state.pending_new_entry.replace(Some(pending.clone()));
                 } else if let Some(entry) = state.browser.entry_at(pending.depth, position)
                     && state.begin_rename_item(pending.depth, position, entry)
                 {
@@ -930,7 +929,6 @@ impl ViewState {
                 depth,
                 parent: location.clone(),
                 reveal_generation: self.rename_reveal_generation.get(),
-                is_directory,
             })));
         if is_directory {
             self.browser.create_new_folder(location);
@@ -991,7 +989,9 @@ impl ViewState {
         super::prepare_collection_inline_edit(column.list.upcast_ref(), filtered_position);
         let row = column.bound_rows.borrow().iter().find_map(|bound| {
             let item = bound.item.upgrade()?;
-            (item.position() == filtered_position).then(|| bound.row.upgrade())?
+            (item.position() == filtered_position)
+                .then(|| bound.row.upgrade())?
+                .filter(|row| row.is_mapped() && row.is_ancestor(&column.list))
         })?;
         if !row.is_mapped() || row.width() <= 0 || column.presentation.stack.is_transition_running()
         {

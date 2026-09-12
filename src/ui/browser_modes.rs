@@ -646,6 +646,7 @@ impl ModeViews {
             (bound.item.upgrade()?.position() == position)
                 .then(|| bound.widget.upgrade())
                 .flatten()
+                .filter(|row| row.is_mapped() && row.is_ancestor(&section.view))
         });
         Some((position, row))
     }
@@ -670,6 +671,7 @@ impl ModeViews {
                     bound
                         .widget
                         .upgrade()
+                        .filter(|widget| widget.is_mapped() && widget.is_ancestor(&section.view))
                         .map(|widget| (widget, section.view.clone(), position))
                 })?
             })
