@@ -3,6 +3,7 @@
 
 import pytest
 
+from harness.artifacts import ArtifactCollector
 from harness.modes import ALL_MODES
 
 
@@ -77,7 +78,7 @@ def test_marquee_begins_beside_content_in_a_full_pane(strata, mode, modifiers):
     initial = set(strata.selected_names())
     start = _inert_point(strata, "000.txt", mode)
     end = _inert_point(strata, "010.txt", mode)
-    drag_modifiers = modifiers if mode == "Icons" else (*modifiers, "alt")
+    drag_modifiers = (*modifiers, "alt") if mode == "Columns" else modifiers
     strata.pointer.drag_points(
         start, (end[0] + 3, end[1]), modifiers=drag_modifiers
     )
@@ -196,21 +197,57 @@ def test_shift_drag_from_content_moves_the_file(strata, mode):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_sidebar_marquee_still_reaches_the_leading_pane(strata, mode):
+@pytest.mark.parametrize("focus_origin", ["pane", "sidebar"])
+def test_sidebar_marquee_still_reaches_the_leading_pane(strata, mode, focus_origin):
     root = strata.fixture.root.name
     if mode == "Columns":
         strata.open_directory("documents")
-    sidebar = strata.sidebar_button("Home").parent
+    home = strata.sidebar_button("Home")
+    if focus_origin == "sidebar":
+        for _ in range(2):
+            strata.keyboard.press("Home")
+            strata.keyboard.press("Left")
+            if home.has_state("focused"):
+                break
+        strata.wait(lambda: home.has_state("focused"), "keyboard focus in the sidebar")
+    sidebar = home.parent
     assert sidebar is not None
     bounds = sidebar.screen_bounds()
     start = (bounds.center[0], bounds.y + bounds.height - 10)
     first = strata.entry("readme.md", root).screen_bounds().center
     last = strata.entry("todo.txt", root).screen_bounds().center
-    strata.pointer.drag_points(start, (last[0], first[1]))
+    strata.pointer.drag_points(start, (last[0], first[1]), release=False)
+    try:
+        strata.wait(
+            lambda: {"readme.md", "todo.txt"} <= set(strata.selected_names(root)),
+            "the sidebar marquee to select in the leading pane",
+        )
+        collection = strata.entry_container(root)
+        strata.wait(
+            lambda: any(node.has_state("focused") for _, node in collection.walk()),
+            "the marquee target to own focus and active selection feedback during the drag",
+        )
+        strata.screenshot(
+            ArtifactCollector(test_name=f"sidebar-marquee-{mode}-{focus_origin}").directory
+            / "selection.png"
+        )
+    finally:
+        strata.pointer.connection.button(1, False)
+    assert not home.has_state("focused")
+    selected = set(strata.selected_names(root))
+    strata.keyboard.press("ctrl+c")
+    destination = "selection-copy"
+    strata.fixture.path(destination).mkdir()
+    strata.open_directory(destination, root)
+    strata.paste_into(destination)
     strata.wait(
-        lambda: {"readme.md", "todo.txt"} <= set(strata.selected_names(root)),
-        "the sidebar marquee to select in the leading pane",
+        lambda: set(strata.fixture.names(destination)) == selected,
+        "keyboard copy to use the marquee target rather than the sidebar or another pane",
     )
+    for name in ("readme.md", "todo.txt"):
+        assert strata.fixture.path(f"{destination}/{name}").read_bytes() == strata.fixture.path(
+            name
+        ).read_bytes()
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -220,7 +257,7 @@ def test_marquee_from_a_full_row_auto_scrolls(strata, mode):
     pane = strata.pane().screen_bounds()
     container = strata.entry_container().screen_bounds()
     bottom = min(pane.y + pane.height, container.y + container.height)
-    modifiers = () if mode == "Icons" else ("alt",)
+    modifiers = ("alt",) if mode == "Columns" else ()
     strata.pointer.drag_points(
         start, (start[0] + 3, bottom - 4), release=False, modifiers=modifiers
     )
