@@ -98,6 +98,18 @@ scrolling the columns back to the right:
 | --- | --- |
 | ![Column positions with preview open](followup/after-open.png) | ![Same column positions after closing](followup/after-closed.png) |
 
+## Merge-review verification
+
+After merging main `030b1d9d`, exercised the Appearance toggle in Icons, deleted
+the displayed file, then selected another file. The deleted content cleared
+without releasing the reserved grid width, and the next selection restored the
+preview. Captured in private Xvfb/D-Bus with the pinned GTK 4.14.5 environment
+using synthetic files only.
+
+| Appearance-opened preview | After deleting the file | Next selection |
+| --- | --- | --- |
+| ![Displayed file](review/appearance-preview.png) | ![Reserved empty preview](review/deleted-preview-placeholder.png) | ![Session restores preview](review/next-selection-preview.png) |
+
 ## Tuning and scope
 
 - `MIN_COLUMN_MULTIPLIER` in [`preview/layout.rs`](../../../src/ui/preview/layout.rs)
