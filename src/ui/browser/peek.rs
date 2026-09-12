@@ -227,13 +227,12 @@ impl ViewState {
         let source = glib::timeout_add_local_once(self.peek_behavior.open_delay, move || {
             if let Some(state) = weak_state.upgrade() {
                 state.pending_peek.take();
-                let still_hovered = state
-                    .peek_anchor
-                    .borrow()
-                    .as_ref()
-                    .is_some_and(|anchor| {
-                        anchor.widget.state_flags().contains(gtk::StateFlags::PRELIGHT)
-                    });
+                let still_hovered = state.peek_anchor.borrow().as_ref().is_some_and(|anchor| {
+                    anchor
+                        .widget
+                        .state_flags()
+                        .contains(gtk::StateFlags::PRELIGHT)
+                });
                 if still_hovered {
                     state.browser.begin_peek(origin_depth, location);
                 } else {
