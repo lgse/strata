@@ -899,24 +899,37 @@ impl ViewState {
         };
         let png_bytes = texture.save_to_png_bytes();
         gio::spawn_blocking(move || {
-            let mut suffix = 0u64;
-            let path = loop {
-                let name = if suffix == 0 {
-                    "image.png".to_owned()
-                } else {
-                    format!("image ({suffix}).png")
-                };
-                let candidate = dir.join(&name);
-                if !candidate.exists() {
-                    break candidate;
-                }
-                suffix += 1;
-            };
-            if let Err(error) = std::fs::write(&path, png_bytes.as_ref()) {
+            if let Err(error) = write_pasted_image(&dir, png_bytes.as_ref()) {
                 tracing::warn!(%error, "unable to write pasted image");
             }
         });
     }
+}
+
+fn write_pasted_image(dir: &std::path::Path, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
+    use std::io::Write;
+
+    for suffix in 0u64.. {
+        let name = if suffix == 0 {
+            "image.png".to_owned()
+        } else {
+            format!("image ({suffix}).png")
+        };
+        let path = dir.join(name);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(mut file) => {
+                file.write_all(bytes)?;
+                return Ok(path);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(std::io::Error::other("image filename suffixes exhausted"))
 }
 
 #[cfg(test)]
