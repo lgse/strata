@@ -315,7 +315,7 @@ fn classify_stderr(bytes: &[u8]) -> Option<String> {
     } else if text.contains("strata_media:thumbnail-tool") {
         "Video thumbnail tools are missing. Install ffmpegthumbnailer, then retry."
     } else if text.contains("strata_media:audio-plugin") {
-        "Audio output plugins are missing. Install gst-plugins-good (Arch/Omarchy) or gstreamer1.0-plugins-good (Debian/Ubuntu), then retry."
+        "Audio output plugins are missing. Install gst-plugins-base and gst-plugins-good (Arch/Omarchy), or gstreamer1.0-plugins-base and gstreamer1.0-plugins-good (Debian/Ubuntu), then retry."
     } else if text.contains("strata_media:audio-server") {
         "Audio output is unavailable. Start PulseAudio or PipeWire with pipewire-pulse, check the audio service, then retry."
     } else if text.contains("bwrap:") {

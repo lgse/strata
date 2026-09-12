@@ -2,8 +2,9 @@
 # SPDX-License-Identifier: MIT
 """Private-display evidence for a supplied build; not a replacement for canonical E2E.
 
-Use generated video only. Audio-bearing playback is covered separately; this
-script never requests access to the operator's display, session bus or speakers.
+Use generated media only. The default is video-only without audio access.
+Speaker output requires --audio-runtime and explicit --allow-audible consent;
+the GUI still uses a private display and buses. No audio recording is performed.
 """
 import argparse
 import json
@@ -62,7 +63,12 @@ def main():
     parser.add_argument("--expect-error")
     parser.add_argument("--cycles", type=int, default=0)
     parser.add_argument("--pause-release", action="store_true")
+    parser.add_argument("--audio-fixture", choices=("audio", "av"))
+    parser.add_argument("--audio-runtime", type=Path)
+    parser.add_argument("--allow-audible", action="store_true")
     args = parser.parse_args()
+    if args.audio_runtime and (not args.allow_audible or not args.audio_fixture):
+        parser.error("external audio runtime requires an audio fixture and explicit --allow-audible consent")
     if not 0 <= args.cycles <= 1000:
         parser.error("cycles must be 0..1000")
     binary, output = args.binary.resolve(strict=True), args.output.resolve()
@@ -72,11 +78,17 @@ def main():
     output.mkdir(parents=True, exist_ok=True)
     fixtures = output / "fixtures"
     fixtures.mkdir(exist_ok=True)
-    clip = fixtures / "clip.mkv"
+    clip = fixtures / ("clip.wav" if args.audio_fixture == "audio" else "clip.mkv")
     if not clip.exists():
-        subprocess.run(["/usr/bin/ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i",
-                        "testsrc2=size=160x90:rate=30:duration=30", "-c:v", "ffv1", "-threads", "1", str(clip)],
-                       check=True, timeout=60)
+        command = ["/usr/bin/ffmpeg", "-nostdin", "-v", "error"]
+        duration = 4 if args.audio_fixture else 30
+        if args.audio_fixture != "audio":
+            command += ["-f", "lavfi", "-i", f"testsrc2=size=160x90:rate=30:duration={duration}"]
+        if args.audio_fixture:
+            command += ["-f", "lavfi", "-i", "sine=frequency=660:sample_rate=48000:duration=4", "-c:a", "pcm_s16le"]
+        if args.audio_fixture != "audio":
+            command += ["-c:v", "ffv1"]
+        subprocess.run(command + ["-threads", "1", str(clip)], check=True, timeout=60)
     (fixtures / "notes.txt").write_text("Browsing and text previews remain usable.\n")
     sys.path.insert(0, str(ROOT / "tests/e2e"))
     from harness.display import HeadlessDisplay
@@ -95,11 +107,16 @@ def main():
         from harness.xtest import XTestConnection
         from harness import tree
         tree.connect()
-        home.write_preferences({"video_preview_backend": "software", "preview_muted": True})
-        app = Application(display, home, fixtures).start()
+        home.write_preferences({"video_preview_backend": "software", "preview_muted": not bool(args.audio_runtime), "preview_volume": 0.15})
+        app_display = display
+        if args.audio_runtime:
+            # Redirect only the app's audio runtime, retaining its private GUI buses.
+            from types import SimpleNamespace
+            app_display = SimpleNamespace(environment=dict(display.environment, XDG_RUNTIME_DIR=str(args.audio_runtime.resolve(strict=True))))
+        app = Application(app_display, home, fixtures).start()
         connection = XTestConnection(display.display)
         browser = Strata(app, Keyboard(connection), Pointer(connection), FixtureTree(fixtures), home, display)
-        browser.select_entry_with_keyboard("clip.mkv")
+        browser.select_entry_with_keyboard(clip.name)
         start = time.monotonic()
         browser.keyboard.press("space")
         if args.expect_error:
@@ -112,6 +129,14 @@ def main():
             browser.wait(lambda: browser.preview_shows("Browsing and text previews remain usable."), "unrelated text preview")
             browser.screenshot(output / "text-still-usable.png")
             results.update(expected_error=args.expect_error, text_preview_usable=True)
+        elif args.audio_fixture:
+            browser.wait(lambda: browser.preview_shows("0:01/0:04"), "native audio clock progress", timeout=25)
+            results.update(audio=args.audio_fixture, configured_volume=0.15, playing=resources(app.process.popen.pid))
+            browser.screenshot(output / "audio-playing.png")
+            browser.wait(lambda: browser.preview_shows("0:04/0:04"), "native audio EOS", timeout=15)
+            browser.keyboard.press("Escape")
+            browser.wait(lambda: browser.preview() is None, "close audio preview")
+            results["settled"] = resources(app.process.popen.pid)
         else:
             browser.wait(lambda: browser.preview_shows("0:01/"), "one-second playback", timeout=25)
             results["one_second_label_wall_ms"] = round((time.monotonic() - start) * 1000, 2)

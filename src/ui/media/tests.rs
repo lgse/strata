@@ -154,12 +154,28 @@ fn native_sandbox_workers_play_seek_and_release_video_audio_av_and_gif() {
                     assert!(player.error().is_none(), "{name}: {:?}", player.error());
                     player.timestamp() > 1_550_000
                 });
-                if !name.ends_with("gif") {
+                if name.ends_with("gif") {
                     wait(|| {
                         assert!(player.error().is_none(), "{name}: {:?}", player.error());
-                        player.is_ended()
+                        player.timestamp() > 2_150_000
+                            && player
+                                .imp()
+                                .frames
+                                .borrow()
+                                .front()
+                                .is_some_and(|frame| media::timestamp(frame.tick) > 2_100_000)
+                    });
+                    assert!(!player.is_ended());
+                    player.seek(29_700_000);
+                    wait(|| {
+                        assert!(player.error().is_none(), "{name}: {:?}", player.error());
+                        !player.is_seeking()
                     });
                 }
+                wait(|| {
+                    assert!(player.error().is_none(), "{name}: {:?}", player.error());
+                    player.is_ended()
+                });
                 player.close();
                 wait(|| crate::sandbox::media::tests::active_sessions() == 0);
                 wait(|| {
