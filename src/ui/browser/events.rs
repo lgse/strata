@@ -18,9 +18,7 @@ use crate::ui::browser::location::MountStrategy;
 use crate::ui::browser::peek::append_peek_entries;
 use crate::ui::browser::trash::retryable_delete_entries;
 use crate::ui::browser_modes::BrowserMode;
-use crate::ui::modal::{
-    show_delete_error_dialog, show_error_dialog, show_error_dialog_after_close,
-};
+use crate::ui::modal::{show_delete_error_dialog, show_error_dialog};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::collections::HashMap;
@@ -209,6 +207,7 @@ impl ViewState {
                 }
             }
             BrowserEvent::EntriesSpliced { depth, splices, .. } => {
+                let defer_empty = self.delete_animation_defers_empty_state(*depth);
                 let restore_cursor = self.focused_column_depth() == Some(*depth);
                 if let Some(column) = self.columns.borrow().get(*depth) {
                     let mut count = column.entry_count.get();
@@ -240,7 +239,9 @@ impl ViewState {
                         restore_column_cursor(column, position);
                     }
                     if count == 0 {
-                        column.presentation.show_empty();
+                        if !defer_empty {
+                            column.presentation.show_empty();
+                        }
                     } else {
                         column.presentation.show_content();
                     }
@@ -291,6 +292,7 @@ impl ViewState {
                 self.mode_views.borrow().set_show_hidden(*show_hidden);
             }
             BrowserEvent::LoadFinished { depth, truncated } => {
+                let defer_empty = self.delete_animation_defers_empty_state(*depth);
                 let archive_destination_loaded = !self.pending_select.borrow().is_empty()
                     && self
                         .pending_archive_destination
@@ -314,7 +316,9 @@ impl ViewState {
                     column.truncated_hint.set_visible(*truncated);
                     let count = column.entry_count.get();
                     if count == 0 {
-                        column.presentation.show_empty();
+                        if !defer_empty {
+                            column.presentation.show_empty();
+                        }
                     } else {
                         column.presentation.show_content();
                     }
@@ -583,17 +587,28 @@ impl ViewState {
                 self.update_item_progress(*completed, *total);
             }
             BrowserEvent::DeletionFinished { succeeded } => {
-                if *succeeded {
+                if let Some((depth, dissolve)) = self.pending_delete_dissolve.take() {
+                    self.deferred_delete_empty_depth.set(Some(depth));
+                    let succeeded = *succeeded;
                     let weak = Rc::downgrade(self);
                     self.dismiss_file_operation_progress_then(move || {
                         glib::idle_add_local_once(move || {
-                            if let Some(state) = weak.upgrade() {
-                                state.play_delete_animation();
+                            let Some(state) = weak.upgrade() else {
+                                return;
+                            };
+                            if succeeded {
+                                let weak = Rc::downgrade(&state);
+                                dissolve.play(move || {
+                                    if let Some(state) = weak.upgrade() {
+                                        state.finish_delete_animation(depth);
+                                    }
+                                });
+                            } else {
+                                state.finish_delete_animation(depth);
                             }
                         });
                     });
                 } else {
-                    self.clear_delete_animation();
                     self.dismiss_file_operation_progress();
                 }
                 self.prune_stale_search_results();
@@ -667,20 +682,14 @@ impl ViewState {
                 affected_locations,
             } => {
                 self.pending_archive_destination.take();
+                self.browser.refresh_after_cancellation(affected_locations);
                 let message = format!(
                     "{} completed, {} failed, and {} not attempted.\n\nCompleted changes were not reverted.",
                     item_count_label(*completed),
                     item_count_label(*failed),
                     item_count_label(*not_attempted),
                 );
-                let browser = self.browser.clone();
-                let affected = affected_locations.clone();
-                show_error_dialog_after_close(
-                    &self.overlay,
-                    "Operation cancelled",
-                    &message,
-                    Rc::new(move || browser.refresh_after_cancellation(&affected)),
-                );
+                show_error_dialog(&self.overlay, "Operation cancelled", &message);
             }
             BrowserEvent::NavigationRejected {
                 parent_depth,
@@ -835,7 +844,17 @@ impl ViewState {
         if Self::event_refreshes_active_path(event) {
             self.refresh_active_path_rows();
         }
-        self.mode_views.borrow_mut().handle(event);
+        let defer_empty = match event {
+            BrowserEvent::EntriesReplaced { depth, .. }
+            | BrowserEvent::EntriesSpliced { depth, .. }
+            | BrowserEvent::LoadFinished { depth, .. } => {
+                self.delete_animation_defers_empty_state(*depth)
+            }
+            _ => false,
+        };
+        self.mode_views
+            .borrow_mut()
+            .handle_with_deferred_empty(event, defer_empty);
         self.reconcile_pending_rename();
         match event {
             BrowserEvent::ColumnAdded { depth, .. } | BrowserEvent::ColumnReloaded { depth } => {
@@ -930,6 +949,23 @@ impl ViewState {
                 .borrow()
                 .reveal_selected_entry(depth, position);
         }
+    }
+
+    fn finish_delete_animation(&self, depth: usize) {
+        if self.deferred_delete_empty_depth.get() != Some(depth) {
+            return;
+        }
+        self.deferred_delete_empty_depth.set(None);
+        if self.delete_animation_defers_empty_state(depth) {
+            return;
+        }
+        if let Some(column) = self.columns.borrow().get(depth)
+            && column.entry_count.get() == 0
+            && !column.spinner.is_spinning()
+        {
+            column.presentation.show_empty_if_ready();
+        }
+        self.mode_views.borrow().show_empty_if_empty(depth);
     }
 
     fn prune_stale_search_results(&self) {
