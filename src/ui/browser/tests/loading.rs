@@ -99,50 +99,6 @@ fn settle() {
 }
 
 #[test]
-#[ignore = "captures loading UI; requires STRATA_LOADING_CAPTURE and a private display"]
-fn capture_loading_frame() {
-    gtk::init().expect("private GTK display");
-    crate::assets::prepare().expect("bundled assets");
-    crate::assets::register_icon_theme();
-    let output = std::env::var_os("STRATA_LOADING_CAPTURE").expect("capture path");
-    crate::ui::prepare_portal_ui();
-    let source = Rc::new(HeldSource::default());
-    let view = BrowserView::new(source, PeekBehavior::default());
-    view.set_view_mode(BrowserMode::List);
-    let window = gtk::Window::builder()
-        .title("Directory loading — first frame")
-        .default_width(850)
-        .default_height(450)
-        .child(&view.widget())
-        .build();
-    window.present();
-    settle();
-    view.browser()
-        .navigate(Location::local("/tmp/strata-loading-example"));
-    let started = std::time::Instant::now();
-    while started.elapsed() < std::time::Duration::from_millis(40) {
-        glib::MainContext::default().iteration(false);
-        std::thread::sleep(std::time::Duration::from_millis(1));
-    }
-    let paintable = gtk::WidgetPaintable::new(Some(&window));
-    let snapshot = gtk::Snapshot::new();
-    paintable.snapshot(
-        &snapshot,
-        f64::from(window.width()),
-        f64::from(window.height()),
-    );
-    let node = snapshot.to_node().expect("rendered browser");
-    window
-        .renderer()
-        .expect("renderer")
-        .render_texture(&node, None)
-        .save_to_png(std::path::PathBuf::from(output))
-        .expect("save capture");
-    window.close();
-    view.browser().clear_observer();
-}
-
-#[test]
 fn directory_loading_grace_across_modes() {
     crate::test_support::gtk_test(
         "ui::browser::tests::loading::directory_loading_grace_across_modes",
@@ -176,6 +132,14 @@ fn directory_loading_grace_across_modes() {
                 assert_page(&slow, "pending");
                 settle();
                 assert_page(&slow, "loading");
+                for stack in &slow {
+                    let loading = stack.visible_child().expect("loading placeholder");
+                    assert!(
+                        !loading.can_target(),
+                        "placeholder must not intercept input"
+                    );
+                    assert!(!loading.is_focusable(), "placeholder must not take focus");
+                }
                 source.batch(root.path());
                 source.finish();
                 settle();

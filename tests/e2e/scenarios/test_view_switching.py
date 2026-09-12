@@ -20,20 +20,38 @@ def test_appearance_menu_switches_presentation(strata, mode):
     assert strata.view_mode() == mode
     assert strata.pane().name == directory
     assert "documents" in strata.entry_names()
-
-
-@pytest.mark.parametrize("mode", MODES)
-def test_shortcut_switches_presentation(strata, mode):
-    strata.select_entry("todo.txt")
-
-    strata.keyboard.press(MODE_SHORTCUTS[mode])
-
-    strata.wait_for_view(mode)
-    assert strata.pane_names()[0] == strata.fixture.root.name
     strata.wait(
-        lambda: "todo.txt" in strata.all_selected_names(),
-        "the selection to survive the switch",
+        lambda: strata.environment.read_preferences().get("browser_mode")
+        == STORED_MODES[mode],
+        "the chosen view to be written to settings.toml",
     )
+
+
+def test_shortcut_round_trip_preserves_selection_and_updates_the_appearance_menu(strata):
+    strata.select_entry("todo.txt")
+    for mode in ["Icons", "List", "Columns"]:
+        strata.keyboard.press(MODE_SHORTCUTS[mode])
+        strata.wait_for_view(mode)
+        assert strata.pane_names()[0] == strata.fixture.root.name
+        assert "documents" in strata.entry_names()
+        strata.wait(
+            lambda: "todo.txt" in strata.all_selected_names(),
+            f"the selection to survive the switch to {mode}",
+        )
+
+        strata.open_appearance_menu()
+        for candidate in MODES:
+            option = strata.window.find(role="button", name=candidate)
+            assert option is not None
+            assert _has_check_mark(option) == (candidate == mode), (mode, candidate)
+        grouping = strata.window.find(role="button", name="Group by file type")
+        assert grouping is not None
+        assert ("sensitive" in grouping.states) == (mode == "List")
+        strata.keyboard.press("Escape")
+        strata.wait(
+            lambda: strata.window.find(role="button", name="Columns") is None,
+            "the appearance menu to close",
+        )
 
 
 def test_switching_preserves_directory_selection_and_sort(strata):
@@ -69,40 +87,6 @@ def test_switching_preserves_directory_selection_and_sort(strata):
         "the selection to survive the switch",
     )
     strata.wait_for_focused_entry("diagram.txt")
-
-
-def test_round_trip_through_every_view_returns_to_columns(strata):
-    for mode in ["Icons", "List", "Columns"]:
-        strata.keyboard.press(MODE_SHORTCUTS[mode])
-        strata.wait_for_view(mode)
-        assert "documents" in strata.entry_names()
-
-
-def test_the_chosen_view_is_remembered(strata):
-    strata.switch_view("List")
-
-    strata.wait(
-        lambda: strata.environment.read_preferences().get("browser_mode")
-        == STORED_MODES["List"],
-        "the chosen view to be written to settings.toml",
-    )
-
-
-@pytest.mark.parametrize("mode", MODES)
-def test_appearance_menu_marks_a_view_chosen_by_shortcut(strata, mode):
-    strata.keyboard.press(MODE_SHORTCUTS[mode])
-    strata.wait_for_view(mode)
-
-    strata.open_appearance_menu()
-
-    for candidate in MODES:
-        option = strata.window.find(role="button", name=candidate)
-        assert option is not None
-        assert _has_check_mark(option) == (candidate == mode)
-
-    grouping = strata.window.find(role="button", name="Group by file type")
-    assert grouping is not None
-    assert ("sensitive" in grouping.states) == (mode == "List")
 
 
 def _has_check_mark(option) -> bool:

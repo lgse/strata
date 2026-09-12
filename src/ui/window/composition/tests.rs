@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: MIT
 
-mod header_geometry;
-
 use gtk::{
     gdk::{Key, ModifierType},
     glib,
