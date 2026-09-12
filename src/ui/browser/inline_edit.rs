@@ -139,6 +139,7 @@ pub(super) struct PendingEntryRename {
     depth: usize,
     parent: Location,
     reveal_generation: u64,
+    is_directory: bool,
 }
 
 // Empty fields are an ordinary editing state, although they cannot be submitted.
@@ -870,18 +871,26 @@ impl ViewState {
                 .flatten();
             if let Some(position) = position {
                 if !selected.replace(true) {
-                    if state.mode_views.borrow().mode() == BrowserMode::Columns {
+                    let in_columns = state.mode_views.borrow().mode() == BrowserMode::Columns;
+                    if pending.is_directory && in_columns {
                         // Mirrors a real row click: opens the new folder as the child
                         // column and refreshes the breadcrumb, rather than leaving a
-                        // stale child column from whatever was previously open.
-                        // `activate` truncates columns, which clears
-                        // `pending_new_entry` as a side effect, so re-arm it to keep
-                        // this wait loop alive for the rename that follows.
+                        // stale child column from whatever was previously open. Only
+                        // for directories -- activating a file would try to open it.
                         state.browser.activate(pending.depth, position);
-                        state.pending_new_entry.replace(Some(pending.clone()));
                     } else {
                         state.browser.select(pending.depth, position);
+                        if in_columns {
+                            // A new file has no children; close any child column left
+                            // open from whatever was previously selected here.
+                            state.browser.close_column(pending.depth + 1);
+                        }
                     }
+                    // `activate`/`close_column` truncate columns, which clears
+                    // `pending_new_entry` as a side effect (ColumnsTruncated cancels
+                    // any pending new-entry state), so re-arm it to keep this wait
+                    // loop alive for the rename that follows.
+                    state.pending_new_entry.replace(Some(pending.clone()));
                 } else if let Some(entry) = state.browser.entry_at(pending.depth, position)
                     && state.begin_rename_item(pending.depth, position, entry)
                 {
@@ -921,6 +930,7 @@ impl ViewState {
                 depth,
                 parent: location.clone(),
                 reveal_generation: self.rename_reveal_generation.get(),
+                is_directory,
             })));
         if is_directory {
             self.browser.create_new_folder(location);
