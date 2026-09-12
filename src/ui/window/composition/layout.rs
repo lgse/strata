@@ -152,7 +152,9 @@ fn browser_split(
     toggle: &gtk::ToggleButton,
 ) -> gtk::Paned {
     let content = gtk::Paned::new(gtk::Orientation::Horizontal);
-    content.set_wide_handle(false);
+    content.add_css_class("sidebar-split");
+    // Wide handles keep GTK's mouse hit area inside the divider allocation.
+    content.set_wide_handle(true);
     content.set_shrink_start_child(false);
     content.set_resize_start_child(false);
     content.set_position(SIDEBAR_WIDTH);

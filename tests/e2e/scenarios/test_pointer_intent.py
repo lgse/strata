@@ -94,6 +94,43 @@ def test_marquee_begins_beside_content_in_a_full_pane(strata, mode, modifiers):
     assert sorted(folder.iterdir()) == before
 
 
+@pytest.mark.preferences(browser_mode="icons")
+@pytest.mark.parametrize("text_size", [
+    pytest.param(13, marks=pytest.mark.preferences(text_size=13)),
+    pytest.param(28, marks=pytest.mark.preferences(text_size=28)),
+])
+@pytest.mark.parametrize("corner", ["leading", "trailing"])
+def test_pane_corner_marquee_does_not_resize_sidebar(strata, text_size, corner):
+    folder = _full_directory(strata)
+    before = sorted(folder.iterdir())
+    sidebar = strata.sidebar_button("Home").parent
+    assert sidebar is not None
+    sidebar_before = sidebar.screen_bounds()
+    pane = strata.pane().screen_bounds()
+    container = strata.entry_container().screen_bounds()
+    x = pane.x + 2 if corner == "leading" else container.x + container.width - 2
+    start = (x, container.y + 2)
+    end = strata.entry("002.txt").screen_bounds().center
+    strata.pointer.drag_points(start, end)
+    strata.settle(strata.pane())
+    assert sidebar.screen_bounds().width == sidebar_before.width, (
+        f"{text_size}px {corner} pane corner must select files, not resize the sidebar"
+    )
+    strata.wait(
+        lambda: "002.txt" in strata.selected_names() and len(strata.selected_names()) > 1,
+        "a marquee from the pane corner to select files",
+    )
+    selected = strata.selected_names()
+    divider = ((sidebar_before.x + sidebar_before.width + pane.x) // 2, container.center[1])
+    strata.pointer.drag_points(divider, (divider[0] + 40, divider[1]))
+    strata.wait(
+        lambda: sidebar.screen_bounds().width >= sidebar_before.width + 30,
+        "dragging the actual sidebar divider to resize it",
+    )
+    assert strata.selected_names() == selected
+    assert sorted(folder.iterdir()) == before
+
+
 @pytest.mark.parametrize("mode", ALL_MODES)
 def test_modifier_clicks_on_inert_space_still_select(strata, mode):
     _full_directory(strata)

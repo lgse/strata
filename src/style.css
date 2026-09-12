@@ -1915,6 +1915,13 @@ paned > separator {
   min-width: 1px;
 }
 
+.sidebar-split > separator {
+  padding: 0 2px;
+  border: none;
+  background-image: none;
+  background-clip: content-box;
+}
+
 .preview-split > separator {
   background: alpha(@theme_accent, 0.34);
   min-width: 2px;
