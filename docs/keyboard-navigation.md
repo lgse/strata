@@ -129,9 +129,10 @@ becomes the only selected item. Escape returns keyboard focus to that clicked it
 
 Once open: **Up/Down** move between enabled actions, wrapping past the first/last;
 **Home/End** jump to the first/last enabled action; separators and disabled actions
-are skipped. **Enter/Space** activates the focused action. **Escape** closes the menu
-without changing the selection and returns keyboard focus to the item or pane that
-opened it. This applies in Columns, Icons, List, Trash, and the file chooser.
+are skipped. **Enter/Space** activates the focused action immediately on key press.
+**Escape** closes the menu without changing the selection and returns keyboard
+focus to the item or pane that opened it. This applies in Columns, Icons, List,
+Trash, and the file chooser.
 
 ## Review fixture
 

@@ -39,9 +39,9 @@ def test_the_entry_context_menu_offers_named_actions_and_accelerators(strata, mo
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("shortcut", ["Menu", "shift+F10"])
+@pytest.mark.parametrize("shortcut,activation", [("Menu", "Return"), ("shift+F10", "space")])
 @pytest.mark.preferences(show_hidden=False, single_click_previews=False)
-def test_keyboard_context_menu_targets_selection_and_owns_keys(strata, mode, shortcut):
+def test_keyboard_context_menu_targets_selection_and_owns_keys(strata, mode, shortcut, activation):
     root = strata.fixture.root.name
     strata.select_entry("todo.txt", root)
     strata.wait_for_focused_entry("todo.txt")
@@ -86,8 +86,8 @@ def test_keyboard_context_menu_targets_selection_and_owns_keys(strata, mode, sho
             break
         strata.keyboard.press("Down")
     assert "focused" in strata.menu_item("Select All").states
-    strata.keyboard.press("space")
-    strata.wait(lambda: strata.context_menu() is None, "Space to activate Select All")
+    strata.keyboard.press(activation)
+    strata.wait(lambda: strata.context_menu() is None, f"{activation} to activate Select All")
     strata.wait_for_selection([entry.name for entry in strata.entries(root)], root)
 
 

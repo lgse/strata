@@ -43,7 +43,8 @@ pub(super) fn install(popover: &gtk::Popover) {
                     .iter()
                     .find(|button| button.has_focus())
                 {
-                    button.activate();
+                    // activate() waits for a key release that this controller consumes.
+                    button.emit_clicked();
                 }
             }
             _ => {}

@@ -35,3 +35,19 @@ opened. These captures use disposable fixtures, not the owner's recording.
 multi-selection in all three views. The adjacent Rust fixture also checks
 hidden/grouped views and chooser selection; the recursive-result tests verify
 that Escape restores the clicked result without changing the query.
+
+## Activation latency
+
+GTK's animated button activation waited for its 250 ms fallback because the menu
+controller consumed key release. Menu actions now dispatch on key press instead.
+
+The same isolated List fixture activated background Select All with Enter, keypad
+Enter, and Space, three times each. Median key-to-menu-dismissal observation fell
+from **264 ms** ([before](activation-before.json), `6aff5382`) to **44 ms**
+([after](activation-after.json)). Every activation selected all five visible
+entries and left file contents unchanged. These timings include input transport
+and accessibility observation overhead; they are informational, not CI limits.
+
+The existing Rust activation regression now requires the focused action to fire
+exactly once before key handling returns, without a wall-clock assertion. The
+real-key menu fixture covers both Enter and Space activation across all views.

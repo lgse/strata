@@ -6,7 +6,7 @@ use crate::model::Location;
 use crate::ui::browser::{BrowserView, PeekBehavior};
 use crate::ui::browser_modes::BrowserMode;
 use gtk::{gdk::Key, prelude::*};
-use std::{cell::Cell, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 fn menu(window: &gtk::Window) -> gtk::Popover {
     let popup = descendants(window.upcast_ref())
@@ -214,12 +214,12 @@ fn menu_keys_skip_inactive_actions_wrap_scroll_and_activate() {
             let nested = gtk::Box::new(gtk::Orientation::Vertical, 0);
             content.append(&gtk::Label::new(Some("Header")));
             content.append(&nested);
-            let activated = Rc::new(Cell::new(0));
+            let activated = Rc::new(RefCell::new(Vec::new()));
             let buttons: Vec<_> = (0..30)
                 .map(|index| {
                     let button = gtk::Button::with_label(&format!("Action {index}"));
                     let activated = activated.clone();
-                    button.connect_clicked(move |_| activated.set(activated.get() + 1));
+                    button.connect_clicked(move |_| activated.borrow_mut().push(index));
                     nested.append(&button);
                     button
                 })
@@ -267,10 +267,17 @@ fn menu_keys_skip_inactive_actions_wrap_scroll_and_activate() {
                     bounds.y() >= -0.5 && bounds.y() + bounds.height() <= scroll.height() as f32 + 0.5
                 });
             }
-            press(&popup, Key::Return);
-            wait_until(|| activated.get() == 1);
-            press(&popup, Key::space);
-            wait_until(|| activated.get() == 2);
+            for (index, key) in [Key::Return, Key::KP_Enter, Key::space]
+                .into_iter()
+                .enumerate()
+            {
+                press(&popup, key);
+                assert_eq!(
+                    *activated.borrow(),
+                    vec![29; index + 1],
+                    "{key:?} must dispatch the focused action before key handling returns"
+                );
+            }
             press(&popup, Key::Escape);
             wait_until(|| !popup.is_visible());
             popup.unparent();
