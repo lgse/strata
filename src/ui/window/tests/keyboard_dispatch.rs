@@ -146,6 +146,33 @@ fn text_view_in(widget: &gtk::Widget) -> Option<gtk::TextView> {
     None
 }
 
+fn widget_with_class(widget: &gtk::Widget, class: &str) -> Option<gtk::Widget> {
+    if widget.has_css_class(class) {
+        return Some(widget.clone());
+    }
+    let mut child = widget.first_child();
+    while let Some(widget) = child {
+        if let Some(found) = widget_with_class(&widget, class) {
+            return Some(found);
+        }
+        child = widget.next_sibling();
+    }
+    None
+}
+
+fn press_on(widget: &gtk::Widget, key: Key, modifiers: ModifierType) -> bool {
+    let controllers = widget.observe_controllers();
+    let controller = (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::EventControllerKey>()
+        })
+        .next()
+        .expect("key controller");
+    controller.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
+}
+
 fn wait_until(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
@@ -300,6 +327,31 @@ fn filter_clipboard_proceeds_and_escape_dismisses_one_surface_at_a_time() {
                 assert!(fixture.press(Key::Escape, ModifierType::empty()));
                 assert!(fixture.selected().is_empty());
             }
+        },
+    );
+}
+
+#[test]
+fn delete_trashes_a_selected_filter_result() {
+    crate::test_support::gtk_test(
+        "ui::window::tests::keyboard_dispatch::delete_trashes_a_selected_filter_result",
+        || {
+            let fixture = KeyboardFixture::new();
+            fixture
+                .view
+                .set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
+            assert!(fixture.view.show_filter_with_query("a.txt"));
+            let entry = widget_with_class(&fixture.view.widget(), "column-filter-entry")
+                .expect("filter entry");
+            wait_until(|| {
+                press_on(&entry, Key::Down, ModifierType::empty());
+                fixture.view.selected_search_result().is_some()
+            });
+            fixture.view.browser().focus_active();
+            wait_until(|| !fixture.view.filter_has_focus());
+
+            assert!(fixture.press(Key::Delete, ModifierType::empty()));
+            wait_until(|| !fixture._directory.path().join("a.txt").exists());
         },
     );
 }
