@@ -89,6 +89,7 @@ struct PreviewState {
     split: RefCell<Option<gtk::Paned>>,
     occupied_width: RefCell<Option<Rc<dyn Fn() -> i32>>>,
     current: RefCell<Option<FileEntry>>,
+    current_depth: Cell<Option<usize>>,
     load: RefCell<Option<LoadHandle>>,
     loading_delay: RefCell<Option<glib::SourceId>>,
     pdf_loads: Rc<RefCell<HashMap<i32, LoadHandle>>>,
@@ -207,6 +208,7 @@ impl PreviewDrawer {
             split: RefCell::new(None),
             occupied_width: RefCell::new(None),
             current: RefCell::new(None),
+            current_depth: Cell::new(None),
             load: RefCell::new(None),
             loading_delay: RefCell::new(None),
             pdf_loads: Rc::new(RefCell::new(HashMap::new())),
@@ -276,7 +278,10 @@ impl PreviewDrawer {
 
     pub fn handle_browser_event(&self, browser: &Browser, event: &BrowserEvent) {
         match event {
-            BrowserEvent::PreviewRequested { entry } => self.show(entry.clone()),
+            BrowserEvent::PreviewRequested { entry } => {
+                self.state.current_depth.set(browser.active_depth());
+                self.show(entry.clone());
+            }
             BrowserEvent::FocusChanged {
                 depth,
                 position: Some(position),
@@ -294,6 +299,7 @@ impl PreviewDrawer {
                     .entry_at(*depth, *position)
                     .and_then(|entry| preview_target(Some(entry)))
                 {
+                    self.state.current_depth.set(Some(*depth));
                     self.show(entry);
                 } else {
                     self.close();
@@ -304,6 +310,21 @@ impl PreviewDrawer {
                 if self.is_open() =>
             {
                 self.close()
+            }
+            BrowserEvent::EntriesSpliced { depth, splices }
+                if self.is_open()
+                    && self.state.current_depth.get() == Some(*depth)
+                    && splices.iter().any(|splice| splice.removed > 0) =>
+            {
+                let Some(current) = self.state.current.borrow().clone() else {
+                    return;
+                };
+                let still_present = (0..)
+                    .map_while(|position| browser.entry_at(*depth, position))
+                    .any(|entry| entry.location == current.location);
+                if !still_present {
+                    self.close();
+                }
             }
             _ => {}
         }
@@ -510,6 +531,7 @@ impl PreviewState {
         self.animation_generation
             .set(self.animation_generation.get().saturating_add(1));
         self.current_request.set(None);
+        self.current_depth.set(None);
         self.load.borrow_mut().take();
         self.cancel_loading();
         self.pdf_loads.borrow_mut().clear();
