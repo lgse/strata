@@ -55,7 +55,7 @@ fn assert_key_and_filter_rows_wrap_only_when_needed(scroller: &gtk::ScrolledWind
                 if let Some(center) = center {
                     assert!(
                         (next - center).abs() <= 1.0,
-                        "a fitting key/filter group must remain on one line"
+                        "a fitting group must remain on one line"
                     );
                 }
                 center = Some(next);

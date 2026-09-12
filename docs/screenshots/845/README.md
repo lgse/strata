@@ -69,5 +69,8 @@ base-image rebuild, or validation override was used.
 The one-off capture generator remains outside the test suite in the task's
 ignored `target/settings-reference/capture.py`.
 
-This work branches from `b22af9a4` on #838 (`feat/831-custom-text-size`) and is
-reviewed as a stacked Settings-only change.
+This work originally branched from `b22af9a4` on #838
+(`feat/831-custom-text-size`). After #838 merged, main at `b6220406` was
+integrated and the PR was retargeted to main as a Settings-only change.
+See the [follow-up evidence](responsive/README.md#compact-controls-and-main-integration)
+for conflict resolution and validation.

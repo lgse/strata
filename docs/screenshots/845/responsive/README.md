@@ -95,3 +95,88 @@ checks still apply before merge.
 Logs and one-off capture generators remain in the worktree's ignored
 `target/settings-reference/`. No generator was added to the test suite, no
 host build or desktop-based validation was used, and no base image was rebuilt.
+
+## Compact controls and main integration
+
+Compact navigation and Search now share square footprints. All / Light / Dark
+fills the compact Appearance toolbar to match the search field's width; wide
+layouts retain the natural-width selector. The existing wrapping behavior and
+live text-size changes remain intact.
+
+| Case | Before | After |
+| --- | --- | --- |
+| Square navigation | [Earlier capture](before-compact-buttons.png) | [13 px text](compact-buttons.png), [48 px text](compact-buttons-large-text.png) |
+| Full-width theme selector | [Owner capture](before-theme-filter-width.png) | [480 px viewport](full-width-theme-filters.png) |
+| Fitting About build details | [Owner capture](before-about-build.png) | [Single-line rows](compact-about-build.png) |
+
+Private-display capture measurements after merging main:
+
+| Viewport width / text size | Search and each navigation button | Search / theme-filter row width |
+| --- | --- | --- |
+| 480 / 13 px | 44 × 44 | 321 / 321 |
+| 800 / 17 px | 44 × 44 | 641 / 641 |
+| 480 / 32 px | 64 × 64 | Not captured |
+| 480 / 48 px | 86 × 86 | Not captured |
+| Restored 1600 / 13 px | Expanded navigation: 259 × 58 | 282 / 196 |
+
+Main at `b6220406` includes the merged text-scaling work (#838) and sandboxed
+media work (#839). Settings conflicts were resolved against the original
+`b22af9a4` baseline: incoming Settings files were unchanged from that baseline,
+so the redesign was retained. Incoming browser/icon layout, media code, and
+visual baselines were preserved. Every non-overlapping incoming file was
+verified to match main exactly; shared README and stylesheet changes were
+reviewed separately.
+
+This cross-cutting integration received full validation using the same isolated
+Podman store and the newly published, verified pinned image
+`670ee0e9b62df8729442d6708bf06f1d968576ffa403f567aef6f597075f3e8c`.
+It was pulled once, not rebuilt:
+
+- `./scripts/quality.sh fmt` and `./scripts/quality.sh clippy` — passed
+  (`main-merge-fmt.log`, `main-merge-clippy.log`).
+- `./scripts/quality.sh test` — **1,490 passed, 18 ignored**, 308.97 seconds
+  (`main-merge-rust-full.log`).
+- `STRATA_CONTAINER_ENGINE=podman ./scripts/e2e.sh` — **803 passed**, 198.25
+  seconds (`main-merge-e2e-full-rerun.log`). The first run had 802 passes and
+  one sidebar-navigation timeout in `test_leaving_a_valid_name_commits_it`.
+  Without changing code, the entire inline-renaming file passed **138 tests**
+  via `./scripts/e2e.sh tests/e2e/scenarios/test_inline_renaming.py`, followed
+  by the successful full rerun. The initial timeout is not counted as a pass.
+
+The private media-runtime README, source hashes, and remaining GstPlay patch
+were reviewed. Their baseline and opt-in status are unchanged; no patch was
+applied or retired, and no patched runtime or installed-artifact validation is
+claimed. Standalone private-runtime probes were not rerun because this merge
+does not change or promote that runtime baseline.
+
+Capture measurements, generators, and logs remain under the ignored
+`target/settings-reference/`. No cosmetic-size assertions or screenshot
+generators were added to the test suite.
+
+### Final About-row adjustment
+
+After the full integration gates, About's Version, Commit, and Toolkit rows
+were moved to the existing wrapping layout. Fitting labels and values remain
+on one line, with values right-aligned; genuinely narrow rows can still wrap.
+Compact rows no longer reserve the old two-line minimum height. Build metadata
+and selectable values are unchanged. The pinned container has no repository
+commit metadata, so its capture truthfully displays `unknown` for Commit.
+
+The existing wrapping/overflow geometry regression automatically covers these
+rows, including text growth and resizing back to the wide layout. This bounded
+About-only follow-up received final formatting and Clippy checks plus targeted
+regressions, rather than repeating unrelated browser/media suites:
+
+- `./scripts/quality.sh fmt` and `./scripts/quality.sh clippy` — passed
+  (`about-row-fmt-final.log`, `about-row-clippy-final.log`).
+- `bash target/settings-reference/rust-targeted.sh ui::settings` — **42 passed**,
+  54.14 seconds (`about-row-rust-final.log`). This runs the all-targets,
+  all-features filter in the pinned container with private Xvfb/D-Bus and GTK
+  tests required.
+- `STRATA_CONTAINER_ENGINE=podman ./scripts/e2e.sh tests/e2e/scenarios/test_settings_search.py tests/e2e/scenarios/test_text_size.py`
+  — **6 passed**, 14.86 seconds (`about-row-e2e-final.log`).
+
+Final private-display captures verify aligned Build labels/values at 480 px /
+13 px text and 800 px / 17 px text, along with the square navigation and
+full-width filters above. The full-suite counts precede only this About-row
+adjustment; the targeted results are from the final code.

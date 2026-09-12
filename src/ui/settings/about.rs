@@ -133,10 +133,12 @@ fn version_info() -> String {
 }
 
 fn append_about_detail(container: &gtk::Box, label: &str, value: &str) {
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    let row = super::wrap::WrapRow::new(16);
+    row.set_end_align(true);
     row.add_css_class("about-detail-row");
     let label = gtk::Label::new(Some(label));
     label.add_css_class("about-detail-label");
+    label.add_css_class("settings-control-label");
     label.set_xalign(0.0);
     label.set_hexpand(true);
     let value = gtk::Label::new(Some(value));

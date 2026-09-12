@@ -4969,6 +4969,7 @@ two-column presentation. */
 }
 
 .settings-dialog.compact .about-detail-row {
+  min-height: 36px;
   padding-top: 10px;
   padding-bottom: 10px;
 }

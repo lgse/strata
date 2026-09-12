@@ -422,7 +422,6 @@ fn reflow_settings(widget: &gtk::Widget, compact: bool) {
             "theme-library-footer",
             "settings-inline-description",
             "settings-update-summary",
-            "about-detail-row",
         ]
         .iter()
         .any(|class| row.has_css_class(class))
