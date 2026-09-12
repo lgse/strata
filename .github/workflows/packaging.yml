@@ -41,14 +41,15 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      - name: Test the package renderer
-        run: python3 -m unittest discover -s scripts -p 'test_*.py'
-
       - name: Create an unprivileged build user
         run: |
           useradd --create-home builder
           printf 'builder ALL=(ALL) NOPASSWD: ALL\n' > /etc/sudoers.d/builder
           chown -R builder .
+
+      # Tests replace HOME, so Git must trust ownership rather than HOME's safe.directory.
+      - name: Test the package renderer
+        run: su builder -c "python3 -m unittest discover -s scripts -p 'test_*.py'"
 
       - name: Verify committed packages are generated
         run: |
