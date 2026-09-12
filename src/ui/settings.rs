@@ -544,8 +544,6 @@ pub fn build_layer(
                         for (flow, columns) in page.flows {
                             responsive_panel.add_flow(flow, columns);
                         }
-                        responsive_panel
-                            .add_action(page.text_size_actions.0, page.text_size_actions.1);
                     }
                     "updates" => {
                         let container = updates_container.clone();

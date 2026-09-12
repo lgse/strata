@@ -27,7 +27,6 @@ use editor::theme_editor;
 pub(super) struct ThemePage {
     pub(super) widget: gtk::Widget,
     pub(super) flows: Vec<(gtk::FlowBox, u32)>,
-    pub(super) text_size_actions: (gtk::Box, gtk::Button),
 }
 
 pub(super) fn theme_page(manager: Rc<ThemeManager>) -> ThemePage {
@@ -35,7 +34,7 @@ pub(super) fn theme_page(manager: Rc<ThemeManager>) -> ThemePage {
     content.add_css_class("theme-page");
 
     let follow = append_follow_omarchy_option(&content, &manager);
-    let text_size_actions = append_text_size_option(&content, &manager);
+    append_text_size_option(&content, &manager);
 
     let catalog = append_theme_catalog(&content);
     append_heading(&content, "YOUR THEMES");
@@ -59,7 +58,6 @@ pub(super) fn theme_page(manager: Rc<ThemeManager>) -> ThemePage {
     ThemePage {
         widget: scroller,
         flows: vec![(catalog.packaged, 3), (custom, 3), (editor_fields, 4)],
-        text_size_actions,
     }
 }
 
@@ -173,10 +171,7 @@ fn append_follow_omarchy_option(content: &gtk::Box, manager: &ThemeManager) -> g
     follow
 }
 
-fn append_text_size_option(
-    content: &gtk::Box,
-    manager: &Rc<ThemeManager>,
-) -> (gtk::Box, gtk::Button) {
+fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     append_heading(content, "TYPOGRAPHY");
     let text_size_control =
         gtk::SpinButton::with_range(f64::from(TextSize::MIN), f64::from(TextSize::MAX), 1.0);
@@ -235,7 +230,6 @@ fn append_text_size_option(
     text_size_row.append(&text_size_copy);
     text_size_row.append(&controls);
     content.append(&text_size_row);
-    (controls, reset)
 }
 
 fn theme_grid() -> gtk::FlowBox {
