@@ -371,6 +371,62 @@ fn icons_reserve_preview_space_across_targets_and_mode_rebuilds_until_disabled()
 }
 
 #[test]
+fn deleting_an_appearance_preview_clears_visible_and_suspended_targets_without_disabling_mode() {
+    crate::test_support::gtk_test(
+        "ui::preview::layout::tests::visibility::deleting_an_appearance_preview_clears_visible_and_suspended_targets_without_disabling_mode",
+        || {
+            let preferences = ThemeManager::shared();
+            preferences.set_reduce_motion(true);
+            for (mode, suspended) in [(BrowserMode::Icons, false), (BrowserMode::Columns, true)] {
+                preferences.set_browser_mode(mode);
+                let fixture = Fixture::new(false);
+                let path = fixture.root.path().join("deleted.txt");
+                std::fs::write(&path, "preview content").expect("preview file");
+                let browser = fixture.browser.browser();
+                wait_until(|| browser.entry_at(0, 1).is_some());
+                browser.select(0, 1);
+                if suspended {
+                    fixture.resize(760);
+                }
+                fixture.preview.action().activate(None);
+                fixture.settle();
+                assert!(fixture.preview.is_enabled());
+                assert_eq!(fixture.preview.state.sizing.is_suspended(), suspended);
+                assert_eq!(fixture.preview.state.current_depth.get(), Some(0));
+                let requests = fixture.requests.borrow().len();
+                let width = fixture.browser.widget().width();
+                std::fs::remove_file(&path).expect("delete preview file");
+                wait_until(|| browser.entry_at(0, 1).is_none());
+                fixture.preview.handle_browser_event(
+                    &browser,
+                    &crate::app::BrowserEvent::EntriesSpliced {
+                        depth: 0,
+                        splices: vec![crate::app::EntrySplice {
+                            position: 1,
+                            removed: 1,
+                            entries: vec![],
+                        }],
+                    },
+                );
+                fixture.settle();
+                assert!(fixture.preview.is_enabled());
+                assert!(fixture.preview.state.current.borrow().is_none());
+                if suspended {
+                    fixture.resize(1800);
+                    fixture.settle();
+                    assert!(!fixture.preview.is_open());
+                } else {
+                    assert!(find(&fixture.preview.widget(), "preview-placeholder").is_some());
+                    assert_eq!(fixture.browser.widget().width(), width);
+                }
+                assert_eq!(fixture.requests.borrow().len(), requests);
+                fixture.close();
+            }
+        },
+    );
+}
+
+#[test]
 fn temporarily_hiding_a_document_keeps_its_view_and_scroll_position() {
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::visibility::temporarily_hiding_a_document_keeps_its_view_and_scroll_position",

@@ -96,8 +96,8 @@ fn images_stay_centered_and_bounded_while_text_and_pdf_use_the_full_pane() {
                 let section = drawer.state.content.first_child().expect("media section");
                 let picture = section.first_child().expect("image");
                 for text_size in [
-                    crate::ui::theme::TextSize::Small,
-                    crate::ui::theme::TextSize::Large,
+                    crate::ui::theme::TextSize::new(11),
+                    crate::ui::theme::TextSize::new(15),
                 ] {
                     preferences.set_text_size(text_size);
                     let allocated = Rc::new(Cell::new(false));
