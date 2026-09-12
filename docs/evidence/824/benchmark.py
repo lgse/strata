@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Generated-media helper timings; no original media is parsed outside bubblewrap."""
+"""Original media must be parsed only inside bubblewrap."""
 import argparse
 import json
 import os

@@ -53,8 +53,8 @@ These are **transport-readiness endpoints**, excluding GTK initialization and
 presentation. The legacy player cannot open its normalized clip before complete
 conversion; the new measurement stops at the first pair of distinct frames,
 without reading the rest of the generation. Small/cheap files need not improve.
-The hourly fixture is intentionally small enough for the unchanged 512-MiB input
-cap; it exercises the duration limit, not high-resolution throughput.
+The hourly fixture is intentionally small; it exercises the duration limit,
+not high-resolution throughput. Media inputs have no file-size cap.
 
 | Seek target | #823: cached normalized-file seek acknowledgement | New: restarted decoder's first frame available |
 | --- | ---: | ---: |

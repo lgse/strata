@@ -133,7 +133,8 @@ Bubblewrap retains the existing namespace/mount policy:
 
 Image/PDF parsing has a 512-MiB input cap, 2-GiB address-space cap, 512-MiB file
 cap, 32-MiB parent output cap, 12-second wall limit and 10-second CPU limit.
-Media retains the 512-MiB input cap but has no cumulative CPU limit. Each software FFmpeg process has a 2-GiB
+Media has no input-file size cap or cumulative CPU limit; decoded output and
+progress deadlines bound each preview generation. Each software FFmpeg process has a 2-GiB
 address-space limit; all decoding processes disable core dumps and cap files and
 individual media allocations at 512 MiB and source frames at 50 million pixels.
 Accelerated decoders retain the existing exemption from the address-space limit

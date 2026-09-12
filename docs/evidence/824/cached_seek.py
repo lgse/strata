@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""Measure legacy GtkMediaFile seeks on benchmark.py's generated normalized clips."""
+"""GtkMediaFile may open only benchmark.py's generated normalized clips."""
 import json
 import os
 from pathlib import Path
