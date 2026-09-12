@@ -31,6 +31,7 @@ impl KeyboardFixture {
         let header = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         let toggle = gtk::ToggleButton::builder().active(true).build();
         header.append(&toggle);
+        header.append(&view.location_widget());
         let top_bar = TopBarNavigation::new(&header, &sidebar.widget, &toggle);
         let preview = PreviewDrawer::new(Rc::new(super::type_to_search::TextPreview), false);
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -178,9 +179,9 @@ fn modal_ownership_precedes_window_shortcuts() {
 }
 
 #[test]
-fn inline_editing_owns_filter_keys_but_not_global_search() {
+fn inline_editing_and_location_edit_own_filter_and_global_search_keys() {
     crate::test_support::gtk_test(
-        "ui::window::tests::keyboard_dispatch::inline_editing_owns_filter_keys_but_not_global_search",
+        "ui::window::tests::keyboard_dispatch::inline_editing_and_location_edit_own_filter_and_global_search_keys",
         || {
             let fixture = KeyboardFixture::new();
             let searches = Rc::new(Cell::new(0));
@@ -188,15 +189,36 @@ fn inline_editing_owns_filter_keys_but_not_global_search() {
             let action = gio::SimpleAction::new("search", None);
             action.connect_activate(move |_, _| observed.set(observed.get() + 1));
             fixture.window.add_action(&action);
+
             assert!(fixture.press(Key::F2, ModifierType::empty()));
             assert!(fixture.view.rename_is_active());
             assert!(!fixture.press(Key::f, ModifierType::CONTROL_MASK));
             assert!(!fixture.view.filter_has_focus());
-            assert!(fixture.press(Key::k, ModifierType::CONTROL_MASK));
-            assert_eq!(searches.get(), 1);
+            assert!(!fixture.press(Key::k, ModifierType::CONTROL_MASK));
+            assert_eq!(searches.get(), 0);
+            assert!(!fixture.press(Key::_2, ModifierType::CONTROL_MASK));
+            assert_eq!(fixture.view.view_mode(), BrowserMode::Columns);
+            assert!(fixture.view.rename_is_active());
             assert!(fixture.press(Key::Escape, ModifierType::empty()));
             assert!(!fixture.view.rename_is_active());
             assert_eq!(fixture.selected(), [0]);
+            wait_until(|| {
+                !gtk::prelude::RootExt::focus(&fixture.window)
+                    .is_some_and(|focused| focused.is::<gtk::Entry>() || focused.is::<gtk::Text>())
+            });
+
+            assert!(fixture.press(Key::l, ModifierType::CONTROL_MASK));
+            wait_until(|| fixture.view.location_has_focus());
+            assert!(!fixture.press(Key::k, ModifierType::CONTROL_MASK));
+            assert_eq!(searches.get(), 0);
+            assert!(!fixture.press(Key::_2, ModifierType::CONTROL_MASK));
+            assert_eq!(fixture.view.view_mode(), BrowserMode::Columns);
+            assert!(fixture.view.location_has_focus());
+            assert!(fixture.press(Key::Escape, ModifierType::empty()));
+            assert!(!fixture.view.location_has_focus());
+
+            assert!(fixture.press(Key::k, ModifierType::CONTROL_MASK));
+            assert_eq!(searches.get(), 1);
         },
     );
 }
