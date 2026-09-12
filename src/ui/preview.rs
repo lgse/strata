@@ -16,7 +16,7 @@ use crate::{
     model::{EntryKind, FileEntry, MetadataValue},
     services::{
         LoadHandle, MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider,
-        PreviewRequest, PreviewRequestId, SandboxedMedia,
+        PreviewRequest, PreviewRequestId,
     },
 };
 
@@ -32,7 +32,8 @@ const TRANSITION: Duration = Duration::from_millis(260);
 const PDF_PAGE_GAP: i32 = 6;
 const PDF_MIN_ZOOM: f64 = 1.0;
 const PDF_MAX_ZOOM: f64 = 4.0;
-const MEDIA_PLUGIN_INSTALL_COMMAND: &str = "sudo pacman -S --needed gst-plugins-good gst-libav";
+const MEDIA_PLUGIN_INSTALL_COMMAND: &str =
+    "sudo pacman -S --needed gst-plugins-base gst-plugins-good";
 
 pub(crate) fn preview_target(entry: Option<FileEntry>) -> Option<FileEntry> {
     entry.filter(entry_supports_quick_preview)
@@ -81,7 +82,6 @@ struct PreviewState {
     content: gtk::Box,
     print: gtk::Button,
     media: RefCell<Option<gtk::MediaStream>>,
-    media_source: RefCell<Option<SandboxedMedia>>,
     media_signals: RefCell<Vec<glib::SignalHandlerId>>,
     media_volume_slider: RefCell<Option<gtk::Scale>>,
     media_volume_icon: RefCell<Option<gtk::Image>>,
@@ -200,7 +200,6 @@ impl PreviewDrawer {
             content,
             print: print.clone(),
             media: RefCell::new(None),
-            media_source: RefCell::new(None),
             media_signals: RefCell::new(Vec::new()),
             media_volume_slider: RefCell::new(None),
             media_volume_icon: RefCell::new(None),
@@ -222,6 +221,12 @@ impl PreviewDrawer {
             animation_generation: Rc::new(Cell::new(0)),
         });
         install_preview_drag(&header_handle, &state);
+        let weak = Rc::downgrade(&state);
+        state.pane.connect_unrealize(move |_| {
+            if let Some(state) = weak.upgrade() {
+                state.stop();
+            }
+        });
         let weak = Rc::downgrade(&state);
         open.connect_clicked(move |_| {
             let Some(state) = weak.upgrade() else {
@@ -417,6 +422,12 @@ impl PreviewDrawer {
     }
 }
 
+impl Drop for PreviewState {
+    fn drop(&mut self) {
+        self.stop();
+    }
+}
+
 impl PreviewState {
     fn show(self: &Rc<Self>, entry: FileEntry) {
         let was_open = self.opened.replace(true);
@@ -456,11 +467,10 @@ impl PreviewState {
         }
 
         let started = Instant::now();
-        let split = split.clone();
         let pane = self.pane.clone();
         let generation = self.animation_generation.clone();
         let weak = Rc::downgrade(self);
-        let _tick = split.clone().add_tick_callback(move |_, _| {
+        let _tick = split.add_tick_callback(move |split, _| {
             if generation.get() != animation_id {
                 return glib::ControlFlow::Break;
             }
@@ -494,7 +504,7 @@ impl PreviewState {
         desired_width.clamp(MIN_WIDTH, maximum_width)
     }
 
-    fn close(self: &Rc<Self>) {
+    fn stop(&self) {
         self.opened.set(false);
         self.animating.set(false);
         self.animation_generation
@@ -504,6 +514,11 @@ impl PreviewState {
         self.cancel_loading();
         self.pdf_loads.borrow_mut().clear();
         self.cancel_print();
+        self.stop_media();
+    }
+
+    fn close(self: &Rc<Self>) {
+        self.stop();
         self.clear_content();
         self.revealer.set_transition_duration(0);
         self.revealer.set_reveal_child(false);
@@ -891,12 +906,9 @@ impl PreviewState {
                 }
             }
             PreviewContent::SandboxedMedia { media: source } => {
-                // GTK 4.14's GStreamer backend supports files, not input streams.
-                let file = gio::File::for_path(source.path());
-                self.media_source.replace(Some(source));
-                let media = gtk::MediaFile::for_file(&file);
+                let media = super::media::DecodedMedia::new(source).upcast::<gtk::MediaStream>();
                 let is_gif = preview.content_type == "image/gif";
-                self.media.replace(Some(media.clone().upcast()));
+                self.media.replace(Some(media.clone()));
                 let weak = Rc::downgrade(self);
                 media.connect_error_notify(move |media| {
                     let Some(error) = media.error() else {
@@ -973,7 +985,7 @@ impl PreviewState {
         }
     }
 
-    fn build_media_view(self: &Rc<Self>, media: &gtk::MediaFile) -> (gtk::Overlay, gtk::Button) {
+    fn build_media_view(self: &Rc<Self>, media: &gtk::MediaStream) -> (gtk::Overlay, gtk::Button) {
         let picture = gtk::Picture::for_paintable(media);
         picture.add_css_class("preview-media");
         picture.set_content_fit(gtk::ContentFit::Contain);
@@ -981,6 +993,22 @@ impl PreviewState {
         picture.set_vexpand(true);
         picture.set_cursor_from_name(Some("grab"));
         install_preview_drag(&picture, self);
+        let weak_state = Rc::downgrade(self);
+        let weak_media = media.downgrade();
+        picture.add_tick_callback(move |_, _| {
+            let Some(state) = weak_state.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            let Some(media) = weak_media.upgrade() else {
+                return glib::ControlFlow::Break;
+            };
+            if !state.animating.get()
+                && let Some(media) = media.downcast_ref::<super::media::DecodedMedia>()
+            {
+                media.resize(state.media_preview_size());
+            }
+            glib::ControlFlow::Continue
+        });
 
         let overlay = gtk::Overlay::new();
         overlay.set_child(Some(&picture));
@@ -1292,7 +1320,7 @@ impl PreviewState {
 
     fn append_media_controls(
         self: &Rc<Self>,
-        media: &gtk::MediaFile,
+        media: &gtk::MediaStream,
         preferences: &Rc<super::theme::ThemeManager>,
         _video_area: &gtk::Widget,
         center_play: &gtk::Button,
@@ -1481,17 +1509,20 @@ impl PreviewState {
         });
     }
 
-    fn clear_content(&self) {
+    fn stop_media(&self) {
         if let Some(stream) = self.media.borrow_mut().take() {
             for handler in self.media_signals.borrow_mut().drain(..) {
                 stream.disconnect(handler);
             }
             stream.set_playing(false);
-            if let Some(media_file) = stream.downcast_ref::<gtk::MediaFile>() {
-                media_file.clear();
+            if let Some(media) = stream.downcast_ref::<super::media::DecodedMedia>() {
+                media.close();
             }
         }
-        self.media_source.borrow_mut().take();
+    }
+
+    fn clear_content(&self) {
+        self.stop_media();
         self.media_toggle_mute.replace(None);
         self.media_volume_slider.replace(None);
         self.media_volume_icon.replace(None);

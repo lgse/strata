@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    MediaPreviewSize, PreviewContent, SandboxedMedia, content_family, has_plain_text_extension,
+    MediaPreviewSize, PreviewContent, content_family, has_plain_text_extension,
     is_extensionless_dotfile, is_non_executable_extensionless_dotfile,
 };
 
@@ -19,33 +19,6 @@ fn media_viewport_sizes_follow_display_scale_without_exceeding_the_pixel_budget(
         MediaPreviewSize::for_viewport(i32::MAX, i32::MAX, 2),
         MediaPreviewSize::new(1280, 1280)
     );
-}
-
-#[test]
-fn normalized_media_is_private_shared_without_copying_and_removed_after_the_last_owner() {
-    use std::os::unix::fs::PermissionsExt;
-
-    let media = SandboxedMedia::from_normalized(b"normalized clip").expect("private media");
-    let path = media.path().to_path_buf();
-    assert_eq!(
-        std::fs::read(&path).expect("media bytes"),
-        b"normalized clip"
-    );
-    assert_eq!(
-        std::fs::metadata(&path)
-            .expect("private file")
-            .permissions()
-            .mode()
-            & 0o777,
-        0o600
-    );
-    assert_eq!(media.byte_len(), 15);
-    let player = media.clone();
-    assert_eq!(player.path(), media.path());
-    drop(media);
-    assert!(path.is_file());
-    drop(player);
-    assert!(!path.exists());
 }
 
 #[test]

@@ -1,0 +1,205 @@
+{
+  "after-native": {
+    "one_second_label_wall_s": 1.9932614369899966,
+    "paused_keyboard_seek_ms": [
+      292.05,
+      593.76,
+      392.92
+    ],
+    "paused_before_release": {
+      "app_fd": 33,
+      "app_threads": 106,
+      "app_rss_kib": 207748,
+      "tree_rss_kib": 477524,
+      "tree_pss_kib": 239210,
+      "media_helpers": 3,
+      "ffmpeg": 2
+    },
+    "paused_after_31s": {
+      "app_fd": 24,
+      "app_threads": 74,
+      "app_rss_kib": 209044,
+      "tree_rss_kib": 219708,
+      "tree_pss_kib": 121372,
+      "media_helpers": 0,
+      "ffmpeg": 0
+    },
+    "selected_closed_cycles": [
+      {
+        "app_fd": 24,
+        "app_threads": 106,
+        "app_rss_kib": 209596,
+        "tree_rss_kib": 220260,
+        "tree_pss_kib": 121924,
+        "media_helpers": 0,
+        "ffmpeg": 0,
+        "cycle": 1
+      },
+      {
+        "app_fd": 24,
+        "app_threads": 106,
+        "app_rss_kib": 223504,
+        "tree_rss_kib": 234168,
+        "tree_pss_kib": 135832,
+        "media_helpers": 0,
+        "ffmpeg": 0,
+        "cycle": 5
+      },
+      {
+        "app_fd": 24,
+        "app_threads": 106,
+        "app_rss_kib": 277124,
+        "tree_rss_kib": 287788,
+        "tree_pss_kib": 189452,
+        "media_helpers": 0,
+        "ffmpeg": 0,
+        "cycle": 20
+      }
+    ]
+  },
+  "after-profile-native": {
+    "one_second_label_wall_s": 1.9919185260077938,
+    "paused_keyboard_seek_ms": [
+      342.49,
+      594.04,
+      392.75
+    ],
+    "settled": {
+      "app_fd": 24,
+      "app_threads": 73,
+      "app_rss_kib": 313716,
+      "tree_rss_kib": 324072,
+      "tree_pss_kib": 226011,
+      "media_helpers": 0,
+      "ffmpeg": 0
+    },
+    "selected_closed_cycles": [
+      {
+        "app_fd": 30,
+        "app_threads": 108,
+        "app_rss_kib": 205416,
+        "tree_rss_kib": 248340,
+        "tree_pss_kib": 125857,
+        "media_helpers": 0,
+        "ffmpeg": 0,
+        "cycle": 1
+      },
+      {
+        "app_fd": 30,
+        "app_threads": 108,
+        "app_rss_kib": 219340,
+        "tree_rss_kib": 262264,
+        "tree_pss_kib": 139781,
+        "media_helpers": 0,
+        "ffmpeg": 0,
+        "cycle": 5
+      },
+      {
+        "app_fd": 30,
+        "app_threads": 108,
+        "app_rss_kib": 266104,
+        "tree_rss_kib": 309028,
+        "tree_pss_kib": 186545,
+        "media_helpers": 0,
+        "ffmpeg": 0,
+        "cycle": 20
+      },
+      {
+        "app_fd": 24,
+        "app_threads": 106,
+        "app_rss_kib": 292604,
+        "tree_rss_kib": 302960,
+        "tree_pss_kib": 204899,
+        "media_helpers": 0,
+        "ffmpeg": 0,
+        "cycle": 40
+      },
+      {
+        "app_fd": 24,
+        "app_threads": 106,
+        "app_rss_kib": 274128,
+        "tree_rss_kib": 284484,
+        "tree_pss_kib": 186423,
+        "media_helpers": 0,
+        "ffmpeg": 0,
+        "cycle": 50
+      },
+      {
+        "app_fd": 24,
+        "app_threads": 106,
+        "app_rss_kib": 314368,
+        "tree_rss_kib": 324724,
+        "tree_pss_kib": 226663,
+        "media_helpers": 0,
+        "ffmpeg": 0,
+        "cycle": 100
+      }
+    ]
+  },
+  "after-profile-arenas2-native": {
+    "one_second_label_wall_s": 1.9923790910106618,
+    "paused_keyboard_seek_ms": [
+      292.31,
+      644.68,
+      394.02
+    ],
+    "settled": {
+      "app_fd": 24,
+      "app_threads": 73,
+      "app_rss_kib": 194120,
+      "tree_rss_kib": 204752,
+      "tree_pss_kib": 106477,
+      "media_helpers": 0,
+      "ffmpeg": 0
+    },
+    "selected_closed_cycles": [
+      {
+        "app_fd": 30,
+        "app_threads": 108,
+        "app_rss_kib": 201372,
+        "tree_rss_kib": 244780,
+        "tree_pss_kib": 122183,
+        "media_helpers": 0,
+        "ffmpeg": 0,
+        "cycle": 1
+      },
+      {
+        "app_fd": 30,
+        "app_threads": 108,
+        "app_rss_kib": 206584,
+        "tree_rss_kib": 249992,
+        "tree_pss_kib": 127395,
+        "media_helpers": 0,
+        "ffmpeg": 0,
+        "cycle": 5
+      },
+      {
+        "app_fd": 30,
+        "app_threads": 108,
+        "app_rss_kib": 200012,
+        "tree_rss_kib": 243420,
+        "tree_pss_kib": 120823,
+        "media_helpers": 0,
+        "ffmpeg": 0,
+        "cycle": 20
+      },
+      {
+        "app_fd": 24,
+        "app_threads": 106,
+        "app_rss_kib": 194684,
+        "tree_rss_kib": 205316,
+        "tree_pss_kib": 107041,
+        "media_helpers": 0,
+        "ffmpeg": 0,
+        "cycle": 40
+      }
+    ]
+  },
+  "pixel_ownership": {
+    "allocated_owners": 789,
+    "released_owners": 789,
+    "zero_live_bytes_releases": 101,
+    "note": "Includes the initial preview and 100 closed cycles; zeros are not a total RSS/VRAM measurement."
+  },
+  "helper_count_note": "The historical media_helpers field includes bubblewrap command lines. Nonzero values are not session counts. native_smoke.py now matches the helper comm as well."
+}
