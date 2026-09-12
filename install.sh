@@ -384,6 +384,179 @@ configure_file_chooser() {
   fi
 }
 
+install_bundle() {
+  python3 - "$1" "$2" "$3" "$4" <<'PY'
+import fcntl, gzip, hashlib, io, json, os, pathlib, re, shutil, stat, struct, sys, tarfile, tempfile, zlib
+archive_path, version, target, bin_path = sys.argv[1:]
+archive_path, launcher = pathlib.Path(archive_path), pathlib.Path(bin_path)
+expected_top = f"strata-{version}-{target}"
+limit = 512 * 1024 * 1024
+
+def check_dir(path):
+    info = path.lstat()
+    if not stat.S_ISDIR(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+        raise ValueError("Installation storage is not a private user-owned directory")
+
+def sync_dir(path):
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+def digest(path):
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+def unique_pairs(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate bundle manifest field")
+        result[key] = value
+    return result
+
+def pointer(root, name, target):
+    with tempfile.TemporaryDirectory(prefix=".activation-", dir=root) as temporary:
+        path = pathlib.Path(temporary) / name
+        path.symlink_to(target)
+        sync_dir(temporary)
+        os.replace(path, root / name)
+    sync_dir(root)
+
+def elf(path):
+    with path.open("rb") as stream:
+        header = stream.read(64)
+    machine = {"x86_64-unknown-linux-gnu": 62, "aarch64-unknown-linux-gnu": 183}[target]
+    if len(header) != 64 or header[:7] != b"\x7fELF\x02\x01\x01":
+        raise ValueError("Invalid executable ELF")
+    kind, arch, elf_version = struct.unpack_from("<HHI", header, 16)
+    offset = struct.unpack_from("<Q", header, 32)[0]
+    size, count = struct.unpack_from("<HH", header, 54)
+    if kind not in (2, 3) or arch != machine or elf_version != 1 or size != 56 or not 0 < count <= 1024 or offset + size * count > path.stat().st_size:
+        raise ValueError("Wrong architecture or corrupt executable")
+
+try:
+    launcher.parent.mkdir(parents=True, exist_ok=True)
+    check_dir(launcher.parent)
+    root = launcher.parent / ".strata-bundles"
+    root.mkdir(mode=0o700, exist_ok=True)
+    check_dir(root)
+    lock = os.open(root / "install.lock", os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW | os.O_NONBLOCK, 0o600)
+    info = os.fstat(lock)
+    if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+        raise ValueError("Invalid bundle installation lock")
+    fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    versions = root / "versions"
+    versions.mkdir(mode=0o700, exist_ok=True)
+    check_dir(versions)
+    identity = digest(archive_path)
+    destination = versions / identity
+    decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+    raw = bytearray()
+    with archive_path.open("rb") as stream:
+        while data := stream.read(65536):
+            raw.extend(decoder.decompress(data, limit + 1 - len(raw)))
+            if len(raw) > limit or decoder.unconsumed_tail or decoder.unused_data:
+                raise ValueError("Oversized archive or trailing compressed data")
+    if not decoder.eof:
+        raise ValueError("Truncated archive")
+    with tempfile.TemporaryDirectory(prefix=".staging-", dir=versions) as temporary:
+        staging = pathlib.Path(temporary)
+        names, files = set(), {}
+        with tarfile.open(fileobj=io.BytesIO(raw), mode="r:") as archive:
+            for member in archive:
+                name = pathlib.PurePosixPath(member.name)
+                if name.is_absolute() or ".." in name.parts or not name.parts or name.parts[0] != expected_top or name in names or len(names) >= 192:
+                    raise ValueError("Unsafe or duplicate archive path")
+                names.add(name)
+                relative = pathlib.Path(*name.parts[1:])
+                output = staging / relative
+                if member.isdir():
+                    output.mkdir(parents=True, exist_ok=True)
+                    continue
+                if not member.isfile() or member.size > 256 * 1024 * 1024 or relative == pathlib.Path("."):
+                    raise ValueError("Archive contains a link or non-regular/oversized file")
+                output.parent.mkdir(parents=True, exist_ok=True)
+                with output.open("xb") as stream:
+                    shutil.copyfileobj(archive.extractfile(member), stream)
+                files[relative.as_posix()] = digest(output)
+            if any(raw[archive.offset:]):
+                raise ValueError("Trailing archive payload")
+        manifest_path = staging / "bundle.json"
+        if manifest_path.exists():
+            if manifest_path.stat().st_size > 1024 * 1024:
+                raise ValueError("Oversized bundle manifest")
+            manifest = json.loads(manifest_path.read_text(), object_pairs_hook=unique_pairs)
+            expected_fields = {"format", "release_tag", "target", "source_commit", "media_protocol", "files"}
+            if set(manifest) != expected_fields or manifest["format"] != 1 or manifest["media_protocol"] != 1 or manifest["release_tag"] != f"v{version}" or manifest["target"] != target or not re.fullmatch("[a-fA-F0-9]{40}", manifest["source_commit"]):
+                raise ValueError("Bundle manifest identity mismatch")
+            files.pop("bundle.json")
+            if files != manifest["files"] or not {"strata", "strata-media-helper"} <= files.keys():
+                raise ValueError("Incomplete or corrupt media bundle")
+            binaries = ("strata", "strata-media-helper")
+        else:
+            # Preserve support for immutable, already-published single-binary releases.
+            if "strata-media-helper" in files:
+                raise ValueError("Media helper archive has no bundle manifest")
+            binaries = ("strata",)
+        for name in binaries:
+            elf(staging / name)
+            (staging / name).chmod(0o755)
+        for path in staging.rglob("*"):
+            if path.is_file():
+                with path.open("rb") as stream:
+                    os.fsync(stream.fileno())
+        for path in sorted((p for p in staging.rglob("*") if p.is_dir()), reverse=True):
+            sync_dir(path)
+        sync_dir(staging)
+        if destination.exists() or destination.is_symlink():
+            check_dir(destination)
+            for path in staging.rglob("*"):
+                if path.is_file() and (destination / path.relative_to(staging)).is_symlink():
+                    raise ValueError("Symlink in stored immutable version")
+                if path.is_file() and digest(path) != digest(destination / path.relative_to(staging)):
+                    raise ValueError("Stored immutable version was modified")
+        else:
+            if len([p for p in versions.iterdir() if not p.name.startswith(".")]) >= 8:
+                raise ValueError("Eight retained bundles: close Strata and remove unused versions, preserving current and previous")
+            os.rename(staging, destination)
+            sync_dir(versions)
+    expected_launcher = pathlib.Path(".strata-bundles/current/strata")
+    if launcher.is_symlink() and launcher.readlink() != expected_launcher:
+        raise ValueError("Unexpected existing launcher symlink; nothing activated")
+    if launcher.exists() and not launcher.is_symlink():
+        info = launcher.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_mode & 0o022:
+            raise ValueError("Unsafe existing launcher")
+        legacy = versions / ("legacy-" + digest(launcher))
+        if not legacy.exists():
+            with tempfile.TemporaryDirectory(prefix=".legacy-", dir=versions) as temporary:
+                temporary = pathlib.Path(temporary)
+                shutil.copy2(launcher, temporary / "strata")
+                with (temporary / "strata").open("rb") as stream:
+                    os.fsync(stream.fileno())
+                sync_dir(temporary)
+                os.rename(temporary, legacy)
+                sync_dir(versions)
+        if not (root / "current").is_symlink():
+            pointer(root, "current", pathlib.Path("versions") / legacy.name)
+    if (root / "current").is_symlink():
+        old = (root / "current").readlink()
+        if len(old.parts) != 2 or old.parts[0] != "versions" or not re.fullmatch("[a-zA-Z0-9-]+", old.parts[1]):
+            raise ValueError("Unsafe current bundle pointer")
+        if old != pathlib.Path("versions") / identity:
+            pointer(root, "previous", old)
+    pointer(root, "current", pathlib.Path("versions") / identity)
+    if not launcher.is_symlink():
+        pointer(launcher.parent, launcher.name, expected_launcher)
+    print(destination)
+except (OSError, ValueError, KeyError, TypeError, tarfile.TarError, zlib.error) as error:
+    print(f"Bundle installation failed: {error}", file=sys.stderr)
+    sys.exit(1)
+PY
+}
+
 main() {
   local target glibc distro_id distro_like omarchy_major version archive extracted url
   local local_bin_on_path=no make_default=no arch_based=no
@@ -448,7 +621,7 @@ main() {
       || die "Install the runtime dependencies, then run this installer again."
   fi
 
-  for command in curl tar sha256sum install sed; do
+  for command in curl python3 sha256sum install sed; do
     command -v "$command" >/dev/null 2>&1 || die "Required command not found: $command"
   done
 
@@ -468,13 +641,10 @@ main() {
   (cd "$TEMP_DIR" && sha256sum --check "$archive.sha256")
   verify_provenance "$TEMP_DIR/$archive"
 
-  tar -xzf "$TEMP_DIR/$archive" -C "$TEMP_DIR"
-  extracted=$TEMP_DIR/${archive%.tar.gz}
-  [[ -x $extracted/strata ]] || die "The verified archive does not contain the Strata binary."
-  [[ -r $extracted/$APP_ID.desktop && -r $extracted/$APP_ID.svg ]] \
-    || die "The verified archive is missing desktop integration files."
-
-  BIN_PATH=$HOME/.local/bin/strata
+  BIN_PATH=${STRATA_INSTALL_DIR:-$HOME/.local/bin}/strata
+  if command -v pacman >/dev/null 2>&1 && pacman --query --owns --quiet -- "$BIN_PATH" >/dev/null 2>&1; then
+    die "This installation belongs to a package manager. Use its update command instead."
+  fi
   if [[ -e $BIN_PATH ]]; then
     if [[ $NON_INTERACTIVE == yes ]]; then
       die "$BIN_PATH already exists; remove it or run the interactive installer to replace it."
@@ -482,7 +652,8 @@ main() {
     prompt "Replace the existing $BIN_PATH?" no \
       || die "Installation cancelled without replacing the existing file."
   fi
-  install -Dm755 "$extracted/strata" "$BIN_PATH"
+  extracted=$(install_bundle "$TEMP_DIR/$archive" "$version" "$target" "$BIN_PATH")
+  [[ -x $extracted/strata ]] || die "The installed bundle has no Strata executable."
   export PATH="$HOME/.local/bin:$PATH"
   info "Installed $BIN_PATH"
 
