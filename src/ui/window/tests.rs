@@ -885,7 +885,7 @@ fn trash_probe_results_map_to_menu_state() {
 #[test]
 fn trash_mutating_operations_refresh_the_context_menu() {
     assert!(event_changes_trash_contents(
-        &BrowserEvent::DeletionFinished
+        &BrowserEvent::DeletionFinished { succeeded: true }
     ));
     assert!(event_changes_trash_contents(
         &BrowserEvent::RestorationFinished

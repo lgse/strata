@@ -93,6 +93,12 @@ fn deletion_monitor_changes_publish_once_after_the_terminal_event() {
             .count(),
         1
     );
+    assert!(
+        events
+            .borrow()
+            .iter()
+            .any(|event| matches!(event, BrowserEvent::DeletionFinished { succeeded: true }))
+    );
 }
 
 #[test]
@@ -775,7 +781,7 @@ fn cancellation_refreshes_an_affected_remote_root_and_its_open_descendants() {
         !events
             .borrow()
             .iter()
-            .any(|event| matches!(event, BrowserEvent::DeletionFinished))
+            .any(|event| matches!(event, BrowserEvent::DeletionFinished { .. }))
     );
 
     emit(OperationEvent::Cancelled {
@@ -806,7 +812,7 @@ fn cancellation_refreshes_an_affected_remote_root_and_its_open_descendants() {
         events
             .borrow()
             .iter()
-            .any(|event| matches!(event, BrowserEvent::DeletionFinished))
+            .any(|event| matches!(event, BrowserEvent::DeletionFinished { succeeded: false }))
     );
     assert!(events.borrow().iter().any(|event| matches!(
         event,
