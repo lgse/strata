@@ -336,7 +336,6 @@ fn mode_switching_reuses_existing_panes_and_reattaches_models() {
             let icons_pane = fixture.pane();
             assert_attached(&icons_pane, true);
 
-            // Switch to list mode: list is created, icons is deactivated (models detached, shell retained)
             fixture.views.prepare_mode(BrowserMode::List);
             fixture.views.show_mode(BrowserMode::List);
             fixture.views.clear_inactive_mode(BrowserMode::Icons);
@@ -349,7 +348,6 @@ fn mode_switching_reuses_existing_panes_and_reattaches_models() {
                 Some(&icons_shell)
             );
 
-            // Switch back to icons mode: icons shell is reused, models reattached
             fixture.views.prepare_mode(BrowserMode::Icons);
             fixture.views.show_mode(BrowserMode::Icons);
             fixture.views.clear_inactive_mode(BrowserMode::List);
@@ -372,7 +370,6 @@ fn mode_switch_after_navigation_rebuilds_for_the_new_location() {
             let mut fixture = Fixture::new(BrowserMode::Icons, false);
             let icons_shell = fixture.pane().shell.clone();
 
-            // Switch to List, then navigate to a different folder.
             fixture.views.prepare_mode(BrowserMode::List);
             fixture.views.show_mode(BrowserMode::List);
             fixture.views.clear_inactive_mode(BrowserMode::Icons);
@@ -389,8 +386,6 @@ fn mode_switch_after_navigation_rebuilds_for_the_new_location() {
                 truncated: false,
             });
 
-            // Switch back to Icons: the stale Icons pane was built for /fixture,
-            // so it must be rebuilt for /other rather than reused.
             fixture.views.prepare_mode(BrowserMode::Icons);
             assert_ne!(fixture.pane().shell, icons_shell);
             assert_eq!(
@@ -409,17 +404,66 @@ fn mode_switch_after_grouping_change_rebuilds_the_list_pane() {
             let mut fixture = Fixture::new(BrowserMode::List, false);
             let list_shell = fixture.pane().shell.clone();
 
-            // Switch to Icons, then toggle grouping on while List is inactive.
             fixture.views.prepare_mode(BrowserMode::Icons);
             fixture.views.show_mode(BrowserMode::Icons);
             fixture.views.clear_inactive_mode(BrowserMode::List);
             fixture.views.set_group_by_type(true);
 
-            // Switch back to List: the stale List pane was built without grouping,
-            // so it must be rebuilt to match the new preference.
             fixture.views.prepare_mode(BrowserMode::List);
             assert_ne!(fixture.pane().shell, list_shell);
             assert!(fixture.pane().group_by_type);
+        },
+    );
+}
+
+#[test]
+fn mode_switch_after_sort_change_uses_current_heading_direction() {
+    gtk_test(
+        "ui::browser_modes::events::tests::mode_switch_after_sort_change_uses_current_heading_direction",
+        || {
+            use crate::model::{SortDirection, SortKey};
+
+            let mut fixture = Fixture::new(BrowserMode::List, false);
+            fixture.views.prepare_mode(BrowserMode::Icons);
+            fixture.views.show_mode(BrowserMode::Icons);
+            fixture.views.clear_inactive_mode(BrowserMode::List);
+            fixture
+                .browser
+                .set_sort(0, SortKey::Name, SortDirection::Descending);
+            fixture.views.prepare_mode(BrowserMode::List);
+            fixture.views.show_mode(BrowserMode::List);
+            let pane = fixture.pane();
+            let mut widgets = vec![pane.shell.clone().upcast::<gtk::Widget>()];
+            let button = loop {
+                let widget = widgets.pop().expect("name heading button");
+                if widget.has_css_class("list-heading-button")
+                    && widget
+                        .first_child()
+                        .and_then(|row| row.first_child())
+                        .and_then(|label| label.downcast::<gtk::Label>().ok())
+                        .is_some_and(|label| label.text() == "Name")
+                {
+                    break widget.downcast::<gtk::Button>().expect("heading button");
+                }
+                let mut child = widget.first_child();
+                while let Some(current) = child {
+                    child = current.next_sibling();
+                    widgets.push(current);
+                }
+            };
+            button.emit_clicked();
+            let preferences = fixture.browser.column_preferences(0).expect("preferences");
+            assert_eq!(preferences.sort_key, SortKey::Name);
+            assert_eq!(preferences.sort_direction, SortDirection::Ascending);
+
+            fixture.views.prepare_mode(BrowserMode::Icons);
+            fixture.views.show_mode(BrowserMode::Icons);
+            fixture.views.clear_inactive_mode(BrowserMode::List);
+            fixture
+                .browser
+                .set_sort(0, SortKey::Name, SortDirection::Descending);
+            fixture.views.prepare_mode(BrowserMode::List);
+            assert_ne!(fixture.pane().shell, pane.shell);
         },
     );
 }

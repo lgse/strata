@@ -211,11 +211,14 @@ struct PaneSection {
     visit: super::marquee::ItemVisitor,
 }
 
+type ListSorting = Rc<Cell<(SortKey, SortDirection)>>;
+
 #[derive(Clone)]
 struct Pane {
     depth: usize,
     location: Option<Location>,
     group_by_type: bool,
+    sorting: Option<ListSorting>,
     shell: gtk::Box,
     header: gtk::Box,
     model: gtk::StringList,
@@ -890,6 +893,11 @@ impl ModeViews {
             && pane.depth == depth
             && pane.location.as_ref() == Some(&snapshot.location)
             && pane.group_by_type == self.group_by_type
+            && pane.sorting.as_ref().map(|sorting| sorting.get())
+                == self
+                    .browser
+                    .column_preferences(depth)
+                    .map(|preferences| (preferences.sort_key, preferences.sort_direction))
         {
             reconnect_pane_model(pane);
             apply_snapshot(pane, &snapshot, &self.browser);
@@ -1808,6 +1816,7 @@ fn build_icons_pane(
         depth,
         location,
         group_by_type: false,
+        sorting: None,
         shell,
         header,
         model,
@@ -2187,7 +2196,11 @@ fn density_icons_columns(density: BrowserDensity) -> u32 {
     }
 }
 
-fn list_headings(browser: &Rc<Browser>, depth: usize, columns: ListColumnLayout) -> gtk::Box {
+fn list_headings(
+    browser: &Rc<Browser>,
+    depth: usize,
+    columns: ListColumnLayout,
+) -> (gtk::Box, ListSorting) {
     let headings = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     headings.add_css_class("list-headings");
     let preferences = browser.column_preferences(depth).unwrap_or_default();
@@ -2288,7 +2301,7 @@ fn list_headings(browser: &Rc<Browser>, depth: usize, columns: ListColumnLayout)
             });
         }
     });
-    headings
+    (headings, sorting)
 }
 
 fn register_list_column_cell(
@@ -2502,7 +2515,7 @@ fn build_list_pane(
     let syncing_selection = Rc::new(Cell::new(false));
     let sections: Rc<RefCell<Vec<PaneSection>>> = Rc::new(RefCell::new(Vec::new()));
 
-    let headings = list_headings(&browser, depth, columns.clone());
+    let (headings, sorting) = list_headings(&browser, depth, columns.clone());
 
     let bound_items = Rc::new(RefCell::new(Vec::new()));
     let scrolling = Rc::new(Cell::new(false));
@@ -2656,6 +2669,7 @@ fn build_list_pane(
         depth,
         location,
         group_by_type: options.group_by_type,
+        sorting: Some(sorting),
         shell,
         header,
         model,
