@@ -657,6 +657,11 @@ pub(super) fn column_rows(
         label.set_visible(true);
         spacer.set_visible(true);
         let searching = search_active_for_bind.get();
+        if searching {
+            row.add_css_class("filter-result");
+        } else {
+            row.remove_css_class("filter-result");
+        }
         let source_position = (!searching)
             .then(|| map_for_bind.source_position(item.position()))
             .flatten();

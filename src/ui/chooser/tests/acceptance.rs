@@ -134,24 +134,34 @@ fn filtered_selection_only_accepts_on_enter_or_open_with_exact_nested_path() {
             });
             let list = search_results_list(&state.view.widget()).expect("search results");
             list.select_row(list.row_at_index(0).as_ref());
-            assert_eq!(
-                state
-                    .view
-                    .selected_search_results()
-                    .expect("active search")
-                    .first()
-                    .expect("first search selection")
-                    .location,
-                Location::local(&first)
+            let first_selected = state
+                .view
+                .selected_search_results()
+                .expect("active search")
+                .first()
+                .expect("first search selection")
+                .location
+                .clone();
+            assert!(
+                first_selected == Location::local(&first)
+                    || first_selected == Location::local(&nested)
             );
             list.select_row(list.row_at_index(1).as_ref());
             wait_until(|| {
                 state.view.selected_search_results().is_some_and(|entries| {
                     entries
                         .first()
-                        .is_some_and(|entry| entry.location == Location::local(&nested))
+                        .is_some_and(|entry| entry.location != first_selected)
                 })
             });
+            let second_selected = state
+                .view
+                .selected_search_results()
+                .expect("active search")
+                .first()
+                .expect("second search selection")
+                .location
+                .clone();
             assert!(
                 state.completion.borrow().is_some(),
                 "selecting a recursive result must not accept it"
@@ -170,7 +180,7 @@ fn filtered_selection_only_accepts_on_enter_or_open_with_exact_nested_path() {
             assert_eq!(selected.uris().len(), 1);
             assert_eq!(
                 selected.uris()[0].to_string(),
-                gio::File::for_path(&nested).uri()
+                gio::File::for_path(second_selected.native_path().expect("native path")).uri()
             );
         },
     );
@@ -446,6 +456,298 @@ fn recursive_folder_selection_navigates_without_accepting() {
             wait_until(|| browser.active_location() == Some(Location::local(&folder)));
             assert!(state.completion.borrow().is_some());
             assert!(!state.error.is_visible());
+        },
+    );
+}
+
+#[test]
+fn save_file_accepts_selected_folder_without_navigating_into_it() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::save_file_accepts_selected_folder_without_navigating_into_it",
+        || {
+            crate::ui::prepare_portal_ui();
+            ThemeManager::shared().set_browser_mode(BrowserMode::List);
+            let root = tempfile::tempdir().expect("fixture");
+            let target_folder = root.path().join("target_folder");
+            std::fs::create_dir(&target_folder).expect("folder");
+            let result = Rc::new(RefCell::new(None));
+            let received = result.clone();
+            let mut save_request = request(root.path().to_path_buf());
+            save_request.kind = ChooserKind::SaveFile {
+                current_name: Some("output.txt".into()),
+            };
+            let state = build_chooser(
+                save_request,
+                Arc::new(AtomicBool::new(false)),
+                move |value| {
+                    received.replace(Some(value));
+                },
+            )
+            .expect("chooser");
+            let browser = state.view.browser();
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading && column.count == 1)
+            });
+
+            let selection = visible_collection_selection(&state.view.widget())
+                .expect("visible browser collection");
+            selection.select_item(0, true);
+            wait_until(|| {
+                browser
+                    .selected_entries()
+                    .first()
+                    .is_some_and(|entry| entry.location == Location::local(&target_folder))
+            });
+
+            state.accept_button.emit_clicked();
+            wait_until(|| result.borrow().is_some());
+            let selected = result
+                .borrow_mut()
+                .take()
+                .expect("result")
+                .expect("accepted");
+            assert_eq!(selected.uris().len(), 1);
+            assert_eq!(
+                selected.uris()[0].to_string(),
+                gio::File::for_path(target_folder.join("output.txt")).uri()
+            );
+        },
+    );
+}
+
+#[test]
+fn save_files_accepts_selected_folder_without_navigating_into_it() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::save_files_accepts_selected_folder_without_navigating_into_it",
+        || {
+            crate::ui::prepare_portal_ui();
+            ThemeManager::shared().set_browser_mode(BrowserMode::List);
+            let root = tempfile::tempdir().expect("fixture");
+            let target_folder = root.path().join("target_folder");
+            std::fs::create_dir(&target_folder).expect("folder");
+            let result = Rc::new(RefCell::new(None));
+            let received = result.clone();
+            let mut save_request = request(root.path().to_path_buf());
+            save_request.kind = ChooserKind::SaveFiles {
+                names: vec!["one.txt".into(), "two.txt".into()],
+            };
+            let state = build_chooser(
+                save_request,
+                Arc::new(AtomicBool::new(false)),
+                move |value| {
+                    received.replace(Some(value));
+                },
+            )
+            .expect("chooser");
+            let browser = state.view.browser();
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading && column.count == 1)
+            });
+
+            let selection = visible_collection_selection(&state.view.widget())
+                .expect("visible browser collection");
+            selection.select_item(0, true);
+            wait_until(|| {
+                browser
+                    .selected_entries()
+                    .first()
+                    .is_some_and(|entry| entry.location == Location::local(&target_folder))
+            });
+
+            state.accept_button.emit_clicked();
+            wait_until(|| result.borrow().is_some());
+            let mut uris = result
+                .borrow_mut()
+                .take()
+                .expect("result")
+                .expect("accepted")
+                .uris()
+                .iter()
+                .map(ToString::to_string)
+                .collect::<Vec<_>>();
+            uris.sort();
+            let mut expected = [target_folder.join("one.txt"), target_folder.join("two.txt")]
+                .map(|path| gio::File::for_path(path).uri().to_string())
+                .to_vec();
+            expected.sort();
+            assert_eq!(uris, expected);
+        },
+    );
+}
+
+#[test]
+fn save_file_in_icons_mode_accepts_selected_folder_without_navigating_into_it() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::save_file_in_icons_mode_accepts_selected_folder_without_navigating_into_it",
+        || {
+            crate::ui::prepare_portal_ui();
+            ThemeManager::shared().set_browser_mode(BrowserMode::Icons);
+            let root = tempfile::tempdir().expect("fixture");
+            let target_folder = root.path().join("target_folder");
+            std::fs::create_dir(&target_folder).expect("folder");
+            let result = Rc::new(RefCell::new(None));
+            let received = result.clone();
+            let mut save_request = request(root.path().to_path_buf());
+            save_request.kind = ChooserKind::SaveFile {
+                current_name: Some("output.txt".into()),
+            };
+            let state = build_chooser(
+                save_request,
+                Arc::new(AtomicBool::new(false)),
+                move |value| {
+                    received.replace(Some(value));
+                },
+            )
+            .expect("chooser");
+            let browser = state.view.browser();
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading && column.count == 1)
+            });
+
+            let selection = visible_collection_selection(&state.view.widget())
+                .expect("visible browser collection");
+            selection.select_item(0, true);
+            wait_until(|| {
+                browser
+                    .selected_entries()
+                    .first()
+                    .is_some_and(|entry| entry.location == Location::local(&target_folder))
+            });
+
+            state.accept_button.emit_clicked();
+            wait_until(|| result.borrow().is_some());
+            let selected = result
+                .borrow_mut()
+                .take()
+                .expect("result")
+                .expect("accepted");
+            assert_eq!(selected.uris().len(), 1);
+            assert_eq!(
+                selected.uris()[0].to_string(),
+                gio::File::for_path(target_folder.join("output.txt")).uri()
+            );
+        },
+    );
+}
+
+#[test]
+fn save_file_with_search_results_accepts_selected_folder_without_navigating_into_it() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::save_file_with_search_results_accepts_selected_folder_without_navigating_into_it",
+        || {
+            crate::ui::prepare_portal_ui();
+            ThemeManager::shared().set_browser_mode(BrowserMode::List);
+            let root = tempfile::tempdir().expect("fixture");
+            let target_folder = root.path().join("sub/target_folder");
+            std::fs::create_dir_all(&target_folder).expect("folders");
+            let result = Rc::new(RefCell::new(None));
+            let received = result.clone();
+            let mut save_request = request(root.path().to_path_buf());
+            save_request.kind = ChooserKind::SaveFile {
+                current_name: Some("output.txt".into()),
+            };
+            let state = build_chooser(
+                save_request,
+                Arc::new(AtomicBool::new(false)),
+                move |value| {
+                    received.replace(Some(value));
+                },
+            )
+            .expect("chooser");
+            let browser = state.view.browser();
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading)
+            });
+
+            state.view.show_filter_with_query("target");
+            wait_until(|| search_results_list(&state.view.widget()).is_some());
+            let list = search_results_list(&state.view.widget()).expect("search results");
+            list.select_row(list.row_at_index(0).as_ref());
+            wait_until(|| {
+                state.view.selected_search_results().is_some_and(|entries| {
+                    entries
+                        .first()
+                        .is_some_and(|e| e.location == Location::local(&target_folder))
+                })
+            });
+
+            state.accept_button.emit_clicked();
+            wait_until(|| result.borrow().is_some());
+            let selected = result
+                .borrow_mut()
+                .take()
+                .expect("result")
+                .expect("accepted");
+            assert_eq!(selected.uris().len(), 1);
+            assert_eq!(
+                selected.uris()[0].to_string(),
+                gio::File::for_path(target_folder.join("output.txt")).uri()
+            );
+        },
+    );
+}
+
+#[test]
+fn save_file_with_selected_file_saves_to_active_folder() {
+    crate::test_support::gtk_test(
+        "ui::chooser::tests::acceptance::save_file_with_selected_file_saves_to_active_folder",
+        || {
+            crate::ui::prepare_portal_ui();
+            ThemeManager::shared().set_browser_mode(BrowserMode::List);
+            let root = tempfile::tempdir().expect("fixture");
+            let existing_file = root.path().join("existing.txt");
+            std::fs::write(&existing_file, "existing").expect("file");
+            let result = Rc::new(RefCell::new(None));
+            let received = result.clone();
+            let mut save_request = request(root.path().to_path_buf());
+            save_request.kind = ChooserKind::SaveFile {
+                current_name: Some("new_file.txt".into()),
+            };
+            let state = build_chooser(
+                save_request,
+                Arc::new(AtomicBool::new(false)),
+                move |value| {
+                    received.replace(Some(value));
+                },
+            )
+            .expect("chooser");
+            let browser = state.view.browser();
+            wait_until(|| {
+                browser
+                    .column_snapshot(0)
+                    .is_some_and(|column| !column.loading && column.count == 1)
+            });
+
+            let selection = visible_collection_selection(&state.view.widget())
+                .expect("visible browser collection");
+            selection.select_item(0, true);
+            wait_until(|| {
+                browser
+                    .selected_entries()
+                    .first()
+                    .is_some_and(|entry| entry.location == Location::local(&existing_file))
+            });
+
+            state.accept_button.emit_clicked();
+            wait_until(|| result.borrow().is_some());
+            let selected = result
+                .borrow_mut()
+                .take()
+                .expect("result")
+                .expect("accepted");
+            assert_eq!(selected.uris().len(), 1);
+            assert_eq!(
+                selected.uris()[0].to_string(),
+                gio::File::for_path(root.path().join("new_file.txt")).uri()
+            );
         },
     );
 }

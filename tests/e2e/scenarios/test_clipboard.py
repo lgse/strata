@@ -86,10 +86,7 @@ def test_paste_into_parent_uses_the_current_directory(strata, mode):
     strata.keyboard.press("alt+Up")
     strata.wait_for_directory(root)
     if mode != "Columns":
-        strata.wait(
-            lambda: strata.selected_names() == ["archive"],
-            "the parent load cursor to settle on the first folder",
-        )
+        strata.wait_for_selection(["documents" if mode == "List" else "archive"])
     strata.keyboard.press("ctrl+v")
 
     strata.wait(
@@ -99,30 +96,36 @@ def test_paste_into_parent_uses_the_current_directory(strata, mode):
     assert not fixture.path("archive/notes.txt").exists(), (
         "the auto-selected first folder must not steal the paste"
     )
+    assert not fixture.path("documents/notes (1).txt").exists(), (
+        "the restored selection must not steal the paste"
+    )
     assert fixture.path("documents/notes.txt").exists()
 
 
 @pytest.mark.parametrize("mode", SINGLE_PANE_MODES)
 @pytest.mark.parametrize("selection", ["click", "Home"])
-def test_paste_into_explicitly_selected_load_cursor(strata, mode, selection):
+def test_paste_into_explicit_selection_after_returning_to_parent(strata, mode, selection):
     fixture = strata.fixture
     strata.open_directory("documents")
     strata.select_entry("notes.txt")
     strata.keyboard.press("ctrl+c")
     strata.keyboard.press("alt+Up")
     strata.wait_for_directory(fixture.root.name)
-    strata.wait(
-        lambda: strata.selected_names() == ["archive"],
-        "the parent load cursor",
-    )
+    restored = "documents" if mode == "List" else "archive"
+    strata.wait_for_selection([restored])
     if selection == "click":
-        strata.click_entry("archive")
+        strata.click_entry(restored)
     else:
         strata.keyboard.press(selection)
+    destination = (
+        "documents/notes (1).txt"
+        if mode == "List" and selection == "click"
+        else "archive/notes.txt"
+    )
     strata.keyboard.press("ctrl+v")
     strata.wait(
-        lambda: fixture.path("archive/notes.txt").exists(),
-        "the copy to land in the explicitly selected load cursor",
+        lambda: fixture.path(destination).exists(),
+        "the copy to land in the explicitly selected folder",
     )
     assert not fixture.path("notes.txt").exists()
 

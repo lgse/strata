@@ -27,20 +27,21 @@ fn find(widget: &gtk::Widget, predicate: &impl Fn(&gtk::Widget) -> bool) -> Opti
     None
 }
 
-fn keys(widget: &impl IsA<gtk::Widget>) -> gtk::EventControllerKey {
+fn keys(widget: &impl IsA<gtk::Widget>) -> Vec<gtk::EventControllerKey> {
     let controllers = widget.observe_controllers();
     (0..controllers.n_items())
         .filter_map(|index| controllers.item(index))
-        .find_map(|controller| controller.downcast::<gtk::EventControllerKey>().ok())
-        .expect("key controller")
+        .filter_map(|controller| controller.downcast::<gtk::EventControllerKey>().ok())
+        .collect()
 }
 
 fn press(
-    keys: &gtk::EventControllerKey,
+    keys: &[gtk::EventControllerKey],
     key: gtk::gdk::Key,
     modifiers: gtk::gdk::ModifierType,
 ) -> bool {
-    keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers])
+    keys.iter()
+        .any(|keys| keys.emit_by_name::<bool>("key-pressed", &[&key, &0u32, &modifiers]))
 }
 
 #[test]
@@ -142,6 +143,35 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                             .location,
                         Location::local(root.path().join("folder/nested.txt"))
                     );
+                    assert!(!state.view.filter_has_focus());
+                    let result_focus =
+                        gtk::prelude::RootExt::focus(&state.window).expect("result focus");
+                    assert!(result_focus == results || result_focus.is_ancestor(&results));
+                    assert!(!press(
+                        &window_keys,
+                        gtk::gdk::Key::Up,
+                        gtk::gdk::ModifierType::empty()
+                    ));
+                    assert!(press(
+                        &keys(&results),
+                        gtk::gdk::Key::Up,
+                        gtk::gdk::ModifierType::empty()
+                    ));
+                    assert!(state.view.filter_has_focus());
+                    assert_eq!(field.text(), "nested");
+                    assert!(press(
+                        &filter_keys,
+                        gtk::gdk::Key::Down,
+                        gtk::gdk::ModifierType::empty()
+                    ));
+                    assert!(!state.view.filter_has_focus());
+                    assert!(press(
+                        &window_keys,
+                        gtk::gdk::Key::f,
+                        gtk::gdk::ModifierType::CONTROL_MASK
+                    ));
+                    assert!(state.view.filter_has_focus());
+                    assert_eq!(field.text(), "nested");
                     assert!(!press(
                         &window_keys,
                         gtk::gdk::Key::space,
