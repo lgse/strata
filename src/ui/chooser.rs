@@ -422,7 +422,22 @@ impl ChooserState {
         }
     }
 
+    fn selected_folder(&self) -> Option<PathBuf> {
+        let entries = self
+            .view
+            .selected_search_results()
+            .unwrap_or_else(|| self.view.browser().selected_entries());
+        if entries.len() == 1 && entries[0].is_directory() {
+            entries[0].location.native_path().map(Path::to_path_buf)
+        } else {
+            None
+        }
+    }
+
     fn active_folder(&self) -> Result<PathBuf, &'static str> {
+        if let Some(folder) = self.selected_folder() {
+            return Ok(folder);
+        }
         self.view
             .browser()
             .active_location()
@@ -1405,7 +1420,10 @@ fn install_shortcuts(
             )
             && let Some(entry) = state.view.selected_search_result()
         {
-            preview.toggle(preview_target(Some(entry)));
+            preview.toggle(
+                preview_target(Some(entry)),
+                state.view.browser().active_depth(),
+            );
             return glib::Propagation::Stop;
         }
         if control
@@ -1623,7 +1641,10 @@ fn install_shortcuts(
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::space && !control && !alt {
-            preview.toggle(preview_target(browser.focused_entry()));
+            preview.toggle(
+                preview_target(browser.focused_entry()),
+                browser.active_depth(),
+            );
             return glib::Propagation::Stop;
         }
         if key == gtk::gdk::Key::BackSpace && !control && !alt {

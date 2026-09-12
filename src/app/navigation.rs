@@ -1369,14 +1369,55 @@ fn compare_entries(left: &FileEntry, right: &FileEntry, preferences: ViewPrefere
 }
 
 fn compare_display_names(left: &str, right: &str) -> Ordering {
-    let folded = if left.is_ascii() && right.is_ascii() {
-        left.bytes()
-            .map(|byte| byte.to_ascii_lowercase())
-            .cmp(right.bytes().map(|byte| byte.to_ascii_lowercase()))
+    if left.is_ascii() && right.is_ascii() {
+        natural_compare(left.as_bytes(), right.as_bytes())
     } else {
-        glib::casefold(left).cmp(&glib::casefold(right))
-    };
-    folded.then_with(|| left.cmp(right))
+        let left_folded = glib::casefold(left);
+        let right_folded = glib::casefold(right);
+        natural_compare(left_folded.as_bytes(), right_folded.as_bytes())
+    }
+    .then_with(|| left.cmp(right))
+}
+
+fn natural_compare(left: &[u8], right: &[u8]) -> Ordering {
+    let (mut li, mut ri) = (0, 0);
+    while li < left.len() && ri < right.len() {
+        if left[li].is_ascii_digit() && right[ri].is_ascii_digit() {
+            let (lv, lo) = take_number(left, li);
+            let (rv, ro) = take_number(right, ri);
+            let cmp = lv
+                .len()
+                .cmp(&rv.len())
+                .then_with(|| lv.cmp(rv))
+                .then_with(|| left[li..lo].cmp(&right[ri..ro]));
+            if cmp != Ordering::Equal {
+                return cmp;
+            }
+            li = lo;
+            ri = ro;
+        } else {
+            let lb = left[li].to_ascii_lowercase();
+            let rb = right[ri].to_ascii_lowercase();
+            if lb != rb {
+                return lb.cmp(&rb);
+            }
+            li += 1;
+            ri += 1;
+        }
+    }
+    left.len().cmp(&right.len())
+}
+
+fn take_number(bytes: &[u8], start: usize) -> (&[u8], usize) {
+    let mut end = start;
+    while end < bytes.len() && bytes[end].is_ascii_digit() {
+        end += 1;
+    }
+    let mut significant = start;
+    while significant < end && bytes[significant] == b'0' {
+        significant += 1;
+    }
+    (&bytes[significant..end], end)
 }
 
 fn compare_metadata<T: Ord>(left: &MetadataValue<T>, right: &MetadataValue<T>) -> Ordering {
