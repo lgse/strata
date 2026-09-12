@@ -15,6 +15,17 @@ native architectures. The normal canonical E2E runner remains `scripts/e2e.sh`.
 Use a fresh `STRATA_RELEASE_GATE_OUTPUT` directory for each run; Cargo caches stay
 under `target/release-gate`.
 
+The Ubuntu bootstrap is the immutable `noble-20260810` multiarchitecture index
+`sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517`.
+It selects the unchanged x86_64 image
+`sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316`
+and native ARM64 image
+`sha256:95fa486768020359141f1318720f43e7982ef926c792891d984aef9aaf05e7ea`.
+The previous architecture-specific pin failed on ARM64 before compilation with
+`Exec format error`. Lifting that pin to its containing index changes neither
+the x86_64 filesystem nor the authenticated Ubuntu package snapshot. It does not
+update toolkit versions or apply/remove any private-runtime patch.
+
 The gate builds two real release generations through the same producer as the
 release workflow, then checks:
 

@@ -1,11 +1,12 @@
 ARG E2E_DEPENDENCIES_IMAGE=dependencies
 ARG E2E_RUNTIME_IMAGE=runtime
 
-FROM docker.io/library/ubuntu:24.04@sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316 AS certificates
+# noble-20260810 index: retains the original amd64 image and adds native arm64.
+FROM docker.io/library/ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517 AS certificates
 
 RUN apt-get update && apt-get install --yes --no-install-recommends ca-certificates=20260601~24.04.1
 
-FROM docker.io/library/ubuntu:24.04@sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316 AS snapshot-base
+FROM docker.io/library/ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517 AS snapshot-base
 COPY --from=certificates /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 ENV STRATA_E2E_SNAPSHOT_URL=http://snapshot.ubuntu.com/ubuntu/20260901T000000Z
 
