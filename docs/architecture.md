@@ -93,16 +93,22 @@ remain in the composition module rather than changing alongside this lifecycle b
 
 Pointer intent is shared through `ui/pointer.rs` and `ui/marquee.rs`. In all three modes,
 thumbnail slots, rendered row text/metadata, and Icons' caption region are item drag targets.
-Columns and List treat the whole visible `.file-row` / `.list-row`, including unused label
-allocation and row padding, as a drag origin. Their drag/drop controllers stay on that
-application-owned row so they can coexist with GTK's native list-item selection gesture. Icons
-keeps content-only drag behavior. Marquee ownership mirrors that split: Columns and List use an
-allocated-bounds predicate, so row whitespace is item space; Icons keeps `hits_item_content` and
-treats the gutter beside each card as a marquee origin. Pane background and surrounding chrome
-remain marquee origins, and Alt-drag can force a marquee from an item in any mode. Both
-paths use GTK's configured drag threshold. Within collection viewports, marquees claim the
-sequence only after that threshold, leaving simple clicks and modifier-clicks intact. A
-completed plain click on background clears selections; returning to an inactive column then
+Columns view treats the whole visible `.file-row`, including unused label allocation and row
+padding, as a drag origin. List uses content-only hits throughout its Name column, including
+row padding: unused space starts a marquee, while filenames and icons still drag files.
+List metadata columns retain row dragging. Row drag/drop controllers stay on the
+application-owned row so they can coexist with GTK's native list-item selection gesture.
+Icons keeps content-only drag behavior. Marquee ownership mirrors these policies: Columns
+uses allocated bounds; List applies its Name-column policy in each mapped row's coordinates;
+Icons keeps `hits_item_content` and treats card gutters as marquee origins. Pane background
+and surrounding chrome remain marquee origins, and Alt-drag can force a marquee from an item
+in any mode. Both paths use GTK's configured drag threshold. Within collection viewports,
+marquees claim the sequence only after that threshold, leaving simple clicks and
+modifier-clicks intact. Chrome-origin drags transfer focus to a visible item in the target
+collection after crossing the threshold, giving active selection feedback without scrolling
+to an old cursor. Sidebar origins also switch browser input ownership to the pointer, so
+keyboard actions use the selected pane rather than stale hover state. A completed plain
+click on background clears selections; returning to an inactive column then
 selects its first visible entry. Presses and marquee releases do not clear selections. Click
 activation and automatic preview wait for release and reject cancelled gestures, drag motion,
 and recycled items. Marquees anchor and cache mapped item geometry in scroll-content

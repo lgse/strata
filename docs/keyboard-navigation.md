@@ -31,6 +31,18 @@ Copy/cut use the selection in the focused column, never a hovered row. In Column
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 
+## Returning to a List directory
+
+List mode remembers the selection, keyboard cursor, and scroll position of the
+last 128 directories left in that browser. Back, Forward, and Up restore each
+visited directory after its entries load, including nested parents. Arrow-key
+navigation continues from the restored row. Entries are matched by location,
+not their previous row numbers; deleted entries are not selected accidentally.
+This is temporary browsing state, not a saved preference. New input in the list
+cancels an in-progress restoration.
+
+[Before](screenshots/868/before.png) · [After](screenshots/868/after.png)
+
 ## Creating files and folders
 
 In Columns, List, and Icons, **Ctrl+Shift+N** or background menu → **New Folder**
@@ -64,9 +76,11 @@ Icons ([file](screenshots/566/icons-new-file-rename.png),
 
 ## Preview while filtering
 
-In the browser and file chooser, **Space** toggles quick preview for the highlighted recursive filter result in Columns, Icons, and List. The query, selection, and current directory stay intact. This also works when Up/Down highlights a result while keyboard focus remains in the query field.
+In the browser and file chooser, **Down** from the Ctrl+F input focuses the selected result, or the first result if none is selected. **Up/Down** then navigate the results; **Up** from the first result returns to the input without clearing the query. **Ctrl+F** also returns to the input. With no matches, Down leaves focus in the input.
 
-With no result selected, Space still types into the query. **Shift+Space** inserts a space in the query even with a result selected. Folders and unsupported files do not open a preview.
+**Menu/Shift+F10** on a focused result opens its file menu. While the input itself is focused, its text-editing menu remains available. **Space** toggles quick preview for the selected result in Columns, Icons, and List, including after returning to the query. The query, selection, and current directory stay intact.
+
+While the input is focused, Space types into the query if no result is selected. **Shift+Space** inserts a space there even with a result selected. Folders and unsupported files do not open a preview.
 
 [Filtered selection](screenshots/472/before.png) · [Preview with the query intact](screenshots/472/after.png)
 
@@ -102,6 +116,26 @@ From the sidebar, Right returns to the item you left (or the current file view i
 **Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files; the existing `l` activation shortcut is unchanged. Backspace and the existing `h` / `l` directory shortcuts remain available.
 
 [Right-arrow demo: files stay selected; folders open in a child column](screenshots/291/right-folder-only.mp4).
+
+## Opening and navigating the context menu
+
+**Menu** (the hardware context-menu key) and **Shift+F10** open the selection-aware
+context menu without the pointer. With an item keyboard-focused, the menu opens for
+that item — or the full multi-selection, if the focused item is part of one. With no
+selection, it opens the active pane's background menu. The menu is anchored to the
+focused item or pane, never to the pointer.
+
+Right-clicking an item also makes it the keyboard cursor, without opening it.
+An already-selected item keeps the existing multi-selection; an unselected item
+becomes the only selected item. Escape returns keyboard focus to that clicked item.
+
+Once open: **Up/Down** move between enabled actions, wrapping past the first/last;
+**Home/End** jump to the first/last enabled action; separators and disabled actions
+are skipped. **Enter/Space** activates the focused action immediately on key press.
+**Escape** closes the menu without changing the selection and returns keyboard
+focus to the item or pane that opened it. This applies in Columns, Icons, List,
+Trash, and the file chooser. Closing Properties returns focus to its originating
+control; choosing Rename hands focus to the editor instead.
 
 ## Review fixture
 

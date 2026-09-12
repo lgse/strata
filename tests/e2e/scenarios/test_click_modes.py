@@ -147,7 +147,7 @@ def _choose_single_click(strata) -> None:
     strata.pointer.click(strata.header_button("Settings"))
     option = strata.wait(
         lambda: strata.window.find(
-            role="toggle button", name="List Folders 1 click", rendered=False
+            role="toggle button", name="List view Folders Single", rendered=False
         ),
         "the List single-click option in Settings",
     )
@@ -160,7 +160,7 @@ def _choose_single_click(strata) -> None:
     strata.keyboard.press("Escape")
     strata.wait(
         lambda: strata.window.find(
-            role="toggle button", name="List Folders 1 click"
+            role="toggle button", name="List view Folders Single"
         )
         is None,
         "Settings to close",

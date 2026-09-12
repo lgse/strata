@@ -29,6 +29,7 @@ impl ViewState {
     pub(super) fn handle(self: &Rc<Self>, event: &BrowserEvent) {
         match event {
             BrowserEvent::SelectionSynced { .. } => return,
+            BrowserEvent::NavigationStarting => {}
             BrowserEvent::Reset => {
                 self.pending_new_entry.take();
                 self.pending_location_credentials.take();
@@ -51,6 +52,30 @@ impl ViewState {
                 self.set_location(location);
                 if self.mode_views.borrow().mode() == BrowserMode::Columns {
                     self.append_column(*depth, location);
+                }
+            }
+            BrowserEvent::ColumnsRelocated { from_depth } => {
+                if self.mode_views.borrow().mode() == BrowserMode::Columns {
+                    let refocus = self
+                        .focused_column_depth()
+                        .is_some_and(|depth| depth >= *from_depth);
+                    let active = self.browser.active_depth();
+                    self.rebuild_columns_from(*from_depth);
+                    // A rename is not navigation: keep the user's horizontal viewport.
+                    self.horizontal_scroll_generation
+                        .set(self.horizontal_scroll_generation.get().saturating_add(1));
+                    if let Some(depth) = active {
+                        self.browser.set_active_column(depth);
+                        if refocus {
+                            self.browser.focus_active();
+                        }
+                    }
+                }
+                if let Some(location) = (0..)
+                    .map_while(|depth| self.browser.location_at(depth))
+                    .last()
+                {
+                    self.set_location(&location);
                 }
             }
             BrowserEvent::EntriesInserted { depth, insertions } => {
@@ -480,7 +505,7 @@ impl ViewState {
             BrowserEvent::PreviewRequested { .. } => {}
             BrowserEvent::ExtractRequested { entry } => {
                 if self.interactive {
-                    self.extract_entry(entry.clone());
+                    self.extract_entry_to_subfolder(entry.clone());
                 }
             }
             BrowserEvent::OpenRequested { location } => {
@@ -551,9 +576,20 @@ impl ViewState {
             BrowserEvent::DeletionProgress { completed, total } => {
                 self.update_item_progress(*completed, *total);
             }
-            BrowserEvent::DeletionFinished => {
-                self.clear_delete_animation();
-                self.dismiss_file_operation_progress();
+            BrowserEvent::DeletionFinished { succeeded } => {
+                if *succeeded {
+                    let weak = Rc::downgrade(self);
+                    self.dismiss_file_operation_progress_then(move || {
+                        glib::idle_add_local_once(move || {
+                            if let Some(state) = weak.upgrade() {
+                                state.play_delete_animation();
+                            }
+                        });
+                    });
+                } else {
+                    self.clear_delete_animation();
+                    self.dismiss_file_operation_progress();
+                }
                 self.prune_stale_search_results();
             }
             BrowserEvent::RestorationStarted { total } => {
@@ -897,6 +933,7 @@ impl ViewState {
             BrowserEvent::Reset
                 | BrowserEvent::ColumnAdded { .. }
                 | BrowserEvent::ColumnsTruncated { .. }
+                | BrowserEvent::ColumnsRelocated { .. }
                 | BrowserEvent::FocusChanged { .. }
                 | BrowserEvent::SelectionSetChanged { .. }
                 | BrowserEvent::EntriesInserted { .. }

@@ -10,7 +10,8 @@ use super::{
     ViewState,
     context_menu::{
         ContextResolver, bind_column_context_owner, context_menu_option, context_menu_popover,
-        focus_context_column, preview_context_entry, rename_context_entry, show_context_popover,
+        focus_context_column, focus_context_entry, preview_context_entry, rename_context_entry,
+        show_context_popover,
     },
 };
 
@@ -62,10 +63,44 @@ pub(super) fn install_folder(
     is_item_target: Rc<dyn Fn(&gtk::Widget) -> bool>,
     depth: usize,
     location: Location,
-) {
+) -> Rc<dyn Fn(f64, f64)> {
+    let weak = Rc::downgrade(state);
+    let anchor_for_trigger = parent.downgrade();
+    let location_for_trigger = location.clone();
+    let open_at: Rc<dyn Fn(f64, f64)> = {
+        let weak = weak.clone();
+        Rc::new(move |x: f64, y: f64| {
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let Some(anchor) = anchor_for_trigger.upgrade() else {
+                return;
+            };
+            let weak = Rc::downgrade(&state);
+            let location = location_for_trigger.clone();
+            let (popover, scroll) = menu(
+                &[(
+                    Action::NewFolder,
+                    crate::assets::icons::FOLDER_PLUS,
+                    "New Folder",
+                    "Ctrl+Shift+N",
+                    true,
+                )],
+                move |_| {
+                    if let Some(state) = weak.upgrade() {
+                        state.begin_new_entry(depth, location.clone(), true);
+                    }
+                },
+            );
+            bind_column_context_owner(&state, &popover, depth);
+            focus_context_column(&state, depth);
+            show_context_popover(&popover, &scroll, &anchor, x, y);
+        })
+    };
+
     let click = gtk::GestureClick::new();
     click.set_button(3);
-    let weak = Rc::downgrade(state);
+    let open_for_click = open_at.clone();
     click.connect_pressed(move |gesture, _, x, y| {
         let Some(anchor) = gesture.widget() else {
             return;
@@ -77,30 +112,10 @@ pub(super) fn install_folder(
             return;
         }
         gesture.set_state(gtk::EventSequenceState::Claimed);
-        let Some(state) = weak.upgrade() else {
-            return;
-        };
-        let weak = weak.clone();
-        let location = location.clone();
-        let (popover, scroll) = menu(
-            &[(
-                Action::NewFolder,
-                crate::assets::icons::FOLDER_PLUS,
-                "New Folder",
-                "Ctrl+Shift+N",
-                true,
-            )],
-            move |_| {
-                if let Some(state) = weak.upgrade() {
-                    state.begin_new_entry(depth, location.clone(), true);
-                }
-            },
-        );
-        bind_column_context_owner(&state, &popover, depth);
-        focus_context_column(&state, depth);
-        show_context_popover(&popover, &scroll, &anchor, x, y);
+        open_for_click(x, y);
     });
     parent.add_controller(click);
+    open_at
 }
 
 pub(super) fn install_item(
@@ -108,22 +123,23 @@ pub(super) fn install_item(
     widget: &gtk::Widget,
     resolve: ContextResolver,
     depth: usize,
-) {
-    let click = gtk::GestureClick::new();
-    click.set_button(3);
+) -> Rc<dyn Fn(f64, f64)> {
     let weak = Rc::downgrade(state);
-    click.connect_pressed(move |gesture, _, x, y| {
-        let Some(anchor) = gesture.widget() else {
-            return;
+    let widget_for_trigger = widget.downgrade();
+    let open_at_resolved: Rc<dyn Fn(f64, f64) -> bool> = Rc::new(move |x: f64, y: f64| {
+        let Some(widget) = widget_for_trigger.upgrade() else {
+            return false;
         };
-        let Some(picked) = anchor.pick(x, y, gtk::PickFlags::DEFAULT) else {
-            return;
+        let Some(picked) = widget.pick(x, y, gtk::PickFlags::DEFAULT) else {
+            return false;
         };
-        let Some(state) = weak.upgrade() else { return };
+        let Some(state) = weak.upgrade() else {
+            return false;
+        };
         let Some((source, entry)) = resolve(&picked) else {
-            return;
+            return false;
         };
-        gesture.set_state(gtk::EventSequenceState::Claimed);
+        focus_context_entry(&state, depth, source, &entry);
         let single = source.is_none() || state.browser.selected_entries().len() == 1;
         let mut options = vec![(
             Action::Rename,
@@ -163,8 +179,23 @@ pub(super) fn install_item(
             }
         });
         bind_column_context_owner(&state, &popover, depth);
-        focus_context_column(&state, depth);
-        show_context_popover(&popover, &scroll, &anchor, x, y);
+        show_context_popover(&popover, &scroll, &widget, x, y);
+        true
+    });
+
+    let open_for_trigger = open_at_resolved.clone();
+    let open_at: Rc<dyn Fn(f64, f64)> = Rc::new(move |x, y| {
+        open_for_trigger(x, y);
+    });
+
+    let click = gtk::GestureClick::new();
+    click.set_button(3);
+    click.set_propagation_phase(gtk::PropagationPhase::Capture);
+    click.connect_pressed(move |gesture, _, x, y| {
+        if open_at_resolved(x, y) {
+            gesture.set_state(gtk::EventSequenceState::Claimed);
+        }
     });
     widget.add_controller(click);
+    open_at
 }

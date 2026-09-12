@@ -156,8 +156,12 @@ impl ViewState {
     }
 
     pub(super) fn clear_delete_animation(&self) {
-        if let Some(cleanup) = self.pending_delete_animation_cleanup.take() {
-            cleanup();
+        self.pending_delete_dissolve.take();
+    }
+
+    pub(super) fn play_delete_animation(&self) {
+        if let Some(dissolve) = self.pending_delete_dissolve.take() {
+            dissolve.play();
         }
     }
 
@@ -194,7 +198,7 @@ impl ViewState {
             let trash = gio::File::for_uri("trash:///");
             match summarize_directory(&trash).await {
                 Ok(summary) if summary.item_count > 0 => {
-                    if summary.truncated {
+                    if summary.truncated() {
                         tracing::warn!(
                             item_count = summary.item_count,
                             elapsed_ms = started.elapsed().as_millis() as u64,
@@ -340,9 +344,9 @@ impl ViewState {
             "Empty Trash?",
             &format!(
                 "{}{} · {}{} will be reclaimed",
-                if summary.truncated { "At least " } else { "" },
+                if summary.truncated() { "At least " } else { "" },
                 item_count_label(summary.item_count),
-                if summary.truncated { "at least " } else { "" },
+                if summary.truncated() { "at least " } else { "" },
                 format_file_size(summary.total_size)
             ),
             "Empty Trash",
@@ -816,20 +820,16 @@ impl ViewState {
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
                 move || {
-                    let browser_for_delete = browser.clone();
-                    let entries_for_delete = entries_for_dissolve.clone();
-                    super::dissolve_delete::dissolve_delete(
+                    let dissolve = super::dissolve_delete::prepare_dissolve(
                         overlay_for_dissolve.upcast_ref(),
                         &entries_for_dissolve,
-                        move |cleanup| {
-                            if let Some(ui) = weak_ui.upgrade() {
-                                ui.clear_delete_animation();
-                                ui.pending_delete_animation_cleanup.replace(Some(cleanup));
-                            }
-                            browser_for_delete.delete(entries_for_delete, true);
-                            browser_for_delete.focus_active();
-                        },
                     );
+                    if let Some(ui) = weak_ui.upgrade() {
+                        ui.clear_delete_animation();
+                        ui.pending_delete_dissolve.replace(dissolve);
+                    }
+                    browser.delete(entries_for_dissolve, true);
+                    browser.focus_active();
                 },
             );
         });

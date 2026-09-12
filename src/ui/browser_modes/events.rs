@@ -27,11 +27,36 @@ impl ModeViews {
 
     fn handle_structure_event(&mut self, event: &BrowserEvent) -> bool {
         match event {
+            BrowserEvent::NavigationStarting => {
+                if self.mode == BrowserMode::List
+                    && let Some(pane) = self.list_pane.as_ref()
+                {
+                    self.list_navigation
+                        .borrow_mut()
+                        .capture(pane, &self.browser);
+                }
+            }
             BrowserEvent::Reset => {
                 self.clear_icons();
                 self.clear_list();
             }
             BrowserEvent::ColumnsTruncated { .. } => self.rebuild_active_mode(),
+            BrowserEvent::ColumnsRelocated { from_depth } => {
+                if let Some(depth) = self
+                    .browser
+                    .active_depth()
+                    .filter(|depth| depth >= from_depth)
+                {
+                    let refocus = self
+                        .panes_at(depth)
+                        .iter()
+                        .any(|pane| pane_holds_keyboard_focus(pane));
+                    self.rebuild_active_mode();
+                    if refocus {
+                        self.focus_visible_pane(depth);
+                    }
+                }
+            }
             BrowserEvent::ColumnAdded { depth, .. } => {
                 if self.browser.active_depth() == Some(*depth) {
                     self.rebuild_active_mode();
@@ -133,9 +158,23 @@ impl ModeViews {
             BrowserEvent::ColumnReloaded { depth } => self.update_panes(*depth, Pane::reload_rows),
             BrowserEvent::LoadFinished { depth, truncated } => {
                 self.update_panes(*depth, |pane| pane.finish_loading(*truncated));
+                if self.mode == BrowserMode::List
+                    && let Some(pane) = self.list_pane.as_ref().filter(|pane| pane.depth == *depth)
+                {
+                    self.list_navigation
+                        .borrow_mut()
+                        .restore(pane, &self.browser);
+                }
             }
             BrowserEvent::LoadFailed { depth, message } => {
                 self.update_panes(*depth, |pane| pane.fail_loading(message));
+                if self
+                    .list_pane
+                    .as_ref()
+                    .is_some_and(|pane| pane.depth == *depth)
+                {
+                    self.list_navigation.borrow_mut().cancel();
+                }
             }
             _ => return false,
         }
@@ -143,6 +182,9 @@ impl ModeViews {
     }
 
     fn handle_selection_event(&self, event: &BrowserEvent) {
+        if self.mode == BrowserMode::List && self.list_navigation.borrow().is_restoring() {
+            return;
+        }
         match event {
             BrowserEvent::SelectionSetChanged {
                 depth,
@@ -152,10 +194,9 @@ impl ModeViews {
             } => {
                 self.update_selection(*depth, positions, *take_focus);
             }
-            BrowserEvent::FocusChanged { depth, position } => {
-                self.update_panes(*depth, |pane| {
-                    set_selections(pane, &position.iter().copied().collect::<Vec<_>>())
-                });
+            BrowserEvent::FocusChanged { depth, .. } => {
+                let positions = self.browser.selected_positions(*depth);
+                self.update_panes(*depth, |pane| set_selections(pane, &positions));
                 self.focus_visible_pane(*depth);
             }
             _ => {}
