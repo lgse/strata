@@ -5,12 +5,12 @@ mod progress;
 use super::*;
 use std::time::{Duration, Instant};
 
-fn size_label(widget: &gtk::Widget) -> Option<gtk::Label> {
+fn row_label(widget: &gtk::Widget, title: &str) -> Option<gtk::Label> {
     if widget.has_css_class("properties-row")
         && widget
             .first_child()
             .and_downcast::<gtk::Label>()
-            .is_some_and(|label| label.text() == "SIZE")
+            .is_some_and(|label| label.text() == title)
     {
         return widget
             .first_child()
@@ -19,12 +19,16 @@ fn size_label(widget: &gtk::Widget) -> Option<gtk::Label> {
     }
     let mut child = widget.first_child();
     while let Some(widget) = child {
-        if let Some(label) = size_label(&widget) {
+        if let Some(label) = row_label(&widget, title) {
             return Some(label);
         }
         child = widget.next_sibling();
     }
     None
+}
+
+fn size_label(widget: &gtk::Widget) -> Option<gtk::Label> {
+    row_label(widget, "SIZE")
 }
 
 #[test]
@@ -36,8 +40,15 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
             std::fs::create_dir(root.path().join("empty")).expect("empty folder");
             std::fs::create_dir(root.path().join("nested")).expect("nested folder");
             std::fs::write(root.path().join("nested/.hidden"), b"12345").expect("hidden file");
+            std::fs::create_dir_all(root.path().join(".hidden/child")).expect("hidden subtree");
+            std::fs::write(root.path().join(".hidden/child/file"), b"123").expect("hidden child");
             for index in 0..200 {
                 std::fs::write(root.path().join(format!("file-{index}")), b"x").expect("file");
+            }
+            let zero_bytes = tempfile::tempdir().expect("zero-byte fixture");
+            for index in 0..200 {
+                std::fs::write(zero_bytes.path().join(format!("file-{index}")), b"")
+                    .expect("empty file");
             }
             let view = crate::ui::browser::BrowserView::new(
                 Rc::new(crate::adapters::LocalFileSource),
@@ -48,23 +59,38 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
             let window = gtk::Window::builder().child(&overlay).build();
             window.present();
 
-            for (path, expected) in [
-                (root.path().to_path_buf(), "205 B"),
-                (root.path().join("empty"), "0 B"),
-                (root.path().join("missing"), "Unavailable"),
+            for (path, expected_size, expected_contains) in [
+                (root.path().to_path_buf(), "208 B", "200 files, 2 folders"),
+                (root.path().join(".hidden"), "3 B", "1 file, 1 folder"),
+                (
+                    zero_bytes.path().to_path_buf(),
+                    "0 B",
+                    "200 files, 0 folders",
+                ),
+                (root.path().join("empty"), "0 B", "0 files, 0 folders"),
+                (root.path().join("missing"), "Unavailable", "Unavailable"),
             ] {
                 view.state.show_folder_properties(&Location::local(path));
                 let size = size_label(overlay.upcast_ref()).expect("Properties SIZE row");
+                let contains =
+                    row_label(overlay.upcast_ref(), "CONTAINS").expect("Properties CONTAINS row");
+                let warning = contains
+                    .next_sibling()
+                    .and_downcast::<gtk::Image>()
+                    .expect("measurement warning");
+                assert!(!warning.is_visible());
                 let spinner = size
                     .next_sibling()
                     .and_downcast::<gtk::Spinner>()
                     .expect("size spinner");
                 assert_eq!(size.text(), "0 B");
+                assert_eq!(contains.text(), "0 files, 0 folders");
                 assert!(spinner.is_visible());
                 assert!(spinner.is_spinning());
                 let saw_partial_size = Rc::new(Cell::new(false));
                 let observed_progress = saw_partial_size.clone();
                 let observed_spinner = spinner.clone();
+                let expected = expected_size;
                 size.connect_label_notify(move |size| {
                     if observed_spinner.is_spinning()
                         && size.text() != "0 B"
@@ -73,15 +99,43 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
                         observed_progress.set(true);
                     }
                 });
+                let saw_partial_count = Rc::new(Cell::new(false));
+                let observed_count = saw_partial_count.clone();
+                let count_spinner = spinner.clone();
+                contains.connect_label_notify(move |contains| {
+                    if count_spinner.is_spinning()
+                        && contains.text() != "0 files, 0 folders"
+                        && contains.text() != expected_contains
+                    {
+                        observed_count.set(true);
+                    }
+                });
                 let deadline = Instant::now() + Duration::from_secs(5);
                 while spinner.is_spinning() {
                     assert!(Instant::now() < deadline, "SIZE stayed at {}", size.text());
                     glib::MainContext::default().iteration(false);
                     std::thread::sleep(Duration::from_millis(1));
                 }
-                assert_eq!(size.text(), expected);
+                assert_eq!(size.text(), expected_size);
                 assert!(!spinner.is_visible());
-                if expected == "205 B" {
+                assert_eq!(contains.text(), expected_contains);
+                if expected_size == "Unavailable" {
+                    assert!(warning.is_visible());
+                    assert_eq!(
+                        warning.tooltip_text().as_deref(),
+                        Some("Folder contents couldn't be read.")
+                    );
+                } else {
+                    assert!(!warning.is_visible());
+                    assert!(warning.tooltip_text().is_none());
+                }
+                if expected_contains == "200 files, 0 folders" {
+                    assert!(
+                        saw_partial_count.get(),
+                        "counts must advance without byte growth"
+                    );
+                }
+                if expected_size == "208 B" {
                     assert!(
                         saw_partial_size.get(),
                         "size must update while the spinner is running"

@@ -1328,7 +1328,7 @@ fn cancel_thumbnail(image_id: usize) {
 fn thumbnail_kind(path: &Path) -> Option<ThumbnailKind> {
     let extension = path.extension()?.to_str()?.to_ascii_lowercase();
     match extension.as_str() {
-        "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "tif" | "tiff" => {
+        "png" | "jpg" | "jpeg" | "webp" | "gif" | "bmp" | "tif" | "tiff" | "svg" => {
             Some(ThumbnailKind::Image)
         }
         "3fr" | "arw" | "cr2" | "cr3" | "dcr" | "dng" | "erf" | "kdc" | "mef" | "mos" | "mrw"

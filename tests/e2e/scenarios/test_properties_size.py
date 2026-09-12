@@ -18,6 +18,7 @@ def sized_folder(fixture_tree):
             "sized-folder": {
                 "top.txt": "abc",
                 "nested": {"child.txt": "12345", ".hidden.txt": "1234567"},
+                ".hidden": {"visible": {"file.txt": "123"}},
             }
         }
     )
@@ -42,10 +43,33 @@ def test_properties_calculates_nested_and_hidden_file_sizes(
     dialog = strata.wait_for_dialog()
 
     strata.wait(
-        lambda: dialog.find(role="label", name="15 B"),
+        lambda: dialog.find(role="label", name="18 B"),
         "Properties to show the recursive size without following symlinks",
     )
     strata.wait(lambda: _measurement_finished(dialog), "the size spinner to disappear")
+    assert dialog.find(role="label", name="4 files, 1 folder")
+
+
+def test_properties_explains_unreadable_folder_contents(sized_folder, strata):
+    blocked = sized_folder / ".hidden"
+    blocked.chmod(0)
+    try:
+        strata.open_context_menu(sized_folder.name)
+        strata.choose_menu_item("Properties")
+        dialog = strata.wait_for_dialog()
+        strata.wait(lambda: _measurement_finished(dialog), "the measurement to finish")
+        assert dialog.find(role="label", name="≥ 15 B")
+        assert dialog.find(role="label", name="≥ 4 files, ≥ 1 folder")
+        message = "Totals are incomplete.\nSome folders or entries couldn't be read."
+        warning = strata.wait(lambda: dialog.find(name=message), "the incomplete measurement warning")
+        assert warning.is_rendered()
+        strata.pointer.move_to(*warning.screen_bounds().center)
+        strata.wait(
+            lambda: strata.application.application_node.find(role="label", name=message),
+            "the warning tooltip",
+        )
+    finally:
+        blocked.chmod(0o755)
 
 
 @pytest.mark.parametrize("name, expected", [("archive", "0 B"), ("readme.md", "10 B")])

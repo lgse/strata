@@ -47,6 +47,10 @@ fn recognizes_mainstream_image_and_video_formats() {
         Some(ThumbnailKind::Image)
     );
     assert_eq!(
+        thumbnail_kind(Path::new("vector.svg")),
+        Some(ThumbnailKind::Image)
+    );
+    assert_eq!(
         thumbnail_kind(Path::new("capture.CR3")),
         Some(ThumbnailKind::RawImage)
     );
