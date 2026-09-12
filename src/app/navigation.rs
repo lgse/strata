@@ -1385,7 +1385,11 @@ fn natural_compare(left: &[u8], right: &[u8]) -> Ordering {
         if left[li].is_ascii_digit() && right[ri].is_ascii_digit() {
             let (lv, lo) = take_number(left, li);
             let (rv, ro) = take_number(right, ri);
-            let cmp = lv.cmp(&rv).then_with(|| left[li..lo].cmp(&right[ri..ro]));
+            let cmp = lv
+                .len()
+                .cmp(&rv.len())
+                .then_with(|| lv.cmp(rv))
+                .then_with(|| left[li..lo].cmp(&right[ri..ro]));
             if cmp != Ordering::Equal {
                 return cmp;
             }
@@ -1404,16 +1408,16 @@ fn natural_compare(left: &[u8], right: &[u8]) -> Ordering {
     left.len().cmp(&right.len())
 }
 
-fn take_number(bytes: &[u8], start: usize) -> (u64, usize) {
-    let mut value: u64 = 0;
-    let mut i = start;
-    while i < bytes.len() && bytes[i].is_ascii_digit() {
-        value = value
-            .saturating_mul(10)
-            .saturating_add((bytes[i] - b'0') as u64);
-        i += 1;
+fn take_number(bytes: &[u8], start: usize) -> (&[u8], usize) {
+    let mut end = start;
+    while end < bytes.len() && bytes[end].is_ascii_digit() {
+        end += 1;
     }
-    (value, i)
+    let mut significant = start;
+    while significant < end && bytes[significant] == b'0' {
+        significant += 1;
+    }
+    (&bytes[significant..end], end)
 }
 
 fn compare_metadata<T: Ord>(left: &MetadataValue<T>, right: &MetadataValue<T>) -> Ordering {

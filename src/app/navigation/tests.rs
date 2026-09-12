@@ -1073,13 +1073,30 @@ fn names_that_differ_only_by_case_have_a_deterministic_order() {
 
 #[test]
 fn numeric_suffixes_sort_naturally() {
-    assert_eq!(compare_display_names("File 1", "File 2"), Ordering::Less);
-    assert_eq!(compare_display_names("File 2", "File 10"), Ordering::Less);
-    assert_eq!(
-        compare_display_names("File 10", "File 2"),
-        Ordering::Greater
-    );
-    assert_eq!(compare_display_names("File 1", "File 10"), Ordering::Less);
+    for (left, right) in [
+        ("File 1", "File 2"),
+        ("File 2", "File 10"),
+        ("File 1", "File 10"),
+        ("File 99999999999999999999", "File 100000000000000000000"),
+        ("File 0002", "File 10"),
+        ("File 02", "File 2"),
+        ("File 0", "File 00"),
+        ("file 2 part 9", "File 2 part 10"),
+        ("Straße 2", "STRASSE 10"),
+        ("File 2", "File 2a"),
+    ] {
+        assert_eq!(
+            compare_display_names(left, right),
+            Ordering::Less,
+            "{left} < {right}"
+        );
+        assert_eq!(
+            compare_display_names(right, left),
+            Ordering::Greater,
+            "{right} > {left}"
+        );
+        assert_eq!(compare_display_names(left, left), Ordering::Equal);
+    }
 }
 
 #[test]
