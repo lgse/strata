@@ -1874,7 +1874,11 @@ fn home_trash_fallback_finds_broken_symlinks_the_virtual_backend_has_not_refresh
         format!("[Trash Info]\nPath={encoded}\nDeletionDate=2026-09-03T16:05:39\n"),
     )?;
 
-    let entries = home_trash_entries_at(&trash, &HashSet::from([original.clone()]));
+    let entries = home_trash_entries_at(
+        &trash,
+        &HashSet::from([original.clone()]),
+        &gio::Cancellable::new(),
+    );
 
     let entry = entries.get(&original).expect("fallback entry");
     assert_eq!(
