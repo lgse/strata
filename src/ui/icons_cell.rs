@@ -12,7 +12,8 @@ const ICONS_CARD_LABEL_CHARS: i32 = 12;
 const ICONS_CARD_LABEL_LINES: i32 = 2;
 const ICONS_CARD_LABEL_LINE_PX: i32 = 18;
 const ICONS_CARD_PAD_Y: i32 = 4;
-const ICONS_CARD_ICON_INSET: i32 = 0;
+pub(super) const ICONS_CARD_ICON_PADDING: i32 = 6;
+const ICONS_CARD_CAPTION_GAP: i32 = 4;
 
 pub(super) fn new_card(slot: i32) -> gtk::Box {
     let card = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -22,22 +23,31 @@ pub(super) fn new_card(slot: i32) -> gtk::Box {
     card.set_valign(gtk::Align::Start);
 
     let icon = super::thumbnail::ThumbnailSlot::new(slot);
-    icon.set_content_inset(ICONS_CARD_ICON_INSET);
+    icon.set_content_inset(0);
+    icon.set_margin_top(ICONS_CARD_ICON_PADDING);
+    icon.set_margin_bottom(ICONS_CARD_ICON_PADDING);
+    icon.set_margin_start(ICONS_CARD_ICON_PADDING);
+    icon.set_margin_end(ICONS_CARD_ICON_PADDING);
     icon.limit_fallback_height_to_folder();
     icon.add_css_class("icons-card-icon");
     icon.set_halign(gtk::Align::Center);
-    icon.set_valign(gtk::Align::Start);
+    icon.set_valign(gtk::Align::Center);
+    let icon_frame = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    icon_frame.add_css_class("icons-card-icon-frame");
+    icon_frame.append(&icon);
 
     let label = gtk::Inscription::new(None);
     label.add_css_class("icons-card-label");
     label.add_css_class("alternate-rename-label");
     configure_label(&label);
 
-    let labels = gtk::Overlay::new();
+    // GtkOverlay requires its own layout-child type; this caption has a custom layout.
+    let labels = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    labels.add_css_class("icons-card-caption");
     labels.set_hexpand(true);
-    labels.set_child(Some(&label));
+    labels.append(&label);
 
-    card.append(&icon);
+    card.append(&icon_frame);
     card.append(&labels);
     layout::install(&card, &label);
     set_slot(&card, slot);
@@ -49,15 +59,16 @@ pub(super) fn parts(
 ) -> Option<(super::thumbnail::ThumbnailSlot, gtk::Inscription)> {
     let icon = card
         .first_child()?
+        .first_child()?
         .downcast::<super::thumbnail::ThumbnailSlot>()
         .ok()?;
-    let labels = card.last_child()?.downcast::<gtk::Overlay>().ok()?;
-    let label = labels.child()?.downcast::<gtk::Inscription>().ok()?;
+    let labels = card.last_child()?.downcast::<gtk::Box>().ok()?;
+    let label = labels.first_child()?.downcast::<gtk::Inscription>().ok()?;
     Some((icon, label))
 }
 
 pub(super) fn rename_field(card: &impl IsA<gtk::Widget>) -> Option<gtk::Entry> {
-    let labels = card.last_child()?.downcast::<gtk::Overlay>().ok()?;
+    let labels = card.last_child()?.downcast::<gtk::Box>().ok()?;
     let mut sibling = labels.first_child();
     while let Some(widget) = sibling {
         sibling = widget.next_sibling();
@@ -72,14 +83,14 @@ pub(super) fn ensure_rename_field(card: &impl IsA<gtk::Widget>) -> Option<gtk::E
     if let Some(field) = rename_field(card) {
         return Some(field);
     }
-    let labels = card.last_child()?.downcast::<gtk::Overlay>().ok()?;
+    let labels = card.last_child()?.downcast::<gtk::Box>().ok()?;
     let field = gtk::Entry::new();
     field.add_css_class("inline-rename");
     crate::ui::accessibility::set_label(&field, "Rename");
     field.set_width_chars(1);
     field.set_hexpand(true);
     field.set_visible(false);
-    labels.add_overlay(&field);
+    labels.append(&field);
     Some(field)
 }
 
@@ -100,16 +111,19 @@ pub(super) fn icons_card_icon_slot(thumbnail_size: i32) -> i32 {
 
 pub(super) fn icons_card_extent(thumbnail_size: i32) -> (i32, i32) {
     let slot = icons_card_icon_slot(thumbnail_size);
-    let width = slot.max(FALLBACK_ICONS_COLUMN_WIDTH - ICONS_CARD_SPACING);
-    let height = slot + ICONS_CARD_LABEL_LINE_PX * ICONS_CARD_LABEL_LINES + ICONS_CARD_PAD_Y + 3;
+    let icon_extent = slot + ICONS_CARD_ICON_PADDING * 2;
+    let width = icon_extent.max(FALLBACK_ICONS_COLUMN_WIDTH - ICONS_CARD_SPACING);
+    let height = icon_extent
+        + ICONS_CARD_CAPTION_GAP
+        + ICONS_CARD_LABEL_LINE_PX * ICONS_CARD_LABEL_LINES
+        + ICONS_CARD_PAD_Y;
     (width, height)
 }
 
 fn configure_label(label: &gtk::Inscription) {
-    let chars = ICONS_CARD_LABEL_CHARS as u32;
     let lines = ICONS_CARD_LABEL_LINES as u32;
-    label.set_min_chars(chars);
-    label.set_nat_chars(chars);
+    label.set_min_chars(0);
+    label.set_nat_chars(0);
     label.set_min_lines(1);
     label.set_nat_lines(lines);
     label.set_xalign(0.5);
