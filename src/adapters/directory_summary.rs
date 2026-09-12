@@ -38,14 +38,11 @@ impl DirectorySummary {
 
 const DIRECTORY_ATTRIBUTES: &str =
     "standard::name,standard::type,standard::is-symlink,standard::size,standard::is-hidden";
-const MAX_ENTRIES: usize = 200_000;
 const MAX_DEPTH: usize = 64;
 const TIME_BUDGET: Duration = Duration::from_secs(300);
 
 struct MeasurementBudget {
-    visited: Cell<usize>,
     deadline: Instant,
-    max_entries: usize,
     max_depth: usize,
     total: Cell<DirectorySummary>,
     reported: Cell<DirectorySummary>,
@@ -61,7 +58,7 @@ impl MeasurementBudget {
     }
 
     fn exhausted(&self) -> bool {
-        self.visited.get() >= self.max_entries || Instant::now() >= self.deadline
+        Instant::now() >= self.deadline
     }
 }
 
@@ -82,12 +79,11 @@ pub(crate) async fn summarize_directory_with_progress(
     root: &gio::File,
     on_progress: impl Fn(DirectorySummary) + 'static,
 ) -> Result<DirectorySummary, glib::Error> {
-    summarize_directory_with_budget(root, MAX_ENTRIES, MAX_DEPTH, TIME_BUDGET, on_progress).await
+    summarize_directory_with_budget(root, MAX_DEPTH, TIME_BUDGET, on_progress).await
 }
 
 async fn summarize_directory_with_budget(
     root: &gio::File,
-    max_entries: usize,
     max_depth: usize,
     time_budget: Duration,
     on_progress: impl Fn(DirectorySummary) + 'static,
@@ -95,9 +91,7 @@ async fn summarize_directory_with_budget(
     on_progress(DirectorySummary::default());
     let enumerator = enumerate_children(root).await?;
     let budget = Rc::new(MeasurementBudget {
-        visited: Cell::new(0),
         deadline: Instant::now() + time_budget,
-        max_entries,
         max_depth,
         total: Cell::default(),
         reported: Cell::default(),
@@ -168,7 +162,6 @@ fn measure_entry(
     budget: Rc<MeasurementBudget>,
 ) -> MeasurementFuture {
     Box::pin(async move {
-        budget.visited.set(budget.visited.get() + 1);
         let is_directory = info.file_type() == gio::FileType::Directory;
         let is_hidden = hidden_ancestor || info.is_hidden();
         let mut summary = DirectorySummary {

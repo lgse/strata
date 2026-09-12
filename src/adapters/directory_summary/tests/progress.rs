@@ -95,7 +95,13 @@ fn zero_byte_entries_still_report_count_progress() {
 #[test]
 fn truncated_measurements_finish_at_the_last_reported_size() {
     let root = tempfile::tempdir().expect("fixture");
-    for index in 0..100 {
+    std::fs::create_dir(root.path().join("nested")).expect("nested folder");
+    std::fs::write(
+        root.path().join("nested/excluded"),
+        b"hidden by depth guard",
+    )
+    .expect("nested file");
+    for index in 0..5 {
         std::fs::write(root.path().join(index.to_string()), b"abc").expect("file");
     }
     let last_size = Rc::new(Cell::new(DirectorySummary::default()));
@@ -103,8 +109,7 @@ fn truncated_measurements_finish_at_the_last_reported_size() {
     let summary = glib::MainContext::new()
         .block_on(summarize_directory_with_budget(
             &gio::File::for_path(root.path()),
-            5,
-            MAX_DEPTH,
+            0,
             TIME_BUDGET,
             move |total| observed.set(total),
         ))
@@ -132,9 +137,7 @@ fn an_enumeration_failure_preserves_bytes_already_reported() {
         .expect("enumerator");
     let closed_enumerator = enumerator.clone();
     let budget = Rc::new(MeasurementBudget {
-        visited: Cell::new(0),
         deadline: Instant::now() + TIME_BUDGET,
-        max_entries: MAX_ENTRIES,
         max_depth: MAX_DEPTH,
         total: Cell::default(),
         reported: Cell::default(),

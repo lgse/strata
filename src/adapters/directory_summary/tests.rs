@@ -11,11 +11,10 @@ use std::time::{Duration, Instant};
 
 async fn summarize_directory_with_budget(
     root: &gio::File,
-    max_entries: usize,
     max_depth: usize,
     time_budget: Duration,
 ) -> Result<DirectorySummary, glib::Error> {
-    super::summarize_directory_with_budget(root, max_entries, max_depth, time_budget, |_| {}).await
+    super::summarize_directory_with_budget(root, max_depth, time_budget, |_| {}).await
 }
 
 fn unique_fixture_root(label: &str) -> std::path::PathBuf {
@@ -27,37 +26,6 @@ fn unique_fixture_root(label: &str) -> std::path::PathBuf {
 }
 
 #[test]
-fn directory_summary_reports_truncated_once_the_entry_budget_is_exceeded() {
-    let root = unique_fixture_root("entry-budget");
-    std::fs::create_dir_all(root.join("sub")).expect("the directory fixture should be created");
-    for index in 0..5 {
-        std::fs::write(
-            root.join("sub").join(format!("file-{index}.txt")),
-            b"content",
-        )
-        .expect("the directory fixture file should be written");
-    }
-
-    let summary = glib::MainContext::new().block_on(summarize_directory_with_budget(
-        &gio::File::for_path(&root),
-        1,
-        MAX_DEPTH,
-        TIME_BUDGET,
-    ));
-    std::fs::remove_dir_all(&root).expect("the directory fixture should be removed");
-
-    let summary = summary.expect("a plain directory tree should measure without error");
-    assert!(
-        summary.truncated,
-        "exceeding the entry budget should be reported"
-    );
-    assert_eq!(
-        summary.item_count, 1,
-        "measurement should stop counting once the entry budget is reached"
-    );
-}
-
-#[test]
 fn directory_summary_reports_truncated_once_the_time_budget_is_exceeded() {
     let root = unique_fixture_root("time-budget");
     std::fs::create_dir_all(root.join("sub")).expect("the directory fixture should be created");
@@ -66,7 +34,6 @@ fn directory_summary_reports_truncated_once_the_time_budget_is_exceeded() {
 
     let summary = glib::MainContext::new().block_on(summarize_directory_with_budget(
         &gio::File::for_path(&root),
-        usize::MAX,
         MAX_DEPTH,
         Duration::from_nanos(1),
     ));
@@ -89,7 +56,6 @@ fn directory_summary_does_not_descend_past_the_depth_budget() {
 
     let summary = glib::MainContext::new().block_on(summarize_directory_with_budget(
         &gio::File::for_path(&root),
-        usize::MAX,
         1,
         TIME_BUDGET,
     ));
@@ -121,7 +87,6 @@ fn directory_summary_treats_an_inaccessible_subdirectory_as_truncated_not_fatal(
 
     let summary = glib::MainContext::new().block_on(summarize_directory_with_budget(
         &gio::File::for_path(&root),
-        MAX_ENTRIES,
         MAX_DEPTH,
         TIME_BUDGET,
     ));
@@ -171,9 +136,7 @@ fn directory_summary_treats_a_directory_removed_before_measurement_as_truncated_
         0,
         false,
         Rc::new(MeasurementBudget {
-            visited: Cell::new(0),
             deadline: Instant::now() + TIME_BUDGET,
-            max_entries: MAX_ENTRIES,
             max_depth: MAX_DEPTH,
             total: Cell::default(),
             reported: Cell::default(),
@@ -217,9 +180,7 @@ fn aborting_a_directory_measurement_stops_it_mid_flight() {
                 .expect("querying the fixture directory's info should succeed");
 
             let budget = Rc::new(MeasurementBudget {
-                visited: Cell::new(0),
                 deadline: Instant::now() + TIME_BUDGET,
-                max_entries: MAX_ENTRIES,
                 max_depth: MAX_DEPTH,
                 total: Cell::default(),
                 reported: Cell::default(),
@@ -238,19 +199,19 @@ fn aborting_a_directory_measurement_stops_it_mid_flight() {
             // mid-flight since one batch (64) is far short of the full tree (1 + 200), regardless
             // of exactly how many main-loop iterations it took to get there.
             for _ in 0..1_000 {
-                if budget.visited.get() > 1 {
+                if budget.total.get().item_count > 1 {
                     break;
                 }
                 context.iteration(true);
             }
-            let progress_before_abort = budget.visited.get();
+            let progress_before_abort = budget.total.get().item_count;
 
             task.abort();
             for _ in 0..20 {
                 context.iteration(false);
             }
 
-            (progress_before_abort, budget.visited.get())
+            (progress_before_abort, budget.total.get().item_count)
         })
         .expect("a freshly created main context should be acquirable as thread-default");
     std::fs::remove_dir_all(&root).expect("the directory fixture should be removed");
@@ -277,13 +238,11 @@ fn directory_summary_stops_enumerating_the_root_once_the_measurement_budget_is_r
             .expect("the directory fixture file should be written");
     }
 
-    let max_entries = 5;
     let summary = glib::MainContext::new()
         .block_on(summarize_directory_with_budget(
             &gio::File::for_path(&root),
-            max_entries,
             MAX_DEPTH,
-            TIME_BUDGET,
+            Duration::ZERO,
         ))
         .expect("a plain directory tree should measure without error");
     std::fs::remove_dir_all(&root).expect("the directory fixture should be removed");
@@ -293,7 +252,7 @@ fn directory_summary_stops_enumerating_the_root_once_the_measurement_budget_is_r
         "exceeding the measurement budget should still be reported"
     );
     assert_eq!(
-        summary.item_count, max_entries,
+        summary.item_count, 0,
         "root enumeration should stop as soon as the budget is spent, not keep requesting \
          further `next_files_future` batches for the remaining {total_files} entries"
     );
@@ -322,7 +281,6 @@ fn directory_summary_does_not_stop_enumerating_siblings_after_one_branch_is_dept
     // size, that undercounted "parent" to 1 (itself) + 64 (first batch only) = 65.
     let summary = glib::MainContext::new().block_on(summarize_directory_with_budget(
         &gio::File::for_path(&root),
-        usize::MAX,
         1,
         TIME_BUDGET,
     ));
