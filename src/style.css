@@ -1771,6 +1771,7 @@ switch:checked slider {
 
 .fixed-scrollbar scrollbar.horizontal {
   min-height: 14px;
+  border-top: 1px solid alpha(@theme_border, 0.6);
 }
 
 scrollbar slider:active {

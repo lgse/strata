@@ -130,6 +130,20 @@ from that edge so it cannot intercept divider dragging.
 These captures use synthetic fixtures, private Xvfb/D-Bus, and the pinned GTK
 4.14.5 environment. The before capture predates the resize-border changes.
 
+## Complete scrollbar bezel
+
+Visible horizontal scrollbars have a 1px semantic border across the full top
+edge, including the space outside the thumb. The same rule covers column and
+mode scrollers; hidden scrollbars do not leave a border behind. The preview
+resize handle remains reachable at scrollbar height.
+
+| Before | After |
+| --- | --- |
+| ![Open scrollbar bezel](review/bezel-before.png) | ![Complete scrollbar bezel](review/bezel-after.png) |
+
+These captures use the same private-display synthetic fixture as the divider
+follow-up above.
+
 ## Tuning and scope
 
 - `MIN_COLUMN_MULTIPLIER` in [`preview/layout.rs`](../../../src/ui/preview/layout.rs)
