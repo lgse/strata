@@ -6,7 +6,7 @@ parsing and decoding run inside bubblewrap, never in the application.
 ## Providers
 
 - GDK Pixbuf/camera RAW, Poppler PDF, ImageMagick, and dcraw fallbacks normalize
-  images to dimension- and size-bounded PNGs.
+  images to dimension- and size-bounded PNG images.
 - `ffmpegthumbnailer` produces bounded media thumbnails. One helper serves at most
   64 queued unique requests; duplicate requests share work, obsolete targets
   cancel it, and failures are cached for 30 seconds.
