@@ -377,21 +377,17 @@ fn mode_switch_after_navigation_rebuilds_for_the_new_location() {
             fixture.views.show_mode(BrowserMode::List);
             fixture.views.clear_inactive_mode(BrowserMode::Icons);
             fixture.browser.navigate(Location::local("/other"));
-            fixture
-                .views
-                .handle(&BrowserEvent::ColumnAdded {
-                    depth: 0,
-                    location: Location::local("/other"),
-                });
+            fixture.views.handle(&BrowserEvent::ColumnAdded {
+                depth: 0,
+                location: Location::local("/other"),
+            });
             fixture
                 .views
                 .handle(&BrowserEvent::EntriesReplaced { depth: 0, count: 3 });
-            fixture
-                .views
-                .handle(&BrowserEvent::LoadFinished {
-                    depth: 0,
-                    truncated: false,
-                });
+            fixture.views.handle(&BrowserEvent::LoadFinished {
+                depth: 0,
+                truncated: false,
+            });
 
             // Switch back to Icons: the stale Icons pane was built for /fixture,
             // so it must be rebuilt for /other rather than reused.
