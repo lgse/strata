@@ -1296,6 +1296,22 @@ fn install_shortcuts(
         let alt = modifiers.contains(gtk::gdk::ModifierType::ALT_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
         let focused = gtk::prelude::RootExt::focus(&state.window);
+        if focused
+            .as_ref()
+            .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
+            .is_some_and(|popover| popover.has_css_class("folder-context-popover"))
+        {
+            return glib::Propagation::Proceed;
+        }
+        if super::window::is_context_menu_shortcut(key, modifiers)
+            && !focused.as_ref().is_some_and(|widget| {
+                super::focus_navigation::editable(widget)
+                    || super::focus_navigation::in_popover(widget)
+            })
+            && state.view.open_focused_context_menu()
+        {
+            return glib::Propagation::Stop;
+        }
         let original_key = key;
         let key = super::focus_navigation::navigation_key(
             key,

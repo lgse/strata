@@ -1,323 +1,264 @@
-// SPDX-License-Identifier: GPL-3.0-or-later
+// SPDX-License-Identifier: MIT
 
-use super::menus::{MenuSource, descendants, label, open_menu, wait_until};
+use super::super::context_menu_popover;
+use super::menus::{MenuSource, descendants, label, wait_until};
 use crate::model::Location;
 use crate::ui::browser::{BrowserView, PeekBehavior};
 use crate::ui::browser_modes::BrowserMode;
-use crate::ui::window::keyboard::focus::focus_first_or_last_menu_item;
-use gtk::prelude::*;
-use std::rc::Rc;
+use gtk::{gdk::Key, prelude::*};
+use std::{cell::Cell, rc::Rc};
 
-#[test]
-fn focus_first_or_last_menu_item_does_not_crash_with_no_popover_child() {
-    crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::keyboard::focus_first_or_last_menu_item_does_not_crash_with_no_popover_child",
-        || {
-            let popover = gtk::Popover::new();
-            // Should not crash even if popover has no child
-            focus_first_or_last_menu_item(&popover, true);
-            focus_first_or_last_menu_item(&popover, false);
-        },
-    );
-}
-
-#[test]
-fn focus_first_or_last_menu_item_does_not_crash_with_empty_menu() {
-    crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::keyboard::focus_first_or_last_menu_item_does_not_crash_with_empty_menu",
-        || {
-            let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-
-            let scroll = gtk::ScrolledWindow::builder().child(&content).build();
-
-            let popover = gtk::Popover::builder().child(&scroll).build();
-
-            // Should not crash with empty menu
-            focus_first_or_last_menu_item(&popover, true);
-            focus_first_or_last_menu_item(&popover, false);
-        },
-    );
-}
-
-#[test]
-fn focus_first_or_last_menu_item_does_not_crash_with_only_separators() {
-    crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::keyboard::focus_first_or_last_menu_item_does_not_crash_with_only_separators",
-        || {
-            let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-
-            let separator1 = gtk::Separator::new(gtk::Orientation::Horizontal);
-            let separator2 = gtk::Separator::new(gtk::Orientation::Horizontal);
-
-            content.append(&separator1);
-            content.append(&separator2);
-
-            let scroll = gtk::ScrolledWindow::builder().child(&content).build();
-
-            let popover = gtk::Popover::builder().child(&scroll).build();
-
-            // Should not crash with only separators
-            focus_first_or_last_menu_item(&popover, true);
-            focus_first_or_last_menu_item(&popover, false);
-        },
-    );
-}
-
-#[test]
-fn focus_first_or_last_menu_item_does_not_crash_with_mixed_disabled_and_separators() {
-    crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::keyboard::focus_first_or_last_menu_item_does_not_crash_with_mixed_disabled_and_separators",
-        || {
-            let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-
-            let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-            let disabled_button = gtk::Button::with_label("Disabled");
-            disabled_button.set_sensitive(false);
-
-            content.append(&separator);
-            content.append(&disabled_button);
-
-            let scroll = gtk::ScrolledWindow::builder().child(&content).build();
-
-            let popover = gtk::Popover::builder().child(&scroll).build();
-
-            // Should not crash
-            focus_first_or_last_menu_item(&popover, true);
-            focus_first_or_last_menu_item(&popover, false);
-        },
-    );
-}
-
-#[test]
-fn focus_first_or_last_menu_item_does_not_crash_with_enabled_items() {
-    crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::keyboard::focus_first_or_last_menu_item_does_not_crash_with_enabled_items",
-        || {
-            let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
-
-            let first_button = gtk::Button::with_label("First");
-            let separator = gtk::Separator::new(gtk::Orientation::Horizontal);
-            let last_button = gtk::Button::with_label("Last");
-
-            content.append(&first_button);
-            content.append(&separator);
-            content.append(&last_button);
-
-            let scroll = gtk::ScrolledWindow::builder().child(&content).build();
-
-            let popover = gtk::Popover::builder().child(&scroll).build();
-
-            // Should not crash and should successfully navigate to enabled items
-            focus_first_or_last_menu_item(&popover, true);
-            focus_first_or_last_menu_item(&popover, false);
-        },
-    );
-}
-
-/// The item context menu nests real action buttons one level inside `single`/
-/// `multiple` sub-boxes (see `install_item_context_menu`); Home/End must
-/// recurse into that structure rather than stop at the first non-focusable
-/// direct child (`header`), which is the exact bug this traversal fixes.
-#[test]
-fn home_and_end_focus_real_first_and_last_menu_buttons() {
-    crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::keyboard::home_and_end_focus_real_first_and_last_menu_buttons",
-        || {
-            let (_fixture, view, window) = open_fixture(BrowserMode::Columns);
-
-            let menu = open_menu(&view, Some("notes.txt"));
-
-            focus_first_or_last_menu_item(&menu, true);
-            let first = gtk::prelude::RootExt::focus(&window).expect("home focuses an item");
-            assert!(
-                descendants(&first).iter().any(|widget| widget
-                    .downcast_ref::<gtk::Label>()
-                    .is_some_and(|text| text.text() == "Open")),
-                "Home must reach the first real action button, not the non-focusable header"
-            );
-
-            focus_first_or_last_menu_item(&menu, false);
-            let last = gtk::prelude::RootExt::focus(&window).expect("end focuses an item");
-            assert!(
-                descendants(&last).iter().any(|widget| widget
-                    .downcast_ref::<gtk::Label>()
-                    .is_some_and(|text| text.text() == "Permanently delete")),
-                "End must reach the last real action button inside the nested `single` box"
-            );
-
-            menu.popdown();
-            wait_until(|| menu.parent().is_none());
-            close_fixture(&view, &window);
-        },
-    );
-}
-
-/// Builds a real browser fixture with one directory of entries, in the given
-/// mode, and waits until its items are mapped.
-fn open_fixture(mode: BrowserMode) -> (tempfile::TempDir, BrowserView, gtk::Window) {
-    let fixture = tempfile::tempdir().expect("fixture dir");
-    let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
-    view.set_operation_provider(Rc::new(crate::adapters::LocalOperationProvider));
-    view.set_view_mode(mode);
-    let window = gtk::Window::builder()
-        .child(&view.widget())
-        .default_width(1000)
-        .default_height(850)
-        .build();
-    window.present();
-    view.browser().navigate(Location::local(fixture.path()));
-    wait_until(|| label(&view.widget(), "notes.txt").is_some());
-    (fixture, view, window)
-}
-
-fn close_fixture(view: &BrowserView, window: &gtk::Window) {
-    view.browser().clear_observer();
-    window.destroy();
-}
-
-#[test]
-fn escape_closes_popover_without_changing_selection() {
-    crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::keyboard::escape_closes_popover_without_changing_selection",
-        || {
-            let (_fixture, view, window) = open_fixture(BrowserMode::Columns);
-            view.browser().select(0, 0);
-
-            let menu = open_menu(&view, Some("notes.txt"));
-            let before = view.browser().selected_entries();
-
-            // GTK's native autohide calls popdown() on Escape; exercise the same path.
-            menu.popdown();
-            wait_until(|| menu.parent().is_none());
-
-            assert!(!menu.is_visible());
-            assert_eq!(view.browser().selected_entries(), before);
-
-            close_fixture(&view, &window);
-        },
-    );
-}
-
-#[test]
-fn enter_or_space_activates_focused_menu_item() {
-    crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::keyboard::enter_or_space_activates_focused_menu_item",
-        || {
-            let (_fixture, view, window) = open_fixture(BrowserMode::Columns);
-
-            let menu = open_menu(&view, None);
-            let select_all = descendants(menu.upcast_ref())
-                .into_iter()
-                .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
-                .find(|button| {
-                    descendants(button.upcast_ref()).iter().any(|child| {
-                        child
-                            .downcast_ref::<gtk::Label>()
-                            .is_some_and(|text| text.text() == "Select All")
-                    })
-                })
-                .expect("Select All action");
-
-            select_all.grab_focus();
-            assert!(select_all.has_focus());
-
-            // GTK activates a focused button's `clicked` signal on Enter/Space by
-            // calling `activate()`; invoke it the same way and check the real effect.
-            assert!(select_all.activate());
-            wait_until(|| menu.parent().is_none());
-            assert_eq!(view.browser().selected_entries().len(), 5);
-
-            close_fixture(&view, &window);
-        },
-    );
-}
-
-#[test]
-fn scrolled_window_autoscrolls_focused_menu_item_into_view() {
-    crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::keyboard::scrolled_window_autoscrolls_focused_menu_item_into_view",
-        || {
-            let (_fixture, view, window) = open_fixture(BrowserMode::Columns);
-
-            let menu = open_menu(&view, Some("notes.txt"));
-            let scroll = menu
-                .child()
-                .and_downcast::<gtk::ScrolledWindow>()
-                .expect("context menu scroll");
-            // Force real overflow, independent of window height or click position.
-            scroll.set_propagate_natural_height(false);
-            scroll.set_max_content_height(120);
-            wait_until(|| scroll.vadjustment().upper() > scroll.vadjustment().page_size());
-
-            focus_first_or_last_menu_item(&menu, false);
-            let focused =
-                gtk::prelude::RootExt::focus(&window).expect("last menu item takes focus");
-            wait_until(|| {
-                let scroll_bounds = scroll.compute_bounds(&window);
-                let item_bounds = focused.compute_bounds(&window);
-                let (Some(scroll_bounds), Some(item_bounds)) = (scroll_bounds, item_bounds) else {
-                    return false;
-                };
-                item_bounds.y() >= scroll_bounds.y() - 0.5
-                    && item_bounds.y() + item_bounds.height()
-                        <= scroll_bounds.y() + scroll_bounds.height() + 0.5
-            });
-
-            menu.popdown();
-            wait_until(|| menu.parent().is_none());
-            close_fixture(&view, &window);
-        },
-    );
-}
-
-/// The real path: select an item (which takes real GTK keyboard focus), open its
-/// context menu the way a keyboard invocation does, close it the way GTK's own
-/// Escape-autohide does, and confirm focus actually lands back on the same widget.
-fn assert_restores_focus_after_keyboard_close(mode: BrowserMode) {
-    let (_fixture, view, window) = open_fixture(mode);
-    view.browser().select(0, 0);
-    wait_until(|| gtk::prelude::RootExt::focus(&window).is_some());
-    let originating = gtk::prelude::RootExt::focus(&window).expect("item takes focus");
-
-    assert!(view.open_focused_context_menu());
-    let root = window.clone().upcast::<gtk::Widget>();
-    let popover = std::cell::RefCell::new(None);
+fn menu(window: &gtk::Window) -> gtk::Popover {
+    let popup = descendants(window.upcast_ref())
+        .into_iter()
+        .filter_map(|widget| widget.downcast::<gtk::Popover>().ok())
+        .find(|popover| popover.is_mapped())
+        .expect("mapped context menu");
     wait_until(|| {
-        popover.replace(
-            descendants(&root)
-                .into_iter()
-                .filter_map(|widget| widget.downcast::<gtk::Popover>().ok())
-                .find(|popover| popover.is_visible()),
-        );
-        popover.borrow().is_some()
+        descendants(popup.upcast_ref())
+            .iter()
+            .any(|widget| widget.is::<gtk::Button>() && widget.is_mapped() && widget.width() > 0)
     });
-    let popover = popover.into_inner().expect("context menu popover");
+    popup
+}
 
-    popover.popdown();
-    wait_until(|| popover.parent().is_none());
+fn press(popover: &gtk::Popover, key: Key) {
+    let controllers = popover.observe_controllers();
+    let keys = (0..controllers.n_items())
+        .filter_map(|index| {
+            controllers
+                .item(index)
+                .and_downcast::<gtk::EventControllerKey>()
+        })
+        .find(|keys| keys.propagation_phase() == gtk::PropagationPhase::Capture)
+        .expect("menu keyboard controller");
+    assert!(keys.emit_by_name::<bool>(
+        "key-pressed",
+        &[&key, &0u32, &gtk::gdk::ModifierType::empty()],
+    ));
+}
 
-    let restored = gtk::prelude::RootExt::focus(&window);
-    assert_eq!(
-        restored.as_ref(),
-        Some(&originating),
-        "{mode:?}: focus must return to the originating item after a keyboard-closed menu"
-    );
+fn position(view: &BrowserView, name: &str) -> usize {
+    (0..100)
+        .find(|position| {
+            view.browser()
+                .entry_at(0, *position)
+                .is_some_and(|entry| entry.display_name == name)
+        })
+        .expect("source entry")
+}
 
-    close_fixture(&view, &window);
+fn native_selection_count(view: &BrowserView) -> u64 {
+    descendants(&view.widget())
+        .into_iter()
+        .filter(|widget| widget.is_mapped())
+        .filter_map(|widget| {
+            widget
+                .downcast_ref::<gtk::ListView>()
+                .and_then(|view| view.model())
+                .or_else(|| {
+                    widget
+                        .downcast_ref::<gtk::GridView>()
+                        .and_then(|view| view.model())
+                })
+        })
+        .map(|selection| selection.selection().size())
+        .sum()
 }
 
 #[test]
-fn context_menu_restore_focus_after_close_columns_mode() {
+fn keyboard_menus_preserve_filtered_grouped_and_chooser_selections() {
     crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::keyboard::context_menu_restore_focus_after_close_columns_mode",
-        || assert_restores_focus_after_keyboard_close(BrowserMode::Columns),
+        "ui::browser::context_menu::tests::keyboard::keyboard_menus_preserve_filtered_grouped_and_chooser_selections",
+        || {
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                for chooser in [false, true] {
+                    for grouped in [false, true]
+                        .into_iter()
+                        .filter(|grouped| !grouped || mode != BrowserMode::Columns)
+                    {
+                        let root = tempfile::tempdir().expect("fixture");
+                        for name in [".a-hidden", "notes.txt", "picture.png"] {
+                            std::fs::write(root.path().join(name), "fixture").expect("file");
+                        }
+                        std::fs::create_dir(root.path().join("folder")).expect("folder");
+                        let source = Rc::new(crate::adapters::LocalFileSource);
+                        let view = if chooser {
+                            BrowserView::new_chooser(source, true)
+                        } else {
+                            BrowserView::new(source, PeekBehavior::default())
+                        };
+                        view.set_view_mode(mode);
+                        view.set_group_by_type(grouped);
+                        let window = gtk::Window::builder()
+                            .child(&view.widget())
+                            .default_width(1000)
+                            .default_height(700)
+                            .build();
+                        window.present();
+                        view.browser().navigate(Location::local(root.path()));
+                        if view.browser().preferences().show_hidden {
+                            view.browser().toggle_hidden();
+                        }
+                        wait_until(|| label(&view.widget(), "picture.png").is_some());
+                        let notes = position(&view, "notes.txt");
+                        let picture = position(&view, "picture.png");
+                        view.browser()
+                            .set_selection(0, &[notes, picture], Some(picture));
+                        view.browser().focus_active();
+                        wait_until(|| view.item_view_has_focus());
+                        let selected_locations = || {
+                            view.browser()
+                                .selected_entries()
+                                .into_iter()
+                                .map(|entry| entry.location)
+                                .collect::<Vec<_>>()
+                        };
+                        let before = selected_locations();
+                        assert_eq!(native_selection_count(&view), 2);
+                        let origin = gtk::prelude::RootExt::focus(&window);
+                        assert!(
+                            view.open_focused_context_menu(),
+                            "{mode:?} chooser={chooser} grouped={grouped}"
+                        );
+                        let popup = menu(&window);
+                        assert!(
+                            label(
+                                popup.upcast_ref(),
+                                if chooser { "Properties" } else { "Copy" }
+                            )
+                            .is_some(),
+                            "{mode:?} chooser={chooser} grouped={grouped}"
+                        );
+                        assert!(label(popup.upcast_ref(), "New Folder").is_none());
+                        if !chooser {
+                            assert!(label(popup.upcast_ref(), "2 items selected").is_some());
+                        }
+                        press(&popup, Key::Escape);
+                        wait_until(|| popup.parent().is_none());
+                        assert_eq!(selected_locations(), before);
+                        assert_eq!(native_selection_count(&view), 2);
+                        assert_eq!(gtk::prelude::RootExt::focus(&window), origin);
+
+                        view.browser().clear_active_selection();
+                        assert!(view.open_focused_context_menu());
+                        let popup = menu(&window);
+                        assert!(label(popup.upcast_ref(), "New Folder").is_some());
+                        press(&popup, Key::Escape);
+                        wait_until(|| popup.parent().is_none());
+                        assert!(view.browser().selected_entries().is_empty());
+                        assert_eq!(native_selection_count(&view), 0);
+                        view.browser().clear_observer();
+                        window.destroy();
+                    }
+                }
+            }
+        },
     );
 }
 
 #[test]
-fn context_menu_restore_focus_after_close_icons_mode() {
+fn keyboard_trash_menu_targets_the_selection_in_every_view() {
     crate::test_support::gtk_test(
-        "ui::browser::context_menu::tests::keyboard::context_menu_restore_focus_after_close_icons_mode",
-        || assert_restores_focus_after_keyboard_close(BrowserMode::Icons),
+        "ui::browser::context_menu::tests::keyboard::keyboard_trash_menu_targets_the_selection_in_every_view",
+        || {
+            for mode in [BrowserMode::Columns, BrowserMode::Icons, BrowserMode::List] {
+                let view = BrowserView::new(Rc::new(MenuSource), PeekBehavior::default());
+                view.set_view_mode(mode);
+                let window = gtk::Window::builder()
+                    .child(&view.widget())
+                    .default_width(1000)
+                    .default_height(700)
+                    .build();
+                window.present();
+                view.browser().navigate(Location::uri("trash:///"));
+                wait_until(|| label(&view.widget(), "notes.txt").is_some());
+                view.browser().select(0, position(&view, "notes.txt"));
+                view.browser().focus_active();
+                assert!(view.open_focused_context_menu());
+                let popup = menu(&window);
+                assert!(label(popup.upcast_ref(), "Restore").is_some(), "{mode:?}");
+                assert!(label(popup.upcast_ref(), "notes.txt").is_some());
+                press(&popup, Key::Escape);
+                wait_until(|| popup.parent().is_none());
+                assert_eq!(
+                    view.browser().selected_entries()[0].display_name,
+                    "notes.txt"
+                );
+                view.browser().clear_observer();
+                window.destroy();
+            }
+        },
+    );
+}
+
+#[test]
+fn menu_keys_skip_inactive_actions_wrap_scroll_and_activate() {
+    crate::test_support::gtk_test(
+        "ui::browser::context_menu::tests::keyboard::menu_keys_skip_inactive_actions_wrap_scroll_and_activate",
+        || {
+            let content = crate::ui::accessibility::menu_box();
+            let nested = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            content.append(&gtk::Label::new(Some("Header")));
+            content.append(&nested);
+            let activated = Rc::new(Cell::new(0));
+            let buttons: Vec<_> = (0..30)
+                .map(|index| {
+                    let button = gtk::Button::with_label(&format!("Action {index}"));
+                    let activated = activated.clone();
+                    button.connect_clicked(move |_| activated.set(activated.get() + 1));
+                    nested.append(&button);
+                    button
+                })
+                .collect();
+            buttons[1].set_sensitive(false);
+            buttons[2].set_visible(false);
+            nested.insert_child_after(
+                &gtk::Separator::new(gtk::Orientation::Horizontal),
+                Some(&buttons[0]),
+            );
+            let (popup, scroll) = context_menu_popover(&content);
+            scroll.set_max_content_height(120);
+            let anchor = gtk::Box::new(gtk::Orientation::Vertical, 0);
+            let window = gtk::Window::builder()
+                .child(&anchor)
+                .default_width(400)
+                .default_height(300)
+                .build();
+            popup.set_parent(&anchor);
+            window.present();
+            popup.popup();
+            wait_until(|| {
+                popup.is_mapped() && scroll.vadjustment().upper() > scroll.vadjustment().page_size()
+            });
+            press(&popup, Key::Home);
+            assert!(buttons[0].has_focus());
+            press(&popup, Key::Down);
+            assert!(buttons[3].has_focus());
+            press(&popup, Key::Up);
+            assert!(buttons[0].has_focus());
+            press(&popup, Key::Up);
+            assert!(buttons[29].has_focus());
+            wait_until(|| {
+                let bounds = buttons[29].compute_bounds(&scroll).expect("button bounds");
+                bounds.y() >= -0.5 && bounds.y() + bounds.height() <= scroll.height() as f32 + 0.5
+            });
+            press(&popup, Key::Down);
+            assert!(buttons[0].has_focus());
+            press(&popup, Key::End);
+            assert!(buttons[29].has_focus());
+            press(&popup, Key::Tab);
+            assert!(buttons[0].has_focus());
+            press(&popup, Key::ISO_Left_Tab);
+            assert!(buttons[29].has_focus());
+            press(&popup, Key::Return);
+            wait_until(|| activated.get() == 1);
+            press(&popup, Key::space);
+            wait_until(|| activated.get() == 2);
+            press(&popup, Key::Escape);
+            wait_until(|| !popup.is_visible());
+            popup.unparent();
+            window.destroy();
+        },
     );
 }

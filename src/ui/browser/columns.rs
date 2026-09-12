@@ -102,20 +102,23 @@ pub(super) struct ColumnView {
 }
 
 impl ColumnView {
-    /// The trigger and local `(x, y)` point to open this column's context menu
-    /// for `position` (the item menu) or its background (the folder menu, when
-    /// `position` is `None` or not currently rendered).
     pub(super) fn context_menu_target(
         &self,
         position: Option<usize>,
     ) -> Option<crate::ui::browser::ContextMenuTarget> {
-        if let Some(position) = position
-            && let Some(row) = self.bound_rows.borrow().iter().find_map(|bound| {
+        let position = if self.search_handle.borrow().is_some() {
+            bitset_positions(&self.selection.selection())
+                .last()
+                .copied()
+        } else {
+            position.and_then(|position| self.map.view_position(position))
+        };
+        if let Some(position) = position {
+            let row = self.bound_rows.borrow().iter().find_map(|bound| {
                 let item = bound.item.upgrade()?;
-                (item.position() as usize == position).then(|| bound.row.upgrade())?
-            })
-            && let Some(bounds) = row.compute_bounds(&self.list)
-        {
+                (item.position() == position).then(|| bound.row.upgrade())?
+            })?;
+            let bounds = row.compute_bounds(&self.list)?;
             return Some((
                 self.item_context_trigger.clone(),
                 f64::from(bounds.center().x()),

@@ -30,7 +30,7 @@ use super::{
 
 mod composition;
 mod devices;
-pub mod keyboard;
+mod keyboard;
 mod open_argument;
 mod sidebar;
 
@@ -439,14 +439,16 @@ pub(super) fn is_context_menu_shortcut(
     key: gtk::gdk::Key,
     modifiers: gtk::gdk::ModifierType,
 ) -> bool {
+    let modifiers = modifiers
+        & (gtk::gdk::ModifierType::SHIFT_MASK
+            | gtk::gdk::ModifierType::CONTROL_MASK
+            | gtk::gdk::ModifierType::ALT_MASK
+            | gtk::gdk::ModifierType::SUPER_MASK
+            | gtk::gdk::ModifierType::HYPER_MASK
+            | gtk::gdk::ModifierType::META_MASK);
     match key {
         gtk::gdk::Key::Menu => modifiers.is_empty(),
-        gtk::gdk::Key::F10 => {
-            modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK)
-                && !modifiers.intersects(
-                    gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK,
-                )
-        }
+        gtk::gdk::Key::F10 => modifiers == gtk::gdk::ModifierType::SHIFT_MASK,
         _ => false,
     }
 }

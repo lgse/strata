@@ -152,10 +152,9 @@ impl ModeViews {
             } => {
                 self.update_selection(*depth, positions, *take_focus);
             }
-            BrowserEvent::FocusChanged { depth, position } => {
-                self.update_panes(*depth, |pane| {
-                    set_selections(pane, &position.iter().copied().collect::<Vec<_>>())
-                });
+            BrowserEvent::FocusChanged { depth, .. } => {
+                let positions = self.browser.selected_positions(*depth);
+                self.update_panes(*depth, |pane| set_selections(pane, &positions));
                 self.focus_visible_pane(*depth);
             }
             _ => {}

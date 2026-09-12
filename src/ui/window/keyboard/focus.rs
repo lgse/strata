@@ -38,36 +38,7 @@ impl Dispatcher {
             popover.child_focus(direction);
             return Some(Propagation::Stop);
         }
-        if popover.has_css_class("folder-context-popover") {
-            return self.context_menu_popover_navigation(event, &popover);
-        }
         Some(Propagation::Proceed)
-    }
-
-    fn context_menu_popover_navigation(
-        &self,
-        event: &KeyEvent,
-        popover: &gtk::Popover,
-    ) -> KeyResult {
-        match event.key {
-            Key::Up => {
-                navigate_menu_items(popover, gtk::DirectionType::Up);
-                Some(Propagation::Stop)
-            }
-            Key::Down => {
-                navigate_menu_items(popover, gtk::DirectionType::Down);
-                Some(Propagation::Stop)
-            }
-            Key::Home => {
-                focus_first_or_last_menu_item(popover, true);
-                Some(Propagation::Stop)
-            }
-            Key::End => {
-                focus_first_or_last_menu_item(popover, false);
-                Some(Propagation::Stop)
-            }
-            _ => None,
-        }
     }
 
     fn top_bar_navigation(&self, browser: &Browser, event: &KeyEvent) -> KeyResult {
@@ -144,61 +115,4 @@ impl Dispatcher {
         }
         Some(Propagation::Stop)
     }
-}
-
-fn navigate_menu_items(popover: &gtk::Popover, direction: gtk::DirectionType) {
-    if popover.child_focus(direction) {
-        return;
-    }
-    // `child_focus` returning false leaves focus on the current (edge) widget;
-    // wrap explicitly to the opposite end instead of nudging from there.
-    focus_first_or_last_menu_item(popover, direction == gtk::DirectionType::Down);
-}
-
-/// Real menu content nests action buttons inside sub-containers (an item
-/// menu's `single`/`multiple` groups), so this walks the tree depth-first
-/// rather than only the popover content's direct children.
-pub fn focus_first_or_last_menu_item(popover: &gtk::Popover, first: bool) {
-    let Some(scrolled) = popover.child().and_downcast::<gtk::ScrolledWindow>() else {
-        return;
-    };
-    let Some(content) = scrolled.child() else {
-        return;
-    };
-    focus_first_focusable_descendant(&content, first);
-}
-
-fn focus_first_focusable_descendant(container: &gtk::Widget, first: bool) -> bool {
-    let mut current = if first {
-        container.first_child()
-    } else {
-        container.last_child()
-    };
-    while let Some(widget) = current {
-        if try_focus_menu_item(&widget, first) {
-            return true;
-        }
-        current = if first {
-            widget.next_sibling()
-        } else {
-            widget.prev_sibling()
-        };
-    }
-    false
-}
-
-fn try_focus_menu_item(widget: &gtk::Widget, first: bool) -> bool {
-    if !widget.is_visible() {
-        return false;
-    }
-    // A candidate that looks focusable can still fail to take focus; keep
-    // scanning rather than stopping on a silent no-op.
-    if is_focusable_menu_item(widget) && widget.grab_focus() {
-        return true;
-    }
-    focus_first_focusable_descendant(widget, first)
-}
-
-fn is_focusable_menu_item(widget: &gtk::Widget) -> bool {
-    widget.type_() != gtk::Separator::static_type() && widget.is_sensitive() && widget.is_visible()
 }

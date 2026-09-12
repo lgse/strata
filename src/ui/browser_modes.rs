@@ -1177,8 +1177,6 @@ impl ModeViews {
         }
     }
 
-    /// The menu for the pane's own background. Item menus belong to the sections that
-    /// render them, so a grouped view installs one per group as it is built.
     fn install_context_menu(&self, pane: &Pane) -> Rc<dyn Fn(f64, f64)> {
         let Some(state) = self.context_state.borrow().as_ref().and_then(Weak::upgrade) else {
             return Rc::new(|_, _| {});
@@ -1212,21 +1210,26 @@ impl ModeViews {
         )
     }
 
-    /// The trigger and local `(x, y)` point to open the context menu for `position`
-    /// within the pane at `depth` (the item menu, searching every section since a
-    /// grouped view has one section per type group), or the pane's own background
-    /// (the folder menu) when `position` is `None` or not currently rendered.
     pub(super) fn context_menu_target(
         &self,
         depth: usize,
         position: Option<usize>,
     ) -> Option<crate::ui::browser::ContextMenuTarget> {
         let pane = self.panes_at(depth).into_iter().next()?;
-        if let Some(position) = position {
-            for section in std::iter::once(&pane.section).chain(pane.sections.borrow().iter()) {
+        if pane.search.selected_entries().is_some() {
+            if let Some(target) = pane.search.context_menu_target() {
+                return Some(target);
+            }
+        } else if let Some(position) = position {
+            for section in pane.item_sections() {
+                let Some(view_position) =
+                    view_position_for_source(&pane.model, Some(&section.view_model), position)
+                else {
+                    continue;
+                };
                 let Some(widget) = section.bound_items.borrow().iter().find_map(|bound| {
                     let item = bound.item.upgrade()?;
-                    (item.position() as usize == position).then(|| bound.widget.upgrade())?
+                    (item.position() == view_position).then(|| bound.widget.upgrade())?
                 }) else {
                     continue;
                 };
@@ -1238,6 +1241,7 @@ impl ModeViews {
                     ));
                 }
             }
+            return None;
         }
         let width = f64::from(pane.stack.width());
         let height = f64::from(pane.stack.height());
@@ -4137,20 +4141,26 @@ fn install_section_context_menu(
     source_index: &SourceIndexMap,
     depth: usize,
 ) -> Rc<dyn Fn(f64, f64)> {
-    let owner = section.clone();
-    let pick_position = Rc::new(move |picked: &gtk::Widget| section_item_position(&owner, picked));
+    let items = section.bound_items.clone();
+    let pick_position = Rc::new(move |picked: &gtk::Widget| {
+        items.borrow().iter().find_map(|bound| {
+            let widget = bound.widget.upgrade()?;
+            (widget == *picked || picked.is_ancestor(&widget))
+                .then(|| bound.item.upgrade().map(|item| item.position()))?
+        })
+    });
     let source_index = source_index.clone();
     let view_model = section.view_model.clone();
     let source_position = Rc::new(move |position| {
         source_position_for_view(&source_index, Some(&view_model), position)
     });
-    let owner_view = section.view.clone();
+    let owner_view = section.view.downgrade();
     let clear_other_selections = Rc::new(move || {
         let Some(sections) = sections.upgrade() else {
             return;
         };
         for other in sections.borrow().iter() {
-            if other.view == owner_view {
+            if Some(&other.view) == owner_view.upgrade().as_ref() {
                 continue;
             }
             other.syncing.set(true);

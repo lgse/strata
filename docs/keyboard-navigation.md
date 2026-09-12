@@ -108,7 +108,7 @@ From the sidebar, Right returns to the item you left (or the current file view i
 **Menu** (the hardware context-menu key) and **Shift+F10** open the selection-aware
 context menu without the pointer. With an item keyboard-focused, the menu opens for
 that item — or the full multi-selection, if the focused item is part of one. With no
-item focus, it opens the active pane's background menu. The menu is anchored to the
+selection, it opens the active pane's background menu. The menu is anchored to the
 focused item or pane, never to the pointer.
 
 Once open: **Up/Down** move between enabled actions, wrapping past the first/last;

@@ -65,7 +65,7 @@ pub(crate) use crate::ui::browser::collection::{
 pub(super) use crate::ui::browser::columns::max_child_natural_width;
 pub(crate) use crate::ui::browser::columns::should_preserve_drag_selection;
 pub(super) use crate::ui::browser::context_menu::{
-    ContextMenuTarget, install_folder_context_menu, install_item_context_menu,
+    ContextMenuTarget, ContextMenuTrigger, install_folder_context_menu, install_item_context_menu,
     install_resolved_item_context_menu,
 };
 pub(super) use crate::ui::browser::desktop::{launch_terminal, open_location};
@@ -150,6 +150,7 @@ pub(super) struct ViewState {
     hovered_column: Cell<Option<usize>>,
     context_menu_column: Cell<Option<usize>>,
     context_menu_generation: Cell<u64>,
+    context_menu_focus: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
     input_ownership: RefCell<super::input_ownership::InputOwnership>,
     horizontal_scroll_generation: Rc<Cell<u64>>,
     source_generation: Rc<Cell<u64>>,
@@ -466,6 +467,7 @@ impl BrowserView {
             hovered_column: Cell::new(None),
             context_menu_column: Cell::new(None),
             context_menu_generation: Cell::new(0),
+            context_menu_focus: RefCell::new(None),
             input_ownership: RefCell::new(super::input_ownership::InputOwnership::default()),
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
             source_generation,
@@ -1510,7 +1512,12 @@ impl BrowserView {
         let Some(depth) = depth else {
             return false;
         };
-        let position = focused.map(|(_, position, _)| position);
+        let position = focused.map(|(_, position, _)| position).filter(|position| {
+            self.state
+                .browser
+                .selected_positions(depth)
+                .contains(position)
+        });
 
         let target = if self.view_mode() == BrowserMode::Columns {
             self.columns_context_menu_target(depth, position)
@@ -1794,6 +1801,10 @@ impl ViewState {
     }
 
     fn select_all(&self, depth: usize) {
+        if self.mode_views.borrow().mode() != BrowserMode::Columns {
+            self.browser.select_all(depth);
+            return;
+        }
         if let Some(column) = self.columns.borrow().get(depth) {
             column.selection.select_all();
             column.list.grab_focus();

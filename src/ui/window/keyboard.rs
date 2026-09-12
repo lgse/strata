@@ -19,7 +19,7 @@ use crate::{
 use super::{SidebarState, SidebarView, TypeToSearch, visible_modal_layer};
 
 mod commands;
-pub mod focus;
+mod focus;
 mod items;
 
 // None tries the next Strata stage; Some(Proceed) gives the event to GTK instead.
@@ -125,6 +125,7 @@ impl Dispatcher {
             .or_else(|| self.filter_and_location_commands(&event))
             .or_else(|| self.video_controls(&event))
             .or_else(|| self.sidebar_commands(browser, &event))
+            .or_else(|| self.context_menu_command(&event))
             .or_else(|| {
                 // Search rows own navigation; directory commands must not act on hidden selections.
                 (self.view.selected_search_results().is_some() && !event.text_has_focus())
@@ -132,7 +133,6 @@ impl Dispatcher {
             })
             .or_else(|| self.text_input(&event))
             .or_else(|| self.file_commands(browser, &event))
-            .or_else(|| self.context_menu_command(&event))
             .or_else(|| self.focus_navigation(browser, &mut event))
             .or_else(|| self.dismissal(browser, &event))
             .or_else(|| self.item_navigation(browser, &event))
@@ -147,6 +147,12 @@ impl Dispatcher {
                 layer.grab_focus();
                 return Some(Propagation::Stop);
             }
+            return Some(Propagation::Proceed);
+        }
+        if gtk::prelude::RootExt::focus(&self.window)
+            .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
+            .is_some_and(|popover| popover.has_css_class("folder-context-popover"))
+        {
             return Some(Propagation::Proceed);
         }
         if !self.inline_editing_active()

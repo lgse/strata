@@ -25,11 +25,10 @@ use super::{
     is_toggle_hidden_shortcut, is_undo_shortcut, jump_direction, load_pinned_places,
     media_release_label, mount_release_action, mouse_history_action, page_direction,
     parse_pinned_drag_source, parse_pinned_places, pin_status, pinned_places_path,
-    remove_pinned_place, reorder_pinned_places, reorder_places,
-    resolve_place_order, serialize_pinned_places, should_show_standard_place,
-    sidebar_accepts_file_drop, sidebar_update_label, standard_place, trash_contents_from_probe,
-    trash_has_entries, trash_menu_visibility, type_to_search_query, vim_focus_direction,
-    volume_release_action,
+    remove_pinned_place, reorder_pinned_places, reorder_places, resolve_place_order,
+    serialize_pinned_places, should_show_standard_place, sidebar_accepts_file_drop,
+    sidebar_update_label, standard_place, trash_contents_from_probe, trash_has_entries,
+    trash_menu_visibility, type_to_search_query, vim_focus_direction, volume_release_action,
 };
 
 #[test]
@@ -326,6 +325,21 @@ fn context_menu_shortcut_accepts_menu_key_alone_and_shift_f10() {
         shift | control
     ));
     assert!(!is_context_menu_shortcut(gtk::gdk::Key::F10, shift | alt));
+    for modifier in [
+        gtk::gdk::ModifierType::SUPER_MASK,
+        gtk::gdk::ModifierType::HYPER_MASK,
+        gtk::gdk::ModifierType::META_MASK,
+    ] {
+        assert!(!is_context_menu_shortcut(
+            gtk::gdk::Key::F10,
+            shift | modifier
+        ));
+        assert!(!is_context_menu_shortcut(gtk::gdk::Key::Menu, modifier));
+    }
+    assert!(is_context_menu_shortcut(
+        gtk::gdk::Key::Menu,
+        gtk::gdk::ModifierType::LOCK_MASK
+    ));
 }
 
 #[test]

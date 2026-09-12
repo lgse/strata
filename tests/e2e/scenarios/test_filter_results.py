@@ -67,10 +67,26 @@ def test_filter_text_selection_uses_the_active_theme(strata, mode, tmp_path):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_filtered_item_menu_previews_and_copies_the_real_location(strata, mode):
+@pytest.mark.parametrize("trigger", ["pointer", "keyboard"])
+def test_filtered_item_menu_previews_and_copies_the_real_location(strata, mode, trigger):
     field = filter_results(strata)
     row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
-    strata.pointer.right_click(row)
+    if trigger == "pointer":
+        strata.pointer.right_click(row)
+    else:
+        strata.pointer.right_click(row)
+        strata.wait(strata.context_menu, "the result menu")
+        strata.choose_menu_item("Rename")
+        strata.wait_for_dialog()
+        strata.keyboard.press("Escape")
+        strata.wait(lambda: strata.dialog() is None, "rename cancellation")
+        strata.wait(lambda: row.has_state("focused"), "the result to own keyboard focus")
+        strata.keyboard.press("Menu")
+        strata.wait(strata.context_menu, "the keyboard result menu")
+        strata.keyboard.press("Escape")
+        strata.wait(lambda: strata.context_menu() is None, "the result menu to close")
+        strata.wait(lambda: row.has_state("focused"), "focus to return to the result")
+        strata.keyboard.press("shift+F10")
     strata.wait(strata.context_menu, "the result menu")
     assert row.has_state("selected")
     assert "Quick preview" in strata.menu_items()

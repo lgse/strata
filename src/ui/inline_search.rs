@@ -28,6 +28,7 @@ struct State {
     generation: Cell<u64>,
     root: PathBuf,
     recursive: Cell<bool>,
+    context_menu_trigger: RefCell<Option<super::browser::ContextMenuTrigger>>,
 }
 
 #[derive(Clone)]
@@ -59,12 +60,24 @@ impl InlineSearch {
             state.list.select_row(Some(&row));
             Some((None, entry))
         });
-        super::browser::install_resolved_item_context_menu(
+        let trigger = super::browser::install_resolved_item_context_menu(
             view,
             state.list.upcast_ref(),
             resolve,
             depth,
         );
+        state.context_menu_trigger.replace(Some(trigger));
+    }
+
+    pub fn context_menu_target(&self) -> Option<super::browser::ContextMenuTarget> {
+        let state = self.state.as_ref()?;
+        let row = state.list.selected_row()?;
+        let bounds = row.compute_bounds(&state.list)?;
+        Some((
+            state.context_menu_trigger.borrow().as_ref()?.clone(),
+            f64::from(bounds.center().x()),
+            f64::from(bounds.center().y()),
+        ))
     }
 
     pub fn selected_entry(&self) -> Option<crate::model::FileEntry> {
@@ -186,6 +199,7 @@ pub(super) fn wrap(
         generation: Cell::new(0),
         root: root.clone(),
         recursive: Cell::new(false),
+        context_menu_trigger: RefCell::new(None),
     });
     let weak = Rc::downgrade(&state);
     state.list.set_sort_func(move |left, right| {

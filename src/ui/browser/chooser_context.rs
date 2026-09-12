@@ -64,12 +64,15 @@ pub(super) fn install_folder(
     location: Location,
 ) -> Rc<dyn Fn(f64, f64)> {
     let weak = Rc::downgrade(state);
-    let anchor_for_trigger = parent.clone();
+    let anchor_for_trigger = parent.downgrade();
     let location_for_trigger = location.clone();
     let open_at: Rc<dyn Fn(f64, f64)> = {
         let weak = weak.clone();
         Rc::new(move |x: f64, y: f64| {
             let Some(state) = weak.upgrade() else {
+                return;
+            };
+            let Some(anchor) = anchor_for_trigger.upgrade() else {
                 return;
             };
             let weak = Rc::downgrade(&state);
@@ -90,7 +93,7 @@ pub(super) fn install_folder(
             );
             bind_column_context_owner(&state, &popover, depth);
             focus_context_column(&state, depth);
-            show_context_popover(&popover, &scroll, &anchor_for_trigger, x, y);
+            show_context_popover(&popover, &scroll, &anchor, x, y);
         })
     };
 
@@ -121,9 +124,12 @@ pub(super) fn install_item(
     depth: usize,
 ) -> Rc<dyn Fn(f64, f64)> {
     let weak = Rc::downgrade(state);
-    let widget_for_trigger = widget.clone();
+    let widget_for_trigger = widget.downgrade();
     let open_at_resolved: Rc<dyn Fn(f64, f64) -> bool> = Rc::new(move |x: f64, y: f64| {
-        let Some(picked) = widget_for_trigger.pick(x, y, gtk::PickFlags::DEFAULT) else {
+        let Some(widget) = widget_for_trigger.upgrade() else {
+            return false;
+        };
+        let Some(picked) = widget.pick(x, y, gtk::PickFlags::DEFAULT) else {
             return false;
         };
         let Some(state) = weak.upgrade() else {
@@ -172,7 +178,7 @@ pub(super) fn install_item(
         });
         bind_column_context_owner(&state, &popover, depth);
         focus_context_column(&state, depth);
-        show_context_popover(&popover, &scroll, &widget_for_trigger, x, y);
+        show_context_popover(&popover, &scroll, &widget, x, y);
         true
     });
 
@@ -183,6 +189,7 @@ pub(super) fn install_item(
 
     let click = gtk::GestureClick::new();
     click.set_button(3);
+    click.set_propagation_phase(gtk::PropagationPhase::Capture);
     click.connect_pressed(move |gesture, _, x, y| {
         if open_at_resolved(x, y) {
             gesture.set_state(gtk::EventSequenceState::Claimed);
