@@ -152,7 +152,7 @@ def test_preview_follows_extended_selection_without_collapsing_it(strata, mode):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_preview_closes_on_a_folder_and_stays_closed_when_selection_moves(strata, mode):
+def test_preview_hides_on_a_folder_and_resumes_when_selection_moves(strata, mode):
     strata.select_entry_with_keyboard("data.csv")
     strata.keyboard.press("space")
     strata.wait(lambda: strata.preview_shows("alpha"), "the file preview")
@@ -163,10 +163,10 @@ def test_preview_closes_on_a_folder_and_stays_closed_when_selection_moves(strata
     strata.wait(lambda: strata.preview() is None, "the folder to dismiss the preview")
     strata.keyboard.press(NEXT_ENTRY_KEY[mode])
     strata.wait_for_selection(["data.csv"])
-    assert strata.preview() is None, "selection must not open a closed preview"
+    strata.wait(lambda: strata.preview_shows("alpha"), "the still-enabled preview to resume")
 
 
-def test_preview_closes_on_shift_range_folder_focus(strata):
+def test_preview_hides_on_shift_range_folder_focus(strata):
     strata.switch_view("List")
     strata.select_entry_with_keyboard("notes.txt")
     strata.keyboard.press("space")
@@ -184,7 +184,7 @@ def test_preview_closes_on_shift_range_folder_focus(strata):
 
     strata.keyboard.press("shift+Down")
     strata.wait_for_selection(["data.csv", "notes.txt"])
-    assert strata.preview() is None
+    strata.wait(lambda: strata.preview_shows("alpha"), "preview to resume after the folder")
 
 
 def test_preview_renders_markdown(strata):

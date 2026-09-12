@@ -24,6 +24,7 @@ use super::{blur::BlurBin, controls::modal_layout};
 
 mod layout;
 mod media_layout;
+mod session;
 
 const DEFAULT_WIDTH: i32 = 520;
 const MIN_WIDTH: i32 = 560;
@@ -100,7 +101,7 @@ struct PreviewState {
     print_request: Cell<Option<PreviewRequestId>>,
     current_request: Cell<Option<PreviewRequestId>>,
     next_request: Cell<u64>,
-    opened: Cell<bool>,
+    enabled_action: gio::SimpleAction,
     animating: Cell<bool>,
     animation_generation: Rc<Cell<u64>>,
 }
@@ -217,9 +218,30 @@ impl PreviewDrawer {
             print_request: Cell::new(None),
             current_request: Cell::new(None),
             next_request: Cell::new(1),
-            opened: Cell::new(false),
+            enabled_action: gio::SimpleAction::new_stateful(
+                "preview-panel",
+                None,
+                &false.to_variant(),
+            ),
             animating: Cell::new(false),
             animation_generation: Rc::new(Cell::new(0)),
+        });
+        let weak = Rc::downgrade(&state);
+        state.enabled_action.connect_activate(move |_, _| {
+            if let Some(state) = weak.upgrade() {
+                let entry = state.selected_entry();
+                state.toggle(entry);
+            }
+        });
+        let weak = Rc::downgrade(&state);
+        state.enabled_action.connect_change_state(move |_, value| {
+            if let Some(state) = weak.upgrade()
+                && let Some(enabled) = value.and_then(|value| value.get::<bool>())
+                && enabled != state.is_enabled()
+            {
+                let entry = state.selected_entry();
+                state.toggle(entry);
+            }
         });
         install_preview_drag(&header_handle, &state);
         let weak = Rc::downgrade(&state);
@@ -290,21 +312,21 @@ impl PreviewDrawer {
                 depth,
                 focused: position,
                 ..
-            } if self.is_open() => {
+            } if self.is_enabled() => {
                 if let Some(entry) = browser
                     .entry_at(*depth, *position)
                     .and_then(|entry| preview_target(Some(entry)))
                 {
                     self.show(entry);
                 } else {
-                    self.close();
+                    self.clear_target();
                 }
             }
             BrowserEvent::FocusChanged { position: None, .. }
             | BrowserEvent::SelectionSynced { focused: None, .. }
-                if self.is_open() =>
+                if self.is_enabled() =>
             {
-                self.close()
+                self.clear_target()
             }
             _ => {}
         }
@@ -315,7 +337,7 @@ impl PreviewDrawer {
     }
 
     pub fn is_open(&self) -> bool {
-        self.state.opened.get()
+        self.state.revealer.reveals_child()
     }
 
     pub fn has_video(&self) -> bool {
@@ -382,7 +404,12 @@ impl PreviewDrawer {
     }
 
     pub fn show(&self, entry: FileEntry) {
-        self.state.show(entry);
+        self.state.set_enabled(true);
+        if let Some(entry) = preview_target(Some(entry)) {
+            self.state.show(entry);
+        } else {
+            self.state.clear_target();
+        }
     }
 
     pub fn close(&self) {
@@ -390,11 +417,7 @@ impl PreviewDrawer {
     }
 
     pub fn toggle(&self, entry: Option<FileEntry>) {
-        if self.is_open() {
-            self.close();
-        } else if let Some(entry) = entry {
-            self.show(entry);
-        }
+        self.state.toggle(entry);
     }
 
     pub fn print_entry(&self, entry: FileEntry) {
@@ -410,7 +433,8 @@ impl Drop for PreviewState {
 
 impl PreviewState {
     fn show(self: &Rc<Self>, entry: FileEntry) {
-        let was_open = self.opened.replace(true);
+        self.set_enabled(true);
+        let was_open = self.revealer.reveals_child() || self.sizing.is_suspended();
         let already_showing = self.current.borrow().as_ref() == Some(&entry);
         let split = self.split.borrow().clone();
         if let Some(split) = split.as_ref()
@@ -440,23 +464,13 @@ impl PreviewState {
     }
 
     fn stop(&self) {
-        self.opened.set(false);
-        self.animating.set(false);
-        self.sizing.close();
-        self.animation_generation
-            .set(self.animation_generation.get().saturating_add(1));
-        self.current_request.set(None);
-        self.load.borrow_mut().take();
-        self.cancel_loading();
-        self.pdf_loads.borrow_mut().clear();
+        self.set_enabled(false);
+        self.clear_target();
         self.cancel_print();
-        self.stop_media();
     }
 
     fn close(self: &Rc<Self>) {
         self.stop();
-        self.clear_content();
-        self.hide_panel();
         self.pane.set_size_request(MIN_WIDTH, -1);
     }
 

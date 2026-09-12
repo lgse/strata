@@ -514,6 +514,7 @@ impl BrowserView {
         // one is the natural place to begin a marquee that runs into it.
         register_cut_view(&state);
         state.install_input_ownership();
+        state.install_column_peek_targets();
 
         let weak_state = Rc::downgrade(&state);
         super::marquee::install_shared_origin_surface(&state.scroller, move |surface, _, x, _| {

@@ -823,7 +823,7 @@ fn build_chooser(
     sidebar_toggle.set_cursor_from_name(Some("pointer"));
     let location = view.location_widget();
     location.set_hexpand(true);
-    let appearance = build_appearance_menu(&view, &browser, theme.clone());
+    let appearance = build_appearance_menu(&view, &browser, theme.clone(), &preview);
     let header_content = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     header_content.set_hexpand(true);
     header_content.set_valign(gtk::Align::Center);
@@ -1354,7 +1354,7 @@ fn install_shortcuts(
                 state.view.cancel_location_edit();
                 return glib::Propagation::Stop;
             }
-            if preview.is_open() {
+            if preview.is_enabled() {
                 preview.close();
                 return glib::Propagation::Stop;
             }

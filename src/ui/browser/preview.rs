@@ -1,6 +1,33 @@
 // SPDX-License-Identifier: MIT
 
+use super::columns::ColumnSpan;
 use super::*;
+
+impl ViewState {
+    pub(super) fn column_span(&self, depth: usize) -> Option<ColumnSpan> {
+        let columns = self.columns.borrow();
+        let column = columns.get(depth)?;
+        let left = columns[..depth]
+            .iter()
+            .map(column_width)
+            .fold(0, i32::saturating_add);
+        Some(ColumnSpan {
+            left: f64::from(left),
+            right: f64::from(left.saturating_add(column_width(column))),
+            total: columns.iter().map(column_width).map(f64::from).sum(),
+        })
+    }
+
+    fn focused_column_span(&self) -> Option<ColumnSpan> {
+        let count = self.columns.borrow().len();
+        let depth = self
+            .browser
+            .active_depth()
+            .filter(|depth| *depth < count)
+            .or_else(|| count.checked_sub(1))?;
+        self.column_span(depth)
+    }
+}
 
 fn column_width(column: &ColumnView) -> i32 {
     column
@@ -21,6 +48,14 @@ impl BrowserView {
             .iter()
             .map(column_width)
             .fold(0, i32::saturating_add)
+    }
+
+    pub(in crate::ui) fn preview_navigation_width(&self, available: i32) -> i32 {
+        self.state
+            .focused_column_span()
+            .map_or(COLUMN_WIDTH, |span| {
+                (span.width() + span.peek_space(f64::from(available))) as i32
+            })
     }
 
     pub(in crate::ui) fn preview_last_column_width(&self) -> i32 {
@@ -88,11 +123,21 @@ impl BrowserView {
                                 .get()
                                 .saturating_add(1),
                         );
-                        let right = view.preview_occupied_width(adjustment.page_size() as i32);
-                        let target = (f64::from(right) - adjustment.page_size()).max(0.0);
-                        // Keep the closed preview's empty space until the opening animation consumes it.
-                        if adjustment.value() < target {
-                            adjustment.set_value(target);
+                        if let Some(span) = view.state.focused_column_span() {
+                            let target = span.reveal_target(
+                                adjustment.value(),
+                                adjustment.page_size(),
+                                adjustment.lower(),
+                                adjustment.upper(),
+                            );
+                            let fully_visible = span.left >= adjustment.value()
+                                && span.right <= adjustment.value() + adjustment.page_size();
+                            if view.state.columns_widget.margin_end() == 0
+                                || !fully_visible
+                                || target >= adjustment.value()
+                            {
+                                adjustment.set_value(target);
+                            }
                         }
                     } else if page_changed {
                         // Closing can update the range before GTK expands the viewport.

@@ -89,9 +89,9 @@ fn assert_last_column_visible(fixture: &Fixture) {
 }
 
 #[test]
-fn last_column_wins_over_preferred_preview_width_and_hidden_requests_resume_once() {
+fn focused_column_wins_over_preferred_preview_width_and_hidden_requests_resume_once() {
     crate::test_support::gtk_test(
-        "ui::preview::layout::tests::visibility::last_column_wins_over_preferred_preview_width_and_hidden_requests_resume_once",
+        "ui::preview::layout::tests::visibility::focused_column_wins_over_preferred_preview_width_and_hidden_requests_resume_once",
         || {
             let preferences = ThemeManager::shared();
             preferences.set_browser_mode(BrowserMode::Columns);
@@ -102,7 +102,8 @@ fn last_column_wins_over_preferred_preview_width_and_hidden_requests_resume_once
                 fixture.resize(760);
                 fixture.preview.show(entry("first.png"));
                 fixture.settle();
-                assert!(fixture.preview.is_open());
+                assert!(fixture.preview.is_enabled());
+                assert!(!fixture.preview.is_open());
                 assert!(!fixture.preview.widget().is_visible());
                 assert!(fixture.requests.borrow().is_empty());
 
@@ -164,6 +165,44 @@ fn last_column_wins_over_preferred_preview_width_and_hidden_requests_resume_once
                 assert_eq!(fixture.requests.borrow().len(), 2);
                 fixture.close();
             }
+        },
+    );
+}
+
+#[test]
+fn a_focused_parent_takes_priority_over_a_wider_unfocused_leaf() {
+    crate::test_support::gtk_test(
+        "ui::preview::layout::tests::visibility::a_focused_parent_takes_priority_over_a_wider_unfocused_leaf",
+        || {
+            let preferences = ThemeManager::shared();
+            preferences.set_browser_mode(BrowserMode::Columns);
+            preferences.set_reduce_motion(true);
+            let fixture = Fixture::new(false);
+            fixture.enter_children();
+            fixture.last_column().set_width_request(600);
+            fixture.resize(1000);
+            fixture.preview.show(entry("first.png"));
+            wait_until(|| fixture.preview.state.sizing.is_suspended());
+            fixture.browser.browser().set_active_column(0);
+            fixture.browser.browser().focus_active();
+            wait_until(|| fixture.preview.is_open());
+            fixture.settle();
+            let focused = fixture
+                .columns()
+                .first_child()
+                .expect("focused parent")
+                .compute_bounds(&fixture.split)
+                .expect("parent bounds");
+            let viewport = fixture
+                .browser
+                .widget()
+                .compute_bounds(&fixture.split)
+                .expect("viewport");
+            assert!(focused.x() >= viewport.x() - 1.0);
+            assert!(focused.x() + focused.width() <= viewport.x() + viewport.width() + 1.0);
+            assert!(fixture.preview.widget().width() >= COLUMN_WIDTH);
+            assert_eq!(fixture.browser.browser().active_depth(), Some(0));
+            fixture.close();
         },
     );
 }

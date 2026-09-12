@@ -80,7 +80,7 @@ fn images_stay_centered_and_bounded_while_text_and_pdf_use_the_full_pane() {
                 .child(&drawer.widget())
                 .build();
             drawer.state.revealer.set_reveal_child(true);
-            drawer.state.opened.set(true);
+            drawer.state.set_enabled(true);
             window.set_width_request(1800);
             window.present();
             wait_until(|| drawer.state.content.width() > 1280);
@@ -177,7 +177,7 @@ fn decoded_frames_play_in_the_browser_and_chooser_preview_widgets() {
                     .child(&drawer.widget())
                     .build();
                 drawer.state.revealer.set_reveal_child(true);
-                drawer.state.opened.set(true);
+                drawer.state.set_enabled(true);
                 drawer.state.current_request.set(Some(PreviewRequestId(1)));
                 drawer.state.render(Preview {
                     request_id: PreviewRequestId(1),

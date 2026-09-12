@@ -137,13 +137,13 @@ impl PreviewDrawer {
         }));
         browser.bind_preview_scrolling(&self.state.revealer);
         split.set_end_child(Some(&self.state.revealer));
-        self.state.revealer.set_visible(self.state.opened.get());
+        self.state.revealer.set_visible(self.state.is_enabled());
         let weak = Rc::downgrade(&self.state);
         split.add_tick_callback(move |split, _| {
             let Some(state) = weak.upgrade() else {
                 return glib::ControlFlow::Break;
             };
-            if state.opened.get() {
+            if state.is_enabled() {
                 state.sync_split(split);
             }
             glib::ControlFlow::Continue
@@ -159,6 +159,19 @@ impl PreviewDrawer {
 }
 
 impl PreviewState {
+    pub(super) fn selected_entry(&self) -> Option<FileEntry> {
+        if let Some(binding) = self.sizing.binding.borrow().as_ref()
+            && let Some(browser) = binding.browser.upgrade()
+        {
+            return preview_target(
+                browser
+                    .selected_search_result()
+                    .or_else(|| browser.browser().focused_entry()),
+            );
+        }
+        preview_target(self.current.borrow().clone())
+    }
+
     fn geometry(&self, split: &gtk::Paned) -> Geometry {
         let available = split.width();
         let mut geometry = Geometry {
@@ -179,9 +192,11 @@ impl PreviewState {
             geometry.occupied =
                 sidebar + browser.preview_occupied_width((available - sidebar).max(0));
             if geometry.columns {
-                geometry.start_minimum = geometry
-                    .start_minimum
-                    .max(sidebar.saturating_add(browser.preview_last_column_width()));
+                geometry.start_minimum = geometry.start_minimum.max(sidebar.saturating_add(
+                    browser.preview_navigation_width(
+                        (available - sidebar - geometry.separator - COLUMN_WIDTH).max(0),
+                    ),
+                ));
             }
         }
         geometry
@@ -246,6 +261,9 @@ impl PreviewState {
     }
 
     pub(super) fn sync_split(self: &Rc<Self>, split: &gtk::Paned) {
+        if self.current.borrow().is_none() {
+            return;
+        }
         let geometry = self.geometry(split);
         if !geometry.can_show_preview() {
             self.suspend_panel();
@@ -361,7 +379,7 @@ fn install_resize(split: &gtk::Paned, state: &Rc<PreviewState>) {
                     || event
                         .downcast_ref::<gtk::gdk::ButtonEvent>()
                         .is_some_and(|e| e.button() == 1))
-                    && state.opened.get()
+                    && state.is_enabled()
                     && !state.sizing.is_suspended()
                     && on_separator(&split, event) =>
             {
@@ -388,7 +406,7 @@ fn install_resize(split: &gtk::Paned, state: &Rc<PreviewState>) {
     let weak = Rc::downgrade(state);
     split.connect_position_notify(move |split| {
         if let Some(state) = weak.upgrade()
-            && state.opened.get()
+            && state.is_enabled()
             && state.sizing.resizing.replace(false)
         {
             state.resize_preview(split, split.position());
@@ -401,7 +419,7 @@ fn install_resize(split: &gtk::Paned, state: &Rc<PreviewState>) {
     split.connect_move_handle(move |split, _| {
         if split.has_focus() {
             if let Some(state) = weak.upgrade()
-                && state.opened.get()
+                && state.is_enabled()
                 && !state.sizing.is_suspended()
             {
                 state
@@ -446,7 +464,7 @@ fn on_separator(split: &gtk::Paned, event: &gtk::gdk::Event) -> bool {
 fn remember_keyboard_width(weak: std::rc::Weak<PreviewState>) {
     let Some(state) = weak
         .upgrade()
-        .filter(|state| state.opened.get() && !state.sizing.is_suspended())
+        .filter(|state| state.is_enabled() && !state.sizing.is_suspended())
     else {
         return;
     };
@@ -459,7 +477,7 @@ fn remember_keyboard_width(weak: std::rc::Weak<PreviewState>) {
     glib::idle_add_local_once(move || {
         if let Some(state) = weak.upgrade() {
             state.sizing.resizing.set(false);
-            if state.opened.get() && split.position() != before {
+            if state.is_enabled() && split.position() != before {
                 state.resize_preview(&split, split.position());
             }
         }

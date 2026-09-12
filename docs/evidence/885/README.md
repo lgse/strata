@@ -2,15 +2,15 @@
 
 Automatic previews fill the space after the last directory column. The default
 preferred minimum is two standard columns (600 logical pixels); older columns
-scroll left when necessary. The last directory column, including its resized
+scroll left when necessary. The focused directory column, including its resized
 width, takes priority over that minimum and over a manually chosen preview width.
-Closing a preview preserves the columns' positions and leaves empty space on the
-right; normal scrolling and navigation remain available.
+Explicitly closing a preview preserves the columns' positions and leaves empty
+space on the right; navigation can still reveal a newly focused column.
 
 Dragging the divider overrides automatic sizing for that window session,
 including navigation and closing/reopening the preview. A new window starts in
 automatic mode. If less than one standard column (300 logical pixels) remains for
-the preview after reserving the last directory column, the preview is temporarily
+the preview after reserving the focused directory column, the preview is temporarily
 hidden. It returns when space permits without discarding the preferred width or
 the latest selection. Existing document views retain their scroll/zoom state.
 Loaded media is paused and resumes only if that same file was playing before
@@ -21,6 +21,29 @@ Images, GIFs, videos, and playback controls use a centered section capped at
 1280 logical pixels. Media keeps its aspect ratio and grows to at most twice
 its native dimensions, fitting both available axes. PDFs and text retain their
 full-width viewers. Text-size settings do not change these logical limits.
+
+## Session toggle and neighboring columns
+
+**Appearance → Preview panel** shows the **Space** browsing shortcut and stays
+checked while preview mode is enabled, even if no preview is currently visible.
+Folders, ZIP files, empty selections, and directory navigation hide unsupported
+content without turning the mode off. The next supported selection returns
+automatically. Space can enable the mode even on an unsupported selection;
+explicit close/toggle actions disable it. Existing media playback shortcuts are
+unchanged. This state is local to each window and is not saved to preferences.
+
+Column navigation adapts the 48-logical-pixel peek idea from
+[PR #876 by JoeJoeflyn](https://github.com/lgse/strata/pull/876). Real neighboring
+columns remain discoverable with the mouse. Clicking an exposed strip only
+reveals/focuses that column, including double-clicks; it does not activate hidden
+rows or toolbar actions. Fully visible columns keep their normal interactions.
+Peeks are best-effort: they yield before a full focused column or an otherwise
+usable preview, and trailing empty space is not treated as another column.
+
+| Before this follow-up (`9fa802d`) | After |
+| --- | --- |
+| ![Earlier-column focus without neighbor peeks](session/before-peeks.png) | ![Focused column with mouse-accessible neighbors](session/after-peeks.png) |
+| ![Previous Appearance menu](session/before-appearance.png) | ![Enabled session toggle and Space hint](session/after-appearance.png) |
 
 ## Before / after
 

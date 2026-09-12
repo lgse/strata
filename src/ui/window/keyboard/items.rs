@@ -47,7 +47,7 @@ impl Dispatcher {
     }
 
     fn dismiss_preview_or_selection(&self, browser: &Browser) -> KeyResult {
-        if self.preview.is_open() {
+        if self.preview.is_enabled() {
             self.preview.close();
             return Some(Propagation::Stop);
         }
