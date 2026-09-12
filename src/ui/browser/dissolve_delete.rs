@@ -15,7 +15,11 @@ const MIN_FRAGMENT_BUDGET: usize = 80;
 const MAX_FRAGMENT_BUDGET: usize = 192;
 const FRAGMENTS_PER_ROW: usize = 48;
 
-pub(super) type DissolveCleanup = Box<dyn FnOnce()>;
+/// Render snapshots captured before deletion and retained until progress UI has dismissed.
+pub(super) struct PreparedDissolve {
+    overlay: gtk::Overlay,
+    rows: Vec<DissolveRow>,
+}
 
 #[derive(Clone)]
 struct FragmentMotion {
@@ -90,19 +94,14 @@ impl DissolveCanvas {
     }
 }
 
-pub(in crate::ui) fn dissolve_delete(
+pub(super) fn prepare_dissolve(
     source: &gtk::Widget,
     entries: &[FileEntry],
-    on_done: impl FnOnce(DissolveCleanup) + 'static,
-) {
+) -> Option<PreparedDissolve> {
     if !crate::ui::motion::animations_enabled() {
-        on_done(Box::new(|| {}));
-        return;
+        return None;
     }
-    let Some(overlay) = window_overlay(source) else {
-        on_done(Box::new(|| {}));
-        return;
-    };
+    let overlay = window_overlay(source)?;
     let targets = collect_entry_targets(source, entries);
     let measured: Vec<_> = targets
         .into_iter()
@@ -113,8 +112,7 @@ pub(in crate::ui) fn dissolve_delete(
         })
         .collect();
     if measured.is_empty() {
-        on_done(Box::new(|| {}));
-        return;
+        return None;
     }
 
     let fragment_budget = fragment_budget(measured.len());
@@ -126,7 +124,6 @@ pub(in crate::ui) fn dissolve_delete(
         fragment_budget,
     );
     let mut random = Random::new(0x9E37_79B9_7F4A_7C15);
-    let mut source_rows = Vec::with_capacity(measured.len());
     let mut rendered_rows = Vec::with_capacity(measured.len());
     for (index, (row, bounds)) in measured.iter().enumerate() {
         let Some(node) = snapshot_row(row, bounds.width(), bounds.height()) else {
@@ -149,39 +146,40 @@ pub(in crate::ui) fn dissolve_delete(
             origin: gtk::graphene::Point::new(bounds.x(), bounds.y()),
             fragments,
         });
-        source_rows.push((row.clone(), row.opacity()));
     }
     if rendered_rows.is_empty() {
-        on_done(Box::new(|| {}));
-        return;
+        return None;
     }
 
-    let canvas = DissolveCanvas::new(rendered_rows);
-    overlay.add_overlay(&canvas);
-    for (row, _) in &source_rows {
-        row.set_opacity(0.0);
-    }
+    Some(PreparedDissolve {
+        overlay,
+        rows: rendered_rows,
+    })
+}
 
-    let canvas_for_tick = canvas.clone();
-    let overlay_for_cleanup = overlay.clone();
-    let rows_for_cleanup = source_rows.clone();
-    let canvas_for_cleanup = canvas.clone();
-    animate(
-        &canvas,
-        DURATION,
-        move |elapsed| {
-            let progress = (elapsed.as_secs_f64() / DURATION.as_secs_f64()).clamp(0.0, 1.0);
-            canvas_for_tick.set_progress(progress);
-        },
-        move || {
-            overlay_for_cleanup.remove_overlay(&canvas_for_cleanup);
-            on_done(Box::new(move || {
-                for (row, opacity) in rows_for_cleanup {
-                    row.set_opacity(opacity);
-                }
-            }));
-        },
-    );
+impl PreparedDissolve {
+    pub(super) fn play(self) {
+        if !crate::ui::motion::animations_enabled() {
+            return;
+        }
+
+        let Self { overlay, rows } = self;
+        let canvas = DissolveCanvas::new(rows);
+        overlay.add_overlay(&canvas);
+
+        let canvas_for_tick = canvas.clone();
+        let overlay_for_cleanup = overlay.clone();
+        let canvas_for_cleanup = canvas.clone();
+        animate(
+            &canvas,
+            DURATION,
+            move |elapsed| {
+                let progress = (elapsed.as_secs_f64() / DURATION.as_secs_f64()).clamp(0.0, 1.0);
+                canvas_for_tick.set_progress(progress);
+            },
+            move || overlay_for_cleanup.remove_overlay(&canvas_for_cleanup),
+        );
+    }
 }
 
 fn snapshot_row(row: &gtk::Widget, width: f32, height: f32) -> Option<gtk::gsk::RenderNode> {

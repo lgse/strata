@@ -578,9 +578,20 @@ impl ViewState {
             BrowserEvent::DeletionProgress { completed, total } => {
                 self.update_item_progress(*completed, *total);
             }
-            BrowserEvent::DeletionFinished => {
-                self.clear_delete_animation();
-                self.dismiss_file_operation_progress();
+            BrowserEvent::DeletionFinished { succeeded } => {
+                if *succeeded {
+                    let weak = Rc::downgrade(self);
+                    self.dismiss_file_operation_progress_then(move || {
+                        glib::idle_add_local_once(move || {
+                            if let Some(state) = weak.upgrade() {
+                                state.play_delete_animation();
+                            }
+                        });
+                    });
+                } else {
+                    self.clear_delete_animation();
+                    self.dismiss_file_operation_progress();
+                }
                 self.prune_stale_search_results();
             }
             BrowserEvent::RestorationStarted { total } => {

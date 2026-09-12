@@ -187,7 +187,8 @@ pub(super) struct ViewState {
     /// failed only because the location doesn't support Trash can offer a
     /// permanent-delete retry for exactly those entries.
     pending_delete_entries: RefCell<Vec<FileEntry>>,
-    pending_delete_animation_cleanup: RefCell<Option<dissolve_delete::DissolveCleanup>>,
+    /// Visible permanent-delete rows captured before the operation mutates the model.
+    pending_delete_dissolve: RefCell<Option<dissolve_delete::PreparedDissolve>>,
     pending_navigate: RefCell<Option<Location>>,
     pending_location_credentials: RefCell<Option<MountCredentials>>,
     pending_trash_lookup: RefCell<Option<LoadHandle>>,
@@ -497,7 +498,7 @@ impl BrowserView {
             pending_extract_retry: RefCell::new(None),
             pending_archive_destination: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
-            pending_delete_animation_cleanup: RefCell::new(None),
+            pending_delete_dissolve: RefCell::new(None),
             pending_navigate: RefCell::new(None),
             pending_location_credentials: RefCell::new(None),
             pending_trash_lookup: RefCell::new(None),

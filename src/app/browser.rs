@@ -185,7 +185,9 @@ pub enum BrowserEvent {
         completed: usize,
         total: usize,
     },
-    DeletionFinished,
+    DeletionFinished {
+        succeeded: bool,
+    },
     RestorationStarted {
         total: usize,
     },
@@ -2005,7 +2007,9 @@ impl Browser {
                 });
             }
             if deleting {
-                browser.emit(BrowserEvent::DeletionFinished);
+                browser.emit(BrowserEvent::DeletionFinished {
+                    succeeded: matches!(&event, OperationEvent::Deleted { .. }),
+                });
             }
             if restoring {
                 browser.emit(BrowserEvent::RestorationFinished);

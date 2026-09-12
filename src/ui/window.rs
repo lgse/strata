@@ -885,7 +885,7 @@ fn trash_contents_from_probe(probe: Result<bool, glib::Error>) -> TrashContents 
 fn event_changes_trash_contents(event: &BrowserEvent) -> bool {
     matches!(
         event,
-        BrowserEvent::DeletionFinished
+        BrowserEvent::DeletionFinished { .. }
             | BrowserEvent::RestorationFinished
             | BrowserEvent::TransferFinished { .. }
             | BrowserEvent::OperationCompletedWithErrors { .. }
