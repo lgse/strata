@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use crate::adapters::directory_summary::summarize_directory_with_progress;
+use crate::adapters::directory_summary::{DirectorySummary, summarize_directory_with_progress};
 use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::clipboard::copy_path_text;
@@ -231,6 +231,15 @@ pub fn format_permissions(mode: u32) -> String {
     format!("{symbolic}  {:03o}", mode & 0o777)
 }
 
+fn directory_counts_label(summary: &DirectorySummary) -> String {
+    let prefix = if summary.truncated { "≥ " } else { "" };
+    let files = summary.visible_file_count;
+    let folders = summary.visible_folder_count;
+    let file_noun = if files == 1 { "file" } else { "files" };
+    let folder_noun = if folders == 1 { "folder" } else { "folders" };
+    format!("{prefix}{files} {file_noun}, {prefix}{folders} {folder_noun}")
+}
+
 fn properties_action(icon: &str, label: &str) -> gtk::Button {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
     content.set_halign(gtk::Align::Center);
@@ -323,7 +332,8 @@ impl ViewState {
         size_spinner.set_spinning(measuring_directory);
         size_spinner.set_visible(measuring_directory);
         let size = properties_size_row(&details, &initial_size, &size_spinner);
-        let items = measuring_directory.then(|| properties_row(&details, "CONTAINS", "—"));
+        let items =
+            measuring_directory.then(|| properties_row(&details, "CONTAINS", "0 files, 0 folders"));
         let modified = properties_row(&details, "MODIFIED", "—");
         crate::util::set_modified_date(&modified, entry.as_ref(), "—");
         let opens_with = properties_row(&details, "OPENS WITH", "—");
@@ -526,13 +536,16 @@ impl ViewState {
             let directory = gio_file_for_location(&location);
             let task = glib::MainContext::default().spawn_local(async move {
                 let progress_size = weak_size.clone();
+                let progress_items = weak_items.clone();
                 let progress_throttle = SizeProgressThrottle::default();
                 let summary = summarize_directory_with_progress(&directory, move |total| {
-                    if total > 0
-                        && progress_throttle.should_update(Instant::now())
-                        && let Some(size) = progress_size.upgrade()
-                    {
-                        size.set_text(&format_file_size(total));
+                    if total.item_count > 0 && progress_throttle.should_update(Instant::now()) {
+                        if let Some(size) = progress_size.upgrade() {
+                            size.set_text(&format_file_size(total.total_size));
+                        }
+                        if let Some(items) = progress_items.as_ref().and_then(|w| w.upgrade()) {
+                            items.set_text(&directory_counts_label(&total));
+                        }
                     }
                 })
                 .await;
@@ -548,20 +561,7 @@ impl ViewState {
                         let prefix = if summary.truncated { "≥ " } else { "" };
                         size.set_text(&format!("{prefix}{}", format_file_size(summary.total_size)));
                         if let Some(items) = weak_items.as_ref().and_then(|w| w.upgrade()) {
-                            let file_noun = if summary.visible_file_count == 1 {
-                                "file"
-                            } else {
-                                "files"
-                            };
-                            let folder_noun = if summary.visible_folder_count == 1 {
-                                "folder"
-                            } else {
-                                "folders"
-                            };
-                            items.set_text(&format!(
-                                "{prefix}{} {file_noun}, {prefix}{} {folder_noun}",
-                                summary.visible_file_count, summary.visible_folder_count
-                            ));
+                            items.set_text(&directory_counts_label(&summary));
                         }
                     }
                     Err(_) => {

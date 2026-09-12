@@ -169,13 +169,14 @@ fn directory_summary_treats_a_directory_removed_before_measurement_as_truncated_
         file,
         info,
         0,
+        false,
         Rc::new(MeasurementBudget {
             visited: Cell::new(0),
             deadline: Instant::now() + TIME_BUDGET,
             max_entries: MAX_ENTRIES,
             max_depth: MAX_DEPTH,
-            total_size: Cell::new(0),
-            reported_size: Cell::new(0),
+            total: Cell::default(),
+            reported: Cell::default(),
             on_progress: Box::new(|_| {}),
         }),
     ));
@@ -220,14 +221,15 @@ fn aborting_a_directory_measurement_stops_it_mid_flight() {
                 deadline: Instant::now() + TIME_BUDGET,
                 max_entries: MAX_ENTRIES,
                 max_depth: MAX_DEPTH,
-                total_size: Cell::new(0),
-                reported_size: Cell::new(0),
+                total: Cell::default(),
+                reported: Cell::default(),
                 on_progress: Box::new(|_| {}),
             });
             let task = context.spawn_local(measure_entry(
                 gio::File::for_path(&root),
                 info,
                 0,
+                false,
                 budget.clone(),
             ));
 
