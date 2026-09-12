@@ -81,8 +81,10 @@ impl Dispatcher {
             )
             && let Some(entry) = self.view.selected_search_result()
         {
-            self.preview
-                .toggle(crate::ui::preview::preview_target(Some(entry)));
+            self.preview.toggle(
+                crate::ui::preview::preview_target(Some(entry)),
+                self.view.browser().active_depth(),
+            );
             return Some(Propagation::Stop);
         }
         if event.key == Key::Escape && self.view.dismiss_focused_filter() {
