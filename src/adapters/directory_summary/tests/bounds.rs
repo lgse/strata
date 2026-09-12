@@ -20,6 +20,8 @@ fn measurement_counts_nested_entries_without_following_symlinks() {
         .expect("summary");
     assert_eq!(summary.item_count, 7);
     assert_eq!(summary.total_size, 14);
+    assert_eq!(summary.file_count, 5);
+    assert_eq!(summary.folder_count, 1);
     assert!(!summary.truncated);
 }
 

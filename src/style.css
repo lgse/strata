@@ -475,6 +475,8 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .search-bar {
   border-bottom: 1px solid alpha(@theme_border, 0.55);
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
   min-height: 58px;
   padding: 0 18px;
 }
@@ -559,6 +561,8 @@ headerbar menubutton.header-action > button:focus-visible {
 .search-footer {
   background: alpha(@theme_bg, 0.18);
   border-top: 1px solid alpha(@theme_border, 0.5);
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
   min-height: 34px;
   padding: 0 18px;
 }
@@ -669,6 +673,8 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .action-dialog-header {
   border-bottom: 1px solid alpha(@theme_border, 0.22);
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
   min-height: 40px;
   padding: 14px 20px;
 }
@@ -749,6 +755,8 @@ headerbar menubutton.header-action > button:focus-visible {
 
 .action-dialog-actions {
   border-top: 1px solid alpha(@theme_border, 0.22);
+  border-bottom-left-radius: 8px;
+  border-bottom-right-radius: 8px;
   padding: 10px 20px 12px;
 }
 
@@ -1229,7 +1237,7 @@ menubutton.form-control:disabled > button {
 .settings-navigation {
   background: @theme_surface;
   border-right: 1px solid alpha(@theme_border, 0.6);
-  border-radius: 7px 0 0 7px;
+  border-radius: 8px 0 0 8px;
   min-width: 220px;
   padding: 18px 12px;
 }
@@ -2342,7 +2350,7 @@ entry.preview-command-entry selection {
 .peek-popover .column-header {
   background: @theme_surface;
   border-bottom: 1px solid alpha(@theme_border, 0.24);
-  border-radius: 9px 9px 0 0;
+  border-radius: 8px 8px 0 0;
   color: @theme_dim_text;
 }
 
@@ -2608,6 +2616,9 @@ menubutton.column-header-action > button:active {
   min-width: 382px;
 }
 
+.properties-content .action-dialog-body {
+  padding: 0;
+}
 
 .properties-row-label,
 .properties-section-title,
@@ -2616,9 +2627,8 @@ menubutton.column-header-action > button:active {
   color: @theme_dim_text;
 }
 
-
 .properties-details {
-  padding: 8px 16px 10px;
+  padding: 8px 20px 10px;
 }
 
 .properties-row {
@@ -2633,7 +2643,7 @@ menubutton.column-header-action > button:active {
 .properties-row-label {
   font-size: 0.76em;
   font-weight: 700;
-  min-width: 80px;
+  min-width: 90px;
 }
 
 .properties-row-value {
@@ -2651,8 +2661,8 @@ menubutton.column-header-action > button:active {
 }
 
 .properties-permissions {
-  border-top: 1px solid alpha(@theme_border, 0.3);
-  padding: 12px 16px 14px;
+  border-top: 1px solid alpha(@theme_border, 0.18);
+  padding: 12px 20px 14px;
 }
 
 .properties-section-title,
@@ -2736,7 +2746,7 @@ menubutton.column-header-action > button:active {
 }
 
 .properties-actions {
-  padding: 10px 20px 12px;
+  padding: 12px 20px;
 }
 
 .properties-action {

@@ -19,7 +19,6 @@ fn progress_is_cumulative_across_nested_branches_and_reported_in_batches() {
     let summary = glib::MainContext::new()
         .block_on(summarize_directory_with_progress(
             &gio::File::for_path(root.path()),
-            false,
             move |total| observed.borrow_mut().push(total),
         ))
         .expect("summary");
@@ -47,7 +46,6 @@ fn truncated_measurements_finish_at_the_last_reported_size() {
             5,
             MAX_DEPTH,
             TIME_BUDGET,
-            false,
             move |total| observed.set(total),
         ))
         .expect("bounded summary");
@@ -73,7 +71,6 @@ fn an_enumeration_failure_preserves_bytes_already_reported() {
         deadline: Instant::now() + TIME_BUDGET,
         max_entries: MAX_ENTRIES,
         max_depth: MAX_DEPTH,
-        skip_hidden: false,
         total_size: Cell::new(0),
         reported_size: Cell::new(0),
         on_progress: Box::new(move |_| {
@@ -102,7 +99,7 @@ fn aborting_measurement_stops_progress_callbacks() {
             let observed = updates.clone();
             let file = gio::File::for_path(root.path());
             let task = context.spawn_local(async move {
-                summarize_directory_with_progress(&file, false, move |total| {
+                summarize_directory_with_progress(&file, move |total| {
                     observed.borrow_mut().push(total)
                 })
                 .await

@@ -16,6 +16,10 @@ use gio::prelude::*;
 pub(crate) struct DirectorySummary {
     pub(crate) item_count: usize,
     pub(crate) total_size: u64,
+    /// Visible (non-hidden) file count, excluding hidden entries.
+    pub(crate) file_count: usize,
+    /// Visible (non-hidden) folder count, excluding hidden entries.
+    pub(crate) folder_count: usize,
     /// Incomplete measurements are lower bounds, not exact totals.
     pub(crate) truncated: bool,
 }
@@ -24,6 +28,8 @@ impl DirectorySummary {
     fn include(&mut self, child: Self) {
         self.item_count = self.item_count.saturating_add(child.item_count);
         self.total_size = self.total_size.saturating_add(child.total_size);
+        self.file_count = self.file_count.saturating_add(child.file_count);
+        self.folder_count = self.folder_count.saturating_add(child.folder_count);
         self.truncated |= child.truncated;
     }
 }
@@ -39,7 +45,6 @@ struct MeasurementBudget {
     deadline: Instant,
     max_entries: usize,
     max_depth: usize,
-    skip_hidden: bool,
     total_size: Cell<u64>,
     reported_size: Cell<u64>,
     on_progress: Box<dyn Fn(u64)>,
@@ -68,23 +73,14 @@ async fn enumerate_children(file: &gio::File) -> Result<gio::FileEnumerator, gli
 }
 
 pub(crate) async fn summarize_directory(root: &gio::File) -> Result<DirectorySummary, glib::Error> {
-    summarize_directory_with_progress(root, false, |_| {}).await
+    summarize_directory_with_progress(root, |_| {}).await
 }
 
 pub(crate) async fn summarize_directory_with_progress(
     root: &gio::File,
-    skip_hidden: bool,
     on_progress: impl Fn(u64) + 'static,
 ) -> Result<DirectorySummary, glib::Error> {
-    summarize_directory_with_budget(
-        root,
-        MAX_ENTRIES,
-        MAX_DEPTH,
-        TIME_BUDGET,
-        skip_hidden,
-        on_progress,
-    )
-    .await
+    summarize_directory_with_budget(root, MAX_ENTRIES, MAX_DEPTH, TIME_BUDGET, on_progress).await
 }
 
 async fn summarize_directory_with_budget(
@@ -92,7 +88,6 @@ async fn summarize_directory_with_budget(
     max_entries: usize,
     max_depth: usize,
     time_budget: Duration,
-    skip_hidden: bool,
     on_progress: impl Fn(u64) + 'static,
 ) -> Result<DirectorySummary, glib::Error> {
     on_progress(0);
@@ -102,7 +97,6 @@ async fn summarize_directory_with_budget(
         deadline: Instant::now() + time_budget,
         max_entries,
         max_depth,
-        skip_hidden,
         total_size: Cell::new(0),
         reported_size: Cell::new(0),
         on_progress: Box::new(on_progress),
@@ -169,10 +163,9 @@ fn measure_entry(
     budget: Rc<MeasurementBudget>,
 ) -> MeasurementFuture {
     Box::pin(async move {
-        if budget.skip_hidden && info.is_hidden() {
-            return Ok(DirectorySummary::default());
-        }
         budget.visited.set(budget.visited.get() + 1);
+        let is_directory = info.file_type() == gio::FileType::Directory;
+        let is_hidden = info.is_hidden();
         let mut summary = DirectorySummary {
             item_count: 1,
             total_size: if info.file_type() == gio::FileType::Regular {
@@ -180,12 +173,14 @@ fn measure_entry(
             } else {
                 0
             },
+            file_count: if !is_hidden && !is_directory { 1 } else { 0 },
+            folder_count: if !is_hidden && is_directory { 1 } else { 0 },
             truncated: false,
         };
         budget
             .total_size
             .set(budget.total_size.get().saturating_add(summary.total_size));
-        if info.file_type() == gio::FileType::Directory && !info.is_symlink() {
+        if is_directory && !info.is_symlink() {
             if depth >= budget.max_depth || budget.exhausted() {
                 summary.truncated = true;
             } else {

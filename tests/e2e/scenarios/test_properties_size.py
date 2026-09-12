@@ -29,7 +29,7 @@ def sized_folder(fixture_tree):
 
 @pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("current_folder", [False, True], ids=["entry", "current-folder"])
-def test_properties_calculates_nested_sizes_excluding_hidden_files(
+def test_properties_calculates_nested_and_hidden_file_sizes(
     sized_folder, strata, mode, current_folder
 ):
     if current_folder:
@@ -42,8 +42,8 @@ def test_properties_calculates_nested_sizes_excluding_hidden_files(
     dialog = strata.wait_for_dialog()
 
     strata.wait(
-        lambda: dialog.find(role="label", name="8 B"),
-        "Properties to show the recursive size excluding hidden files and without following symlinks",
+        lambda: dialog.find(role="label", name="15 B"),
+        "Properties to show the recursive size without following symlinks",
     )
     strata.wait(lambda: _measurement_finished(dialog), "the size spinner to disappear")
 

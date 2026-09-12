@@ -5,7 +5,7 @@ use crate::adapters::gio_file_for_location;
 use crate::model::{FileEntry, Location};
 use crate::ui::browser::clipboard::copy_path_text;
 use crate::ui::browser::desktop::open_location;
-use crate::ui::browser::entry::{entry_icon, format_file_size, item_count_label};
+use crate::ui::browser::entry::{entry_icon, format_file_size};
 use crate::ui::browser::paths::{PinAction, compact_display_path, is_trash_root, pin_action_for};
 use crate::ui::browser::{PinStatus, ViewState};
 use crate::ui::controls::{form_check_button, modal_layout};
@@ -233,10 +233,12 @@ pub fn format_permissions(mode: u32) -> String {
 
 fn properties_action(icon: &str, label: &str) -> gtk::Button {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    content.set_halign(gtk::Align::Center);
     content.append(&crate::assets::primary_icon(icon, 14));
     content.append(&gtk::Label::new(Some(label)));
     let button = gtk::Button::builder().child(&content).build();
     button.add_css_class("properties-action");
+    button.set_hexpand(true);
     button
 }
 
@@ -286,6 +288,12 @@ impl ViewState {
             .set_ellipsize(gtk::pango::EllipsizeMode::Middle);
         layout.cancel.set_visible(false);
         layout.confirm.set_visible(false);
+        while let Some(child) = layout.actions.first_child() {
+            layout.actions.remove(&child);
+        }
+        layout.actions.set_orientation(gtk::Orientation::Horizontal);
+        layout.actions.set_homogeneous(true);
+        layout.actions.set_spacing(8);
         let kind = layout.subtitle.clone();
         let close = layout.close.clone();
 
@@ -315,7 +323,7 @@ impl ViewState {
         size_spinner.set_spinning(measuring_directory);
         size_spinner.set_visible(measuring_directory);
         let size = properties_size_row(&details, &initial_size, &size_spinner);
-        let items = measuring_directory.then(|| properties_row(&details, "ITEMS", "—"));
+        let items = measuring_directory.then(|| properties_row(&details, "CONTAINS", "—"));
         let modified = properties_row(&details, "MODIFIED", "—");
         crate::util::set_modified_date(&modified, entry.as_ref(), "—");
         let opens_with = properties_row(&details, "OPENS WITH", "—");
@@ -380,10 +388,10 @@ impl ViewState {
         );
         pin.set_visible(self.interactive && pin_action.is_some());
         let copy_path = properties_action(crate::assets::icons::COPY, "Copy path");
-        layout.actions.prepend(&copy_path);
-        layout.actions.prepend(&pin);
-        layout.actions.prepend(&rename);
-        layout.actions.prepend(&open);
+        layout.actions.append(&open);
+        layout.actions.append(&rename);
+        layout.actions.append(&pin);
+        layout.actions.append(&copy_path);
         let content = layout.content;
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
@@ -519,7 +527,7 @@ impl ViewState {
             let task = glib::MainContext::default().spawn_local(async move {
                 let progress_size = weak_size.clone();
                 let progress_throttle = SizeProgressThrottle::default();
-                let summary = summarize_directory_with_progress(&directory, true, move |total| {
+                let summary = summarize_directory_with_progress(&directory, move |total| {
                     if total > 0
                         && progress_throttle.should_update(Instant::now())
                         && let Some(size) = progress_size.upgrade()
@@ -540,12 +548,21 @@ impl ViewState {
                         let prefix = if summary.truncated { "≥ " } else { "" };
                         size.set_text(&format!("{prefix}{}", format_file_size(summary.total_size)));
                         if let Some(items) = weak_items.as_ref().and_then(|w| w.upgrade()) {
-                            let count = if summary.truncated {
-                                format!("≥ {}", item_count_label(summary.item_count))
+                            let prefix = if summary.truncated { "≥ " } else { "" };
+                            let file_noun = if summary.file_count == 1 {
+                                "file"
                             } else {
-                                item_count_label(summary.item_count)
+                                "files"
                             };
-                            items.set_text(&count);
+                            let folder_noun = if summary.folder_count == 1 {
+                                "folder"
+                            } else {
+                                "folders"
+                            };
+                            items.set_text(&format!(
+                                "{prefix}{} {file_noun}, {} {folder_noun}",
+                                summary.file_count, summary.folder_count
+                            ));
                         }
                     }
                     Err(_) => size.set_text("Unavailable"),

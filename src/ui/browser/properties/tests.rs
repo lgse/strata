@@ -5,12 +5,12 @@ mod progress;
 use super::*;
 use std::time::{Duration, Instant};
 
-fn size_label(widget: &gtk::Widget) -> Option<gtk::Label> {
+fn row_label(widget: &gtk::Widget, title: &str) -> Option<gtk::Label> {
     if widget.has_css_class("properties-row")
         && widget
             .first_child()
             .and_downcast::<gtk::Label>()
-            .is_some_and(|label| label.text() == "SIZE")
+            .is_some_and(|label| label.text() == title)
     {
         return widget
             .first_child()
@@ -19,12 +19,16 @@ fn size_label(widget: &gtk::Widget) -> Option<gtk::Label> {
     }
     let mut child = widget.first_child();
     while let Some(widget) = child {
-        if let Some(label) = size_label(&widget) {
+        if let Some(label) = row_label(&widget, title) {
             return Some(label);
         }
         child = widget.next_sibling();
     }
     None
+}
+
+fn size_label(widget: &gtk::Widget) -> Option<gtk::Label> {
+    row_label(widget, "SIZE")
 }
 
 #[test]
@@ -48,13 +52,18 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
             let window = gtk::Window::builder().child(&overlay).build();
             window.present();
 
-            for (path, expected) in [
-                (root.path().to_path_buf(), "200 B"),
-                (root.path().join("empty"), "0 B"),
-                (root.path().join("missing"), "Unavailable"),
+            for (path, expected_size, expected_contains) in [
+                (
+                    root.path().to_path_buf(),
+                    "205 B",
+                    Some("200 files, 2 folders"),
+                ),
+                (root.path().join("empty"), "0 B", Some("0 files, 0 folders")),
+                (root.path().join("missing"), "Unavailable", None),
             ] {
                 view.state.show_folder_properties(&Location::local(path));
                 let size = size_label(overlay.upcast_ref()).expect("Properties SIZE row");
+                let contains = row_label(overlay.upcast_ref(), "CONTAINS");
                 let spinner = size
                     .next_sibling()
                     .and_downcast::<gtk::Spinner>()
@@ -65,6 +74,7 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
                 let saw_partial_size = Rc::new(Cell::new(false));
                 let observed_progress = saw_partial_size.clone();
                 let observed_spinner = spinner.clone();
+                let expected = expected_size;
                 size.connect_label_notify(move |size| {
                     if observed_spinner.is_spinning()
                         && size.text() != "0 B"
@@ -79,9 +89,12 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
                     glib::MainContext::default().iteration(false);
                     std::thread::sleep(Duration::from_millis(1));
                 }
-                assert_eq!(size.text(), expected);
+                assert_eq!(size.text(), expected_size);
                 assert!(!spinner.is_visible());
-                if expected == "200 B" {
+                if let (Some(contains), Some(expected_contains)) = (contains, expected_contains) {
+                    assert_eq!(contains.text(), expected_contains);
+                }
+                if expected_size == "205 B" {
                     assert!(
                         saw_partial_size.get(),
                         "size must update while the spinner is running"
