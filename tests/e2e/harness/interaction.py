@@ -239,11 +239,7 @@ class Pointer:
 
     @staticmethod
     def row_whitespace_point(source: Node, name: str) -> tuple[int, int]:
-        """A point inside the visible row but beyond the rendered name text.
-
-        Columns and List rows own their whole allocated bounds as a drag surface,
-        so a press in unused label allocation must start a drag, not a marquee.
-        """
+        """A point inside the visible row but beyond the rendered name text."""
 
         label = source.find(role="label", name=name)
         assert label is not None, f"no name label on {name!r}"
@@ -252,11 +248,7 @@ class Pointer:
 
     @staticmethod
     def row_padding_point(source: Node, edge: str) -> tuple[int, int]:
-        """A point in the visual row's top or bottom padding.
-
-        Row spacing lives on the application-owned drag surface so its empty
-        vertical area remains draggable.
-        """
+        """A point in the visual row's top or bottom padding."""
 
         bounds = source.screen_bounds()
         if edge == "top":

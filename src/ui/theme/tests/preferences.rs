@@ -37,7 +37,7 @@ fn non_default_preferences() -> Preferences {
             "desktop".into(),
         ],
         show_hidden: true,
-        text_size: "large".into(),
+        text_size: TextSize::new(24),
         folders_first: false,
         sort_key: "size".into(),
         sort_direction: "descending".into(),
@@ -358,7 +358,7 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
                 manager.sidebar_order(),
                 non_default_preferences().sidebar_order
             );
-            assert_eq!(manager.text_size(), TextSize::Large);
+            assert_eq!(manager.text_size(), TextSize::new(24));
             assert_eq!(
                 manager.sort_preferences(),
                 ViewPreferences {
@@ -473,7 +473,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 },
                 |m| m.set_sidebar_order(default_sidebar_order()),
                 |m| m.set_sort_preferences(ViewPreferences::default()),
-                |m| m.set_text_size(TextSize::Small),
+                |m| m.set_text_size(TextSize::new(11)),
                 |m| m.set_checks_for_updates(true),
                 |m| m.set_release_channel(Channel::Stable),
                 |m| m.set_preview_muted(false),

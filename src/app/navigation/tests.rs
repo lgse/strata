@@ -506,6 +506,82 @@ fn monitor_moves_follow_the_selected_entry() {
 }
 
 #[test]
+fn relocating_a_column_preserves_selection_preferences_and_active_depth() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(RequestId(1), vec![named_entry("/home/old", "old")]);
+    state.select(0, 0);
+    state.descend(0, location("/home/old"), RequestId(2));
+    state.apply_batch(
+        RequestId(2),
+        vec![
+            named_entry("/home/old/one", "one"),
+            named_entry("/home/old/two", "two"),
+        ],
+    );
+    state.set_selection(1, &[0, 1], Some(1));
+    let preferences = ViewPreferences {
+        sort_direction: SortDirection::Descending,
+        ..ViewPreferences::default()
+    };
+    state.apply_sort_preferences(1, preferences);
+    state.focus_column(0);
+
+    state.relocate_column(1, location("/home/renamed"), RequestId(3));
+    assert_eq!(state.active_depth(), Some(0));
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(state.column_preferences(1), Some(preferences));
+    assert!(
+        state
+            .apply_batch(RequestId(2), vec![named_entry("/home/old/stale", "stale")])
+            .is_none()
+    );
+    state.apply_batch(
+        RequestId(3),
+        vec![
+            named_entry("/home/renamed/one", "one"),
+            named_entry("/home/renamed/two", "two"),
+        ],
+    );
+    assert_eq!(state.selected_positions(1), [0, 1]);
+    let column = &state.columns[1];
+    assert_eq!(
+        column.entries[column.selected.expect("keyboard cursor")].display_name,
+        "two"
+    );
+    assert!(
+        column
+            .selection_anchor
+            .as_ref()
+            .expect("selection anchor")
+            .is_within(&location("/home/renamed"))
+    );
+}
+
+#[test]
+fn a_rename_rebases_the_pending_selection_during_a_refresh() {
+    let mut state = NavigationState::default();
+    state.navigate(location("/home"), RequestId(1));
+    state.apply_batch(RequestId(1), vec![named_entry("/home/old", "old")]);
+    state.select(0, 0);
+    state.reload_column(0, RequestId(2));
+    state.apply_directory_change(
+        0,
+        &location("/home"),
+        DirectoryChange::Move {
+            from: location("/home/old"),
+            entry: named_entry("/home/new", "new"),
+        },
+    );
+    state.install_snapshot(RequestId(2), vec![named_entry("/home/new", "new")]);
+    assert_eq!(state.selected_positions(0), [0]);
+    assert_eq!(
+        state.focused_entry().expect("focused entry").2.location,
+        location("/home/new")
+    );
+}
+
+#[test]
 fn external_moves_rebase_open_descendant_locations() {
     let mut state = NavigationState::default();
     state.navigate(location("/home"), RequestId(1));

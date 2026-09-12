@@ -174,6 +174,15 @@ impl PreviewDrawer {
         metadata.append(&size_group);
         metadata.append(&modified_group);
         metadata.append(&type_group);
+        super::theme::ThemeManager::shared().bind_interface_scale(&metadata, |widget, scale| {
+            let metadata = widget.downcast_ref::<gtk::Box>().expect("preview metadata");
+            metadata.set_orientation(if scale > 1.5 {
+                gtk::Orientation::Vertical
+            } else {
+                gtk::Orientation::Horizontal
+            });
+            metadata.set_spacing(if scale > 1.5 { 6 } else { 18 });
+        });
         pane.append(&metadata);
 
         let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -1437,6 +1446,16 @@ impl PreviewState {
         bar.append(&seek);
         bar.append(&volume_toggle);
         bar.append(&volume_slider);
+        preferences.bind_interface_scale(&bar, |widget, scale| {
+            widget
+                .downcast_ref::<gtk::Box>()
+                .expect("media controls")
+                .set_orientation(if scale > 1.5 {
+                    gtk::Orientation::Vertical
+                } else {
+                    gtk::Orientation::Horizontal
+                });
+        });
         self.content.append(&bar);
 
         self.media_volume_slider

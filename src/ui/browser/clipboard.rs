@@ -868,7 +868,15 @@ impl ViewState {
                     Ok(files) => files.files(),
                     Err(_) => return,
                 },
-                Err(_) => return,
+                Err(_) => match clipboard.read_texture_future().await {
+                    Ok(Some(texture)) => {
+                        if let Some(state) = weak.upgrade() {
+                            state.paste_image_from_texture(&destination, &texture);
+                        }
+                        return;
+                    }
+                    _ => return,
+                },
             };
             let sources = files
                 .into_iter()
@@ -880,6 +888,48 @@ impl ViewState {
             }
         });
     }
+
+    fn paste_image_from_texture(
+        self: &Rc<Self>,
+        destination: &Location,
+        texture: &gtk::gdk::Texture,
+    ) {
+        let Some(dir) = destination.native_path().map(std::path::Path::to_path_buf) else {
+            return;
+        };
+        let png_bytes = texture.save_to_png_bytes();
+        gio::spawn_blocking(move || {
+            if let Err(error) = write_pasted_image(&dir, png_bytes.as_ref()) {
+                tracing::warn!(%error, "unable to write pasted image");
+            }
+        });
+    }
+}
+
+fn write_pasted_image(dir: &std::path::Path, bytes: &[u8]) -> std::io::Result<std::path::PathBuf> {
+    use std::io::Write;
+
+    for suffix in 0u64.. {
+        let name = if suffix == 0 {
+            "image.png".to_owned()
+        } else {
+            format!("image ({suffix}).png")
+        };
+        let path = dir.join(name);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+        {
+            Ok(mut file) => {
+                file.write_all(bytes)?;
+                return Ok(path);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(std::io::Error::other("image filename suffixes exhausted"))
 }
 
 #[cfg(test)]
