@@ -40,6 +40,7 @@ def test_archive_activation_extracts_to_subfolder(strata, mode, activation, form
     strata.wait(lambda: extracted.exists(), "archive activation to extract into a subfolder")
     strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
     assert extracted.read_text() == contents
+    assert not fixture.path(member).exists()
     assert fixture.path(archive_name).exists()
     assert strata.pane().name == fixture.root.name
     strata.entry("activation")

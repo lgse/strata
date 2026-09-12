@@ -49,9 +49,6 @@ fn normalized_archive_name(name: &str, format: ArchiveFormat) -> String {
         .to_owned()
 }
 
-/// Strips any recognized archive extension from `name`, returning the stem
-/// used to name the extraction subfolder. Handles compound extensions like
-/// `.tar.gz` and alternate forms like `.tgz`.
 fn archive_stem(name: &str) -> &str {
     const SUFFIXES: &[&str] = &[".tar.gz", ".tgz", ".tar", ".zip", ".7z", ".rar"];
     let lower = name.to_ascii_lowercase();
@@ -462,12 +459,6 @@ impl ViewState {
         self.browser.extract(entry, parent, None);
     }
 
-    /// Extracts `entry` into a subfolder of its parent named after the
-    /// archive (e.g. `archive.zip` → `archive/`), matching the behavior of
-    /// Nautilus and other file managers on double-click activation.
-    ///
-    /// Falls back to [`Self::extract_entry`] when the stem is empty or the
-    /// subfolder cannot be constructed.
     pub(super) fn extract_entry_to_subfolder(self: &Rc<Self>, entry: FileEntry) {
         if entry.location.native_path().is_none() {
             return;
