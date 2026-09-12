@@ -159,10 +159,12 @@ impl ViewState {
         self.pending_delete_dissolve.take();
     }
 
-    pub(super) fn play_delete_animation(&self) {
-        if let Some(dissolve) = self.pending_delete_dissolve.take() {
-            dissolve.play();
-        }
+    pub(super) fn delete_animation_defers_empty_state(&self, depth: usize) -> bool {
+        self.pending_delete_dissolve
+            .borrow()
+            .as_ref()
+            .is_some_and(|(pending_depth, _)| *pending_depth == depth)
+            || self.deferred_delete_empty_depth.get() == Some(depth)
     }
 
     /// Safe to call more than once: whichever of cancel or completion runs first leaves the
@@ -826,7 +828,10 @@ impl ViewState {
                     );
                     if let Some(ui) = weak_ui.upgrade() {
                         ui.clear_delete_animation();
-                        ui.pending_delete_dissolve.replace(dissolve);
+                        if let (Some(depth), Some(dissolve)) = (ui.browser.active_depth(), dissolve)
+                        {
+                            ui.pending_delete_dissolve.replace(Some((depth, dissolve)));
+                        }
                     }
                     browser.delete(entries_for_dissolve, true);
                     browser.focus_active();

@@ -3654,7 +3654,6 @@ fn replace_entries(pane: &Pane, browser: &Browser, count: usize) {
         })
         .unwrap_or_default();
     pane.splice_values(0, pane.model.n_items(), &values);
-    show_count(pane);
 }
 
 fn detach_pane_models(pane: &Pane) {
@@ -3698,6 +3697,7 @@ fn show_count(pane: &Pane) {
 
 fn apply_snapshot(pane: &Pane, snapshot: &BrowserColumnSnapshot, browser: &Browser) {
     replace_entries(pane, browser, snapshot.count);
+    show_count(pane);
     set_selections(pane, &snapshot.selected_positions);
     if let Some(&focused) = snapshot.selected_positions.last() {
         scroll_pane_to_source(pane, focused);

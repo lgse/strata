@@ -150,7 +150,9 @@ fn successful_delete_dissolves_visible_rows_after_progress_dismissal() {
                 },
                 "visible row was not ready to snapshot",
             );
-            state.pending_delete_dissolve.replace(dissolve.into_inner());
+            state
+                .pending_delete_dissolve
+                .replace(dissolve.into_inner().map(|dissolve| (0, dissolve)));
             state.show_file_operation_progress(
                 16,
                 crate::assets::icons::TRASH,
@@ -159,6 +161,19 @@ fn successful_delete_dissolves_visible_rows_after_progress_dismissal() {
                 Rc::new(|| {}),
             );
             let layer = progress_layer(&overlay);
+            let column = state.columns.borrow()[0].clone();
+            state.handle(&BrowserEvent::EntriesSpliced {
+                depth: 0,
+                splices: vec![crate::app::EntrySplice {
+                    position: 0,
+                    removed: 1,
+                    entries: Vec::new(),
+                }],
+            });
+            assert_eq!(
+                column.presentation.stack.visible_child_name().as_deref(),
+                Some("content")
+            );
 
             state.handle(&BrowserEvent::DeletionFinished { succeeded: true });
 
@@ -172,9 +187,17 @@ fn successful_delete_dissolves_visible_rows_after_progress_dismissal() {
                 || has_dissolve_canvas(&overlay),
                 "dissolve did not start after progress dismissal",
             );
+            assert_eq!(
+                column.presentation.stack.visible_child_name().as_deref(),
+                Some("content")
+            );
             wait_until(
                 || !has_dissolve_canvas(&overlay),
                 "dissolve animation did not finish",
+            );
+            assert_eq!(
+                column.presentation.stack.visible_child_name().as_deref(),
+                Some("feedback")
             );
             window.destroy();
             browser.clear_observer();
