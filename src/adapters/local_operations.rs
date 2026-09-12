@@ -343,8 +343,8 @@ fn open_local_child_directory<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<Own
     // RESOLVE_NO_MAGICLINKS: if `name` changed to a symlink (or a magic
     // link) since it was last inspected, this fails closed instead of
     // opening whatever it now points to.
-    loop {
-        match rustix::fs::openat2(
+    retry_local_open(|| {
+        rustix::fs::openat2(
             parent,
             name,
             rustix::fs::OFlags::RDONLY
@@ -354,17 +354,14 @@ fn open_local_child_directory<Fd: AsFd>(parent: &Fd, name: &OsStr) -> Result<Own
             rustix::fs::ResolveFlags::BENEATH
                 | rustix::fs::ResolveFlags::NO_SYMLINKS
                 | rustix::fs::ResolveFlags::NO_MAGICLINKS,
-        ) {
-            Ok(fd) => return Ok(fd),
-            Err(rustix::io::Errno::AGAIN | rustix::io::Errno::INTR) => continue,
-            Err(error) => {
-                return Err(format!(
-                    "{} changed while it was being read: {error}",
-                    name.to_string_lossy()
-                ));
-            }
-        }
-    }
+        )
+    })
+    .map_err(|error| {
+        format!(
+            "{} changed while it was being read: {error}",
+            name.to_string_lossy()
+        )
+    })
 }
 
 fn local_directory_children<Fd: AsFd>(handle: &Fd) -> Result<Vec<OsString>, String> {
@@ -1646,8 +1643,8 @@ fn open_local_delete_target<Fd: AsFd>(
     // RESOLVE_NO_MAGICLINKS: if `name` changed to a symlink (or a magic link)
     // in the moment since the statat above, this fails closed instead of
     // opening whatever it now points to.
-    let handle = loop {
-        match rustix::fs::openat2(
+    let handle = retry_local_open(|| {
+        rustix::fs::openat2(
             parent,
             name,
             rustix::fs::OFlags::RDONLY
@@ -1657,17 +1654,14 @@ fn open_local_delete_target<Fd: AsFd>(
             rustix::fs::ResolveFlags::BENEATH
                 | rustix::fs::ResolveFlags::NO_SYMLINKS
                 | rustix::fs::ResolveFlags::NO_MAGICLINKS,
-        ) {
-            Ok(fd) => break fd,
-            Err(rustix::io::Errno::AGAIN | rustix::io::Errno::INTR) => continue,
-            Err(error) => {
-                return Err(format!(
-                    "{} changed while it was being deleted: {error}",
-                    name.to_string_lossy()
-                ));
-            }
-        }
-    };
+        )
+    })
+    .map_err(|error| {
+        format!(
+            "{} changed while it was being deleted: {error}",
+            name.to_string_lossy()
+        )
+    })?;
     let opened = rustix::fs::fstat(&handle)
         .map_err(|error| format!("Could not recheck {}: {error}", name.to_string_lossy()))?;
     ensure_expected_local_identity(name, &opened, expected)?;
@@ -1681,6 +1675,18 @@ fn open_local_delete_target<Fd: AsFd>(
         children.push(OsString::from_vec(entry_name.to_bytes().to_vec()));
     }
     Ok(LocalDeleteStep::Directory { handle, children })
+}
+
+fn retry_local_open(
+    mut open: impl FnMut() -> rustix::io::Result<OwnedFd>,
+) -> rustix::io::Result<OwnedFd> {
+    for _ in 0..15 {
+        match open() {
+            Err(rustix::io::Errno::AGAIN | rustix::io::Errno::INTR) => {}
+            result => return result,
+        }
+    }
+    open()
 }
 
 fn cancelled_local_delete() -> glib::Error {
@@ -1739,6 +1745,7 @@ struct LocalDeleteQueue {
     state: Mutex<LocalDeleteQueueState>,
     wake: Condvar,
     cancelled: Arc<AtomicBool>,
+    failed: AtomicBool,
     error: Mutex<Option<String>>,
 }
 
@@ -1751,12 +1758,13 @@ impl LocalDeleteQueue {
             }),
             wake: Condvar::new(),
             cancelled,
+            failed: AtomicBool::new(false),
             error: Mutex::new(None),
         }
     }
 
     fn is_stopped(&self) -> bool {
-        self.cancelled.load(Ordering::Acquire)
+        self.cancelled.load(Ordering::Acquire) || self.failed.load(Ordering::Acquire)
     }
 
     fn enqueue(&self, job: LocalDeleteJob) {
@@ -1785,6 +1793,8 @@ impl LocalDeleteQueue {
         if first_error.is_none() {
             *first_error = Some(error);
         }
+        self.failed.store(true, Ordering::Release);
+        self.wake.notify_all();
     }
 
     fn next_job(&self) -> Option<LocalDeleteJob> {
@@ -1808,6 +1818,21 @@ impl LocalDeleteQueue {
                 .wait_timeout(state, Duration::from_millis(10))
                 .unwrap_or_else(|poison| poison.into_inner())
                 .0;
+        }
+    }
+
+    fn result(&self) -> Result<(), String> {
+        if self.cancelled.load(Ordering::Acquire) {
+            Err("Delete cancelled".to_owned())
+        } else if let Some(error) = self
+            .error
+            .lock()
+            .unwrap_or_else(|poison| poison.into_inner())
+            .clone()
+        {
+            Err(error)
+        } else {
+            Ok(())
         }
     }
 
@@ -2021,10 +2046,23 @@ fn parallel_delete_local_blocking_with_workers(
         });
     }
 
+    run_local_delete_workers(&queue, worker_count, |work| {
+        thread::Builder::new().spawn(work)
+    });
+
+    queue.result()
+}
+
+fn run_local_delete_workers(
+    queue: &Arc<LocalDeleteQueue>,
+    worker_count: usize,
+    mut spawn: impl FnMut(Box<dyn FnOnce() + Send>) -> std::io::Result<thread::JoinHandle<()>>,
+) {
     let mut workers = Vec::with_capacity(worker_count);
     for _ in 0..worker_count {
-        let queue = queue.clone();
-        workers.push(thread::spawn(move || {
+        let worker_queue = queue.clone();
+        match spawn(Box::new(move || {
+            let queue = worker_queue;
             let _priority = rustix::process::setpriority_process(None, 10);
             while let Some(job) = queue.next_job() {
                 let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -2035,25 +2073,18 @@ fn parallel_delete_local_blocking_with_workers(
                 }
                 queue.finish_job();
             }
-        }));
+        })) {
+            Ok(worker) => workers.push(worker),
+            Err(error) => {
+                queue.fail(format!("Could not start delete worker: {error}"));
+                break;
+            }
+        }
     }
     for worker in workers {
         if worker.join().is_err() {
             queue.fail("Delete worker panicked".to_owned());
         }
-    }
-
-    if cancelled.load(Ordering::Acquire) {
-        Err("Delete cancelled".to_owned())
-    } else if let Some(error) = queue
-        .error
-        .lock()
-        .unwrap_or_else(|poison| poison.into_inner())
-        .clone()
-    {
-        Err(error)
-    } else {
-        Ok(())
     }
 }
 
@@ -2069,6 +2100,14 @@ fn parallel_delete_local(
     roots: Vec<LocalDeleteRoot>,
     cancellable: gio::Cancellable,
 ) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
+    parallel_delete_local_with(roots, cancellable, parallel_delete_local_blocking)
+}
+
+fn parallel_delete_local_with(
+    roots: Vec<LocalDeleteRoot>,
+    cancellable: gio::Cancellable,
+    delete: impl FnOnce(Vec<LocalDeleteRoot>, Arc<AtomicBool>) -> Result<(), String> + Send + 'static,
+) -> Pin<Box<dyn Future<Output = Result<(), glib::Error>>>> {
     Box::pin(async move {
         if roots.is_empty() {
             return Ok(());
@@ -2081,13 +2120,11 @@ fn parallel_delete_local(
         let cancellation_handler = cancellable.connect_cancelled(move |_| {
             cancellation_flag.store(true, Ordering::Release);
         });
-        let result = gio::spawn_blocking(move || parallel_delete_local_blocking(roots, cancelled))
-            .await
-            .map_err(|_| io_error("Delete task panicked"))?;
+        let result = gio::spawn_blocking(move || delete(roots, cancelled)).await;
         if let Some(id) = cancellation_handler {
             cancellable.disconnect_cancelled(id);
         }
-        match result {
+        match result.map_err(|_| io_error("Delete task panicked"))? {
             Ok(()) => Ok(()),
             Err(error) if error == "Delete cancelled" => Err(cancelled_local_delete()),
             Err(error) => Err(io_error(error)),
@@ -2170,24 +2207,16 @@ fn open_local_parent_directory(parent_path: &Path) -> Result<OwnedFd, String> {
     if relative.as_os_str().is_empty() {
         return Ok(root);
     }
-    loop {
-        match rustix::fs::openat2(
+    retry_local_open(|| {
+        rustix::fs::openat2(
             &root,
             relative,
             rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
             rustix::fs::Mode::empty(),
             rustix::fs::ResolveFlags::IN_ROOT | rustix::fs::ResolveFlags::NO_MAGICLINKS,
-        ) {
-            Ok(fd) => return Ok(fd),
-            Err(rustix::io::Errno::AGAIN | rustix::io::Errno::INTR) => continue,
-            Err(error) => {
-                return Err(format!(
-                    "Could not safely open {}: {error}",
-                    parent_path.display()
-                ));
-            }
-        }
-    }
+        )
+    })
+    .map_err(|error| format!("Could not safely open {}: {error}", parent_path.display()))
 }
 
 fn open_local_parent_beneath(parent_path: &Path, allowed_root: &Path) -> Result<OwnedFd, String> {
@@ -2206,8 +2235,8 @@ fn open_local_parent_beneath(parent_path: &Path, allowed_root: &Path) -> Result<
     let relative = parent_path
         .strip_prefix(allowed_root)
         .map_err(|_| "The restore destination is outside the trash volume".to_owned())?;
-    loop {
-        match rustix::fs::openat2(
+    retry_local_open(|| {
+        rustix::fs::openat2(
             &root,
             relative,
             rustix::fs::OFlags::PATH | rustix::fs::OFlags::DIRECTORY | rustix::fs::OFlags::CLOEXEC,
@@ -2215,17 +2244,14 @@ fn open_local_parent_beneath(parent_path: &Path, allowed_root: &Path) -> Result<
             rustix::fs::ResolveFlags::BENEATH
                 | rustix::fs::ResolveFlags::NO_MAGICLINKS
                 | rustix::fs::ResolveFlags::NO_XDEV,
-        ) {
-            Ok(fd) => return Ok(fd),
-            Err(rustix::io::Errno::AGAIN | rustix::io::Errno::INTR) => continue,
-            Err(error) => {
-                return Err(format!(
-                    "Could not safely open restore destination {}: {error}",
-                    parent_path.display()
-                ));
-            }
-        }
-    }
+        )
+    })
+    .map_err(|error| {
+        format!(
+            "Could not safely open restore destination {}: {error}",
+            parent_path.display()
+        )
+    })
 }
 
 /// Entry point for permanently deleting a local path: opens the target's

@@ -1588,44 +1588,7 @@ fn copying_and_replacing_symlinks_accepts_an_aliased_destination() -> Result<(),
 }
 
 #[test]
-fn permanent_delete_stops_if_an_open_directory_is_moved() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
-    let root = tempfile::tempdir()?;
-    let target = root.path().join("target");
-    let moved = root.path().join("moved");
-    fs::create_dir(&target)?;
-    for index in 0..64 {
-        fs::write(target.join(format!("item-{index}.txt")), b"keep")?;
-    }
-
-    let context = glib::MainContext::default();
-    let parent = super::open_local_parent_directory(target.parent().ok_or("no parent")?)?;
-    let delete_root = super::LocalDeleteRoot {
-        parent: Arc::new(parent),
-        name: target.file_name().ok_or("no name")?.to_owned(),
-        expected: None,
-    };
-    fs::rename(&target, &moved)?;
-    let error = context
-        .block_on(super::parallel_delete_local(
-            vec![delete_root],
-            gio::Cancellable::new(),
-        ))
-        .expect_err("moving the target directory must stop delete");
-
-    assert!(
-        error.to_string().contains("Could not inspect")
-            || error.to_string().contains("changed")
-            || error.to_string().contains("No such file")
-    );
-    assert!(fs::read_dir(&moved)?.next().is_some());
-    Ok(())
-}
-
-#[test]
-fn cancelling_recursive_delete_leaves_the_unfinished_root_in_place() -> Result<(), Box<dyn Error>> {
+fn an_already_cancelled_recursive_delete_preserves_the_root() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
@@ -3374,4 +3337,5 @@ fn benchmark_parallel_delete_scale() -> Result<(), Box<dyn Error>> {
 }
 
 mod create_entry;
+mod deletion;
 mod trash_capabilities;
