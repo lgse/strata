@@ -15,7 +15,6 @@ const MIN_FRAGMENT_BUDGET: usize = 80;
 const MAX_FRAGMENT_BUDGET: usize = 192;
 const FRAGMENTS_PER_ROW: usize = 48;
 
-/// Render snapshots captured before deletion and retained until progress UI has dismissed.
 pub(super) struct PreparedDissolve {
     overlay: gtk::Overlay,
     rows: Vec<DissolveRow>,
