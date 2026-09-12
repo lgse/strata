@@ -64,6 +64,43 @@ fn indexed_items(root: &std::path::Path) -> Vec<SearchItem> {
 }
 
 #[test]
+fn same_folder_search_preview_closes_after_deletion_without_focus_change() {
+    gtk_test(
+        "ui::window::composition::search::tests::same_folder_search_preview_closes_after_deletion_without_focus_change",
+        || {
+            let root = tempfile::tempdir().expect("fixture directory");
+            let path = root.path().join("fixture.txt");
+            std::fs::write(&path, "preview fixture").expect("fixture file");
+            std::fs::write(root.path().join("remaining.txt"), "remaining").expect("remaining file");
+            let file = indexed_items(root.path()).remove(0);
+            let preferences = ThemeManager::shared();
+            preferences.set_search_open_files_directly(false);
+            let fixture = SearchFixture::new(&preferences);
+            fixture.browser.navigate(Location::local(root.path()));
+            crate::ui::media::tests::wait(|| {
+                fixture
+                    .browser
+                    .column_snapshot(0)
+                    .is_some_and(|s| !s.loading)
+            });
+            fixture.events.borrow_mut().clear();
+            activate_result(&fixture.browser, &fixture.preview, &preferences, file);
+            assert!(fixture.events.borrow().is_empty());
+            assert!(fixture.preview.is_open());
+            std::fs::remove_file(&path).expect("remove previewed file");
+            crate::ui::media::tests::wait(|| {
+                fixture
+                    .browser
+                    .column_snapshot(0)
+                    .is_some_and(|s| s.count == 1)
+            });
+            assert!(!fixture.preview.is_open());
+            fixture.browser.clear_observer();
+        },
+    );
+}
+
+#[test]
 fn result_activation_reads_live_preferences_and_preserves_navigation_order() {
     gtk_test(
         "ui::window::composition::search::tests::result_activation_reads_live_preferences_and_preserves_navigation_order",

@@ -95,7 +95,7 @@ fn activate_result(
                 is_hidden: false,
                 mode: MetadataValue::Unknown,
             },
-            None,
+            controller.active_depth(),
         );
     }
 }
