@@ -114,6 +114,7 @@ fn chooser_routes_menu_shortcuts_and_preserves_completion_on_escape() {
                 ThemeManager::shared().set_browser_mode(mode);
                 let root = tempfile::tempdir().expect("fixture");
                 std::fs::write(root.path().join("note.txt"), "notes").expect("file");
+                std::fs::write(root.path().join("peer.txt"), "peer").expect("file");
                 let state = build_chooser(
                     ChooserRequest {
                         token: format!("keyboard-menu-{mode:?}"),
@@ -136,7 +137,7 @@ fn chooser_routes_menu_shortcuts_and_preserves_completion_on_escape() {
                 )
                 .expect("chooser");
                 let browser = state.view.browser();
-                wait_until(|| browser.entry_at(0, 0).is_some());
+                wait_until(|| browser.entry_at(0, 1).is_some());
                 browser.select(0, 0);
                 browser.focus_active();
                 wait_until(|| state.view.item_view_has_focus());
@@ -176,6 +177,28 @@ fn chooser_routes_menu_shortcuts_and_preserves_completion_on_escape() {
                     assert!(state.completion.borrow().is_some());
                     assert_eq!(browser.selected_entries()[0].display_name, "note.txt");
                 }
+                browser.set_selection(0, &[0, 1], Some(0));
+                browser.focus_active();
+                wait_until(|| state.view.item_view_has_focus());
+                let origin = focused(&state);
+                assert!(keys.emit_by_name::<bool>(
+                    "key-pressed",
+                    &[
+                        &gtk::gdk::Key::Return,
+                        &0u32,
+                        &gtk::gdk::ModifierType::ALT_MASK,
+                    ]
+                ));
+                wait_until(|| visible_modal_layer(&state.window).is_some());
+                find_class(state.window.upcast_ref(), "action-dialog-close")
+                    .and_downcast::<gtk::Button>()
+                    .expect("Properties close button")
+                    .emit_clicked();
+                wait_until(|| visible_modal_layer(&state.window).is_none());
+                assert_eq!(focused(&state), origin, "Properties must restore chooser focus");
+                assert_eq!(browser.selected_positions(0), [0, 1]);
+                assert!(state.completion.borrow().is_some());
+
                 assert!(state.view.show_filter());
                 assert!(!keys.emit_by_name::<bool>(
                     "key-pressed",

@@ -149,8 +149,8 @@ def test_folder_background_customize_targets_a_non_active_ancestor_column(strata
     strata.wait(lambda: strata.dialog() is None, "the customize dialog to close")
 
 
-def _open_properties(strata, name):
-    strata.open_context_menu(name)
+def _open_properties(strata, name, directory=None):
+    strata.open_context_menu(name, directory=directory)
     strata.choose_menu_item("Properties")
     return strata.wait_for_dialog()
 
@@ -200,15 +200,59 @@ def test_properties_pins_a_folder_and_offers_unpin_afterwards(strata):
     )
 
 
-def test_file_properties_describes_the_file_without_pin_actions_and_closes(strata):
-    dialog = _open_properties(strata, "readme.md")
-    assert "readme.md" in dialog.dump(), "the dialog should describe the file"
-
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("opener,dismissal", [
+    ("keyboard-menu", "Escape"),
+    ("pointer-menu", "Close dialog"),
+    ("shortcut", "backdrop"),
+    ("pointer-menu", "Rename"),
+])
+def test_file_properties_describes_the_file_without_pin_actions_and_closes(
+    strata, mode, opener, dismissal,
+):
+    strata.fixture.path("documents/readme.md").write_text("Nested fixture\n")
+    strata.open_directory("documents")
+    strata.select_entry("readme.md", "documents")
+    strata.wait_for_focused_entry("readme.md")
+    if opener == "keyboard-menu":
+        strata.keyboard.press("shift+F10")
+        strata.wait(strata.context_menu, "the child-column item menu")
+        strata.keyboard.press("Home")
+        for _ in range(30):
+            if strata.menu_item("Properties").has_state("focused"):
+                break
+            strata.keyboard.press("Down")
+        assert strata.menu_item("Properties").has_state("focused")
+        strata.keyboard.press("Return")
+        dialog = strata.wait_for_dialog()
+    elif opener == "shortcut":
+        strata.keyboard.press("alt+Return")
+        dialog = strata.wait_for_dialog()
+    else:
+        dialog = _open_properties(strata, "readme.md", "documents")
+    assert "documents/readme.md" in dialog.dump(), "the dialog should describe the child file"
     assert dialog.find(role="button", name="Pin") is None, dialog.dump()
     assert dialog.find(role="button", name="Unpin") is None, dialog.dump()
 
-    strata.keyboard.press("Escape")
-    strata.wait(lambda: strata.dialog() is None, "Escape to close the dialog")
+    if dismissal == "Escape":
+        strata.keyboard.press("Escape")
+    elif dismissal == "backdrop":
+        bounds = strata.window.screen_bounds()
+        strata.pointer.click(strata.window, at=(bounds.x + 5, bounds.y + 5))
+    else:
+        strata.pointer.click(strata.dialog_button(dismissal))
+    strata.wait(lambda: strata.dialog() is None, "Properties to close")
+    if dismissal == "Rename":
+        field = strata.editable_field()
+        assert field.text == "readme.md", "Properties must hand focus to the rename editor"
+        strata.keyboard.press("Escape")
+    strata.wait_for_focused_entry("readme.md")
+    strata.wait_for_selection(["readme.md"], "documents")
+    strata.keyboard.press("Left" if mode == "Icons" else "Up")
+    strata.wait_for_focused_entry("notes.txt")
+    strata.wait_for_selection(["notes.txt"], "documents")
+    assert strata.fixture.path("documents/readme.md").read_text() == "Nested fixture\n"
+    assert strata.fixture.path("readme.md").read_text() == "# Fixture\n"
 
 
 def test_renaming_onto_an_existing_name_is_rejected(strata):

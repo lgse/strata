@@ -51,3 +51,19 @@ and accessibility observation overhead; they are informational, not CI limits.
 The existing Rust activation regression now requires the focused action to fire
 exactly once before key handling returns, without a wall-clock assertion. The
 real-key menu fixture covers both Enter and Space activation across all views.
+
+## Returning from Properties
+
+In Columns, open `documents/todo.txt`'s menu with Shift+F10, choose Properties
+with arrows and Enter, close it with Escape, then press Up once. Before this fix
+(`9baead1e`), focus ended up on F1 Shortcuts and the file remained selected.
+Afterward, focus returns to the child file and one Up selects `nested` in that
+same column. Both captures use disposable fixtures and leave file contents intact.
+
+[Before](before-properties-focus.png) · [After](after-properties-focus.png)
+
+The existing Properties E2E fixture covers keyboard menus, pointer menus, the
+Properties shortcut, Escape, the close button, backdrop dismissal, and Rename
+handoff across all views. Recursive-result and chooser fixtures retain their
+selection and focus checks. The property lifecycle unit test also guards against
+restoring an unmapped origin or stealing focus from a follow-up modal.

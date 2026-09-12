@@ -132,7 +132,8 @@ Once open: **Up/Down** move between enabled actions, wrapping past the first/las
 are skipped. **Enter/Space** activates the focused action immediately on key press.
 **Escape** closes the menu without changing the selection and returns keyboard
 focus to the item or pane that opened it. This applies in Columns, Icons, List,
-Trash, and the file chooser.
+Trash, and the file chooser. Closing Properties returns focus to its originating
+control; choosing Rename hands focus to the editor instead.
 
 ## Review fixture
 

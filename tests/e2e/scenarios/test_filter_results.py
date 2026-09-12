@@ -68,7 +68,7 @@ def test_filter_text_selection_uses_the_active_theme(strata, mode, tmp_path):
 
 @pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("trigger", ["pointer", "keyboard"])
-def test_filtered_item_menu_previews_and_copies_the_real_location(strata, mode, trigger):
+def test_filtered_item_menu_actions_use_the_real_location(strata, mode, trigger):
     field = filter_results(strata)
     row = strata.wait(lambda: result(strata, "beta/match-note.txt"), "the beta result")
     strata.pointer.right_click(row)
@@ -90,6 +90,19 @@ def test_filtered_item_menu_previews_and_copies_the_real_location(strata, mode, 
     assert row.has_state("selected")
     assert "Quick preview" in strata.menu_items()
     assert "New Folder" not in strata.menu_items()
+    strata.choose_menu_item("Properties")
+    dialog = strata.wait_for_dialog()
+    assert "beta/match-note.txt" in dialog.dump()
+    strata.keyboard.press("Escape")
+    strata.wait(lambda: strata.dialog() is None, "result Properties to close")
+    strata.wait(lambda: row.has_state("focused"), "Properties to restore the actual search result")
+    assert row.has_state("selected")
+    assert field.text == "match-note"
+    if trigger == "pointer":
+        strata.pointer.right_click(row)
+    else:
+        strata.keyboard.press("Menu")
+    strata.wait(strata.context_menu, "the restored result menu")
     strata.choose_menu_item("Quick preview")
     strata.wait(lambda: strata.preview_shows("beta source"), "preview of the nested result")
     assert field.text == "match-note"

@@ -105,6 +105,61 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
 }
 
 #[test]
+fn properties_focus_return_handles_detached_origins_and_follow_up_modals() {
+    crate::test_support::gtk_test(
+        "ui::browser::properties::tests::properties_focus_return_handles_detached_origins_and_follow_up_modals",
+        || {
+            for scenario in ["restore", "detached", "follow-up"] {
+                let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
+                let origin = gtk::Button::with_label("Origin");
+                let fallback = gtk::Button::with_label("Other control");
+                content.append(&origin);
+                content.append(&fallback);
+                let overlay = gtk::Overlay::new();
+                overlay.set_child(Some(&content));
+                let window = gtk::Window::builder().child(&overlay).build();
+                crate::ui::window::install_modal_focus_trap(&window);
+                window.present();
+                assert!(origin.grab_focus());
+                let close = gtk::Button::with_label("Close");
+                let layer = modal_layer(&close, &overlay, None, None);
+                remember_properties_focus(&layer, &overlay);
+                overlay.add_overlay(&layer);
+                assert!(close.grab_focus());
+                dismiss_modal_layer(&layer, &overlay, None);
+                let expected = match scenario {
+                    "detached" => {
+                        content.remove(&origin);
+                        assert!(fallback.grab_focus());
+                        fallback.upcast::<gtk::Widget>()
+                    }
+                    "follow-up" => {
+                        let confirm = gtk::Button::with_label("Confirm another dialog");
+                        let follow_up = modal_layer(&confirm, &overlay, None, None);
+                        overlay.add_overlay(&follow_up);
+                        assert!(confirm.grab_focus());
+                        confirm.upcast::<gtk::Widget>()
+                    }
+                    _ => origin.upcast::<gtk::Widget>(),
+                };
+                let deadline = Instant::now() + Duration::from_secs(5);
+                while layer.parent().is_some() {
+                    assert!(Instant::now() < deadline, "Properties did not dismiss");
+                    glib::MainContext::default().iteration(false);
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                assert_eq!(
+                    gtk::prelude::RootExt::focus(&window),
+                    Some(expected),
+                    "{scenario}"
+                );
+                window.destroy();
+            }
+        },
+    );
+}
+
+#[test]
 fn properties_permissions_are_formatted_symbolically_and_numerically() {
     assert_eq!(format_permissions(0o100774), "-rwxrwxr--  774");
     assert_eq!(format_permissions(0o040755), "drwxr-xr-x  755");
