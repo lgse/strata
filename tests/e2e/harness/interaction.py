@@ -263,6 +263,23 @@ class Pointer:
             return bounds.center[0], bounds.y + max(1, bounds.height // 6)
         return bounds.center[0], bounds.y + bounds.height - max(1, bounds.height // 6)
 
+    @staticmethod
+    def icons_card_gutter_point(source: Node) -> tuple[int, int]:
+        """A point inside an Icons card but outside its thumbnail and caption.
+
+        The card fills its grid cell while the thumbnail is centered inside
+        it, so a wider cell leaves empty interior beside the thumbnail --
+        the card owns that space as a drag surface the same way Columns and
+        List rows own their inert label allocation.
+        """
+
+        icon = source.find(role="image")
+        assert icon is not None, "no thumbnail on card"
+        card = source.screen_bounds()
+        thumbnail = icon.screen_bounds()
+        x = min(thumbnail.x + thumbnail.width + 8, card.x + card.width - 4)
+        return x, thumbnail.center[1]
+
     def drag_points(
         self,
         start: tuple[int, int],

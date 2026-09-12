@@ -190,6 +190,34 @@ def test_dragging_from_airy_row_padding_moves_the_file(strata, mode, edge):
     drag_from_row_padding(strata, edge)
 
 
+@pytest.mark.preferences(browser_mode="icons")
+def test_dragging_a_selected_icons_card_from_its_gutter_keeps_the_rest_of_the_selection(strata):
+    """#594: a press in a selected card's inert interior must drag the
+    selection, not marquee-replace it with whatever the band covers."""
+
+    fixture = strata.fixture
+    strata.select_entry("readme.md")
+    strata.click_entry_with("todo.txt", ["ctrl"])
+    strata.wait(
+        lambda: set(strata.selected_names()) == {"readme.md", "todo.txt"},
+        "both files to be selected",
+    )
+
+    source = strata.entry("todo.txt")
+    target = strata.entry("archive")
+    start = strata.pointer.icons_card_gutter_point(source)
+
+    strata.pointer.drag_points(start, target.screen_bounds().center)
+
+    strata.wait(
+        lambda: fixture.path("archive/todo.txt").exists()
+        and fixture.path("archive/readme.md").exists(),
+        "both dragged files to arrive in archive",
+    )
+    assert not fixture.path("todo.txt").exists()
+    assert not fixture.path("readme.md").exists()
+
+
 @pytest.mark.preferences(folder_peeking=True, browser_mode="icons")
 def test_starting_a_drag_cancels_a_folder_peek(strata):
     """#621: a drag beginning must cancel any open folder peek in Icons view."""

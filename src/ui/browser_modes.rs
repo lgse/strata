@@ -1728,7 +1728,7 @@ fn build_icons_pane(
         pin_ungrouped_icons_columns(&section, width, context.density.get());
     });
     let targets: super::marquee::MarqueeTargets = Rc::new(RefCell::new(Vec::new()));
-    let (collection, marquee) = collection_with_marquee(&root, scroll, targets.clone(), false);
+    let (collection, marquee) = collection_with_marquee(&root, scroll, targets.clone(), true);
     let search = super::inline_search::wrap(
         &collection,
         &controls.filter_entry,
@@ -1842,7 +1842,7 @@ fn build_icons_view(context: &Rc<IconsContext>, model: &impl IsA<gio::ListModel>
             depth,
             Some((source_index_for_setup.clone(), filtered_for_setup.clone())),
             peek_for_setup.clone(),
-            (None, Some(icon.upcast_ref()), &content_click, false),
+            (None, Some(icon.upcast_ref()), &content_click, true),
         );
         item.set_child(Some(&card));
         if let Some(parent) = card.parent() {
