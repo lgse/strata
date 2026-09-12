@@ -279,6 +279,33 @@ fn symlink_parent_that_leaves_the_volume_is_rejected() -> std::io::Result<()> {
 }
 
 #[test]
+fn symlink_parent_that_stays_on_the_volume_is_still_rejected() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let uid = 1000;
+    let trash = volume_trash(fixture.path(), uid);
+    let source = trash.join("files/inner.txt");
+    fs::write(&source, b"secret").expect("source");
+    fs::create_dir_all(fixture.path().join("documents")).expect("documents dir");
+    fs::create_dir_all(fixture.path().join("pictures")).expect("pictures dir");
+    symlink(
+        fixture.path().join("pictures"),
+        fixture.path().join("documents/nested"),
+    )
+    .expect("nested symlink");
+    let context = context_for(&fixture.path().join("home-trash"), uid, fixture.path());
+    let error = plan_restore_from_known_paths(
+        &source,
+        Path::new("documents/nested/inner.txt"),
+        &trash,
+        None,
+        &context,
+    )
+    .expect_err("symlinked parent on the same volume");
+    assert!(error.message().contains("symlink"), "{}", error.message());
+    assert!(!fixture.path().join("pictures/inner.txt").exists());
+}
+
+#[test]
 fn destination_inside_the_trash_directory_is_rejected() {
     let fixture = tempfile::tempdir().expect("fixture");
     let uid = 1000;
