@@ -232,12 +232,32 @@ pub fn format_permissions(mode: u32) -> String {
 }
 
 fn directory_counts_label(summary: &DirectorySummary) -> String {
-    let prefix = if summary.truncated { "≥ " } else { "" };
+    let prefix = if summary.truncated() { "≥ " } else { "" };
     let files = summary.visible_file_count;
     let folders = summary.visible_folder_count;
     let file_noun = if files == 1 { "file" } else { "files" };
     let folder_noun = if folders == 1 { "folder" } else { "folders" };
     format!("{prefix}{files} {file_noun}, {prefix}{folders} {folder_noun}")
+}
+
+fn measurement_warning_text(summary: &DirectorySummary) -> Option<String> {
+    let mut reasons = Vec::new();
+    if summary.issues.unreadable {
+        reasons.push("Some folders or entries couldn't be read.");
+    }
+    if summary.issues.timed_out {
+        reasons.push("The five-minute calculation limit was reached.");
+    }
+    if summary.issues.depth_limited {
+        reasons.push("Some folders exceeded the 64-level nesting limit.");
+    }
+    (!reasons.is_empty()).then(|| format!("Totals are incomplete.\n{}", reasons.join("\n")))
+}
+
+fn set_measurement_warning(warning: &gtk::Image, message: Option<&str>) {
+    warning.set_tooltip_text(message);
+    warning.update_property(&[gtk::accessible::Property::Label(message.unwrap_or(""))]);
+    warning.set_visible(message.is_some());
 }
 
 fn properties_action(icon: &str, label: &str) -> gtk::Button {
@@ -332,8 +352,20 @@ impl ViewState {
         size_spinner.set_spinning(measuring_directory);
         size_spinner.set_visible(measuring_directory);
         let size = properties_size_row(&details, &initial_size, &size_spinner);
-        let items =
-            measuring_directory.then(|| properties_row(&details, "CONTAINS", "0 files, 0 folders"));
+        let measurement_warning =
+            crate::assets::primary_icon(crate::assets::icons::TRIANGLE_ALERT, 16);
+        measurement_warning.set_halign(gtk::Align::End);
+        measurement_warning.set_valign(gtk::Align::Center);
+        measurement_warning.set_focusable(true);
+        measurement_warning.set_visible(false);
+        let items = measuring_directory.then(|| {
+            properties_row_with_suffix(
+                &details,
+                "CONTAINS",
+                "0 files, 0 folders",
+                Some(measurement_warning.upcast_ref()),
+            )
+        });
         let modified = properties_row(&details, "MODIFIED", "—");
         crate::util::set_modified_date(&modified, entry.as_ref(), "—");
         let opens_with = properties_row(&details, "OPENS WITH", "—");
@@ -533,6 +565,7 @@ impl ViewState {
             let weak_size = size.downgrade();
             let weak_spinner = size_spinner.downgrade();
             let weak_items = items.as_ref().map(|items| items.downgrade());
+            let weak_warning = measurement_warning.downgrade();
             let directory = gio_file_for_location(&location);
             let task = glib::MainContext::default().spawn_local(async move {
                 let progress_size = weak_size.clone();
@@ -558,13 +591,25 @@ impl ViewState {
                 };
                 match summary {
                     Ok(summary) => {
-                        let prefix = if summary.truncated { "≥ " } else { "" };
+                        let prefix = if summary.truncated() { "≥ " } else { "" };
+                        if let Some(warning) = weak_warning.upgrade() {
+                            set_measurement_warning(
+                                &warning,
+                                measurement_warning_text(&summary).as_deref(),
+                            );
+                        }
                         size.set_text(&format!("{prefix}{}", format_file_size(summary.total_size)));
                         if let Some(items) = weak_items.as_ref().and_then(|w| w.upgrade()) {
                             items.set_text(&directory_counts_label(&summary));
                         }
                     }
                     Err(_) => {
+                        if let Some(warning) = weak_warning.upgrade() {
+                            set_measurement_warning(
+                                &warning,
+                                Some("Folder contents couldn't be read."),
+                            );
+                        }
                         size.set_text("Unavailable");
                         if let Some(items) = weak_items.as_ref().and_then(|w| w.upgrade()) {
                             items.set_text("Unavailable");

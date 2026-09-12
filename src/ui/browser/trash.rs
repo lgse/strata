@@ -198,7 +198,7 @@ impl ViewState {
             let trash = gio::File::for_uri("trash:///");
             match summarize_directory(&trash).await {
                 Ok(summary) if summary.item_count > 0 => {
-                    if summary.truncated {
+                    if summary.truncated() {
                         tracing::warn!(
                             item_count = summary.item_count,
                             elapsed_ms = started.elapsed().as_millis() as u64,
@@ -344,9 +344,9 @@ impl ViewState {
             "Empty Trash?",
             &format!(
                 "{}{} · {}{} will be reclaimed",
-                if summary.truncated { "At least " } else { "" },
+                if summary.truncated() { "At least " } else { "" },
                 item_count_label(summary.item_count),
-                if summary.truncated { "at least " } else { "" },
+                if summary.truncated() { "at least " } else { "" },
                 format_file_size(summary.total_size)
             ),
             "Empty Trash",

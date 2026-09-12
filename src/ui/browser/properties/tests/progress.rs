@@ -62,6 +62,64 @@ fn closing_properties_stops_live_measurement() {
 }
 
 #[test]
+fn measurement_warnings_distinguish_and_combine_incomplete_reasons() {
+    use crate::adapters::directory_summary::MeasurementIssues;
+
+    for (issues, reasons) in [
+        (MeasurementIssues::default(), Vec::new()),
+        (
+            MeasurementIssues {
+                unreadable: true,
+                ..Default::default()
+            },
+            vec!["Some folders or entries couldn't be read."],
+        ),
+        (
+            MeasurementIssues {
+                timed_out: true,
+                ..Default::default()
+            },
+            vec!["The five-minute calculation limit was reached."],
+        ),
+        (
+            MeasurementIssues {
+                depth_limited: true,
+                ..Default::default()
+            },
+            vec!["Some folders exceeded the 64-level nesting limit."],
+        ),
+        (
+            MeasurementIssues {
+                unreadable: true,
+                timed_out: true,
+                depth_limited: true,
+            },
+            vec![
+                "Some folders or entries couldn't be read.",
+                "The five-minute calculation limit was reached.",
+                "Some folders exceeded the 64-level nesting limit.",
+            ],
+        ),
+    ] {
+        let summary = DirectorySummary {
+            issues,
+            ..Default::default()
+        };
+        let warning = measurement_warning_text(&summary);
+        if reasons.is_empty() {
+            assert!(warning.is_none());
+            assert!(!directory_counts_label(&summary).contains('≥'));
+        } else {
+            assert_eq!(
+                warning,
+                Some(format!("Totals are incomplete.\n{}", reasons.join("\n")))
+            );
+            assert_eq!(directory_counts_label(&summary), "≥ 0 files, ≥ 0 folders");
+        }
+    }
+}
+
+#[test]
 fn progress_throttle_reports_the_first_update_and_limits_subsequent_bursts() {
     let throttle = SizeProgressThrottle::default();
     let started = Instant::now();

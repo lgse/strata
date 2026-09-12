@@ -26,7 +26,7 @@ fn progress_is_cumulative_across_nested_branches_and_reported_in_batches() {
     assert_eq!(summary.total_size, 900);
     assert_eq!(summary.visible_file_count, 201);
     assert_eq!(summary.visible_folder_count, 2);
-    assert!(!summary.truncated);
+    assert!(!summary.truncated());
     assert_eq!(updates.first(), Some(&DirectorySummary::default()));
     assert_eq!(updates.last(), Some(&summary));
     assert!(
@@ -114,7 +114,10 @@ fn truncated_measurements_finish_at_the_last_reported_size() {
             move |total| observed.set(total),
         ))
         .expect("bounded summary");
-    assert!(summary.truncated);
+    assert!(summary.truncated());
+    assert!(summary.issues.depth_limited);
+    assert!(!summary.issues.timed_out);
+    assert!(!summary.issues.unreadable);
     assert_eq!(summary.total_size, 15);
     assert_eq!(summary.total_size, last_size.get().total_size);
     assert_eq!(summary.visible_file_count, 5);
@@ -155,7 +158,10 @@ fn an_enumeration_failure_preserves_bytes_already_reported() {
             budget.clone(),
         ))
         .expect("partial summary");
-    assert!(summary.truncated);
+    assert!(summary.truncated());
+    assert!(summary.issues.unreadable);
+    assert!(!summary.issues.timed_out);
+    assert!(!summary.issues.depth_limited);
     assert!(summary.total_size > 0 && summary.total_size < 600);
     assert_eq!(summary.total_size, budget.reported.get().total_size);
     assert_eq!(

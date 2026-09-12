@@ -74,6 +74,11 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
                 let size = size_label(overlay.upcast_ref()).expect("Properties SIZE row");
                 let contains =
                     row_label(overlay.upcast_ref(), "CONTAINS").expect("Properties CONTAINS row");
+                let warning = contains
+                    .next_sibling()
+                    .and_downcast::<gtk::Image>()
+                    .expect("measurement warning");
+                assert!(!warning.is_visible());
                 let spinner = size
                     .next_sibling()
                     .and_downcast::<gtk::Spinner>()
@@ -114,6 +119,16 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
                 assert_eq!(size.text(), expected_size);
                 assert!(!spinner.is_visible());
                 assert_eq!(contains.text(), expected_contains);
+                if expected_size == "Unavailable" {
+                    assert!(warning.is_visible());
+                    assert_eq!(
+                        warning.tooltip_text().as_deref(),
+                        Some("Folder contents couldn't be read.")
+                    );
+                } else {
+                    assert!(!warning.is_visible());
+                    assert!(warning.tooltip_text().is_none());
+                }
                 if expected_contains == "200 files, 0 folders" {
                     assert!(
                         saw_partial_count.get(),

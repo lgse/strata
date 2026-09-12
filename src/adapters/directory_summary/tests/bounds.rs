@@ -24,7 +24,7 @@ fn measurement_counts_nested_entries_without_following_symlinks() {
     assert_eq!(summary.total_size, 18);
     assert_eq!(summary.visible_file_count, 5);
     assert_eq!(summary.visible_folder_count, 1);
-    assert!(!summary.truncated);
+    assert!(!summary.truncated());
 }
 
 #[test]
@@ -43,5 +43,5 @@ fn missing_root_is_an_error_and_empty_root_is_exact() {
         .expect("empty summary");
     assert_eq!(summary.item_count, 0);
     assert_eq!(summary.total_size, 0);
-    assert!(!summary.truncated);
+    assert!(!summary.truncated());
 }

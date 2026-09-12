@@ -41,9 +41,12 @@ fn directory_summary_reports_truncated_once_the_time_budget_is_exceeded() {
 
     let summary = summary.expect("a plain directory tree should measure without error");
     assert!(
-        summary.truncated,
+        summary.truncated(),
         "an exhausted time budget should stop measurement and report truncation"
     );
+    assert!(summary.issues.timed_out);
+    assert!(!summary.issues.depth_limited);
+    assert!(!summary.issues.unreadable);
 }
 
 #[test]
@@ -63,9 +66,12 @@ fn directory_summary_does_not_descend_past_the_depth_budget() {
 
     let summary = summary.expect("a plain directory tree should measure without error");
     assert!(
-        summary.truncated,
+        summary.truncated(),
         "descending past the depth budget should be reported"
     );
+    assert!(summary.issues.depth_limited);
+    assert!(!summary.issues.timed_out);
+    assert!(!summary.issues.unreadable);
     assert_eq!(
         summary.item_count, 2,
         "entries past the depth budget should not be counted (root/sub and sub/nested only)"
@@ -78,7 +84,8 @@ fn directory_summary_treats_an_inaccessible_subdirectory_as_truncated_not_fatal(
 
     let root = unique_fixture_root("inaccessible");
     std::fs::create_dir_all(root.join("blocked")).expect("the directory fixture should be created");
-    std::fs::create_dir_all(root.join("visible")).expect("the directory fixture should be created");
+    std::fs::create_dir_all(root.join("visible/deep/inner"))
+        .expect("the directory fixture should be created");
     std::fs::write(root.join("visible/needle.txt"), b"content")
         .expect("the directory fixture file should be written");
     std::fs::set_permissions(root.join("blocked"), std::fs::Permissions::from_mode(0o000))
@@ -87,7 +94,7 @@ fn directory_summary_treats_an_inaccessible_subdirectory_as_truncated_not_fatal(
 
     let summary = glib::MainContext::new().block_on(summarize_directory_with_budget(
         &gio::File::for_path(&root),
-        MAX_DEPTH,
+        1,
         TIME_BUDGET,
     ));
     let _ = std::fs::set_permissions(root.join("blocked"), std::fs::Permissions::from_mode(0o755));
@@ -98,13 +105,13 @@ fn directory_summary_treats_an_inaccessible_subdirectory_as_truncated_not_fatal(
     );
     if !running_as_root {
         assert!(
-            summary.truncated,
+            summary.truncated(),
             "the inaccessible branch should be reported as truncated"
         );
-        assert_eq!(
-            summary.item_count, 3,
-            "blocked (uncounted contents) + visible + needle.txt"
-        );
+        assert!(summary.issues.unreadable);
+        assert!(!summary.issues.timed_out);
+        assert!(summary.issues.depth_limited);
+        assert_eq!(summary.item_count, 4);
     }
 }
 
@@ -149,9 +156,12 @@ fn directory_summary_treats_a_directory_removed_before_measurement_as_truncated_
         "a directory removed after being observed should degrade gracefully, not fail the whole measurement",
     );
     assert!(
-        summary.truncated,
+        summary.truncated(),
         "measuring an entry that vanished before recursion should be reported as truncated"
     );
+    assert!(summary.issues.unreadable);
+    assert!(!summary.issues.timed_out);
+    assert!(!summary.issues.depth_limited);
 }
 
 #[test]
@@ -248,7 +258,7 @@ fn directory_summary_stops_enumerating_the_root_once_the_measurement_budget_is_r
     std::fs::remove_dir_all(&root).expect("the directory fixture should be removed");
 
     assert!(
-        summary.truncated,
+        summary.truncated(),
         "exceeding the measurement budget should still be reported"
     );
     assert_eq!(

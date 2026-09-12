@@ -13,16 +13,26 @@ use std::{
 use gio::prelude::*;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct MeasurementIssues {
+    pub(crate) unreadable: bool,
+    pub(crate) timed_out: bool,
+    pub(crate) depth_limited: bool,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct DirectorySummary {
     pub(crate) item_count: usize,
     pub(crate) total_size: u64,
     pub(crate) visible_file_count: usize,
     pub(crate) visible_folder_count: usize,
-    /// Incomplete measurements are lower bounds, not exact totals.
-    pub(crate) truncated: bool,
+    pub(crate) issues: MeasurementIssues,
 }
 
 impl DirectorySummary {
+    pub(crate) fn truncated(&self) -> bool {
+        self.issues.unreadable || self.issues.timed_out || self.issues.depth_limited
+    }
+
     fn include(&mut self, child: Self) {
         self.item_count = self.item_count.saturating_add(child.item_count);
         self.total_size = self.total_size.saturating_add(child.total_size);
@@ -32,7 +42,9 @@ impl DirectorySummary {
         self.visible_folder_count = self
             .visible_folder_count
             .saturating_add(child.visible_folder_count);
-        self.truncated |= child.truncated;
+        self.issues.unreadable |= child.issues.unreadable;
+        self.issues.timed_out |= child.issues.timed_out;
+        self.issues.depth_limited |= child.issues.depth_limited;
     }
 }
 
@@ -117,7 +129,7 @@ async fn measure_children(
             Err(error) if summary.item_count == 0 => return Err(error),
             Err(_) => {
                 // Keep bytes already reported to the UI if a later batch becomes unreadable.
-                summary.truncated = true;
+                summary.issues.unreadable = true;
                 break;
             }
         };
@@ -127,7 +139,7 @@ async fn measure_children(
         glib::timeout_future(Duration::from_millis(1)).await;
         for info in children {
             if budget.exhausted() {
-                summary.truncated = true;
+                summary.issues.timed_out = true;
                 break 'directory;
             }
             summary.include(
@@ -144,7 +156,7 @@ async fn measure_children(
         budget.report_progress();
         // Branch-local truncation (depth or an unreadable child) must not skip siblings.
         if budget.exhausted() {
-            summary.truncated = true;
+            summary.issues.timed_out = true;
             break;
         }
     }
@@ -173,14 +185,16 @@ fn measure_entry(
             },
             visible_file_count: usize::from(!is_hidden && !is_directory),
             visible_folder_count: usize::from(!is_hidden && is_directory),
-            truncated: false,
+            issues: MeasurementIssues::default(),
         };
         let mut total = budget.total.get();
         total.include(summary);
         budget.total.set(total);
         if is_directory && !info.is_symlink() {
-            if depth >= budget.max_depth || budget.exhausted() {
-                summary.truncated = true;
+            if depth >= budget.max_depth {
+                summary.issues.depth_limited = true;
+            } else if budget.exhausted() {
+                summary.issues.timed_out = true;
             } else {
                 let children = async {
                     let enumerator = enumerate_children(&file).await?;
@@ -190,7 +204,7 @@ fn measure_entry(
                 match children {
                     Ok(children) => summary.include(children),
                     // Disappearing or unreadable children do not invalidate unrelated branches.
-                    Err(_) => summary.truncated = true,
+                    Err(_) => summary.issues.unreadable = true,
                 }
             }
         }
