@@ -246,6 +246,67 @@ def test_column_preview_fills_free_space_and_remembers_a_dragged_session_width(s
     assert abs(strata.preview().screen_bounds().width - chosen) <= 2
 
 
+@pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
+def test_closing_preview_does_not_move_the_columns(strata):
+    strata.open_directory("folder")
+    strata.select_entry_with_keyboard("inner.txt")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("inner"), "the nested preview")
+    column = strata.pane("folder")
+    scroller = next(node for node in column.ancestors() if node.role == "scroll pane")
+    before = column.screen_bounds()
+    viewport_width = scroller.screen_bounds().width
+    close = strata.preview().find(role="button", name="Close preview (Space)")
+    strata.pointer.click(close)
+    strata.wait(lambda: strata.preview() is None, "the preview to close")
+    strata.wait(lambda: scroller.screen_bounds().width > viewport_width, "the browser to use the released space")
+    assert abs(strata.pane("folder").screen_bounds().x - before.x) <= 1
+    strata.select_entry("inner.txt")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("inner"), "the preview to reopen")
+    strata.wait(
+        lambda: abs(strata.pane("folder").screen_bounds().x + before.width - strata.preview().screen_bounds().x) <= 3,
+        "the reopened preview to meet the last column",
+    )
+
+
+@pytest.mark.preferences(browser_mode="columns", single_click_previews=False)
+def test_narrow_window_prioritizes_the_last_column_and_restores_the_latest_preview(strata):
+    browser_left = strata.pane().screen_bounds().x
+    strata.open_directory("folder")
+    strata.select_entry_with_keyboard("inner.txt")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("inner"), "the initial preview")
+    preferred = strata.preview().screen_bounds().width
+
+    def resize(width):
+        bounds = strata.window_bounds()
+        strata.keyboard.connection.resize_surface(bounds.width, bounds.height, width, bounds.height)
+        strata.wait(lambda: strata.window_bounds().width == width, "the resized window")
+
+    def last_column_visible():
+        column = strata.pane("folder").screen_bounds()
+        window = strata.window_bounds()
+        return column.x >= browser_left and column.x + column.width <= window.x + window.width
+
+    resize(900)
+    strata.wait(lambda: strata.preview().screen_bounds().width < preferred, "the preview minimum to yield")
+    strata.wait(last_column_visible, "the entire last column to stay visible")
+    column = strata.pane("folder").screen_bounds()
+    assert column.x + column.width <= strata.preview().screen_bounds().x
+    resize(760)
+    strata.wait(lambda: strata.preview() is None, "the unusably narrow preview to hide")
+    strata.wait(last_column_visible, "the last column without the preview")
+    strata.keyboard.press("Down")
+    strata.wait_for_selection(["nested-notes.txt"])
+    assert strata.preview() is None
+    resize(900)
+    strata.wait(lambda: strata.preview_shows("nested preview fixture"), "the latest selection to resume")
+    strata.wait(last_column_visible, "the last column beside the resumed preview")
+    resize(1200)
+    strata.wait(lambda: strata.preview().screen_bounds().width == preferred, "the preferred preview width to return")
+
+
 def test_space_opens_the_preview_after_a_pointer_selection(strata):
     strata.select_entry("notes.txt")
 

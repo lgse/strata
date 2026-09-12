@@ -4,6 +4,7 @@ use super::*;
 use crate::ui::browser_modes::BrowserMode;
 use std::time::{Duration, Instant};
 
+#[track_caller]
 fn wait_until(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !condition() {
@@ -165,7 +166,7 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                         ));
                         wait_until(|| {
                             find(state.window.upcast_ref(), &|widget| {
-                                widget.has_css_class("preview-pane")
+                                widget.is_mapped() && widget.has_css_class("preview-pane")
                             })
                             .is_some()
                                 == open
@@ -187,7 +188,7 @@ fn space_toggles_the_selected_search_result_in_open_and_save_choosers() {
                         assert!(state.completion.borrow().is_some());
                         if open {
                             let pane = find(state.window.upcast_ref(), &|widget| {
-                                widget.has_css_class("preview-pane")
+                                widget.is_mapped() && widget.has_css_class("preview-pane")
                             })
                             .expect("open preview");
                             wait_until(|| {

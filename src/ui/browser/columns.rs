@@ -1323,6 +1323,7 @@ impl ViewState {
     }
 
     pub(super) fn truncate(self: &Rc<Self>, len: usize) {
+        self.columns_widget.set_margin_end(0);
         self.close_peek_visual();
         if self.hovered_column.get().is_some_and(|depth| depth >= len) {
             self.hovered_column.set(None);

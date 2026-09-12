@@ -319,10 +319,13 @@ impl PreviewDrawer {
     }
 
     pub fn has_video(&self) -> bool {
-        self.is_open() && self.state.media.borrow().is_some()
+        self.is_open() && !self.state.sizing.is_suspended() && self.state.media.borrow().is_some()
     }
 
     pub fn handle_video_key(&self, key: gtk::gdk::Key) -> bool {
+        if self.state.sizing.is_suspended() {
+            return false;
+        }
         let media = match self.state.media.borrow().as_ref() {
             Some(m) => m.clone(),
             None => return false,
@@ -409,12 +412,25 @@ impl PreviewState {
     fn show(self: &Rc<Self>, entry: FileEntry) {
         let was_open = self.opened.replace(true);
         let already_showing = self.current.borrow().as_ref() == Some(&entry);
+        let split = self.split.borrow().clone();
+        if let Some(split) = split.as_ref()
+            && (!self.can_show_in(split) || self.sizing.is_suspended())
+        {
+            if !was_open || !already_showing {
+                self.current_request.set(None);
+                self.load.borrow_mut().take();
+                self.cancel_loading();
+                self.pdf_loads.borrow_mut().clear();
+                self.clear_content();
+                self.sizing.defer_load();
+            }
+            self.current.replace(Some(entry));
+            self.sync_split(split);
+            return;
+        }
         if !was_open {
-            self.revealer.set_transition_duration(0);
-            self.pane.set_size_request(0, -1);
-            self.revealer.set_reveal_child(true);
-            if let Some(split) = self.split.borrow().as_ref() {
-                split.set_end_child(Some(&self.revealer));
+            self.show_panel();
+            if let Some(split) = split.as_ref() {
                 self.animate_open(split);
             }
         }
@@ -426,7 +442,7 @@ impl PreviewState {
     fn stop(&self) {
         self.opened.set(false);
         self.animating.set(false);
-        self.sizing.cancel_resize();
+        self.sizing.close();
         self.animation_generation
             .set(self.animation_generation.get().saturating_add(1));
         self.current_request.set(None);
@@ -440,12 +456,7 @@ impl PreviewState {
     fn close(self: &Rc<Self>) {
         self.stop();
         self.clear_content();
-        self.revealer.set_transition_duration(0);
-        self.revealer.set_reveal_child(false);
-        if let Some(split) = self.split.borrow().as_ref() {
-            split.set_position(split.width());
-            split.set_end_child(None::<&gtk::Widget>);
-        }
+        self.hide_panel();
         self.pane.set_size_request(MIN_WIDTH, -1);
     }
 
@@ -850,7 +861,7 @@ impl PreviewState {
 
                 if is_gif {
                     media.set_loop(true);
-                    media.play();
+                    self.sizing.play_or_defer(&media);
                     self.append_media_controls(
                         &media,
                         &super::theme::ThemeManager::shared(),
@@ -869,7 +880,7 @@ impl PreviewState {
                     media.set_volume(volume);
                     media.set_muted(muted);
                     self.append_media_controls(&media, &preferences, &section, &center_play, false);
-                    media.play();
+                    self.sizing.play_or_defer(&media);
                 }
 
                 if let Some(error) = media.error() {

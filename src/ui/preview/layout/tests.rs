@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: MIT
 
+mod visibility;
+
 use super::super::tests::media_size::{RecordingProvider, entry, wait_until};
 use super::*;
 use crate::{model::Location, ui::theme::ThemeManager};
@@ -9,7 +11,7 @@ fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice()
     let geometry = Geometry {
         available: 2000,
         occupied: 500,
-        start_minimum: 200,
+        start_minimum: 500,
         separator: 2,
         columns: true,
     };
@@ -25,10 +27,26 @@ fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice()
     assert_eq!(overflow.preview_width(Some(450)), 450);
     assert_eq!(geometry.preview_width(Some(450)), 450);
     let narrow = Geometry {
-        available: 500,
+        available: 900,
         ..geometry
     };
+    assert!(narrow.can_show_preview());
+    assert_eq!(narrow.preview_width(None), 398);
     assert_eq!(narrow.position(Some(900)), narrow.start_minimum);
+    assert!(
+        !Geometry {
+            available: 800,
+            ..geometry
+        }
+        .can_show_preview()
+    );
+    assert!(
+        Geometry {
+            available: 802,
+            ..geometry
+        }
+        .can_show_preview()
+    );
     assert_eq!(geometry.preview_width(Some(900)), 900);
 }
 
@@ -53,6 +71,7 @@ struct Fixture {
     content: gtk::Paned,
     browser: BrowserView,
     preview: PreviewDrawer,
+    requests: Rc<RefCell<Vec<PreviewRequest>>>,
     root: tempfile::TempDir,
 }
 
@@ -69,10 +88,8 @@ impl Fixture {
                 Default::default(),
             )
         };
-        let preview = PreviewDrawer::new(
-            Rc::new(RecordingProvider(Rc::new(RefCell::new(Vec::new())))),
-            !chooser,
-        );
+        let requests = Rc::new(RefCell::new(Vec::new()));
+        let preview = PreviewDrawer::new(Rc::new(RecordingProvider(requests.clone())), !chooser);
         let sidebar = gtk::Box::new(gtk::Orientation::Vertical, 0);
         sidebar.set_width_request(180);
         let content = gtk::Paned::new(gtk::Orientation::Horizontal);
@@ -109,6 +126,7 @@ impl Fixture {
             content,
             browser,
             preview,
+            requests,
             root,
         }
     }
@@ -117,6 +135,43 @@ impl Fixture {
         self.window.set_width_request(width);
         self.window.set_default_size(width, 800);
         wait_until(|| self.window.width() == width);
+    }
+
+    fn settle(&self) {
+        let frames = Rc::new(Cell::new(0));
+        let completed = frames.clone();
+        self.split.add_tick_callback(move |_, _| {
+            completed.set(completed.get() + 1);
+            if completed.get() >= 2 {
+                glib::ControlFlow::Break
+            } else {
+                glib::ControlFlow::Continue
+            }
+        });
+        wait_until(|| frames.get() >= 2);
+    }
+
+    fn last_column(&self) -> gtk::Widget {
+        self.columns().last_child().expect("last column")
+    }
+
+    fn enter_children(&self) {
+        for depth in 0..2 {
+            self.browser.browser().select(depth, 0);
+            self.browser.browser().enter_focused_directory();
+            wait_until(|| {
+                self.browser
+                    .browser()
+                    .column_snapshot(depth + 1)
+                    .is_some_and(|s| !s.loading)
+            });
+        }
+    }
+
+    fn close(self) {
+        self.preview.close();
+        self.window.destroy();
+        self.browser.browser().clear_observer();
     }
 
     fn columns(&self) -> gtk::Box {
@@ -191,17 +246,7 @@ fn browser_and_chooser_keep_the_last_column_visible_as_preview_space_changes() {
                     .expect("sidebar")
                     .set_visible(true);
                 fixture.content.set_position(180);
-                for depth in 0..2 {
-                    fixture.browser.browser().select(depth, 0);
-                    fixture.browser.browser().enter_focused_directory();
-                    wait_until(|| {
-                        fixture
-                            .browser
-                            .browser()
-                            .column_snapshot(depth + 1)
-                            .is_some_and(|s| !s.loading)
-                    });
-                }
+                fixture.enter_children();
                 fixture.preview.close();
                 fixture.resize(1200);
                 fixture.preview.show(entry("nested.png"));
@@ -233,9 +278,7 @@ fn browser_and_chooser_keep_the_last_column_visible_as_preview_space_changes() {
                 });
                 fixture.wait_adjacent();
                 assert_eq!(fixture.adjustment().value(), 0.0);
-                fixture.preview.close();
-                fixture.window.destroy();
-                fixture.browser.browser().clear_observer();
+                fixture.close();
             }
         },
     );
@@ -285,9 +328,7 @@ fn manual_width_overrides_auto_sizing_until_the_window_session_ends() {
             second.wait_adjacent();
             assert_ne!(second.preview.widget().width(), chosen);
             for fixture in [fixture, second] {
-                fixture.preview.close();
-                fixture.window.destroy();
-                fixture.browser.browser().clear_observer();
+                fixture.close();
             }
         },
     );

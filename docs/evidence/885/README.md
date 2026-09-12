@@ -1,11 +1,21 @@
 # Adaptive Miller-column previews (#885)
 
 Automatic previews fill the space after the last directory column. The default
-minimum is two standard columns (600 logical pixels); older columns scroll left
-when necessary. Dragging the divider overrides automatic sizing for that window
-session, including navigation and closing/reopening the preview. A new window
-starts in automatic mode. Very narrow windows constrain the displayed width
-without discarding the session's preferred width.
+preferred minimum is two standard columns (600 logical pixels); older columns
+scroll left when necessary. The last directory column, including its resized
+width, takes priority over that minimum and over a manually chosen preview width.
+Closing a preview preserves the columns' positions and leaves empty space on the
+right; normal scrolling and navigation remain available.
+
+Dragging the divider overrides automatic sizing for that window session,
+including navigation and closing/reopening the preview. A new window starts in
+automatic mode. If less than one standard column (300 logical pixels) remains for
+the preview after reserving the last directory column, the preview is temporarily
+hidden. It returns when space permits without discarding the preferred width or
+the latest selection. Existing document views retain their scroll/zoom state.
+Loaded media is paused and resumes only if that same file was playing before
+hiding. Late media results never autoplay while hidden. Closing a hidden preview
+cancels automatic restoration.
 
 Images, GIFs, videos, and playback controls use a centered section capped at
 1280 logical pixels. Media keeps its aspect ratio and grows to at most twice
@@ -25,6 +35,23 @@ application window, not taken from the desktop.
 | Remaining space and centered content cap | ![Wide preview before](before-wide.png) | ![Wide preview after](after-wide.png) |
 | 160×48 image, at most 320×96 in the preview | ![Small image before](before-small.png) | ![Small image after](after-small.png) |
 | Deep path, last column remains visible | ![Deep path before](before-deep.png) | ![Deep path after](after-deep.png) |
+
+## Closing and narrow-window follow-up
+
+These comparisons use `8554812` as the before baseline, with the same private,
+pinned rendering environment described above.
+
+| Window | Before | After |
+| --- | --- | --- |
+| 900 pixels wide: last column takes priority | ![Column obscured before](followup/before-narrow.png) | ![Last column fully visible after](followup/after-narrow.png) |
+| 760 pixels wide: temporary preview fallback | ![Preview blocks the browser before](followup/before-hidden.png) | ![Preview hidden to preserve navigation](followup/after-hidden.png) |
+
+Closing leaves the columns in place; the released space is empty rather than
+scrolling the columns back to the right:
+
+| Open | Closed |
+| --- | --- |
+| ![Column positions with preview open](followup/after-open.png) | ![Same column positions after closing](followup/after-closed.png) |
 
 ## Tuning and scope
 
