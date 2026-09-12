@@ -23,6 +23,7 @@ impl FileSource for MenuSource {
                 "other.txt",
                 "picture.png",
                 "archive.zip",
+                "archive.rar",
                 "folder",
             ]
             .into_iter()
@@ -326,6 +327,14 @@ fn menus_and_keyboard_actions_follow_supported_operations_in_every_mode() {
                     menu.popdown();
                     wait_until(|| menu.parent().is_none());
                     let menu = open_menu(&view, Some("archive.zip"));
+                    if in_trash {
+                        assert_actions(&menu, &[], &["Extract here", "Extract to…"]);
+                    } else {
+                        assert_actions(&menu, &["Extract here", "Extract to…"], &[]);
+                    }
+                    menu.popdown();
+                    wait_until(|| menu.parent().is_none());
+                    let menu = open_menu(&view, Some("archive.rar"));
                     if in_trash {
                         assert_actions(&menu, &[], &["Extract here", "Extract to…"]);
                     } else {

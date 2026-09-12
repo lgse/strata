@@ -200,6 +200,7 @@ fn read_compressed_entries(
                 Ok(true)
             })?;
         }
+        ArchiveFormat::Rar => return Err("RAR compression is not supported".into()),
     }
     Ok(result)
 }

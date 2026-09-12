@@ -14,7 +14,7 @@ from harness.artifacts import ArtifactCollector
 ARCHIVE_FIXTURES = Path(__file__).parents[1] / "fixtures"
 
 
-@pytest.mark.parametrize("name", ["fake.zip", "fake.7z", "fake.tar", "fake.tar.gz"])
+@pytest.mark.parametrize("name", ["fake.zip", "fake.7z", "fake.tar", "fake.tar.gz", "fake.rar"])
 def test_invalid_archive_reports_damage_and_allows_another_extraction(strata, name):
     fixture = strata.fixture
     fixture.path(name).write_bytes(b"This is harmless text, not an archive.\n")
@@ -44,10 +44,15 @@ def test_invalid_archive_reports_damage_and_allows_another_extraction(strata, na
     strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
 
 
-def test_wrong_extract_password_reopens_dialog_until_password_is_correct(strata):
+@pytest.mark.parametrize("source,password,member,contents", [
+    (ARCHIVE_FIXTURES / "content-encrypted.7z", "secret", "protected.txt", "password retry works\n"),
+    (Path(__file__).parents[2] / "fixtures/rar/encrypted.rar", "unrar", ".gitignore", "target\nCargo.lock\n"),
+    (Path(__file__).parents[2] / "fixtures/rar/comment-hpw-password.rar", "password", ".gitignore", "target\nCargo.lock\n"),
+])
+def test_wrong_extract_password_reopens_dialog_until_password_is_correct(strata, source, password, member, contents):
     fixture = strata.fixture
-    archive_name = "content-encrypted.7z"
-    shutil.copyfile(ARCHIVE_FIXTURES / archive_name, fixture.path(archive_name))
+    archive_name = source.name
+    shutil.copyfile(source, fixture.path(archive_name))
     strata.keyboard.press("ctrl+r")
     strata.pointer.right_click(strata.entry(archive_name))
     strata.choose_menu_item("Extract here")
@@ -80,11 +85,14 @@ def test_wrong_extract_password_reopens_dialog_until_password_is_correct(strata)
     assert dialog.find(role="label", name="Invalid password") is not None
     assert dialog.find(role="label", name="Unable to complete operation") is None
 
-    strata.keyboard.type_text("secret")
+    if source.suffix == ".rar":
+        collector = ArtifactCollector(test_name=f"rar-password-{source.stem}")
+        strata.screenshot(collector.directory / "password-retry.png")
+    strata.keyboard.type_text(password)
     strata.pointer.click(strata.dialog_button("Extract"))
-    extracted = fixture.path("protected.txt")
+    extracted = fixture.path(member)
     strata.wait(lambda: extracted.exists(), "the archive to extract with the correct password")
-    assert extracted.read_text() == "password retry works\n"
+    assert extracted.read_text() == contents
     strata.wait(lambda: strata.dialog() is None, "extraction progress dismissal")
 
 

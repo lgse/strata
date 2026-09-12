@@ -8,7 +8,7 @@ _releasever=0.9.0
 pkgdesc="A fast, keyboard-first file manager for Linux (preview channel)"
 arch=('x86_64' 'aarch64')
 url="https://github.com/lgse/strata"
-license=('MIT')
+license=('MIT' 'LicenseRef-UnRAR')
 depends=(
   'bubblewrap'
   'fontconfig'
@@ -43,6 +43,10 @@ package() {
 
   install -Dm755 "${dist}/strata" "${pkgdir}/usr/bin/strata"
   install -Dm644 "${dist}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  # Older release archives predate bundled UnRAR.
+  if [[ -f "${dist}/UnRAR.txt" ]]; then
+    install -Dm644 "${dist}/UnRAR.txt" "${pkgdir}/usr/share/licenses/${pkgname}/UnRAR.txt"
+  fi
   install -Dm644 "${dist}/THIRD_PARTY_LICENSES.md" \
     "${pkgdir}/usr/share/licenses/${pkgname}/THIRD_PARTY_LICENSES.md"
 
