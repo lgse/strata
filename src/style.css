@@ -1918,8 +1918,7 @@ paned > separator {
 .sidebar-split > separator {
   padding: 0 2px;
   border: none;
-  background-image: none;
-  background-clip: content-box;
+  background: transparent;
 }
 
 .preview-split > separator {
