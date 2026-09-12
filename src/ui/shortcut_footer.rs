@@ -127,7 +127,7 @@ impl ShortcutFooter {
             .overlay_scrolling(false)
             .propagate_natural_height(true)
             .max_content_height(440)
-            .min_content_width(420)
+            .width_request(420)
             .focusable(true)
             .build();
         scroll.add_css_class("fixed-scrollbar");
@@ -140,7 +140,7 @@ impl ShortcutFooter {
             {
                 scroll.vadjustment().set_value(scroll.vadjustment().lower());
                 scroll.set_max_content_height((window.height() - 150).clamp(100, 440));
-                scroll.set_min_content_width((window.width() - 60).clamp(260, 420));
+                scroll.set_width_request((window.width() - 60).clamp(260, 420));
             }
         });
         more.set_popover(Some(&popover));
