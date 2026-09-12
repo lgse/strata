@@ -22,7 +22,7 @@ concurrency:
 jobs:
   quality-build:
     name: Quality build and lint
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
     timeout-minutes: 20
     outputs:
@@ -138,7 +138,7 @@ jobs:
   quality-shard:
     name: Rust tests shard ${{ matrix.shard }}
     needs: quality-build
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -222,7 +222,7 @@ jobs:
 
   e2e-build:
     name: E2E build and plan
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     env:
       DOCKER_BUILD_RECORD_UPLOAD: 'false'
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
@@ -376,7 +376,7 @@ jobs:
   e2e-shard:
     name: E2E shard ${{ matrix.shard }}
     needs: e2e-build
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
       fail-fast: false
@@ -511,7 +511,7 @@ jobs:
 
   repository-policy:
     name: Dependency and spelling policy
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     if: ${{ github.event_name != 'pull_request' || !github.event.pull_request.draft }}
 
     steps:
