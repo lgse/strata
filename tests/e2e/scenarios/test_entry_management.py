@@ -80,8 +80,11 @@ def test_creating_an_existing_name_does_not_overwrite(strata, mode, kind, name):
     strata.wait(lambda: strata.dialog() is None, "the error to be dismissible")
     assert strata.fixture.listing() == original
     assert strata.fixture.path("todo.txt").read_text() == "todo\n"
-    strata.select_entry("readme.md")
-    strata.wait_for_selection(["readme.md"])
+    root = strata.fixture.root.name
+    strata.select_entry("readme.md", root)
+    strata.wait_for_selection(["readme.md"], root)
+    if mode == "Columns" and kind == "folder":
+        assert strata.pane_names() == [root, "new folder"]
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)

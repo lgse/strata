@@ -59,6 +59,8 @@ pub struct BrowserColumnSnapshot {
 
 #[derive(Clone, Debug)]
 pub enum BrowserEvent {
+    /// The outgoing directory is still available for presentation-state capture.
+    NavigationStarting,
     Reset,
     ColumnsTruncated {
         len: usize,
@@ -66,6 +68,10 @@ pub enum BrowserEvent {
     ColumnAdded {
         depth: usize,
         location: Location,
+    },
+    /// Existing directories moved; retain the unaffected views and current focus.
+    ColumnsRelocated {
+        from_depth: usize,
     },
     EntriesInserted {
         depth: usize,
@@ -762,6 +768,9 @@ impl Browser {
         if self.active_location().as_ref() == Some(&location) {
             return;
         }
+        if self.active_location().is_some() {
+            self.emit(BrowserEvent::NavigationStarting);
+        }
         self.close_peek();
         self.loads.borrow_mut().clear();
         self.monitors.borrow_mut().clear();
@@ -851,6 +860,10 @@ impl Browser {
         location: Location,
         select_first_on_load: bool,
     ) {
+        if self.location_at(parent_depth).is_none() {
+            return;
+        }
+        self.emit(BrowserEvent::NavigationStarting);
         let request_id = self.new_request_id();
         let mut state = self.state.borrow_mut();
         if !state.descend(parent_depth, location.clone(), request_id) {
@@ -1314,13 +1327,35 @@ impl Browser {
         self.rename_operation.set(Some(request_id));
         let refresh_locations = entry.location.parent().into_iter().collect();
         let emit = self.operation_callback(request_id, true, refresh_locations);
+        let mut renamed = entry.clone();
+        let new_location = entry
+            .location
+            .parent()
+            .and_then(|parent| parent.child(std::ffi::OsStr::new(&new_name)));
+        renamed.native_name = std::ffi::OsString::from(&new_name);
+        renamed.display_name = new_name.clone();
+        renamed.is_hidden = new_name.starts_with('.');
+        let old_location = entry.location.clone();
+        let weak = Rc::downgrade(self);
+        let publish = Rc::new(move |event: OperationEvent| {
+            if matches!(&event, OperationEvent::Renamed { request_id: id } if *id == request_id)
+                && let Some(browser) = weak.upgrade()
+                && browser.is_current_operation(request_id)
+                && let Some(location) = new_location.as_ref()
+            {
+                let mut renamed = renamed.clone();
+                renamed.location = location.clone();
+                browser.publish_rename(&old_location, renamed);
+            }
+            emit(event);
+        });
         let load = provider.rename(
             RenameRequest {
                 id: request_id,
                 entry,
                 new_name,
             },
-            emit,
+            publish,
         );
         self.install_operation_load(request_id, load);
         Some(request_id)
@@ -2150,6 +2185,23 @@ impl Browser {
         self.activate_focused_with_selection(false);
     }
 
+    /// The successful creation has already established the entry's type and location.
+    pub(crate) fn reveal_created_entry(self: &Rc<Self>, depth: usize, position: usize) {
+        let Some(entry) = self.entry_at(depth, position) else {
+            return;
+        };
+        self.select(depth, position);
+        if entry.is_directory() {
+            // Do not start another asynchronous validation that can outlive inline rename.
+            self.bump_navigation_generation();
+            self.close_peek();
+            self.descend_validated(depth, entry.location, false);
+            self.select(depth, position);
+        } else {
+            self.close_column(depth + 1);
+        }
+    }
+
     pub(crate) fn is_open_child(&self, parent_depth: usize, location: &Location) -> bool {
         parent_depth
             .checked_add(1)
@@ -2288,6 +2340,7 @@ impl Browser {
     }
 
     fn restore_path(self: &Rc<Self>, path: NavigationPath) {
+        self.emit(BrowserEvent::NavigationStarting);
         self.close_peek();
         self.loads.borrow_mut().clear();
         self.monitors.borrow_mut().clear();
@@ -2322,6 +2375,68 @@ impl Browser {
                 depth,
                 position: None,
             });
+        }
+    }
+
+    fn publish_rename(self: &Rc<Self>, old: &Location, entry: FileEntry) {
+        if !(0..)
+            .map_while(|depth| self.location_at(depth))
+            .any(|location| location.is_within(old))
+        {
+            return;
+        }
+        if let Some(parent) = old.parent() {
+            let depths = (0..)
+                .map_while(|depth| self.location_at(depth).map(|location| (depth, location)))
+                .filter_map(|(depth, location)| (location == parent).then_some(depth))
+                .collect::<Vec<_>>();
+            for depth in depths {
+                self.handle_directory_change(
+                    depth,
+                    &parent,
+                    DirectoryChange::Move {
+                        from: old.clone(),
+                        entry: entry.clone(),
+                    },
+                );
+            }
+        }
+        // The source parent need not still be open when the operation completes.
+        self.relocate_open_columns(old, &entry.location);
+    }
+
+    fn relocate_open_columns(self: &Rc<Self>, from: &Location, to: &Location) {
+        let locations = (0..)
+            .map_while(|depth| self.location_at(depth))
+            .collect::<Vec<_>>();
+        let Some(from_depth) = locations.iter().position(|location| {
+            location
+                .rebase(from, to)
+                .is_some_and(|relocated| relocated != *location)
+        }) else {
+            return;
+        };
+        let loads = locations
+            .into_iter()
+            .enumerate()
+            .skip(from_depth)
+            .map(|(depth, location)| {
+                let relocated = location.rebase(from, to).unwrap_or(location);
+                (depth, relocated, self.new_request_id())
+            })
+            .collect::<Vec<_>>();
+        self.close_peek();
+        self.loads.borrow_mut().truncate(from_depth);
+        self.monitors.borrow_mut().truncate(from_depth);
+        self.truncate_deferred_from(from_depth);
+        for (depth, location, request_id) in &loads {
+            self.state
+                .borrow_mut()
+                .relocate_column(*depth, location.clone(), *request_id);
+        }
+        self.emit(BrowserEvent::ColumnsRelocated { from_depth });
+        for (depth, location, request_id) in loads {
+            self.start_load(depth, location, request_id);
         }
     }
 
@@ -3218,6 +3333,20 @@ impl Browser {
                 self.refresh_column(depth);
                 continue;
             }
+            let relocates_open_path = changes.iter().any(|(_, change)| {
+                matches!(change, DirectoryChange::Move { .. })
+                    && self
+                        .state
+                        .borrow()
+                        .path_after_external_change(depth, change)
+                        .is_some()
+            });
+            if relocates_open_path {
+                for (watched, change) in changes {
+                    self.handle_directory_change(depth, &watched, change);
+                }
+                continue;
+            }
             let path_update = {
                 let state = self.state.borrow();
                 changes
@@ -3275,6 +3404,9 @@ impl Browser {
         watched: &Location,
         change: DirectoryChange,
     ) {
+        if self.location_at(depth).as_ref() != Some(watched) {
+            return;
+        }
         if self.deletion_operation.get() || self.restoration_operation.get() {
             self.deferred_file_operation_changes
                 .borrow_mut()
@@ -3315,10 +3447,16 @@ impl Browser {
             .state
             .borrow()
             .path_after_external_change(depth, &change);
-        if let Some(path) = path_update {
+        if let Some(path) = path_update
+            && !matches!(&change, DirectoryChange::Move { .. })
+        {
             self.restore_path(path);
             return;
         }
+        let relocation = match &change {
+            DirectoryChange::Move { from, entry } => Some((from.clone(), entry.location.clone())),
+            _ => None,
+        };
         let application = self
             .state
             .borrow_mut()
@@ -3331,6 +3469,9 @@ impl Browser {
                     position: None,
                 });
             }
+        }
+        if let Some((from, to)) = relocation {
+            self.relocate_open_columns(&from, &to);
         }
     }
 

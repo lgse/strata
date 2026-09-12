@@ -16,6 +16,7 @@ from harness.modes import ALL_MODES
 @pytest.mark.parametrize("activation", ["keyboard", "double-click"])
 @pytest.mark.parametrize("format", ["zip", "rar"])
 def test_archive_activation_extracts_in_place(strata, mode, activation, format):
+    strata.wait_for_focused_entry("archive")
     fixture = strata.fixture
     archive_name = f"activation.{format}"
     if format == "zip":
