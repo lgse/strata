@@ -1333,6 +1333,17 @@ fn install_shortcuts(
         {
             return glib::Propagation::Stop;
         }
+        // Filtered rows own navigation, not the hidden directory selection.
+        if matches!(key, gtk::gdk::Key::Up | gtk::gdk::Key::Down)
+            && state.view.selected_search_results().is_some()
+            && !focused.as_ref().is_some_and(|widget| {
+                super::focus_navigation::editable(widget)
+                    || super::focus_navigation::in_popover(widget)
+            })
+        {
+            state.window.set_focus_visible(true);
+            return glib::Propagation::Proceed;
+        }
         let original_key = key;
         let key = super::focus_navigation::navigation_key(
             key,

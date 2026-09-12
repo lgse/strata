@@ -911,6 +911,7 @@ impl ViewState {
         let list_for_navigation = list.clone();
         let browser_for_navigation = Rc::downgrade(&self.browser);
         let results_for_navigation = search_results.clone();
+        let navigation_state = Rc::downgrade(self);
         search_navigation.connect_key_pressed(move |_, key, _, modifiers| {
             if !search_active_for_navigation.get()
                 || modifiers.intersects(
@@ -938,25 +939,69 @@ impl ViewState {
                     glib::Propagation::Proceed
                 };
             }
-            let direction = match key {
-                gtk::gdk::Key::Down => 1,
-                gtk::gdk::Key::Up => -1,
+            match key {
+                gtk::gdk::Key::Down => {}
+                gtk::gdk::Key::Up => return glib::Propagation::Stop,
                 _ => return glib::Propagation::Proceed,
-            };
-            let Some(next) = search_result_navigation_position(
-                current,
-                selection_for_navigation.n_items(),
-                direction,
-            ) else {
+            }
+            let Some(next) = current.or_else(|| {
+                search_result_navigation_position(None, selection_for_navigation.n_items(), 1)
+            }) else {
                 return glib::Propagation::Stop;
             };
             syncing_for_navigation.set(true);
+            list_for_navigation.grab_focus();
             selection_for_navigation.select_item(next, true);
             syncing_for_navigation.set(false);
-            list_for_navigation.scroll_to(next, gtk::ListScrollFlags::empty(), None);
+            list_for_navigation.scroll_to(next, gtk::ListScrollFlags::FOCUS, None);
+            if let Some(state) = navigation_state.upgrade() {
+                super::BrowserView { state }.keyboard_navigation();
+            }
             glib::Propagation::Stop
         });
         filter_entry.add_controller(search_navigation);
+
+        let return_to_filter = gtk::EventControllerKey::new();
+        return_to_filter.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let search_active = recursive_search_active.clone();
+        let result_selection = selection.clone();
+        let query = filter_entry.downgrade();
+        let navigation_state = Rc::downgrade(self);
+        return_to_filter.connect_key_pressed(move |controller, key, _, modifiers| {
+            if !search_active.get()
+                || !matches!(key, gtk::gdk::Key::Up | gtk::gdk::Key::Down)
+                || modifiers.intersects(
+                    gtk::gdk::ModifierType::CONTROL_MASK
+                        | gtk::gdk::ModifierType::SHIFT_MASK
+                        | gtk::gdk::ModifierType::ALT_MASK
+                        | gtk::gdk::ModifierType::SUPER_MASK,
+                )
+            {
+                return glib::Propagation::Proceed;
+            }
+            if controller
+                .widget()
+                .and_then(|widget| widget.root())
+                .and_then(|root| root.focus())
+                .and_then(|focus| focus.ancestor(gtk::Popover::static_type()))
+                .is_some()
+            {
+                return glib::Propagation::Proceed;
+            }
+            if let Some(state) = navigation_state.upgrade() {
+                super::BrowserView { state }.keyboard_navigation();
+            }
+            if key != gtk::gdk::Key::Up
+                || bitset_positions(&result_selection.selection()).as_slice() != [0]
+            {
+                return glib::Propagation::Proceed;
+            }
+            query
+                .upgrade()
+                .filter(|entry| entry.grab_focus_without_selecting())
+                .map_or(glib::Propagation::Proceed, |_| glib::Propagation::Stop)
+        });
+        list.add_controller(return_to_filter);
 
         let selection_keys = gtk::EventControllerKey::new();
         selection_keys.set_propagation_phase(gtk::PropagationPhase::Capture);

@@ -76,9 +76,11 @@ Icons ([file](screenshots/566/icons-new-file-rename.png),
 
 ## Preview while filtering
 
-In the browser and file chooser, **Space** toggles quick preview for the highlighted recursive filter result in Columns, Icons, and List. The query, selection, and current directory stay intact. This also works when Up/Down highlights a result while keyboard focus remains in the query field.
+In the browser and file chooser, **Down** from the Ctrl+F input focuses the selected result, or the first result if none is selected. **Up/Down** then navigate the results; **Up** from the first result returns to the input without clearing the query. **Ctrl+F** also returns to the input. With no matches, Down leaves focus in the input.
 
-With no result selected, Space still types into the query. **Shift+Space** inserts a space in the query even with a result selected. Folders and unsupported files do not open a preview.
+**Menu/Shift+F10** on a focused result opens its file menu. While the input itself is focused, its text-editing menu remains available. **Space** toggles quick preview for the selected result in Columns, Icons, and List, including after returning to the query. The query, selection, and current directory stay intact.
+
+While the input is focused, Space types into the query if no result is selected. **Shift+Space** inserts a space there even with a result selected. Folders and unsupported files do not open a preview.
 
 [Filtered selection](screenshots/472/before.png) · [Preview with the query intact](screenshots/472/after.png)
 

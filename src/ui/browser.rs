@@ -60,7 +60,6 @@ pub(crate) use crate::ui::browser::collection::{
     detach_collection_view, focus_collection_item_when_allocated, focus_filter_entry,
     notify_filter_query, prepare_collection_inline_edit, recursive_search_activation_key,
     reveal_collection_after_layout, scroll_collection_when_allocated, search_result_entry,
-    search_result_navigation_position,
 };
 pub(super) use crate::ui::browser::columns::max_child_natural_width;
 pub(crate) use crate::ui::browser::columns::should_preserve_drag_selection;

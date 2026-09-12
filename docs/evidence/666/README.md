@@ -67,3 +67,20 @@ Properties shortcut, Escape, the close button, backdrop dismissal, and Rename
 handoff across all views. Recursive-result and chooser fixtures retain their
 selection and focus checks. The property lifecycle unit test also guards against
 restoring an unmapped origin or stealing focus from a follow-up modal.
+
+## Keyboard focus in filtered results (#901)
+
+With one recursive match, Down now transfers focus from the Ctrl+F input to the
+result. Before (`34dbc13d`), the input retained its caret and keyboard ownership;
+afterward, the result has native focus and Columns reports the keyboard destination.
+The query and disposable file contents remain unchanged in both captures.
+
+[Before](before-filter-navigation.png) · [After](after-filter-navigation.png)
+
+The existing result-menu regression now reaches the result, reopens its menu,
+and invokes Properties entirely by keyboard, without pointer-assisted selection.
+It covers one/multiple results in all views, Up back to the query, Ctrl+F return,
+menu-local Up, real action targets, and a child column with the pointer parked in
+its parent. Chooser coverage exercises Down/Up/Ctrl+F in Open and Save dialogs;
+empty-result and preview coverage is retained. The input keeps its own text menu
+when it, rather than a result, actually owns focus.
