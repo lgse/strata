@@ -60,12 +60,12 @@ pub(crate) use crate::ui::browser::collection::{
     detach_collection_view, focus_collection_item_when_allocated, focus_filter_entry,
     notify_filter_query, prepare_collection_inline_edit, recursive_search_activation_key,
     reveal_collection_after_layout, scroll_collection_when_allocated, search_result_entry,
-    search_result_navigation_position,
 };
 pub(super) use crate::ui::browser::columns::max_child_natural_width;
 pub(crate) use crate::ui::browser::columns::should_preserve_drag_selection;
 pub(super) use crate::ui::browser::context_menu::{
-    install_folder_context_menu, install_item_context_menu, install_resolved_item_context_menu,
+    ContextMenuTarget, ContextMenuTrigger, install_folder_context_menu, install_item_context_menu,
+    install_resolved_item_context_menu,
 };
 pub(super) use crate::ui::browser::desktop::{launch_terminal, open_location};
 pub(super) use crate::ui::browser::entry::{
@@ -149,6 +149,7 @@ pub(super) struct ViewState {
     hovered_column: Cell<Option<usize>>,
     context_menu_column: Cell<Option<usize>>,
     context_menu_generation: Cell<u64>,
+    context_menu_focus: RefCell<Option<glib::WeakRef<gtk::Widget>>>,
     input_ownership: RefCell<super::input_ownership::InputOwnership>,
     horizontal_scroll_generation: Rc<Cell<u64>>,
     source_generation: Rc<Cell<u64>>,
@@ -187,7 +188,9 @@ pub(super) struct ViewState {
     /// failed only because the location doesn't support Trash can offer a
     /// permanent-delete retry for exactly those entries.
     pending_delete_entries: RefCell<Vec<FileEntry>>,
-    pending_delete_dissolve: RefCell<Option<dissolve_delete::PreparedDissolve>>,
+    /// Visible permanent-delete rows captured before the operation mutates the model.
+    pending_delete_dissolve: RefCell<Option<(usize, dissolve_delete::PreparedDissolve)>>,
+    deferred_delete_empty_depth: Cell<Option<usize>>,
     pending_navigate: RefCell<Option<Location>>,
     pending_location_credentials: RefCell<Option<MountCredentials>>,
     pending_trash_lookup: RefCell<Option<LoadHandle>>,
@@ -465,6 +468,7 @@ impl BrowserView {
             hovered_column: Cell::new(None),
             context_menu_column: Cell::new(None),
             context_menu_generation: Cell::new(0),
+            context_menu_focus: RefCell::new(None),
             input_ownership: RefCell::new(super::input_ownership::InputOwnership::default()),
             horizontal_scroll_generation: Rc::new(Cell::new(0)),
             source_generation,
@@ -498,6 +502,7 @@ impl BrowserView {
             pending_archive_destination: RefCell::new(None),
             pending_delete_entries: RefCell::new(Vec::new()),
             pending_delete_dissolve: RefCell::new(None),
+            deferred_delete_empty_depth: Cell::new(None),
             pending_navigate: RefCell::new(None),
             pending_location_credentials: RefCell::new(None),
             pending_trash_lookup: RefCell::new(None),
@@ -1503,6 +1508,58 @@ impl BrowserView {
         true
     }
 
+    pub(super) fn open_focused_context_menu(&self) -> bool {
+        let focused = self.state.browser.focused_item();
+        let depth = focused
+            .as_ref()
+            .map(|(depth, ..)| *depth)
+            .or_else(|| self.state.browser.active_depth());
+        let Some(depth) = depth else {
+            return false;
+        };
+        let position = focused.map(|(_, position, _)| position).filter(|position| {
+            self.state
+                .browser
+                .selected_positions(depth)
+                .contains(position)
+        });
+
+        let target = if self.view_mode() == BrowserMode::Columns {
+            self.columns_context_menu_target(depth, position)
+        } else {
+            self.mode_views_context_menu_target(depth, position)
+        };
+
+        let Some((trigger, x, y)) = target else {
+            return false;
+        };
+        trigger(x, y);
+        true
+    }
+
+    fn columns_context_menu_target(
+        &self,
+        depth: usize,
+        position: Option<usize>,
+    ) -> Option<ContextMenuTarget> {
+        self.state
+            .columns
+            .borrow()
+            .get(depth)?
+            .context_menu_target(position)
+    }
+
+    fn mode_views_context_menu_target(
+        &self,
+        depth: usize,
+        position: Option<usize>,
+    ) -> Option<ContextMenuTarget> {
+        self.state
+            .mode_views
+            .borrow()
+            .context_menu_target(depth, position)
+    }
+
     pub fn dismiss_filter_on_outside_click(&self, root: &gtk::Widget, x: f64, y: f64) {
         if self.view_mode() != BrowserMode::Columns {
             return;
@@ -1770,6 +1827,10 @@ impl ViewState {
     }
 
     fn select_all(&self, depth: usize) {
+        if self.mode_views.borrow().mode() != BrowserMode::Columns {
+            self.browser.select_all(depth);
+            return;
+        }
         if let Some(column) = self.columns.borrow().get(depth) {
             column.selection.select_all();
             column.list.grab_focus();

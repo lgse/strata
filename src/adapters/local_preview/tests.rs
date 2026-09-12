@@ -4,14 +4,107 @@ use super::*;
 use crate::services::{MediaPreviewSize, PreviewContent};
 
 #[test]
+fn pdf_rendering_fits_the_viewport_width_without_clipping_tall_pages() {
+    assert_eq!(
+        pdf_render_size(MediaPreviewSize::new(640, 480)),
+        PdfRenderSize::new(640, 1_800)
+    );
+    assert_eq!(
+        pdf_render_size(MediaPreviewSize::new(2_000, 480)),
+        PdfRenderSize::new(MediaPreviewSize::MAX_EDGE, 1_800)
+    );
+}
+
+#[test]
 fn shared_thumbnail_lookup_is_limited_to_supported_placeholders() {
-    assert!(uses_shared_thumbnail(ParseOperation::PreviewImage, 0));
-    assert!(uses_shared_thumbnail(ParseOperation::PreviewPdf, 0));
-    assert!(!uses_shared_thumbnail(ParseOperation::PreviewPdf, 1));
-    assert!(!uses_shared_thumbnail(
-        ParseOperation::PreviewMedia(MediaPreviewSize::new(640, 800)),
-        0
-    ));
+    let pdf = ParseOperation::PreviewPdf(PdfRenderSize::new(640, 800));
+    assert!(uses_shared_thumbnail(ParseOperation::PreviewImage));
+    assert!(!uses_shared_thumbnail(pdf));
+    assert!(!uses_shared_thumbnail(ParseOperation::PreviewMedia(
+        MediaPreviewSize::new(640, 800)
+    )));
+}
+
+#[test]
+fn cold_pdf_with_a_shared_thumbnail_presents_the_same_document_as_a_cache_hit() {
+    crate::test_support::gtk_test(
+        "adapters::local_preview::tests::cold_pdf_with_a_shared_thumbnail_presents_the_same_document_as_a_cache_hit",
+        || {
+            use crate::{
+                model::{EntryKind, FileEntry, Location, MetadataValue},
+                services::PreviewRequestId,
+            };
+
+            let directory = tempfile::tempdir().expect("PDF fixture directory");
+            let path = directory.path().join("document.pdf");
+            let surface =
+                cairo::ImageSurface::create(cairo::Format::ARgb32, 640, 800).expect("page surface");
+            let mut png = Vec::new();
+            surface.write_to_png(&mut png).expect("page PNG");
+            crate::ui::thumbnail_cache::store(&path, 1, &png);
+            let thumbnail = crate::ui::thumbnail_cache::lookup(&path, 1)
+                .expect("shared thumbnail is available");
+            assert_ne!(thumbnail, png);
+
+            let request = PreviewRequest {
+                id: PreviewRequestId(1),
+                entry: FileEntry {
+                    location: Location::local(&path),
+                    thumbnail_path: None,
+                    native_name: "document.pdf".into(),
+                    display_name: "document.pdf".into(),
+                    kind: EntryKind::File,
+                    size: MetadataValue::Unknown,
+                    modified_unix_seconds: MetadataValue::Known(1),
+                    mode: MetadataValue::Unknown,
+                    is_hidden: false,
+                },
+                text_byte_limit: 1024,
+                pdf_page: 0,
+                media_size: MediaPreviewSize::new(640, 800),
+            };
+            let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
+            let context = glib::MainContext::default();
+            let _owner = context.acquire().expect("main context owner");
+            for cached in [false, true] {
+                let events = Rc::new(RefCell::new(Vec::new()));
+                let events_for_emit = events.clone();
+                let rendered = png.clone();
+                let handle = provider.load_with_renderer(
+                    request.clone(),
+                    Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
+                    move |_, _, _, _, _| {
+                        assert!(!cached, "reopening should use the rendered-page cache");
+                        Ok(crate::sandbox::ParseOutput {
+                            data: rendered,
+                            page: 0,
+                            pages: 40,
+                        })
+                    },
+                );
+                context.block_on(async {
+                    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+                    while events.borrow().is_empty() && std::time::Instant::now() < deadline {
+                        glib::timeout_future(Duration::from_millis(1)).await;
+                    }
+                });
+                let events = events.borrow();
+                assert_eq!(events.len(), 1);
+                let PreviewEvent::Ready(preview) = &events[0] else {
+                    panic!("PDF preview failed");
+                };
+                assert_eq!(
+                    preview.content,
+                    PreviewContent::Pdf {
+                        png: png.clone(),
+                        page: 0,
+                        pages: 40
+                    }
+                );
+                drop(handle);
+            }
+        },
+    );
 }
 
 #[test]
@@ -68,12 +161,12 @@ fn preview_cache_stores_and_retrieves_entries() {
     let pdf_page_0 = PreviewCacheKey {
         path: PathBuf::from("doc.pdf"),
         modified: 300,
-        pdf_page: Some(0),
+        pdf_page: Some((0, PdfRenderSize::new(640, 800))),
     };
     let pdf_page_1 = PreviewCacheKey {
         path: PathBuf::from("doc.pdf"),
         modified: 300,
-        pdf_page: Some(1),
+        pdf_page: Some((1, PdfRenderSize::new(640, 800))),
     };
     let page0_content = PreviewContent::Pdf {
         png: vec![10, 20],
@@ -89,6 +182,165 @@ fn preview_cache_stores_and_retrieves_entries() {
     cache.insert(pdf_page_1.clone(), page1_content.clone());
     assert_eq!(cache.get(&pdf_page_0), Some(page0_content));
     assert_eq!(cache.get(&pdf_page_1), Some(page1_content));
+    assert_eq!(
+        cache.get(&PreviewCacheKey {
+            path: PathBuf::from("doc.pdf"),
+            modified: 300,
+            pdf_page: Some((0, PdfRenderSize::new(800, 1_800))),
+        }),
+        None,
+        "a page rendered for a smaller viewport must not poison a larger preview"
+    );
+}
+
+#[test]
+fn pdf_renders_wait_for_the_active_renderer_and_resume_in_order() {
+    let context = glib::MainContext::new();
+    context.block_on(async {
+        let first = request_pdf_render_permit()
+            .acquire()
+            .await
+            .expect("first PDF render permit");
+        let mut second = request_pdf_render_permit();
+        let mut third = request_pdf_render_permit();
+
+        assert!(
+            second
+                .receive
+                .as_mut()
+                .expect("second receiver")
+                .try_recv()
+                .expect("second receiver open")
+                .is_none()
+        );
+        assert!(
+            third
+                .receive
+                .as_mut()
+                .expect("third receiver")
+                .try_recv()
+                .expect("third receiver open")
+                .is_none()
+        );
+
+        drop(first);
+        let second = second.acquire().await.expect("second PDF render permit");
+        assert!(
+            third
+                .receive
+                .as_mut()
+                .expect("third receiver")
+                .try_recv()
+                .expect("third receiver open")
+                .is_none()
+        );
+        drop(second);
+        drop(third.acquire().await.expect("third PDF render permit"));
+    });
+
+    PDF_RENDER_QUEUE.with(|queue| {
+        let queue = queue.borrow();
+        assert_eq!(queue.running, 0);
+        assert!(queue.queued.is_empty());
+    });
+}
+
+#[test]
+fn dropping_a_queued_pdf_render_removes_it_without_consuming_a_slot() {
+    let context = glib::MainContext::new();
+    context.block_on(async {
+        let first = request_pdf_render_permit()
+            .acquire()
+            .await
+            .expect("first PDF render permit");
+        let cancelled = request_pdf_render_permit();
+        drop(cancelled);
+        drop(first);
+    });
+
+    PDF_RENDER_QUEUE.with(|queue| {
+        let queue = queue.borrow();
+        assert_eq!(queue.running, 0);
+        assert!(queue.queued.is_empty());
+    });
+}
+
+#[test]
+fn cancelled_in_flight_pdf_renders_keep_the_permit_and_emit_no_stale_events() {
+    use crate::{
+        model::{EntryKind, FileEntry, Location, MetadataValue},
+        services::PreviewRequestId,
+    };
+
+    let _lock = crate::test_support::ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .expect("main context lock");
+    let context = glib::MainContext::default();
+    let _owner = context.acquire().expect("main context owner");
+    let provider = LocalPreviewProvider::new(Rc::new(|| MediaPreviewBackend::Software));
+
+    for succeeds in [false, true] {
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let events_for_emit = events.clone();
+        let (started, receive_started) = oneshot::channel();
+        let (finish, receive_finish) = std::sync::mpsc::channel();
+        let handle = provider.load_with_renderer(
+            PreviewRequest {
+                id: PreviewRequestId(1),
+                entry: FileEntry {
+                    location: Location::local("cancelled.pdf"),
+                    thumbnail_path: None,
+                    native_name: "cancelled.pdf".into(),
+                    display_name: "cancelled.pdf".into(),
+                    kind: EntryKind::File,
+                    size: MetadataValue::Unknown,
+                    modified_unix_seconds: MetadataValue::Unknown,
+                    mode: MetadataValue::Unknown,
+                    is_hidden: false,
+                },
+                text_byte_limit: 1024,
+                pdf_page: 1,
+                media_size: MediaPreviewSize::new(640, 800),
+            },
+            Rc::new(move |event| events_for_emit.borrow_mut().push(event)),
+            move |_, _, _, _, cancellation| {
+                started.send(()).expect("notify renderer started");
+                receive_finish
+                    .recv_timeout(Duration::from_secs(10))
+                    .expect("release renderer");
+                assert!(cancellation.is_cancelled());
+                if succeeds {
+                    Ok(crate::sandbox::ParseOutput {
+                        data: vec![1, 2, 3],
+                        page: 1,
+                        pages: 2,
+                    })
+                } else {
+                    Err("late renderer error".into())
+                }
+            },
+        );
+        context.block_on(async {
+            receive_started.await.expect("renderer started");
+            drop(handle);
+            let mut next = request_pdf_render_permit();
+            assert!(
+                next.receive
+                    .as_mut()
+                    .expect("next receiver")
+                    .try_recv()
+                    .expect("next receiver open")
+                    .is_none(),
+                "cancellation must not release the permit before the helper exits"
+            );
+            finish.send(()).expect("finish cancelled renderer");
+            drop(next.acquire().await.expect("next renderer can start"));
+        });
+        assert!(
+            events.borrow().is_empty(),
+            "cancelled load emitted an event"
+        );
+    }
 }
 
 #[test]

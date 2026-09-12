@@ -1120,6 +1120,7 @@ impl PreviewState {
 
         let provider = self.provider.clone();
         let loads = self.pdf_loads.clone();
+        let render_size = self.media_preview_size();
         let initial_page = Rc::new(RefCell::new(Some((initial_page, initial_png))));
         let next_request = Rc::new(Cell::new(self.next_request.get().saturating_add(10_000)));
         let entry_for_bind = entry.clone();
@@ -1216,7 +1217,7 @@ impl PreviewState {
                     entry: entry_for_bind.clone(),
                     text_byte_limit: TEXT_BYTE_LIMIT,
                     pdf_page: page_index,
-                    media_size: MediaPreviewSize::new(1280, 1280),
+                    media_size: render_size,
                 },
                 emit,
             );

@@ -157,8 +157,9 @@ pub(super) fn prepare_dissolve(
 }
 
 impl PreparedDissolve {
-    pub(super) fn play(self) {
+    pub(super) fn play(self, on_done: impl FnOnce() + 'static) {
         if !crate::ui::motion::animations_enabled() {
+            on_done();
             return;
         }
 
@@ -176,7 +177,10 @@ impl PreparedDissolve {
                 let progress = (elapsed.as_secs_f64() / DURATION.as_secs_f64()).clamp(0.0, 1.0);
                 canvas_for_tick.set_progress(progress);
             },
-            move || overlay_for_cleanup.remove_overlay(&canvas_for_cleanup),
+            move || {
+                overlay_for_cleanup.remove_overlay(&canvas_for_cleanup);
+                on_done();
+            },
         );
     }
 }

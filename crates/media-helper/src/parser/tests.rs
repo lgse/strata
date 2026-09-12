@@ -8,8 +8,8 @@ use std::{
 use gdk_pixbuf::prelude::*;
 
 use super::{
-    bounded_output, bounded_output_with_timeout, bounded_surface_dimensions, read_limited,
-    render_pixbuf, render_raw, render_raw_thumbnail, render_simple_dcraw, run,
+    bounded_output, bounded_output_with_timeout, bounded_surface_dimensions, pdf_render_request,
+    read_limited, render_pixbuf, render_raw, render_raw_thumbnail, render_simple_dcraw, run,
     scale_embedded_thumbnail,
 };
 
@@ -40,6 +40,22 @@ fn timed_bounded_commands_stop_and_report_failure_at_their_deadline() {
         Duration::from_secs(1),
     );
     assert!(oversized.is_err());
+}
+
+#[test]
+fn pdf_preview_requests_carry_a_bounded_page_and_viewport() {
+    assert_eq!(
+        pdf_render_request("12:640x800"),
+        Ok((12, strata_media_protocol::PdfRenderSize::new(640, 800)))
+    );
+    assert_eq!(
+        pdf_render_request("0:99999x1"),
+        Ok((0, strata_media_protocol::PdfRenderSize::new(99999, 1)))
+    );
+    assert!(pdf_render_request("12").is_err());
+    assert!(pdf_render_request("12:0").is_err());
+    assert!(pdf_render_request("page:640x800").is_err());
+    assert!(pdf_render_request("12:wide").is_err());
 }
 
 #[test]
@@ -207,7 +223,7 @@ fn renders_requested_pdf_pages_within_the_pixel_budget() {
         "preview-pdf".to_owned(),
         path.to_string_lossy().into_owned(),
         output.to_string_lossy().into_owned(),
-        "1".to_owned(),
+        "1:640x800".to_owned(),
         "software".to_owned(),
     ])
     .expect("render second PDF page");
@@ -219,4 +235,12 @@ fn renders_requested_pdf_pages_within_the_pixel_budget() {
 
     assert_eq!(metadata, "1 2");
     assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
+    assert_eq!(
+        u32::from_be_bytes(png[16..20].try_into().expect("PNG width bytes")),
+        618
+    );
+    assert_eq!(
+        u32::from_be_bytes(png[20..24].try_into().expect("PNG height bytes")),
+        800
+    );
 }

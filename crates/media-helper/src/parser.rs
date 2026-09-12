@@ -11,7 +11,7 @@ use std::{
 };
 
 use gdk_pixbuf::prelude::*;
-use strata_media_protocol::{MediaPreviewBackend, MediaPreviewSize};
+use strata_media_protocol::{MediaPreviewBackend, MediaPreviewSize, PdfRenderSize};
 
 const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
 
@@ -39,18 +39,26 @@ pub(crate) fn run(arguments: &[String]) -> Result<(), String> {
     if operation == "preview-media" {
         return media::run(input, output, value, media_backend, start_tick);
     }
-    let value = value
-        .parse::<i32>()
-        .map_err(|_| "Invalid preview helper size or page".to_owned())?;
-
+    let numeric_value = || {
+        value
+            .parse::<i32>()
+            .map_err(|_| "Invalid preview helper size or page".to_owned())
+    };
     let (png, metadata) = match operation.as_str() {
-        "thumbnail-image" => (render_raw(input, value.clamp(16, 256))?, None),
-        "thumbnail-raw" => (render_raw_thumbnail(input, value.clamp(16, 256))?, None),
-        "thumbnail-pdf" => (render_pdf_thumbnail(input, value.clamp(16, 256))?, None),
-        "thumbnail-video" => (render_media(input, value.clamp(16, 256))?, None),
+        "thumbnail-image" => (render_raw(input, numeric_value()?.clamp(16, 256))?, None),
+        "thumbnail-raw" => (
+            render_raw_thumbnail(input, numeric_value()?.clamp(16, 256))?,
+            None,
+        ),
+        "thumbnail-pdf" => (
+            render_pdf_thumbnail(input, numeric_value()?.clamp(16, 256))?,
+            None,
+        ),
+        "thumbnail-video" => (render_media(input, numeric_value()?.clamp(16, 256))?, None),
         "preview-image" => (render_raw(input, 800)?, None),
         "preview-pdf" => {
-            let (png, page, pages) = render_pdf_page(input, value)?;
+            let (page, size) = pdf_render_request(value)?;
+            let (png, page, pages) = render_pdf_page(input, page, size)?;
             (png, Some(format!("{page} {pages}")))
         }
         _ => return Err("Unknown preview helper operation".to_owned()),
@@ -193,7 +201,11 @@ fn render_pdf_thumbnail(path: &Path, size: i32) -> Result<Vec<u8>, String> {
     )
 }
 
-fn render_pdf_page(path: &Path, requested_page: i32) -> Result<(Vec<u8>, i32, i32), String> {
+fn render_pdf_page(
+    path: &Path,
+    requested_page: i32,
+    size: PdfRenderSize,
+) -> Result<(Vec<u8>, i32, i32), String> {
     let uri = gio::File::for_path(path).uri();
     let document = poppler::Document::from_file(&uri, None).map_err(|error| error.to_string())?;
     let pages = document.n_pages();
@@ -204,7 +216,14 @@ fn render_pdf_page(path: &Path, requested_page: i32) -> Result<(Vec<u8>, i32, i3
     let page = document
         .page(page_index)
         .ok_or_else(|| "Unable to load that PDF page".to_owned())?;
-    let png = render_pdf_surface(&page, 1400.0, 1800.0, 2_500_000.0)?;
+    let size = PdfRenderSize::new(size.width, size.height);
+    let (_, _, max_pixels) = size.image_limits();
+    let png = render_pdf_surface(
+        &page,
+        f64::from(size.width),
+        f64::from(size.height),
+        max_pixels as f64,
+    )?;
     Ok((png, page_index, pages))
 }
 
@@ -252,6 +271,24 @@ fn bounded_surface_dimensions(
     let height = (source_height * requested_scale).floor().max(1.0) as i32;
     let scale = (f64::from(width) / source_width).min(f64::from(height) / source_height);
     (width, height, scale)
+}
+
+fn pdf_render_request(value: &str) -> Result<(i32, PdfRenderSize), String> {
+    let (page, dimensions) = value
+        .split_once(':')
+        .ok_or_else(|| "Invalid PDF preview request".to_owned())?;
+    let page = page
+        .parse::<i32>()
+        .map_err(|_| "Invalid PDF preview page".to_owned())?;
+    let (width, height) = dimensions
+        .split_once('x')
+        .ok_or_else(|| "Invalid PDF preview dimensions".to_owned())?;
+    let parse = |dimension: &str| {
+        dimension
+            .parse::<i32>()
+            .map_err(|_| "Invalid PDF preview dimensions".to_owned())
+    };
+    Ok((page, PdfRenderSize::new(parse(width)?, parse(height)?)))
 }
 
 fn media_preview_size(value: &str) -> Result<MediaPreviewSize, String> {

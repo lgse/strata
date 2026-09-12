@@ -1908,7 +1908,6 @@ impl Browser {
                 _ => 0,
             };
             let file_operation_refreshed = (deleting || restoring)
-                && !matches!(&event, OperationEvent::Cancelled { .. })
                 && browser.flush_deferred_file_operation_changes(
                     deferred_file_operation_changes,
                     completed_changes > MAX_INCREMENTAL_OPERATION_UPDATES,
@@ -2071,8 +2070,13 @@ impl Browser {
                     if rename {
                         browser.emit(BrowserEvent::RenameAbandoned { request_id });
                     }
-                    let mut affected_locations = refresh_locations.clone();
-                    affected_locations.extend(result.affected_locations);
+                    let affected_locations = if file_operation_refreshed {
+                        HashSet::new()
+                    } else {
+                        let mut locations = refresh_locations.clone();
+                        locations.extend(result.affected_locations);
+                        locations
+                    };
                     if archiving {
                         browser.emit(BrowserEvent::ArchiveCompleted {
                             select_name: String::new(),

@@ -67,6 +67,14 @@ impl LoadPresentation {
         self.loading.show("feedback");
     }
 
+    pub(super) fn show_empty_if_ready(&self) {
+        let showing_error = self.stack.visible_child_name().as_deref() == Some("feedback")
+            && self.message.has_css_class("error");
+        if !showing_error {
+            self.show_empty();
+        }
+    }
+
     pub(super) fn show_error(&self, message: &str) {
         self.message.set_text(message);
         self.message.add_css_class("error");

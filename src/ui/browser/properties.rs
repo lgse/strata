@@ -271,6 +271,38 @@ fn properties_action(icon: &str, label: &str) -> gtk::Button {
     button
 }
 
+fn remember_properties_focus(layer: &gtk::Box, overlay: &gtk::Overlay) -> Rc<Cell<bool>> {
+    let origin = overlay
+        .root()
+        .and_then(|root| root.focus())
+        .map(|focus| focus.downgrade());
+    let overlay = overlay.downgrade();
+    let restore = Rc::new(Cell::new(true));
+    let restore_on_close = restore.clone();
+    // Restore after removal, when the modal focus trap no longer redirects focus.
+    layer.connect_parent_notify(move |layer| {
+        if layer.parent().is_some() || !layer.has_css_class("dismissing") || !restore_on_close.get()
+        {
+            return;
+        }
+        let Some(window) = overlay
+            .upgrade()
+            .and_then(|overlay| overlay.root())
+            .and_downcast::<gtk::Window>()
+        else {
+            return;
+        };
+        if crate::ui::window::visible_modal_layer(&window).is_none()
+            && let Some(origin) = origin.as_ref().and_then(glib::WeakRef::upgrade)
+            && origin.is_mapped()
+            && origin.root().as_ref() == Some(window.upcast_ref())
+        {
+            origin.grab_focus();
+        }
+    });
+    restore
+}
+
 impl ViewState {
     pub(super) fn show_folder_properties(self: &Rc<Self>, location: &Location) {
         self.show_properties(location.clone(), None);
@@ -437,6 +469,7 @@ impl ViewState {
         let content = layout.content;
 
         let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        let restore_focus = remember_properties_focus(&layer, &window_overlay);
         window_overlay.add_overlay(&layer);
 
         let permission_editor = PermissionEditor {
@@ -508,6 +541,7 @@ impl ViewState {
         let renamed_root = blurred_root.clone();
         let weak = Rc::downgrade(self);
         rename.connect_clicked(move |_| {
+            restore_focus.set(false);
             dismiss_modal_layer(&renamed_layer, &renamed_overlay, renamed_root.as_ref());
             let weak = weak.clone();
             glib::idle_add_local_once(move || {

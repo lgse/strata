@@ -1,28 +1,106 @@
 // SPDX-License-Identifier: MIT
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     collections::{HashMap, VecDeque},
     path::{Path, PathBuf},
     rc::Rc,
     time::Duration,
 };
 
+use futures_channel::oneshot;
 use gtk::{gio, glib, prelude::*};
 
 use crate::{
     adapters::gio_file_for_location,
-    sandbox::{Cancellation, MediaPreviewBackend, ParseOperation},
+    sandbox::{Cancellation, MediaPreviewBackend, ParseOperation, PdfRenderSize},
     services::{
-        LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
-        SandboxedMedia, content_family, has_plain_text_extension,
+        LoadHandle, MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider,
+        PreviewRequest, SandboxedMedia, content_family, has_plain_text_extension,
         is_non_executable_extensionless_dotfile,
     },
 };
 
 const MAX_PREVIEW_CACHE_ENTRIES: usize = 64;
 const MAX_PREVIEW_CACHE_BYTES: usize = 128 * 1024 * 1024;
+const MAX_CONCURRENT_PDF_RENDERS: usize = 1;
 const PROGRESSIVE_RENDER_SETTLE_DELAY: Duration = Duration::from_millis(50);
+
+#[derive(Default)]
+struct PdfRenderQueue {
+    running: usize,
+    next_id: u64,
+    queued: VecDeque<(u64, oneshot::Sender<PdfRenderPermit>)>,
+}
+
+struct PdfRenderWaiter {
+    id: u64,
+    receive: Option<oneshot::Receiver<PdfRenderPermit>>,
+}
+
+impl PdfRenderWaiter {
+    async fn acquire(mut self) -> Option<PdfRenderPermit> {
+        self.receive.take()?.await.ok()
+    }
+}
+
+impl Drop for PdfRenderWaiter {
+    fn drop(&mut self) {
+        PDF_RENDER_QUEUE.with(|queue| {
+            queue.borrow_mut().queued.retain(|(id, _)| *id != self.id);
+        });
+    }
+}
+
+struct PdfRenderPermit;
+
+impl Drop for PdfRenderPermit {
+    fn drop(&mut self) {
+        release_pdf_render_permit();
+    }
+}
+
+fn request_pdf_render_permit() -> PdfRenderWaiter {
+    let (send, receive) = oneshot::channel();
+    let (id, start) = PDF_RENDER_QUEUE.with(|queue| {
+        let mut queue = queue.borrow_mut();
+        let id = queue.next_id;
+        queue.next_id = queue.next_id.saturating_add(1);
+        if queue.running < MAX_CONCURRENT_PDF_RENDERS {
+            queue.running += 1;
+            (id, Some(send))
+        } else {
+            queue.queued.push_back((id, send));
+            (id, None)
+        }
+    });
+    if let Some(send) = start
+        && let Err(permit) = send.send(PdfRenderPermit)
+    {
+        drop(permit);
+    }
+    PdfRenderWaiter {
+        id,
+        receive: Some(receive),
+    }
+}
+
+fn release_pdf_render_permit() {
+    let next = PDF_RENDER_QUEUE.with(|queue| {
+        let mut queue = queue.borrow_mut();
+        queue.running = queue.running.saturating_sub(1);
+        let next = queue.queued.pop_front().map(|(_, send)| send);
+        if next.is_some() {
+            queue.running += 1;
+        }
+        next
+    });
+    if let Some(send) = next
+        && let Err(permit) = send.send(PdfRenderPermit)
+    {
+        drop(permit);
+    }
+}
 
 struct PreviewCache {
     entries: HashMap<PreviewCacheKey, PreviewContent>,
@@ -34,7 +112,7 @@ struct PreviewCache {
 struct PreviewCacheKey {
     path: PathBuf,
     modified: i64,
-    pdf_page: Option<i32>,
+    pdf_page: Option<(i32, PdfRenderSize)>,
 }
 
 impl PreviewCache {
@@ -82,6 +160,7 @@ fn preview_content_size(content: &PreviewContent) -> usize {
 }
 
 thread_local! {
+    static PDF_RENDER_QUEUE: RefCell<PdfRenderQueue> = RefCell::new(PdfRenderQueue::default());
     static PREVIEW_CACHE: RefCell<PreviewCache> = RefCell::new(PreviewCache {
         entries: HashMap::new(),
         recent: VecDeque::new(),
@@ -103,11 +182,32 @@ impl LocalPreviewProvider {
 
 impl PreviewProvider for LocalPreviewProvider {
     fn load(&self, request: PreviewRequest, emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle {
+        self.load_with_renderer(request, emit, crate::sandbox::parse)
+    }
+}
+
+impl LocalPreviewProvider {
+    fn load_with_renderer(
+        &self,
+        request: PreviewRequest,
+        emit: Rc<dyn Fn(PreviewEvent)>,
+        render: impl FnOnce(
+            &Path,
+            ParseOperation,
+            i32,
+            MediaPreviewBackend,
+            &Cancellation,
+        ) -> Result<crate::sandbox::ParseOutput, String>
+        + Send
+        + 'static,
+    ) -> LoadHandle {
         let media_preview_backend = (self.media_preview_backend)();
         let request_id = request.id;
         let entry = request.entry.clone();
         let cancellation = Cancellation::default();
         let cancellation_for_task = cancellation.clone();
+        let abort_safe = Rc::new(Cell::new(true));
+        let abort_safe_for_task = abort_safe.clone();
         let task = glib::MainContext::default().spawn_local(async move {
             let (guessed_type, uncertain) =
                 gio::content_type_guess(Some(Path::new(&entry.native_name)), None::<&[u8]>);
@@ -193,7 +293,9 @@ impl PreviewProvider for LocalPreviewProvider {
             }
 
             let operation = match content {
-                PreviewContent::Pdf { .. } => Some(ParseOperation::PreviewPdf),
+                PreviewContent::Pdf { .. } => Some(ParseOperation::PreviewPdf(pdf_render_size(
+                    request.media_size,
+                ))),
                 PreviewContent::Image => Some(ParseOperation::PreviewImage),
                 PreviewContent::Media => None,
                 PreviewContent::Text { .. }
@@ -216,7 +318,7 @@ impl PreviewProvider for LocalPreviewProvider {
                     | crate::model::MetadataValue::Unavailable => None,
                 };
                 let pdf_page = match operation {
-                    ParseOperation::PreviewPdf => Some(request.pdf_page),
+                    ParseOperation::PreviewPdf(size) => Some((request.pdf_page, size)),
                     _ => None,
                 };
                 let cache_key = modified.map(|modified| PreviewCacheKey {
@@ -237,7 +339,7 @@ impl PreviewProvider for LocalPreviewProvider {
                     return;
                 }
 
-                let shared_thumbnail = if uses_shared_thumbnail(operation, request.pdf_page) {
+                let shared_thumbnail = if uses_shared_thumbnail(operation) {
                     if let Some(mtime) = modified {
                         let thumbnail_path = path.clone();
                         gio::spawn_blocking(move || {
@@ -253,13 +355,6 @@ impl PreviewProvider for LocalPreviewProvider {
                     None
                 };
                 let placeholder = shared_thumbnail.and_then(|thumb_png| match operation {
-                    ParseOperation::PreviewPdf if request.pdf_page == 0 => {
-                        Some(PreviewContent::Pdf {
-                            png: thumb_png,
-                            page: 0,
-                            pages: 1,
-                        })
-                    }
                     ParseOperation::PreviewImage => {
                         Some(PreviewContent::Rasterized { png: thumb_png })
                     }
@@ -279,12 +374,24 @@ impl PreviewProvider for LocalPreviewProvider {
                     return;
                 }
 
+                let pdf_permit = if matches!(operation, ParseOperation::PreviewPdf(_)) {
+                    let Some(permit) = request_pdf_render_permit().acquire().await else {
+                        return;
+                    };
+                    if cancellation_for_task.is_cancelled() {
+                        return;
+                    }
+                    Some(permit)
+                } else {
+                    None
+                };
+                abort_safe_for_task.set(pdf_permit.is_none());
                 let value = request.pdf_page;
                 let cancellation = cancellation_for_task.clone();
                 let spawn_path = path.clone();
                 let mut thumbnail_to_store = None;
-                content = match gio::spawn_blocking(move || {
-                    let output = crate::sandbox::parse(
+                let render = gio::spawn_blocking(move || {
+                    let output = render(
                         &spawn_path,
                         operation,
                         value,
@@ -293,9 +400,13 @@ impl PreviewProvider for LocalPreviewProvider {
                     )?;
                     Ok::<_, String>(output)
                 })
-                .await
-                {
-                    Ok(Ok(output)) if operation == ParseOperation::PreviewPdf => {
+                .await;
+                abort_safe_for_task.set(true);
+                if cancellation_for_task.is_cancelled() {
+                    return;
+                }
+                content = match render {
+                    Ok(Ok(output)) if matches!(operation, ParseOperation::PreviewPdf(_)) => {
                         if let Some(mtime) = modified
                             && request.pdf_page == 0
                             && !placeholder_emitted
@@ -326,6 +437,7 @@ impl PreviewProvider for LocalPreviewProvider {
                     }
                     Err(_) => return,
                 };
+                drop(pdf_permit);
                 if let Some(cache_key) = cache_key {
                     PREVIEW_CACHE.with(|cache| {
                         cache.borrow_mut().insert(cache_key, content.clone());
@@ -371,14 +483,19 @@ impl PreviewProvider for LocalPreviewProvider {
 
         LoadHandle::new(move || {
             cancellation.cancel();
-            task.abort();
+            if abort_safe.get() {
+                task.abort();
+            }
         })
     }
 }
 
-fn uses_shared_thumbnail(operation: ParseOperation, pdf_page: i32) -> bool {
+fn pdf_render_size(viewport: MediaPreviewSize) -> PdfRenderSize {
+    PdfRenderSize::for_viewport_width(viewport.width)
+}
+
+fn uses_shared_thumbnail(operation: ParseOperation) -> bool {
     operation == ParseOperation::PreviewImage
-        || (operation == ParseOperation::PreviewPdf && pdf_page == 0)
 }
 
 fn full_render_settle_delay(has_placeholder: bool) -> Duration {

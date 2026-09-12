@@ -27,6 +27,40 @@ impl MediaPreviewSize {
 }
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct PdfRenderSize {
+    pub width: i32,
+    pub height: i32,
+}
+
+impl PdfRenderSize {
+    const MAX_WIDTH: i32 = 1_400;
+    const MAX_HEIGHT: i32 = 1_800;
+    const MAX_PIXELS: u64 = 2_500_000;
+
+    pub fn new(width: i32, height: i32) -> Self {
+        Self {
+            width: width.clamp(16, Self::MAX_WIDTH),
+            height: height.clamp(16, Self::MAX_HEIGHT),
+        }
+    }
+
+    pub fn for_viewport_width(width: i32) -> Self {
+        Self::new(width, Self::MAX_HEIGHT)
+    }
+
+    pub fn image_limits(self) -> (u32, u32, u64) {
+        let size = Self::new(self.width, self.height);
+        let width = size.width as u32;
+        let height = size.height as u32;
+        (
+            width,
+            height,
+            (u64::from(width) * u64::from(height)).min(Self::MAX_PIXELS),
+        )
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum MediaPreviewBackend {
     Automatic,
     VaApi,

@@ -7,7 +7,7 @@ use std::{
 };
 
 mod types;
-pub use types::{Cancellation, MediaPreviewBackend, MediaPreviewSize};
+pub use types::{Cancellation, MediaPreviewBackend, MediaPreviewSize, PdfRenderSize};
 pub mod devices;
 pub mod ipc;
 

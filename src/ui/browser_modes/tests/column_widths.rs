@@ -31,7 +31,7 @@ fn mode_fits_default_width_and_remains_resizable() {
                 for density in ["density-compact", "density-airy"] {
                     for width in [480, 1000] {
                         let columns = ListColumnLayout::new();
-                        let headings = list_headings(&browser, 0, columns.clone());
+                        let (headings, _) = list_headings(&browser, 0, columns.clone());
                         let row = assemble_list_row();
                         let mut child = row.first_child();
                         for index in 0..5 {

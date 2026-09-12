@@ -43,7 +43,7 @@ impl Drop for RasterSlot {
 }
 
 pub(crate) use strata_media_protocol::devices::{gpu_devices, numbered_name};
-pub(crate) use strata_media_protocol::{Cancellation, MediaPreviewBackend};
+pub(crate) use strata_media_protocol::{Cancellation, MediaPreviewBackend, PdfRenderSize};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ParseOperation {
@@ -52,7 +52,7 @@ pub(crate) enum ParseOperation {
     ThumbnailPdf,
     ThumbnailVideo,
     PreviewImage,
-    PreviewPdf,
+    PreviewPdf(PdfRenderSize),
     PreviewMedia(MediaPreviewSize),
 }
 
@@ -64,7 +64,7 @@ impl ParseOperation {
             Self::ThumbnailPdf => "thumbnail-pdf",
             Self::ThumbnailVideo => "thumbnail-video",
             Self::PreviewImage => "preview-image",
-            Self::PreviewPdf => "preview-pdf",
+            Self::PreviewPdf(_) => "preview-pdf",
             Self::PreviewMedia(_) => "preview-media",
         }
     }
@@ -88,7 +88,7 @@ impl ParseOperation {
             | Self::ThumbnailPdf
             | Self::ThumbnailVideo => Some((256, 256, 256 * 256)),
             Self::PreviewImage => Some((800, 800, 800 * 800)),
-            Self::PreviewPdf => Some((1_400, 1_800, 2_500_000)),
+            Self::PreviewPdf(size) => Some(size.image_limits()),
             Self::PreviewMedia(_) => None,
         }
     }
@@ -99,7 +99,7 @@ impl ParseOperation {
             | Self::ThumbnailRaw
             | Self::ThumbnailPdf
             | Self::PreviewImage
-            | Self::PreviewPdf => Some(MAX_RASTER_INPUT_BYTES),
+            | Self::PreviewPdf(_) => Some(MAX_RASTER_INPUT_BYTES),
             Self::ThumbnailVideo | Self::PreviewMedia(_) => None,
         }
     }
@@ -383,7 +383,14 @@ fn sandbox_command(
         command.arg(format!("{}x{}", size.width, size.height));
     } else {
         command.arg(format!("/output/{}", operation.output_name()));
-        command.arg(value.to_string());
+        let value = match operation {
+            ParseOperation::PreviewPdf(size) => {
+                let size = PdfRenderSize::new(size.width, size.height);
+                format!("{value}:{}x{}", size.width, size.height)
+            }
+            _ => value.to_string(),
+        };
+        command.arg(value);
     }
     command.arg(media_backend.argument());
     command
