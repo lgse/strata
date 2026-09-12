@@ -1958,6 +1958,9 @@ async fn trashed_entries_for_originals(
     original_locations: &[Location],
     cancellable: &gio::Cancellable,
 ) -> Result<Vec<RestoreEntry>, glib::Error> {
+    if cancellable.is_cancelled() {
+        return Err(cancelled_local_operation());
+    }
     let requested = original_locations
         .iter()
         .filter_map(|location| location.native_path().map(Path::to_path_buf))
@@ -1970,6 +1973,9 @@ async fn trashed_entries_for_originals(
         gio::spawn_blocking(move || home_trash_entries(&fallback_requested, &fallback_cancellable))
             .await
             .map_err(|_| glib::Error::new(gio::IOErrorEnum::Failed, "Trash lookup task failed"))?;
+    if cancellable.is_cancelled() {
+        return Err(cancelled_local_operation());
+    }
     if fallback.len() == requested.len() && requested.len() == original_locations.len() {
         return Ok(original_locations
             .iter()
@@ -1977,26 +1983,36 @@ async fn trashed_entries_for_originals(
             .filter_map(|path| fallback.remove(path))
             .collect());
     }
-    if cancellable.is_cancelled() {
-        return Err(cancelled_local_operation());
-    }
 
     let trash = gio::File::for_uri("trash:///");
-    let enumerator = trash
-        .enumerate_children_future(
+    let enumerator = await_cancellable(&trash, cancellable, |trash, cancellable, result| {
+        trash.enumerate_children_async(
             "standard::name,standard::display-name,trash::orig-path,trash::deletion-date",
             gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
             glib::Priority::DEFAULT,
-        )
-        .await?;
+            Some(cancellable),
+            move |value| result.resolve(value),
+        );
+    })
+    .await?;
     let mut newest = HashMap::<PathBuf, (String, Location, String)>::new();
     loop {
         if cancellable.is_cancelled() {
             return Err(cancelled_local_operation());
         }
-        let infos = enumerator
-            .next_files_future(64, glib::Priority::DEFAULT)
-            .await?;
+        let infos = await_cancellable(
+            &enumerator,
+            cancellable,
+            |enumerator, cancellable, result| {
+                enumerator.next_files_async(
+                    64,
+                    glib::Priority::DEFAULT,
+                    Some(cancellable),
+                    move |value| result.resolve(value),
+                );
+            },
+        )
+        .await?;
         if infos.is_empty() {
             break;
         }
