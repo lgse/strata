@@ -5,6 +5,6 @@
 Before, the skeleton is already visible; after, the pane stays clear during the
 150 ms grace period. Completed listings and slow-load skeleton styling are unchanged.
 
-The ignored `ui::browser::tests::loading::capture_loading_frame` fixture captures
-this state when `STRATA_LOADING_CAPTURE` names an output PNG. Run it on a private
-Xvfb display with disposable XDG directories and `GSK_RENDERER=cairo`.
+These are historical captures. The one-off screenshot generator was retired in
+#837; `ui::browser::tests::loading::directory_loading_grace_across_modes` retains
+the fast/slow load, reload, failure, empty, and superseded-load regression checks.

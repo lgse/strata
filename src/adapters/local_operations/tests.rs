@@ -2188,52 +2188,6 @@ fn copy_suffix_parsing_and_candidate_naming() {
 }
 
 #[test]
-fn duplicating_a_file_generates_numbered_name() -> Result<(), Box<dyn Error>> {
-    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
-        .lock()
-        .map_err(|error| error.to_string())?;
-    let root = tempfile::tempdir()?;
-    let destination = root.path().to_path_buf();
-    let source = destination.join("photo.jpg");
-    fs::write(&source, b"original-content")?;
-
-    let events = Rc::new(RefCell::new(Vec::new()));
-    let emitted = events.clone();
-    let _operation = LocalOperationProvider.paste(
-        PasteRequest {
-            id: OperationRequestId(10),
-            destination: Location::local(&destination),
-            items: vec![PasteItem {
-                source: Location::local(&source),
-                conflict: TransferConflict::FailIfExists,
-            }],
-            move_sources: false,
-        },
-        Rc::new(move |event| emitted.borrow_mut().push(event)),
-    );
-
-    while !events.borrow().iter().any(|event| {
-        matches!(
-            event,
-            OperationEvent::Pasted { .. } | OperationEvent::TransferFailed { .. }
-        )
-    }) {
-        glib::MainContext::default().iteration(true);
-    }
-
-    assert!(matches!(
-        events.borrow().last(),
-        Some(OperationEvent::Pasted { .. })
-    ));
-    assert!(source.exists());
-    assert_eq!(fs::read(&source)?, b"original-content");
-    let duplicate = destination.join("photo (1).jpg");
-    assert!(duplicate.exists());
-    assert_eq!(fs::read(&duplicate)?, b"original-content");
-    Ok(())
-}
-
-#[test]
 fn duplicating_a_file_preserves_non_utf8_name_bytes() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
@@ -2686,7 +2640,8 @@ fn a_copy_reports_the_destination_it_created() -> Result<(), Box<dyn Error>> {
 }
 
 #[test]
-fn duplicating_a_file_reports_the_generated_name() -> Result<(), Box<dyn Error>> {
+fn duplicating_a_file_preserves_contents_and_reports_the_generated_name()
+-> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
@@ -2708,6 +2663,11 @@ fn duplicating_a_file_reports_the_generated_name() -> Result<(), Box<dyn Error>>
     assert_eq!(
         created.into_iter().flatten().collect::<Vec<_>>(),
         vec![Location::local(destination.join("photo (1).jpg"))]
+    );
+    assert_eq!(fs::read(&source)?, b"original-content");
+    assert_eq!(
+        fs::read(destination.join("photo (1).jpg"))?,
+        b"original-content"
     );
     Ok(())
 }

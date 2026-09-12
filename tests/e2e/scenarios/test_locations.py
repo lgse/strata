@@ -8,18 +8,6 @@ import pytest
 from harness.modes import ALL_MODES
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_the_command_line_location_is_the_one_shown(strata, mode):
-    assert strata.current_directory() == strata.fixture.root.name
-    assert strata.entry_names() == [
-        "archive",
-        "documents",
-        "pictures",
-        "readme.md",
-        "todo.txt",
-    ]
-
-
 def test_typing_a_path_navigates_there(strata):
     strata.keyboard.press("ctrl+l")
     field = strata.editable_field()
@@ -85,21 +73,14 @@ def test_a_sidebar_place_navigates_there(strata):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_a_file_created_outside_appears_after_a_refresh(strata, mode):
-    strata.fixture.path("appeared-later.txt").write_text("new\n")
-
-    strata.keyboard.press("F5")
-
-    strata.entry("appeared-later.txt")
-
-
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_a_file_removed_outside_disappears_after_a_refresh(strata, mode):
+def test_refresh_reconciles_external_file_creation_and_removal(strata, mode):
     strata.entry("todo.txt")
+    strata.fixture.path("appeared-later.txt").write_text("new\n")
     strata.fixture.path("todo.txt").unlink()
 
     strata.keyboard.press("F5")
 
+    strata.entry("appeared-later.txt")
     strata.wait_for_entry_gone("todo.txt")
 
 

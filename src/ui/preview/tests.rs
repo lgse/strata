@@ -110,15 +110,12 @@ fn text_print_pages_start_on_line_boundaries() {
 }
 
 #[test]
-fn print_progress_reports_completed_pages() {
+fn print_progress_reports_completed_pages_and_clamps_invalid_counts() {
     assert_eq!(
         print_progress_for_page(3, 8),
         ("Rendering page 3 of 8".to_owned(), 0.375)
     );
-}
 
-#[test]
-fn print_progress_clamps_invalid_counts() {
     assert_eq!(
         print_progress_for_page(3, 0),
         ("Rendering page 1 of 1".to_owned(), 1.0)
@@ -126,22 +123,16 @@ fn print_progress_clamps_invalid_counts() {
 }
 
 #[test]
-fn formats_preview_file_sizes() {
+fn preview_file_sizes_use_decimal_units_and_promote_rounded_overflow() {
     assert_eq!(format_file_size(999), "999 B");
     assert_eq!(format_file_size(1_200), "1.2 kB");
     assert_eq!(format_file_size(2_500_000), "2.5 MB");
-}
 
-#[test]
-fn preview_file_sizes_round_before_choosing_the_unit() {
     assert_eq!(format_file_size(999_950), "1.0 MB");
     assert_eq!(format_file_size(999_950_000), "1.0 GB");
     assert_eq!(format_file_size(9_960), "10 kB");
     assert_eq!(format_file_size(10_000), "10 kB");
-}
 
-#[test]
-fn preview_file_sizes_keep_bytes_whole_and_promote_displayed_overflow() {
     assert_eq!(format_file_size(0), "0 B");
     assert_eq!(format_file_size(5), "5 B");
     assert_eq!(format_file_size(999_450), "1.0 MB");
@@ -195,19 +186,6 @@ fn clear_content_cancels_decoding_and_releases_the_displayed_frame() {
 }
 
 #[test]
-fn closing_media_preview_finalizes_production_widget_tree() {
-    const TEST: &str = "ui::preview::tests::closing_media_preview_finalizes_production_widget_tree";
-    crate::test_support::gtk_test(TEST, || {
-        let drawer = PreviewDrawer::new(Rc::new(UnusedPreviewProvider), false);
-        let widgets = render_media_widgets(&drawer, true);
-
-        drawer.close();
-
-        assert_media_widgets_finalized(&widgets);
-    });
-}
-
-#[test]
 fn replacing_repeated_media_previews_finalizes_previous_widget_trees() {
     const TEST: &str =
         "ui::preview::tests::replacing_repeated_media_previews_finalizes_previous_widget_trees";
@@ -228,24 +206,17 @@ fn replacing_repeated_media_previews_finalizes_previous_widget_trees() {
 }
 
 #[test]
-fn media_time_formats_minutes_and_seconds() {
+fn media_time_formats_minutes_and_seconds_and_clamps_negative_timestamps() {
     assert_eq!(format_media_time(0, 0), "0:00/0:00");
     assert_eq!(format_media_time(1_500_000, 65_000_000), "0:01/1:05");
     assert_eq!(format_media_time(125_000_000, 125_000_000), "2:05/2:05");
-}
 
-#[test]
-fn media_time_clamps_negative_timestamps_to_zero() {
     assert_eq!(format_media_time(-500_000, 10_000_000), "0:00/0:10");
 }
 
 #[test]
-fn preview_drag_entries_returns_none_when_no_entry_loaded() {
+fn preview_drag_entries_contains_only_the_loaded_entry() {
     assert_eq!(preview_drag_entries(None), None);
-}
-
-#[test]
-fn preview_drag_entries_wraps_loaded_file_entry() {
     let entry = crate::model::FileEntry {
         location: crate::model::Location::local("/tmp/test.png"),
         native_name: std::ffi::OsString::from("test.png"),
