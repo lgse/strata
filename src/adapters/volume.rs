@@ -144,14 +144,22 @@ struct Directory<'a> {
 
 impl<'a> Directory<'a> {
     fn classify(location: &'a Location, mounts: &MountTable) -> Self {
-        let is_remote = match location.native_path() {
-            Some(path) => mounts.is_remote_path(path),
+        Self::classify_with_probe(location, mounts, native_query_may_leave_mount)
+    }
+
+    fn classify_with_probe(
+        location: &'a Location,
+        mounts: &MountTable,
+        native_probe: impl FnOnce(&Path) -> bool,
+    ) -> Self {
+        let may_block = match location.native_path() {
+            Some(path) => mounts.query_may_block(path),
             None => location_is_remote(location),
         };
-        let synchronous = !is_remote
+        let synchronous = !may_block
             && location
                 .native_path()
-                .is_some_and(|path| !native_query_may_leave_mount(path));
+                .is_some_and(|path| !native_probe(path));
         Self {
             location,
             synchronous,

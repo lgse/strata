@@ -456,6 +456,15 @@ impl NavigationState {
                 if column.selected_locations.remove(&from) {
                     column.selected_locations.insert(entry.location.clone());
                 }
+                for target in [
+                    &mut column.selection_target,
+                    &mut column.selection_anchor,
+                    &mut column.load_cursor,
+                ] {
+                    if target.as_ref() == Some(&from) {
+                        *target = Some(entry.location.clone());
+                    }
+                }
                 remove_monitored_entry(&mut column.entries, &from, &mut splices);
                 upsert_monitored_entry(&mut column.entries, entry, preferences, &mut splices);
             }
@@ -490,7 +499,8 @@ impl NavigationState {
         column.selection_target = column
             .selected
             .and_then(|position| column.entries.get(position))
-            .map(|entry| entry.location.clone());
+            .map(|entry| entry.location.clone())
+            .or_else(|| column.selection_target.clone());
         column.entries.clear();
         column.selected = None;
         column.load_state = LoadState::Loading;
@@ -499,6 +509,28 @@ impl NavigationState {
         column.can_delete = None;
         column.request_id = request_id;
         Some(column.location.clone())
+    }
+
+    pub fn relocate_column(&mut self, depth: usize, location: Location, request_id: RequestId) {
+        let Some(previous) = self.reload_column(depth, request_id) else {
+            return;
+        };
+        let column = &mut self.columns[depth];
+        column.selected_locations = column
+            .selected_locations
+            .iter()
+            .filter_map(|selected| selected.rebase(&previous, &location))
+            .collect();
+        for target in [
+            &mut column.selection_target,
+            &mut column.selection_anchor,
+            &mut column.load_cursor,
+        ] {
+            *target = target
+                .as_ref()
+                .and_then(|target| target.rebase(&previous, &location));
+        }
+        column.location = location;
     }
 
     pub fn set_show_hidden(&mut self, show_hidden: bool) {
