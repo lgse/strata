@@ -245,6 +245,7 @@ fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn E
                     &never_cancelled(),
                 )?;
             }
+            ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
         }
         assert_eq!(fs::read(extracted.join("source.txt"))?, b"contents");
         assert_eq!(
@@ -429,11 +430,15 @@ fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result
             "fake.tar.gz",
             "This file is not a valid archive or is damaged.",
         ),
+        (
+            "fake.rar",
+            "This file is not a valid archive or is damaged.",
+        ),
         ("missing.zip", "No such file"),
         ("unreadable.zip", "Permission denied"),
         ("destination.zip", "Not a directory"),
         ("unsafe.zip", "Refusing unsafe ZIP path"),
-        ("unknown.rar", "Unsupported archive format"),
+        ("unknown.iso", "Unsupported archive format"),
     ] {
         let archive = root.path().join(name);
         if name != "missing.zip" {

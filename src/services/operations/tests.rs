@@ -59,14 +59,41 @@ fn archive_formats_are_detected_by_extension() {
         ArchiveFormat::from_extension("data.tar"),
         Some(ArchiveFormat::Tar)
     );
+    assert_eq!(
+        ArchiveFormat::from_extension("files.7z"),
+        Some(ArchiveFormat::SevenZ)
+    );
+    assert_eq!(
+        ArchiveFormat::from_extension("archive.rar"),
+        Some(ArchiveFormat::Rar)
+    );
+    assert_eq!(
+        ArchiveFormat::from_extension("ARCHIVE.RAR"),
+        Some(ArchiveFormat::Rar)
+    );
     assert_eq!(ArchiveFormat::from_extension("document.pdf"), None);
     assert_eq!(ArchiveFormat::from_extension("no_extension"), None);
 }
 
 #[test]
 fn archive_format_extensions_round_trip() {
-    for format in [ArchiveFormat::Zip, ArchiveFormat::TarGz, ArchiveFormat::Tar] {
+    for format in [
+        ArchiveFormat::Zip,
+        ArchiveFormat::SevenZ,
+        ArchiveFormat::TarGz,
+        ArchiveFormat::Tar,
+        ArchiveFormat::Rar,
+    ] {
         let name = format!("test.{}", format.extension());
         assert_eq!(ArchiveFormat::from_extension(&name), Some(format));
     }
+}
+
+#[test]
+fn archive_format_password_support() {
+    assert!(ArchiveFormat::Zip.supports_password());
+    assert!(ArchiveFormat::SevenZ.supports_password());
+    assert!(ArchiveFormat::Rar.supports_password());
+    assert!(!ArchiveFormat::Tar.supports_password());
+    assert!(!ArchiveFormat::TarGz.supports_password());
 }
