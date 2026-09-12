@@ -868,7 +868,15 @@ impl ViewState {
                     Ok(files) => files.files(),
                     Err(_) => return,
                 },
-                Err(_) => return,
+                Err(_) => match clipboard.read_texture_future().await {
+                    Ok(Some(texture)) => {
+                        if let Some(state) = weak.upgrade() {
+                            state.paste_image_from_texture(&destination, &texture);
+                        }
+                        return;
+                    }
+                    _ => return,
+                },
             };
             let sources = files
                 .into_iter()
@@ -877,6 +885,35 @@ impl ViewState {
             if let Some(state) = weak.upgrade() {
                 let move_sources = is_cut_match(&sources);
                 state.start_transfer(destination, sources, move_sources);
+            }
+        });
+    }
+
+    fn paste_image_from_texture(
+        self: &Rc<Self>,
+        destination: &Location,
+        texture: &gtk::gdk::Texture,
+    ) {
+        let Some(dir) = destination.native_path().map(std::path::Path::to_path_buf) else {
+            return;
+        };
+        let png_bytes = texture.save_to_png_bytes();
+        gio::spawn_blocking(move || {
+            let mut suffix = 0u64;
+            let path = loop {
+                let name = if suffix == 0 {
+                    "image.png".to_owned()
+                } else {
+                    format!("image ({suffix}).png")
+                };
+                let candidate = dir.join(&name);
+                if !candidate.exists() {
+                    break candidate;
+                }
+                suffix += 1;
+            };
+            if let Err(error) = std::fs::write(&path, png_bytes.as_ref()) {
+                tracing::warn!(%error, "unable to write pasted image");
             }
         });
     }
