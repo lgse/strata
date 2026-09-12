@@ -162,8 +162,11 @@ only the executable/runtime libraries and a bind of the real, user-owned
 `pulse/native` Unix socket beneath a private user-owned `XDG_RUNTIME_DIR` (and an
 optional local PulseAudio cookie). This supports PulseAudio and PipeWire through
 `pipewire-pulse`, not a native PipeWire/ALSA device fallback. The sink is fixed;
-environment-selected servers, sinks and plugin paths are not inherited. Unsafe
-runtime paths fail closed. Temporary/install path ancestry is validated before
+environment-selected servers, sinks and plugin paths are not inherited. A fixed,
+read-only client policy disables daemon autospawning and SHM/memfd transport.
+PCM stays on the socket: PulseAudio's default 64-MiB shared-pool allocation would
+otherwise exceed this role's 4-MiB file-size limit before its handshake. This
+does not edit the user's audio configuration. Unsafe runtime paths fail closed. Temporary/install path ancestry is validated before
 use, job storage is mode 0700, and only root or the effective user may own trusted
 ancestors (writable ancestors require sticky-directory protection).
 

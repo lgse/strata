@@ -297,7 +297,18 @@ pub(crate) fn failure(child: &mut Child, fallback: String) -> String {
     }
     .take(4096)
     .read_to_end(&mut bytes);
-    classify_stderr(&bytes).unwrap_or(fallback)
+    classify_stderr(&bytes).unwrap_or_else(|| {
+        use std::os::unix::process::ExitStatusExt;
+        let limited = child.try_wait().ok().flatten().is_some_and(|status| {
+            [rustix::process::Signal::XCPU, rustix::process::Signal::XFSZ]
+                .into_iter().any(|signal| status.signal() == Some(signal.as_raw()) || status.code() == Some(128 + signal.as_raw()))
+        });
+        if limited {
+            "The media worker exceeded its resource budget. Try a smaller preview or check the media runtime installation.".into()
+        } else {
+            fallback
+        }
+    })
 }
 
 fn classify_stderr(bytes: &[u8]) -> Option<String> {

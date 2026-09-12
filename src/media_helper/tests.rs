@@ -16,6 +16,25 @@ fn executable(path: &Path) {
 }
 
 #[test]
+fn resource_limit_exits_do_not_surface_as_unexplained_pipe_failures() {
+    for code in [152, 153, 1] {
+        let mut child = std::process::Command::new("/bin/sh")
+            .env_clear()
+            .args(["-c", "exit \"$1\"", "limit-fixture", &code.to_string()])
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("fixture process");
+        child.wait().expect("finished worker");
+        let message = failure(&mut child, "fallback".into());
+        if code == 1 {
+            assert_eq!(message, "fallback");
+        } else {
+            assert!(message.contains("resource budget"), "{message}");
+        }
+    }
+}
+
+#[test]
 fn discovery_rejects_absent_nonexecutable_symlink_and_wrong_architecture() {
     let dir = tempfile::tempdir().expect("private directory");
     let path = dir.path().join(NAME);

@@ -95,7 +95,7 @@ def main():
     from harness.environment import TestEnvironment
     display, home = HeadlessDisplay(), TestEnvironment()
     app = connection = None
-    results = dict(binary=str(binary), cycles=args.cycles, audio="not exercised: video-only fixture")
+    results = dict(binary=str(binary), cycles=args.cycles, audio="not exercised: video-only fixture", completed=False)
     try:
         display.start()
         os.environ.update(home.variables())
@@ -124,7 +124,7 @@ def main():
             browser.screenshot(output / "unavailable.png")
             browser.keyboard.press("Escape")
             browser.wait(lambda: browser.preview() is None, "close unavailable preview")
-            browser.select_entry_with_keyboard("notes.txt")
+            browser.select_entry("notes.txt")
             browser.keyboard.press("space")
             browser.wait(lambda: browser.preview_shows("Browsing and text previews remain usable."), "unrelated text preview")
             browser.screenshot(output / "text-still-usable.png")
@@ -171,7 +171,7 @@ def main():
             browser.wait(lambda: browser.preview() is None, "close preview")
             samples = []
             for cycle in range(args.cycles):
-                browser.select_entry_with_keyboard("clip.mkv")
+                browser.select_entry("clip.mkv")
                 browser.keyboard.press("space")
                 browser.wait(lambda: browser.preview_shows("0:00/0:30"), "prepared generation", timeout=25)
                 time.sleep(0.15)
@@ -183,9 +183,10 @@ def main():
             results["closed_cycles"] = samples
             time.sleep(2)
             results["settled"] = resources(pid)
-        (output / "runtime.json").write_text(json.dumps(results, indent=2) + "\n")
+        results["completed"] = True
         print(json.dumps(results, indent=2), flush=True)
     finally:
+        (output / "runtime.json").write_text(json.dumps(results, indent=2) + "\n")
         if app is not None:
             (output / "application.log").write_text(app.log())
             app.stop()

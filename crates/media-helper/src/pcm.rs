@@ -70,17 +70,19 @@ pub(super) fn run(job: u64, test_sink: bool) -> Result<(), String> {
                 }
                 output.set_audio(muted == 1, volume);
             }
-            Kind::Play => output.play()?,
-            Kind::Pause => output.pause()?,
+            Kind::Play => output.play().map_err(audio_failure)?,
+            Kind::Pause => output.pause().map_err(audio_failure)?,
             Kind::Samples => {
                 samples
                     .push(message.data.len(), message.time_us)
                     .map_err(|e| e.to_string())?;
-                output.push(message.data, message.time_us)?;
+                output
+                    .push(message.data, message.time_us)
+                    .map_err(audio_failure)?;
             }
             Kind::Finish => {
                 samples.finish().map_err(|e| e.to_string())?;
-                output.finish()?;
+                output.finish().map_err(audio_failure)?;
             }
             Kind::Status => return Err("Unexpected PCM reply".into()),
         }
@@ -111,4 +113,9 @@ pub(super) fn run(job: u64, test_sink: bool) -> Result<(), String> {
         }
         sequence = sequence.checked_add(1).ok_or("PCM sequence exhausted")?;
     }
+}
+
+fn audio_failure(error: String) -> String {
+    eprintln!("STRATA_MEDIA:audio-server");
+    error
 }

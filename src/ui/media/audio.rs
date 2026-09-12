@@ -154,7 +154,7 @@ fn normalized_volume(volume: f64) -> f64 {
     }
 }
 
-fn command(executable: &Path, job: u64) -> Result<Command, String> {
+fn command(executable: &Path, client_config: &Path, job: u64) -> Result<Command, String> {
     let mut command = Command::new("/usr/bin/bwrap");
     command
         .env_clear()
@@ -208,6 +208,10 @@ fn command(executable: &Path, job: u64) -> Result<Command, String> {
         let runtime = std::env::var_os("XDG_RUNTIME_DIR").ok_or("Audio output is unavailable: no local audio runtime. Start PulseAudio or PipeWire with pipewire-pulse and retry.")?;
         let socket = audio_socket(Path::new(&runtime))?;
         command
+            .arg("--ro-bind")
+            .arg(client_config)
+            .arg("/app/pulse-client.conf")
+            .args(["--setenv", "PULSE_CLIENTCONFIG", "/app/pulse-client.conf"])
             .arg("--ro-bind")
             .arg(socket)
             .arg("/run/strata-audio/pulse/native")
@@ -263,7 +267,8 @@ fn audio_socket(runtime: &Path) -> Result<std::path::PathBuf, String> {
     if metadata.uid() != uid || metadata.mode() & 0o077 != 0 {
         return Err("Audio runtime is not private and user-owned; check XDG_RUNTIME_DIR.".into());
     }
-    let pulse = crate::media_helper::trusted_directory(&runtime.join("pulse"))?;
+    let pulse = crate::media_helper::trusted_directory(&runtime.join("pulse"))
+        .map_err(|_| "Audio output is unavailable: no trusted local PulseAudio socket directory. Start PulseAudio or PipeWire with pipewire-pulse and retry.")?;
     let socket = pulse.join("native");
     if !std::fs::symlink_metadata(&socket)
         .is_ok_and(|m| m.file_type().is_socket() && m.uid() == uid)
@@ -277,7 +282,15 @@ fn run(state: &State, receiver: mpsc::Receiver<Message>) -> Result<(), String> {
     let directory = crate::media_helper::private_tempdir()?;
     let executable = crate::media_helper::snapshot(directory.path())?;
     let job = crate::media_helper::job();
-    let mut command = command(&executable, job)?;
+    let client_config = directory.path().join("pulse-client.conf");
+    // PulseAudio otherwise ftruncates a 64-MiB pool and hits this role's file-size
+    // limit before its handshake. Keep PCM on the socket; never autospawn a daemon.
+    std::fs::write(
+        &client_config,
+        b"autospawn = no\nenable-shm = no\nenable-memfd = no\n",
+    )
+    .map_err(|_| "Cannot stage the private audio client policy")?;
+    let mut command = command(&executable, &client_config, job)?;
     let mut child =
         crate::sandbox::spawn_renderer(&mut command).map_err(crate::media_helper::spawn_error)?;
     let result = communicate(state, receiver, &mut child, job);
