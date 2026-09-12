@@ -40,6 +40,8 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
             std::fs::create_dir(root.path().join("empty")).expect("empty folder");
             std::fs::create_dir(root.path().join("nested")).expect("nested folder");
             std::fs::write(root.path().join("nested/.hidden"), b"12345").expect("hidden file");
+            std::fs::create_dir_all(root.path().join(".hidden/child")).expect("hidden subtree");
+            std::fs::write(root.path().join(".hidden/child/file"), b"123").expect("hidden child");
             for index in 0..200 {
                 std::fs::write(root.path().join(format!("file-{index}")), b"x").expect("file");
             }
@@ -53,17 +55,15 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
             window.present();
 
             for (path, expected_size, expected_contains) in [
-                (
-                    root.path().to_path_buf(),
-                    "205 B",
-                    Some("200 files, 2 folders"),
-                ),
-                (root.path().join("empty"), "0 B", Some("0 files, 0 folders")),
-                (root.path().join("missing"), "Unavailable", None),
+                (root.path().to_path_buf(), "208 B", "200 files, 2 folders"),
+                (root.path().join(".hidden"), "3 B", "1 file, 1 folder"),
+                (root.path().join("empty"), "0 B", "0 files, 0 folders"),
+                (root.path().join("missing"), "Unavailable", "Unavailable"),
             ] {
                 view.state.show_folder_properties(&Location::local(path));
                 let size = size_label(overlay.upcast_ref()).expect("Properties SIZE row");
-                let contains = row_label(overlay.upcast_ref(), "CONTAINS");
+                let contains =
+                    row_label(overlay.upcast_ref(), "CONTAINS").expect("Properties CONTAINS row");
                 let spinner = size
                     .next_sibling()
                     .and_downcast::<gtk::Spinner>()
@@ -91,10 +91,8 @@ fn folder_properties_loads_sizes_and_reports_unavailable_roots() {
                 }
                 assert_eq!(size.text(), expected_size);
                 assert!(!spinner.is_visible());
-                if let (Some(contains), Some(expected_contains)) = (contains, expected_contains) {
-                    assert_eq!(contains.text(), expected_contains);
-                }
-                if expected_size == "205 B" {
+                assert_eq!(contains.text(), expected_contains);
+                if expected_size == "208 B" {
                     assert!(
                         saw_partial_size.get(),
                         "size must update while the spinner is running"

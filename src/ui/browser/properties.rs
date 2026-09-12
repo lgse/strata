@@ -548,24 +548,28 @@ impl ViewState {
                         let prefix = if summary.truncated { "≥ " } else { "" };
                         size.set_text(&format!("{prefix}{}", format_file_size(summary.total_size)));
                         if let Some(items) = weak_items.as_ref().and_then(|w| w.upgrade()) {
-                            let prefix = if summary.truncated { "≥ " } else { "" };
-                            let file_noun = if summary.file_count == 1 {
+                            let file_noun = if summary.visible_file_count == 1 {
                                 "file"
                             } else {
                                 "files"
                             };
-                            let folder_noun = if summary.folder_count == 1 {
+                            let folder_noun = if summary.visible_folder_count == 1 {
                                 "folder"
                             } else {
                                 "folders"
                             };
                             items.set_text(&format!(
-                                "{prefix}{} {file_noun}, {} {folder_noun}",
-                                summary.file_count, summary.folder_count
+                                "{prefix}{} {file_noun}, {prefix}{} {folder_noun}",
+                                summary.visible_file_count, summary.visible_folder_count
                             ));
                         }
                     }
-                    Err(_) => size.set_text("Unavailable"),
+                    Err(_) => {
+                        size.set_text("Unavailable");
+                        if let Some(items) = weak_items.as_ref().and_then(|w| w.upgrade()) {
+                            items.set_text("Unavailable");
+                        }
+                    }
                 }
             });
             layer.connect_unrealize(move |_| task.abort());

@@ -15,13 +15,15 @@ fn measurement_counts_nested_entries_without_following_symlinks() {
         .expect("broken symlink");
     std::fs::write(outside.path().join("excluded"), b"excluded content").expect("outside file");
     std::os::unix::fs::symlink(outside.path(), root.path().join("link")).expect("symlink");
+    std::fs::create_dir_all(root.path().join(".hidden/visible")).expect("hidden subtree");
+    std::fs::write(root.path().join(".hidden/visible/file"), b"1234").expect("hidden subtree file");
     let summary = glib::MainContext::new()
         .block_on(summarize_directory(&gio::File::for_path(root.path())))
         .expect("summary");
-    assert_eq!(summary.item_count, 7);
-    assert_eq!(summary.total_size, 14);
-    assert_eq!(summary.file_count, 5);
-    assert_eq!(summary.folder_count, 1);
+    assert_eq!(summary.item_count, 10);
+    assert_eq!(summary.total_size, 18);
+    assert_eq!(summary.visible_file_count, 5);
+    assert_eq!(summary.visible_folder_count, 1);
     assert!(!summary.truncated);
 }
 

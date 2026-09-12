@@ -16,10 +16,8 @@ use gio::prelude::*;
 pub(crate) struct DirectorySummary {
     pub(crate) item_count: usize,
     pub(crate) total_size: u64,
-    /// Visible (non-hidden) file count, excluding hidden entries.
-    pub(crate) file_count: usize,
-    /// Visible (non-hidden) folder count, excluding hidden entries.
-    pub(crate) folder_count: usize,
+    pub(crate) visible_file_count: usize,
+    pub(crate) visible_folder_count: usize,
     /// Incomplete measurements are lower bounds, not exact totals.
     pub(crate) truncated: bool,
 }
@@ -28,8 +26,12 @@ impl DirectorySummary {
     fn include(&mut self, child: Self) {
         self.item_count = self.item_count.saturating_add(child.item_count);
         self.total_size = self.total_size.saturating_add(child.total_size);
-        self.file_count = self.file_count.saturating_add(child.file_count);
-        self.folder_count = self.folder_count.saturating_add(child.folder_count);
+        self.visible_file_count = self
+            .visible_file_count
+            .saturating_add(child.visible_file_count);
+        self.visible_folder_count = self
+            .visible_folder_count
+            .saturating_add(child.visible_folder_count);
         self.truncated |= child.truncated;
     }
 }
@@ -173,8 +175,8 @@ fn measure_entry(
             } else {
                 0
             },
-            file_count: if !is_hidden && !is_directory { 1 } else { 0 },
-            folder_count: if !is_hidden && is_directory { 1 } else { 0 },
+            visible_file_count: usize::from(!is_hidden && !is_directory),
+            visible_folder_count: usize::from(!is_hidden && is_directory),
             truncated: false,
         };
         budget
@@ -195,6 +197,10 @@ fn measure_entry(
                     Err(_) => summary.truncated = true,
                 }
             }
+        }
+        if is_hidden {
+            summary.visible_file_count = 0;
+            summary.visible_folder_count = 0;
         }
         Ok(summary)
     })
