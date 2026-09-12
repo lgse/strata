@@ -6,8 +6,8 @@ use crate::ui::browser::ViewState;
 use crate::ui::browser::clipboard::install_directory_drop_target;
 use crate::ui::browser::collection::{
     ViewMap, activate_recursive_search_result, apply_filter_query, apply_selection_plan,
-    bind_filter_query, bitset_positions, deactivate_recursive_search, detach_collection_view,
-    recursive_search_activation_key, scroll_collection_when_allocated,
+    bind_filter_query, bitset_positions, cancel_source, deactivate_recursive_search,
+    detach_collection_view, recursive_search_activation_key, scroll_collection_when_allocated,
     search_result_navigation_position,
 };
 use crate::ui::browser::context_menu::{install_folder_context_menu, install_item_context_menu};
@@ -1323,6 +1323,8 @@ impl ViewState {
     }
 
     pub(super) fn truncate(self: &Rc<Self>, len: usize) {
+        cancel_source(&self.pending_peek);
+        self.peek_anchor.take();
         self.close_peek_visual();
         if self.hovered_column.get().is_some_and(|depth| depth >= len) {
             self.hovered_column.set(None);
