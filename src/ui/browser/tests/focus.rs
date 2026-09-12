@@ -14,9 +14,6 @@ fn wait_until(condition: impl Fn() -> bool) {
     }
 }
 
-/// Drains pending idle/timeout sources for a bit, for asserting something did *not* happen
-/// (e.g. the deferred focus-leave check), where `wait_until` can't be used since the condition
-/// is expected to stay false.
 fn settle() {
     for _ in 0..20 {
         glib::MainContext::default().iteration(false);
@@ -390,8 +387,6 @@ fn filter_dismisses_only_when_focus_leaves_its_own_column() {
             );
             assert_eq!(first.filter_entry.text(), "alpha");
 
-            first.filter_entry.grab_focus();
-            wait_until(|| root_focus_is(first.filter_entry.upcast_ref()));
             second.list.grab_focus();
             wait_until(|| !first.filter_button.is_active());
             assert_eq!(first.filter_entry.text(), "");

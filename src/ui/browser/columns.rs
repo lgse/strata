@@ -1163,10 +1163,7 @@ impl ViewState {
 
         let shell = gtk::Box::new(gtk::Orientation::Horizontal, 0);
 
-        // Dismiss this column's filter once focus settles outside the column,
-        // but not for a press that merely moves focus to this column's own
-        // list (e.g. clicking a filtered row) -- deferred so focus has time
-        // to land on its real target before this checks where it went.
+        // Focus may be unset during transfer; inspect its destination at idle.
         let filter_button_for_blur = filter_button.clone();
         let shell_for_blur = shell.downgrade();
         let filter_focus = gtk::EventControllerFocus::new();
@@ -1180,16 +1177,27 @@ impl ViewState {
                 let Some(shell) = shell_for_blur.upgrade() else {
                     return;
                 };
-                let focused = widget.root().and_then(|root| root.focus());
-                let left_column = !focused.is_some_and(|focused| {
-                    focused.is_ancestor(&shell) || focused == shell.clone().upcast::<gtk::Widget>()
+                let Some(root) = widget.root() else {
+                    return;
+                };
+                // Result dialogs must retain the query for restoration after dismissal.
+                if root
+                    .downcast_ref::<gtk::Window>()
+                    .is_some_and(|window| crate::ui::window::visible_modal_layer(window).is_some())
+                {
+                    return;
+                }
+                let left_column = root.focus().is_some_and(|focused| {
+                    !focused.is_ancestor(&shell)
+                        && focused != shell.clone().upcast::<gtk::Widget>()
+                        && focused.ancestor(gtk::Popover::static_type()).is_none()
                 });
                 if left_column {
                     filter_button_for_blur.set_active(false);
                 }
             });
         });
-        filter_entry.add_controller(filter_focus);
+        shell.add_controller(filter_focus);
 
         shell.set_size_request(COLUMN_WIDTH, -1);
         let previous_scale = Cell::new(1.0);
