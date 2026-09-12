@@ -59,6 +59,8 @@ pub struct BrowserColumnSnapshot {
 
 #[derive(Clone, Debug)]
 pub enum BrowserEvent {
+    /// The outgoing directory is still available for presentation-state capture.
+    NavigationStarting,
     Reset,
     ColumnsTruncated {
         len: usize,
@@ -762,6 +764,9 @@ impl Browser {
         if self.active_location().as_ref() == Some(&location) {
             return;
         }
+        if self.active_location().is_some() {
+            self.emit(BrowserEvent::NavigationStarting);
+        }
         self.close_peek();
         self.loads.borrow_mut().clear();
         self.monitors.borrow_mut().clear();
@@ -851,6 +856,10 @@ impl Browser {
         location: Location,
         select_first_on_load: bool,
     ) {
+        if self.location_at(parent_depth).is_none() {
+            return;
+        }
+        self.emit(BrowserEvent::NavigationStarting);
         let request_id = self.new_request_id();
         let mut state = self.state.borrow_mut();
         if !state.descend(parent_depth, location.clone(), request_id) {
@@ -2288,6 +2297,7 @@ impl Browser {
     }
 
     fn restore_path(self: &Rc<Self>, path: NavigationPath) {
+        self.emit(BrowserEvent::NavigationStarting);
         self.close_peek();
         self.loads.borrow_mut().clear();
         self.monitors.borrow_mut().clear();
