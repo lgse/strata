@@ -17,6 +17,7 @@ use rustix::process::{Pid, Signal, kill_process_group};
 
 use crate::services::MediaPreviewSize;
 
+pub(crate) mod libraries;
 pub(crate) mod media;
 
 const WALL_TIME_LIMIT: Duration = Duration::from_secs(12);
@@ -330,6 +331,7 @@ fn sandbox_command(
         "/etc/ImageMagick-6",
         "/etc/ImageMagick-6",
     ]);
+    libraries::bind_aliases(&mut command);
     let sandbox_input = sandbox_input_path(input);
     command
         .arg("--ro-bind")

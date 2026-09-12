@@ -143,10 +143,14 @@ capability loss must be in release notes.
 
 Unit/synthetic-ELF tests are not proof of installed release behavior. Pinned GTK
 regressions and E2E use private displays/buses and fake audio, not host speakers.
-The Ubuntu alternatives-library issue [#806](https://github.com/lgse/strata/issues/806)
-remains a separate **observed** runtime gate: FFmpeg cannot resolve `libblas.so.3`
-under the existing parser mounts in the pinned image. The helper split does not
-fix it, and these changes do not mount all of `/etc/alternatives` to hide it.
+The helper split initially reproduced Ubuntu's alternatives-library issue
+[#806](https://github.com/lgse/strata/issues/806): FFmpeg could not resolve
+`libblas.so.3` under the original mounts. The corrected policy binds only fixed
+BLAS/LAPACK alias files, validated as protected root-owned `/usr/lib` ELF files.
+It never mounts all of `/etc/alternatives`. Real sandbox/player regressions now
+exercise video/audio/A/V/GIF, worker crashes and parent death in pinned x86_64
+Ubuntu with fake audio. Other installations and real installed artifacts still
+need their own evidence.
 
 Do not claim release readiness without final ELF closure, missing-library launch
 and repair evidence, real installed bundles on both architectures, real audio with

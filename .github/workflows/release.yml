@@ -233,7 +233,8 @@ jobs:
         run: |
           cargo build --release --locked -p strata-media-helper --target "$TARGET"
           mkdir -p dist
-          helper="target/$TARGET/release/strata-media-helper"
+          helper="dist/strata-media-helper-${VERSION}-${TARGET}"
+          install -m 755 "target/$TARGET/release/strata-media-helper" "$helper"
           symbols="dist/strata-media-helper-${VERSION}-${TARGET}.debug"
           objcopy --only-keep-debug --compress-debug-sections=zlib "$helper" "$symbols"
           strip --strip-unneeded "$helper"
@@ -254,7 +255,7 @@ jobs:
           package="strata-${VERSION}-${TARGET}"
           mkdir -p "dist/$package"
           install -m 755 "target/$TARGET/release/strata" "dist/$package/strata"
-          install -m 755 "target/$TARGET/release/strata-media-helper" "dist/$package/strata-media-helper"
+          install -m 755 "dist/strata-media-helper-${VERSION}-${TARGET}" "dist/$package/strata-media-helper"
           objcopy --only-keep-debug --compress-debug-sections=zlib "dist/$package/strata" "dist/$package.debug"
           strip --strip-unneeded "dist/$package/strata"
           objcopy --add-gnu-debuglink="dist/$package.debug" "dist/$package/strata"

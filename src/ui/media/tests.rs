@@ -42,6 +42,284 @@ pub(crate) fn wait(condition: impl Fn() -> bool) {
     }
 }
 
+fn process_identity(pid: u32) -> Option<(u32, String)> {
+    let stat = std::fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
+    Some((
+        pid,
+        stat.rsplit_once(") ")?
+            .1
+            .split_whitespace()
+            .nth(19)?
+            .to_owned(),
+    ))
+}
+
+fn descendants(root: u32) -> std::collections::HashSet<(u32, String)> {
+    let mut pending = vec![root];
+    let mut processes = std::collections::HashSet::new();
+    while let Some(pid) = pending.pop() {
+        let Some(identity) = process_identity(pid) else {
+            continue;
+        };
+        if pid != root && !processes.insert(identity) {
+            continue;
+        }
+        let Ok(tasks) = std::fs::read_dir(format!("/proc/{pid}/task")) else {
+            continue;
+        };
+        for task in tasks.flatten() {
+            if let Ok(children) = std::fs::read_to_string(task.path().join("children")) {
+                pending.extend(
+                    children
+                        .split_whitespace()
+                        .filter_map(|pid| pid.parse::<u32>().ok()),
+                );
+            }
+        }
+    }
+    processes
+}
+
+#[test]
+fn native_sandbox_workers_play_seek_and_release_video_audio_av_and_gif() {
+    gtk_test(
+        "ui::media::tests::native_sandbox_workers_play_seek_and_release_video_audio_av_and_gif",
+        || {
+            let directory = tempfile::tempdir().expect("generated media only");
+            for (name, video, audio) in [
+                ("video.mkv", true, false),
+                ("audio.wav", false, true),
+                ("av.mkv", true, true),
+                ("loop.gif", true, false),
+            ] {
+                let input = directory.path().join(name);
+                let mut command = std::process::Command::new("/usr/bin/ffmpeg");
+                command.args(["-nostdin", "-v", "error"]);
+                if video {
+                    command.args([
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        "testsrc2=size=32x24:rate=30:duration=2",
+                    ]);
+                }
+                if audio {
+                    command.args([
+                        "-f",
+                        "lavfi",
+                        "-i",
+                        "sine=frequency=660:sample_rate=48000:duration=2",
+                    ]);
+                }
+                if name.ends_with("mkv") {
+                    command.args(["-c:v", "ffv1"]);
+                }
+                if audio {
+                    command.args(["-c:a", "pcm_s16le"]);
+                }
+                assert!(
+                    command
+                        .args(["-threads", "1"])
+                        .arg(&input)
+                        .status()
+                        .expect("fixture encoder")
+                        .success()
+                );
+                let player = DecodedMedia::new(SandboxedMedia {
+                    path: input,
+                    size: MediaPreviewSize::new(160, 90),
+                    backend: MediaPreviewBackend::Software,
+                });
+                player.set_muted(true);
+                player.play();
+                wait(|| {
+                    assert!(player.error().is_none(), "{name}: {:?}", player.error());
+                    player.timestamp() > 100_000
+                });
+                let owned = descendants(std::process::id());
+                assert!(!owned.is_empty(), "real sandbox descendants must run");
+                assert_eq!(player.has_video(), video, "{name}");
+                assert_eq!(player.has_audio(), audio, "{name}");
+                assert_eq!(player.imp().texture.borrow().is_some(), video, "{name}");
+                player.pause();
+                player.seek(1_500_000);
+                wait(|| {
+                    assert!(player.error().is_none(), "{name}: {:?}", player.error());
+                    !player.is_seeking()
+                });
+                assert!(!player.is_playing());
+                assert!((player.timestamp() - 1_500_000).abs() < 34_000);
+                player.play();
+                wait(|| {
+                    assert!(player.error().is_none(), "{name}: {:?}", player.error());
+                    player.timestamp() > 1_550_000
+                });
+                if !name.ends_with("gif") {
+                    wait(|| {
+                        assert!(player.error().is_none(), "{name}: {:?}", player.error());
+                        player.is_ended()
+                    });
+                }
+                player.close();
+                wait(|| crate::sandbox::media::tests::active_sessions() == 0);
+                wait(|| {
+                    owned.iter().all(|(pid, birth)| {
+                        process_identity(*pid).as_ref() != Some(&(*pid, birth.clone()))
+                    })
+                });
+            }
+            let make_player = || {
+                DecodedMedia::new(SandboxedMedia {
+                    path: directory.path().join("loop.gif"),
+                    size: MediaPreviewSize::new(160, 90),
+                    backend: MediaPreviewBackend::Software,
+                })
+            };
+            let first = make_player();
+            first.play();
+            wait(|| {
+                assert!(first.error().is_none(), "{:?}", first.error());
+                first.timestamp() > 100_000
+            });
+            let first_workers = descendants(std::process::id());
+            let second = make_player();
+            second.play();
+            wait(|| {
+                assert!(second.error().is_none(), "{:?}", second.error());
+                second.timestamp() > 100_000
+            });
+            let worker = first_workers
+                .iter()
+                .find(|(pid, _)| {
+                    std::fs::read_to_string(format!("/proc/{pid}/comm"))
+                        .is_ok_and(|name| name.starts_with("strata-media-"))
+                })
+                .expect("first parser worker");
+            assert_eq!(process_identity(worker.0).as_ref(), Some(worker));
+            rustix::process::kill_process(
+                rustix::process::Pid::from_raw(worker.0 as i32).expect("worker PID"),
+                rustix::process::Signal::KILL,
+            )
+            .expect("simulate one worker crash");
+            wait(|| first.error().is_some());
+            let position = second.timestamp();
+            wait(|| {
+                assert!(
+                    second.error().is_none(),
+                    "unrelated job survived: {:?}",
+                    second.error()
+                );
+                second.timestamp() > position + 100_000
+            });
+            first.close();
+            second.close();
+            wait(|| crate::sandbox::media::tests::active_sessions() == 0);
+            wait(|| descendants(std::process::id()).is_empty());
+        },
+    );
+}
+
+#[test]
+fn unexpected_application_death_kills_and_reaps_sandbox_descendants() {
+    const NAME: &str =
+        "ui::media::tests::unexpected_application_death_kills_and_reaps_sandbox_descendants";
+    gtk_test(NAME, || {
+        if let Some(ready) = std::env::var_os("STRATA_PARENT_DEATH_PROBE") {
+            let ready = std::path::PathBuf::from(ready);
+            let player = DecodedMedia::new(SandboxedMedia {
+                path: ready.with_file_name("loop.gif"),
+                size: MediaPreviewSize::new(160, 90),
+                backend: MediaPreviewBackend::Software,
+            });
+            player.play();
+            wait(|| {
+                assert!(player.error().is_none(), "{:?}", player.error());
+                player.timestamp() > 100_000
+            });
+            let processes = descendants(std::process::id());
+            assert!(!processes.is_empty());
+            std::fs::write(
+                ready.with_extension("staged"),
+                serde_json::to_vec(&processes).expect("worker identities"),
+            )
+            .expect("stage readiness");
+            std::fs::rename(ready.with_extension("staged"), &ready).expect("publish readiness");
+            loop {
+                glib::MainContext::default().iteration(false);
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        }
+        // The disposable test process owns/reaps adopted descendants rather than
+        // relying on an arbitrary container PID 1 to perform init's duties.
+        rustix::process::set_child_subreaper(rustix::process::Pid::from_raw(1))
+            .expect("private subreaper");
+        let directory = crate::media_helper::private_tempdir().expect("private fixture");
+        let input = directory.path().join("loop.gif");
+        assert!(
+            std::process::Command::new("/usr/bin/ffmpeg")
+                .args([
+                    "-nostdin",
+                    "-v",
+                    "error",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "testsrc2=size=32x24:rate=30:duration=2",
+                    "-threads",
+                    "1"
+                ])
+                .arg(&input)
+                .status()
+                .expect("fixture")
+                .success()
+        );
+        struct Probe(std::process::Child);
+        impl Drop for Probe {
+            fn drop(&mut self) {
+                let owned = descendants(std::process::id());
+                let _ = self.0.kill();
+                let _ = self.0.wait();
+                for identity in owned {
+                    if process_identity(identity.0).as_ref() == Some(&identity) {
+                        let _ = rustix::process::kill_process(
+                            rustix::process::Pid::from_raw(identity.0 as i32).expect("owned PID"),
+                            rustix::process::Signal::KILL,
+                        );
+                    }
+                }
+                while let Ok(Some(_)) = rustix::process::wait(rustix::process::WaitOptions::NOHANG)
+                {
+                }
+            }
+        }
+        let ready = directory.path().join("ready.json");
+        let mut probe = Probe(
+            std::process::Command::new(std::env::current_exe().expect("test executable"))
+                .args(["--exact", NAME, "--nocapture"])
+                .env("STRATA_PARENT_DEATH_PROBE", &ready)
+                .spawn()
+                .expect("application probe"),
+        );
+        wait(|| ready.is_file());
+        let owned: std::collections::HashSet<(u32, String)> =
+            serde_json::from_slice(&std::fs::read(&ready).expect("read readiness"))
+                .expect("worker identities");
+        assert!(!owned.is_empty());
+        probe
+            .0
+            .kill()
+            .expect("unexpected application death, not a group kill");
+        assert!(!probe.0.wait().expect("reap application").success());
+        wait(|| {
+            while let Ok(Some(_)) = rustix::process::wait(rustix::process::WaitOptions::NOHANG) {}
+            owned
+                .iter()
+                .all(|identity| process_identity(identity.0).as_ref() != Some(identity))
+        });
+        assert!(descendants(std::process::id()).is_empty());
+    });
+}
+
 #[test]
 fn raw_texture_play_pause_seek_and_audio_clock_stay_synchronized() {
     gtk_test(

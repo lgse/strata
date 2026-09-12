@@ -223,9 +223,16 @@ Toolkit versions and the opt-in patches in
 The new player does not use the two patched `GtkGstSink`/`GstPlay` paths, but this
 change neither applies nor retires that patch kit or claims to fix all RAM growth.
 
-The Ubuntu runtime-library alias problem
-[#806](https://github.com/lgse/strata/issues/806) is not declared fixed by this split.
-No additional parser filesystem mounts have been added to work around it.
-Affected installations fail closed at sandbox startup. Actual installed-container
-playback evidence is required; direct helper/GTK unit tests are not proof of
-Ubuntu compatibility, real speaker output, ARM64 behavior or a memory plateau.
+The split alone reproduced Ubuntu's runtime-library alias failure
+[#806](https://github.com/lgse/strata/issues/806). A narrowly reviewed correction
+binds only the fixed architecture-specific BLAS/LAPACK alias files read-only.
+Their canonical ELF sources must reside under `/usr/lib`, with root-owned,
+non-group/other-writable files and ancestry; the alias directory must also be
+protected. No whole `/etc/alternatives` directory or media/environment-selected
+alias is mounted. Invalid or missing candidates add no capability.
+
+Real sandbox-to-GTK video, audio-only, A/V, GIF, seek/EOS, isolated worker-crash
+and parent-death regressions now run in the pinned x86_64 Ubuntu environment.
+Audio uses the isolated fake sink. This establishes that tested library-alias
+path, not every Ubuntu installation, real speaker output, ARM64 behavior or a
+memory plateau. Installed-artifact and platform evidence remain release gates.

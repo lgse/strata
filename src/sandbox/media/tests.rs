@@ -48,6 +48,10 @@ pub(crate) fn stream_to(header: Header, end: u64) -> Result<Session, String> {
     })
 }
 
+pub(crate) fn active_sessions() -> usize {
+    ACTIVE_WORKERS.load(Ordering::Acquire)
+}
+
 fn wait_for(condition: impl Fn() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(2);
     while !condition() {

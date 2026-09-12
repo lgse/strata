@@ -200,6 +200,7 @@ fn command(executable: &Path, job: u64) -> Result<Command, String> {
             "/etc/ld.so.cache",
             "/etc/ld.so.cache",
         ]);
+    crate::sandbox::libraries::bind_aliases(&mut command);
     let test_sink = cfg!(test)
         || (cfg!(debug_assertions)
             && std::env::var("STRATA_MEDIA_TEST_SINK").is_ok_and(|v| v == "1"));

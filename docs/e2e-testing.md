@@ -116,8 +116,9 @@ on both files. Native targeted tests build the helper before the test executable
 The debug E2E environment sets `STRATA_MEDIA_TEST_SINK=1`; this only selects a
 fakesink inside the isolated PCM helper, never the user's audio server. Release
 builds ignore that test override. These checks do not establish actual speaker
-output, and the unresolved Ubuntu alternatives-library sandbox failure (#806)
-must be tested separately rather than inferred away from ordinary E2E success. Rust media
+output. Dedicated native-worker regressions exercise the narrowly allowlisted
+BLAS/LAPACK aliases needed by the pinned Ubuntu sandbox (#806), rather than
+inferring media compatibility from ordinary E2E success. Rust media
 regressions exercise actual normalization, playback, and long-source duration
 limits rather than skipping when optional host tools are missing. These packages
 come from the existing dated Ubuntu snapshot; the GTK/GLib baseline and Rust
