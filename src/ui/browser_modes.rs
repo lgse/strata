@@ -3383,7 +3383,9 @@ fn install_preview_click(
         if should_activate_pointer_click(press_count, entry.is_directory(), click_activation.get())
         {
             gesture.set_state(gtk::EventSequenceState::Claimed);
-            browser.activate_in_place(depth, position);
+            if !browser.is_chooser_mode() {
+                browser.activate_in_place(depth, position);
+            }
         } else if press_count == 1
             && enabled.get()
             && !entry.is_directory()
