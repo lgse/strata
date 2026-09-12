@@ -42,6 +42,7 @@ pub(super) fn general_page(
 
     append_heading(&preferences, "DESKTOP INTEGRATION");
     let portal_row = crate::ui::portal_preferences::settings_row();
+    super::search::tag(&portal_row, "Desktop integration");
     preferences.append(&portal_row);
 
     (
@@ -188,6 +189,7 @@ fn append_click_activation(
     let mut responsive_activation_rows = Vec::new();
     activation_options.add_css_class("settings-group");
     activation_options.add_css_class("click-activation-options");
+    super::search::tag(&activation_options, "Opening items");
     let header = gtk::Box::new(gtk::Orientation::Horizontal, 24);
     header.add_css_class("activation-header");
     let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -333,6 +335,7 @@ fn video_preview_option(
     let backend_row = super::control_row("Decoding backend", "", &backend);
     super::indent_row(&backend_row);
     let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    super::search::tag(&row, "Hardware-accelerated video previews");
     row.append(&acceleration_row);
     row.append(&backend_row);
     (row, toggle, backend)

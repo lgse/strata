@@ -7,6 +7,14 @@ The manager's historical name does not make non-theme settings window-local.
 Fresh installations select Tokyo Night, unless an available Omarchy theme is
 followed automatically. Saved theme choices remain unchanged.
 
+Settings-wide search is transient, panel-local UI state, not a saved preference.
+It filters the existing bound controls rather than creating copies. Register new
+settings in `settings/search.rs`; `settings_option` tags ordinary rows, while
+custom sections use `search::tag`. Keep installation-specific availability
+separate with `search::set_available`, so clearing a query cannot reveal an
+unsupported release-channel selector. Lazy pages apply the latest query when
+they finish loading.
+
 ## One initialization and update path
 
 Use `ThemeManager::bind_preference(anchor, read, apply)` for cached behavior and

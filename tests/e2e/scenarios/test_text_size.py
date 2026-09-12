@@ -11,7 +11,10 @@ from harness.modes import ALL_MODES
 def test_settings_text_size_keeps_switches_inside_the_page(strata, request):
     settings = strata.window.find(role="button", name="Settings")
     assert settings is not None and settings.activate()
-    for pixels, next_pixels in [(17, 11), (11, 32), (32, None)]:
+    for pixels, next_pixels, width in [(17, 11, 1000), (11, 32, 1000), (32, None, 640)]:
+        bounds = strata.window.screen_bounds()
+        strata.keyboard.connection.resize_surface(bounds.width, bounds.height, width, 600)
+        strata.wait(lambda: strata.window.screen_bounds().width == width, "resized settings window")
         general = strata.wait(
             lambda: strata.window.find(role="button", name="General"),
             "General settings navigation",
@@ -25,10 +28,16 @@ def test_settings_text_size_keeps_switches_inside_the_page(strata, request):
             ),
             "visible folder-peeking switch",
         )
+        toggle = _reveal_page_control(strata, "Folder peeking", role=toggle.role)
         scroll = next(node for node in toggle.ancestors() if node.role == "scroll pane")
         bounds, viewport = toggle.screen_bounds(), scroll.screen_bounds()
         assert viewport.x <= bounds.x
         assert bounds.x + bounds.width <= viewport.x + viewport.width
+        was_checked = toggle.has_state("checked")
+        strata.pointer.click(toggle)
+        strata.wait(lambda: toggle.has_state("checked") != was_checked, "resized switch responds to pointer")
+        strata.pointer.click(toggle)
+        strata.wait(lambda: toggle.has_state("checked") == was_checked, "restore folder peeking")
         if request.config.getoption("--keep-artifacts"):
             strata.screenshot(
                 ArtifactCollector(test_name=f"settings-text-size-{pixels}").directory

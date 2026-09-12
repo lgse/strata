@@ -331,6 +331,8 @@ Press <kbd>Ctrl</kbd>+<kbd>L</kbd>, enter an address such as `smb://server/share
 
 Open **Settings → Appearance** from the gear menu or with <kbd>Ctrl</kbd>+<kbd>,</kbd>. Theme changes apply immediately across the interface.
 
+Use **Search settings** to filter options across pages and navigate to the closest match, including keywords such as “font size.” In compact windows, the magnifying-glass button opens the search field. Clear the query or press <kbd>Esc</kbd> in the field to restore all settings.
+
 ![Strata Theme and appearance settings showing Omarchy following, six bundled themes, and the Add a theme option](docs/assets/strata-themes.png)
 
 ### Follow Omarchy Quattro

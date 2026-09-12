@@ -37,6 +37,7 @@ pub(super) fn theme_page(manager: Rc<ThemeManager>) -> ThemePage {
     let follow = append_follow_omarchy_option(&system, &manager);
     let current = gtk::Box::new(gtk::Orientation::Horizontal, 12);
     current.set_valign(gtk::Align::Center);
+    current.set_halign(gtk::Align::Start);
     let current_row = super::control_row("Current theme", "", &current);
     let description = current_row
         .first_child()
@@ -75,6 +76,7 @@ pub(super) fn theme_page(manager: Rc<ThemeManager>) -> ThemePage {
 
     let library = gtk::Box::new(gtk::Orientation::Vertical, 0);
     library.add_css_class("theme-library");
+    super::search::tag(&library, "Theme library");
     content.append(&library);
     let catalog = append_theme_catalog(&library);
     let custom = theme_grid();
@@ -138,10 +140,21 @@ fn append_theme_catalog(content: &gtk::Box) -> ThemeCatalog {
     let (search_overlay, theme_search, clear_search) = super::search_field("Search themes");
     theme_search.add_css_class("theme-search");
     toolbar.append(&search_overlay);
-    let (appearance_filter, appearance_buttons) = segmented_control(&["All", "Light", "Dark"], 0);
+    let (control, appearance_buttons) = segmented_control(&["All", "Light", "Dark"], 0);
+    let appearance_filter = super::wrap::WrapRow::new(0);
+    appearance_filter.add_css_class("segmented-control");
+    for button in &appearance_buttons {
+        control.remove(button);
+        button.set_hexpand(false);
+        appearance_filter.append(button);
+    }
     appearance_filter.add_css_class("theme-appearance-filter");
+    for button in &appearance_buttons {
+        if let Some(label) = button.child().and_downcast::<gtk::Label>() {
+            label.add_css_class("settings-control-label");
+        }
+    }
     appearance_filter.set_hexpand(false);
-    appearance_filter.set_homogeneous(false);
     toolbar.append(&appearance_filter);
     content.append(&toolbar);
     let rows = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -244,6 +257,7 @@ fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     controls.append(&text_size_control);
     let text_size_row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     text_size_row.add_css_class("settings-option");
+    super::search::tag(&text_size_row, "Text size");
     let text_size_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     text_size_copy.set_hexpand(true);
     let text_size_title = gtk::Label::new(Some("Text size"));
@@ -258,7 +272,7 @@ fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
     let description = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     description.add_css_class("settings-inline-description");
     description.append(&text_size_description);
-    let keys = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+    let keys = super::wrap::WrapRow::new(6);
     keys.add_css_class("settings-inline-keys");
     keys.set_hexpand(false);
     keys.set_valign(gtk::Align::Center);
@@ -361,6 +375,8 @@ fn add_theme_card_button() -> gtk::Button {
     add_content.set_valign(gtk::Align::Center);
     let plus = crate::assets::primary_icon(icons::PLUS, 16);
     let add_label = gtk::Label::new(Some("Add theme"));
+    add_label.set_wrap(true);
+    add_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     add_content.append(&plus);
     add_content.append(&add_label);
     add.set_child(Some(&add_content));
@@ -447,7 +463,7 @@ fn append_theme_card(
     }
     card.set_has_frame(false);
     card.set_overflow(gtk::Overflow::Visible);
-    let content = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    let content = super::wrap::WrapRow::new(16);
     content.append(&theme_preview(&theme.tokens));
     let label = gtk::Label::new(Some(&theme.tokens.name));
     label.set_xalign(0.0);
@@ -460,11 +476,13 @@ fn append_theme_card(
         "DARK"
     }));
     kind.add_css_class("theme-kind");
-    content.append(&kind);
+    let metadata = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    metadata.append(&kind);
+    content.append(&metadata);
     let check = crate::assets::primary_icon(icons::CHECK, 14);
     let selected = !manager.follows_omarchy() && manager.selected_id() == theme.id;
     check.set_visible(selected);
-    content.append(&check);
+    metadata.append(&check);
     if selected {
         card.add_css_class("selected");
     }

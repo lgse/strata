@@ -24,6 +24,46 @@ fn settle() {
     main_loop.run();
 }
 
+fn assert_key_and_filter_rows_wrap_only_when_needed(scroller: &gtk::ScrolledWindow) {
+    for row in descendants(scroller.upcast_ref())
+        .into_iter()
+        .filter(|widget| widget.is_mapped())
+        .filter_map(|widget| widget.downcast::<wrap::WrapRow>().ok())
+    {
+        let mut children = Vec::new();
+        let mut child = row.first_child();
+        while let Some(widget) = child {
+            child = widget.next_sibling();
+            if widget.is_mapped() {
+                children.push(widget);
+            }
+        }
+        let natural: i32 = children
+            .iter()
+            .map(|child| child.measure(gtk::Orientation::Horizontal, -1).1)
+            .sum::<i32>()
+            + row.spacing() * children.len().saturating_sub(1) as i32;
+        let mut center: Option<f32> = None;
+        for child in children {
+            let bounds = child.compute_bounds(&row).expect("wrapped control bounds");
+            assert!(
+                bounds.x() >= -1.0 && bounds.x() + bounds.width() <= row.width() as f32 + 1.0,
+                "wrapped control extends beyond its row: {bounds:?}"
+            );
+            if natural <= row.width() {
+                let next = bounds.y() + bounds.height() / 2.0;
+                if let Some(center) = center {
+                    assert!(
+                        (next - center).abs() <= 1.0,
+                        "a fitting key/filter group must remain on one line"
+                    );
+                }
+                center = Some(next);
+            }
+        }
+    }
+}
+
 #[test]
 fn settings_pages_reflow_without_horizontal_scrolling_as_text_grows() {
     crate::test_support::gtk_test(
@@ -59,7 +99,15 @@ fn settings_pages_reflow_without_horizontal_scrolling_as_text_grows() {
                 .into_iter()
                 .find_map(|widget| widget.downcast::<ResponsiveBin>().ok())
                 .expect("responsive panel");
-            for (width, height) in [(1200, 800), (640, 480)] {
+            for (width, height) in [
+                (1600, 1100),
+                (1200, 800),
+                (1000, 800),
+                (800, 560),
+                (640, 480),
+                (480, 560),
+                (1600, 1100),
+            ] {
                 window.set_default_size(width, height);
                 for pixels in [8, 11, 17, 24, 32, 48, 13] {
                     manager.set_text_size(TextSize::new(pixels));
@@ -88,7 +136,8 @@ fn settings_pages_reflow_without_horizontal_scrolling_as_text_grows() {
                             navigation.emit_clicked();
                         }
                         settle();
-                        let scroller = descendants(layer.upcast_ref())
+                        let selected = stack.visible_child().expect("selected page");
+                        let scroller = descendants(&selected)
                             .into_iter()
                             .filter(|widget| {
                                 widget.is_mapped()
@@ -103,6 +152,13 @@ fn settings_pages_reflow_without_horizontal_scrolling_as_text_grows() {
                             adjustment.upper(),
                             adjustment.page_size()
                         );
+                        let panel = responsive.first_child().expect("settings panel");
+                        let page_bounds = scroller.compute_bounds(&panel).expect("page bounds");
+                        assert!(
+                            page_bounds.x() + page_bounds.width() <= panel.width() as f32 + 1.0,
+                            "{page}, {pixels}px, {width}x{height}: page extends beyond the panel"
+                        );
+                        assert_key_and_filter_rows_wrap_only_when_needed(&scroller);
                         for widget in
                             descendants(scroller.upcast_ref())
                                 .into_iter()
@@ -112,7 +168,9 @@ fn settings_pages_reflow_without_horizontal_scrolling_as_text_grows() {
                                             || widget.is::<gtk::Button>()
                                             || widget.has_css_class("settings-option")
                                             || widget.has_css_class("settings-keycap")
-                                            || widget.has_css_class("about-detail-value"))
+                                            || widget.has_css_class("about-detail-value")
+                                            || widget.is::<gtk::Entry>()
+                                            || widget.has_css_class("settings-control-label"))
                                 })
                         {
                             let bounds = widget.compute_bounds(&scroller).expect("control bounds");
@@ -122,6 +180,16 @@ fn settings_pages_reflow_without_horizontal_scrolling_as_text_grows() {
                                 "{page}, {pixels}px: {} extends outside the page: {bounds:?}",
                                 widget.type_().name()
                             );
+                            if let Some(label) = widget.downcast_ref::<gtk::Label>()
+                                && label.has_css_class("settings-control-label")
+                            {
+                                assert_eq!(
+                                    label.layout().line_count(),
+                                    1,
+                                    "{page}, {pixels}px, {width}x{height}: control label must remain readable: {}",
+                                    label.text()
+                                );
+                            }
                         }
                     }
                 }

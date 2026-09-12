@@ -1343,7 +1343,7 @@ menubutton.form-control:disabled > button {
 }
 
 .settings-page {
-  background: @theme_surface;
+  background: transparent;
   border-radius: 0 7px 7px 0;
 }
 
@@ -3618,7 +3618,7 @@ colorchooser colorswatch overlay {
 
 .settings-page > stack,
 .settings-page > scrolledwindow {
-  background: @theme_surface;
+  background: transparent;
 }
 
 .system-theme-icon {
@@ -3856,7 +3856,7 @@ entry.theme-search {
 
 .settings-content-scroll,
 .settings-content-scroll viewport {
-  background: @theme_surface;
+  background: transparent;
 }
 
 .settings-content-scroll scrollbar {
@@ -4278,14 +4278,14 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
 two-column presentation. */
 .settings-dialog {
   font-size: 1.230769em;
-  background: @theme_surface;
+  background: @theme_bg;
   border: 1px solid alpha(@theme_border, 0.65);
   border-radius: 14px;
   box-shadow: 0 0 28px alpha(@theme_accent, 0.08);
 }
 
 .settings-navigation {
-  background: @theme_bg;
+  background: transparent;
   min-width: 258px;
   padding: 20px 15px;
   border-right: 1px solid alpha(@theme_border, 0.55);
@@ -4320,21 +4320,9 @@ two-column presentation. */
   padding: 12px 8px;
 }
 
-.settings-navigation.compact .settings-version {
-  font-size: 0;
-  opacity: 0;
-}
-
-.settings-version {
-  color: @theme_dim_text;
-  opacity: 0.75;
-  font-size: 0.875em;
-  margin: 14px 10px 2px;
-}
-
 .settings-titlebar {
-  min-height: 64px;
-  padding: 0 30px;
+  min-height: 32px;
+  padding: 16px 16px 16px 30px;
   border-bottom: 1px solid alpha(@theme_border, 0.55);
 }
 
@@ -4373,13 +4361,13 @@ two-column presentation. */
 }
 
 .settings-group {
-  background: mix(@theme_surface, @theme_muted, 0.25);
+  background: mix(@theme_bg, @theme_muted, 0.25);
   border: 1px solid alpha(@theme_border, 0.55);
   border-radius: 10px;
 }
 
 .settings-option {
-  background: mix(@theme_surface, @theme_muted, 0.25);
+  background: mix(@theme_bg, @theme_muted, 0.25);
   border: 1px solid alpha(@theme_border, 0.55);
   border-radius: 10px;
   min-height: 42px;
@@ -4557,7 +4545,7 @@ two-column presentation. */
 }
 
 .theme-catalog-container {
-  background: mix(@theme_surface, @theme_muted, 0.25);
+  background: mix(@theme_bg, @theme_muted, 0.25);
   border: 1px solid alpha(@theme_border, 0.55);
   border-radius: 10px;
   padding: 0;
@@ -4679,7 +4667,7 @@ two-column presentation. */
 }
 
 .settings-release-expander {
-  background: mix(@theme_surface, @theme_muted, 0.25);
+  background: mix(@theme_bg, @theme_muted, 0.25);
   border: 1px solid alpha(@theme_border, 0.55);
   border-radius: 10px;
   padding: 18px;
@@ -4693,7 +4681,7 @@ two-column presentation. */
 }
 
 .about-identity {
-  background: mix(@theme_surface, @theme_muted, 0.25);
+  background: mix(@theme_bg, @theme_muted, 0.25);
   border: 1px solid alpha(@theme_border, 0.55);
   border-radius: 10px;
   margin: 0;
@@ -4704,9 +4692,9 @@ two-column presentation. */
 .about-logo {
   min-width: 58px;
   min-height: 58px;
-  border: 1px solid alpha(@theme_accent, 0.35);
+  border: 1px solid alpha(@theme_dim_text, 0.35);
   border-radius: 14px;
-  background: alpha(@theme_accent, 0.10);
+  background: shade(@theme_dim_text, 0.3);
 }
 
 .about-name {
@@ -4749,10 +4737,6 @@ two-column presentation. */
 .settings-content-scroll scrollbar slider {
   min-width: 6px;
   border-width: 2px;
-}
-
-.settings-keycaps > flowboxchild {
-  padding: 0;
 }
 
 .settings-dialog.compact .settings-preferences {
@@ -4894,7 +4878,8 @@ two-column presentation. */
 }
 
 .settings-dialog entry.settings-search {
-  padding-left: 40px;
+  padding-left: calc(1em + 24px);
+  padding-right: calc(1em + 22px);
 }
 
 .settings-search-icon {
@@ -4924,4 +4909,55 @@ two-column presentation. */
 
 .settings-dialog.compact .settings-keycaps {
   min-width: 0;
+}
+
+.settings-dialog.compact .keybinding-row {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.settings-dialog.compact .about-detail-row {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+.settings-global-search {
+  margin: 0 0 14px;
+}
+
+.settings-dialog .settings-global-search entry {
+  min-width: 0;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+
+.settings-dialog .settings-navigation button.theme-search-clear {
+  min-width: 20px;
+  min-height: 20px;
+  padding: 3px;
+}
+
+.settings-global-search-compact {
+  margin-bottom: 8px;
+}
+
+.settings-navigation .settings-global-search-compact > button {
+  min-width: 0;
+  padding: 8px;
+}
+
+popover.settings-search-popover.background {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.settings-search-popover > contents {
+  background: @theme_bg;
+  color: @theme_text;
+  border: 1px solid @theme_border;
+  border-radius: 8px;
+  padding: 8px;
+  box-shadow: 0 4px 16px alpha(@theme_bg, 0.4);
 }

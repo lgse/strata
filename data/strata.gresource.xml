@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <gresources>
   <gresource prefix="/io/github/lgse/Strata">
+    <file>brand/strata-logo-white.svg</file>
     <file>icons/scalable/actions/strata-arrow-down.svg</file>
     <file>icons/scalable/actions/strata-arrow-down-wide-narrow.svg</file>
     <file>icons/scalable/actions/strata-arrow-left.svg</file>
@@ -32,7 +33,6 @@
     <file>icons/scalable/actions/strata-house.svg</file>
     <file>icons/scalable/actions/strata-image.svg</file>
     <file>icons/scalable/actions/strata-info.svg</file>
-    <file>icons/scalable/actions/strata-layers.svg</file>
     <file>icons/scalable/actions/strata-globe.svg</file>
     <file>icons/scalable/actions/strata-code-xml.svg</file>
     <file>icons/scalable/actions/strata-bug.svg</file>

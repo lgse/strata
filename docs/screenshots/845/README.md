@@ -4,6 +4,9 @@ The layout follows the six supplied references: a 1400 × 1024 dialog at the
 reference desktop size, grouped rows, sidebar descriptions, activation matrix,
 searchable theme/shortcut lists, release-note disclosure, and About cards.
 The navigation collapses and controls reflow on smaller displays or larger text.
+The [responsive follow-up](responsive/README.md) records the owner's subsequent
+resize fixes, Settings-wide search, uniform panel backgrounds, white website
+branding request, and sidebar-footer removal.
 
 [Previous layout](before.png) is retained from #831's Settings capture, at its
 original palette and size. The new captures use a temporary reference-like
@@ -25,7 +28,7 @@ These are application captures, not literal pixel-identical mock-data copies:
 version, commit, GTK version, MIT license, release status/notes, shortcut count,
 and available themes remain real. The system-managed Appearance capture uses
 an isolated Omarchy fixture; enabling Follow Omarchy disables manual selection.
-All interface colors still follow the active theme. Existing desktop/file-chooser
+Themeable interface colors still follow the active theme. Existing desktop/file-chooser
 integration remains below General's referenced sections rather than being removed.
 
 The existing live-preference fixture now exercises the replacement menus and
@@ -53,7 +56,7 @@ export STRATA_CONTAINER_ENGINE=podman
 git diff --check
 ```
 
-Final results: formatting and Clippy passed; full Rust **1,470 passed, 18 ignored**
+Initial redesign results: formatting and Clippy passed; full Rust **1,470 passed, 18 ignored**
 (`quality-test-final-v2.log`); canonical E2E **792 passed** in 191.99 seconds
 (`e2e-final.log`); `git diff --check` passed. Full suites were selected because
 Settings spans shared preferences, theme notifications, and every view's controls.

@@ -9,7 +9,9 @@ pub(super) fn about_page() -> gtk::Widget {
     content.add_css_class("about-page");
     let identity = gtk::Box::new(gtk::Orientation::Horizontal, 20);
     identity.add_css_class("about-identity");
-    let icon = crate::assets::primary_icon(icons::LAYERS, 30);
+    super::search::tag(&identity, "Version information");
+    let icon = gtk::Image::from_resource("/io/github/lgse/Strata/brand/strata-logo-white.svg");
+    icon.set_pixel_size(36);
     let logo = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     logo.add_css_class("about-logo");
     icon.set_halign(gtk::Align::Center);
@@ -17,6 +19,7 @@ pub(super) fn about_page() -> gtk::Widget {
     icon.set_hexpand(true);
     logo.append(&icon);
     logo.set_valign(gtk::Align::Center);
+    logo.set_halign(gtk::Align::Start);
     logo.set_hexpand(false);
     identity.append(&logo);
     let copy = gtk::Box::new(gtk::Orientation::Vertical, 6);
@@ -48,6 +51,7 @@ pub(super) fn about_page() -> gtk::Widget {
     content.append(&identity);
 
     let build = settings_group(&content, "BUILD");
+    super::search::tag(&build, "Version information");
     append_about_detail(
         &build,
         "Version",
@@ -84,17 +88,24 @@ pub(super) fn about_page() -> gtk::Widget {
     ] {
         let button = gtk::LinkButton::builder().uri(&uri).build();
         button.add_css_class("about-repository");
+        super::search::tag(&button, label);
         crate::ui::accessibility::set_label(&button, label);
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+        let row = super::wrap::WrapRow::new(16);
         row.append(&crate::assets::primary_icon(icon, 18));
         let title = gtk::Label::new(Some(label));
         title.set_xalign(0.0);
         title.set_hexpand(true);
+        title.set_wrap(true);
+        title.set_wrap_mode(gtk::pango::WrapMode::WordChar);
         row.append(&title);
+        let metadata = gtk::Box::new(gtk::Orientation::Horizontal, 16);
         let detail = gtk::Label::new(Some(detail));
         detail.add_css_class("settings-option-description");
-        row.append(&detail);
-        row.append(&crate::assets::primary_icon(icons::EXTERNAL_LINK, 16));
+        detail.add_css_class("settings-control-label");
+        detail.set_visible(!detail.text().is_empty());
+        metadata.append(&detail);
+        metadata.append(&crate::assets::primary_icon(icons::EXTERNAL_LINK, 16));
+        row.append(&metadata);
         button.set_child(Some(&row));
         links.append(&button);
     }

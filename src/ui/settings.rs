@@ -22,7 +22,9 @@ mod about;
 mod bindings;
 mod general;
 mod keybindings;
+mod search;
 mod theme;
+mod wrap;
 use about::about_page;
 use bindings::bind_switch;
 use general::general_page;
@@ -201,7 +203,9 @@ pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &Up
 const DIALOG_WIDTH: i32 = 1400;
 const DIALOG_HEIGHT: i32 = 1024;
 const DIALOG_MARGIN: i32 = 24;
-const COMPACT_NAVIGATION_BREAKPOINT: i32 = 700;
+const COMPACT_NAVIGATION_BREAKPOINT: i32 = 900;
+// Reflow the content before collapsing navigation: desktop toolbars need more room.
+const COMPACT_CONTENT_BREAKPOINT: i32 = 1250;
 
 mod responsive_bin {
     use super::*;
@@ -209,6 +213,7 @@ mod responsive_bin {
     #[derive(Default)]
     pub struct ResponsiveBin {
         pub compact_navigation: Cell<bool>,
+        pub compact_content: Cell<bool>,
         pub typography_scale: Cell<f64>,
         pub navigation: RefCell<Option<gtk::Box>>,
         pub navigation_heading: RefCell<Option<gtk::Label>>,
@@ -250,11 +255,14 @@ mod responsive_bin {
                 return;
             };
             let (child_width, child_height) = responsive_dialog_size(width, height);
+            let logical_width = f64::from(child_width) / self.typography_scale.get().max(0.1);
+            let compact_content = logical_width < f64::from(COMPACT_CONTENT_BREAKPOINT);
             let compact = uses_compact_navigation(
                 (f64::from(child_width) / self.typography_scale.get().max(0.1)) as i32,
             );
             if self.compact_navigation.replace(compact) != compact {
                 if let Some(navigation) = self.navigation.borrow().as_ref() {
+                    search::set_compact(navigation, compact);
                     if compact {
                         navigation.add_css_class("compact");
                     } else {
@@ -274,6 +282,9 @@ mod responsive_bin {
                         gtk::Align::Fill
                     });
                 }
+            }
+            if self.compact_content.replace(compact_content) != compact_content {
+                let compact = compact_content;
                 for (flow, expanded_columns) in self.responsive_flows.borrow().iter() {
                     flow.set_max_children_per_line(if compact { 1 } else { *expanded_columns });
                 }
@@ -315,7 +326,7 @@ mod responsive_bin {
                     }
                 }
             }
-            reflow_settings(&child, compact);
+            reflow_settings(&child, compact_content);
             let x = ((width - child_width) / 2) as f32;
             let y = ((height - child_height) / 2) as f32;
             let transform = gtk::gsk::Transform::new().translate(&gtk::graphene::Point::new(x, y));
@@ -369,7 +380,7 @@ impl ResponsiveBin {
     }
 
     fn add_flow(&self, flow: gtk::FlowBox, columns: u32) {
-        flow.set_max_children_per_line(if self.imp().compact_navigation.get() {
+        flow.set_max_children_per_line(if self.imp().compact_content.get() {
             1
         } else {
             columns
@@ -381,7 +392,7 @@ impl ResponsiveBin {
     }
 
     fn add_action(&self, row: gtk::Box, button: gtk::Button) {
-        row.set_orientation(if self.imp().compact_navigation.get() {
+        row.set_orientation(if self.imp().compact_content.get() {
             gtk::Orientation::Vertical
         } else {
             gtk::Orientation::Horizontal
@@ -409,14 +420,17 @@ fn reflow_settings(widget: &gtk::Widget, compact: bool) {
             "about-identity",
             "keybinding-row",
             "theme-library-footer",
-            "settings-keycaps",
             "settings-inline-description",
-            "settings-inline-keys",
+            "settings-update-summary",
+            "about-detail-row",
         ]
         .iter()
         .any(|class| row.has_css_class(class))
     {
-        let orientation = if compact {
+        let switch_row = row
+            .last_child()
+            .is_some_and(|child| child.is::<gtk::Switch>());
+        let orientation = if compact && !switch_row {
             gtk::Orientation::Vertical
         } else {
             gtk::Orientation::Horizontal
@@ -426,10 +440,36 @@ fn reflow_settings(widget: &gtk::Widget, compact: bool) {
             row.set_orientation(orientation);
         }
     }
+    if let Some(row) = widget.downcast_ref::<wrap::WrapRow>()
+        && row.has_css_class("settings-keycaps")
+    {
+        row.set_end_align(!compact);
+    }
+    if [
+        "settings-keycaps",
+        "settings-inline-keys",
+        "theme-appearance-filter",
+    ]
+    .iter()
+    .any(|class| widget.has_css_class(class))
+    {
+        widget.set_halign(if compact {
+            gtk::Align::Start
+        } else {
+            gtk::Align::End
+        });
+    }
     if let Some(label) = widget.downcast_ref::<gtk::Label>()
         && (label.has_css_class("settings-nowrap") || label.has_css_class("menu-heading"))
     {
         label.set_wrap(compact && !label.has_css_class("settings-keycap"));
+    }
+    if let Some(button) = widget.downcast_ref::<gtk::Button>()
+        && !widget.is::<gtk::ToggleButton>()
+        && let Some(label) = button.child().and_downcast::<gtk::Label>()
+    {
+        label.set_wrap(compact);
+        label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     }
     if widget.has_css_class("activation-header") {
         widget.set_visible(!compact);
@@ -483,6 +523,7 @@ pub fn build_layer(
     let navigation = gtk::Box::new(gtk::Orientation::Vertical, 2);
     navigation.add_css_class("settings-navigation");
     let navigation_heading = append_heading(&navigation, "SETTINGS");
+    let settings_search = search::append(&navigation);
 
     let page = gtk::Box::new(gtk::Orientation::Vertical, 0);
     page.add_css_class("settings-page");
@@ -579,6 +620,7 @@ pub fn build_layer(
         let install_guard = install_guard.clone();
         let updates_container = updates_container.clone();
         let responsive_panel = responsive_panel.clone();
+        let search_state = settings_search.state.clone();
         button.connect_clicked(move |clicked| {
             for candidate in buttons.borrow().iter() {
                 if candidate == clicked {
@@ -591,6 +633,7 @@ pub fn build_layer(
                 match name {
                     "theme" => {
                         let page = theme_page(themes.clone());
+                        search::apply(&page.widget, &search_state);
                         stack.add_named(&page.widget, Some("theme"));
                         for (flow, columns) in page.flows {
                             responsive_panel.add_flow(flow, columns);
@@ -603,12 +646,14 @@ pub fn build_layer(
                         let update_notice = update_notice.clone();
                         let install_guard = install_guard.clone();
                         let _ = stack;
+                        let search_state = search_state.clone();
                         resolve_update_method_async(move |method| {
                             let (updates, actions) =
                                 updates_page(themes, update_notice, install_guard, method);
                             while let Some(child) = container.first_child() {
                                 container.remove(&child);
                             }
+                            search::apply(&updates, &search_state);
                             container.append(&updates);
                             for (row, button) in actions {
                                 panel.add_action(row, button);
@@ -624,15 +669,10 @@ pub fn build_layer(
         navigation.append(&button);
     }
 
+    settings_search.install(&stack, &title, &nav_buttons);
     let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
     spacer.set_vexpand(true);
     navigation.append(&spacer);
-    let version = crate::build_info::installed_version().to_string();
-    let (release, suffix) = version.split_once('-').unwrap_or((&version, ""));
-    let footer = gtk::Label::new(Some(&format!("Strata {release}\n{suffix}")));
-    footer.set_xalign(0.0);
-    footer.add_css_class("settings-version");
-    navigation.append(&footer);
 
     let navigation_scroll = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
@@ -777,7 +817,10 @@ fn append_channel_option(
 ) -> gtk::Box {
     let channel_row = channel_option(manager.clone(), managed);
     channel_row.set_sensitive(manager.checks_for_updates());
-    channel_row.set_visible(managed.is_some() || !update_method.is_package_managed());
+    search::set_available(
+        &channel_row,
+        managed.is_some() || !update_method.is_package_managed(),
+    );
     preferences.append(&channel_row);
     channel_row
 }
@@ -806,6 +849,7 @@ fn append_current_release_notes(preferences: &gtk::Box) {
         .build();
     let expander = gtk::Box::new(gtk::Orientation::Vertical, 0);
     expander.add_css_class("settings-release-expander");
+    search::tag(&expander, "Release notes");
     expander.append(&toggle);
     expander.append(&details);
     toggle.update_state(&[gtk::accessible::State::Expanded(Some(false))]);
@@ -1040,6 +1084,7 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
     title_label.add_css_class("release-notes-title");
     title_label.set_xalign(0.0);
     title_label.set_wrap(true);
+    title_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     let badge = gtk::Label::new(None);
     badge.add_css_class("prerelease-badge");
     badge.set_xalign(0.0);
@@ -1054,6 +1099,8 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
     fallback.set_visible(false);
     let summary = gtk::Label::new(Some(initial));
     summary.set_xalign(0.0);
+    summary.set_wrap(true);
+    summary.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     summary.add_css_class("settings-option-description");
     container.append(&title_label);
     container.append(&summary);
@@ -1257,8 +1304,10 @@ fn update_check_row(
     let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
     row.add_css_class("settings-option");
     row.add_css_class("settings-update-status");
+    search::tag(&row, "Check for updates");
     let summary = gtk::Box::new(gtk::Orientation::Horizontal, 16);
-    summary.set_vexpand(false);
+    summary.add_css_class("settings-update-summary");
+    summary.set_vexpand(true);
     row.set_vexpand(false);
     let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     copy.set_hexpand(true);
@@ -1277,6 +1326,8 @@ fn update_check_row(
     status.add_css_class("settings-option-description");
     let heading = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let status_icon = crate::assets::primary_icon(icons::INFO, 18);
+    status_icon.set_valign(gtk::Align::Center);
+    title.set_valign(gtk::Align::Center);
     heading.append(&status_icon);
     heading.append(&title);
     copy.append(&heading);
@@ -2320,11 +2371,18 @@ fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::
 }
 
 fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
+    let empty = gtk::Label::new(Some(
+        "No matching settings are available on this installation.",
+    ));
+    empty.add_css_class("settings-search-page-empty");
+    empty.add_css_class("settings-option-description");
+    empty.set_visible(false);
+    content.append(&empty);
     constrain_page_text(content.upcast_ref());
     content.set_hexpand(true);
     let scroller = gtk::ScrolledWindow::builder()
         .child(content)
-        .hscrollbar_policy(gtk::PolicyType::Never)
+        .hscrollbar_policy(gtk::PolicyType::External)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
         .hexpand(true)
         .vexpand(true)
@@ -2347,7 +2405,9 @@ fn constrain_page_text(widget: &gtk::Widget) {
         && label.ellipsize() == gtk::pango::EllipsizeMode::None
     {
         label.set_wrap(
-            !label.has_css_class("settings-nowrap") && !label.has_css_class("menu-heading"),
+            !label.has_css_class("settings-nowrap")
+                && !label.has_css_class("menu-heading")
+                && !label.has_css_class("settings-control-label"),
         );
         label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     }
@@ -2369,6 +2429,7 @@ fn page_content() -> gtk::Box {
 
 fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, gtk::Switch) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    search::tag(&row, title);
     row.add_css_class("settings-option");
     let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     copy.set_hexpand(true);
@@ -2387,6 +2448,7 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
     copy.append(&description_label);
     let toggle = gtk::Switch::builder()
         .active(active)
+        .halign(gtk::Align::End)
         .valign(gtk::Align::Center)
         .build();
     toggle.update_property(&[

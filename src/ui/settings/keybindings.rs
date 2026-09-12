@@ -64,6 +64,14 @@ const SHORTCUTS: &[(&str, &str, &str, &str)] = &[
     ("Application", "Shortcut reference", "", "F1"),
 ];
 
+pub(super) fn search_text() -> String {
+    SHORTCUTS
+        .iter()
+        .map(|(category, label, note, keys)| format!("{category} {label} {note} {keys}"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 pub(super) fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
     let content = page_content();
     let hints = super::settings_group(&content, "HINTS");
@@ -80,11 +88,16 @@ pub(super) fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
     );
     row.add_css_class("keybinding-hints");
     hints.append(&row);
+    let reference = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    super::search::tag(&reference, "Shortcut reference");
+    content.append(&reference);
     let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     toolbar.add_css_class("settings-library-toolbar");
     append_heading(&toolbar, "SHORTCUT REFERENCE");
     let count = gtk::Label::new(Some(&format!("{} bindings", SHORTCUTS.len())));
     count.add_css_class("settings-option-description");
+    count.add_css_class("settings-control-label");
+    count.set_ellipsize(gtk::pango::EllipsizeMode::End);
     count.set_hexpand(true);
     count.set_xalign(0.0);
     toolbar.append(&count);
@@ -92,7 +105,7 @@ pub(super) fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
     search.add_css_class("shortcut-search");
     crate::ui::accessibility::set_label(&search, "Search actions or keys");
     toolbar.append(&search_overlay);
-    content.append(&toolbar);
+    reference.append(&toolbar);
     let mut groups = Vec::new();
     for category in ["Navigation", "Selection", "Files", "View", "Application"] {
         let section = gtk::Box::new(gtk::Orientation::Vertical, 0);
@@ -112,13 +125,13 @@ pub(super) fn keybindings_page(manager: Rc<ThemeManager>) -> gtk::Widget {
                 format!("{category} {label} {note} {keys}").to_lowercase(),
             ));
         }
-        content.append(&section);
+        reference.append(&section);
         groups.push((section, rows));
     }
     let empty = gtk::Label::new(Some("No shortcuts match your search."));
     empty.add_css_class("settings-option-description");
     empty.set_visible(false);
-    content.append(&empty);
+    reference.append(&empty);
     search.connect_changed(move |search| {
         clear.set_visible(!search.text().is_empty());
         let query = search.text().trim().to_lowercase();
@@ -148,8 +161,10 @@ fn append_keybinding(content: &gtk::Box, label: &str, note: &str, keys: &str) ->
     label.set_wrap(true);
     row.append(&label);
     let note = gtk::Label::new(Some(note));
+    note.set_xalign(0.0);
     note.add_css_class("settings-option-description");
     note.add_css_class("settings-nowrap");
+    note.set_visible(!note.text().is_empty());
     row.append(&note);
     let caps = keycaps(keys);
     caps.set_halign(gtk::Align::End);
@@ -158,14 +173,11 @@ fn append_keybinding(content: &gtk::Box, label: &str, note: &str, keys: &str) ->
     row
 }
 
-pub(super) fn keycaps(keys: &str) -> gtk::Box {
-    let caps = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+pub(super) fn keycaps(keys: &str) -> super::wrap::WrapRow {
+    let caps = super::wrap::WrapRow::new(6);
     caps.add_css_class("settings-keycaps");
     caps.set_hexpand(false);
     caps.set_valign(gtk::Align::Center);
-    let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    spacer.set_hexpand(true);
-    caps.append(&spacer);
     for key in keys.split_whitespace() {
         let label = gtk::Label::new(Some(key));
         label.set_halign(gtk::Align::End);

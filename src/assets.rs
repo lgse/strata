@@ -39,7 +39,6 @@ pub mod icons {
     pub const FOLDER_PLUS: &str = "strata-folder-plus";
     pub const HARD_DRIVE: &str = "strata-hard-drive";
     pub const INFO: &str = "strata-info";
-    pub const LAYERS: &str = "strata-layers";
     pub const GLOBE: &str = "strata-globe";
     pub const CODE_XML: &str = "strata-code-xml";
     pub const BUG: &str = "strata-bug";
