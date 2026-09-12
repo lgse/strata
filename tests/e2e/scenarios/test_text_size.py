@@ -11,7 +11,10 @@ from harness.modes import ALL_MODES
 def test_settings_text_size_keeps_switches_inside_the_page(strata, request):
     settings = strata.window.find(role="button", name="Settings")
     assert settings is not None and settings.activate()
-    for pixels, next_pixels in [(17, 11), (11, 32), (32, None)]:
+    for pixels, next_pixels, width in [(17, 11, 1000), (11, 32, 1000), (32, None, 640)]:
+        bounds = strata.window.screen_bounds()
+        strata.keyboard.connection.resize_surface(bounds.width, bounds.height, width, 600)
+        strata.wait(lambda: strata.window.screen_bounds().width == width, "resized settings window")
         general = strata.wait(
             lambda: strata.window.find(role="button", name="General"),
             "General settings navigation",
@@ -25,10 +28,16 @@ def test_settings_text_size_keeps_switches_inside_the_page(strata, request):
             ),
             "visible folder-peeking switch",
         )
+        toggle = _reveal_page_control(strata, "Folder peeking", role=toggle.role)
         scroll = next(node for node in toggle.ancestors() if node.role == "scroll pane")
         bounds, viewport = toggle.screen_bounds(), scroll.screen_bounds()
         assert viewport.x <= bounds.x
         assert bounds.x + bounds.width <= viewport.x + viewport.width
+        was_checked = toggle.has_state("checked")
+        strata.pointer.click(toggle)
+        strata.wait(lambda: toggle.has_state("checked") != was_checked, "resized switch responds to pointer")
+        strata.pointer.click(toggle)
+        strata.wait(lambda: toggle.has_state("checked") == was_checked, "restore folder peeking")
         if request.config.getoption("--keep-artifacts"):
             strata.screenshot(
                 ArtifactCollector(test_name=f"settings-text-size-{pixels}").directory
@@ -40,12 +49,14 @@ def test_settings_text_size_keeps_switches_inside_the_page(strata, request):
                 ArtifactCollector(test_name=f"settings-text-size-{pixels}").directory
                 / "configure.png"
             )
-        theme = strata.window.find(role="button", name="Theme & appearance")
+        theme = strata.window.find(role="button", name="Appearance settings")
         assert theme is not None and theme.activate()
         control = strata.wait(
-            lambda: strata.window.find(role="spin button", name="Text size in pixels"),
+            lambda: strata.window.find(role="spin button", name="Text size in pixels", rendered=False),
             "numeric text-size control",
         )
+        control = _reveal_page_control(strata, "Text size in pixels", role="spin button")
+        strata.wait(lambda: _inside_scroll_view(control), "text-size control scrolled into view")
         # GTK exposes the spin button as one accessible value, not separate buttons.
         for fraction, expected in [(1, pixels - 1), (7, pixels)]:
             bounds = control.screen_bounds()
@@ -74,8 +85,7 @@ def test_settings_text_size_keeps_switches_inside_the_page(strata, request):
                 "updated settings text",
             )
         else:
-            reset = _reveal_page_control(strata, "Reset")
-            strata.pointer.click(reset)
+            strata.keyboard.press("ctrl+0")
             strata.wait(
                 lambda: strata.environment.read_preferences().get("text_size") == "13",
                 "Reset to restore the default text size",
@@ -89,16 +99,21 @@ def test_settings_text_size_keeps_switches_inside_the_page(strata, request):
         )
 
 
-def _reveal_page_control(strata, name):
-    node = strata.reveal(role="button", name=name)
-    if not _inside_scroll_view(node):
-        scroll = next(parent for parent in node.ancestors() if parent.role == "scroll pane")
+def _reveal_page_control(strata, name, role="button"):
+    node = strata.wait(lambda: strata.window.find(role=role, name=name, rendered=False), f"{name} control")
+    scroll = next(parent for parent in node.ancestors() if parent.role == "scroll pane")
+
+    def revealed():
+        if _inside_scroll_view(node):
+            return True
         viewport = scroll.screen_bounds()
-        centre = (viewport.x + viewport.width // 2, viewport.y + viewport.height // 2)
-        strata.pointer.scroll(centre, clicks=3, down=node.screen_bounds().y > centre[1])
-        strata.settle(node)
-    strata.wait(lambda: _inside_scroll_view(node), f"reachable {name} button")
-    return node
+        # The outer gutter avoids scrolling the nested theme library instead.
+        at = (viewport.x + viewport.width * 99 // 100, viewport.y + viewport.height // 2)
+        strata.pointer.scroll(at, clicks=3, down=node.screen_bounds().y > at[1])
+        return False
+
+    strata.wait(revealed, f"reachable {name} control")
+    return strata.settle(node)
 
 
 def _inside_scroll_view(node):
@@ -152,14 +167,15 @@ def test_custom_text_size_shortcuts_numeric_control_and_restart(strata, mode, re
     settings = strata.window.find(role="button", name="Settings")
     assert settings is not None and settings.activate()
     theme = strata.wait(
-        lambda: strata.window.find(role="button", name="Theme & appearance"),
+        lambda: strata.window.find(role="button", name="Appearance settings"),
         "appearance settings",
     )
     assert theme.activate()
     control = strata.wait(
-        lambda: strata.window.find(role="spin button", name="Text size in pixels"),
+        lambda: strata.window.find(role="spin button", name="Text size in pixels", rendered=False),
         "numeric text size control",
     )
+    control = _reveal_page_control(strata, "Text size in pixels", role="spin button")
     strata.pointer.click(control)
     strata.keyboard.press("ctrl+a")
     strata.keyboard.type_text("27")

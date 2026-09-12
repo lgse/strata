@@ -391,10 +391,9 @@ pub(in crate::ui) fn install_folder_context_menu(
         }
         gesture.set_state(gtk::EventSequenceState::Claimed);
         paste.set_sensitive(gtk::gdk::Display::default().is_some_and(|display| {
-            display
-                .clipboard()
-                .formats()
-                .contains_type(gtk::gdk::FileList::static_type())
+            let formats = display.clipboard().formats();
+            formats.contains_type(gtk::gdk::FileList::static_type())
+                || formats.contain_mime_type("image/png")
         }));
         select_all.set_sensitive(has_entries());
         open_terminal.set_sensitive(can_open_terminal(&location));

@@ -430,15 +430,20 @@ impl ViewState {
     }
 
     pub(super) fn rebuild_columns(self: &Rc<Self>) {
-        self.truncate(0);
-        let snapshots = (0..)
+        self.rebuild_columns_from(0);
+        self.focus_rebuilt_active_column();
+    }
+
+    pub(super) fn rebuild_columns_from(self: &Rc<Self>, from_depth: usize) {
+        self.truncate(from_depth);
+        let snapshots = (from_depth..)
             .map_while(|depth| self.browser.column_snapshot(depth))
             .collect::<Vec<_>>();
 
-        for (depth, snapshot) in snapshots.iter().enumerate() {
-            self.append_column(depth, &snapshot.location);
+        for (offset, snapshot) in snapshots.iter().enumerate() {
+            self.append_column(from_depth + offset, &snapshot.location);
         }
-        for (column, snapshot) in self.columns.borrow().iter().zip(snapshots) {
+        for (column, snapshot) in self.columns.borrow().iter().skip(from_depth).zip(snapshots) {
             touch_source_model(column);
             column.model.replace(snapshot.count as u32);
             column.entry_count.set(snapshot.count);
@@ -470,7 +475,6 @@ impl ViewState {
                 }
             }
         }
-        self.focus_rebuilt_active_column();
     }
 
     fn focus_rebuilt_active_column(&self) {

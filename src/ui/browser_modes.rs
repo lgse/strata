@@ -27,6 +27,7 @@ use crate::{
 
 mod events;
 mod list_factory;
+mod navigation;
 
 use list_factory::{ListFactory, refresh_list_section};
 
@@ -270,6 +271,7 @@ pub struct ModeViews {
     list_root: gtk::Box,
     icons_panes: Vec<Pane>,
     list_pane: Option<Pane>,
+    list_navigation: RefCell<navigation::ListNavigation>,
     browser: Rc<Browser>,
     single_click_previews: Rc<Cell<bool>>,
     multiple_selection: Rc<Cell<bool>>,
@@ -341,6 +343,7 @@ impl ModeViews {
             list_root,
             icons_panes: Vec::new(),
             list_pane: None,
+            list_navigation: RefCell::new(navigation::ListNavigation::default()),
             browser,
             single_click_previews: Rc::new(Cell::new(true)),
             multiple_selection,
@@ -648,6 +651,7 @@ impl ModeViews {
             (bound.item.upgrade()?.position() == position)
                 .then(|| bound.widget.upgrade())
                 .flatten()
+                .filter(|row| row.is_mapped() && row.is_ancestor(&section.view))
         });
         Some((position, row))
     }
@@ -672,6 +676,7 @@ impl ModeViews {
                     bound
                         .widget
                         .upgrade()
+                        .filter(|widget| widget.is_mapped() && widget.is_ancestor(&section.view))
                         .map(|widget| (widget, section.view.clone(), position))
                 })?
             })
@@ -843,6 +848,7 @@ impl ModeViews {
             return;
         }
         self.cancel_rename();
+        self.list_navigation.borrow_mut().cancel();
         self.mode = mode;
         match mode {
             BrowserMode::Columns => {}
@@ -1221,6 +1227,7 @@ impl ModeViews {
     }
 
     fn clear_list(&mut self) {
+        self.list_navigation.borrow_mut().cancel();
         if let Some(pane) = self.list_pane.as_ref() {
             detach_pane_models(pane);
         }
@@ -1292,6 +1299,7 @@ impl ModeViews {
         self.install_context_menu(&pane);
         self.list_root.append(&pane.shell);
         apply_snapshot(&pane, &snapshot, &self.browser);
+        self.list_navigation.borrow_mut().prepare(&pane, &snapshot);
         self.list_pane = Some(pane);
     }
 }
