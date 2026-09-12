@@ -1511,10 +1511,7 @@ impl BrowserView {
                 return;
             };
             let inside = picked.as_ref().is_some_and(|p| {
-                p == column.filter_entry.upcast_ref::<gtk::Widget>()
-                    || p == column.filter_button.upcast_ref::<gtk::Widget>()
-                    || p.is_ancestor(&column.filter_entry)
-                    || p.is_ancestor(&column.filter_button)
+                p == column.shell.upcast_ref::<gtk::Widget>() || p.is_ancestor(&column.shell)
             });
             if inside {
                 return;
