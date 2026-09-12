@@ -165,6 +165,96 @@ fn password_only_volume_prompt_submits_and_cancels_the_original_operation() {
     );
 }
 
+#[test]
+fn breadcrumbs_render_full_labels_with_external_scroller() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::breadcrumbs_render_full_labels_with_external_scroller",
+        || {
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let state = &view.state;
+            state.set_location(&Location::local(
+                "/usr/local/share/doc/very-long-project-folder-name-here",
+            ));
+
+            let breadcrumb_buttons: Vec<gtk::Button> =
+                descendants(&state.breadcrumbs.clone().upcast())
+                    .into_iter()
+                    .filter_map(|w| w.downcast::<gtk::Button>().ok())
+                    .collect();
+
+            let ancestor_buttons: Vec<_> = breadcrumb_buttons
+                .iter()
+                .filter(|b| b.has_css_class("breadcrumb") && !b.has_css_class("copy-path"))
+                .collect();
+            assert!(
+                !ancestor_buttons.is_empty(),
+                "ancestor buttons should exist"
+            );
+
+            let current_labels: Vec<gtk::Label> = descendants(&state.breadcrumbs.clone().upcast())
+                .into_iter()
+                .filter_map(|w| w.downcast::<gtk::Label>().ok())
+                .filter(|l| l.has_css_class("current"))
+                .collect();
+            assert_eq!(current_labels.len(), 1);
+            assert_eq!(
+                current_labels[0].text(),
+                "very-long-project-folder-name-here"
+            );
+
+            assert_eq!(
+                state.breadcrumb_scroller.hscrollbar_policy(),
+                gtk::PolicyType::External
+            );
+            assert_eq!(
+                state.breadcrumb_scroller.vscrollbar_policy(),
+                gtk::PolicyType::Never
+            );
+            assert!(
+                state
+                    .breadcrumb_scroller
+                    .has_css_class("breadcrumb-scroller"),
+                "scroller should have breadcrumb-scroller CSS class"
+            );
+        },
+    );
+}
+
+#[test]
+fn breadcrumb_adjustment_does_not_retain_widgets() {
+    crate::test_support::gtk_test(
+        "ui::browser::location::tests::breadcrumb_adjustment_does_not_retain_widgets",
+        || {
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                crate::ui::browser::PeekBehavior::default(),
+            );
+            let adjustment = view.state.breadcrumb_scroller.hadjustment();
+            let container = view
+                .state
+                .location_stack
+                .child_by_name("breadcrumbs")
+                .expect("breadcrumb container");
+            let scrollbar = descendants(&container)
+                .into_iter()
+                .filter(|widget| widget.has_css_class("breadcrumb-scrollbar"))
+                .find_map(|widget| widget.downcast::<gtk::Scrollbar>().ok())
+                .expect("external scrollbar");
+            let weak_scrollbar = scrollbar.downgrade();
+            container
+                .downcast::<gtk::Box>()
+                .expect("vertical breadcrumb container")
+                .remove(&scrollbar);
+            drop(scrollbar);
+            assert!(weak_scrollbar.upgrade().is_none());
+            adjustment.set_value(1.0);
+        },
+    );
+}
+
 fn descendants(widget: &gtk::Widget) -> Vec<gtk::Widget> {
     let mut widgets = vec![widget.clone()];
     let mut child = widget.first_child();

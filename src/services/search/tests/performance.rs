@@ -64,7 +64,10 @@ fn normalized_name_offsets_support_unicode_and_non_utf8_paths() {
         std::ffi::OsString::from_vec(b"invalid-\xff-name.txt".to_vec()),
     ] {
         let item = SearchItem::new(root.join("配置").join(name), root, false);
-        assert_eq!(item.search_name(), item.name.to_lowercase());
+        assert_eq!(
+            item.search_name(),
+            crate::services::search::fold_for_search(&item.name)
+        );
         assert!(fuzzy_score_normalized(&item, item.search_name()).is_some());
     }
 }
@@ -103,6 +106,51 @@ fn ascii_fuzzy_scoring_matches_character_scoring_on_utf8_paths() {
             );
         }
     }
+}
+
+#[test]
+fn fair_adversarial_walk_has_linear_scale() {
+    let fixture = tempfile::tempdir().expect("fixture");
+    let mut expected = Vec::new();
+    for sibling in 0..32 {
+        for entry in 0..64 {
+            fs::create_dir_all(fixture.path().join(format!("branch-{sibling}/bulk")))
+                .expect("bulk directory");
+            fs::write(
+                fixture
+                    .path()
+                    .join(format!("branch-{sibling}/bulk/chunk-{entry:03}")),
+                b"fixture",
+            )
+            .expect("bulk file");
+        }
+        let target = fixture
+            .path()
+            .join(format!("branch-{sibling}/Documents/demo/marker-{sibling}"));
+        fs::create_dir_all(target.parent().expect("target parent")).expect("target directory");
+        fs::write(&target, b"fixture").expect("target file");
+        expected.push(target);
+    }
+
+    let started = std::time::Instant::now();
+    let (search, events) = index_tree(fixture.path().to_path_buf(), false);
+    search.query("marker");
+    let SearchEvent::Results {
+        items, coverage, ..
+    } = wait_for_results(&events).expect("results");
+    let elapsed = started.elapsed();
+
+    assert!(!coverage.is_partial());
+    assert_eq!(items.len(), expected.len());
+    assert!(
+        expected
+            .iter()
+            .all(|path| items.iter().any(|item| &item.path == path))
+    );
+    assert!(
+        elapsed < Duration::from_secs(5),
+        "bounded adversarial traversal took {elapsed:?}"
+    );
 }
 
 #[test]

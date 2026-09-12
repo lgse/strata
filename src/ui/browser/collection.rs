@@ -2,6 +2,7 @@
 
 use crate::app::Browser;
 use crate::model::Location;
+use crate::services::fold_for_search;
 use crate::ui::browser::entry::entry_matches;
 use crate::ui::entry_list_model::EntryListModel;
 use gtk::prelude::*;
@@ -14,6 +15,7 @@ pub(crate) const FILTER_DEBOUNCE_DELAY: Duration = Duration::from_millis(40);
 
 thread_local! {
     static PENDING_SCROLLS: RefCell<Vec<(glib::WeakRef<gtk::Widget>, gtk::TickCallbackId)>> = const { RefCell::new(Vec::new()) };
+    static PENDING_REVEALS: RefCell<Vec<(glib::WeakRef<gtk::Widget>, gtk::TickCallbackId)>> = const { RefCell::new(Vec::new()) };
 }
 
 fn take_pending_scroll(view: &gtk::Widget) -> Option<gtk::TickCallbackId> {
@@ -27,6 +29,9 @@ fn take_pending_scroll(view: &gtk::Widget) -> Option<gtk::TickCallbackId> {
 }
 
 pub(crate) fn prepare_collection_inline_edit(view: &gtk::Widget, position: u32) {
+    if let Some(pending) = take_pending_reveal(view) {
+        pending.remove();
+    }
     if let Some(pending) = take_pending_scroll(view) {
         pending.remove();
     }
@@ -81,6 +86,107 @@ fn scroll_collection_when_allocated_with(
     PENDING_SCROLLS.with_borrow_mut(|pending| pending.push((view.downgrade(), callback)));
 }
 
+fn take_pending_reveal(view: &gtk::Widget) -> Option<gtk::TickCallbackId> {
+    PENDING_REVEALS.with_borrow_mut(|pending| {
+        pending.retain(|(view, _)| view.upgrade().is_some());
+        let index = pending
+            .iter()
+            .position(|(candidate, _)| candidate.upgrade().as_ref() == Some(view))?;
+        Some(pending.swap_remove(index).1)
+    })
+}
+
+pub(crate) fn reveal_collection_after_layout(
+    view: &gtk::Widget,
+    position: u32,
+    visit_items: crate::ui::marquee::ItemVisitor,
+) {
+    if view.is::<gtk::GridView>() {
+        focus_collection_item_when_allocated(view, position);
+        return;
+    }
+    if let Some(pending) = take_pending_reveal(view) {
+        pending.remove();
+    }
+    let frames = Cell::new(0u8);
+    let visible_frames = Cell::new(0u8);
+    let callback = view.add_tick_callback(move |view, _| {
+        let frame = frames.get() + 1;
+        frames.set(frame);
+        let selection = view
+            .downcast_ref::<gtk::ListView>()
+            .and_then(|list| list.model())
+            .or_else(|| {
+                view.downcast_ref::<gtk::GridView>()
+                    .and_then(|grid| grid.model())
+            });
+        let Some(selection) = selection.filter(|model| model.is_selected(position)) else {
+            take_pending_reveal(view);
+            return glib::ControlFlow::Break;
+        };
+        if frame >= 30 || !view.is_mapped() {
+            take_pending_reveal(view);
+            return glib::ControlFlow::Break;
+        }
+        if frame < 2 || view.height() <= 1 {
+            return glib::ControlFlow::Continue;
+        }
+        let Some(scroll) = view
+            .ancestor(gtk::ScrolledWindow::static_type())
+            .and_downcast::<gtk::ScrolledWindow>()
+        else {
+            take_pending_reveal(view);
+            return glib::ControlFlow::Break;
+        };
+        let adjustment = scroll.vadjustment();
+        let mut bounds = None;
+        visit_items(&mut |candidate, item| {
+            if candidate == position && item.is_mapped() && item.height() > 0 {
+                bounds = item.compute_bounds(&scroll);
+            }
+        });
+        if let Some(bounds) = bounds {
+            let top = f64::from(bounds.y());
+            let bottom = top + f64::from(bounds.height());
+            let page = adjustment.page_size();
+            let delta = if top < 0.0 {
+                top
+            } else if bottom > page {
+                bottom - page
+            } else {
+                0.0
+            };
+            if delta.abs() < 1.0 {
+                visible_frames.set(visible_frames.get() + 1);
+                if visible_frames.get() >= 2 {
+                    take_pending_reveal(view);
+                    return glib::ControlFlow::Break;
+                }
+            } else {
+                visible_frames.set(0);
+                adjustment.set_value((adjustment.value() + delta).clamp(
+                    adjustment.lower(),
+                    (adjustment.upper() - page).max(adjustment.lower()),
+                ));
+            }
+        } else {
+            visible_frames.set(0);
+            // Materialize the virtualized target before measuring its real row bounds.
+            apply_collection_scroll(view, position, gtk::ListScrollFlags::NONE);
+            if view.is::<gtk::ListView>() && frame > 2 {
+                let row_height = (adjustment.upper() - adjustment.lower())
+                    / f64::from(selection.n_items().max(1));
+                adjustment.set_value((row_height * f64::from(position)).clamp(
+                    adjustment.lower(),
+                    (adjustment.upper() - adjustment.page_size()).max(adjustment.lower()),
+                ));
+            }
+        }
+        glib::ControlFlow::Continue
+    });
+    PENDING_REVEALS.with_borrow_mut(|pending| pending.push((view.downgrade(), callback)));
+}
+
 fn collection_view_holds_focus(view: &gtk::Widget) -> bool {
     let Some(focused) = view.root().and_then(|root| root.focus()) else {
         return false;
@@ -104,6 +210,9 @@ fn apply_collection_scroll(view: &gtk::Widget, position: u32, flags: gtk::ListSc
 
 pub(crate) fn detach_collection_view(view: &impl IsA<gtk::Widget>) {
     let view = view.as_ref();
+    if let Some(pending) = take_pending_reveal(view) {
+        pending.remove();
+    }
     if let Ok(list) = view.clone().downcast::<gtk::ListView>() {
         list.set_factory(None::<&gtk::ListItemFactory>);
         list.set_model(None::<&gtk::SelectionModel>);
@@ -198,7 +307,7 @@ pub(crate) fn notify_filter_query(
     query: &RefCell<String>,
     text: String,
 ) {
-    let settled = text.to_lowercase();
+    let settled = fold_for_search(&text);
     let previous = query.borrow().clone();
     if previous == settled {
         return;
@@ -320,6 +429,10 @@ impl ViewMap {
             .map_or(0, |placeholder| placeholder.n_items())
     }
 
+    pub(crate) fn has_query(&self) -> bool {
+        !self.query.borrow().trim().is_empty()
+    }
+
     pub(crate) fn source_position(&self, visible_position: u32) -> Option<usize> {
         let filter_position = visible_position.checked_sub(self.placeholder_count())?;
         let query = self.query.borrow();
@@ -405,10 +518,8 @@ pub(crate) fn activate_recursive_search_result(
     };
     if item.is_directory {
         browser.navigate(Location::local(item.path));
-    } else if let Some(parent) = item.path.parent() {
-        browser.navigate(Location::local(parent));
     } else {
-        return false;
+        browser.open_location(Location::local(item.path));
     }
     true
 }
@@ -476,7 +587,7 @@ pub(super) fn bitset_positions(bitset: &gtk::Bitset) -> Vec<u32> {
     std::iter::once(first).chain(iterator).collect()
 }
 
-pub(super) fn cancel_source(source: &RefCell<Option<glib::SourceId>>) {
+pub(crate) fn cancel_source(source: &RefCell<Option<glib::SourceId>>) {
     if let Some(source) = source.take() {
         source.remove();
     }

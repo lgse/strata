@@ -5,16 +5,17 @@ mod preferences;
 use std::{cell::RefCell, collections::HashSet};
 
 use super::{
-    Preferences, TextSize, Theme, azure_tokens, blend, browser_mode_from_stored, builtins,
-    configured_hardware_acceleration, configured_video_preview_backend, is_omarchy_theme_event,
-    merge_builtin_and_custom_themes, notify_live, slugify, snapped_root_font_px, sort_preferences,
-    stored_browser_mode, text_scale_factor_from_xft_dpi, title_case_slug, tokens_from_quattro,
-    validate_tokens,
+    Preferences, TextSize, Theme, ThemeTokens, azure_tokens, blend, browser_mode_from_stored,
+    builtins, color_to_hex, configured_hardware_acceleration, configured_video_preview_backend,
+    is_omarchy_theme_event, merge_builtin_and_custom_themes, notify_live, slugify,
+    snapped_root_font_px, sort_preferences, source_style_scheme_xml, stored_browser_mode,
+    text_scale_factor_from_xft_dpi, title_case_slug, tokens_from_quattro, validate_tokens,
 };
 use crate::{
     model::{SortDirection, SortKey, ViewPreferences},
     sandbox::MediaPreviewBackend,
-    services::Channel,
+    services::{Channel, CrossVolumeDropStrategy},
+    test_support::gtk_test,
     ui::browser_modes::BrowserMode,
 };
 
@@ -117,6 +118,75 @@ fn omarchy_slugs_become_display_names() {
 #[test]
 fn colors_can_be_blended_into_semantic_tokens() {
     assert_eq!(blend("#000000", "#ffffff", 0.5), "#808080");
+    assert_eq!(blend("rgb(0,0,0)", "rgb(255,255,255)", 0.5), "#808080");
+    assert_eq!(blend("#000", "#fff", 0.5), "#808080");
+    assert_eq!(blend("black", "white", 0.5), "#808080");
+}
+
+#[test]
+fn gtk_color_formats_canonicalize_for_persistence_and_scheme_xml() {
+    assert_eq!(color_to_hex("rgb(153,193,241)"), "#99c1f1");
+    assert_eq!(color_to_hex("#fff"), "#ffffff");
+    assert_eq!(color_to_hex("rebeccapurple"), "#663399");
+}
+
+fn scheme_color_values(xml: &str) -> Vec<&str> {
+    xml.lines()
+        .filter_map(|line| {
+            let start = line.find("value=\"")? + 7;
+            let rest = line.get(start..)?;
+            let end = rest.find('"')?;
+            Some(&rest[..end])
+        })
+        .collect()
+}
+
+#[test]
+fn source_style_scheme_xml_canonicalizes_rgb_tokens_for_gtksourceview() {
+    gtk_test(
+        "ui::theme::tests::source_style_scheme_xml_canonicalizes_rgb_tokens_for_gtksourceview",
+        || {
+            let tokens = ThemeTokens {
+                name: "Picker".to_owned(),
+                background: "rgb(255,255,255)".to_owned(),
+                surface: "rgb(245,245,245)".to_owned(),
+                text: "rgb(30,29,31)".to_owned(),
+                accent: "rgb(153,193,241)".to_owned(),
+                danger: "rgb(229,72,77)".to_owned(),
+                muted: "rgb(200,200,200)".to_owned(),
+                highlight: "rgb(36,77,104)".to_owned(),
+                border: "rgb(49,91,117)".to_owned(),
+                dim_text: "rgb(111,141,163)".to_owned(),
+            };
+            let xml = source_style_scheme_xml(&tokens);
+            let values = scheme_color_values(&xml);
+            assert_eq!(values.len(), 9);
+            for value in &values {
+                assert!(
+                    value.starts_with('#') && value.len() == 7,
+                    "scheme colors must be canonical #rrggbb, got {value}"
+                );
+            }
+            assert!(
+                !xml.contains("rgb("),
+                "scheme XML must not emit rgb() colour tags"
+            );
+
+            let directory = tempfile::tempdir().expect("scheme directory");
+            std::fs::write(directory.path().join("strata-current.xml"), xml.as_bytes())
+                .expect("write scheme");
+            let manager = sourceview5::StyleSchemeManager::new();
+            manager.set_search_path(&[directory.path().to_str().expect("utf-8 scheme path")]);
+            manager.force_rescan();
+            let scheme = manager
+                .scheme("strata-current")
+                .expect("GtkSourceView should load a #rrggbb scheme");
+            let statement = scheme
+                .style("def:statement")
+                .expect("def:statement should resolve");
+            assert_eq!(statement.foreground().as_deref(), Some("#99c1f1"));
+        },
+    );
 }
 
 #[test]
@@ -161,7 +231,7 @@ fn omarchy_monitor_ignores_unrelated_state_changes() {
 }
 
 #[test]
-fn legacy_preferences_enable_single_click_previews_by_default() {
+fn fresh_and_legacy_preferences_share_behavioral_defaults() {
     let preferences: Preferences = toml::from_str(
         r#"
 mode = "theme"
@@ -170,20 +240,23 @@ theme = "azure-glow"
     )
     .expect("legacy preferences should remain valid");
 
+    assert_preference_defaults(&preferences);
+    assert_preference_defaults(&Preferences::default());
+}
+
+fn assert_preference_defaults(preferences: &Preferences) {
     assert!(preferences.folder_peeking);
     assert!(preferences.single_click_previews);
     assert_eq!(preferences.hardware_accelerated_video_previews, None);
-    assert!(configured_hardware_acceleration(&preferences, false));
-    assert!(!configured_hardware_acceleration(&preferences, true));
+    assert!(configured_hardware_acceleration(preferences, false));
+    assert!(!configured_hardware_acceleration(preferences, true));
     assert_eq!(
-        configured_video_preview_backend(&preferences),
+        configured_video_preview_backend(preferences),
         MediaPreviewBackend::Automatic
     );
     assert!(!preferences.search_open_files_directly);
     assert!(preferences.type_to_search);
-    assert!(Preferences::default().type_to_search);
     assert!(preferences.show_keybinding_hints);
-    assert!(Preferences::default().show_keybinding_hints);
     assert!(!preferences.reduce_motion);
     assert_eq!(preferences.browser_mode, "columns");
     assert_eq!(preferences.browser_density, "compact");
@@ -193,7 +266,28 @@ theme = "azure-glow"
     assert_eq!(preferences.icons_folder_clicks, 2);
     assert_eq!(preferences.list_file_clicks, 2);
     assert_eq!(preferences.list_folder_clicks, 2);
-    assert_eq!(sort_preferences(&preferences), ViewPreferences::default());
+    assert_eq!(sort_preferences(preferences), ViewPreferences::default());
+    assert!(!preferences.preview_muted);
+    assert_eq!(preferences.preview_volume, 1.0);
+    assert_eq!(preferences.release_channel, "stable");
+    assert_eq!(
+        Channel::parse(&preferences.release_channel),
+        Channel::Stable
+    );
+    assert_eq!(preferences.text_size, "medium");
+    assert_eq!(TextSize::parse(&preferences.text_size), TextSize::Medium);
+    assert_eq!(
+        preferences.cross_volume_drop_strategy,
+        CrossVolumeDropStrategy::Ask.as_str()
+    );
+    assert_eq!(
+        CrossVolumeDropStrategy::parse(&preferences.cross_volume_drop_strategy),
+        CrossVolumeDropStrategy::Ask
+    );
+    assert_eq!(
+        preferences.sidebar_order,
+        ["desktop", "documents", "downloads", "pictures", "videos"]
+    );
 }
 
 #[test]
@@ -266,78 +360,38 @@ fn invalid_sorting_preferences_fall_back_as_a_pair() {
 }
 
 #[test]
-fn general_preferences_round_trip() {
-    let preferences = Preferences {
-        folder_peeking: false,
-        single_click_previews: false,
-        search_open_files_directly: true,
-        type_to_search: false,
-        show_keybinding_hints: false,
-        reduce_motion: true,
-        columns_file_clicks: 1,
-        columns_folder_clicks: 2,
-        icons_file_clicks: 1,
-        icons_folder_clicks: 2,
-        list_file_clicks: 1,
-        list_folder_clicks: 2,
-        ..Preferences::default()
-    };
-
-    let serialized = toml::to_string(&preferences).expect("preferences should serialize");
-    let restored: Preferences =
-        toml::from_str(&serialized).expect("preferences should deserialize");
-
-    assert!(!restored.folder_peeking);
-    assert!(!restored.single_click_previews);
-    assert!(restored.search_open_files_directly);
-    assert!(!restored.type_to_search);
-    assert!(!restored.show_keybinding_hints);
-    assert!(restored.reduce_motion);
-    assert_eq!(restored.columns_file_clicks, 1);
-    assert_eq!(restored.columns_folder_clicks, 2);
-    assert_eq!(restored.icons_file_clicks, 1);
-    assert_eq!(restored.icons_folder_clicks, 2);
-    assert_eq!(restored.list_file_clicks, 1);
-    assert_eq!(restored.list_folder_clicks, 2);
+fn cross_volume_drop_strategy_round_trips() {
+    for strategy in [
+        CrossVolumeDropStrategy::Copy,
+        CrossVolumeDropStrategy::Move,
+        CrossVolumeDropStrategy::Ask,
+    ] {
+        let preferences = Preferences {
+            cross_volume_drop_strategy: strategy.as_str().to_owned(),
+            ..Preferences::default()
+        };
+        let serialized = toml::to_string(&preferences).expect("preferences should serialize");
+        let restored: Preferences =
+            toml::from_str(&serialized).expect("preferences should deserialize");
+        assert_eq!(
+            CrossVolumeDropStrategy::parse(&restored.cross_volume_drop_strategy),
+            strategy
+        );
+        assert!(
+            serialized.contains(&format!(
+                "cross_volume_drop_strategy = \"{}\"",
+                strategy.as_str()
+            )),
+            "{serialized}"
+        );
+    }
 }
 
 #[test]
-fn preview_volume_preferences_round_trip() {
-    let preferences = Preferences {
-        preview_muted: true,
-        preview_volume: 0.3,
-        ..Preferences::default()
-    };
-
-    let serialized = toml::to_string(&preferences).expect("preferences should serialize");
-    let restored: Preferences =
-        toml::from_str(&serialized).expect("preferences should deserialize");
-
-    assert!(restored.preview_muted);
-    assert_eq!(restored.preview_volume, 0.3);
-}
-
-#[test]
-fn legacy_preferences_default_preview_unmuted_at_full_volume() {
-    let preferences: Preferences = toml::from_str(
-        r#"
-mode = "theme"
-theme = "azure-glow"
-"#,
-    )
-    .expect("legacy preferences should remain valid");
-
-    assert!(!preferences.preview_muted);
-    assert_eq!(preferences.preview_volume, 1.0);
-}
-
-#[test]
-fn release_channel_defaults_to_stable() {
-    let preferences = Preferences::default();
-    assert_eq!(preferences.release_channel, "stable");
+fn invalid_cross_volume_drop_strategy_defaults_to_always_ask() {
     assert_eq!(
-        Channel::parse(&preferences.release_channel),
-        Channel::Stable
+        CrossVolumeDropStrategy::parse("not-a-strategy"),
+        CrossVolumeDropStrategy::Ask
     );
 }
 
@@ -377,44 +431,6 @@ fn unknown_release_channel_value_parses_to_stable() {
         Channel::parse(&preferences.release_channel),
         Channel::Stable
     );
-}
-
-#[test]
-fn legacy_preferences_without_release_channel_default_to_stable() {
-    let preferences: Preferences = toml::from_str(
-        r#"
-mode = "theme"
-theme = "azure-glow"
-"#,
-    )
-    .expect("legacy preferences without release_channel should remain valid");
-
-    assert_eq!(preferences.release_channel, "stable");
-    assert_eq!(
-        Channel::parse(&preferences.release_channel),
-        Channel::Stable
-    );
-}
-
-#[test]
-fn text_size_defaults_to_medium() {
-    let preferences = Preferences::default();
-    assert_eq!(preferences.text_size, "medium");
-    assert_eq!(TextSize::parse(&preferences.text_size), TextSize::Medium);
-}
-
-#[test]
-fn small_and_large_text_sizes_round_trip_through_toml() {
-    for size in [TextSize::Small, TextSize::Large] {
-        let preferences = Preferences {
-            text_size: size.as_str().to_owned(),
-            ..Preferences::default()
-        };
-        let serialized = toml::to_string(&preferences).expect("preferences should serialize");
-        let restored: Preferences =
-            toml::from_str(&serialized).expect("preferences should deserialize");
-        assert_eq!(TextSize::parse(&restored.text_size), size);
-    }
 }
 
 #[test]
@@ -466,44 +482,6 @@ fn xft_dpi_converts_to_desktop_text_scale() {
 }
 
 #[test]
-fn legacy_preferences_without_text_size_default_to_medium() {
-    let preferences: Preferences = toml::from_str(
-        r#"
-mode = "theme"
-theme = "azure-glow"
-"#,
-    )
-    .expect("legacy preferences without text_size should remain valid");
-
-    assert_eq!(preferences.text_size, "medium");
-    assert_eq!(TextSize::parse(&preferences.text_size), TextSize::Medium);
-}
-
-#[test]
-fn video_preview_acceleration_can_be_disabled_and_persisted() {
-    let preferences = Preferences {
-        hardware_accelerated_video_previews: Some(false),
-        ..Preferences::default()
-    };
-    let serialized = toml::to_string(&preferences).expect("serialize preferences");
-    let restored: Preferences = toml::from_str(&serialized).expect("deserialize preferences");
-
-    assert_eq!(restored.hardware_accelerated_video_previews, Some(false));
-}
-
-#[test]
-fn video_preview_acceleration_can_be_enabled_and_persisted() {
-    let preferences = Preferences {
-        hardware_accelerated_video_previews: Some(true),
-        ..Preferences::default()
-    };
-    let serialized = toml::to_string(&preferences).expect("serialize preferences");
-    let restored: Preferences = toml::from_str(&serialized).expect("deserialize preferences");
-
-    assert_eq!(restored.hardware_accelerated_video_previews, Some(true));
-}
-
-#[test]
 fn video_preview_backends_round_trip_and_invalid_values_fall_back() {
     for (stored, backend) in [
         ("automatic", MediaPreviewBackend::Automatic),
@@ -526,42 +504,6 @@ fn video_preview_backends_round_trip_and_invalid_values_fall_back() {
     assert_eq!(
         configured_video_preview_backend(&invalid),
         MediaPreviewBackend::Automatic
-    );
-}
-
-#[test]
-fn sidebar_order_defaults_to_the_canonical_place_list() {
-    let preferences = Preferences::default();
-    assert_eq!(
-        preferences.sidebar_order,
-        ["desktop", "documents", "downloads", "pictures", "videos"]
-    );
-}
-
-#[test]
-fn sidebar_order_round_trips_through_toml() {
-    let preferences = Preferences {
-        sidebar_order: vec!["videos".to_owned(), "desktop".to_owned()],
-        ..Preferences::default()
-    };
-    let serialized = toml::to_string(&preferences).expect("preferences should serialize");
-    let restored: Preferences =
-        toml::from_str(&serialized).expect("preferences should deserialize");
-    assert_eq!(restored.sidebar_order, ["videos", "desktop"]);
-}
-
-#[test]
-fn legacy_preferences_without_sidebar_order_default_to_the_canonical_list() {
-    let preferences: Preferences = toml::from_str(
-        r#"
-mode = "theme"
-theme = "azure-glow"
-"#,
-    )
-    .expect("legacy preferences without sidebar_order should remain valid");
-    assert_eq!(
-        preferences.sidebar_order,
-        ["desktop", "documents", "downloads", "pictures", "videos"]
     );
 }
 

@@ -8,18 +8,6 @@ import pytest
 from harness.modes import ALL_MODES
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_the_command_line_location_is_the_one_shown(strata, mode):
-    assert strata.current_directory() == strata.fixture.root.name
-    assert strata.entry_names() == [
-        "archive",
-        "documents",
-        "pictures",
-        "readme.md",
-        "todo.txt",
-    ]
-
-
 def test_typing_a_path_navigates_there(strata):
     strata.keyboard.press("ctrl+l")
     field = strata.editable_field()
@@ -47,6 +35,33 @@ def test_a_breadcrumb_returns_to_the_parent(strata):
     strata.wait_for_directory(strata.fixture.root.name)
 
 
+def test_current_breadcrumb_opens_hierarchy_instead_of_window_menu(strata):
+    path = strata.fixture.root
+    for index in range(6):
+        path = path / f"deep-breadcrumb-component-{index}"
+    path.mkdir(parents=True)
+    strata.entry("deep-breadcrumb-component-0")
+    strata.keyboard.press("ctrl+l")
+    field = strata.editable_field()
+    strata.keyboard.press("ctrl+a")
+    strata.keyboard.type_text(str(path))
+    strata.wait(lambda: field.text == str(path), "typed location")
+    strata.keyboard.press("Return")
+    strata.wait_for_directory(path.name)
+    label = strata.wait(
+        lambda: strata.window.find(role="label", name=path.name),
+        "current breadcrumb",
+    )
+    strata.pointer.click(label, button=3)
+    strata.wait(
+        lambda: strata.window.find(role="button", name=path.name),
+        "current hierarchy item",
+    )
+    item = strata.window.find_all(role="button", name=path.parent.name)[-1]
+    strata.pointer.click(item)
+    strata.wait_for_directory(path.parent.name)
+
+
 def test_a_sidebar_place_navigates_there(strata):
     home = strata.environment.home
     (home / "sidebar-target.txt").write_text("target\n")
@@ -58,21 +73,14 @@ def test_a_sidebar_place_navigates_there(strata):
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_a_file_created_outside_appears_after_a_refresh(strata, mode):
-    strata.fixture.path("appeared-later.txt").write_text("new\n")
-
-    strata.keyboard.press("F5")
-
-    strata.entry("appeared-later.txt")
-
-
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_a_file_removed_outside_disappears_after_a_refresh(strata, mode):
+def test_refresh_reconciles_external_file_creation_and_removal(strata, mode):
     strata.entry("todo.txt")
+    strata.fixture.path("appeared-later.txt").write_text("new\n")
     strata.fixture.path("todo.txt").unlink()
 
     strata.keyboard.press("F5")
 
+    strata.entry("appeared-later.txt")
     strata.wait_for_entry_gone("todo.txt")
 
 

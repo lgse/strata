@@ -25,8 +25,9 @@ use crate::ui::browser::entry::{entry_kind_summary, item_count_label};
 use crate::ui::browser::inline_edit::update_basename_validation;
 use crate::ui::browser::paths::compact_display_path;
 use crate::ui::controls::{
-    ModalTone, form_entry, form_label, form_password_entry, message_dialog_description,
-    message_dialog_layout, modal_layout, segmented_control,
+    ModalTone, form_entry, form_error_label, form_label, form_password_entry,
+    message_dialog_description, message_dialog_layout, modal_layout, segmented_control,
+    set_form_field_error,
 };
 use crate::ui::modal::{
     ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog, submit_on_enter,
@@ -149,6 +150,8 @@ impl ViewState {
     ) {
         let final_name = format!("{archive_name}.{}", format.extension());
         if !archive_has_collision(&destination, &final_name) {
+            self.pending_archive_destination
+                .replace(Some(destination.clone()));
             self.browser.compress(
                 entries,
                 destination,
@@ -202,17 +205,22 @@ impl ViewState {
         let replaced_layer = layer.clone();
         let replaced_overlay = window_overlay.clone();
         let replaced_root = blurred_root.clone();
-        let browser = self.browser.clone();
+        let state = Rc::downgrade(self);
         replace.connect_clicked(move |_| {
             dismiss_modal_layer(&replaced_layer, &replaced_overlay, replaced_root.as_ref());
-            browser.compress(
-                entries.clone(),
-                destination.clone(),
-                archive_name.clone(),
-                TransferConflict::ReplaceExisting,
-                format,
-                password.clone(),
-            );
+            if let Some(state) = state.upgrade() {
+                state
+                    .pending_archive_destination
+                    .replace(Some(destination.clone()));
+                state.browser.compress(
+                    entries.clone(),
+                    destination.clone(),
+                    archive_name.clone(),
+                    TransferConflict::ReplaceExisting,
+                    format,
+                    password.clone(),
+                );
+            }
         });
 
         let keys = gtk::EventControllerKey::new();
@@ -523,14 +531,6 @@ impl ViewState {
                 confirm_field.grab_focus();
                 return;
             }
-            if !path.exists()
-                && let Err(e) = std::fs::create_dir_all(&path)
-            {
-                confirm_error.set_text(&format!("Could not create folder: {e}"));
-                confirm_error.set_visible(true);
-                confirm_field.add_css_class("error");
-                return;
-            }
             let dest = Location::local(path);
             let format = ArchiveFormat::from_extension(&extract_entry.display_name);
             if format.map(|f| f.supports_password()).unwrap_or(false) {
@@ -552,12 +552,14 @@ impl ViewState {
     /// Prompts for a password after a password-capable extract failed.
     ///
     /// Shown from operation-failure handling when the error mentions a password
-    /// or encryption. An empty field retries `entry` into `destination` with no
-    /// password.
+    /// or encryption. Empty submissions remain in the dialog, while a rejected
+    /// password reopens it with inline error feedback.
     pub(super) fn show_extract_password_dialog(
         self: &Rc<Self>,
         entry: FileEntry,
         destination: Location,
+        invalid_password: bool,
+        navigate_after_extract: Option<Location>,
     ) {
         let password_entry = form_password_entry();
         password_entry.set_show_peek_icon(true);
@@ -570,17 +572,46 @@ impl ViewState {
         );
 
         let password_label = form_label("Password");
+        let password_error = form_error_label();
         body.append(&password_label);
         body.append(&password_entry);
+        body.append(&password_error);
+        if invalid_password {
+            set_form_field_error(&password_entry, &password_error, Some("Invalid password"));
+        }
+        let field_for_change = password_entry.clone();
+        let error_for_change = password_error.clone();
+        password_entry.connect_changed(move |_| {
+            set_form_field_error(&field_for_change, &error_for_change, None);
+        });
 
+        let extract_state = self.clone();
         let browser = self.browser.clone();
         let password_for_confirm = password_entry.clone();
+        let error_for_confirm = password_error.clone();
         let dismiss_for_confirm = dismiss.clone();
         confirm.connect_clicked(move |_| {
             let pw = password_for_confirm.text().to_string();
-            let password = if pw.is_empty() { None } else { Some(pw) };
+            if pw.is_empty() {
+                set_form_field_error(
+                    &password_for_confirm,
+                    &error_for_confirm,
+                    Some("Enter a password"),
+                );
+                password_for_confirm.grab_focus();
+                return;
+            }
+            let format = ArchiveFormat::from_extension(&entry.display_name);
+            if format.map(|f| f.supports_password()).unwrap_or(false) {
+                extract_state
+                    .pending_extract_retry
+                    .replace(Some((entry.clone(), destination.clone())));
+            }
+            extract_state
+                .pending_navigate
+                .replace(navigate_after_extract.clone());
             dismiss_for_confirm();
-            browser.extract(entry.clone(), destination.clone(), password);
+            browser.extract(entry.clone(), destination.clone(), Some(pw));
         });
         submit_on_enter(&body, &confirm);
         password_entry.grab_focus();

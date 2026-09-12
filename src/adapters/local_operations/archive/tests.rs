@@ -48,6 +48,25 @@ fn run_compression(request: CompressRequest) -> Vec<OperationEvent> {
     events.borrow().clone()
 }
 
+fn run_extraction(request: ExtractRequest) -> Vec<OperationEvent> {
+    let events = Rc::new(RefCell::new(Vec::new()));
+    let emitted = events.clone();
+    let operation = LocalOperationProvider.extract(
+        request,
+        Rc::new(move |event| emitted.borrow_mut().push(event)),
+    );
+    while !events.borrow().iter().any(|event| {
+        matches!(
+            event,
+            OperationEvent::Extracted { .. } | OperationEvent::Failed { .. }
+        )
+    }) {
+        glib::MainContext::default().iteration(true);
+    }
+    drop(operation);
+    events.borrow().clone()
+}
+
 #[test]
 fn compression_provider_rejects_escaping_archive_names() -> Result<(), Box<dyn Error>> {
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
@@ -226,6 +245,7 @@ fn every_compression_format_commits_a_readable_archive() -> Result<(), Box<dyn E
                     &never_cancelled(),
                 )?;
             }
+            ArchiveFormat::Rar => unreachable!("RAR compression is not supported"),
         }
         assert_eq!(fs::read(extracted.join("source.txt"))?, b"contents");
         assert_eq!(
@@ -384,5 +404,161 @@ fn cancelling_extraction_from_started_waits_for_the_worker_and_reports_pending_o
     );
     assert!(destination.read_dir()?.next().is_none());
     assert!(operation.borrow().is_none());
+    Ok(())
+}
+
+#[test]
+fn extraction_failures_stop_progress_and_preserve_error_distinctions() -> Result<(), Box<dyn Error>>
+{
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let destination = root.path().join("destination");
+    fs::create_dir(&destination)?;
+    for (name, expected) in [
+        (
+            "fake.zip",
+            "This file is not a valid archive or is damaged.",
+        ),
+        ("fake.7z", "This file is not a valid archive or is damaged."),
+        (
+            "fake.tar",
+            "This file is not a valid archive or is damaged.",
+        ),
+        (
+            "fake.tar.gz",
+            "This file is not a valid archive or is damaged.",
+        ),
+        (
+            "fake.rar",
+            "This file is not a valid archive or is damaged.",
+        ),
+        ("missing.zip", "No such file"),
+        ("unreadable.zip", "Permission denied"),
+        ("destination.zip", "Not a directory"),
+        ("unsafe.zip", "Refusing unsafe ZIP path"),
+        ("unknown.iso", "Unsupported archive format"),
+    ] {
+        let archive = root.path().join(name);
+        if name != "missing.zip" {
+            fs::write(&archive, b"not an archive")?;
+        }
+        if name == "unreadable.zip" {
+            fs::set_permissions(&archive, fs::Permissions::from_mode(0o000))?;
+        }
+        if name == "destination.zip" {
+            write_zip_stored(&archive, &[("file.txt", b"contents")])?;
+        }
+        if name == "unsafe.zip" {
+            write_zip_stored(&archive, &[("../outside", b"contents")])?;
+        }
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let emitted = events.clone();
+        let handle = LocalOperationProvider.extract(
+            ExtractRequest {
+                id: OperationRequestId(434),
+                entry: test_file_entry(&archive),
+                destination: Location::local(if name == "destination.zip" {
+                    &archive
+                } else {
+                    &destination
+                }),
+                password: None,
+            },
+            Rc::new(move |event| emitted.borrow_mut().push(event)),
+        );
+        let context = glib::MainContext::default();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !events.borrow().iter().any(|event| {
+            matches!(
+                event,
+                OperationEvent::Failed { .. } | OperationEvent::Extracted { .. }
+            )
+        }) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "extraction did not terminate: {name}"
+            );
+            context.iteration(false);
+            std::thread::yield_now();
+        }
+        assert!(
+            matches!(events.borrow().last(), Some(OperationEvent::Failed { message, .. }) if message.contains(expected)),
+            "{name}: {:?}",
+            events.borrow()
+        );
+        let count = events.borrow().len();
+        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(150);
+        while std::time::Instant::now() < deadline {
+            context.iteration(false);
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert_eq!(
+            events.borrow().len(),
+            count,
+            "progress continued after {name} failed"
+        );
+        drop(handle);
+        assert!(destination.read_dir()?.next().is_none());
+        assert!(!root.path().join("outside").exists());
+    }
+    Ok(())
+}
+
+#[test]
+fn failed_extraction_removes_a_newly_created_empty_destination() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("fake.zip");
+    fs::write(&archive, b"not an archive")?;
+    let destination = root.path().join("leftover");
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(908),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        password: None,
+    });
+    assert!(
+        matches!(events.last(), Some(OperationEvent::Failed { .. })),
+        "{:?}",
+        events
+    );
+    assert!(
+        !destination.exists(),
+        "leftover destination was not cleaned up"
+    );
+    Ok(())
+}
+
+#[test]
+fn failed_extraction_preserves_a_pre_existing_destination() -> Result<(), Box<dyn Error>> {
+    let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
+        .lock()
+        .map_err(|error| error.to_string())?;
+    let root = tempfile::tempdir()?;
+    let archive = root.path().join("fake.zip");
+    fs::write(&archive, b"not an archive")?;
+    let destination = root.path().join("existing");
+    fs::create_dir(&destination)?;
+    fs::write(destination.join("kept.txt"), b"kept")?;
+    let events = run_extraction(ExtractRequest {
+        id: OperationRequestId(909),
+        entry: test_file_entry(&archive),
+        destination: Location::local(&destination),
+        password: None,
+    });
+    assert!(
+        matches!(events.last(), Some(OperationEvent::Failed { .. })),
+        "{:?}",
+        events
+    );
+    assert!(destination.exists(), "pre-existing destination was removed");
+    assert!(
+        destination.join("kept.txt").exists(),
+        "user content was lost"
+    );
     Ok(())
 }

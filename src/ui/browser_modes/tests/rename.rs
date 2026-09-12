@@ -1,8 +1,53 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::ui::browser_modes::{ActiveModeRename, install_mode_rename_handlers};
+use crate::ui::browser_modes::{
+    ActiveModeRename, install_mode_rename_handlers, view_position_for_source,
+};
 use std::{cell::RefCell, rc::Rc};
+
+#[test]
+fn rename_position_lookup_follows_live_view_order() {
+    gtk_test(
+        "ui::browser_modes::tests::rename::rename_position_lookup_follows_live_view_order",
+        || {
+            let source = gtk::StringList::new(&["alpha", "beta", "gamma"]);
+            let reversed = Rc::new(std::cell::Cell::new(false));
+            let order = reversed.clone();
+            let sorter = gtk::CustomSorter::new(move |left, right| {
+                let left = left
+                    .downcast_ref::<gtk::StringObject>()
+                    .expect("string item")
+                    .string();
+                let right = right
+                    .downcast_ref::<gtk::StringObject>()
+                    .expect("string item")
+                    .string();
+                if order.get() {
+                    right.cmp(&left)
+                } else {
+                    left.cmp(&right)
+                }
+                .into()
+            });
+            let live = gtk::SortListModel::new(Some(source.clone()), Some(sorter.clone()));
+            assert_eq!(
+                view_position_for_source(&source, Some(live.upcast_ref()), 0),
+                Some(0)
+            );
+            reversed.set(true);
+            sorter.changed(gtk::SorterChange::Different);
+            assert_eq!(
+                view_position_for_source(&source, Some(live.upcast_ref()), 0),
+                Some(2)
+            );
+            assert_eq!(
+                view_position_for_source(&source, Some(live.upcast_ref()), 2),
+                Some(0)
+            );
+        },
+    );
+}
 
 #[test]
 fn rename_handlers_do_not_keep_the_active_editor_alive_after_the_view_drops() {
@@ -25,9 +70,15 @@ fn rename_handlers_do_not_keep_the_active_editor_alive_after_the_view_drops() {
                 entry,
                 field: field.clone(),
                 label: gtk::Label::new(Some("folder")).upcast(),
+                viewport_tick: None,
             })));
             let weak = Rc::downgrade(&active);
-            install_mode_rename_handlers(&field, active.clone(), std::rc::Weak::new());
+            install_mode_rename_handlers(
+                &field,
+                active.clone(),
+                std::rc::Weak::new(),
+                std::rc::Weak::new(),
+            );
             drop(active);
             assert!(weak.upgrade().is_none());
             field.emit_activate();

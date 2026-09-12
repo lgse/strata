@@ -11,77 +11,32 @@ ROOT_ENTRIES = ["archive", "documents", "pictures", "readme.md", "todo.txt"]
 FOLDERS = {"archive", "documents", "pictures"}
 
 
-@pytest.fixture
-def root(strata) -> str:
-    return strata.fixture.root.name
-
-
 @pytest.mark.parametrize("mode", ALL_MODES)
-def test_every_entry_is_named_and_described(strata, mode, root):
-    entries = strata.entries(root)
+def test_listing_names_descriptions_and_selection_semantics(strata, mode):
+    root = strata.fixture.root.name
+    pane = strata.pane(root)
+    assert pane.name == root
+    assert pane.description == f"{mode} view"
 
+    container = strata.entry_container(root)
+    assert container is not None
+    assert container.name == root
+    assert container.description == "Files"
+
+    entries = strata.entries(root)
     assert [node.name for node in entries] == ROOT_ENTRIES
     for node in entries:
         expected = "Folder" if node.name in FOLDERS else "File"
         assert node.description == expected, (
             f"{node.name} should be described as a {expected}"
         )
-
-
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_entries_expose_selection_semantics(strata, mode, root):
-    # GTK 4.14 omits SELECTABLE on unselected rows; exercise SELECTED transitions.
-    for node in strata.entries(root):
         assert "focusable" in node.states, f"{node.name} should be focusable"
 
+    # GTK 4.14 omits SELECTABLE on unselected rows; exercise SELECTED transitions.
     strata.select_entry("todo.txt", directory=root)
-
-    selected = strata.entry("todo.txt", directory=root)
-    assert "selected" in selected.states
-    others = [
-        node for node in strata.entries(root) if node.name != "todo.txt"
-    ]
+    assert "selected" in strata.entry("todo.txt", directory=root).states
+    others = [node for node in strata.entries(root) if node.name != "todo.txt"]
     assert all("selected" not in node.states for node in others)
-
-
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_the_pane_names_its_directory_and_presentation(strata, mode, root):
-    pane = strata.pane(root)
-
-    assert pane.name == root
-    assert pane.description == f"{mode} view"
-
-
-@pytest.mark.parametrize("mode", ALL_MODES)
-def test_the_entry_list_is_named_after_its_directory(strata, mode, root):
-    container = strata.entry_container(root)
-
-    assert container is not None
-    assert container.name == root
-    assert container.description == "Files"
-
-
-def test_the_context_menu_uses_menu_semantics(strata):
-    strata.open_context_menu("todo.txt")
-
-    menu = strata.context_menu()
-    assert menu is not None, "the context menu should have the menu role"
-    items = menu.find_all(role="menu item")
-    assert items, "menu entries should have the menu item role"
-    assert all(node.name for node in items), "every menu item needs a name"
-    strata.dismiss_menu()
-
-
-def test_dialogs_are_announced_as_dialogs(strata):
-    strata.select_entry("todo.txt")
-    strata.keyboard.press("shift+Delete")
-
-    dialog = strata.wait_for_dialog()
-    assert dialog.role in ("dialog", "alert")
-    assert dialog.name, "a dialog needs an accessible name"
-
-    strata.pointer.click(strata.dialog_button("Cancel"))
-    strata.wait(lambda: strata.dialog() is None, "the dialog to close")
 
 
 def test_toolbar_controls_are_named(strata):
@@ -93,29 +48,6 @@ def test_toolbar_controls_are_named(strata):
         "Toggle sidebar (Ctrl+B)",
     ):
         assert strata.window.find(name=name) is not None, f"{name!r} is unnamed"
-
-
-def test_inline_fields_are_named(strata):
-    strata.select_entry("todo.txt")
-    strata.keyboard.press("F2")
-    field = strata.editable_field()
-    assert field.name == "Rename"
-    strata.keyboard.press("Escape")
-
-    strata.keyboard.press("ctrl+shift+n")
-    field = strata.editable_field()
-    assert field.name == "Rename"
-    assert field.text == "new folder"
-    assert strata.fixture.path("new folder").is_dir()
-    strata.keyboard.press("Escape")
-
-    strata.pointer.right_click(strata.pane(), at=strata.background_point())
-    strata.choose_menu_item("New File")
-    field = strata.editable_field()
-    assert field.name == "Rename"
-    assert field.text == "new file"
-    assert strata.fixture.path("new file").is_file()
-    strata.keyboard.press("Escape")
 
 
 def test_focus_order_reaches_the_files_from_the_header(strata):

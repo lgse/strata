@@ -2,8 +2,9 @@
 
 use crate::adapters::directory_summary::{DirectorySummary, summarize_directory};
 use crate::adapters::trash::{EmptyTrashOutcome, empty_trash};
+use crate::adapters::trash_restore::restore_destinations_for_locations;
 use crate::model::{FileEntry, Location};
-use crate::services::LoadHandle;
+use crate::services::{LoadHandle, RestoreTrashItem};
 use crate::ui::blur::BlurBin;
 use crate::ui::browser::entry::{
     entry_icon, entry_kind_summary, format_file_size, item_count_label,
@@ -12,9 +13,12 @@ use crate::ui::browser::{ViewState, vim_focus_direction};
 use crate::ui::controls::{
     ModalTone, message_dialog_description, message_dialog_layout, modal_layout,
 };
-use crate::ui::modal::{ModalHost, dismiss_modal_layer, modal_layer, show_error_dialog};
+use crate::ui::modal::{
+    ModalHost, dismiss_modal_layer, dismiss_modal_layer_then, modal_layer, show_error_dialog,
+};
 use gtk::prelude::*;
 use gtk::{gio, glib};
+use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
@@ -56,6 +60,40 @@ pub(super) fn retryable_delete_entries(
         .collect()
 }
 
+fn restore_confirmation_title(count: usize) -> String {
+    format!("Restore {}?", item_count_label(count))
+}
+
+fn restore_confirmation_confirm_label(count: usize) -> String {
+    if count == 1 {
+        "Restore".to_owned()
+    } else {
+        format!("Restore {}", item_count_label(count))
+    }
+}
+
+fn restore_destination_text(destination: &Path) -> String {
+    destination.to_string_lossy().into_owned()
+}
+
+fn restore_error_summary(errors: &[String]) -> String {
+    let mut summary = if errors.len() == 1 {
+        errors[0].clone()
+    } else {
+        format!("{} could not be restored.", item_count_label(errors.len()))
+    };
+    if errors.len() > 1 {
+        for error in errors.iter().take(8) {
+            summary.push_str("\n\n• ");
+            summary.push_str(error);
+        }
+        if errors.len() > 8 {
+            summary.push_str(&format!("\n\n…and {} more", errors.len() - 8));
+        }
+    }
+    summary
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum DeleteConfirmationFocus {
     Cancel,
@@ -70,7 +108,59 @@ fn delete_confirmation_focus_target(key: gtk::gdk::Key) -> Option<DeleteConfirma
     }
 }
 
+/// Rows rendered in the delete confirmation; anything beyond this collapses
+/// into a summary so a thousand-file selection cannot stall the UI thread.
+const DELETE_CONFIRMATION_MAX_ROWS: usize = 50;
+
+/// Splits confirmation entries into rendered rows and the hidden remainder.
+fn delete_confirmation_rows(entries: &[FileEntry]) -> (&[FileEntry], usize) {
+    let visible = entries.len().min(DELETE_CONFIRMATION_MAX_ROWS);
+    (&entries[..visible], entries.len() - visible)
+}
+
+/// Summary for the hidden remainder, or nothing when everything is shown.
+fn delete_confirmation_overflow_label(hidden: usize) -> Option<String> {
+    (hidden > 0).then(|| {
+        format!(
+            "… and {} more {}",
+            hidden,
+            if hidden == 1 { "item" } else { "items" }
+        )
+    })
+}
+
 impl ViewState {
+    pub(super) fn trash_dropped_locations(self: &Rc<Self>, sources: Vec<Location>) {
+        let weak = Rc::downgrade(self);
+        glib::MainContext::default().spawn_local(async move {
+            let mut entries = Vec::with_capacity(sources.len());
+            for source in sources {
+                match crate::adapters::query_file_entry(source).await {
+                    Ok(entry) => entries.push(entry),
+                    Err(error) => {
+                        if let Some(state) = weak.upgrade() {
+                            show_error_dialog(
+                                &state.overlay,
+                                "Unable to move to Trash",
+                                &error.to_string(),
+                            );
+                        }
+                        return;
+                    }
+                }
+            }
+            if let Some(state) = weak.upgrade() {
+                state.request_delete(entries, false);
+            }
+        });
+    }
+
+    pub(super) fn clear_delete_animation(&self) {
+        if let Some(cleanup) = self.pending_delete_animation_cleanup.take() {
+            cleanup();
+        }
+    }
+
     /// Safe to call more than once: whichever of cancel or completion runs first leaves the
     /// other a no-op.
     fn clear_empty_trash(&self) {
@@ -88,7 +178,13 @@ impl ViewState {
         if trash_empty {
             return;
         }
-        self.show_trash_loading_indicator();
+        if !self.show_trash_loading_indicator(
+            "Measuring Trash…",
+            "Empty Trash",
+            "Calculating the number and size of items. This may take a few seconds.",
+        ) {
+            return;
+        }
         let weak = Rc::downgrade(self);
         let started = Instant::now();
         let task = glib::MainContext::default().spawn_local(async move {
@@ -138,7 +234,7 @@ impl ViewState {
                 }
             }
         });
-        self.pending_trash_summary
+        self.pending_trash_lookup
             .replace(Some(LoadHandle::new(move || {
                 tracing::debug!("trash summary cancelled");
                 task.abort();
@@ -146,33 +242,42 @@ impl ViewState {
     }
 
     /// The walk is bounded but can still take a few seconds on a large trash, hence the indicator.
-    fn show_trash_loading_indicator(self: &Rc<Self>) {
-        self.dismiss_trash_loading();
+    fn show_trash_loading_indicator(
+        self: &Rc<Self>,
+        title: &str,
+        action: &str,
+        detail: &str,
+    ) -> bool {
+        self.clear_trash_loading();
         let Some(ModalHost {
             overlay: window_overlay,
             blurred_root,
         }) = ModalHost::blurred_for(&self.overlay)
         else {
-            return;
+            show_error_dialog(
+                &self.overlay,
+                "Unable to continue",
+                "The operation could not be confirmed.",
+            );
+            return false;
         };
 
-        let layout = modal_layout(
-            crate::assets::icons::TRASH,
-            "Measuring Trash…",
-            "",
-            "Empty Trash",
-        );
-        layout.set_loading(true, Some("Measuring Trash…"));
+        let layout = modal_layout(crate::assets::icons::TRASH, title, "", action);
+        layout.set_loading(true, Some(title));
         layout.subtitle.set_visible(false);
         layout.confirm.set_visible(false);
-        let explanation = message_dialog_description(
-            "Calculating the number and size of items. This may take a few seconds.",
-        );
+        let explanation = message_dialog_description(detail);
         layout.body.append(&explanation);
         let content = layout.content;
         let cancel = layout.cancel;
+        let close = layout.close;
 
-        let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        let layer = modal_layer(
+            &content,
+            &window_overlay,
+            blurred_root.clone(),
+            Some(Rc::new(|| true)),
+        );
         window_overlay.add_overlay(&layer);
         self.trash_loading.replace(Some(TrashLoadingView {
             layer,
@@ -180,12 +285,14 @@ impl ViewState {
             blurred_root,
         }));
 
-        let weak = Rc::downgrade(self);
-        cancel.connect_clicked(move |_| {
-            if let Some(state) = weak.upgrade() {
-                state.clear_trash_loading();
-            }
-        });
+        for button in [&cancel, &close] {
+            let weak = Rc::downgrade(self);
+            button.connect_clicked(move |_| {
+                if let Some(state) = weak.upgrade() {
+                    state.clear_trash_loading();
+                }
+            });
+        }
         let escape = gtk::EventControllerKey::new();
         let weak_escape = Rc::downgrade(self);
         escape.connect_key_pressed(move |_, key, _, _| {
@@ -202,6 +309,7 @@ impl ViewState {
             view.layer.add_controller(escape);
         }
         cancel.grab_focus();
+        true
     }
 
     fn dismiss_trash_loading(&self) {
@@ -214,7 +322,7 @@ impl ViewState {
     /// Safe to call more than once: whichever of cancel or completion runs first leaves the
     /// other a no-op.
     fn clear_trash_loading(&self) {
-        self.pending_trash_summary.borrow_mut().take();
+        self.pending_trash_lookup.borrow_mut().take();
         self.dismiss_trash_loading();
     }
 
@@ -368,6 +476,200 @@ impl ViewState {
         });
     }
 
+    pub(super) fn request_restore(self: &Rc<Self>, entries: Vec<FileEntry>) {
+        if entries.is_empty() {
+            return;
+        }
+        if !self.show_trash_loading_indicator(
+            "Finding restore destinations…",
+            "Restore",
+            "Checking the original locations before confirmation. You can cancel this lookup.",
+        ) {
+            return;
+        }
+        let weak = Rc::downgrade(self);
+        let task = glib::MainContext::default().spawn_local(async move {
+            glib::timeout_future(Duration::from_millis(16)).await;
+            let lookups = entries
+                .iter()
+                .map(|entry| (entry.location.clone(), entry.thumbnail_path.clone()))
+                .collect::<Vec<_>>();
+            let mut resolved = Vec::new();
+            let mut errors = Vec::new();
+            for (entry, destination) in entries
+                .into_iter()
+                .zip(restore_destinations_for_locations(lookups).await)
+            {
+                match destination {
+                    Ok(destination) => resolved.push((entry, destination)),
+                    Err(error) => errors.push(format!("{}: {error}", entry.display_name)),
+                }
+            }
+            let Some(state) = weak.upgrade() else {
+                return;
+            };
+            state.clear_trash_loading();
+            if resolved.is_empty() {
+                show_error_dialog(
+                    &state.overlay,
+                    "Unable to restore",
+                    &restore_error_summary(&errors),
+                );
+                return;
+            }
+            state.show_restore_confirmation(resolved, errors);
+        });
+        self.pending_trash_lookup
+            .replace(Some(LoadHandle::new(move || task.abort())));
+    }
+
+    fn show_restore_confirmation(
+        self: &Rc<Self>,
+        resolved: Vec<(FileEntry, PathBuf)>,
+        skipped: Vec<String>,
+    ) {
+        let Some(ModalHost {
+            overlay: window_overlay,
+            blurred_root,
+        }) = ModalHost::blurred_for(&self.overlay)
+        else {
+            show_error_dialog(
+                &self.overlay,
+                "Unable to restore",
+                "The restore destinations could not be confirmed.",
+            );
+            return;
+        };
+
+        let count = resolved.len();
+        let layout = message_dialog_layout(
+            crate::assets::icons::FOLDER,
+            &restore_confirmation_title(count),
+            &entry_kind_summary(
+                &resolved
+                    .iter()
+                    .map(|(entry, _)| entry.clone())
+                    .collect::<Vec<_>>(),
+            ),
+            &restore_confirmation_confirm_label(count),
+            ModalTone::Accent,
+        );
+        let files = gtk::Box::new(gtk::Orientation::Vertical, 3);
+        files.add_css_class("delete-confirmation-files");
+        for (entry, destination) in &resolved {
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+            row.add_css_class("delete-confirmation-file");
+            let icon = crate::assets::primary_icon(entry_icon(entry), 16);
+            let name = gtk::Label::new(Some(&entry.display_name));
+            name.set_ellipsize(gtk::pango::EllipsizeMode::Middle);
+            name.set_xalign(0.0);
+            let destination_label = gtk::Label::new(Some(&restore_destination_text(destination)));
+            destination_label.add_css_class("delete-confirmation-file-metadata");
+            destination_label.set_wrap(true);
+            destination_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+            destination_label.set_hexpand(true);
+            destination_label.set_xalign(1.0);
+            destination_label.set_selectable(true);
+            destination_label.set_tooltip_text(Some(&destination.to_string_lossy()));
+            row.append(&icon);
+            row.append(&name);
+            row.append(&destination_label);
+            files.append(&row);
+        }
+        let file_scroller = gtk::ScrolledWindow::builder()
+            .child(&files)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
+            .max_content_height(256)
+            .propagate_natural_height(true)
+            .build();
+        file_scroller.add_css_class("delete-confirmation-list");
+        layout.body.append(&file_scroller);
+        let mut explanation =
+            "These items will be moved back to the original locations shown above.".to_owned();
+        if !skipped.is_empty() {
+            explanation.push_str("\n\n");
+            explanation.push_str(&restore_error_summary(&skipped));
+        }
+        layout
+            .body
+            .append(&message_dialog_description(&explanation));
+        let content = layout.content;
+        let close = layout.close;
+        let cancel = layout.cancel;
+        let confirm = layout.confirm;
+
+        let layer = modal_layer(&content, &window_overlay, blurred_root.clone(), None);
+        window_overlay.add_overlay(&layer);
+        let cancelled_layer = layer.clone();
+        let cancelled_overlay = window_overlay.clone();
+        let cancelled_root = blurred_root.clone();
+        let cancelled_browser = self.browser.clone();
+        cancel.connect_clicked(move |_| {
+            dismiss_modal_layer(
+                &cancelled_layer,
+                &cancelled_overlay,
+                cancelled_root.as_ref(),
+            );
+            cancelled_browser.focus_active();
+        });
+        let closed_layer = layer.clone();
+        let closed_overlay = window_overlay.clone();
+        let closed_root = blurred_root.clone();
+        let closed_browser = self.browser.clone();
+        close.connect_clicked(move |_| {
+            dismiss_modal_layer(&closed_layer, &closed_overlay, closed_root.as_ref());
+            closed_browser.focus_active();
+        });
+        let confirmed_layer = layer.clone();
+        let confirmed_overlay = window_overlay.clone();
+        let confirmed_root = blurred_root.clone();
+        let browser = self.browser.clone();
+        let items = resolved
+            .into_iter()
+            .map(|(entry, destination)| RestoreTrashItem { entry, destination })
+            .collect::<Vec<_>>();
+        confirm.connect_clicked(move |_| {
+            dismiss_modal_layer(
+                &confirmed_layer,
+                &confirmed_overlay,
+                confirmed_root.as_ref(),
+            );
+            browser.restore(items.clone());
+            browser.focus_active();
+        });
+        let keys = gtk::EventControllerKey::new();
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let escaped_layer = layer.clone();
+        let escaped_overlay = window_overlay;
+        let escaped_root = blurred_root;
+        let escaped_browser = self.browser.clone();
+        let focused_layer = layer.clone();
+        keys.connect_key_pressed(move |_, key, _, modifiers| {
+            if key == gtk::gdk::Key::Escape {
+                dismiss_modal_layer(&escaped_layer, &escaped_overlay, escaped_root.as_ref());
+                escaped_browser.focus_active();
+                glib::Propagation::Stop
+            } else if !modifiers
+                .intersects(gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK)
+                && let Some(direction) = vim_focus_direction(key)
+            {
+                focused_layer.child_focus(direction);
+                glib::Propagation::Stop
+            } else {
+                glib::Propagation::Proceed
+            }
+        });
+        layer.add_controller(keys);
+        let initial_focus = cancel.clone();
+        glib::idle_add_local_once(move || {
+            initial_focus.grab_focus();
+            if let Some(window) = initial_focus.root().and_downcast::<gtk::Window>() {
+                window.set_focus_visible(true);
+            }
+        });
+    }
+
     pub(super) fn request_delete(self: &Rc<Self>, entries: Vec<FileEntry>, permanent: bool) {
         if entries
             .iter()
@@ -379,8 +681,24 @@ impl ViewState {
             self.show_delete_confirmation(entries);
         } else {
             self.pending_delete_entries.replace(entries.clone());
-            self.browser.delete(entries, false);
-            self.browser.focus_active();
+            let weak = Rc::downgrade(self);
+            let entries_for_anim = Rc::new(entries.clone());
+            let run_delete = move || {
+                if let Some(state) = weak.upgrade() {
+                    state.browser.delete((*entries_for_anim).clone(), false);
+                    state.browser.focus_active();
+                }
+            };
+            if let Some(trash_button) = self.trash_button.borrow().as_ref() {
+                super::fly_to_trash::fly_to_trash(
+                    self.overlay.upcast_ref(),
+                    &entries,
+                    trash_button,
+                    run_delete,
+                );
+            } else {
+                run_delete();
+            }
         }
     }
 
@@ -405,7 +723,8 @@ impl ViewState {
         );
         let files = gtk::Box::new(gtk::Orientation::Vertical, 3);
         files.add_css_class("delete-confirmation-files");
-        for entry in &entries {
+        let (visible, hidden) = delete_confirmation_rows(&entries);
+        for entry in visible {
             let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
             row.add_css_class("delete-confirmation-file");
             let icon = crate::assets::primary_icon(entry_icon(entry), 16);
@@ -429,6 +748,12 @@ impl ViewState {
             row.append(&metadata);
             files.append(&row);
         }
+        if let Some(summary) = delete_confirmation_overflow_label(hidden) {
+            let overflow = gtk::Label::new(Some(&summary));
+            overflow.set_xalign(0.0);
+            overflow.add_css_class("delete-confirmation-file-metadata");
+            files.append(&overflow);
+        }
         let file_scroller = gtk::ScrolledWindow::builder()
             .child(&files)
             .hscrollbar_policy(gtk::PolicyType::Never)
@@ -441,6 +766,7 @@ impl ViewState {
             .propagate_natural_height(true)
             .build();
         file_scroller.add_css_class("delete-confirmation-list");
+        file_scroller.add_css_class("fixed-scrollbar");
         layout.body.append(&file_scroller);
         let explanation = message_dialog_description(
             "These items will be permanently deleted. This action cannot be undone.",
@@ -477,14 +803,35 @@ impl ViewState {
         let confirmed_overlay = window_overlay.clone();
         let confirmed_root = blurred_root.clone();
         let browser = self.browser.clone();
+        let overlay_for_dissolve = self.overlay.clone();
+        let entries_for_dissolve = entries.clone();
+        let weak_ui = Rc::downgrade(self);
         confirm.connect_clicked(move |_| {
-            dismiss_modal_layer(
+            let browser = browser.clone();
+            let overlay_for_dissolve = overlay_for_dissolve.clone();
+            let entries_for_dissolve = entries_for_dissolve.clone();
+            let weak_ui = weak_ui.clone();
+            dismiss_modal_layer_then(
                 &confirmed_layer,
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
+                move || {
+                    let browser_for_delete = browser.clone();
+                    let entries_for_delete = entries_for_dissolve.clone();
+                    super::dissolve_delete::dissolve_delete(
+                        overlay_for_dissolve.upcast_ref(),
+                        &entries_for_dissolve,
+                        move |cleanup| {
+                            if let Some(ui) = weak_ui.upgrade() {
+                                ui.clear_delete_animation();
+                                ui.pending_delete_animation_cleanup.replace(Some(cleanup));
+                            }
+                            browser_for_delete.delete(entries_for_delete, true);
+                            browser_for_delete.focus_active();
+                        },
+                    );
+                },
             );
-            browser.delete(entries.clone(), true);
-            browser.focus_active();
         });
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);

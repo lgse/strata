@@ -33,6 +33,8 @@ pub(super) struct ListFactory {
     pub(super) columns: ListColumnLayout,
     pub(super) scrolling: Rc<Cell<bool>>,
     pub(super) bound_items: Rc<RefCell<Vec<BoundModeItem>>>,
+    pub(super) state: Option<Weak<crate::ui::browser::ViewState>>,
+    pub(super) filter_query: Rc<RefCell<String>>,
 }
 
 impl ListFactory {
@@ -51,16 +53,13 @@ impl ListFactory {
             return;
         };
         let widget = assemble_list_row();
-        if !self.scrolling.get() {
-            animate_appearance(&widget);
-        }
         let Some(row) = ListRow::from_widget(widget) else {
             return;
         };
         row.register_columns(&self.columns);
         self.install_interactions(item, &row);
         item.set_child(Some(&row.widget));
-        register_bound_mode_item(&self.bound_items, item, &row.widget);
+        register_bound_mode_item(&self.bound_items, item, &row.widget, &row.name);
     }
 
     fn install_interactions(&self, item: &gtk::ListItem, row: &ListRow) {
@@ -72,8 +71,9 @@ impl ListFactory {
             self.activation.clone(),
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),
+            self.filter_query.clone(),
         );
-        install_modified_selection_click(
+        let content_click = install_modified_selection_click(
             &row.widget,
             item,
             self.selection.clone(),
@@ -88,7 +88,13 @@ impl ListFactory {
             self.transfers.clone(),
             self.depth,
             Some((self.positions.index.clone(), self.positions.view.clone())),
-            Some(row.name.upcast_ref()),
+            self.state.clone(),
+            (
+                Some(row.name.upcast_ref()),
+                Some(row.icon.upcast_ref()),
+                &content_click,
+                true,
+            ),
         );
     }
 
@@ -121,7 +127,12 @@ impl ListFactory {
             row.clear();
             return;
         };
-        row.bind_labels(item, &binding.entry);
+        let pending_name = self
+            .state
+            .as_ref()
+            .and_then(Weak::upgrade)
+            .and_then(|state| state.pending_rename_name(&binding.entry));
+        row.bind_labels(item, &binding.entry, pending_name.as_deref());
         if self.scrolling.get() {
             set_label_if_changed(&row.modified, &crate::util::modified_date(&binding.entry));
         } else {
@@ -132,16 +143,6 @@ impl ListFactory {
             binding.refresh_details(&row);
         }
     }
-}
-
-fn animate_appearance(row: &gtk::Box) {
-    row.add_css_class("file-appear");
-    let weak = row.downgrade();
-    glib::idle_add_local_once(move || {
-        if let Some(row) = weak.upgrade() {
-            row.remove_css_class("file-appear");
-        }
-    });
 }
 
 struct ListRow {
@@ -188,14 +189,18 @@ impl ListRow {
         }
     }
 
-    fn bind_labels(&self, item: &gtk::ListItem, entry: &FileEntry) {
+    fn bind_labels(&self, item: &gtk::ListItem, entry: &FileEntry, pending_name: Option<&str>) {
         self.name.set_visible(true);
         self.field.set_visible(false);
-        set_label_if_changed(&self.name, &entry.display_name);
+        set_label_if_changed(&self.name, pending_name.unwrap_or(&entry.display_name));
         set_label_if_changed(&self.mode, &entry_mode(entry));
         set_label_if_changed(&self.size, &entry_size(entry));
         set_label_if_changed(&self.kind, entry_type(entry));
-        accessibility::describe_entry(item, &entry.display_name, Some(entry));
+        accessibility::describe_entry(
+            item,
+            pending_name.unwrap_or(&entry.display_name),
+            Some(entry),
+        );
     }
 
     fn clear(&self) {

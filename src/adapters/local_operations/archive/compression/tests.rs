@@ -200,6 +200,7 @@ fn read_compressed_entries(
                 Ok(true)
             })?;
         }
+        ArchiveFormat::Rar => return Err("RAR compression is not supported".into()),
     }
     Ok(result)
 }
@@ -463,5 +464,57 @@ fn compression_accepts_a_symlink_in_the_parent_path() -> Result<(), Box<dyn Erro
             "{format:?}"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn zip_and_seven_z_refuse_non_utf8_names_instead_of_mangling_them() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let source = root
+        .path()
+        .join(OsString::from_vec(b"name-\xff.txt".to_vec()));
+    fs::write(&source, b"contents")?;
+    for format in [ArchiveFormat::Zip, ArchiveFormat::SevenZ] {
+        let archive = root.path().join("archive.out");
+        let error =
+            write_compression_fixture(&archive, std::slice::from_ref(&source), format, None)
+                .expect_err("a non-UTF-8 name cannot be stored losslessly");
+        assert!(error.contains("non-UTF-8 name"), "{format:?}: {error}");
+    }
+    let archive = root.path().join("archive.tar");
+    write_compression_fixture(
+        &archive,
+        std::slice::from_ref(&source),
+        ArchiveFormat::Tar,
+        None,
+    )?;
+    Ok(())
+}
+
+#[test]
+fn encrypted_seven_z_archives_are_still_compressed() -> Result<(), Box<dyn Error>> {
+    let root = tempfile::tempdir()?;
+    let source = root.path().join("zeros.bin");
+    fs::write(&source, vec![0u8; 4 << 20])?;
+    let plain = root.path().join("plain.7z");
+    let encrypted = root.path().join("encrypted.7z");
+    write_compression_fixture(
+        &plain,
+        std::slice::from_ref(&source),
+        ArchiveFormat::SevenZ,
+        None,
+    )?;
+    write_compression_fixture(
+        &encrypted,
+        std::slice::from_ref(&source),
+        ArchiveFormat::SevenZ,
+        Some("secret"),
+    )?;
+    let plain_len = fs::metadata(&plain)?.len();
+    let encrypted_len = fs::metadata(&encrypted)?.len();
+    assert!(
+        encrypted_len < 1 << 20,
+        "encrypted archive should compress ({encrypted_len} bytes, plain {plain_len} bytes)"
+    );
     Ok(())
 }

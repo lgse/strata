@@ -18,6 +18,10 @@ fn archive_names_strip_only_the_selected_dotted_extension() {
         normalized_archive_name("backup.tar.gz", ArchiveFormat::TarGz),
         "backup"
     );
+    assert_eq!(
+        normalized_archive_name("backup.rar", ArchiveFormat::Rar),
+        "backup"
+    );
     assert!(
         validate_basename(&normalized_archive_name(
             "../outside.zip",

@@ -13,7 +13,7 @@ from e2e_bundle import REPOSITORY, image_key
 
 
 class QualityRunnerTests(unittest.TestCase):
-    def run_runner(self, phase="all", key=None, engine_name="podman"):
+    def run_runner(self, phase="all", key=None, engine_name="podman", extra_env=None):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             log = root / "engine.jsonl"
@@ -22,7 +22,8 @@ class QualityRunnerTests(unittest.TestCase):
                 f"#!{sys.executable}\n"
                 "import json, os, sys\n"
                 f"with open({str(log)!r}, 'a') as f: f.write(json.dumps(dict(args=sys.argv[1:], "
-                "display=os.getenv('DISPLAY'), wayland=os.getenv('WAYLAND_DISPLAY'))) + '\\n')\n"
+                "display=os.getenv('DISPLAY'), wayland=os.getenv('WAYLAND_DISPLAY'), "
+                "bus=os.getenv('DBUS_SESSION_BUS_ADDRESS'))) + '\\n')\n"
                 "if sys.argv[1:3] == ['image', 'inspect']:\n"
                 f" print(json.dumps([{{'Id': 'sha256:'+'a'*64, 'Os': 'linux', 'Architecture': 'amd64', "
                 f"'Config': {{'Labels': {{'org.strata.e2e.inputs': {(image_key() if key is None else key)!r}}}, "
@@ -32,7 +33,8 @@ class QualityRunnerTests(unittest.TestCase):
             result = subprocess.run([str(REPOSITORY / "scripts/quality.sh"), phase],
                                     env={**os.environ, "STRATA_CONTAINER_ENGINE": str(engine),
                                          "STRATA_QUALITY_IMAGE": "fixture", "DISPLAY": ":0",
-                                         "WAYLAND_DISPLAY": "wayland-0"}, capture_output=True, text=True)
+                                         "WAYLAND_DISPLAY": "wayland-0", "DBUS_SESSION_BUS_ADDRESS": "unix:path=/desktop",
+                                         **(extra_env or {})}, capture_output=True, text=True)
             calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
             return result, calls
 
@@ -51,6 +53,32 @@ class QualityRunnerTests(unittest.TestCase):
                 for call in calls:
                     self.assertIsNone(call["display"])
                     self.assertIsNone(call["wayland"])
+                    self.assertIsNone(call["bus"])
+
+    def test_shard_handoff_is_forwarded_without_changing_public_phases(self):
+        result, calls = self.run_runner("test", extra_env={
+            "STRATA_QUALITY_TASK": "shard", "STRATA_QUALITY_SHARD": "0"})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = calls[-1]["args"]
+        self.assertIn("STRATA_QUALITY_TASK", args)
+        self.assertIn("STRATA_QUALITY_SHARD", args)
+        self.assertTrue(any(arg.startswith("STRATA_QUALITY_COMMIT=") for arg in args))
+        self.assertEqual(args[-1], "test")
+
+    def test_workflow_matrix_and_required_gate_match_the_plan(self):
+        from quality_ci import SHARDS
+        workflow = (REPOSITORY / ".github/workflows/ci.yml").read_text()
+        shard = workflow.split("\n  quality-shard:", 1)[1].split("\n  quality:", 1)[0]
+        self.assertIn(f"shard: {list(range(SHARDS))}", shard)
+        self.assertIn("fail-fast: false", shard)
+        self.assertIn("STRATA_QUALITY_TASK: shard", shard)
+        self.assertNotIn("cargo test", shard)
+        gate = workflow.split("\n  quality:\n", 1)[1].split("\n  e2e-build:", 1)[0]
+        self.assertIn("name: Format, lint, and test", gate)
+        self.assertIn("needs: [quality-build, quality-shard]", gate)
+        self.assertIn("always()", gate)
+        self.assertIn('test "$BUILD_RESULT" = success && test "$SHARD_RESULT" = success', gate)
+        self.assertIn("python3 scripts/quality_ci.py verify", gate)
 
     def test_invalid_provenance_never_executes_the_image(self):
         result, calls = self.run_runner(key="wrong")
@@ -66,6 +94,12 @@ class QualityRunnerTests(unittest.TestCase):
         result, calls = self.run_runner(engine_name="docker")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("--userns=keep-id", calls[-1]["args"])
+
+    def test_quality_checkout_retains_base_commits_beyond_the_merge_parents(self):
+        workflow = (REPOSITORY / ".github/workflows/ci.yml").read_text()
+        build = workflow.split("\n  quality-build:", 1)[1].split("\n  quality-shard:", 1)[0]
+        checkout = build.split("uses: actions/checkout@", 1)[1].split("\n      - ", 1)[0]
+        self.assertIn("fetch-depth: 0", checkout)
 
     def test_ci_builds_only_deliberate_unpublished_recipe_changes(self):
         workflow = (REPOSITORY / ".github/workflows/ci.yml").read_text()
@@ -109,6 +143,7 @@ class QualityRunnerTests(unittest.TestCase):
                 "rustc": "exit 0\n",
                 "cargo": 'echo "$*" >> "$CALL_LOG"\ncase "$1" in "$FAIL_PHASE") exit 42;; esac\n',
                 "xvfb-run": 'echo "xvfb $*" >> "$CALL_LOG"\nshift\nexec "$@"\n',
+                "dbus-run-session": 'echo "private-dbus $*" >> "$CALL_LOG"\nshift\nexec "$@"\n',
             }.items():
                 tool = root / name
                 tool.write_text("#!/bin/sh\n" + content)
@@ -125,7 +160,7 @@ class QualityRunnerTests(unittest.TestCase):
                 if failure in ("fmt", "clippy"):
                     self.assertNotIn("xvfb", text)
                 else:
-                    self.assertIn("xvfb -a env -u WAYLAND_DISPLAY GDK_BACKEND=x11", text)
+                    self.assertIn("xvfb -a dbus-run-session -- env -u WAYLAND_DISPLAY GDK_BACKEND=x11", text)
                     self.assertIn("GTK_A11Y=none NO_AT_BRIDGE=1 STRATA_REQUIRE_GTK_TESTS=1", text)
                     self.assertIn("test --locked --all-targets --all-features", text)
 

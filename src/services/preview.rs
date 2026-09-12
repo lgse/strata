@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: MIT
 
-use std::{ffi::OsStr, path::Path, rc::Rc};
+use std::{ffi::OsStr, io::Write, path::Path, rc::Rc, sync::Arc};
 
 use crate::model::FileEntry;
 
@@ -9,13 +9,70 @@ use super::LoadHandle;
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct PreviewRequestId(pub u64);
 
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
+pub struct MediaPreviewSize {
+    pub width: i32,
+    pub height: i32,
+}
+
+impl MediaPreviewSize {
+    pub const MAX_EDGE: i32 = 1280;
+
+    pub fn new(width: i32, height: i32) -> Self {
+        Self {
+            width: width.clamp(16, Self::MAX_EDGE),
+            height: height.clamp(16, Self::MAX_EDGE),
+        }
+    }
+
+    pub fn for_viewport(width: i32, height: i32, scale: i32) -> Self {
+        Self::new(width.saturating_mul(scale), height.saturating_mul(scale))
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct PreviewRequest {
     pub id: PreviewRequestId,
     pub entry: FileEntry,
     pub text_byte_limit: usize,
     pub pdf_page: i32,
+    pub media_size: MediaPreviewSize,
 }
+
+#[derive(Clone, Debug)]
+pub struct SandboxedMedia {
+    path: Arc<tempfile::TempPath>,
+    byte_len: usize,
+}
+
+impl SandboxedMedia {
+    pub fn from_normalized(data: &[u8]) -> std::io::Result<Self> {
+        let mut file = tempfile::Builder::new()
+            .prefix("strata-media-")
+            .tempfile()?;
+        file.write_all(data)?;
+        Ok(Self {
+            path: Arc::new(file.into_temp_path()),
+            byte_len: data.len(),
+        })
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn byte_len(&self) -> usize {
+        self.byte_len
+    }
+}
+
+impl PartialEq for SandboxedMedia {
+    fn eq(&self, other: &Self) -> bool {
+        self.path() == other.path() && self.byte_len == other.byte_len
+    }
+}
+
+impl Eq for SandboxedMedia {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PreviewContent {
@@ -23,7 +80,7 @@ pub enum PreviewContent {
     Image,
     Media,
     Rasterized { png: Vec<u8> },
-    SandboxedMedia { data: Vec<u8> },
+    SandboxedMedia { media: SandboxedMedia },
     Pdf { png: Vec<u8>, page: i32, pages: i32 },
     Unsupported,
 }

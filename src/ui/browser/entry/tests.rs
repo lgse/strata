@@ -4,6 +4,7 @@ use super::*;
 
 #[test]
 fn entry_matching_uses_the_display_name_and_hidden_flag() {
+    let fold = crate::services::fold_for_search;
     for (value, show_hidden, query, expected) in [
         ("fv\tAlpha.txt", false, "alpha", true),
         ("fh\tAlpha.txt", false, "alpha", false),
@@ -12,11 +13,23 @@ fn entry_matching_uses_the_display_name_and_hidden_flag() {
         ("dv\tFolder", false, "", true),
         ("dh\tFolder", false, "", false),
         ("fv\tÉcole\tNotes", false, "école\tnotes", true),
+        (
+            "fv\tre\u{301}sume\u{301}.txt",
+            false,
+            "r\u{e9}sum\u{e9}",
+            true,
+        ),
+        (
+            "fv\tr\u{e9}sum\u{e9}.txt",
+            false,
+            "re\u{301}sume\u{301}",
+            true,
+        ),
         ("plain name", false, "name", true),
         ("fv\tAlpha.txt", true, "beta", false),
     ] {
         assert_eq!(
-            entry_matches(value, show_hidden, query),
+            entry_matches(value, show_hidden, &fold(query)),
             expected,
             "{value:?}, {show_hidden}, {query:?}"
         );
@@ -27,11 +40,16 @@ use gtk::gio;
 use std::path::Path;
 
 #[test]
-fn file_sizes_use_compact_decimal_units() {
+fn file_sizes_use_compact_decimal_units_and_promote_rounded_overflow() {
     assert_eq!(format_file_size(999), "999 B");
     assert_eq!(format_file_size(1_200), "1.2 kB");
     assert_eq!(format_file_size(1_000_000), "1 MB");
     assert_eq!(format_file_size(2_500_000_000), "2.5 GB");
+
+    assert_eq!(format_file_size(999_950), "1 MB");
+    assert_eq!(format_file_size(999_950_000), "1 GB");
+    assert_eq!(format_file_size(9_949), "9.9 kB");
+    assert_eq!(format_file_size(9_950), "10 kB");
 }
 
 #[test]

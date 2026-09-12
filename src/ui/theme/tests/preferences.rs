@@ -45,6 +45,7 @@ fn non_default_preferences() -> Preferences {
         preview_muted: true,
         preview_volume: 0.35,
         auto_refresh_interval: 600,
+        cross_volume_drop_strategy: CrossVolumeDropStrategy::Move.as_str().into(),
         release_channel: "nightly".into(),
         folder_colors: HashMap::from([("/fixture/folder".into(), "red".into())]),
         custom_icons: HashMap::from([(
@@ -89,6 +90,191 @@ fn older_preferences_keep_recursive_filtering_enabled() {
             filter_include_subfolders: true,
             ..non_default_preferences()
         }
+    );
+}
+
+#[test]
+fn a_malformed_preference_does_not_discard_the_others() {
+    let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
+    saved.insert("show_hidden".into(), "yes".into());
+    assert!(saved.clone().try_into::<Preferences>().is_err());
+
+    assert_eq!(
+        salvage_preferences(saved),
+        Preferences {
+            show_hidden: false,
+            ..non_default_preferences()
+        }
+    );
+}
+
+#[test]
+fn a_missing_required_preference_does_not_discard_the_others() {
+    let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
+    saved.remove("theme");
+    assert!(saved.clone().try_into::<Preferences>().is_err());
+
+    assert_eq!(
+        salvage_preferences(saved),
+        Preferences {
+            theme: Preferences::default().theme,
+            ..non_default_preferences()
+        }
+    );
+}
+
+fn assert_recovered_preferences_survive_save(
+    corrupt: impl FnOnce(&mut toml::Table),
+    mut expected: Preferences,
+) {
+    ThemeManager::seed_saved_preferences_for_test();
+    let mut saved = toml::Table::try_from(non_default_preferences()).expect("saved preferences");
+    corrupt(&mut saved);
+    let malformed = toml::to_string(&saved).expect("syntactically valid TOML");
+    fs::write(settings_path(), &malformed).expect("persist malformed preferences");
+
+    let manager = ThemeManager::shared();
+    assert_eq!(*manager.preferences.borrow(), expected);
+    assert_eq!(
+        fs::read_to_string(settings_path()).expect("unchanged settings file"),
+        malformed
+    );
+    expected.folder_peeking = true;
+    manager.set_folder_peeking(true);
+
+    let persisted: Preferences =
+        toml::from_str(&fs::read_to_string(settings_path()).expect("saved file"))
+            .expect("save repairs invalid preferences");
+    assert_eq!(persisted, expected);
+    assert_eq!(read_preferences().expect("saved preferences"), expected);
+}
+
+#[test]
+fn unreadable_preferences_are_preserved_while_live_changes_still_apply() {
+    gtk_test(
+        "ui::theme::tests::preferences::unreadable_preferences_are_preserved_while_live_changes_still_apply",
+        || {
+            ThemeManager::seed_saved_preferences_for_test();
+            let valid = fs::read(settings_path()).expect("saved fixture");
+            for suffix in [b"\nthis is not valid toml [".as_slice(), b"\xff"] {
+                let mut broken = valid.clone();
+                broken.extend_from_slice(suffix);
+                fs::write(settings_path(), &broken).expect("broken settings");
+                let manager = ThemeManager::load();
+                let anchors = [
+                    gtk::Box::new(gtk::Orientation::Vertical, 0),
+                    gtk::Box::new(gtk::Orientation::Vertical, 0),
+                ];
+                let observations = anchors.each_ref().map(|anchor| {
+                    let values = Rc::new(RefCell::new(Vec::new()));
+                    let observed = values.clone();
+                    manager.bind_preference(
+                        anchor,
+                        ThemeManager::folder_peeking,
+                        move |_, value| {
+                            observed.borrow_mut().push(value);
+                        },
+                    );
+                    values
+                });
+                manager.set_folder_peeking(false);
+                manager.set_folder_peeking(false);
+                for values in observations {
+                    assert_eq!(*values.borrow(), [true, false]);
+                }
+                assert_eq!(
+                    fs::read(settings_path()).expect("preserved settings"),
+                    broken
+                );
+                fs::write(settings_path(), &valid).expect("repair settings");
+                manager.set_folder_peeking(true);
+                assert_eq!(
+                    fs::read(settings_path()).expect("repair left untouched"),
+                    valid
+                );
+                drop(manager);
+            }
+            let manager = ThemeManager::load();
+            assert_eq!(*manager.preferences.borrow(), non_default_preferences());
+            manager.set_folder_peeking(true);
+            assert!(
+                read_preferences()
+                    .expect("saving resumes after reload")
+                    .folder_peeking
+            );
+        },
+    );
+}
+
+#[test]
+fn missing_settings_allow_first_run_saves() {
+    gtk_test(
+        "ui::theme::tests::preferences::missing_settings_allow_first_run_saves",
+        || {
+            assert!(!settings_path().exists());
+            let manager = ThemeManager::load();
+            manager.set_folder_peeking(false);
+            assert!(!read_preferences().expect("first run save").folder_peeking);
+        },
+    );
+}
+
+#[test]
+fn malformed_preferences_survive_startup_and_an_unrelated_save() {
+    gtk_test(
+        "ui::theme::tests::preferences::malformed_preferences_survive_startup_and_an_unrelated_save",
+        || {
+            assert_recovered_preferences_survive_save(
+                |saved| {
+                    saved.insert("show_hidden".into(), "yes".into());
+                },
+                Preferences {
+                    show_hidden: false,
+                    ..non_default_preferences()
+                },
+            );
+        },
+    );
+}
+
+#[test]
+fn missing_required_preferences_survive_startup_and_an_unrelated_save() {
+    gtk_test(
+        "ui::theme::tests::preferences::missing_required_preferences_survive_startup_and_an_unrelated_save",
+        || {
+            assert_recovered_preferences_survive_save(
+                |saved| {
+                    saved.remove("theme");
+                },
+                Preferences {
+                    theme: Preferences::default().theme,
+                    ..non_default_preferences()
+                },
+            );
+        },
+    );
+}
+
+#[test]
+fn multiple_invalid_preferences_do_not_block_later_valid_entries() {
+    gtk_test(
+        "ui::theme::tests::preferences::multiple_invalid_preferences_do_not_block_later_valid_entries",
+        || {
+            assert_recovered_preferences_survive_save(
+                |saved| {
+                    saved.insert("auto_refresh_interval".into(), (-1).into());
+                    saved.insert("hardware_accelerated_video_previews".into(), "no".into());
+                    saved.insert("show_hidden".into(), "yes".into());
+                    saved.insert("future_preference".into(), true.into());
+                },
+                Preferences {
+                    auto_refresh_interval: 0,
+                    hardware_accelerated_video_previews: None,
+                    show_hidden: false,
+                    ..non_default_preferences()
+                },
+            );
+        },
     );
 }
 
@@ -187,6 +373,10 @@ fn every_saved_preference_loads_before_any_settings_page_exists() {
             assert!(manager.preview_muted());
             assert_eq!(manager.preview_volume(), 0.35);
             assert_eq!(manager.auto_refresh_interval(), 600);
+            assert_eq!(
+                manager.cross_volume_drop_strategy(),
+                CrossVolumeDropStrategy::Move
+            );
             assert_eq!(
                 manager.folder_color(Path::new("/fixture/folder")),
                 FolderColorValue::parse("red")
@@ -289,6 +479,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                 |m| m.set_preview_muted(false),
                 |m| m.set_preview_volume(0.8),
                 |m| m.set_auto_refresh_interval(60),
+                |m| m.set_cross_volume_drop_strategy(CrossVolumeDropStrategy::Copy),
                 |m| m.set_folder_color(Path::new("/fixture/folder"), None),
                 |m| m.set_custom_icon(Path::new("/fixture/folder"), None),
                 |m| m.set_follow_omarchy(true),
@@ -318,7 +509,7 @@ fn all_preference_setters_publish_and_persist_without_duplicate_notifications() 
                     "setter {index} publishes exactly once"
                 );
                 assert_eq!(observations.borrow().last(), Some(&expected));
-                assert_eq!(read_preferences(), Some(expected));
+                assert_eq!(read_preferences().expect("saved preferences"), expected);
                 setter(&manager);
                 assert_eq!(
                     observations.borrow().len(),

@@ -6,11 +6,12 @@ from __future__ import annotations
 import pytest
 
 from harness.fixtures import FixtureTree
-from harness.modes import ALL_MODES
+from harness.modes import ALL_MODES, NEXT_ENTRY_KEY, PREVIOUS_ENTRY_KEY
 
 PREVIEW_FIXTURE = {
     "notes.txt": "the quick brown fox\n",
     "page.md": "# Heading\n\nBody text.\n",
+    "third.txt": "third preview fixture\n",
     "data.csv": "name,value\nalpha,1\n",
     "folder": {"inner.txt": "inner\n", "nested-notes.txt": "nested preview fixture\n"},
 }
@@ -64,7 +65,7 @@ def test_space_previews_a_filtered_result_without_changing_the_query(strata, mod
     else:
         result = strata.window.find(name="nested-notes.txt", role="list item")
         assert result is not None
-        strata.pointer.click(result)
+        strata.pointer.click(result, modifiers=("ctrl",))
 
     strata.keyboard.press("space")
     strata.wait(
@@ -79,7 +80,14 @@ def test_space_previews_a_filtered_result_without_changing_the_query(strata, mod
     assert strata.matches() == ["nested-notes.txt"]
 
 
-def test_preview_follows_the_selection(strata):
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("selection", ["keyboard", "pointer"])
+@pytest.mark.parametrize(
+    "preferences",
+    [{"single_click_previews": False}, {"single_click_previews": True}],
+    ids=["explicit-preview", "single-click-preview"],
+)
+def test_preview_follows_the_selection(strata, mode, selection, preferences):
     strata.select_entry_with_keyboard("notes.txt")
     strata.keyboard.press("space")
     strata.wait(
@@ -87,12 +95,96 @@ def test_preview_follows_the_selection(strata):
         "the first preview to render",
     )
 
-    strata.select_entry_with_keyboard("data.csv")
+    if selection == "keyboard":
+        strata.keyboard.press(NEXT_ENTRY_KEY[mode])
+    else:
+        strata.select_entry("page.md")
+    strata.wait_for_selection(["page.md"])
 
     strata.wait(
-        lambda: strata.preview_shows("alpha"),
+        lambda: strata.preview_shows("Body text."),
         "the preview to follow the newly selected file",
     )
+    assert strata.focused_name() == "page.md"
+    assert not strata.preview_shows("the quick brown fox")
+
+
+def test_list_preview_keyboard_navigation_preserves_horizontal_scroll(strata, fixture_tree):
+    strata.switch_view("List")
+    strata.select_entry_with_keyboard("notes.txt")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "the first preview")
+
+    def list_scroll_origin():
+        container = strata.pane()
+        list_view = container.find(description="Files")
+        assert list_view is not None, "the List file view"
+        panes = [
+            ancestor for ancestor in list_view.ancestors() if ancestor.role == "scroll pane"
+        ]
+        assert len(panes) >= 2, "the List view content is wrapped by its listing scroller"
+        return panes[0].window_bounds().x
+
+    origin = list_scroll_origin()
+    for key, name, preview in (
+        ("Down", "page.md", "Body text."),
+        ("Down", "third.txt", "third preview fixture"),
+        ("Up", "page.md", "Body text."),
+    ):
+        strata.keyboard.press(key)
+        strata.wait_for_selection([name])
+        strata.wait(lambda: strata.focused_name() == name, f"focus on {name}")
+        strata.wait(lambda: strata.preview_shows(preview), f"preview for {name}")
+        assert list_scroll_origin() == origin, (origin, list_scroll_origin())
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_preview_follows_extended_selection_without_collapsing_it(strata, mode):
+    strata.select_entry_with_keyboard("notes.txt")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "the first preview")
+
+    strata.keyboard.press(f"shift+{NEXT_ENTRY_KEY[mode]}")
+
+    strata.wait_for_selection(["notes.txt", "page.md"])
+    strata.wait(lambda: strata.preview_shows("Body text."), "the newly focused preview")
+    assert strata.focused_name() == "page.md"
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+def test_preview_closes_on_a_folder_and_stays_closed_when_selection_moves(strata, mode):
+    strata.select_entry_with_keyboard("data.csv")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("alpha"), "the file preview")
+
+    strata.keyboard.press(PREVIOUS_ENTRY_KEY[mode])
+
+    strata.wait_for_selection(["folder"])
+    strata.wait(lambda: strata.preview() is None, "the folder to dismiss the preview")
+    strata.keyboard.press(NEXT_ENTRY_KEY[mode])
+    strata.wait_for_selection(["data.csv"])
+    assert strata.preview() is None, "selection must not open a closed preview"
+
+
+def test_preview_closes_on_shift_range_folder_focus(strata):
+    strata.switch_view("List")
+    strata.select_entry_with_keyboard("notes.txt")
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("the quick brown fox"), "the file preview")
+
+    strata.keyboard.press("shift+Up")
+    strata.wait_for_selection(["data.csv", "notes.txt"])
+    strata.wait(lambda: strata.focused_name() == "data.csv", "the focused upper file")
+    strata.wait(lambda: strata.preview_shows("alpha"), "the upper file preview")
+
+    strata.keyboard.press("shift+Up")
+    strata.wait_for_selection(["folder", "data.csv", "notes.txt"])
+    strata.wait(lambda: strata.focused_name() == "folder", "the focused folder")
+    strata.wait(lambda: strata.preview() is None, "the focused folder to dismiss the preview")
+
+    strata.keyboard.press("shift+Down")
+    strata.wait_for_selection(["data.csv", "notes.txt"])
+    assert strata.preview() is None
 
 
 def test_preview_renders_markdown(strata):

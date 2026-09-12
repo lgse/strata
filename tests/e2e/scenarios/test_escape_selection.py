@@ -8,29 +8,30 @@ from harness.modes import ALL_MODES, NEXT_ENTRY_KEY, PREVIOUS_ENTRY_KEY
 
 @pytest.mark.parametrize("mode", ALL_MODES)
 @pytest.mark.parametrize("multiple", [False, True])
-@pytest.mark.parametrize("direction", ["previous", "next"])
 @pytest.mark.preferences(single_click_previews=False)
-def test_escape_clears_selection_without_navigation(strata, mode, multiple, direction):
+def test_escape_clears_selection_without_navigation(strata, mode, multiple):
     root = strata.fixture.root.name
-    if multiple:
-        strata.select_entry("todo.txt", root)
-        strata.click_entry_with("readme.md", ["ctrl"], root)
-    else:
-        strata.select_entry("readme.md", root)
-    focused = "readme.md"
-    strata.wait_for_selection(["readme.md", "todo.txt"] if multiple else [focused], root)
-    panes = strata.pane_names()
+    for key, expected in [
+        (PREVIOUS_ENTRY_KEY[mode], "pictures"),
+        (NEXT_ENTRY_KEY[mode], "todo.txt"),
+    ]:
+        if multiple:
+            strata.select_entry("todo.txt", root)
+            strata.click_entry_with("readme.md", ["ctrl"], root)
+        else:
+            strata.select_entry("readme.md", root)
+        focused = "readme.md"
+        strata.wait_for_selection(["readme.md", "todo.txt"] if multiple else [focused], root)
+        panes = strata.pane_names()
 
-    strata.keyboard.press("Escape")
+        strata.keyboard.press("Escape")
 
-    strata.wait_for_selection([], root)
-    strata.wait_for_focused_entry(focused)
-    assert strata.pane_names() == panes
-    key = PREVIOUS_ENTRY_KEY[mode] if direction == "previous" else NEXT_ENTRY_KEY[mode]
-    expected = "pictures" if direction == "previous" else "todo.txt"
-    strata.keyboard.press(key)
-    strata.wait_for_selection([expected], root)
-    strata.wait_for_focused_entry(expected)
+        strata.wait_for_selection([], root)
+        strata.wait_for_focused_entry(focused)
+        assert strata.pane_names() == panes
+        strata.keyboard.press(key)
+        strata.wait_for_selection([expected], root)
+        strata.wait_for_focused_entry(expected)
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)
@@ -100,3 +101,47 @@ def test_escape_dismisses_transient_before_selection(strata, mode, surface):
     strata.keyboard.press("Escape")
     strata.wait_for_selection([], root)
     assert strata.pane_names() == [root]
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.preferences(single_click_previews=False)
+def test_shift_after_escape_starts_on_the_focused_entry(strata, mode):
+    root = strata.fixture.root.name
+    next_key = NEXT_ENTRY_KEY[mode]
+    strata.wait_for_focused_entry("archive")
+    strata.wait_for_selection(["archive"], root)
+    strata.keyboard.press("Escape")
+    strata.wait_for_selection([], root)
+    strata.wait_for_focused_entry("archive")
+
+    strata.keyboard.press(f"shift+{next_key}")
+    strata.wait_for_selection(["archive"], root)
+    strata.wait_for_focused_entry("archive")
+
+    strata.keyboard.press(f"shift+{next_key}")
+    strata.wait_for_selection(["archive", "documents"], root)
+    strata.wait_for_focused_entry("documents")
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.preferences(single_click_previews=False)
+def test_shift_after_escape_does_not_reuse_a_range_anchor(strata, mode):
+    root = strata.fixture.root.name
+    next_key = NEXT_ENTRY_KEY[mode]
+    strata.wait_for_focused_entry("archive")
+    strata.wait_for_selection(["archive"], root)
+    strata.keyboard.press(f"shift+{next_key}")
+    strata.wait_for_selection(["archive", "documents"], root)
+    strata.wait_for_focused_entry("documents")
+
+    strata.keyboard.press("Escape")
+    strata.wait_for_selection([], root)
+    strata.wait_for_focused_entry("documents")
+
+    strata.keyboard.press(f"shift+{next_key}")
+    strata.wait_for_selection(["documents"], root)
+    strata.wait_for_focused_entry("documents")
+
+    strata.keyboard.press(f"shift+{next_key}")
+    strata.wait_for_selection(["documents", "pictures"], root)
+    strata.wait_for_focused_entry("pictures")

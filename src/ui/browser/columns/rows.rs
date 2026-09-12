@@ -1,18 +1,19 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    BoundRow, PendingPointerActivation, column_size_text, set_active_path_style,
-    set_cut_path_style, should_activate_single_click, should_preserve_drag_selection,
-    should_preview_pointer_press,
+    BoundRow, PendingActivationKind, PendingPointerActivation, column_size_text,
+    set_active_path_style, set_cut_path_style, should_activate_single_click,
+    should_preserve_drag_selection, should_preview_pointer_press,
 };
 use crate::ui::{
     browser::{
         ViewState,
         clipboard::{
-            file_drag_content, file_drop_action, locations_equal, locations_from_file_list_value,
-            shared_cut_locations,
+            PreparedFileDrop, drag_actions_for_modifiers, drag_icon_with_count, file_drag_content,
+            file_drop_action, file_drop_commit, locations_equal, locations_from_file_list_value,
+            prepare_file_drop_target, shared_cut_locations,
         },
-        collection::{ViewMap, cancel_source},
+        collection::{ViewMap, activate_recursive_search_result, cancel_source},
         entry::{
             entry_icon, entry_responds_to_preview_click, metadata_needs_fill, model_display_name,
         },
@@ -20,7 +21,7 @@ use crate::ui::{
         paths::is_trash_location,
     },
     browser_modes::BrowserMode,
-    modal::{slide_in_down, slide_out},
+    modal::slide_in_down,
 };
 use crate::{model::FileEntry, services::SearchItem};
 use gtk::{glib, prelude::*};
@@ -59,6 +60,8 @@ pub(super) fn column_rows(
     let factory = gtk::SignalListItemFactory::new();
     let bound_rows: Rc<RefCell<Vec<BoundRow>>> = Rc::new(RefCell::new(Vec::new()));
     let rows_for_setup = bound_rows.clone();
+    let search_active_for_factory = recursive_search_active.clone();
+    let search_results_for_factory = search_results.clone();
     let weak_state = Rc::downgrade(state);
     let modified_selection_for_rows = modified_selection.clone();
     let selection_for_rows = selection.clone();
@@ -69,15 +72,9 @@ pub(super) fn column_rows(
         };
         let row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         row.add_css_class("file-row");
-        row.add_css_class("file-appear");
-        let weak_row = row.downgrade();
-        glib::idle_add_local_once(move || {
-            if let Some(row) = weak_row.upgrade() {
-                row.remove_css_class("file-appear");
-            }
-        });
         let icon = crate::ui::thumbnail::ThumbnailSlot::new(17);
         icon.add_css_class("file-icon");
+        let drag_icon = icon.clone();
         icon.set_valign(gtk::Align::Center);
         let label = gtk::Label::builder()
             .halign(gtk::Align::Fill)
@@ -119,11 +116,13 @@ pub(super) fn column_rows(
         let size = gtk::Label::new(None);
         size.add_css_class("file-size");
         size.set_halign(gtk::Align::End);
-        size.set_valign(gtk::Align::Center);
+        size.set_valign(gtk::Align::Fill);
         size.set_xalign(1.0);
+        size.set_yalign(0.5);
         let middle = gtk::Overlay::new();
+        middle.add_css_class("file-row-content");
         middle.set_hexpand(true);
-        middle.set_valign(gtk::Align::Center);
+        middle.set_valign(gtk::Align::Fill);
         let path = gtk::Label::builder()
             .xalign(0.0)
             .wrap(true)
@@ -134,6 +133,7 @@ pub(super) fn column_rows(
             .build();
         path.add_css_class("file-search-path");
         let content = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        content.set_valign(gtk::Align::Center);
         content.append(&editor);
         content.append(&path);
         middle.set_child(Some(&content));
@@ -176,20 +176,26 @@ pub(super) fn column_rows(
         });
         row.add_controller(motion);
 
+        item.set_child(Some(&row));
+        let mut content_drag: Option<gtk::DragSource> = None;
         if weak_state.upgrade().is_some_and(|state| state.interactive) {
             let drag = gtk::DragSource::builder()
                 .actions(gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE)
                 .build();
+            drag.set_propagation_phase(gtk::PropagationPhase::Capture);
             let weak_state_for_drag = weak_state.clone();
             let dragged_item = item.downgrade();
             let map_for_drag = map_for_hover.clone();
             let prepare_row = row.downgrade();
             drag.connect_prepare(move |source, x, y| {
                 let prepare_row = prepare_row.upgrade()?;
-                if !crate::ui::pointer::hits_item_content(prepare_row.upcast_ref(), x, y) {
+                if prepare_row
+                    .pick(x, y, gtk::PickFlags::DEFAULT)
+                    .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
+                {
                     return None;
                 }
-                prepare_row.remove_css_class("slide-out");
+                source.set_actions(drag_actions_for_modifiers(source.current_event_state()));
                 let state = weak_state_for_drag.upgrade()?;
                 let dragged_item = dragged_item.upgrade()?;
                 let source_position = map_for_drag.source_position(dragged_item.position())?;
@@ -203,42 +209,71 @@ pub(super) fn column_rows(
                 } else {
                     vec![entry]
                 };
-                let paintable = gtk::WidgetPaintable::new(source.widget().as_ref());
-                source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);
+                let paintable = gtk::WidgetPaintable::new(Some(&prepare_row));
+                if let Some((texture, hot_x, hot_y)) =
+                    drag_icon_with_count(drag_icon.upcast_ref(), entries.len())
+                {
+                    source.set_icon(Some(&texture), hot_x, hot_y);
+                } else {
+                    source.set_icon(Some(&paintable), x.round() as i32, y.round() as i32);
+                }
                 file_drag_content(&entries)
             });
             let dragged_row = row.downgrade();
+            let weak_state_for_begin = weak_state.clone();
             drag.connect_drag_begin(move |_, _| {
                 if let Some(row) = dragged_row.upgrade() {
                     row.add_css_class("dragging");
                 }
+                if let Some(state) = weak_state_for_begin.upgrade() {
+                    state.cancel_peek();
+                }
             });
             let dragged_row = row.downgrade();
+            let weak_state_for_end = weak_state.clone();
             drag.connect_drag_end(move |_, _, _| {
                 if let Some(row) = dragged_row.upgrade() {
                     row.remove_css_class("dragging");
-                    slide_out(&row);
+                }
+                if let Some(state) = weak_state_for_end.upgrade() {
+                    state.cancel_peek();
                 }
             });
-            row.add_controller(drag);
+            row.add_controller(drag.clone());
+            content_drag = Some(drag);
 
-            let drop = gtk::DropTarget::new(
-                gtk::gdk::FileList::static_type(),
-                gtk::gdk::DragAction::COPY | gtk::gdk::DragAction::MOVE,
-            );
+            let dest_for_row = {
+                let weak_state = weak_state.clone();
+                let item = item.downgrade();
+                let map = map_for_hover.clone();
+                move || {
+                    let state = weak_state.upgrade()?;
+                    let item = item.upgrade()?;
+                    map.source_position(item.position())
+                        .and_then(|position| state.browser.entry_at(depth, position))
+                        .filter(FileEntry::is_directory)
+                        .map(|entry| entry.location)
+                }
+            };
+            let PreparedFileDrop {
+                target: drop,
+                state: drop_state,
+            } = prepare_file_drop_target(dest_for_row);
             let highlighted_row = row.downgrade();
+            let state_for_enter = drop_state.clone();
             drop.connect_enter(move |target, _, _| {
                 if let Some(row) = highlighted_row.upgrade() {
                     row.add_css_class("drop-destination");
                 }
-                file_drop_action(target)
+                file_drop_action(target, &state_for_enter)
             });
             let highlighted_row = row.downgrade();
+            let state_for_motion = drop_state.clone();
             drop.connect_motion(move |target, _, _| {
                 if let Some(row) = highlighted_row.upgrade() {
                     row.add_css_class("drop-destination");
                 }
-                file_drop_action(target)
+                file_drop_action(target, &state_for_motion)
             });
             let highlighted_row = row.downgrade();
             drop.connect_leave(move |_| {
@@ -268,8 +303,6 @@ pub(super) fn column_rows(
                 })
             });
             let weak_state_for_drop = weak_state.clone();
-            let dropped_item = item.downgrade();
-            let map_for_drop = map_for_hover.clone();
             let dropped_row = row.downgrade();
             drop.connect_drop(move |target, value, _, _| {
                 let Some(dropped_row) = dropped_row.upgrade() else {
@@ -279,24 +312,16 @@ pub(super) fn column_rows(
                 let Some(state) = weak_state_for_drop.upgrade() else {
                     return false;
                 };
-                let Some(dropped_item) = dropped_item.upgrade() else {
-                    return false;
-                };
-                let Some(destination) = map_for_drop
-                    .source_position(dropped_item.position())
-                    .and_then(|position| state.browser.entry_at(depth, position))
-                    .filter(FileEntry::is_directory)
-                    .map(|entry| entry.location)
-                else {
+                let Some(destination) = drop_state.destination() else {
                     return false;
                 };
                 let Some(sources) = locations_from_file_list_value(value) else {
                     return false;
                 };
-                let move_sources = file_drop_action(target) == gtk::gdk::DragAction::MOVE;
+                let commit = file_drop_commit(target, &destination, &sources, &drop_state);
                 slide_in_down(&dropped_row);
                 glib::timeout_add_local_once(Duration::from_millis(300), move || {
-                    state.start_transfer(destination, sources, move_sources);
+                    state.commit_file_drop(destination, sources, commit);
                 });
                 true
             });
@@ -311,6 +336,8 @@ pub(super) fn column_rows(
         let selection_for_click = selection_for_rows.clone();
         let modified_for_click = modified_selection_for_rows.clone();
         let map_for_click = map_for_hover.clone();
+        let search_active_for_click = search_active_for_factory.clone();
+        let search_results_for_click = search_results_for_factory.clone();
         // Open on release so a press-and-move can start a drag first.
         let pending_activation = Rc::new(RefCell::new(None::<PendingPointerActivation>));
         let pending_activation_for_press = pending_activation.clone();
@@ -362,16 +389,65 @@ pub(super) fn column_rows(
                     selection_for_click.select_item(position, true);
                 }
             }
-            if (control || shift)
-                && let Some(widget) = gesture.widget()
-                && crate::ui::pointer::hits_item_content(&widget, x, y)
-            {
-                if let Some(item_widget) = widget.parent() {
+            if control || shift {
+                if let Some(widget) = gesture.widget()
+                    && crate::ui::pointer::hits_item_content(&widget, x, y)
+                    && let Some(item_widget) = widget.parent()
+                {
                     item_widget.grab_focus();
                 }
                 gesture.set_state(gtk::EventSequenceState::Claimed);
             }
             modified_for_click.set(false);
+
+            let filtered = search_active_for_click.get() || map_for_click.has_query();
+            if filtered {
+                if press_count == 1
+                    && !control
+                    && !shift
+                    && let Some(state) = weak_state_for_click.upgrade()
+                {
+                    let pending = if search_active_for_click.get() {
+                        search_results_for_click
+                            .borrow()
+                            .get(position as usize)
+                            .map(|item| {
+                                let kind = if state.browser.is_chooser_mode() {
+                                    PendingActivationKind::ChooserSearchNavigate
+                                } else {
+                                    PendingActivationKind::RecursiveSearch
+                                };
+                                (
+                                    position as usize,
+                                    crate::model::Location::local(item.path.clone()),
+                                    kind,
+                                )
+                            })
+                    } else {
+                        map_for_click
+                            .source_position(position)
+                            .and_then(|source_position| {
+                                let entry = state.browser.entry_at(depth, source_position)?;
+                                state.browser.select(depth, source_position);
+                                Some((
+                                    source_position,
+                                    entry.location,
+                                    PendingActivationKind::Mapped,
+                                ))
+                            })
+                    };
+                    if let Some((position, location, kind)) = pending {
+                        pending_activation_for_press.replace(Some(PendingPointerActivation {
+                            position,
+                            location,
+                            press: (x, y),
+                            moved: false,
+                            kind,
+                        }));
+                    }
+                }
+                return;
+            }
 
             let source_position = map_for_click.source_position(position);
             if let (Some(state), Some(source_position)) =
@@ -404,7 +480,7 @@ pub(super) fn column_rows(
                             location: entry.location.clone(),
                             press: (x, y),
                             moved: false,
-                            preview,
+                            kind: PendingActivationKind::Standard { preview },
                         }));
                     }
                 }
@@ -420,6 +496,7 @@ pub(super) fn column_rows(
             }
         });
         let weak_state_for_release = weak_state.clone();
+        let search_results_for_release = search_results_for_factory.clone();
         selection_click.connect_released(move |gesture, _, x, y| {
             if gesture.current_event_state().intersects(
                 gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::SHIFT_MASK,
@@ -436,34 +513,83 @@ pub(super) fn column_rows(
             let Some(state) = weak_state_for_release.upgrade() else {
                 return;
             };
-            if !state
-                .browser
-                .entry_at(depth, pending.position)
-                .is_some_and(|entry| pending.can_activate(&entry.location))
-            {
-                return;
-            }
             // GTK 4.14's DragSource needs the release to reset before the next press.
-            if pending.preview {
-                if state.single_click_previews.get() {
-                    state.browser.preview(depth, pending.position);
+            match pending.kind {
+                PendingActivationKind::Standard { preview } => {
+                    if !state
+                        .browser
+                        .entry_at(depth, pending.position)
+                        .is_some_and(|entry| pending.can_activate(&entry.location))
+                    {
+                        return;
+                    }
+                    if preview {
+                        if state.single_click_previews.get() {
+                            state.browser.preview(depth, pending.position);
+                        }
+                    } else {
+                        state.browser.activate(depth, pending.position);
+                    }
                 }
-            } else {
-                state.browser.activate(depth, pending.position);
+                PendingActivationKind::Mapped => {
+                    if !state
+                        .browser
+                        .entry_at(depth, pending.position)
+                        .is_some_and(|entry| pending.can_activate(&entry.location))
+                    {
+                        return;
+                    }
+                    if !state.browser.is_chooser_mode() {
+                        state.browser.activate_in_place(depth, pending.position);
+                    }
+                }
+                PendingActivationKind::ChooserSearchNavigate => {
+                    let Some(item) = search_results_for_release
+                        .borrow()
+                        .get(pending.position)
+                        .cloned()
+                    else {
+                        return;
+                    };
+                    let location = crate::model::Location::local(item.path.clone());
+                    if item.is_directory && pending.can_activate(&location) {
+                        state.browser.navigate(location);
+                    }
+                }
+                PendingActivationKind::RecursiveSearch => {
+                    let matches = search_results_for_release
+                        .borrow()
+                        .get(pending.position)
+                        .is_some_and(|item| {
+                            pending.can_activate(&crate::model::Location::local(item.path.clone()))
+                        });
+                    if matches {
+                        activate_recursive_search_result(
+                            &Rc::downgrade(&state.browser),
+                            &search_results_for_release,
+                            pending.position as u32,
+                        );
+                    }
+                }
             }
         });
         selection_click.connect_cancel(move |_, _| {
             pending_activation_for_cancel.take();
         });
-        row.add_controller(selection_click);
-        item.set_child(Some(&row));
+        row.add_controller(selection_click.clone());
+        if let Some(drag) = &content_drag {
+            drag.group_with(&selection_click);
+        }
         let weak_item = glib::WeakRef::new();
         weak_item.set(Some(item));
         let weak_row = glib::WeakRef::new();
         weak_row.set(Some(&row));
+        let weak_rename_label = glib::WeakRef::new();
+        weak_rename_label.set(Some(&label));
         rows_for_setup.borrow_mut().push(BoundRow {
             item: weak_item,
             row: weak_row,
+            rename_label: weak_rename_label,
         });
     });
     let map_for_bind = map.clone();
@@ -544,6 +670,12 @@ pub(super) fn column_rows(
         } else {
             source_position.and_then(|position| browser?.entry_at(depth, position))
         };
+        if let Some(entry) = entry.as_ref() {
+            let pending_name = state
+                .as_ref()
+                .and_then(|state| state.pending_rename_name(entry));
+            label.set_label(pending_name.as_deref().unwrap_or(&entry.display_name));
+        }
         let origin = entry
             .as_ref()
             .filter(|_| searching)

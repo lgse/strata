@@ -99,7 +99,7 @@ From the sidebar, Right returns to the item you left (or the current file view i
 
 [Before: sidebar Home](screenshots/291/sidebar-top-bar-before.png) · [After Up: top navigation bar](screenshots/291/sidebar-top-bar.png)
 
-**Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files; the existing Vim `l` activation shortcut is unchanged. Backspace and the existing Vim directory shortcuts remain available.
+**Alt+Left / Alt+Right / Alt+Up** remain Back / Forward / Parent in every mode. List/Columns retain Miller-column navigation: **Right enters folders or moves into an existing pane to the right**. On a focused file with no pane to the right, Right does nothing; it never opens or previews the file. **Enter** opens files; the existing `l` activation shortcut is unchanged. Backspace and the existing `h` / `l` directory shortcuts remain available.
 
 [Right-arrow demo: files stay selected; folders open in a child column](screenshots/291/right-folder-only.mp4).
 

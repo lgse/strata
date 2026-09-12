@@ -2,7 +2,8 @@
 
 use crate::model::{EntryKind, FileEntry};
 use crate::services::{
-    PreviewContent, content_family, has_plain_text_extension, is_extensionless_dotfile,
+    PreviewContent, content_family, fold_for_search, has_plain_text_extension,
+    is_extensionless_dotfile,
 };
 use gtk::gio;
 use gtk::prelude::*;
@@ -13,18 +14,31 @@ use std::rc::Rc;
 
 pub(in crate::ui) fn format_file_size(bytes: u64) -> String {
     const UNITS: [&str; 5] = ["B", "kB", "MB", "GB", "TB"];
-    if bytes < 1_000 {
-        return format!("{bytes} B");
-    }
+    let (value, unit) = rounded_size_and_unit(bytes, &UNITS);
+    let formatted = format!("{value:.1}");
+    format!("{} {}", formatted.trim_end_matches(".0"), UNITS[unit])
+}
 
+/// Divide `bytes` into the largest unit whose threshold it meets after
+/// rounding to one decimal, returning the rounded value and unit index.
+/// Callers that format with zero decimals for values >= 10 still receive
+/// the one-decimal rounded value so they can decide their own precision.
+pub(in crate::ui) fn rounded_size_and_unit(bytes: u64, units: &[&str]) -> (f64, usize) {
+    if bytes < 1_000 {
+        return (bytes as f64, 0);
+    }
     let mut value = bytes as f64;
     let mut unit = 0;
-    while value >= 1_000.0 && unit < UNITS.len() - 1 {
+    while value >= 1_000.0 && unit < units.len() - 1 {
         value /= 1_000.0;
         unit += 1;
     }
-    let formatted = format!("{value:.1}");
-    format!("{} {}", formatted.trim_end_matches(".0"), UNITS[unit])
+    let rounded = (value * 10.0).round() / 10.0;
+    if rounded >= 1_000.0 && unit < units.len() - 1 {
+        (rounded / 1_000.0, unit + 1)
+    } else {
+        (rounded, unit)
+    }
 }
 
 pub(in crate::ui) fn metadata_needs_fill(entry: &FileEntry) -> bool {
@@ -174,10 +188,10 @@ pub(in crate::ui) fn entry_icon(entry: &FileEntry) -> &'static str {
     icon_for_name(&entry.display_name)
 }
 
-/// `query` must already be folded to lowercase by the caller.
+/// `query` must already be folded through `fold_for_search` by the caller.
 pub(super) fn entry_matches(value: &str, show_hidden: bool, query: &str) -> bool {
     (show_hidden || !model_is_hidden(value))
-        && (query.is_empty() || model_display_name(value).to_lowercase().contains(query))
+        && (query.is_empty() || fold_for_search(model_display_name(value)).contains(query))
 }
 
 pub(super) fn icon_for_name(name: &str) -> &'static str {

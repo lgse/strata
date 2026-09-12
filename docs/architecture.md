@@ -92,16 +92,24 @@ existing fallback path. Pane assembly, headers, grouping/filtering, and Icons fa
 remain in the composition module rather than changing alongside this lifecycle boundary.
 
 Pointer intent is shared through `ui/pointer.rs` and `ui/marquee.rs`. In all three modes,
-thumbnail slots, rendered row text/metadata, and Icons' caption region are item drag targets;
-unused label allocation and the gutters beside thumbnails are marquee origins. Both paths use
-GTK's configured drag threshold. Within collection viewports, marquees claim the sequence only
-after that threshold, leaving simple clicks and modifier-clicks intact. A completed plain click
-on background clears selections; returning to an inactive column then selects its first visible entry. Presses and marquee releases do not clear selections. Click activation and automatic preview wait for release
-and reject cancelled gestures, drag motion, and recycled items. Marquees anchor and cache mapped
-item geometry in scroll-content coordinates, independent of native GtkScrollable or GtkViewport
-layout. Edge and wheel scrolling refresh selection after layout/paint, even without pointer motion;
-unmapped rows cannot overwrite cached geometry with stale allocations. The visible band stays
-clipped to the viewport, while earlier off-screen hits remain selected. Release completes pending
+thumbnail slots, rendered row text/metadata, and Icons' caption region are item drag targets.
+Columns and List treat the whole visible `.file-row` / `.list-row`, including unused label
+allocation and row padding, as a drag origin. Their drag/drop controllers stay on that
+application-owned row so they can coexist with GTK's native list-item selection gesture. Icons
+keeps content-only drag behavior. Marquee ownership mirrors that split: Columns and List use an
+allocated-bounds predicate, so row whitespace is item space; Icons keeps `hits_item_content` and
+treats the gutter beside each card as a marquee origin. Pane background and surrounding chrome
+remain marquee origins, and Alt-drag can force a marquee from an item in any mode. Both
+paths use GTK's configured drag threshold. Within collection viewports, marquees claim the
+sequence only after that threshold, leaving simple clicks and modifier-clicks intact. A
+completed plain click on background clears selections; returning to an inactive column then
+selects its first visible entry. Presses and marquee releases do not clear selections. Click
+activation and automatic preview wait for release and reject cancelled gestures, drag motion,
+and recycled items. Marquees anchor and cache mapped item geometry in scroll-content
+coordinates, independent of native GtkScrollable or GtkViewport layout. Edge and wheel scrolling
+refresh selection after layout/paint, even without pointer motion; unmapped rows cannot
+overwrite cached geometry with stale allocations. The visible band stays clipped to the
+viewport, while earlier off-screen hits remain selected. Release completes pending
 layout-dependent selection before disconnecting the frame handler.
 
 ### Browser implementation map
@@ -154,7 +162,7 @@ Local archive operations live under `adapters/local_operations/archive/`:
 | --- | --- |
 | Operation entry points, worker lifecycle and progress events | `archive.rs` in the parent directory |
 | Staged publication, source traversal and compression writers | `compression.rs` |
-| Per-operation extraction state, copying, cleanup and outcomes | `extraction.rs` |
+| Per-operation extraction state, copying, cleanup, size preflight and outcomes | `extraction.rs` |
 | Confined destination writes, path validation and conflict naming | `destination.rs` |
 | ZIP, TAR/gzip and 7z member enumeration, passwords and decoder errors | `decoders.rs` |
 
@@ -164,6 +172,16 @@ cancellation. Member identity tracking stays inside each decoder rather than ass
 or matching header/callback order. The session validates pending names and applies established
 root renames without filesystem probes or name reservations; final leaf conflicts remain unknown
 until a member is attempted. Sequential formats do not scan unread content to complete that list.
+Before writing, the session checks claimed uncompressed size against destination free space from
+`fstatvfs` on the pinned root, and it refuses a member whose extracted size does not match the
+size declared by the archive header. ZIP and 7z advertise a total up front, so an oversized
+archive is refused before any member is written; TAR streams check each member as it arrives, so
+extraction stops at the free-space boundary and members already written stay in place. The
+guarantee is that extraction never exceeds the free space observed when the session opened;
+it does not model per-file overhead such as block rounding or inodes. Filesystems that report no
+capacity (`f_blocks == 0`, as FUSE mounts without `statfs` do) skip the free-space checks and
+keep only the declared-size match. The `zip` crate does not bound inflated output by the header
+size itself, so that match is the control that stops a ZIP member lying about its size.
 
 The private member boundary currently retains legacy lossy TAR-name conversion and regular-file
 output for non-directory entries, including links. It is not a complete archive-entry model;
@@ -241,7 +259,10 @@ signals share a weak rebuild callback and retain their disconnect handles. Stand
 pinned, and device rows are separate rendering stages, with the chooser's local-only
 filter preserved. Initial construction builds static places; device rows retain their
 existing deferred rebuild timing. Bookmark storage, Trash, and media-release policies
-remain in `window.rs` rather than changing alongside assembly.
+remain in `window.rs` rather than changing alongside assembly. Bookmark mutations
+read the shared GTK file before applying changes and adopt them only after a
+successful save. This preserves sequential external edits, not simultaneous writes;
+other windows are refreshed on their next bookmark action, not by a live monitor.
 
 ### Window keyboard routing
 

@@ -177,6 +177,15 @@ pub(super) fn dismiss_modal_layer(
     overlay: &gtk::Overlay,
     root: Option<&BlurBin>,
 ) {
+    dismiss_modal_layer_then(layer, overlay, root, || {});
+}
+
+pub(super) fn dismiss_modal_layer_then(
+    layer: &gtk::Box,
+    overlay: &gtk::Overlay,
+    root: Option<&BlurBin>,
+    on_done: impl FnOnce() + 'static,
+) {
     if layer.has_css_class("dismissing") {
         return;
     }
@@ -193,6 +202,7 @@ pub(super) fn dismiss_modal_layer(
         {
             root.set_blurred(false);
         }
+        on_done();
     });
 }
 
@@ -220,7 +230,20 @@ pub(super) fn show_error_dialog_after_close(
     let Some(ModalHost {
         overlay: window_overlay,
         blurred_root,
-    }) = ModalHost::blurred_for(parent)
+    }) = ModalHost::blurred_for(parent).or_else(|| {
+        tracing::warn!(
+            "No window modal host is available; reporting the error on the requesting overlay"
+        );
+        parent
+            .as_ref()
+            .clone()
+            .downcast::<gtk::Overlay>()
+            .ok()
+            .map(|overlay| ModalHost {
+                overlay,
+                blurred_root: None,
+            })
+    })
     else {
         on_close();
         return;

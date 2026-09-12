@@ -2,11 +2,10 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::{HashMap, HashSet},
-    ffi::OsString,
+    collections::HashMap,
     fs,
-    io::{ErrorKind, Read},
-    os::unix::{ffi::OsStringExt, fs::MetadataExt},
+    io::ErrorKind,
+    os::unix::fs::MetadataExt,
     path::{Path, PathBuf},
     rc::Rc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -20,7 +19,7 @@ use crate::{
     services::{
         DirectoryChange, DirectoryEvent, DirectoryRequest, FileSource, LoadHandle,
         LocationValidationError, MetadataOutcome, MetadataRequest, MetadataUpdate, RequestId,
-        backend_unavailable_message,
+        backend_unavailable_message, is_hidden_name, native_hidden_names, native_kind,
     },
 };
 
@@ -28,7 +27,6 @@ const LIST_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::t
 const FULL_ATTRIBUTES: &str = "standard::display-name,standard::name,standard::type,standard::is-hidden,standard::is-symlink,standard::size,standard::target-uri,time::modified,unix::mode,access::can-trash,access::can-delete";
 const METADATA_ATTRIBUTES: &str = "standard::type,standard::size,time::modified,unix::mode";
 const MAX_PENDING_MONITOR_CHANGES: usize = 256;
-const MAX_HIDDEN_FILE_BYTES: u64 = 1024 * 1024;
 
 #[derive(Default)]
 pub struct LocalFileSource;
@@ -111,6 +109,17 @@ fn info_mode(info: &gio::FileInfo) -> MetadataValue<u32> {
     }
 }
 
+pub(crate) async fn query_file_entry(location: Location) -> Result<FileEntry, glib::Error> {
+    let info = gio_file_for_location(&location)
+        .query_info_future(
+            FULL_ATTRIBUTES,
+            gio::FileQueryInfoFlags::NOFOLLOW_SYMLINKS,
+            glib::Priority::DEFAULT,
+        )
+        .await?;
+    Ok(entry_from_info(location, info))
+}
+
 fn entry_from_info(location: Location, info: gio::FileInfo) -> FileEntry {
     let native_name = info.name().into_os_string();
     let kind = match (info.file_type(), info_is_symlink(&info)) {
@@ -172,24 +181,6 @@ fn trash_thumbnail_path(location: &Location, info: &gio::FileInfo) -> Option<Pat
         .then_some(path)
 }
 
-fn native_kind(file_type: fs::FileType, path: &Path) -> EntryKind {
-    if file_type.is_dir() {
-        return EntryKind::Directory;
-    }
-    if file_type.is_file() {
-        return EntryKind::File;
-    }
-    if !file_type.is_symlink() {
-        return EntryKind::Other;
-    }
-    match fs::metadata(path) {
-        Ok(metadata) if metadata.is_dir() => EntryKind::DirectorySymbolicLink,
-        Ok(metadata) if metadata.is_file() => EntryKind::FileSymbolicLink,
-        Ok(_) => EntryKind::Other,
-        Err(_) => EntryKind::SymbolicLink,
-    }
-}
-
 fn unix_seconds(time: SystemTime) -> Option<i64> {
     match time.duration_since(UNIX_EPOCH) {
         Ok(duration) => i64::try_from(duration.as_secs()).ok(),
@@ -227,43 +218,6 @@ fn fill_native_entry_metadata(entry: &mut FileEntry) {
     entry.mode = MetadataValue::Known(metadata.mode());
 }
 
-fn native_hidden_names(path: &Path) -> HashSet<OsString> {
-    let Some(bytes) = read_hidden_bounded(&path.join(".hidden")) else {
-        return HashSet::new();
-    };
-    bytes
-        .split(|byte| *byte == b'\n')
-        .filter(|name| !name.is_empty())
-        .map(|name| OsString::from_vec(name.strip_suffix(b"\r").unwrap_or(name).to_vec()))
-        .collect()
-}
-
-fn read_hidden_bounded(path: &Path) -> Option<Vec<u8>> {
-    // Opening a FIFO without `NONBLOCK` would block waiting for a writer.
-    let fd = rustix::fs::open(
-        path,
-        rustix::fs::OFlags::RDONLY
-            | rustix::fs::OFlags::NOFOLLOW
-            | rustix::fs::OFlags::CLOEXEC
-            | rustix::fs::OFlags::NONBLOCK,
-        rustix::fs::Mode::empty(),
-    )
-    .ok()?;
-    let stat = rustix::fs::fstat(&fd).ok()?;
-    if rustix::fs::FileType::from_raw_mode(stat.st_mode) != rustix::fs::FileType::RegularFile {
-        return None;
-    }
-    let file = std::fs::File::from(fd);
-    let mut bytes = Vec::new();
-    file.take(MAX_HIDDEN_FILE_BYTES + 1)
-        .read_to_end(&mut bytes)
-        .ok()?;
-    if bytes.len() as u64 > MAX_HIDDEN_FILE_BYTES {
-        return None;
-    }
-    Some(bytes)
-}
-
 fn scan_native_directory(
     path: &Path,
     request: &DirectoryRequest,
@@ -290,8 +244,7 @@ fn scan_native_directory(
             Err(error) => return NativeEnumeration::Failed(error.to_string()),
         };
         let native_name = child.file_name();
-        let is_hidden = native_name.as_encoded_bytes().first().copied() == Some(b'.')
-            || hidden_names.contains(&native_name);
+        let is_hidden = is_hidden_name(&native_name, &hidden_names);
         if entries.len() == request.max_entries {
             truncated = true;
             break;
@@ -1082,6 +1035,14 @@ fn queue_monitor_change(
 ) -> bool {
     if pending.contains_key(&None) {
         return false;
+    }
+    if let PendingMonitorChange::Move { ref from, .. } = change
+        && matches!(
+            pending.get(&Some(from.clone())),
+            Some(PendingMonitorChange::Upsert(_))
+        )
+    {
+        pending.remove(&Some(from.clone()));
     }
     pending
         .entry(key)

@@ -19,6 +19,7 @@ declare -A SCENARIOS=(
   [click-modes]="tests/e2e/scenarios/test_click_modes.py"
   [view-switching]="tests/e2e/scenarios/test_view_switching.py"
   [quick-preview]="tests/e2e/scenarios/test_quick_preview.py"
+  [filter-results]="tests/e2e/scenarios/test_filter_results.py"
   [popover-scrolling]="tests/e2e/scenarios/test_popover_scrolling.py"
   [rename-caret]="tests/e2e/scenarios/test_inline_renaming.py::test_long_rename_keeps_caret_visible"
 )

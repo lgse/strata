@@ -6,6 +6,7 @@ use gtk::prelude::*;
 
 use crate::{
     sandbox::MediaPreviewBackend,
+    services::CrossVolumeDropStrategy,
     ui::{
         browser_modes::{BrowserMode, ClickActivation, ClickCount},
         controls::{menu_option, segmented_control},
@@ -24,6 +25,9 @@ pub(super) fn general_page(
 ) -> (gtk::Widget, Vec<gtk::Box>, Vec<ResponsiveActivationRow>) {
     let preferences = page_content();
     append_browsing_options(&preferences, &manager);
+
+    append_heading(&preferences, "FILE TRANSFERS");
+    append_cross_volume_drop_option(&preferences, &manager);
 
     append_heading(&preferences, "REFRESH");
     append_auto_refresh_option(&preferences, &manager);
@@ -111,6 +115,54 @@ fn append_preference_switch(
     let (row, toggle) = settings_option(switch.title, switch.description, (switch.read)(manager));
     bind_switch(manager, &toggle, switch.read, switch.write);
     content.append(&row);
+}
+
+fn append_cross_volume_drop_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
+    let strategies = [
+        CrossVolumeDropStrategy::Copy,
+        CrossVolumeDropStrategy::Move,
+        CrossVolumeDropStrategy::Ask,
+    ];
+    let labels = strategies.map(cross_volume_drop_strategy_label);
+    let selected = manager.cross_volume_drop_strategy();
+    let active = strategies
+        .iter()
+        .position(|strategy| *strategy == selected)
+        .unwrap_or(2);
+    let (control, buttons) = segmented_control(&labels, active);
+    let row = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    row.add_css_class("settings-option");
+    let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
+    copy.set_hexpand(true);
+    let title = gtk::Label::new(Some("Cross-device Drag and Drop"));
+    title.set_xalign(0.0);
+    title.add_css_class("settings-option-title");
+    let description = gtk::Label::new(Some("Behavior for drag and drop to a different device."));
+    description.set_xalign(0.0);
+    description.set_wrap(true);
+    description.add_css_class("settings-option-description");
+    copy.append(&title);
+    copy.append(&description);
+    row.append(&copy);
+    row.append(&control);
+    content.append(&row);
+    for (button, strategy) in buttons.iter().zip(strategies) {
+        bind_choice(
+            manager,
+            button,
+            strategy,
+            ThemeManager::cross_volume_drop_strategy,
+            ThemeManager::set_cross_volume_drop_strategy,
+        );
+    }
+}
+
+pub(super) fn cross_volume_drop_strategy_label(strategy: CrossVolumeDropStrategy) -> &'static str {
+    match strategy {
+        CrossVolumeDropStrategy::Copy => "Always Copy",
+        CrossVolumeDropStrategy::Move => "Always Move",
+        CrossVolumeDropStrategy::Ask => "Always Ask",
+    }
 }
 
 fn append_auto_refresh_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {

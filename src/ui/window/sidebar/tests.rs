@@ -37,7 +37,8 @@ fn saved_order_rebuilds_both_sidebars_without_losing_active_places() {
             ThemeManager::seed_saved_preferences_for_test();
             let preferences = ThemeManager::shared();
             let location = Location::local(home_directory().join("fixture-pin"));
-            save_pinned_places(&[(location.clone(), "Pinned fixture".into())]);
+            save_pinned_places(&[(location.clone(), "Pinned fixture".into())])
+                .expect("seed bookmarks");
             let sidebars = [
                 build_sidebar(browser_for_window(), preferences.clone(), true),
                 build_sidebar(browser_for_window(), preferences.clone(), true),
@@ -116,7 +117,10 @@ fn pinned_row_reordering_preserves_storage_and_chooser_filtering() {
             );
             sidebar.state.unpin_location(&first);
             assert_eq!(pinned_locations(&sidebar), [second, remote]);
-            assert_eq!(load_pinned_places(), *sidebar.state.pinned_places.borrow());
+            assert_eq!(
+                load_pinned_places().expect("saved bookmarks"),
+                *sidebar.state.pinned_places.borrow()
+            );
             for sidebar in [sidebar, chooser] {
                 sidebar.disconnect();
                 sidebar.state.browser.clear_observer();
@@ -181,13 +185,14 @@ fn shared_place_bindings_keep_navigation_and_drop_policies_distinct() {
                 Location::uri("trash:///"),
                 PlaceNavigation::Direct,
             );
-            assert!(!trash.has_css_class("file-drop-zone"));
+            assert!(trash.has_css_class("file-drop-zone"));
             let controllers = trash.observe_controllers();
-            assert!(!(0..controllers.n_items()).any(|index| {
-                controllers
-                    .item(index)
-                    .is_some_and(|controller| controller.is::<gtk::DropTarget>())
-            }));
+            let targets: Vec<_> = (0..controllers.n_items())
+                .filter_map(|index| controllers.item(index)?.downcast::<gtk::DropTarget>().ok())
+                .collect();
+            assert_eq!(targets.len(), 1);
+            assert_eq!(targets[0].actions(), gtk::gdk::DragAction::MOVE);
+            assert!(targets[0].is_preload());
             sidebar.disconnect();
             sidebar.state.browser.clear_observer();
         },

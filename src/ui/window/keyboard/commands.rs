@@ -44,10 +44,11 @@ impl Dispatcher {
 
     pub(super) fn inline_editing(&self, event: &KeyEvent) -> KeyResult {
         if is_rename_shortcut(event.key, event.modifiers)
-            && !event
-                .focused
-                .as_ref()
-                .is_some_and(crate::ui::focus_navigation::editable)
+            && (self.view.filter_has_focus()
+                || !event
+                    .focused
+                    .as_ref()
+                    .is_some_and(crate::ui::focus_navigation::editable))
             && self.view.begin_rename()
         {
             return Some(Propagation::Stop);
@@ -55,7 +56,19 @@ impl Dispatcher {
         if event.key == Key::Escape && (self.view.cancel_new_entry() || self.view.cancel_rename()) {
             return Some(Propagation::Stop);
         }
-        self.inline_editing_active().then_some(Propagation::Proceed)
+        if !self.inline_editing_active() {
+            return None;
+        }
+        // Stop Ctrl+A before the collection view also applies its select-all binding.
+        if event.control()
+            && event.without(Modifiers::SHIFT_MASK | Modifiers::ALT_MASK)
+            && event.key == Key::a
+            && let Some(field) = self.view.active_rename_field()
+        {
+            field.select_region(0, -1);
+            return Some(Propagation::Stop);
+        }
+        Some(Propagation::Proceed)
     }
 
     pub(super) fn filter_and_location_commands(&self, event: &KeyEvent) -> KeyResult {
@@ -193,7 +206,7 @@ impl Dispatcher {
             },
             _ => return None,
         };
-        if self.view.filter_has_focus() {
+        if self.view.filter_has_focus() || event.text_has_focus() {
             return Some(Propagation::Proceed);
         }
         action(&self.view).then_some(Propagation::Stop)
