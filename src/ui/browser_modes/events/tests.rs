@@ -327,6 +327,148 @@ fn publication_releases_browser_borrows_before_gtk_notifications() {
 }
 
 #[test]
+fn mode_switching_reuses_existing_panes_and_reattaches_models() {
+    gtk_test(
+        "ui::browser_modes::events::tests::mode_switching_reuses_existing_panes_and_reattaches_models",
+        || {
+            let mut fixture = Fixture::new(BrowserMode::Icons, false);
+            let icons_shell = fixture.pane().shell.clone();
+            let icons_pane = fixture.pane();
+            assert_attached(&icons_pane, true);
+
+            fixture.views.prepare_mode(BrowserMode::List);
+            fixture.views.show_mode(BrowserMode::List);
+            fixture.views.clear_inactive_mode(BrowserMode::Icons);
+            let list_shell = fixture.pane().shell.clone();
+            let list_pane = fixture.pane();
+            assert_attached(&list_pane, true);
+            assert_attached(&icons_pane, false);
+            assert_eq!(
+                fixture.views.icons_panes.first().map(|p| &p.shell),
+                Some(&icons_shell)
+            );
+
+            fixture.views.prepare_mode(BrowserMode::Icons);
+            fixture.views.show_mode(BrowserMode::Icons);
+            fixture.views.clear_inactive_mode(BrowserMode::List);
+            assert_eq!(fixture.pane().shell, icons_shell);
+            assert_attached(&icons_pane, true);
+            assert_attached(&list_pane, false);
+            assert_eq!(
+                fixture.views.list_pane.as_ref().map(|p| &p.shell),
+                Some(&list_shell)
+            );
+        },
+    );
+}
+
+#[test]
+fn mode_switch_after_navigation_rebuilds_for_the_new_location() {
+    gtk_test(
+        "ui::browser_modes::events::tests::mode_switch_after_navigation_rebuilds_for_the_new_location",
+        || {
+            let mut fixture = Fixture::new(BrowserMode::Icons, false);
+            let icons_shell = fixture.pane().shell.clone();
+
+            fixture.views.prepare_mode(BrowserMode::List);
+            fixture.views.show_mode(BrowserMode::List);
+            fixture.views.clear_inactive_mode(BrowserMode::Icons);
+            fixture.browser.navigate(Location::local("/other"));
+            fixture.views.handle(&BrowserEvent::ColumnAdded {
+                depth: 0,
+                location: Location::local("/other"),
+            });
+            fixture
+                .views
+                .handle(&BrowserEvent::EntriesReplaced { depth: 0, count: 3 });
+            fixture.views.handle(&BrowserEvent::LoadFinished {
+                depth: 0,
+                truncated: false,
+            });
+
+            fixture.views.prepare_mode(BrowserMode::Icons);
+            assert_ne!(fixture.pane().shell, icons_shell);
+            assert_eq!(
+                fixture.pane().location.as_ref(),
+                Some(&Location::local("/other"))
+            );
+        },
+    );
+}
+
+#[test]
+fn mode_switch_after_grouping_change_rebuilds_the_list_pane() {
+    gtk_test(
+        "ui::browser_modes::events::tests::mode_switch_after_grouping_change_rebuilds_the_list_pane",
+        || {
+            let mut fixture = Fixture::new(BrowserMode::List, false);
+            let list_shell = fixture.pane().shell.clone();
+
+            fixture.views.prepare_mode(BrowserMode::Icons);
+            fixture.views.show_mode(BrowserMode::Icons);
+            fixture.views.clear_inactive_mode(BrowserMode::List);
+            fixture.views.set_group_by_type(true);
+
+            fixture.views.prepare_mode(BrowserMode::List);
+            assert_ne!(fixture.pane().shell, list_shell);
+            assert!(fixture.pane().group_by_type);
+        },
+    );
+}
+
+#[test]
+fn mode_switch_after_sort_change_uses_current_heading_direction() {
+    gtk_test(
+        "ui::browser_modes::events::tests::mode_switch_after_sort_change_uses_current_heading_direction",
+        || {
+            use crate::model::{SortDirection, SortKey};
+
+            let mut fixture = Fixture::new(BrowserMode::List, false);
+            fixture.views.prepare_mode(BrowserMode::Icons);
+            fixture.views.show_mode(BrowserMode::Icons);
+            fixture.views.clear_inactive_mode(BrowserMode::List);
+            fixture
+                .browser
+                .set_sort(0, SortKey::Name, SortDirection::Descending);
+            fixture.views.prepare_mode(BrowserMode::List);
+            fixture.views.show_mode(BrowserMode::List);
+            let pane = fixture.pane();
+            let mut widgets = vec![pane.shell.clone().upcast::<gtk::Widget>()];
+            let button = loop {
+                let widget = widgets.pop().expect("name heading button");
+                if widget.has_css_class("list-heading-button")
+                    && widget
+                        .first_child()
+                        .and_then(|row| row.first_child())
+                        .and_then(|label| label.downcast::<gtk::Label>().ok())
+                        .is_some_and(|label| label.text() == "Name")
+                {
+                    break widget.downcast::<gtk::Button>().expect("heading button");
+                }
+                let mut child = widget.first_child();
+                while let Some(current) = child {
+                    child = current.next_sibling();
+                    widgets.push(current);
+                }
+            };
+            button.emit_clicked();
+            let preferences = fixture.browser.column_preferences(0).expect("preferences");
+            assert_eq!(preferences.sort_key, SortKey::Name);
+            assert_eq!(preferences.sort_direction, SortDirection::Ascending);
+
+            fixture.views.prepare_mode(BrowserMode::Icons);
+            fixture.views.show_mode(BrowserMode::Icons);
+            fixture.views.clear_inactive_mode(BrowserMode::List);
+            fixture
+                .browser
+                .set_sort(0, SortKey::Name, SortDirection::Descending);
+            fixture.views.prepare_mode(BrowserMode::List);
+            assert_ne!(fixture.pane().shell, pane.shell);
+        },
+    );
+}
+
+#[test]
 fn inactive_depths_and_cached_modes_do_not_receive_row_updates() {
     gtk_test(
         "ui::browser_modes::events::tests::inactive_depths_and_cached_modes_do_not_receive_row_updates",

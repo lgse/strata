@@ -212,9 +212,14 @@ struct PaneSection {
     item_context_trigger: Rc<dyn Fn(f64, f64)>,
 }
 
+type ListSorting = Rc<Cell<(SortKey, SortDirection)>>;
+
 #[derive(Clone)]
 struct Pane {
     depth: usize,
+    location: Option<Location>,
+    group_by_type: bool,
+    sorting: Option<ListSorting>,
     shell: gtk::Box,
     header: gtk::Box,
     model: gtk::StringList,
@@ -854,9 +859,53 @@ impl ModeViews {
         self.mode = mode;
         match mode {
             BrowserMode::Columns => {}
-            BrowserMode::Icons => self.rebuild_icons(),
-            BrowserMode::List => self.rebuild_list(),
+            BrowserMode::Icons => self.prepare_icons(),
+            BrowserMode::List => self.prepare_list(),
         }
+    }
+
+    fn prepare_icons(&mut self) {
+        let Some(depth) = self.browser.active_depth() else {
+            self.clear_icons();
+            return;
+        };
+        let Some(snapshot) = self.browser.column_snapshot(depth) else {
+            return;
+        };
+        if let Some(pane) = self.icons_panes.first()
+            && pane.depth == depth
+            && pane.location.as_ref() == Some(&snapshot.location)
+        {
+            reconnect_pane_model(pane);
+            apply_snapshot(pane, &snapshot, &self.browser);
+            return;
+        }
+        self.rebuild_icons();
+    }
+
+    fn prepare_list(&mut self) {
+        let Some(depth) = self.browser.active_depth() else {
+            self.clear_list();
+            return;
+        };
+        let Some(snapshot) = self.browser.column_snapshot(depth) else {
+            return;
+        };
+        if let Some(pane) = self.list_pane.as_ref()
+            && pane.depth == depth
+            && pane.location.as_ref() == Some(&snapshot.location)
+            && pane.group_by_type == self.group_by_type
+            && pane.sorting.as_ref().map(|sorting| sorting.get())
+                == self
+                    .browser
+                    .column_preferences(depth)
+                    .map(|preferences| (preferences.sort_key, preferences.sort_direction))
+        {
+            reconnect_pane_model(pane);
+            apply_snapshot(pane, &snapshot, &self.browser);
+            return;
+        }
+        self.rebuild_list();
     }
 
     pub fn show_mode(&self, mode: BrowserMode) {
@@ -873,8 +922,20 @@ impl ModeViews {
         }
         match mode {
             BrowserMode::Columns => {}
-            BrowserMode::Icons => self.clear_icons(),
-            BrowserMode::List => self.clear_list(),
+            BrowserMode::Icons => self.deactivate_icons(),
+            BrowserMode::List => self.deactivate_list(),
+        }
+    }
+
+    fn deactivate_icons(&self) {
+        for pane in &self.icons_panes {
+            deactivate_pane_models(pane);
+        }
+    }
+
+    fn deactivate_list(&self) {
+        if let Some(pane) = self.list_pane.as_ref() {
+            deactivate_pane_models(pane);
         }
     }
 
@@ -1621,6 +1682,7 @@ fn build_icons_pane(
     depth: usize,
     title: &str,
 ) -> Pane {
+    let location = browser.location_at(depth);
     let controls = icons_controls(&browser, depth, options.thumbnail_size.get());
     if let Some(state) = options.new_folder_state {
         controls
@@ -1796,6 +1858,9 @@ fn build_icons_pane(
     marquee.add_origin_surface(&header);
     let pane = Pane {
         depth,
+        location,
+        group_by_type: false,
+        sorting: None,
         shell,
         header,
         model,
@@ -2177,7 +2242,11 @@ fn density_icons_columns(density: BrowserDensity) -> u32 {
     }
 }
 
-fn list_headings(browser: &Rc<Browser>, depth: usize, columns: ListColumnLayout) -> gtk::Box {
+fn list_headings(
+    browser: &Rc<Browser>,
+    depth: usize,
+    columns: ListColumnLayout,
+) -> (gtk::Box, ListSorting) {
     let headings = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     headings.add_css_class("list-headings");
     let preferences = browser.column_preferences(depth).unwrap_or_default();
@@ -2278,7 +2347,7 @@ fn list_headings(browser: &Rc<Browser>, depth: usize, columns: ListColumnLayout)
             });
         }
     });
-    headings
+    (headings, sorting)
 }
 
 fn register_list_column_cell(
@@ -2433,6 +2502,7 @@ fn build_list_pane(
     depth: usize,
     title: &str,
 ) -> Pane {
+    let location = browser.location_at(depth);
     let navigation = list_navigation(&browser);
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     actions.add_css_class("icons-header-actions");
@@ -2491,7 +2561,7 @@ fn build_list_pane(
     let syncing_selection = Rc::new(Cell::new(false));
     let sections: Rc<RefCell<Vec<PaneSection>>> = Rc::new(RefCell::new(Vec::new()));
 
-    let headings = list_headings(&browser, depth, columns.clone());
+    let (headings, sorting) = list_headings(&browser, depth, columns.clone());
 
     let bound_items = Rc::new(RefCell::new(Vec::new()));
     let scrolling = Rc::new(Cell::new(false));
@@ -2644,6 +2714,9 @@ fn build_list_pane(
     content.append(&search.widget);
     let pane = Pane {
         depth,
+        location,
+        group_by_type: options.group_by_type,
+        sorting: Some(sorting),
         shell,
         header,
         model,
@@ -3711,6 +3784,17 @@ fn detach_pane_models(pane: &Pane) {
         section.syncing.set(true);
         section.selection.set_model(None::<&gio::ListModel>);
         super::browser::detach_collection_view(&section.view);
+    }
+    if let Some(filtered) = pane.filter_model.as_ref() {
+        filtered.set_model(None::<&gio::ListModel>);
+    }
+}
+
+fn deactivate_pane_models(pane: &Pane) {
+    pane.detached.set(true);
+    for section in pane.all_sections() {
+        section.syncing.set(true);
+        section.selection.set_model(None::<&gio::ListModel>);
     }
     if let Some(filtered) = pane.filter_model.as_ref() {
         filtered.set_model(None::<&gio::ListModel>);

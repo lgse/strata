@@ -51,7 +51,7 @@ fn pointer_controls_cover_navigation_and_pane_actions() {
                 child = button.next_sibling();
             }
             assert_eq!(count, 3);
-            let headings = super::list_headings(&browser, 0, super::ListColumnLayout::new());
+            let (headings, _) = super::list_headings(&browser, 0, super::ListColumnLayout::new());
             let mut child = headings.first_child();
             let mut index = 0;
             while let Some(cell) = child {
