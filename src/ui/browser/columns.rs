@@ -615,10 +615,20 @@ impl ViewState {
         crate::ui::controls::pane_header_action(&filter_button);
         let shown_filter = filter_revealer.clone();
         let focused_filter = filter_entry.clone();
+        let weak_for_filter_toggle = Rc::downgrade(self);
         filter_button.connect_toggled(move |button| {
             shown_filter.set_reveal_child(button.is_active());
             if button.is_active() {
                 focused_filter.grab_focus();
+                // At most one column filter is open at a time; dismissing the
+                // others also clears their query, via their own toggle handler.
+                if let Some(state) = weak_for_filter_toggle.upgrade() {
+                    for other in state.columns.borrow().iter() {
+                        if other.filter_button != *button {
+                            other.filter_button.set_active(false);
+                        }
+                    }
+                }
             } else {
                 focused_filter.set_text("");
             }
@@ -1108,6 +1118,35 @@ impl ViewState {
         column.append(&destination_hint);
 
         let shell = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+
+        // Dismiss this column's filter once focus settles outside the column,
+        // but not for a press that merely moves focus to this column's own
+        // list (e.g. clicking a filtered row) -- deferred so focus has time
+        // to land on its real target before this checks where it went.
+        let filter_button_for_blur = filter_button.clone();
+        let shell_for_blur = shell.downgrade();
+        let filter_focus = gtk::EventControllerFocus::new();
+        filter_focus.connect_leave(move |controller| {
+            let Some(widget) = controller.widget() else {
+                return;
+            };
+            let shell_for_blur = shell_for_blur.clone();
+            let filter_button_for_blur = filter_button_for_blur.clone();
+            glib::idle_add_local_once(move || {
+                let Some(shell) = shell_for_blur.upgrade() else {
+                    return;
+                };
+                let focused = widget.root().and_then(|root| root.focus());
+                let left_column = !focused.is_some_and(|focused| {
+                    focused.is_ancestor(&shell) || focused == shell.clone().upcast::<gtk::Widget>()
+                });
+                if left_column {
+                    filter_button_for_blur.set_active(false);
+                }
+            });
+        });
+        filter_entry.add_controller(filter_focus);
+
         shell.set_size_request(COLUMN_WIDTH, -1);
         let previous_scale = Cell::new(1.0);
         crate::ui::theme::ThemeManager::shared().bind_interface_scale(

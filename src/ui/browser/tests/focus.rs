@@ -14,6 +14,16 @@ fn wait_until(condition: impl Fn() -> bool) {
     }
 }
 
+/// Drains pending idle/timeout sources for a bit, for asserting something did *not* happen
+/// (e.g. the deferred focus-leave check), where `wait_until` can't be used since the condition
+/// is expected to stay false.
+fn settle() {
+    for _ in 0..20 {
+        glib::MainContext::default().iteration(false);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
 #[test]
 fn background_splices_preserve_column_multiselection_and_pending_properties() {
     crate::test_support::gtk_test(
@@ -174,6 +184,106 @@ fn filter_follows_latest_pointer_or_keyboard_target() {
             assert!(!view.state.columns.borrow()[0].filter_button.is_active());
             assert!(view.state.columns.borrow()[1].filter_button.is_active());
             assert_column_header_actions(&view, 1);
+            window.close();
+        },
+    );
+}
+
+#[test]
+fn opening_one_columns_filter_dismisses_another_columns_open_filter() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::opening_one_columns_filter_dismisses_another_columns_open_filter",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            std::fs::create_dir(fixture.path().join("Child")).expect("child folder");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            browser.select(0, 0);
+            browser.enter_focused_directory();
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+
+            let (first, second) = {
+                let columns = view.state.columns.borrow();
+                (columns[0].clone(), columns[1].clone())
+            };
+
+            first.filter_button.set_active(true);
+            first.filter_entry.set_text("needle");
+            assert!(first.filter_button.is_active());
+
+            second.filter_button.set_active(true);
+            assert!(second.filter_button.is_active());
+            assert!(
+                !first.filter_button.is_active(),
+                "at most one column filter stays open at a time"
+            );
+            assert_eq!(first.filter_entry.text(), "");
+        },
+    );
+}
+
+#[test]
+fn filter_dismisses_only_when_focus_leaves_its_own_column() {
+    crate::test_support::gtk_test(
+        "ui::browser::tests::focus::filter_dismisses_only_when_focus_leaves_its_own_column",
+        || {
+            let fixture = tempfile::tempdir().expect("directory fixture");
+            std::fs::create_dir(fixture.path().join("Child")).expect("child folder");
+            std::fs::write(fixture.path().join("Child/beta.txt"), "beta").expect("nested file");
+            let view = BrowserView::new(
+                Rc::new(crate::adapters::LocalFileSource),
+                PeekBehavior::default(),
+            );
+            let browser = view.browser();
+            let window = gtk::Window::builder()
+                .child(&view.widget())
+                .default_width(900)
+                .default_height(500)
+                .build();
+            window.present();
+            browser.navigate(Location::local(fixture.path()));
+            wait_until(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+            browser.select(0, 0);
+            browser.enter_focused_directory();
+            wait_until(|| browser.column_snapshot(1).is_some_and(|s| !s.loading));
+
+            let (first, second) = {
+                let columns = view.state.columns.borrow();
+                (columns[0].clone(), columns[1].clone())
+            };
+            wait_until(|| {
+                first.list.width() > 0
+                    && second.list.width() > 0
+                    && !second.bound_rows.borrow().is_empty()
+            });
+            let root_focus_is = |widget: &gtk::Widget| {
+                gtk::prelude::RootExt::focus(&window)
+                    .is_some_and(|focused| &focused == widget || focused.is_ancestor(widget))
+            };
+
+            first.filter_button.set_active(true);
+            first.filter_entry.set_text("alpha");
+            wait_until(|| root_focus_is(first.filter_entry.upcast_ref()));
+
+            first.list.grab_focus();
+            wait_until(|| !root_focus_is(first.filter_entry.upcast_ref()));
+            settle();
+            assert!(
+                first.filter_button.is_active(),
+                "focus moving within the same column must not dismiss its filter"
+            );
+            assert_eq!(first.filter_entry.text(), "alpha");
+
+            first.filter_entry.grab_focus();
+            wait_until(|| root_focus_is(first.filter_entry.upcast_ref()));
+            second.list.grab_focus();
+            wait_until(|| !first.filter_button.is_active());
+            assert_eq!(first.filter_entry.text(), "");
             window.close();
         },
     );
