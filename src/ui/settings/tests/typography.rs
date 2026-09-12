@@ -64,13 +64,7 @@ fn settings_pages_reflow_without_horizontal_scrolling_as_text_grows() {
                 for pixels in [8, 11, 17, 24, 32, 48, 13] {
                     manager.set_text_size(TextSize::new(pixels));
                     settle();
-                    for page in [
-                        "General",
-                        "Theme & appearance",
-                        "Keybindings",
-                        "About",
-                        "Updates",
-                    ] {
+                    for page in ["General", "Appearance", "Keybindings", "About", "Updates"] {
                         if page == "Updates" {
                             if stack.child_by_name("updates-test").is_none() {
                                 let (updates, actions) = updates_page(
@@ -116,7 +110,9 @@ fn settings_pages_reflow_without_horizontal_scrolling_as_text_grows() {
                                     widget.is_mapped()
                                         && (widget.is::<gtk::Switch>()
                                             || widget.is::<gtk::Button>()
-                                            || widget.has_css_class("settings-option"))
+                                            || widget.has_css_class("settings-option")
+                                            || widget.has_css_class("settings-keycap")
+                                            || widget.has_css_class("about-detail-value"))
                                 })
                         {
                             let bounds = widget.compute_bounds(&scroller).expect("control bounds");
@@ -166,7 +162,7 @@ fn custom_text_size_settings_remain_reachable_on_small_logical_displays() {
             let theme = descendants(layer.upcast_ref())
                 .into_iter()
                 .filter_map(|widget| widget.downcast::<gtk::Button>().ok())
-                .find(|button| button.tooltip_text().as_deref() == Some("Theme & appearance"))
+                .find(|button| button.tooltip_text().as_deref() == Some("Appearance"))
                 .expect("theme navigation button");
             theme.emit_clicked();
             for pixels in [11, 17, 24, 32, 48, 13] {
@@ -190,7 +186,18 @@ fn custom_text_size_settings_remain_reachable_on_small_logical_displays() {
                 assert!(theme.grab_focus());
                 assert!(control.is_mapped() && control.grab_focus());
                 assert_eq!(control.value_as_int(), pixels as i32);
-                settle();
+                let deadline = std::time::Instant::now() + Duration::from_secs(2);
+                loop {
+                    settle();
+                    let bounds = control
+                        .compute_bounds(&window)
+                        .expect("focused editor bounds");
+                    if (bounds.y() >= 0.0 && bounds.y() + bounds.height() <= window.height() as f32)
+                        || std::time::Instant::now() >= deadline
+                    {
+                        break;
+                    }
+                }
                 let bounds = control
                     .compute_bounds(&window)
                     .expect("focused editor bounds");

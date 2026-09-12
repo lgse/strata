@@ -1,22 +1,20 @@
 // SPDX-License-Identifier: MIT
 
 mod preferences;
+mod reference;
 mod typography;
 
 use std::rc::Rc;
 
 use crate::services::{
-    BuildKind, Channel, CrossVolumeDropStrategy, InstallSource, ManagedInstall, ReleaseMetadata,
-    UpdateCheck, UpdateMethod, Version,
+    BuildKind, Channel, InstallSource, ManagedInstall, ReleaseMetadata, UpdateCheck, UpdateMethod,
+    Version,
 };
 
 use super::{
-    CHANNEL_ORDER, COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH,
-    RELEASE_CHANNEL_DESCRIPTION, RELEASE_CHANNEL_TITLE, UPDATE_DUE_INTERVAL, aur_update_command,
-    channel_index, effective_update_channel, force_due_update_check,
-    general::{
-        cross_volume_drop_strategy_label, video_preview_backend_label, video_preview_control_state,
-    },
+    COMPACT_NAVIGATION_BREAKPOINT, DIALOG_HEIGHT, DIALOG_MARGIN, DIALOG_WIDTH, UPDATE_DUE_INTERVAL,
+    aur_update_command, effective_update_channel, force_due_update_check,
+    general::{video_preview_backend_label, video_preview_control_state},
     install_guard, installed_version_status, is_stale_check, managed_channel_description,
     managed_install_summary, offer_still_eligible, omarchy_update_command,
     resolve_update_method_async, responsive_dialog_size, shows_available_release_notes,
@@ -25,27 +23,6 @@ use super::{
     uses_compact_navigation,
 };
 use crate::sandbox::MediaPreviewBackend;
-
-#[test]
-fn cross_volume_drop_settings_offer_always_copy_move_and_ask() {
-    assert_eq!(
-        cross_volume_drop_strategy_label(CrossVolumeDropStrategy::Copy),
-        "Always Copy"
-    );
-    assert_eq!(
-        cross_volume_drop_strategy_label(CrossVolumeDropStrategy::Move),
-        "Always Move"
-    );
-    assert_eq!(
-        cross_volume_drop_strategy_label(CrossVolumeDropStrategy::Ask),
-        "Always Ask"
-    );
-    let source = include_str!("../settings/general.rs");
-    assert!(source.contains("Always Copy"));
-    assert!(source.contains("Always Move"));
-    assert!(source.contains("Always Ask"));
-    assert!(source.contains("set_cross_volume_drop_strategy"));
-}
 
 #[test]
 fn a_checks_result_is_current_only_for_the_generation_it_was_issued_under() {
@@ -254,15 +231,6 @@ fn video_preview_backend_selector_labels_all_options() {
 }
 
 #[test]
-fn release_channel_copy_distinguishes_preview_from_nightly() {
-    assert_eq!(RELEASE_CHANNEL_TITLE, "Release channel");
-    assert_eq!(
-        RELEASE_CHANNEL_DESCRIPTION,
-        "Preview receives alpha, beta, and release-candidate builds. Nightly also receives daily development builds."
-    );
-}
-
-#[test]
 fn video_preview_controls_follow_enabled_state() {
     assert_eq!(video_preview_control_state(true), (true, true, true));
     assert_eq!(video_preview_control_state(false), (false, true, false));
@@ -403,13 +371,6 @@ fn every_window_installs_behind_one_process_wide_guard() {
         "an install started in one window must be visible in every other"
     );
     first.set(false);
-}
-
-#[test]
-fn the_selector_highlights_the_button_for_the_persisted_channel() {
-    for (index, channel) in CHANNEL_ORDER.into_iter().enumerate() {
-        assert_eq!(channel_index(channel), index);
-    }
 }
 
 #[test]

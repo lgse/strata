@@ -1,65 +1,127 @@
 // SPDX-License-Identifier: MIT
 
-use gtk::prelude::*;
-
+use super::{page_content, scrollable_page, settings_group};
 use crate::{assets::icons, services};
-
-use super::{append_heading, page_content, scrollable_page};
+use gtk::prelude::*;
 
 pub(super) fn about_page() -> gtk::Widget {
     let content = page_content();
     content.add_css_class("about-page");
-
-    let identity = gtk::Box::new(gtk::Orientation::Vertical, 7);
+    let identity = gtk::Box::new(gtk::Orientation::Horizontal, 20);
     identity.add_css_class("about-identity");
-    identity.set_halign(gtk::Align::Center);
-
+    let icon = crate::assets::primary_icon(icons::LAYERS, 30);
+    let logo = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    logo.add_css_class("about-logo");
+    icon.set_halign(gtk::Align::Center);
+    icon.set_valign(gtk::Align::Center);
+    icon.set_hexpand(true);
+    logo.append(&icon);
+    logo.set_valign(gtk::Align::Center);
+    logo.set_hexpand(false);
+    identity.append(&logo);
+    let copy = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    copy.set_hexpand(true);
+    copy.set_valign(gtk::Align::Center);
+    let heading = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let name = gtk::Label::new(Some("Strata"));
     name.add_css_class("about-name");
-    let description = gtk::Label::new(Some(crate::build_info::DESCRIPTION));
-    description.add_css_class("about-description");
-    description.set_justify(gtk::Justification::Center);
+    heading.append(&name);
+    let kind = crate::build_info::build_kind();
+    if kind != services::BuildKind::Stable {
+        let badge = gtk::Label::new(Some(kind.label()));
+        badge.add_css_class("prerelease-badge");
+        badge.set_valign(gtk::Align::Center);
+        heading.append(&badge);
+    }
+    copy.append(&heading);
+    let description = gtk::Label::new(Some("A keyboard-first file manager for Linux."));
+    description.set_xalign(0.0);
     description.set_wrap(true);
-    identity.append(&name);
-    identity.append(&description);
+    description.add_css_class("about-description");
+    copy.append(&description);
+    identity.append(&copy);
+    let button = gtk::Button::with_label("Copy version info");
+    button.add_css_class("settings-update-check");
+    button.set_valign(gtk::Align::Center);
+    button.connect_clicked(|button| button.clipboard().set_text(&version_info()));
+    identity.append(&button);
     content.append(&identity);
 
-    append_heading(&content, "BUILD INFORMATION");
-    let build = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    build.add_css_class("about-details");
-    let version = crate::build_info::installed_version().to_string();
-    append_about_detail(&build, "Version", &version, false);
-    let build_kind = crate::build_info::build_kind();
-    if build_kind != services::BuildKind::Stable {
-        append_about_detail(&build, "Build", build_kind.label(), false);
+    let build = settings_group(&content, "BUILD");
+    append_about_detail(
+        &build,
+        "Version",
+        &crate::build_info::installed_version().to_string(),
+    );
+    append_about_detail(&build, "Commit", crate::build_info::COMMIT);
+    append_about_detail(&build, "Toolkit", &toolkit_version());
+    let links = settings_group(&content, "LINKS");
+    for (label, icon, uri, detail) in [
+        (
+            "Website",
+            icons::GLOBE,
+            "https://stratafiles.io/".to_owned(),
+            "",
+        ),
+        (
+            "Source code",
+            icons::CODE_XML,
+            crate::build_info::REPOSITORY.to_owned(),
+            "",
+        ),
+        (
+            "Report an issue",
+            icons::BUG,
+            format!("{}/issues/new/choose", crate::build_info::REPOSITORY),
+            "",
+        ),
+        (
+            "License",
+            icons::SCALE,
+            format!("{}/blob/main/LICENSE", crate::build_info::REPOSITORY),
+            "MIT",
+        ),
+    ] {
+        let button = gtk::LinkButton::builder().uri(&uri).build();
+        button.add_css_class("about-repository");
+        crate::ui::accessibility::set_label(&button, label);
+        let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+        row.append(&crate::assets::primary_icon(icon, 18));
+        let title = gtk::Label::new(Some(label));
+        title.set_xalign(0.0);
+        title.set_hexpand(true);
+        row.append(&title);
+        let detail = gtk::Label::new(Some(detail));
+        detail.add_css_class("settings-option-description");
+        row.append(&detail);
+        row.append(&crate::assets::primary_icon(icons::EXTERNAL_LINK, 16));
+        button.set_child(Some(&row));
+        links.append(&button);
     }
-    append_about_detail(&build, "Commit", crate::build_info::COMMIT, true);
-    content.append(&build);
-
-    append_heading(&content, "PROJECT");
-    let project = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    project.add_css_class("about-details");
-    append_about_detail(&project, "Author", crate::build_info::AUTHOR, false);
-
-    let repository = gtk::LinkButton::builder()
-        .uri(crate::build_info::REPOSITORY)
-        .tooltip_text("Open the Strata repository")
-        .build();
-    repository.add_css_class("about-repository");
-    let repository_content = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    let repository_label = gtk::Label::new(Some("GitHub repository"));
-    repository_label.set_xalign(0.0);
-    repository_label.set_hexpand(true);
-    repository_content.append(&repository_label);
-    repository_content.append(&crate::assets::primary_icon(icons::EXTERNAL_LINK, 16));
-    repository.set_child(Some(&repository_content));
-    project.append(&repository);
-    content.append(&project);
-
     scrollable_page(&content, None)
 }
 
-fn append_about_detail(container: &gtk::Box, label: &str, value: &str, monospace: bool) {
+fn toolkit_version() -> String {
+    format!(
+        "GTK {}.{}.{}",
+        gtk::major_version(),
+        gtk::minor_version(),
+        gtk::micro_version()
+    )
+}
+
+fn version_info() -> String {
+    format!(
+        "Strata {}\n{}\nCommit: {}\nToolkit: {}\nAuthor: {}\nLicense: MIT",
+        crate::build_info::installed_version(),
+        crate::build_info::DESCRIPTION,
+        crate::build_info::COMMIT,
+        toolkit_version(),
+        crate::build_info::AUTHOR
+    )
+}
+
+fn append_about_detail(container: &gtk::Box, label: &str, value: &str) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     row.add_css_class("about-detail-row");
     let label = gtk::Label::new(Some(label));
@@ -68,10 +130,9 @@ fn append_about_detail(container: &gtk::Box, label: &str, value: &str, monospace
     label.set_hexpand(true);
     let value = gtk::Label::new(Some(value));
     value.add_css_class("about-detail-value");
+    value.add_css_class("settings-nowrap");
     value.set_selectable(true);
-    if monospace {
-        value.add_css_class("monospace");
-    }
+    value.set_xalign(1.0);
     row.append(&label);
     row.append(&value);
     container.append(&row);
