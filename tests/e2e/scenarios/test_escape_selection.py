@@ -100,7 +100,8 @@ def test_escape_dismisses_transient_before_selection(strata, mode, surface):
         assert strata.fixture.path(expected).exists()
     strata.keyboard.press("Escape")
     strata.wait_for_selection([], root)
-    assert strata.pane_names() == [root]
+    expected_panes = [root, "new folder"] if mode == "Columns" and surface == "new-folder" else [root]
+    assert strata.pane_names() == expected_panes
 
 
 @pytest.mark.parametrize("mode", ALL_MODES)

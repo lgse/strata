@@ -410,10 +410,9 @@ pub(in crate::ui) fn install_folder_context_menu(
     let location_for_trigger = location.clone();
     let open_at: Rc<dyn Fn(f64, f64)> = Rc::new(move |x: f64, y: f64| {
         paste.set_sensitive(gtk::gdk::Display::default().is_some_and(|display| {
-            display
-                .clipboard()
-                .formats()
-                .contains_type(gtk::gdk::FileList::static_type())
+            let formats = display.clipboard().formats();
+            formats.contains_type(gtk::gdk::FileList::static_type())
+                || formats.contain_mime_type("image/png")
         }));
         select_all.set_sensitive(has_entries());
         open_terminal.set_sensitive(can_open_terminal(&location_for_trigger));

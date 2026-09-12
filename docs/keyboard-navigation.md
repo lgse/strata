@@ -31,6 +31,18 @@ Copy/cut use the selection in the focused column, never a hovered row. In Column
 
 Background selection updates from directory loading must not move keyboard focus to an inactive column.
 
+## Returning to a List directory
+
+List mode remembers the selection, keyboard cursor, and scroll position of the
+last 128 directories left in that browser. Back, Forward, and Up restore each
+visited directory after its entries load, including nested parents. Arrow-key
+navigation continues from the restored row. Entries are matched by location,
+not their previous row numbers; deleted entries are not selected accidentally.
+This is temporary browsing state, not a saved preference. New input in the list
+cancels an in-progress restoration.
+
+[Before](screenshots/868/before.png) · [After](screenshots/868/after.png)
+
 ## Creating files and folders
 
 In Columns, List, and Icons, **Ctrl+Shift+N** or background menu → **New Folder**

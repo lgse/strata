@@ -744,6 +744,9 @@ fn sidebar_sync_runs_only_for_location_changes() {
         &BrowserEvent::ColumnsTruncated { len: 1 }
     ));
     assert!(SidebarState::event_changes_active_place(
+        &BrowserEvent::ColumnsRelocated { from_depth: 1 }
+    ));
+    assert!(SidebarState::event_changes_active_place(
         &BrowserEvent::FocusChanged {
             depth: 0,
             position: Some(2),

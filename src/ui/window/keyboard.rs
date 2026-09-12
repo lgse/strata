@@ -103,6 +103,11 @@ impl KeyEvent {
 
 impl Dispatcher {
     fn handle_key(&self, browser: &Rc<Browser>, key: Key, modifiers: Modifiers) -> Propagation {
+        let preferences = &self.type_to_search.preferences;
+        if let Some(size) = preferences.text_size().for_shortcut(key, modifiers) {
+            preferences.set_text_size(size);
+            return Propagation::Stop;
+        }
         if let Some(result) = self.input_owner(key, modifiers) {
             return result;
         }

@@ -8,6 +8,8 @@ use std::cell::Cell;
 use std::rc::Rc;
 use std::time::Duration;
 
+pub(super) mod layout;
+
 #[cfg(test)]
 mod tests;
 
@@ -56,25 +58,11 @@ pub(super) fn modal_layer(
     layer.set_hexpand(true);
     layer.set_vexpand(true);
     layer.set_focusable(true);
-    let top = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    top.set_vexpand(true);
-    let bottom = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    bottom.set_vexpand(true);
-    let left = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    left.set_hexpand(true);
-    let right = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    right.set_hexpand(true);
-    let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-    row.append(&left);
-    row.append(content);
-    row.append(&right);
-    layer.append(&top);
-    layer.append(&row);
-    layer.append(&bottom);
+    let viewport = layout::install(&layer, content);
 
     let click = gtk::GestureClick::new();
     let weak_layer = layer.downgrade();
-    let weak_content = content.downgrade();
+    let weak_content = viewport.downgrade();
     let overlay = overlay.clone();
     let root = root.clone();
     let block = block_dismiss.clone();

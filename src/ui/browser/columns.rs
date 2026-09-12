@@ -468,15 +468,20 @@ impl ViewState {
     }
 
     pub(super) fn rebuild_columns(self: &Rc<Self>) {
-        self.truncate(0);
-        let snapshots = (0..)
+        self.rebuild_columns_from(0);
+        self.focus_rebuilt_active_column();
+    }
+
+    pub(super) fn rebuild_columns_from(self: &Rc<Self>, from_depth: usize) {
+        self.truncate(from_depth);
+        let snapshots = (from_depth..)
             .map_while(|depth| self.browser.column_snapshot(depth))
             .collect::<Vec<_>>();
 
-        for (depth, snapshot) in snapshots.iter().enumerate() {
-            self.append_column(depth, &snapshot.location);
+        for (offset, snapshot) in snapshots.iter().enumerate() {
+            self.append_column(from_depth + offset, &snapshot.location);
         }
-        for (column, snapshot) in self.columns.borrow().iter().zip(snapshots) {
+        for (column, snapshot) in self.columns.borrow().iter().skip(from_depth).zip(snapshots) {
             touch_source_model(column);
             column.model.replace(snapshot.count as u32);
             column.entry_count.set(snapshot.count);
@@ -508,7 +513,6 @@ impl ViewState {
                 }
             }
         }
-        self.focus_rebuilt_active_column();
     }
 
     fn focus_rebuilt_active_column(&self) {
@@ -1143,6 +1147,14 @@ impl ViewState {
 
         let shell = gtk::Box::new(gtk::Orientation::Horizontal, 0);
         shell.set_size_request(COLUMN_WIDTH, -1);
+        let previous_scale = Cell::new(1.0);
+        crate::ui::theme::ThemeManager::shared().bind_interface_scale(
+            &shell,
+            move |shell, scale| {
+                let ratio = scale / previous_scale.replace(scale);
+                shell.set_width_request((f64::from(shell.width_request()) * ratio).round() as i32);
+            },
+        );
         shell.set_vexpand(true);
         shell.set_overflow(gtk::Overflow::Hidden);
         let column_overlay = gtk::Overlay::new();
