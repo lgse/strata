@@ -996,6 +996,17 @@ fn names_that_differ_only_by_case_have_a_deterministic_order() {
 }
 
 #[test]
+fn numeric_suffixes_sort_naturally() {
+    assert_eq!(compare_display_names("File 1", "File 2"), Ordering::Less);
+    assert_eq!(compare_display_names("File 2", "File 10"), Ordering::Less);
+    assert_eq!(
+        compare_display_names("File 10", "File 2"),
+        Ordering::Greater
+    );
+    assert_eq!(compare_display_names("File 1", "File 10"), Ordering::Less);
+}
+
+#[test]
 fn changing_sort_preferences_preserves_the_selected_entry() {
     let mut state = NavigationState::default();
     state.navigate(location("/fixture"), RequestId(1));
