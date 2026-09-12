@@ -6,6 +6,9 @@ extend-exclude = [
   "Cargo.lock",
 ]
 
+[default]
+extend-ignore-re = ["`crypted\\.rar`"]
+
 [default.extend-words]
 Omarchy = "Omarchy"
 Hyprland = "Hyprland"
