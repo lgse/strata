@@ -49,6 +49,17 @@ fn normalized_archive_name(name: &str, format: ArchiveFormat) -> String {
         .to_owned()
 }
 
+fn archive_stem(name: &str) -> &str {
+    const SUFFIXES: &[&str] = &[".tar.gz", ".tgz", ".tar", ".zip", ".7z", ".rar"];
+    let lower = name.to_ascii_lowercase();
+    for suffix in SUFFIXES {
+        if lower.ends_with(suffix) {
+            return &name[..name.len() - suffix.len()];
+        }
+    }
+    name
+}
+
 /// Whether `destination` already contains a child named `archive_name`.
 ///
 /// Collision checks use the final filename, including the format extension.
@@ -446,6 +457,35 @@ impl ViewState {
                 .replace(Some((entry.clone(), parent.clone())));
         }
         self.browser.extract(entry, parent, None);
+    }
+
+    pub(super) fn extract_entry_to_subfolder(self: &Rc<Self>, entry: FileEntry) {
+        if entry.location.native_path().is_none() {
+            return;
+        }
+        let Some(parent) = entry.location.parent() else {
+            show_error_dialog(
+                &self.overlay,
+                "Cannot extract",
+                "This archive has no parent directory.",
+            );
+            return;
+        };
+        let stem = archive_stem(&entry.display_name);
+        if stem.is_empty() || stem == "." || stem == ".." || stem.contains('/') {
+            self.extract_entry(entry);
+            return;
+        }
+        let Some(destination) = parent.child(std::ffi::OsStr::new(stem)) else {
+            self.extract_entry(entry);
+            return;
+        };
+        let format = ArchiveFormat::from_extension(&entry.display_name);
+        if format.map(|f| f.supports_password()).unwrap_or(false) {
+            self.pending_extract_retry
+                .replace(Some((entry.clone(), destination.clone())));
+        }
+        self.browser.extract(entry, destination, None);
     }
 
     /// Opens the "Extract to" folder picker for `entry`.

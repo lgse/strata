@@ -1317,6 +1317,33 @@ fn install_shortcuts(
         let alt = modifiers.contains(gtk::gdk::ModifierType::ALT_MASK);
         let shift = modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK);
         let focused = gtk::prelude::RootExt::focus(&state.window);
+        if focused
+            .as_ref()
+            .and_then(|focused| focused.ancestor(gtk::Popover::static_type()))
+            .is_some_and(|popover| popover.has_css_class("folder-context-popover"))
+        {
+            return glib::Propagation::Proceed;
+        }
+        if super::window::is_context_menu_shortcut(key, modifiers)
+            && !focused.as_ref().is_some_and(|widget| {
+                super::focus_navigation::editable(widget)
+                    || super::focus_navigation::in_popover(widget)
+            })
+            && state.view.open_focused_context_menu()
+        {
+            return glib::Propagation::Stop;
+        }
+        // Filtered rows own navigation, not the hidden directory selection.
+        if matches!(key, gtk::gdk::Key::Up | gtk::gdk::Key::Down)
+            && state.view.selected_search_results().is_some()
+            && !focused.as_ref().is_some_and(|widget| {
+                super::focus_navigation::editable(widget)
+                    || super::focus_navigation::in_popover(widget)
+            })
+        {
+            state.window.set_focus_visible(true);
+            return glib::Propagation::Proceed;
+        }
         let original_key = key;
         let key = super::focus_navigation::navigation_key(
             key,
@@ -1510,6 +1537,14 @@ fn install_shortcuts(
             )
         {
             browser.toggle_hidden();
+            return glib::Propagation::Stop;
+        }
+        if control
+            && !shift
+            && !alt
+            && let Some(mode) = super::window::browser_mode_for_digit(key)
+        {
+            super::window::apply_browser_mode(&state.view, &ThemeManager::shared(), mode);
             return glib::Propagation::Stop;
         }
         if control {
