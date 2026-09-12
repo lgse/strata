@@ -156,8 +156,12 @@ impl ViewState {
     }
 
     pub(super) fn clear_delete_animation(&self) {
-        if let Some(cleanup) = self.pending_delete_animation_cleanup.take() {
-            cleanup();
+        self.pending_delete_dissolve.take();
+    }
+
+    pub(super) fn play_delete_animation(&self) {
+        if let Some(dissolve) = self.pending_delete_dissolve.take() {
+            dissolve.play();
         }
     }
 
@@ -816,20 +820,16 @@ impl ViewState {
                 &confirmed_overlay,
                 confirmed_root.as_ref(),
                 move || {
-                    let browser_for_delete = browser.clone();
-                    let entries_for_delete = entries_for_dissolve.clone();
-                    super::dissolve_delete::dissolve_delete(
+                    let dissolve = super::dissolve_delete::prepare_dissolve(
                         overlay_for_dissolve.upcast_ref(),
                         &entries_for_dissolve,
-                        move |cleanup| {
-                            if let Some(ui) = weak_ui.upgrade() {
-                                ui.clear_delete_animation();
-                                ui.pending_delete_animation_cleanup.replace(Some(cleanup));
-                            }
-                            browser_for_delete.delete(entries_for_delete, true);
-                            browser_for_delete.focus_active();
-                        },
                     );
+                    if let Some(ui) = weak_ui.upgrade() {
+                        ui.clear_delete_animation();
+                        ui.pending_delete_dissolve.replace(dissolve);
+                    }
+                    browser.delete(entries_for_dissolve, true);
+                    browser.focus_active();
                 },
             );
         });

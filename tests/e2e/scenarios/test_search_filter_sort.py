@@ -313,6 +313,34 @@ def test_global_search_arrows_keep_typing_in_the_query_and_enter_opens_selection
     strata.wait_for_directory("navigation-final")
 
 
+@pytest.mark.preferences(search_open_files_directly=False)
+def test_global_search_preview_closes_when_same_folder_result_is_deleted(strata):
+    folder = strata.environment.home / "preview-deletion"
+    folder.mkdir()
+    previewed = folder / "preview-deletion-fixture.txt"
+    previewed.write_text("search preview deletion fixture\n")
+    (folder / "remaining.txt").write_text("remaining file\n")
+    strata.keyboard.press("ctrl+l")
+    strata.keyboard.type_text(str(folder))
+    strata.keyboard.press("Return")
+    strata.wait_for_directory(folder.name)
+    strata.wait(lambda: "remaining.txt" in strata.entry_names(), "loaded folder")
+    strata.keyboard.press("ctrl+k")
+    strata.keyboard.type_text("preview-deletion-fixture")
+    strata.wait(
+        lambda: strata.window.find(role="label", name=previewed.name) is not None,
+        "indexed search result",
+    )
+    strata.keyboard.press("Return")
+    strata.wait(
+        lambda: strata.preview_shows("search preview deletion fixture"),
+        "search result preview",
+    )
+    previewed.unlink()
+    strata.wait(lambda: strata.preview() is None, "deleted result preview to close")
+    assert "remaining.txt" in strata.entry_names()
+
+
 def test_global_search_finds_a_file_under_home(strata, root):
     """Ctrl+K searches the home directory, not the browsed location."""
 

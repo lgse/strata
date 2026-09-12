@@ -456,6 +456,15 @@ impl NavigationState {
                 if column.selected_locations.remove(&from) {
                     column.selected_locations.insert(entry.location.clone());
                 }
+                for target in [
+                    &mut column.selection_target,
+                    &mut column.selection_anchor,
+                    &mut column.load_cursor,
+                ] {
+                    if target.as_ref() == Some(&from) {
+                        *target = Some(entry.location.clone());
+                    }
+                }
                 remove_monitored_entry(&mut column.entries, &from, &mut splices);
                 upsert_monitored_entry(&mut column.entries, entry, preferences, &mut splices);
             }
@@ -490,7 +499,8 @@ impl NavigationState {
         column.selection_target = column
             .selected
             .and_then(|position| column.entries.get(position))
-            .map(|entry| entry.location.clone());
+            .map(|entry| entry.location.clone())
+            .or_else(|| column.selection_target.clone());
         column.entries.clear();
         column.selected = None;
         column.load_state = LoadState::Loading;
@@ -499,6 +509,28 @@ impl NavigationState {
         column.can_delete = None;
         column.request_id = request_id;
         Some(column.location.clone())
+    }
+
+    pub fn relocate_column(&mut self, depth: usize, location: Location, request_id: RequestId) {
+        let Some(previous) = self.reload_column(depth, request_id) else {
+            return;
+        };
+        let column = &mut self.columns[depth];
+        column.selected_locations = column
+            .selected_locations
+            .iter()
+            .filter_map(|selected| selected.rebase(&previous, &location))
+            .collect();
+        for target in [
+            &mut column.selection_target,
+            &mut column.selection_anchor,
+            &mut column.load_cursor,
+        ] {
+            *target = target
+                .as_ref()
+                .and_then(|target| target.rebase(&previous, &location));
+        }
+        column.location = location;
     }
 
     pub fn set_show_hidden(&mut self, show_hidden: bool) {
@@ -1353,7 +1385,11 @@ fn natural_compare(left: &[u8], right: &[u8]) -> Ordering {
         if left[li].is_ascii_digit() && right[ri].is_ascii_digit() {
             let (lv, lo) = take_number(left, li);
             let (rv, ro) = take_number(right, ri);
-            let cmp = lv.cmp(&rv).then_with(|| left[li..lo].cmp(&right[ri..ro]));
+            let cmp = lv
+                .len()
+                .cmp(&rv.len())
+                .then_with(|| lv.cmp(rv))
+                .then_with(|| left[li..lo].cmp(&right[ri..ro]));
             if cmp != Ordering::Equal {
                 return cmp;
             }
@@ -1372,16 +1408,16 @@ fn natural_compare(left: &[u8], right: &[u8]) -> Ordering {
     left.len().cmp(&right.len())
 }
 
-fn take_number(bytes: &[u8], start: usize) -> (u64, usize) {
-    let mut value: u64 = 0;
-    let mut i = start;
-    while i < bytes.len() && bytes[i].is_ascii_digit() {
-        value = value
-            .saturating_mul(10)
-            .saturating_add((bytes[i] - b'0') as u64);
-        i += 1;
+fn take_number(bytes: &[u8], start: usize) -> (&[u8], usize) {
+    let mut end = start;
+    while end < bytes.len() && bytes[end].is_ascii_digit() {
+        end += 1;
     }
-    (value, i)
+    let mut significant = start;
+    while significant < end && bytes[significant] == b'0' {
+        significant += 1;
+    }
+    (&bytes[significant..end], end)
 }
 
 fn compare_metadata<T: Ord>(left: &MetadataValue<T>, right: &MetadataValue<T>) -> Ordering {
