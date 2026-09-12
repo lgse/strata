@@ -18,9 +18,7 @@ use crate::ui::browser::location::MountStrategy;
 use crate::ui::browser::peek::append_peek_entries;
 use crate::ui::browser::trash::retryable_delete_entries;
 use crate::ui::browser_modes::BrowserMode;
-use crate::ui::modal::{
-    show_delete_error_dialog, show_error_dialog, show_error_dialog_after_close,
-};
+use crate::ui::modal::{show_delete_error_dialog, show_error_dialog};
 use gtk::prelude::*;
 use gtk::{gio, glib};
 use std::collections::HashMap;
@@ -663,20 +661,14 @@ impl ViewState {
                 affected_locations,
             } => {
                 self.pending_archive_destination.take();
+                self.browser.refresh_after_cancellation(affected_locations);
                 let message = format!(
                     "{} completed, {} failed, and {} not attempted.\n\nCompleted changes were not reverted.",
                     item_count_label(*completed),
                     item_count_label(*failed),
                     item_count_label(*not_attempted),
                 );
-                let browser = self.browser.clone();
-                let affected = affected_locations.clone();
-                show_error_dialog_after_close(
-                    &self.overlay,
-                    "Operation cancelled",
-                    &message,
-                    Rc::new(move || browser.refresh_after_cancellation(&affected)),
-                );
+                show_error_dialog(&self.overlay, "Operation cancelled", &message);
             }
             BrowserEvent::NavigationRejected {
                 parent_depth,

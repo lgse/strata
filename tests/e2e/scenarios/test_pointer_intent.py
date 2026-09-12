@@ -241,8 +241,13 @@ def test_sidebar_marquee_still_reaches_the_leading_pane(strata, mode, focus_orig
     strata.open_directory(destination, root)
     strata.paste_into(destination)
     strata.wait(
-        lambda: set(strata.fixture.names(destination)) == selected,
-        "keyboard copy to use the marquee target rather than the sidebar or another pane",
+        lambda: set(strata.fixture.names(destination)) == selected
+        and all(
+            strata.fixture.path(f"{destination}/{name}").stat().st_size
+            == strata.fixture.path(name).stat().st_size
+            for name in ("readme.md", "todo.txt")
+        ),
+        "keyboard copy to finish in the marquee target rather than the sidebar or another pane",
     )
     for name in ("readme.md", "todo.txt"):
         assert strata.fixture.path(f"{destination}/{name}").read_bytes() == strata.fixture.path(

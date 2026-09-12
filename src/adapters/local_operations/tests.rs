@@ -1825,7 +1825,11 @@ fn home_trash_fallback_finds_broken_symlinks_the_virtual_backend_has_not_refresh
         format!("[Trash Info]\nPath={encoded}\nDeletionDate=2026-09-03T16:05:39\n"),
     )?;
 
-    let entries = home_trash_entries_at(&trash, &HashSet::from([original.clone()]));
+    let entries = home_trash_entries_at(
+        &trash,
+        &HashSet::from([original.clone()]),
+        &gio::Cancellable::new(),
+    );
 
     let entry = entries.get(&original).expect("fallback entry");
     assert_eq!(
@@ -1837,6 +1841,11 @@ fn home_trash_fallback_finds_broken_symlinks_the_virtual_backend_has_not_refresh
         entry.trash_info.as_deref(),
         Some(trash.join("info/report.txt.trashinfo").as_path())
     );
+    let cancellable = gio::Cancellable::new();
+    cancellable.cancel();
+    assert!(home_trash_entries_at(&trash, &HashSet::from([original]), &cancellable).is_empty());
+    assert!(fs::symlink_metadata(trash.join("files/report.txt")).is_ok());
+    assert!(trash.join("info/report.txt.trashinfo").exists());
     fs::remove_dir_all(fixture)?;
     Ok(())
 }
@@ -1846,32 +1855,44 @@ fn cancelling_restore_before_io_reports_every_item_as_unattempted() -> Result<()
     let _serial = ASYNC_MAIN_CONTEXT_DEFAULT
         .lock()
         .map_err(|error| error.to_string())?;
-    let events = Rc::new(RefCell::new(Vec::new()));
-    let emitted = events.clone();
-    let entries = vec![RestoreTrashItem {
-        entry: file_entry(std::path::Path::new("/fixture/trashed.txt")),
-        destination: PathBuf::from("/fixture/trashed.txt"),
-    }];
-    let operation = LocalOperationProvider.restore(
-        RestoreRequest {
-            id: OperationRequestId(9),
-            source: RestoreSource::TrashEntries(entries.clone()),
-        },
-        Rc::new(move |event| emitted.borrow_mut().push(event)),
-    );
+    let location = Location::local("/fixture/trashed.txt");
+    for (source, expected) in [
+        (
+            RestoreSource::TrashEntries(vec![RestoreTrashItem {
+                entry: file_entry(Path::new("/fixture/trashed.txt")),
+                destination: PathBuf::from("/fixture/trashed.txt"),
+            }]),
+            vec![location.clone()],
+        ),
+        (
+            RestoreSource::OriginalLocations(vec![location.clone()]),
+            vec![location],
+        ),
+        (RestoreSource::OriginalLocations(Vec::new()), Vec::new()),
+    ] {
+        let events = Rc::new(RefCell::new(Vec::new()));
+        let emitted = events.clone();
+        let operation = LocalOperationProvider.restore(
+            RestoreRequest {
+                id: OperationRequestId(9),
+                source,
+            },
+            Rc::new(move |event| emitted.borrow_mut().push(event)),
+        );
 
-    drop(operation);
-    while events.borrow().is_empty() {
-        glib::MainContext::default().iteration(true);
+        drop(operation);
+        while events.borrow().is_empty() {
+            glib::MainContext::default().iteration(true);
+        }
+
+        assert!(matches!(
+            events.borrow().as_slice(),
+            [OperationEvent::Cancelled { result, .. }]
+                if result.completed.is_empty()
+                    && result.failed.is_empty()
+                    && result.not_attempted == expected
+        ));
     }
-
-    assert!(matches!(
-        events.borrow().as_slice(),
-        [OperationEvent::Cancelled { result, .. }]
-            if result.completed.is_empty()
-                && result.failed.is_empty()
-                && result.not_attempted == [entries[0].entry.location.clone()]
-    ));
     Ok(())
 }
 
