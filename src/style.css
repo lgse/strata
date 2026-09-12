@@ -4830,9 +4830,15 @@ two-column presentation. */
   padding-right: 10px;
 }
 
-.settings-dialog .settings-navigation.compact button {
-  padding-left: 9px;
-  padding-right: 9px;
+.settings-dialog .settings-navigation.compact > button,
+.settings-dialog .settings-navigation.compact .settings-global-search-compact > button {
+  min-width: 24px;
+  min-height: 24px;
+  padding: 9px;
+}
+
+.settings-dialog .settings-navigation.compact > button {
+  border: 1px solid transparent;
 }
 
 .settings-dialog .segmented-control-option.not-first:checked {
@@ -4938,12 +4944,9 @@ two-column presentation. */
 }
 
 .settings-global-search-compact {
+  min-width: 42px;
+  min-height: 42px;
   margin-bottom: 8px;
-}
-
-.settings-navigation .settings-global-search-compact > button {
-  min-width: 0;
-  padding: 8px;
 }
 
 popover.settings-search-popover.background {

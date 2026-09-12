@@ -445,13 +445,22 @@ fn reflow_settings(widget: &gtk::Widget, compact: bool) {
     {
         row.set_end_align(!compact);
     }
-    if [
-        "settings-keycaps",
-        "settings-inline-keys",
-        "theme-appearance-filter",
-    ]
-    .iter()
-    .any(|class| widget.has_css_class(class))
+    if widget.has_css_class("theme-appearance-filter") {
+        widget.set_halign(if compact {
+            gtk::Align::Fill
+        } else {
+            gtk::Align::End
+        });
+        widget.set_hexpand(compact);
+        let mut child = widget.first_child();
+        while let Some(button) = child {
+            child = button.next_sibling();
+            button.set_hexpand(compact);
+        }
+    }
+    if ["settings-keycaps", "settings-inline-keys"]
+        .iter()
+        .any(|class| widget.has_css_class(class))
     {
         widget.set_halign(if compact {
             gtk::Align::Start
