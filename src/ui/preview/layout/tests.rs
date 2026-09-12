@@ -227,7 +227,7 @@ fn browser_and_chooser_keep_the_last_column_visible_as_preview_space_changes() {
             preferences.set_reduce_motion(true);
             for chooser in [false, true] {
                 let fixture = Fixture::new(chooser);
-                fixture.preview.show(entry("first.png"));
+                fixture.preview.show(entry("first.png"), None);
                 fixture.wait_adjacent();
                 let wide = fixture.preview.widget().width();
                 assert!(wide > COLUMN_WIDTH * MIN_COLUMN_MULTIPLIER);
@@ -250,7 +250,7 @@ fn browser_and_chooser_keep_the_last_column_visible_as_preview_space_changes() {
                 fixture.enter_children();
                 fixture.preview.close();
                 fixture.resize(1200);
-                fixture.preview.show(entry("nested.png"));
+                fixture.preview.show(entry("nested.png"), None);
                 fixture.wait_adjacent();
                 wait_until(|| fixture.adjustment().value() > 0.0);
                 assert_eq!(
@@ -294,7 +294,7 @@ fn manual_width_overrides_auto_sizing_until_the_window_session_ends() {
             preferences.set_reduce_motion(true);
             preferences.set_browser_mode(BrowserMode::Columns);
             let fixture = Fixture::new(false);
-            fixture.preview.show(entry("first.png"));
+            fixture.preview.show(entry("first.png"), None);
             fixture.wait_adjacent();
             fixture
                 .preview
@@ -313,7 +313,7 @@ fn manual_width_overrides_auto_sizing_until_the_window_session_ends() {
                 .browser
                 .browser()
                 .navigate(Location::local(fixture.root.path().join("child")));
-            fixture.preview.show(entry("second.png"));
+            fixture.preview.show(entry("second.png"), None);
             wait_until(|| fixture.preview.widget().width() == chosen);
             fixture.resize(chosen);
             wait_until(|| fixture.preview.widget().width() < chosen);
@@ -325,7 +325,7 @@ fn manual_width_overrides_auto_sizing_until_the_window_session_ends() {
                 wait_until(|| fixture.preview.widget().width() == chosen);
             }
             let second = Fixture::new(false);
-            second.preview.show(entry("third.png"));
+            second.preview.show(entry("third.png"), None);
             second.wait_adjacent();
             assert_ne!(second.preview.widget().width(), chosen);
             for fixture in [fixture, second] {

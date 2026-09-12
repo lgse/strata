@@ -83,16 +83,19 @@ fn activate_result(
     if preferences.search_open_files_directly() {
         controller.open_location(location);
     } else {
-        preview.show(FileEntry {
-            location,
-            native_name: item.path.file_name().unwrap_or_default().to_os_string(),
-            thumbnail_path: None,
-            display_name: item.name,
-            kind: EntryKind::File,
-            size: MetadataValue::Unknown,
-            modified_unix_seconds: MetadataValue::Unknown,
-            is_hidden: false,
-            mode: MetadataValue::Unknown,
-        });
+        preview.show(
+            FileEntry {
+                location,
+                native_name: item.path.file_name().unwrap_or_default().to_os_string(),
+                thumbnail_path: None,
+                display_name: item.name,
+                kind: EntryKind::File,
+                size: MetadataValue::Unknown,
+                modified_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
+                mode: MetadataValue::Unknown,
+            },
+            controller.active_depth(),
+        );
     }
 }

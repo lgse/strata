@@ -277,7 +277,7 @@ fn media_requests_use_the_opening_target_and_each_windows_resized_pane() {
                 window.present();
                 wait_until(|| split.width() > 0 && split.height() > 0);
                 let opening_width = drawer.state.opening_width(split.width());
-                drawer.show(entry("first.mp4"));
+                drawer.show(entry("first.mp4"), None);
                 let first = requests.borrow()[0].media_size;
                 assert_eq!(
                     first.width,
@@ -294,7 +294,7 @@ fn media_requests_use_the_opening_target_and_each_windows_resized_pane() {
                 wait_until(|| {
                     drawer.state.content.width() > 0 && drawer.state.content.width() <= 650
                 });
-                drawer.show(entry("second.mp4"));
+                drawer.show(entry("second.mp4"), None);
                 let second = requests.borrow()[1].media_size;
                 assert_eq!(
                     second,

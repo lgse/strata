@@ -21,6 +21,8 @@ pub struct SearchDialog {
 }
 
 struct SearchState {
+    // Keep the shared provider alive when this dialog is hosted without a browser window.
+    _themes: Rc<super::theme::ThemeManager>,
     layer: gtk::Box,
     field: gtk::Entry,
     indexing_spinner: gtk::Spinner,
@@ -48,6 +50,7 @@ impl SearchDialog {
         reason = "GTK 4.12 deprecated translate_coordinates and allocation without a replacement for click-in-bounds checks"
     )]
     pub fn new(activate: Rc<dyn Fn(SearchItem)>, dismiss: Rc<dyn Fn()>) -> Self {
+        let themes = super::theme::ThemeManager::shared();
         let layer = gtk::Box::new(gtk::Orientation::Vertical, 0);
         layer.add_css_class("search-backdrop");
         layer.add_css_class("app-modal-layer");
@@ -139,23 +142,10 @@ impl SearchDialog {
         truncated_hint.set_visible(false);
         footer.append(&truncated_hint);
         panel.append(&footer);
-        let top_spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        top_spacer.set_vexpand(true);
-        let bottom_spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
-        bottom_spacer.set_vexpand(true);
-        let left_spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        left_spacer.set_hexpand(true);
-        let right_spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        right_spacer.set_hexpand(true);
-        let row = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        row.append(&left_spacer);
-        row.append(&panel);
-        row.append(&right_spacer);
-        layer.append(&top_spacer);
-        layer.append(&row);
-        layer.append(&bottom_spacer);
+        super::modal::layout::install(&layer, &panel);
 
         let state = Rc::new(SearchState {
+            _themes: themes,
             layer,
             field,
             indexing_spinner,
@@ -529,19 +519,24 @@ fn render_results(
         record_interaction(state);
         let revision = state.interaction_revision.get();
         let weak = Rc::downgrade(state);
-        glib::idle_add_local_once(move || {
-            if let Some(state) = weak.upgrade() {
-                if state.layer.is_visible() && state.interaction_revision.get() == revision {
-                    if state.navigation_started.get() {
-                        if let Some(row) = state.list.selected_row() {
-                            scroll_row_into_view(&state, &row);
+        state.list.add_tick_callback(move |_, _| {
+            let weak = weak.clone();
+            // Reordered rows keep their old allocation until this frame's layout.
+            glib::idle_add_local_once(move || {
+                if let Some(state) = weak.upgrade() {
+                    if state.layer.is_visible() && state.interaction_revision.get() == revision {
+                        if state.navigation_started.get() {
+                            if let Some(row) = state.list.selected_row() {
+                                scroll_row_into_view(&state, &row);
+                            }
+                        } else {
+                            state.scroller.vadjustment().set_value(scroll_position);
                         }
-                    } else {
-                        state.scroller.vadjustment().set_value(scroll_position);
                     }
+                    refresh_visible_thumbnails(&state);
                 }
-                refresh_visible_thumbnails(&state);
-            }
+            });
+            glib::ControlFlow::Break
         });
     }
 }

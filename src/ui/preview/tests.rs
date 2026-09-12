@@ -10,8 +10,10 @@ use gtk::{glib, prelude::*};
 use super::{
     MEDIA_PLUGIN_INSTALL_COMMAND, PDF_MAX_ZOOM, PDF_MIN_ZOOM, PreviewDrawer, format_file_size,
     format_media_time, media_error_feedback, pdf_zoom_after_scroll, preview_drag_entries,
-    print_fit, print_page_starts, print_progress_for_page,
+    preview_target, print_fit, print_page_starts, print_progress_for_page,
 };
+use crate::app::{Browser, BrowserEvent, EntrySplice};
+use crate::model::Location;
 use crate::services::{LoadHandle, PreviewEvent, PreviewProvider, PreviewRequest};
 use crate::ui::theme::ThemeManager;
 
@@ -20,6 +22,14 @@ struct UnusedPreviewProvider;
 impl PreviewProvider for UnusedPreviewProvider {
     fn load(&self, _request: PreviewRequest, _emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle {
         panic!("media teardown test does not load previews")
+    }
+}
+
+struct NoopPreviewProvider;
+
+impl PreviewProvider for NoopPreviewProvider {
+    fn load(&self, _request: PreviewRequest, _emit: Rc<dyn Fn(PreviewEvent)>) -> LoadHandle {
+        LoadHandle::new(|| {})
     }
 }
 
@@ -224,4 +234,34 @@ fn preview_drag_entries_contains_only_the_loaded_entry() {
     };
     let dragged = preview_drag_entries(Some(&entry));
     assert_eq!(dragged, Some(vec![entry]));
+}
+
+#[test]
+fn keyboard_opened_preview_closes_when_the_displayed_entry_is_spliced_out() {
+    const TEST: &str = "ui::preview::tests::keyboard_opened_preview_closes_when_the_displayed_entry_is_spliced_out";
+    crate::test_support::gtk_test(TEST, || {
+        let fixture = tempfile::tempdir().expect("fixture");
+        std::fs::write(fixture.path().join("photo.png"), "data").expect("file");
+        let browser = Browser::new(Rc::new(crate::adapters::LocalFileSource));
+        browser.navigate(Location::local(fixture.path()));
+        crate::ui::media::tests::wait(|| browser.column_snapshot(0).is_some_and(|s| !s.loading));
+        let entry = browser.entry_at(0, 0).expect("loaded entry");
+        let preview = PreviewDrawer::new(Rc::new(NoopPreviewProvider), false);
+        preview.toggle(preview_target(Some(entry.clone())), browser.active_depth());
+        assert!(preview.is_open());
+        std::fs::remove_file(fixture.path().join("photo.png")).expect("remove file");
+        crate::ui::media::tests::wait(|| browser.entry_at(0, 0).is_none());
+        preview.handle_browser_event(
+            &browser,
+            &BrowserEvent::EntriesSpliced {
+                depth: 0,
+                splices: vec![EntrySplice {
+                    position: 0,
+                    removed: 1,
+                    entries: vec![],
+                }],
+            },
+        );
+        assert!(!preview.is_open());
+    });
 }

@@ -6,6 +6,65 @@ use gtk::gio;
 use std::path::Path;
 
 #[test]
+fn pasted_images_preserve_collisions_and_dangling_symlinks() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let target = dir.path().join("missing.png");
+    std::os::unix::fs::symlink(&target, dir.path().join("image.png")).expect("dangling symlink");
+    std::fs::create_dir(dir.path().join("image (1).png")).expect("existing directory");
+    std::fs::write(dir.path().join("image (2).png"), b"original").expect("existing image");
+
+    let path = write_pasted_image(dir.path(), b"pasted").expect("paste image");
+
+    assert_eq!(path, dir.path().join("image (3).png"));
+    assert_eq!(std::fs::read(path).expect("pasted image"), b"pasted");
+    assert!(!target.exists());
+    assert_eq!(
+        std::fs::read(dir.path().join("image (2).png")).expect("original image"),
+        b"original"
+    );
+}
+
+#[test]
+fn concurrent_image_pastes_keep_every_payload() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    let barrier = std::sync::Barrier::new(8);
+    std::thread::scope(|scope| {
+        let handles = (0u8..8)
+            .map(|value| {
+                let dir = dir.path();
+                let barrier = &barrier;
+                scope.spawn(move || {
+                    barrier.wait();
+                    let path = write_pasted_image(dir, &[value]).expect("concurrent paste");
+                    (path, value)
+                })
+            })
+            .collect::<Vec<_>>();
+        for handle in handles {
+            let (path, value) = handle.join().expect("paste thread");
+            assert_eq!(std::fs::read(path).expect("pasted payload"), [value]);
+        }
+    });
+    assert_eq!(
+        std::fs::read_dir(dir.path())
+            .expect("image directory")
+            .count(),
+        8
+    );
+}
+
+#[test]
+fn image_paste_reports_missing_destination() {
+    let dir = tempfile::tempdir().expect("temporary directory");
+    assert_eq!(
+        write_pasted_image(&dir.path().join("missing"), b"image")
+            .expect_err("missing destination must fail")
+            .kind(),
+        std::io::ErrorKind::NotFound
+    );
+}
+
+#[test]
 fn incoming_file_lists_preserve_local_and_remote_locations() {
     let files = gtk::gdk::FileList::from_array(&[
         gio::File::for_path("/fixture/photo.raw"),

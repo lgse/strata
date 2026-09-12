@@ -47,14 +47,51 @@ def _visible_entries(container, viewport):
             yield row
 
 
-@pytest.mark.parametrize("mode", ALL_MODES)
-@pytest.mark.parametrize("scrolling", ["edge", "wheel"])
-def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, scrolling):
+def _open_scrolling_directory(strata):
     folder = strata.fixture.path("scrolling")
     folder.mkdir()
     for index in range(600):
         (folder / f"{index:03}.txt").write_text(f"{index}\n")
     strata.open_directory("scrolling")
+
+
+@pytest.mark.preferences(browser_mode="list")
+def test_sidebar_marquee_focus_preserves_a_scrolled_list(strata):
+    _open_scrolling_directory(strata)
+    home = strata.sidebar_button("Home")
+    strata.keyboard.press("Home")
+    strata.keyboard.press("Left")
+    strata.wait(lambda: home.has_state("focused"), "keyboard focus in the sidebar")
+    container = strata.entry_container()
+    viewport = _viewport(container)
+    strata.pointer.scroll(at=viewport.screen_bounds().center, clicks=15)
+    strata.wait(
+        lambda: (rows := list(_visible_entries(container, viewport)))
+        and _entry_name(rows[0]) > "010.txt",
+        "the list to scroll while focus stays in the sidebar",
+    )
+    strata.settle(next(_visible_entries(container, viewport)))
+    assert home.has_state("focused")
+    rows = list(_visible_entries(container, viewport))
+    first_visible = _entry_name(rows[0])
+    middle = len(rows) // 2
+    band = rows[middle : middle + 3]
+    expected = {_entry_name(row) for row in band}
+    end = _entry_bounds(band[0])
+    start = (home.screen_bounds().center[0], _entry_bounds(band[-1]).center[1])
+    strata.pointer.drag_points(start, (end.x + end.width * 2 // 3, end.center[1]))
+    strata.wait(
+        lambda: set(strata.selected_names()) == expected,
+        "the sidebar marquee to select only the visible band",
+    )
+    assert _entry_name(next(_visible_entries(container, viewport))) == first_visible
+    assert any(node.has_state("focused") for _, node in container.walk())
+
+
+@pytest.mark.parametrize("mode", ALL_MODES)
+@pytest.mark.parametrize("scrolling", ["edge", "wheel"])
+def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, scrolling):
+    _open_scrolling_directory(strata)
     anchor = strata.entry("010.txt")
     if mode == "Icons":
         icon = anchor.find(role="image")
@@ -65,12 +102,12 @@ def test_scrolling_extends_marquee_without_losing_earlier_files(strata, mode, sc
         label = anchor.find(role="label", name="010.txt")
         assert label is not None
         bounds = label.screen_bounds()
-        row_bounds = anchor.screen_bounds()
-        # Start in the vertical gap immediately before the row allocation.
-        # The whole row is intentionally draggable, so starting inside the
-        # label would test a content hit rather than marquee initiation from
-        # the background gap.
-        start = (bounds.center[0], row_bounds.y - 2)
+        if mode == "List":
+            start = (bounds.x + bounds.width * 2 // 3, bounds.center[1])
+        else:
+            # Columns retain whole-row dragging, so use the gap before the row.
+            row_bounds = anchor.screen_bounds()
+            start = (bounds.center[0], row_bounds.y - 2)
     container = strata.entry_container()
     assert container is not None
     viewport = _viewport(container)

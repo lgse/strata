@@ -32,13 +32,13 @@ impl PreviewState {
         previous
     }
 
-    pub(super) fn toggle(self: &Rc<Self>, entry: Option<FileEntry>) {
+    pub(super) fn toggle(self: &Rc<Self>, entry: Option<FileEntry>, depth: Option<usize>) {
         if self.is_enabled() {
             self.close();
         } else {
             self.set_enabled(true);
             if let Some(entry) = entry.and_then(|entry| preview_target(Some(entry))) {
-                self.show(entry);
+                self.show(entry, depth);
             } else {
                 self.clear_target();
             }
@@ -51,6 +51,7 @@ impl PreviewState {
         self.animation_generation
             .set(self.animation_generation.get().saturating_add(1));
         self.current_request.set(None);
+        self.current_depth.set(None);
         self.current.borrow_mut().take();
         self.load.borrow_mut().take();
         self.cancel_loading();

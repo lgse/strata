@@ -3,6 +3,7 @@
 use super::*;
 use crate::model::{EntryKind, FileEntry, Location, MetadataValue};
 use crate::ui::browser::{BrowserView, PeekBehavior};
+use std::cell::RefCell;
 use std::time::{Duration, Instant};
 
 fn wait_until(condition: impl Fn() -> bool, message: &str) {
@@ -54,6 +55,17 @@ fn progress_layer(overlay: &gtk::Overlay) -> gtk::Box {
     panic!("progress layer was not attached");
 }
 
+fn has_dissolve_canvas(overlay: &gtk::Overlay) -> bool {
+    let mut child = overlay.first_child();
+    while let Some(widget) = child {
+        child = widget.next_sibling();
+        if widget.type_().name() == "StrataDissolveCanvas" {
+            return true;
+        }
+    }
+    false
+}
+
 #[test]
 fn extract_error_needs_password_ignores_quoted_member_names() {
     assert!(extract_error_needs_password("Invalid password"));
@@ -98,6 +110,76 @@ fn extract_error_needs_password_ignores_backticks_inside_member_names() {
             assert!(!extract_error_needs_password(&message), "{message}");
         }
     }
+}
+
+#[test]
+fn successful_delete_dissolves_visible_rows_after_progress_dismissal() {
+    crate::test_support::gtk_test(
+        "ui::browser::events::tests::successful_delete_dissolves_visible_rows_after_progress_dismissal",
+        || {
+            crate::ui::motion::set_reduce_motion(false);
+            gtk::Settings::default()
+                .expect("GTK settings")
+                .set_gtk_enable_animations(true);
+            let directory = tempfile::tempdir().expect("delete directory");
+            let path = directory.path().join("visible.txt");
+            std::fs::write(&path, "visible").expect("delete fixture");
+            let (view, browser, window, overlay) = archive_view(directory.path());
+            let state = &view.state;
+            let entry = FileEntry {
+                location: Location::local(&path),
+                native_name: std::ffi::OsString::from("visible.txt"),
+                thumbnail_path: None,
+                display_name: "visible.txt".into(),
+                kind: EntryKind::File,
+                size: MetadataValue::Known(7),
+                modified_unix_seconds: MetadataValue::Unknown,
+                is_hidden: false,
+                mode: MetadataValue::Unknown,
+            };
+            let dissolve = RefCell::new(None);
+            wait_until(
+                || {
+                    if dissolve.borrow().is_none() {
+                        dissolve.replace(super::super::dissolve_delete::prepare_dissolve(
+                            state.overlay.upcast_ref(),
+                            std::slice::from_ref(&entry),
+                        ));
+                    }
+                    dissolve.borrow().is_some()
+                },
+                "visible row was not ready to snapshot",
+            );
+            state.pending_delete_dissolve.replace(dissolve.into_inner());
+            state.show_file_operation_progress(
+                16,
+                crate::assets::icons::TRASH,
+                "Deleting items",
+                "Cancelling will not undo completed changes",
+                Rc::new(|| {}),
+            );
+            let layer = progress_layer(&overlay);
+
+            state.handle(&BrowserEvent::DeletionFinished { succeeded: true });
+
+            assert!(layer.parent().is_some());
+            assert!(!has_dissolve_canvas(&overlay));
+            wait_until(
+                || layer.parent().is_none(),
+                "progress modal did not dismiss",
+            );
+            wait_until(
+                || has_dissolve_canvas(&overlay),
+                "dissolve did not start after progress dismissal",
+            );
+            wait_until(
+                || !has_dissolve_canvas(&overlay),
+                "dissolve animation did not finish",
+            );
+            window.destroy();
+            browser.clear_observer();
+        },
+    );
 }
 
 #[test]

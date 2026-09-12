@@ -161,17 +161,22 @@ impl PreviewDrawer {
 }
 
 impl PreviewState {
-    pub(super) fn selected_entry(&self) -> Option<FileEntry> {
+    pub(super) fn selected_entry(&self) -> (Option<FileEntry>, Option<usize>) {
         if let Some(binding) = self.sizing.binding.borrow().as_ref()
             && let Some(browser) = binding.browser.upgrade()
         {
-            return preview_target(
-                browser
-                    .selected_search_result()
-                    .or_else(|| browser.browser().focused_entry()),
+            let search_result = browser.selected_search_result();
+            let depth = if search_result.is_some() {
+                None
+            } else {
+                browser.browser().active_depth()
+            };
+            return (
+                preview_target(search_result.or_else(|| browser.browser().focused_entry())),
+                depth,
             );
         }
-        preview_target(self.current.borrow().clone())
+        (preview_target(self.current.borrow().clone()), self.current_depth.get())
     }
 
     pub(super) fn reserves_empty_preview(&self) -> bool {

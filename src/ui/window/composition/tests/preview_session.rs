@@ -99,7 +99,7 @@ fn appearance_and_space_share_a_window_local_preview_session_across_unsupported_
             wait(|| browser.column_snapshot(1).is_some_and(|c| !c.loading));
             select(&browser, 1, "nested.txt");
             wait(|| first.content.preview.is_open());
-            first.content.preview.toggle(None);
+            first.content.preview.toggle(None, None);
             assert!(!first_toggle.is_active());
             browser.focus_active();
             assert!(!first.content.preview.is_open());
