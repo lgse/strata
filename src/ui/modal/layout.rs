@@ -68,10 +68,18 @@ pub(in crate::ui) fn install(
     layer: &gtk::Box,
     content: &impl IsA<gtk::Widget>,
 ) -> gtk::ScrolledWindow {
+    // ScrolledWindow clips its child, including CSS shadows. Reserve room inside
+    // the clip for the largest dialog shadow (the settings panel's 28px blur).
+    let shadow_space = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    shadow_space.set_margin_top(42);
+    shadow_space.set_margin_bottom(42);
+    shadow_space.set_margin_start(42);
+    shadow_space.set_margin_end(42);
+    shadow_space.append(content);
     let scroll = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Automatic)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .child(content)
+        .child(&shadow_space)
         .build();
     scroll.add_css_class("modal-viewport");
     layer.append(&scroll);
