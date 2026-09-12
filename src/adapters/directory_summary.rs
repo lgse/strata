@@ -40,7 +40,7 @@ const DIRECTORY_ATTRIBUTES: &str =
     "standard::name,standard::type,standard::is-symlink,standard::size,standard::is-hidden";
 const MAX_ENTRIES: usize = 200_000;
 const MAX_DEPTH: usize = 64;
-const TIME_BUDGET: Duration = Duration::from_secs(5);
+const TIME_BUDGET: Duration = Duration::from_secs(30);
 
 struct MeasurementBudget {
     visited: Cell<usize>,
