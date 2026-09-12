@@ -72,8 +72,10 @@ restoring an unmapped origin or stealing focus from a follow-up modal.
 
 With one recursive match, Down now transfers focus from the Ctrl+F input to the
 result. Before (`34dbc13d`), the input retained its caret and keyboard ownership;
-afterward, the result has native focus and Columns reports the keyboard destination.
-The query and disposable file contents remain unchanged in both captures.
+afterward, the result has native focus, shares regular entries' theme-colored focus
+border, and Columns reports the keyboard destination. The border follows the actual
+filtered row rather than the hidden directory cursor. The query and disposable file
+contents remain unchanged in both captures.
 
 [Before](before-filter-navigation.png) · [After](after-filter-navigation.png)
 

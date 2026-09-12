@@ -540,6 +540,7 @@ fn result_row(
     super::accessibility::set_label(&row, &item.name);
     let line = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     line.add_css_class("file-row");
+    line.add_css_class("filter-result");
     let icon = super::thumbnail::ThumbnailSlot::new(17);
     line.append(&icon);
     let labels = gtk::Box::new(gtk::Orientation::Vertical, 2);

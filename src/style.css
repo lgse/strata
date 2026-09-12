@@ -3541,7 +3541,8 @@ colorchooser colorswatch overlay {
   outline: none;
 }
 
-.keyboard-navigation .file-list:focus-within .file-row.keyboard-cursor {
+.keyboard-navigation .file-list:focus-within .file-row.keyboard-cursor:not(.filter-result),
+.file-list row:focus-within .file-row.filter-result {
   outline: 2px solid @theme_text;
   outline-offset: -2px;
 }
