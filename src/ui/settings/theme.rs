@@ -33,20 +33,81 @@ pub(super) fn theme_page(manager: Rc<ThemeManager>) -> ThemePage {
     let content = page_content();
     content.add_css_class("theme-page");
 
-    let follow = append_follow_omarchy_option(&content, &manager);
-    append_text_size_option(&content, &manager);
+    let system = super::settings_group(&content, "THEME");
+    let follow = append_follow_omarchy_option(&system, &manager);
+    let current = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    current.set_valign(gtk::Align::Center);
+    current.set_halign(gtk::Align::Start);
+    let current_row = super::control_row("Current theme", "", &current);
+    let description = current_row
+        .first_child()
+        .and_downcast::<gtk::Box>()
+        .expect("current theme row copy")
+        .last_child()
+        .and_downcast::<gtk::Label>()
+        .expect("current theme description");
+    let weak_description = description.downgrade();
+    manager.bind_preference(
+        &current,
+        |manager| (manager.follows_omarchy(), manager.appearance_tokens()),
+        move |widget, (following, tokens)| {
+            let current = widget
+                .downcast_ref::<gtk::Box>()
+                .expect("current theme preview");
+            while let Some(child) = current.first_child() {
+                current.remove(&child);
+            }
+            current.append(&theme_preview(&tokens));
+            let name = gtk::Label::new(Some(&tokens.name));
+            name.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            name.set_max_width_chars(24);
+            current.append(&name);
+            if let Some(description) = weak_description.upgrade() {
+                description.set_visible(true);
+                description.set_text(if following {
+                    "Managed by Omarchy. Turn off Follow Omarchy to pick a theme manually."
+                } else {
+                    "Choose a theme from the library below."
+                });
+            }
+        },
+    );
+    system.append(&current_row);
 
-    let catalog = append_theme_catalog(&content);
-    append_heading(&content, "YOUR THEMES");
+    let library = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    library.add_css_class("theme-library");
+    super::search::tag(&library, "Theme library");
+    content.append(&library);
+    let catalog = append_theme_catalog(&library);
     let custom = theme_grid();
-    content.append(&custom);
+    catalog.rows.append(&custom);
+    fill_theme_grids(&catalog.packaged, &custom, &manager);
     bind_catalog_filter(
-        fill_theme_grids(&catalog.packaged, &custom, &manager),
+        [&catalog.packaged, &custom],
         catalog.search,
         catalog.clear,
         catalog.appearance_buttons,
     );
-    let editor_fields = append_custom_theme_editor(&content, &custom, &manager);
+    let editor_fields = append_custom_theme_editor(&catalog.container, &custom, &manager);
+    manager.bind_preference(
+        &library,
+        ThemeManager::follows_omarchy,
+        |widget, following| widget.set_sensitive(!following),
+    );
+    append_text_size_option(&content, &manager);
+    let motion = super::settings_group(&content, "MOTION");
+    let (row, toggle) = super::settings_option(
+        "Reduce motion",
+        "Disable nonessential interface animations.",
+        manager.reduce_motion(),
+    );
+    bind_switch(
+        &manager,
+        &toggle,
+        ThemeManager::reduce_motion,
+        ThemeManager::set_reduce_motion,
+    );
+    motion.append(&row);
 
     let scroller = scrollable_page(&content, None);
     bind_switch(
@@ -57,36 +118,53 @@ pub(super) fn theme_page(manager: Rc<ThemeManager>) -> ThemePage {
     );
     ThemePage {
         widget: scroller,
-        flows: vec![(catalog.packaged, 3), (custom, 3), (editor_fields, 4)],
+        flows: vec![(catalog.packaged, 1), (custom, 1), (editor_fields, 4)],
     }
 }
 
 struct ThemeCatalog {
     packaged: gtk::FlowBox,
+    container: gtk::Box,
+    rows: gtk::Box,
     search: gtk::Entry,
     clear: gtk::Button,
     appearance_buttons: Vec<gtk::ToggleButton>,
 }
 
 fn append_theme_catalog(content: &gtk::Box) -> ThemeCatalog {
-    append_heading(content, "THEMES");
+    let toolbar = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    toolbar.add_css_class("settings-library-toolbar");
+    let heading = append_heading(&toolbar, "THEME LIBRARY");
+    heading.set_hexpand(true);
     let packaged = theme_grid();
-    let (search_overlay, theme_search, clear_search) = theme_search_overlay();
-    content.append(&search_overlay);
-    let cleared_search = theme_search.clone();
-    clear_search.connect_clicked(move |_| {
-        cleared_search.set_text("");
-        cleared_search.grab_focus();
-    });
-    let (appearance_filter, appearance_buttons) = segmented_control(&["All", "Light", "Dark"], 0);
+    let (search_overlay, theme_search, clear_search) = super::search_field("Search themes");
+    theme_search.add_css_class("theme-search");
+    toolbar.append(&search_overlay);
+    let (control, appearance_buttons) = segmented_control(&["All", "Light", "Dark"], 0);
+    let appearance_filter = super::wrap::WrapRow::new(0);
+    appearance_filter.add_css_class("segmented-control");
+    for button in &appearance_buttons {
+        control.remove(button);
+        button.set_hexpand(false);
+        appearance_filter.append(button);
+    }
     appearance_filter.add_css_class("theme-appearance-filter");
-    content.append(&appearance_filter);
+    for button in &appearance_buttons {
+        if let Some(label) = button.child().and_downcast::<gtk::Label>() {
+            label.add_css_class("settings-control-label");
+        }
+    }
+    appearance_filter.set_hexpand(false);
+    toolbar.append(&appearance_filter);
+    content.append(&toolbar);
+    let rows = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    rows.append(&packaged);
     let catalog_scroll = gtk::ScrolledWindow::builder()
-        .child(&packaged)
+        .child(&rows)
         .hscrollbar_policy(gtk::PolicyType::Never)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
-        .min_content_height(240)
-        .max_content_height(330)
+        .min_content_height(336)
+        .max_content_height(336)
         .propagate_natural_height(true)
         .build();
     catalog_scroll.add_css_class("theme-catalog-scroll");
@@ -96,29 +174,19 @@ fn append_theme_catalog(content: &gtk::Box) -> ThemeCatalog {
     content.append(&catalog_container);
     ThemeCatalog {
         packaged,
+        container: catalog_container,
+        rows,
         search: theme_search,
         clear: clear_search,
         appearance_buttons,
     }
 }
 
-fn fill_theme_grids(
-    packaged: &gtk::FlowBox,
-    custom: &gtk::FlowBox,
-    manager: &Rc<ThemeManager>,
-) -> Vec<(gtk::FlowBoxChild, String, bool)> {
-    let mut catalog_cards = Vec::new();
+fn fill_theme_grids(packaged: &gtk::FlowBox, custom: &gtk::FlowBox, manager: &Rc<ThemeManager>) {
     for theme in manager.themes() {
-        let custom_theme = theme.custom;
-        let name = theme.tokens.name.clone();
-        let light = theme_is_light(&theme.tokens);
-        let flow = if custom_theme { custom } else { packaged };
-        let child = append_theme_card(flow, theme, manager);
-        if !custom_theme {
-            catalog_cards.push((child, name, light));
-        }
+        let flow = if theme.custom { custom } else { packaged };
+        append_theme_card(flow, theme, manager);
     }
-    catalog_cards
 }
 
 fn append_custom_theme_editor(
@@ -127,7 +195,15 @@ fn append_custom_theme_editor(
     manager: &Rc<ThemeManager>,
 ) -> gtk::FlowBox {
     let add = add_theme_card_button();
-    custom.insert(&add, -1);
+    let footer = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+    footer.add_css_class("theme-library-footer");
+    let location = gtk::Label::new(Some("Custom themes live in ~/.config/strata/themes"));
+    location.set_xalign(0.0);
+    location.set_hexpand(true);
+    location.set_wrap(true);
+    footer.append(&location);
+    footer.append(&add);
+    content.append(&footer);
     bind_new_custom_themes(custom, manager);
     let (editor, editor_fields) = theme_editor(manager.clone());
     editor.set_reveal_child(false);
@@ -138,41 +214,19 @@ fn append_custom_theme_editor(
 }
 
 fn append_follow_omarchy_option(content: &gtk::Box, manager: &ThemeManager) -> gtk::Switch {
-    let follow = gtk::Switch::builder()
-        .active(manager.follows_omarchy())
-        .valign(gtk::Align::Center)
-        .build();
-    if !manager.is_omarchy_available() {
-        return follow;
+    let (row, follow) = super::settings_option(
+        "Follow Omarchy",
+        "Use the active Omarchy Quattro theme and switch when the system theme changes.",
+        manager.follows_omarchy(),
+    );
+    if manager.is_omarchy_available() {
+        content.append(&row);
     }
-    append_heading(content, "SYSTEM");
-    let system = gtk::Box::new(gtk::Orientation::Horizontal, 14);
-    system.add_css_class("settings-option");
-    let icon = crate::assets::primary_icon(icons::MONITOR, 22);
-    icon.add_css_class("system-theme-icon");
-    let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    copy.set_hexpand(true);
-    copy.set_valign(gtk::Align::Center);
-    let system_title = gtk::Label::new(Some("Follow Omarchy"));
-    system_title.set_xalign(0.0);
-    system_title.add_css_class("settings-option-title");
-    let system_description = gtk::Label::new(Some(
-        "Use the active Omarchy Quattro theme and follow system theme changes.",
-    ));
-    system_description.set_xalign(0.0);
-    system_description.set_wrap(true);
-    system_description.add_css_class("settings-option-description");
-    copy.append(&system_title);
-    copy.append(&system_description);
-    system.append(&icon);
-    system.append(&copy);
-    system.append(&follow);
-    content.append(&system);
     follow
 }
 
 fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
-    append_heading(content, "TYPOGRAPHY");
+    let group = super::settings_group(content, "TEXT");
     let text_size_control =
         gtk::SpinButton::with_range(f64::from(TextSize::MIN), f64::from(TextSize::MAX), 1.0);
     text_size_control.set_numeric(true);
@@ -198,90 +252,59 @@ fn append_text_size_option(content: &gtk::Box, manager: &Rc<ThemeManager>) {
         |manager, value| manager.set_text_size(TextSize::new(value as u32)),
     );
     text_size_control.set_halign(gtk::Align::Start);
-    let reset = gtk::Button::with_label("Reset");
-    reset.add_css_class("action-dialog-cancel");
-    reset.set_halign(gtk::Align::Start);
-    reset.set_valign(gtk::Align::Center);
-    reset.set_tooltip_text(Some("Reset text size to 13 px"));
-    let reset_manager = manager.clone();
-    reset.connect_clicked(move |_| reset_manager.set_text_size(TextSize::default()));
-    let control_height = gtk::SizeGroup::new(gtk::SizeGroupMode::Vertical);
-    control_height.add_widget(&text_size_control);
-    control_height.add_widget(&reset);
-    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-    controls.set_halign(gtk::Align::Start);
+    let controls = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    controls.set_valign(gtk::Align::Center);
     controls.append(&text_size_control);
-    controls.append(&reset);
-    let text_size_row = gtk::Box::new(gtk::Orientation::Vertical, 8);
+    let text_size_row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
     text_size_row.add_css_class("settings-option");
+    super::search::tag(&text_size_row, "Text size");
     let text_size_copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     text_size_copy.set_hexpand(true);
     let text_size_title = gtk::Label::new(Some("Text size"));
     text_size_title.set_xalign(0.0);
     text_size_title.add_css_class("settings-option-title");
     let text_size_description = gtk::Label::new(Some(
-        "Choose 8–48 logical pixels for interface text. Your display scaling applies on top. Use Ctrl++ / Ctrl+− to adjust and Ctrl+0 to reset.",
+        "Logical pixels, 8–48. Display scaling applies on top.",
     ));
     text_size_description.set_xalign(0.0);
     text_size_description.set_wrap(true);
     text_size_description.add_css_class("settings-option-description");
+    let description = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    description.add_css_class("settings-inline-description");
+    description.append(&text_size_description);
+    let keys = super::wrap::WrapRow::new(6);
+    keys.add_css_class("settings-inline-keys");
+    keys.set_hexpand(false);
+    keys.set_valign(gtk::Align::Center);
+    for key in ["Ctrl", "+", "/", "−", "/", "0"] {
+        let label = gtk::Label::new(Some(key));
+        label.add_css_class("settings-nowrap");
+        label.add_css_class(if key == "/" {
+            "keycap-separator"
+        } else {
+            "settings-keycap"
+        });
+        keys.append(&label);
+    }
+    description.append(&keys);
     text_size_copy.append(&text_size_title);
-    text_size_copy.append(&text_size_description);
+    text_size_copy.append(&description);
     text_size_row.append(&text_size_copy);
     text_size_row.append(&controls);
-    content.append(&text_size_row);
+    group.append(&text_size_row);
 }
 
 fn theme_grid() -> gtk::FlowBox {
     let grid = gtk::FlowBox::builder()
-        .column_spacing(12)
-        .row_spacing(12)
-        .max_children_per_line(3)
+        .column_spacing(0)
+        .row_spacing(0)
+        .max_children_per_line(1)
         .min_children_per_line(1)
         .selection_mode(gtk::SelectionMode::None)
         .homogeneous(true)
         .build();
     grid.add_css_class("theme-grid");
     grid
-}
-
-fn selects_all_in_theme_search(key: gdk::Key, modifiers: gdk::ModifierType) -> bool {
-    modifiers.contains(gdk::ModifierType::CONTROL_MASK) && matches!(key, gdk::Key::a | gdk::Key::A)
-}
-
-fn theme_search_overlay() -> (gtk::Overlay, gtk::Entry, gtk::Button) {
-    let theme_search = gtk::Entry::new();
-    theme_search.add_css_class("form-control");
-    theme_search.add_css_class("theme-search");
-    theme_search.set_placeholder_text(Some("Search themes"));
-    let search_keys = gtk::EventControllerKey::new();
-    search_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
-    let selected_search = theme_search.downgrade();
-    search_keys.connect_key_pressed(move |_, key, _, modifiers| {
-        if !selects_all_in_theme_search(key, modifiers) {
-            return glib::Propagation::Proceed;
-        }
-        let Some(search) = selected_search.upgrade() else {
-            return glib::Propagation::Proceed;
-        };
-        search.select_region(0, -1);
-        glib::Propagation::Stop
-    });
-    theme_search.add_controller(search_keys);
-    let clear_search = gtk::Button::builder()
-        .child(&crate::assets::primary_icon(icons::X, 15))
-        .tooltip_text("Clear theme search")
-        .halign(gtk::Align::End)
-        .valign(gtk::Align::Center)
-        .margin_end(6)
-        .visible(false)
-        .build();
-    clear_search.add_css_class("theme-search-clear");
-    clear_search.set_has_frame(false);
-    let search_overlay = gtk::Overlay::new();
-    search_overlay.set_child(Some(&theme_search));
-    search_overlay.add_overlay(&clear_search);
-    (search_overlay, theme_search, clear_search)
 }
 
 fn catalog_card_visible(appearance: ThemeAppearance, light: bool, name: &str, query: &str) -> bool {
@@ -294,27 +317,36 @@ fn catalog_card_visible(appearance: ThemeAppearance, light: bool, name: &str, qu
 }
 
 fn bind_catalog_filter(
-    catalog_cards: Vec<(gtk::FlowBoxChild, String, bool)>,
+    flows: [&gtk::FlowBox; 2],
     theme_search: gtk::Entry,
     clear_search: gtk::Button,
     appearance_buttons: Vec<gtk::ToggleButton>,
 ) {
-    let catalog_cards = Rc::new(catalog_cards);
+    let query = Rc::new(RefCell::new(String::new()));
     let appearance = Rc::new(Cell::new(ThemeAppearance::All));
-    let filtered_cards = catalog_cards.clone();
-    let filtered_appearance = appearance.clone();
-    let filter_search = theme_search.clone();
-    let apply_catalog_filter: Rc<dyn Fn()> = Rc::new(move || {
-        let query = filter_search.text();
-        let appearance = filtered_appearance.get();
-        for (child, name, light) in filtered_cards.iter() {
-            child.set_visible(catalog_card_visible(appearance, *light, name, &query));
-        }
-    });
-    let search_filter = apply_catalog_filter.clone();
+    for flow in flows {
+        let query = query.clone();
+        let appearance = appearance.clone();
+        flow.set_filter_func(move |child| {
+            let Some(card) = child.child() else {
+                return false;
+            };
+            catalog_card_visible(
+                appearance.get(),
+                card.has_css_class("light"),
+                card.tooltip_text().as_deref().unwrap_or_default(),
+                &query.borrow(),
+            )
+        });
+    }
+    let weak_flows = flows.map(|flow| flow.downgrade());
+    let search_flows = weak_flows.clone();
     theme_search.connect_changed(move |search| {
+        *query.borrow_mut() = search.text().to_string();
         clear_search.set_visible(!search.text().is_empty());
-        search_filter();
+        for flow in search_flows.iter().filter_map(glib::WeakRef::upgrade) {
+            flow.invalidate_filter();
+        }
     });
     for (button, value) in appearance_buttons.into_iter().zip([
         ThemeAppearance::All,
@@ -322,11 +354,13 @@ fn bind_catalog_filter(
         ThemeAppearance::Dark,
     ]) {
         let appearance = appearance.clone();
-        let apply_filter = apply_catalog_filter.clone();
+        let weak_flows = weak_flows.clone();
         button.connect_toggled(move |button| {
             if button.is_active() {
                 appearance.set(value);
-                apply_filter();
+                for flow in weak_flows.iter().filter_map(glib::WeakRef::upgrade) {
+                    flow.invalidate_filter();
+                }
             }
         });
     }
@@ -336,11 +370,13 @@ fn add_theme_card_button() -> gtk::Button {
     let add = gtk::Button::new();
     add.add_css_class("add-theme-card");
     add.set_has_frame(false);
-    let add_content = gtk::Box::new(gtk::Orientation::Vertical, 7);
+    let add_content = gtk::Box::new(gtk::Orientation::Horizontal, 7);
     add_content.set_halign(gtk::Align::Center);
     add_content.set_valign(gtk::Align::Center);
-    let plus = crate::assets::primary_icon(icons::PLUS, 22);
-    let add_label = gtk::Label::new(Some("Add a theme"));
+    let plus = crate::assets::primary_icon(icons::PLUS, 16);
+    let add_label = gtk::Label::new(Some("Add theme"));
+    add_label.set_wrap(true);
+    add_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     add_content.append(&plus);
     add_content.append(&add_label);
     add.set_child(Some(&add_content));
@@ -421,31 +457,35 @@ fn append_theme_card(
 ) -> gtk::FlowBoxChild {
     let card = gtk::Button::new();
     card.add_css_class("theme-card");
+    card.set_tooltip_text(Some(&theme.tokens.name));
+    if theme_is_light(&theme.tokens) {
+        card.add_css_class("light");
+    }
     card.set_has_frame(false);
     card.set_overflow(gtk::Overflow::Visible);
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 6);
-    let preview = gtk::Overlay::new();
-    preview.set_child(Some(&theme_preview(&theme.tokens)));
-    let check = gtk::Image::from_icon_name(icons::CHECK_ON_PRIMARY);
-    check.add_css_class("theme-card-check");
-    check.set_halign(gtk::Align::End);
-    check.set_valign(gtk::Align::Start);
-    check.set_margin_top(8);
-    check.set_margin_end(8);
-    check.set_pixel_size(10);
-    preview.add_overlay(&check);
-    content.append(&preview);
-    let label_row = gtk::Box::new(gtk::Orientation::Horizontal, 7);
+    let content = super::wrap::WrapRow::new(16);
+    content.append(&theme_preview(&theme.tokens));
+    let label = gtk::Label::new(Some(&theme.tokens.name));
+    label.set_xalign(0.0);
+    label.set_hexpand(true);
+    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
+    content.append(&label);
+    let kind = gtk::Label::new(Some(if theme_is_light(&theme.tokens) {
+        "LIGHT"
+    } else {
+        "DARK"
+    }));
+    kind.add_css_class("theme-kind");
+    let metadata = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    metadata.append(&kind);
+    content.append(&metadata);
+    let check = crate::assets::primary_icon(icons::CHECK, 14);
     let selected = !manager.follows_omarchy() && manager.selected_id() == theme.id;
     check.set_visible(selected);
+    metadata.append(&check);
     if selected {
         card.add_css_class("selected");
     }
-    let label = gtk::Label::new(Some(&theme.tokens.name));
-    label.set_xalign(0.0);
-    label.set_ellipsize(gtk::pango::EllipsizeMode::End);
-    label_row.append(&label);
-    content.append(&label_row);
     card.set_child(Some(&content));
     let theme_id = theme.id;
     let selected_theme = theme_id.clone();
@@ -477,8 +517,9 @@ fn append_theme_card(
 fn theme_preview(tokens: &ThemeTokens) -> gtk::DrawingArea {
     let area = gtk::DrawingArea::new();
     area.add_css_class("theme-preview");
-    area.set_content_width(190);
-    area.set_content_height(72);
+    area.set_content_width(80);
+    area.set_content_height(28);
+    area.set_valign(gtk::Align::Center);
     let tokens = tokens.clone();
     area.set_draw_func(move |_, context, width, height| {
         let color = |value: &str| gdk::RGBA::parse(value).unwrap_or(gdk::RGBA::BLACK);
@@ -502,24 +543,22 @@ fn theme_preview(tokens: &ThemeTokens) -> gtk::DrawingArea {
         paint(context, &tokens.background);
         context.rectangle(0.0, 0.0, f64::from(width), f64::from(height));
         let _ = context.fill();
-        paint(context, &tokens.surface);
-        context.rectangle(0.0, 0.0, f64::from(width) * 0.40, f64::from(height));
-        let _ = context.fill();
-        for (x, y, w, value) in [
-            (10.0, 23.0, 45.0, &tokens.dim_text),
-            (10.0, 36.0, 59.0, &tokens.accent),
-            (10.0, 51.0, 39.0, &tokens.dim_text),
-            (f64::from(width) * 0.45, 23.0, 47.0, &tokens.accent),
-            (f64::from(width) * 0.45, 37.0, 83.0, &tokens.dim_text),
-            (f64::from(width) * 0.45, 51.0, 66.0, &tokens.dim_text),
-        ] {
+        for (index, value) in [
+            &tokens.accent,
+            &tokens.danger,
+            &tokens.highlight,
+            &tokens.dim_text,
+        ]
+        .into_iter()
+        .enumerate()
+        {
             paint(context, value);
             context.rounded_rectangle(RoundedRect {
-                x,
-                y,
-                width: w,
-                height: 5.0,
-                radius: 2.5,
+                x: 8.0 + index as f64 * 18.0,
+                y: (f64::from(height) - 10.0) / 2.0,
+                width: if index == 3 { 6.0 } else { 14.0 },
+                height: 10.0,
+                radius: 5.0,
             });
             let _ = context.fill();
         }

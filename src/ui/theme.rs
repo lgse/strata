@@ -874,6 +874,15 @@ impl ThemeManager {
         Ok(id)
     }
 
+    pub fn appearance_tokens(&self) -> ThemeTokens {
+        if self.follows_omarchy()
+            && let Some(tokens) = load_omarchy_theme()
+        {
+            return tokens;
+        }
+        self.starter_tokens()
+    }
+
     pub fn starter_tokens(&self) -> ThemeTokens {
         self.current_tokens().unwrap_or_else(azure_tokens)
     }
@@ -1000,6 +1009,7 @@ impl ThemeManager {
                 manager.pending_omarchy_refresh.borrow_mut().take();
                 if manager.follows_omarchy() && !manager.previewing.get() {
                     manager.apply_selected();
+                    manager.changes.notify(&manager);
                 }
             });
             manager.pending_omarchy_refresh.replace(Some(refresh));

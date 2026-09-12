@@ -22,9 +22,11 @@ mod about;
 mod bindings;
 mod general;
 mod keybindings;
+mod search;
 mod theme;
+mod wrap;
 use about::about_page;
-use bindings::{bind_choice, bind_switch};
+use bindings::bind_switch;
 use general::general_page;
 use keybindings::keybindings_page;
 use theme::theme_page;
@@ -35,7 +37,7 @@ mod tests;
 use super::{
     blur::BlurBin,
     browser::{dismiss_modal_layer, modal_layer},
-    controls::{modal_layout, segmented_control},
+    controls::modal_layout,
     terminal,
     theme::ThemeManager,
 };
@@ -198,10 +200,12 @@ pub(super) fn maybe_run_due_update_check(manager: &Rc<ThemeManager>, notice: &Up
     });
 }
 
-const DIALOG_WIDTH: i32 = 920;
-const DIALOG_HEIGHT: i32 = 680;
+const DIALOG_WIDTH: i32 = 1400;
+const DIALOG_HEIGHT: i32 = 1024;
 const DIALOG_MARGIN: i32 = 24;
-const COMPACT_NAVIGATION_BREAKPOINT: i32 = 700;
+const COMPACT_NAVIGATION_BREAKPOINT: i32 = 900;
+// Reflow the content before collapsing navigation: desktop toolbars need more room.
+const COMPACT_CONTENT_BREAKPOINT: i32 = 1250;
 
 mod responsive_bin {
     use super::*;
@@ -209,6 +213,7 @@ mod responsive_bin {
     #[derive(Default)]
     pub struct ResponsiveBin {
         pub compact_navigation: Cell<bool>,
+        pub compact_content: Cell<bool>,
         pub typography_scale: Cell<f64>,
         pub navigation: RefCell<Option<gtk::Box>>,
         pub navigation_heading: RefCell<Option<gtk::Label>>,
@@ -250,11 +255,14 @@ mod responsive_bin {
                 return;
             };
             let (child_width, child_height) = responsive_dialog_size(width, height);
+            let logical_width = f64::from(child_width) / self.typography_scale.get().max(0.1);
+            let compact_content = logical_width < f64::from(COMPACT_CONTENT_BREAKPOINT);
             let compact = uses_compact_navigation(
                 (f64::from(child_width) / self.typography_scale.get().max(0.1)) as i32,
             );
             if self.compact_navigation.replace(compact) != compact {
                 if let Some(navigation) = self.navigation.borrow().as_ref() {
+                    search::set_compact(navigation, compact);
                     if compact {
                         navigation.add_css_class("compact");
                     } else {
@@ -274,6 +282,9 @@ mod responsive_bin {
                         gtk::Align::Fill
                     });
                 }
+            }
+            if self.compact_content.replace(compact_content) != compact_content {
+                let compact = compact_content;
                 for (flow, expanded_columns) in self.responsive_flows.borrow().iter() {
                     flow.set_max_children_per_line(if compact { 1 } else { *expanded_columns });
                 }
@@ -299,7 +310,7 @@ mod responsive_bin {
                     } else {
                         gtk::Orientation::Horizontal
                     });
-                    responsive_row.row.set_spacing(if compact { 4 } else { 12 });
+                    responsive_row.row.set_spacing(if compact { 4 } else { 24 });
                     for option in &responsive_row.options {
                         option.set_orientation(if compact {
                             gtk::Orientation::Vertical
@@ -315,6 +326,7 @@ mod responsive_bin {
                     }
                 }
             }
+            reflow_settings(&child, compact_content);
             let x = ((width - child_width) / 2) as f32;
             let y = ((height - child_height) / 2) as f32;
             let transform = gtk::gsk::Transform::new().translate(&gtk::graphene::Point::new(x, y));
@@ -368,7 +380,7 @@ impl ResponsiveBin {
     }
 
     fn add_flow(&self, flow: gtk::FlowBox, columns: u32) {
-        flow.set_max_children_per_line(if self.imp().compact_navigation.get() {
+        flow.set_max_children_per_line(if self.imp().compact_content.get() {
             1
         } else {
             columns
@@ -380,7 +392,7 @@ impl ResponsiveBin {
     }
 
     fn add_action(&self, row: gtk::Box, button: gtk::Button) {
-        row.set_orientation(if self.imp().compact_navigation.get() {
+        row.set_orientation(if self.imp().compact_content.get() {
             gtk::Orientation::Vertical
         } else {
             gtk::Orientation::Horizontal
@@ -390,6 +402,93 @@ impl ResponsiveBin {
             .responsive_actions
             .borrow_mut()
             .push((row, button));
+    }
+}
+
+fn reflow_settings(widget: &gtk::Widget, compact: bool) {
+    if widget.has_css_class("settings-dialog") {
+        if compact {
+            widget.add_css_class("compact");
+        } else {
+            widget.remove_css_class("compact");
+        }
+    }
+    if let Some(row) = widget.downcast_ref::<gtk::Box>()
+        && [
+            "settings-option",
+            "settings-library-toolbar",
+            "about-identity",
+            "keybinding-row",
+            "theme-library-footer",
+            "settings-inline-description",
+            "settings-update-summary",
+        ]
+        .iter()
+        .any(|class| row.has_css_class(class))
+    {
+        let switch_row = row
+            .last_child()
+            .is_some_and(|child| child.is::<gtk::Switch>());
+        let orientation = if compact && !switch_row {
+            gtk::Orientation::Vertical
+        } else {
+            gtk::Orientation::Horizontal
+        };
+        // The update status card owns a vertical release-notes body.
+        if !row.has_css_class("settings-update-status") && row.orientation() != orientation {
+            row.set_orientation(orientation);
+        }
+    }
+    if let Some(row) = widget.downcast_ref::<wrap::WrapRow>()
+        && row.has_css_class("settings-keycaps")
+    {
+        row.set_end_align(!compact);
+    }
+    if widget.has_css_class("theme-appearance-filter") {
+        widget.set_halign(if compact {
+            gtk::Align::Fill
+        } else {
+            gtk::Align::End
+        });
+        widget.set_hexpand(compact);
+        let mut child = widget.first_child();
+        while let Some(button) = child {
+            child = button.next_sibling();
+            button.set_hexpand(compact);
+        }
+    }
+    if ["settings-keycaps", "settings-inline-keys"]
+        .iter()
+        .any(|class| widget.has_css_class(class))
+    {
+        widget.set_halign(if compact {
+            gtk::Align::Start
+        } else {
+            gtk::Align::End
+        });
+    }
+    if let Some(label) = widget.downcast_ref::<gtk::Label>()
+        && (label.has_css_class("settings-nowrap") || label.has_css_class("menu-heading"))
+    {
+        label.set_wrap(compact && !label.has_css_class("settings-keycap"));
+    }
+    if let Some(button) = widget.downcast_ref::<gtk::Button>()
+        && !widget.is::<gtk::ToggleButton>()
+        && let Some(label) = button.child().and_downcast::<gtk::Label>()
+    {
+        label.set_wrap(compact);
+        label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    }
+    if widget.has_css_class("activation-header") {
+        widget.set_visible(!compact);
+    }
+    if widget.has_css_class("activation-inline-label") {
+        widget.set_visible(compact);
+    }
+    let mut child = widget.first_child();
+    while let Some(next) = child {
+        child = next.next_sibling();
+        reflow_settings(&next, compact);
     }
 }
 
@@ -429,9 +528,10 @@ pub fn build_layer(
     panel.add_css_class("settings-dialog");
     panel.set_overflow(gtk::Overflow::Hidden);
 
-    let navigation = gtk::Box::new(gtk::Orientation::Vertical, 5);
+    let navigation = gtk::Box::new(gtk::Orientation::Vertical, 2);
     navigation.add_css_class("settings-navigation");
     let navigation_heading = append_heading(&navigation, "SETTINGS");
+    let settings_search = search::append(&navigation);
 
     let page = gtk::Box::new(gtk::Orientation::Vertical, 0);
     page.add_css_class("settings-page");
@@ -506,8 +606,8 @@ pub fn build_layer(
     let nav_buttons: Rc<RefCell<Vec<gtk::Button>>> = Rc::new(RefCell::new(Vec::new()));
     for (label, icon, name) in [
         ("General", icons::SLIDERS, "general"),
+        ("Appearance", icons::PALETTE, "theme"),
         ("Keybindings", icons::KEYBOARD, "keybindings"),
-        ("Theme & appearance", icons::PALETTE, "theme"),
         ("Updates", icons::DOWNLOADS, "updates"),
         ("About", icons::INFO, "about"),
     ] {
@@ -528,6 +628,7 @@ pub fn build_layer(
         let install_guard = install_guard.clone();
         let updates_container = updates_container.clone();
         let responsive_panel = responsive_panel.clone();
+        let search_state = settings_search.state.clone();
         button.connect_clicked(move |clicked| {
             for candidate in buttons.borrow().iter() {
                 if candidate == clicked {
@@ -540,6 +641,7 @@ pub fn build_layer(
                 match name {
                     "theme" => {
                         let page = theme_page(themes.clone());
+                        search::apply(&page.widget, &search_state);
                         stack.add_named(&page.widget, Some("theme"));
                         for (flow, columns) in page.flows {
                             responsive_panel.add_flow(flow, columns);
@@ -552,12 +654,14 @@ pub fn build_layer(
                         let update_notice = update_notice.clone();
                         let install_guard = install_guard.clone();
                         let _ = stack;
+                        let search_state = search_state.clone();
                         resolve_update_method_async(move |method| {
                             let (updates, actions) =
                                 updates_page(themes, update_notice, install_guard, method);
                             while let Some(child) = container.first_child() {
                                 container.remove(&child);
                             }
+                            search::apply(&updates, &search_state);
                             container.append(&updates);
                             for (row, button) in actions {
                                 panel.add_action(row, button);
@@ -572,6 +676,11 @@ pub fn build_layer(
         });
         navigation.append(&button);
     }
+
+    settings_search.install(&stack, &title, &nav_buttons);
+    let spacer = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    spacer.set_vexpand(true);
+    navigation.append(&spacer);
 
     let navigation_scroll = gtk::ScrolledWindow::builder()
         .hscrollbar_policy(gtk::PolicyType::Never)
@@ -666,7 +775,8 @@ fn updates_page(
     update_method: UpdateMethod,
 ) -> (gtk::Widget, Vec<(gtk::Box, gtk::Button)>) {
     let preferences = page_content();
-    append_heading(&preferences, "UPDATE PREFERENCES");
+    preferences.add_css_class("settings-updates-page");
+    append_heading(&preferences, "STATUS");
     let managed = InstallSource::detect().managed();
     if let Some(managed) = managed {
         preferences.append(&managed_install_row(managed));
@@ -689,10 +799,10 @@ fn updates_page(
         update_method,
     );
 
-    preferences.append(&automatic_updates_option(&manager, update_method));
-    let (channel_row, sync_channel_selection) =
-        append_channel_option(&preferences, manager.clone(), managed, update_method);
     preferences.append(&update_row);
+    let options = settings_group(&preferences, "PREFERENCES");
+    options.append(&automatic_updates_option(&manager, update_method));
+    let channel_row = append_channel_option(&options, manager.clone(), managed, update_method);
     append_current_release_notes(&preferences);
     bind_updates_auto_check(
         &manager,
@@ -703,13 +813,7 @@ fn updates_page(
     );
 
     let page = scrollable_page(&preferences, None);
-    wire_channel_change_check(
-        &manager,
-        &page,
-        sync_channel_selection,
-        run_check,
-        install_underway,
-    );
+    wire_channel_change_check(&manager, &page, run_check, install_underway);
     (page, vec![responsive_action])
 }
 
@@ -718,24 +822,56 @@ fn append_channel_option(
     manager: Rc<ThemeManager>,
     managed: Option<&ManagedInstall>,
     update_method: UpdateMethod,
-) -> (gtk::Box, Rc<dyn Fn()>) {
-    let (channel_row, sync_channel_selection) = channel_option(manager.clone(), managed);
+) -> gtk::Box {
+    let channel_row = channel_option(manager.clone(), managed);
     channel_row.set_sensitive(manager.checks_for_updates());
-    channel_row.set_visible(managed.is_some() || !update_method.is_package_managed());
+    search::set_available(
+        &channel_row,
+        managed.is_some() || !update_method.is_package_managed(),
+    );
     preferences.append(&channel_row);
-    (channel_row, sync_channel_selection)
+    channel_row
 }
 
 fn append_current_release_notes(preferences: &gtk::Box) {
     append_heading(preferences, "RELEASE NOTES");
     let current_notes = release_notes_card(
-        &format!(
-            "Current release · v{}",
-            crate::build_info::installed_version()
-        ),
+        &format!("What's new in v{}", crate::build_info::installed_version()),
         "Loading release notes…",
     );
-    preferences.append(&current_notes.container);
+    current_notes.container.remove(&current_notes.title);
+    current_notes.container.remove(&current_notes.summary);
+    let header = gtk::Box::new(gtk::Orientation::Vertical, 6);
+    header.append(&current_notes.title);
+    header.append(&current_notes.summary);
+    header.set_hexpand(true);
+    let heading = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    heading.append(&header);
+    heading.append(&crate::assets::primary_icon(icons::CHEVRON_RIGHT, 16));
+    let toggle = gtk::Button::builder().child(&heading).build();
+    toggle.add_css_class("release-notes-toggle");
+    let details = gtk::Revealer::builder()
+        .child(&current_notes.container)
+        .transition_duration(0)
+        .reveal_child(false)
+        .build();
+    let expander = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    expander.add_css_class("settings-release-expander");
+    search::tag(&expander, "Release notes");
+    expander.append(&toggle);
+    expander.append(&details);
+    toggle.update_state(&[gtk::accessible::State::Expanded(Some(false))]);
+    toggle.connect_clicked(move |button| {
+        let expanded = !details.reveals_child();
+        details.set_reveal_child(expanded);
+        button.update_state(&[gtk::accessible::State::Expanded(Some(expanded))]);
+        if expanded {
+            button.add_css_class("expanded");
+        } else {
+            button.remove_css_class("expanded");
+        }
+    });
+    preferences.append(&expander);
     load_current_release_notes(&current_notes);
 }
 
@@ -771,7 +907,6 @@ fn bind_updates_auto_check(
 fn wire_channel_change_check(
     manager: &Rc<ThemeManager>,
     page: &impl IsA<gtk::Widget>,
-    sync_channel_selection: Rc<dyn Fn()>,
     run_check: Rc<dyn Fn(bool)>,
     install_underway: Rc<dyn Fn() -> bool>,
 ) {
@@ -779,7 +914,6 @@ fn wire_channel_change_check(
     manager.on_release_channel_changed(
         page,
         Rc::new(move || {
-            sync_channel_selection();
             if !install_underway() {
                 run_check(false);
             }
@@ -789,9 +923,9 @@ fn wire_channel_change_check(
 
 fn automatic_updates_option(manager: &Rc<ThemeManager>, method: UpdateMethod) -> gtk::Box {
     let (row, toggle) = settings_option(
-        "Automatically check for updates",
+        "Check for updates automatically",
         match method {
-            UpdateMethod::InPlace => "Check GitHub for a newer release when Strata starts.",
+            UpdateMethod::InPlace => "Look for a new release on GitHub when Strata starts.",
             UpdateMethod::Aur => "Check the AUR for a newer packaged release when Strata starts.",
             UpdateMethod::Omarchy => {
                 "Check the Omarchy package repository for a newer release when Strata starts."
@@ -812,73 +946,47 @@ fn automatic_updates_option(manager: &Rc<ThemeManager>, method: UpdateMethod) ->
 }
 
 const RELEASE_CHANNEL_TITLE: &str = "Release channel";
-const RELEASE_CHANNEL_DESCRIPTION: &str = "Preview receives alpha, beta, and release-candidate builds. Nightly also receives daily development builds.";
 
-fn channel_option(
-    manager: Rc<ThemeManager>,
-    managed: Option<&ManagedInstall>,
-) -> (gtk::Box, Rc<dyn Fn()>) {
-    let row = gtk::Box::new(gtk::Orientation::Vertical, 12);
-    row.add_css_class("settings-option");
-
-    let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
-    let title = gtk::Label::new(Some(RELEASE_CHANNEL_TITLE));
-    title.set_xalign(0.0);
-    title.add_css_class("settings-option-title");
-    let description = gtk::Label::new(Some(&match managed {
-        Some(managed) => managed_channel_description(managed),
-        None => RELEASE_CHANNEL_DESCRIPTION.to_owned(),
-    }));
-    description.set_xalign(0.0);
-    description.set_wrap(true);
-    description.add_css_class("settings-option-description");
-    copy.append(&title);
-    copy.append(&description);
-    row.append(&copy);
-
-    let (control, buttons) = segmented_control(
-        &["Stable", "Preview", "Nightly"],
-        channel_index(manager.release_channel()),
+fn channel_option(manager: Rc<ThemeManager>, managed: Option<&ManagedInstall>) -> gtk::Box {
+    let control = bindings::choice_menu(
+        &manager,
+        RELEASE_CHANNEL_TITLE,
+        &[
+            ("Stable", Channel::Stable),
+            ("Preview", Channel::Preview),
+            ("Nightly", Channel::Nightly),
+        ],
+        ThemeManager::release_channel,
+        ThemeManager::set_release_channel,
     );
-    let weak_buttons: Vec<glib::WeakRef<gtk::ToggleButton>> =
-        buttons.iter().map(|button| button.downgrade()).collect();
-    for (button, channel) in buttons.into_iter().zip(CHANNEL_ORDER) {
-        bind_choice(
-            &manager,
-            &button,
-            channel,
-            ThemeManager::release_channel,
-            ThemeManager::set_release_channel,
-        );
-    }
     control.set_sensitive(managed.is_none());
-    row.append(&control);
-
-    let sync = {
-        let manager = manager.clone();
-        Rc::new(move || {
-            let Some(button) = weak_buttons
-                .get(channel_index(manager.release_channel()))
-                .and_then(glib::WeakRef::upgrade)
-            else {
-                return;
-            };
-            if !button.is_active() {
-                button.set_active(true);
-            }
-        }) as Rc<dyn Fn()>
-    };
-
-    (row, sync)
+    let description = managed
+        .map(managed_channel_description)
+        .unwrap_or_else(|| channel_description(manager.release_channel()).to_owned());
+    let row = control_row(RELEASE_CHANNEL_TITLE, &description, &control);
+    if managed.is_none() {
+        let label = row
+            .first_child()
+            .and_downcast::<gtk::Box>()
+            .expect("channel row copy")
+            .last_child()
+            .and_downcast::<gtk::Label>()
+            .expect("channel description");
+        manager.bind_preference(&label, ThemeManager::release_channel, |widget, channel| {
+            widget
+                .downcast_ref::<gtk::Label>()
+                .expect("channel description binding")
+                .set_text(channel_description(channel));
+        });
+    }
+    row
 }
 
-const CHANNEL_ORDER: [Channel; 3] = [Channel::Stable, Channel::Preview, Channel::Nightly];
-
-fn channel_index(channel: Channel) -> usize {
+fn channel_description(channel: Channel) -> &'static str {
     match channel {
-        Channel::Stable => 0,
-        Channel::Preview => 1,
-        Channel::Nightly => 2,
+        Channel::Stable => "Tested releases recommended for everyday use.",
+        Channel::Preview => "Try upcoming releases with alpha, beta, and release-candidate builds.",
+        Channel::Nightly => "Everything in Preview, plus daily development builds. May break.",
     }
 }
 
@@ -971,6 +1079,7 @@ fn set_release_note_blocks(notes: &gtk::Box, blocks: &[ReleaseNoteBlock]) {
 struct ReleaseNotesCard {
     container: gtk::Box,
     title: gtk::Label,
+    summary: gtk::Label,
     badge: gtk::Label,
     notes: gtk::Box,
     fallback: gtk::LinkButton,
@@ -983,6 +1092,7 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
     title_label.add_css_class("release-notes-title");
     title_label.set_xalign(0.0);
     title_label.set_wrap(true);
+    title_label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     let badge = gtk::Label::new(None);
     badge.add_css_class("prerelease-badge");
     badge.set_xalign(0.0);
@@ -995,13 +1105,20 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
     fallback.add_css_class("release-notes-fallback");
     fallback.set_halign(gtk::Align::Start);
     fallback.set_visible(false);
+    let summary = gtk::Label::new(Some(initial));
+    summary.set_xalign(0.0);
+    summary.set_wrap(true);
+    summary.set_wrap_mode(gtk::pango::WrapMode::WordChar);
+    summary.add_css_class("settings-option-description");
     container.append(&title_label);
+    container.append(&summary);
     container.append(&badge);
     container.append(&notes);
     container.append(&fallback);
     ReleaseNotesCard {
         container,
         title: title_label,
+        summary,
         badge,
         notes,
         fallback,
@@ -1013,6 +1130,7 @@ fn release_notes_card(title: &str, initial: &str) -> ReleaseNotesCard {
 /// release notes and update surfaces must visibly label prerelease software.
 fn show_release_notes(card: &ReleaseNotesCard, release: &ReleaseMetadata) {
     card.container.set_visible(true);
+    let current_release = card.title.text().starts_with("What's new in");
     card.title.set_text(&format!(
         "{} · v{}",
         card.title
@@ -1023,6 +1141,25 @@ fn show_release_notes(card: &ReleaseNotesCard, release: &ReleaseMetadata) {
             .trim(),
         release.version
     ));
+    if current_release {
+        card.title
+            .set_text(&format!("What's new in v{}", release.version));
+    }
+    let changes = release
+        .note_blocks
+        .iter()
+        .filter(|block| matches!(block, ReleaseNoteBlock::ListItem { .. }))
+        .count();
+    let published = release
+        .published_at
+        .as_deref()
+        .and_then(|date| date.split('T').next());
+    card.summary.set_text(&match (changes, published) {
+        (0, None) => "Release notes".to_owned(),
+        (0, Some(date)) => format!("Published {date}"),
+        (count, None) => format!("{count} changes"),
+        (count, Some(date)) => format!("{count} changes · published {date}"),
+    });
     if release.kind == BuildKind::Stable {
         card.badge.set_visible(false);
     } else {
@@ -1051,6 +1188,8 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
                 glib::ControlFlow::Break
             }
             Ok(ReleaseNotes::Unavailable { url }) => {
+                card.summary
+                    .set_text("Release notes unavailable for this build");
                 set_release_notes_message(
                     &card.notes,
                     "Release notes are unavailable because this version’s tag was not found.",
@@ -1060,6 +1199,7 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
                 glib::ControlFlow::Break
             }
             Ok(ReleaseNotes::Failed { message, url }) => {
+                card.summary.set_text("Couldn’t load release notes");
                 set_release_notes_message(
                     &card.notes,
                     &format!("Couldn’t load release notes: {message}"),
@@ -1070,6 +1210,7 @@ fn load_current_release_notes(card: &ReleaseNotesCard) {
             }
             Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
             Err(TryRecvError::Disconnected) => {
+                card.summary.set_text("Couldn’t load release notes");
                 set_release_notes_message(
                     &card.notes,
                     "Couldn’t load release notes because the request ended unexpectedly.",
@@ -1170,12 +1311,16 @@ fn update_check_row(
 ) -> UpdateCheckRow {
     let row = gtk::Box::new(gtk::Orientation::Vertical, 0);
     row.add_css_class("settings-option");
+    row.add_css_class("settings-update-status");
+    search::tag(&row, "Check for updates");
     let summary = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    summary.add_css_class("settings-update-summary");
     summary.set_vexpand(true);
+    row.set_vexpand(false);
     let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     copy.set_hexpand(true);
     copy.set_valign(gtk::Align::Center);
-    let title = gtk::Label::new(Some("Updates"));
+    let title = gtk::Label::new(Some("Check for updates"));
     title.set_xalign(0.0);
     title.add_css_class("settings-option-title");
     let status = gtk::Label::new(Some(&installed_version_status(
@@ -1187,7 +1332,13 @@ fn update_check_row(
     status.set_wrap(true);
     status.set_use_markup(true);
     status.add_css_class("settings-option-description");
-    copy.append(&title);
+    let heading = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    let status_icon = crate::assets::primary_icon(icons::INFO, 18);
+    status_icon.set_valign(gtk::Align::Center);
+    title.set_valign(gtk::Align::Center);
+    heading.append(&status_icon);
+    heading.append(&title);
+    copy.append(&heading);
     copy.append(&status);
     let progress = gtk::ProgressBar::new();
     progress.add_css_class("settings-update-progress");
@@ -1227,6 +1378,8 @@ fn update_check_row(
     let generation = Rc::new(Cell::new(0_u64));
 
     let run_check: Rc<dyn Fn(bool)> = Rc::new({
+        let title = title.clone();
+        let status_icon = status_icon.clone();
         let checking = checking.clone();
         let generation = generation.clone();
         let status = status.clone();
@@ -1254,6 +1407,7 @@ fn update_check_row(
             progress.set_fraction(0.0);
             progress.set_visible(false);
             progress.remove_css_class("error");
+            title.set_text("Checking for updates…");
             status.set_text("Checking for updates…");
             available_notes.container.set_visible(false);
             available_notes.fallback.set_visible(false);
@@ -1273,6 +1427,8 @@ fn update_check_row(
                 update_method,
                 force,
             );
+            let title = title.clone();
+            let status_icon = status_icon.clone();
             let checking = checking.clone();
             let generation = generation.clone();
             let status = status.clone();
@@ -1291,6 +1447,19 @@ fn update_check_row(
                 }
                 match receiver.try_recv() {
                     Ok(result) => {
+                        crate::assets::set_primary_icon(
+                            &status_icon,
+                            match &result {
+                                UpdateCheck::UpToDate => icons::CIRCLE_CHECK,
+                                UpdateCheck::Available { .. } => icons::DOWNLOADS,
+                                UpdateCheck::Failed(_) => icons::TRIANGLE_ALERT,
+                            },
+                        );
+                        title.set_text(match &result {
+                            UpdateCheck::UpToDate => "Strata is up to date",
+                            UpdateCheck::Available { .. } => "An update is available",
+                            UpdateCheck::Failed(_) => "Couldn’t check for updates",
+                        });
                         let returns_to_stable = matches!(
                             &result,
                             UpdateCheck::Available { release, .. }
@@ -1368,6 +1537,8 @@ fn update_check_row(
                     }
                     Err(TryRecvError::Empty) => glib::ControlFlow::Continue,
                     Err(TryRecvError::Disconnected) => {
+                        title.set_text("Couldn’t check for updates");
+                        crate::assets::set_primary_icon(&status_icon, icons::TRIANGLE_ALERT);
                         status.set_markup(
                             "Couldn't check for updates · <a href=\"https://github.com/lgse/strata/releases/latest\">View releases on GitHub</a>",
                         );
@@ -2174,8 +2345,20 @@ fn update_check_message(result: &UpdateCheck, update_method: UpdateMethod) -> St
 fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::Box) {
     let content = gtk::Box::new(gtk::Orientation::Horizontal, 10);
     let icon_image = crate::assets::primary_icon(icon, 18);
-    let text = gtk::Label::new(Some(label));
+    let subtitle = match label {
+        "General" => "Browsing, search, files",
+        "Appearance" => "Theme, text, motion",
+        "Keybindings" => "Hints and reference",
+        "Updates" => "Channel, release notes",
+        _ => "Version and links",
+    };
+    let text = gtk::Label::new(None);
+    text.set_markup(&format!(
+        "{}\n<span size=\"small\" weight=\"normal\">{subtitle}</span>",
+        glib::markup_escape_text(label)
+    ));
     text.set_xalign(0.0);
+    text.add_css_class("settings-nav-copy");
     content.append(&icon_image);
     content.append(&text);
     let button = gtk::Button::builder()
@@ -2184,16 +2367,30 @@ fn navigation_button(icon: &str, label: &str) -> (gtk::Button, gtk::Label, gtk::
         .build();
     button.set_has_frame(false);
     button.set_cursor_from_name(Some("pointer"));
-    super::accessibility::set_label(&button, label);
+    super::accessibility::set_label(
+        &button,
+        if label == "Appearance" {
+            "Appearance settings"
+        } else {
+            label
+        },
+    );
     (button, text, content)
 }
 
 fn scrollable_page(content: &gtk::Box, class: Option<&str>) -> gtk::Widget {
+    let empty = gtk::Label::new(Some(
+        "No matching settings are available on this installation.",
+    ));
+    empty.add_css_class("settings-search-page-empty");
+    empty.add_css_class("settings-option-description");
+    empty.set_visible(false);
+    content.append(&empty);
     constrain_page_text(content.upcast_ref());
     content.set_hexpand(true);
     let scroller = gtk::ScrolledWindow::builder()
         .child(content)
-        .hscrollbar_policy(gtk::PolicyType::Never)
+        .hscrollbar_policy(gtk::PolicyType::External)
         .vscrollbar_policy(gtk::PolicyType::Automatic)
         .hexpand(true)
         .vexpand(true)
@@ -2215,7 +2412,11 @@ fn constrain_page_text(widget: &gtk::Widget) {
     if let Some(label) = widget.downcast_ref::<gtk::Label>()
         && label.ellipsize() == gtk::pango::EllipsizeMode::None
     {
-        label.set_wrap(true);
+        label.set_wrap(
+            !label.has_css_class("settings-nowrap")
+                && !label.has_css_class("menu-heading")
+                && !label.has_css_class("settings-control-label"),
+        );
         label.set_wrap_mode(gtk::pango::WrapMode::WordChar);
     }
     if let Some(entry) = widget.downcast_ref::<gtk::Entry>() {
@@ -2229,13 +2430,14 @@ fn constrain_page_text(widget: &gtk::Widget) {
 }
 
 fn page_content() -> gtk::Box {
-    let content = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    let content = gtk::Box::new(gtk::Orientation::Vertical, 0);
     content.add_css_class("settings-preferences");
     content
 }
 
 fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, gtk::Switch) {
     let row = gtk::Box::new(gtk::Orientation::Horizontal, 16);
+    search::tag(&row, title);
     row.add_css_class("settings-option");
     let copy = gtk::Box::new(gtk::Orientation::Vertical, 2);
     copy.set_hexpand(true);
@@ -2249,10 +2451,12 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
     description_label.set_xalign(0.0);
     description_label.set_wrap(true);
     description_label.add_css_class("settings-option-description");
+    description_label.set_visible(!description.is_empty());
     copy.append(&title_label);
     copy.append(&description_label);
     let toggle = gtk::Switch::builder()
         .active(active)
+        .halign(gtk::Align::End)
         .valign(gtk::Align::Center)
         .build();
     toggle.update_property(&[
@@ -2262,6 +2466,85 @@ fn settings_option(title: &str, description: &str, active: bool) -> (gtk::Box, g
     row.append(&copy);
     row.append(&toggle);
     (row, toggle)
+}
+
+fn selects_all_in_settings_search(key: gdk::Key, modifiers: gdk::ModifierType) -> bool {
+    modifiers.contains(gdk::ModifierType::CONTROL_MASK) && matches!(key, gdk::Key::a | gdk::Key::A)
+}
+
+fn search_field(placeholder: &str) -> (gtk::Overlay, gtk::Entry, gtk::Button) {
+    let theme_search = gtk::Entry::new();
+    theme_search.add_css_class("form-control");
+    theme_search.add_css_class("settings-search");
+    theme_search.set_placeholder_text(Some(placeholder));
+    super::accessibility::set_label(&theme_search, placeholder);
+    let search_keys = gtk::EventControllerKey::new();
+    search_keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+    let selected_search = theme_search.downgrade();
+    search_keys.connect_key_pressed(move |_, key, _, modifiers| {
+        if !selects_all_in_settings_search(key, modifiers) {
+            return glib::Propagation::Proceed;
+        }
+        let Some(search) = selected_search.upgrade() else {
+            return glib::Propagation::Proceed;
+        };
+        search.select_region(0, -1);
+        glib::Propagation::Stop
+    });
+    theme_search.add_controller(search_keys);
+    let clear_search = gtk::Button::builder()
+        .child(&crate::assets::primary_icon(icons::X, 15))
+        .tooltip_text("Clear search")
+        .halign(gtk::Align::End)
+        .valign(gtk::Align::Center)
+        .margin_end(6)
+        .visible(false)
+        .build();
+    clear_search.add_css_class("theme-search-clear");
+    clear_search.set_has_frame(false);
+    let search_overlay = gtk::Overlay::new();
+    search_overlay.set_child(Some(&theme_search));
+    let icon = crate::assets::primary_icon(icons::SEARCH, 16);
+    icon.set_halign(gtk::Align::Start);
+    icon.set_valign(gtk::Align::Center);
+    icon.set_margin_start(12);
+    icon.add_css_class("settings-search-icon");
+    icon.set_can_target(false);
+    search_overlay.add_overlay(&icon);
+    search_overlay.add_overlay(&clear_search);
+    let search = theme_search.downgrade();
+    clear_search.connect_clicked(move |_| {
+        if let Some(search) = search.upgrade() {
+            search.set_text("");
+            search.grab_focus();
+        }
+    });
+    (search_overlay, theme_search, clear_search)
+}
+
+fn settings_group(content: &gtk::Box, heading: &str) -> gtk::Box {
+    if !heading.is_empty() {
+        append_heading(content, heading);
+    }
+    let group = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    group.add_css_class("settings-group");
+    group.set_overflow(gtk::Overflow::Hidden);
+    content.append(&group);
+    group
+}
+
+fn control_row(title: &str, description: &str, control: &impl IsA<gtk::Widget>) -> gtk::Box {
+    let (row, placeholder) = settings_option(title, description, false);
+    row.remove(&placeholder);
+    row.append(control);
+    row
+}
+
+fn indent_row(row: &gtk::Box) {
+    let arrow = crate::assets::primary_icon(icons::CORNER_DOWN_RIGHT, 18);
+    arrow.add_css_class("settings-indent");
+    row.prepend(&arrow);
+    row.add_css_class("settings-dependent");
 }
 
 fn append_heading(container: &gtk::Box, text: &str) -> gtk::Label {
