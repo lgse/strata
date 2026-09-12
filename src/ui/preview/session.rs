@@ -56,6 +56,39 @@ impl PreviewState {
         self.cancel_loading();
         self.pdf_loads.borrow_mut().clear();
         self.clear_content();
-        self.hide_panel();
+        if self.reserves_empty_preview() {
+            self.show_placeholder();
+        } else {
+            self.hide_panel();
+        }
+    }
+
+    pub(super) fn show_placeholder(&self) {
+        if self
+            .content
+            .first_child()
+            .is_some_and(|child| child.has_css_class("preview-placeholder"))
+        {
+            return;
+        }
+        self.clear_content();
+        self.title.set_text(PREVIEW_LABEL);
+        self.title.set_tooltip_text(None);
+        self.icon.set_visible(false);
+        self.metadata.set_visible(false);
+        self.open.set_sensitive(false);
+        self.header_handle.set_cursor_from_name(None);
+        let placeholder = gtk::Label::builder()
+            .label("No preview for this selection")
+            .wrap(true)
+            .justify(gtk::Justification::Center)
+            .hexpand(true)
+            .vexpand(true)
+            .margin_start(24)
+            .margin_end(24)
+            .build();
+        placeholder.add_css_class("preview-placeholder");
+        placeholder.add_css_class("preview-feedback-detail");
+        self.content.append(&placeholder);
     }
 }

@@ -2710,6 +2710,12 @@ fn pane_base(
     heading_box.set_valign(gtk::Align::Center);
     let heading = gtk::Label::new(Some(title));
     heading.set_xalign(0.0);
+    if mode == BrowserMode::Icons {
+        heading.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        heading.set_max_width_chars(1);
+        heading.set_hexpand(true);
+        heading.set_tooltip_text(Some(title));
+    }
     let spinner = gtk::Spinner::new();
     spinner.set_valign(gtk::Align::Center);
     spinner.start();

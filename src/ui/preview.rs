@@ -84,6 +84,8 @@ struct PreviewState {
     modified: gtk::Label,
     content_type: gtk::Label,
     content: gtk::Box,
+    metadata: gtk::Box,
+    open: gtk::Button,
     print: gtk::Button,
     media: RefCell<Option<gtk::MediaStream>>,
     media_signals: RefCell<Vec<glib::SignalHandlerId>>,
@@ -201,6 +203,8 @@ impl PreviewDrawer {
             modified,
             content_type,
             content,
+            metadata,
+            open: open.clone(),
             print: print.clone(),
             media: RefCell::new(None),
             media_signals: RefCell::new(Vec::new()),
@@ -732,6 +736,10 @@ impl PreviewState {
     }
 
     fn load(self: &Rc<Self>, entry: FileEntry, pdf_page: i32) {
+        self.metadata.set_visible(true);
+        self.icon.set_visible(true);
+        self.open.set_sensitive(true);
+        self.header_handle.set_cursor_from_name(Some("grab"));
         self.current.replace(Some(entry.clone()));
         crate::assets::set_primary_icon(&self.icon, super::browser::entry_icon(&entry));
         self.title.set_text(&entry.display_name);

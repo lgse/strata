@@ -283,6 +283,94 @@ fn a_hidden_media_preview_pauses_and_restores_only_the_same_players_playing_stat
 }
 
 #[test]
+fn icons_reserve_preview_space_across_targets_and_mode_rebuilds_until_disabled() {
+    crate::test_support::gtk_test(
+        "ui::preview::layout::tests::visibility::icons_reserve_preview_space_across_targets_and_mode_rebuilds_until_disabled",
+        || {
+            let preferences = ThemeManager::shared();
+            preferences.set_reduce_motion(true);
+            for chooser in [false, true] {
+                preferences.set_browser_mode(BrowserMode::Icons);
+                let fixture = Fixture::new(chooser);
+                fixture.settle();
+                let full_width = fixture.browser.widget().width();
+                fixture.preview.toggle(None);
+                fixture.settle();
+                let width = fixture.browser.widget().width();
+                assert!(fixture.preview.is_enabled() && fixture.preview.is_open());
+                assert!(width < full_width);
+                for name in ["first.png", "next.txt"] {
+                    fixture.preview.show(entry(name));
+                    fixture.settle();
+                    assert_eq!(fixture.browser.widget().width(), width);
+                    let request = fixture
+                        .requests
+                        .borrow()
+                        .last()
+                        .expect("preview request")
+                        .clone();
+                    fixture.preview.clear_target();
+                    fixture.preview.state.handle_event(
+                        request.id,
+                        PreviewEvent::Ready(Preview {
+                            request_id: request.id,
+                            entry: request.entry,
+                            content_type: "text/plain".into(),
+                            content: PreviewContent::Text {
+                                content: "stale content".into(),
+                                truncated: false,
+                            },
+                        }),
+                    );
+                    fixture.settle();
+                    assert_eq!(fixture.browser.widget().width(), width);
+                    assert!(fixture.preview.is_open());
+                    assert_eq!(fixture.preview.state.title.text(), "Preview");
+                    let placeholder = fixture
+                        .preview
+                        .state
+                        .content
+                        .first_child()
+                        .expect("placeholder")
+                        .downcast::<gtk::Label>()
+                        .expect("empty preview message");
+                    assert_eq!(placeholder.text(), "No preview for this selection");
+                    assert!(!fixture.preview.state.open.is_sensitive());
+                    assert!(!fixture.preview.state.metadata.is_visible());
+                }
+                for mode in [BrowserMode::List, BrowserMode::Columns, BrowserMode::Icons] {
+                    preferences.set_browser_mode(mode);
+                    wait_until(|| fixture.preview.is_open() == (mode == BrowserMode::Icons));
+                }
+                fixture.settle();
+                assert_eq!(fixture.browser.widget().width(), width);
+                fixture.resize(700);
+                wait_until(|| fixture.preview.state.sizing.is_suspended());
+                fixture.settle();
+                let constrained_width = fixture.browser.widget().width();
+                fixture.preview.clear_target();
+                assert!(!fixture.preview.widget().is_visible());
+                fixture.preview.show(entry("constrained.txt"));
+                assert!(!fixture.preview.widget().is_visible());
+                fixture.preview.clear_target();
+                fixture.settle();
+                assert!(!fixture.preview.widget().is_visible());
+                assert_eq!(fixture.browser.widget().width(), constrained_width);
+                fixture.resize(1800);
+                wait_until(|| fixture.preview.is_open());
+                fixture.settle();
+                assert_eq!(fixture.browser.widget().width(), width);
+                fixture.preview.close();
+                fixture.settle();
+                assert!(!fixture.preview.is_enabled());
+                assert_eq!(fixture.browser.widget().width(), full_width);
+                fixture.close();
+            }
+        },
+    );
+}
+
+#[test]
 fn temporarily_hiding_a_document_keeps_its_view_and_scroll_position() {
     crate::test_support::gtk_test(
         "ui::preview::layout::tests::visibility::temporarily_hiding_a_document_keeps_its_view_and_scroll_position",

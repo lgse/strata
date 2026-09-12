@@ -14,6 +14,7 @@ fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice()
         start_minimum: 500,
         separator: 2,
         columns: true,
+        icons: false,
     };
     assert_eq!(geometry.position(None), geometry.occupied);
     let overflow = Geometry {

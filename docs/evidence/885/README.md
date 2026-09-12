@@ -26,10 +26,11 @@ full-width viewers. Text-size settings do not change these logical limits.
 
 **Appearance → Preview panel** shows the **Space** browsing shortcut and stays
 checked while preview mode is enabled, even if no preview is currently visible.
-Folders, ZIP files, empty selections, and directory navigation hide unsupported
-content without turning the mode off. The next supported selection returns
-automatically. Space can enable the mode even on an unsupported selection;
-explicit close/toggle actions disable it. Existing media playback shortcuts are
+Folders, ZIP files, empty selections, and directory navigation clear unsupported
+content without turning the mode off. In Icons view the preview space stays
+reserved with a quiet placeholder; Columns and List hide the panel. The next
+supported selection returns automatically. Space can enable the mode even on an
+unsupported selection; explicit close/toggle actions disable it. Existing media playback shortcuts are
 unchanged. This state is local to each window and is not saved to preferences.
 
 Column navigation adapts the 48-logical-pixel peek idea from
@@ -44,6 +45,27 @@ usable preview, and trailing empty space is not treated as another column.
 | --- | --- |
 | ![Earlier-column focus without neighbor peeks](session/before-peeks.png) | ![Focused column with mouse-accessible neighbors](session/after-peeks.png) |
 | ![Previous Appearance menu](session/before-appearance.png) | ![Enabled session toggle and Space hint](session/after-appearance.png) |
+
+## Stable Icons browsing area
+
+In Icons view, preview mode—not the selected file type—controls the grid's
+available width. While enabled, unsupported selections and folders show
+**No preview for this selection** without moving cards into different rows or
+columns. Old content and metadata are cleared immediately. Turning preview mode
+off intentionally releases the space; window/divider resizing and density changes
+can still reflow the grid. Very narrow windows apply a geometry-only fallback,
+reserving usable browsing space before deciding whether the preview can fit.
+Long directory headings are ellipsized rather than widening and horizontally
+panning the grid. Columns and List retain their existing behavior.
+
+These comparisons use `060f9d2` as the before baseline in the same pinned private
+rendering environment. The supported file and ZIP selections use the same
+window size and preview session:
+
+| Selection | Before | After |
+| --- | --- | --- |
+| Previewable text | ![Previous grid with preview](icons/before-supported.png) | ![Stable grid with preview](icons/after-supported.png) |
+| ZIP in the same enabled session | ![Previous grid reflows](icons/before-unsupported.png) | ![Reserved slot prevents reflow](icons/after-unsupported.png) |
 
 ## Before / after
 

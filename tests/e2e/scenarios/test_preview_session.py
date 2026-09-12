@@ -2,6 +2,7 @@
 """Session preview controls and mouse-only access to clipped Miller columns."""
 
 import pytest
+from PIL import Image
 
 from harness.fixtures import FixtureTree
 from harness.modes import ALL_MODES
@@ -14,6 +15,7 @@ def fixture_tree():
         "z.zip": "unsupported fixture\n",
         "Alpha": {"a.txt": "alpha preview\n", "Beta": {"Gamma": {"Delta": {"a.txt": "delta preview\n"}}}},
     })
+    Image.new("RGB", (80, 40), "green").save(tree.path("image.png"))
     try:
         yield tree
     finally:
@@ -36,14 +38,20 @@ def test_preview_mode_survives_unsupported_selections_and_matches_appearance(str
     assert option.find(role="label", name="Space") is not None
     assert not option.has_state("pressed")
     strata.pointer.click(option)
-    assert strata.preview() is None
+    if mode == "Icons":
+        strata.wait(lambda: strata.preview_shows("No preview for this selection"), "the reserved preview space")
+    else:
+        assert strata.preview() is None
     option = preview_option(strata)
     assert option.has_state("pressed"), option.states
     strata.dismiss_menu()
     strata.select_entry("a.txt")
     strata.wait(lambda: strata.preview_shows("root preview"), "automatic preview after ZIP")
     strata.select_entry_with_keyboard("z.zip")
-    strata.wait(lambda: strata.preview() is None, "unsupported selection to hide the panel")
+    if mode == "Icons":
+        strata.wait(lambda: strata.preview_shows("No preview for this selection"), "the empty preview slot")
+    else:
+        strata.wait(lambda: strata.preview() is None, "unsupported selection to hide the panel")
     option = preview_option(strata)
     assert option.has_state("pressed"), option.states
     strata.pointer.click(option)
@@ -57,6 +65,54 @@ def test_preview_mode_survives_unsupported_selections_and_matches_appearance(str
     strata.open_directory("Alpha")
     strata.select_entry_with_keyboard("a.txt")
     strata.wait(lambda: strata.preview_shows("alpha preview"), "preview after directory navigation")
+
+
+@pytest.mark.preferences(browser_mode="icons", single_click_previews=False)
+def test_icons_keep_their_layout_until_preview_mode_is_explicitly_toggled(strata):
+    strata.select_entry("a.txt")
+    full_width = strata.pane().screen_bounds().width
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview_shows("root preview"), "the initial preview")
+    width = strata.pane().screen_bounds().width
+    assert width < full_width
+
+    def positions():
+        return {name: strata.entry(name).screen_bounds() for name in ["Alpha", "a.txt", "image.png", "z.zip"]}
+
+    layout = positions()
+
+    def assert_layout():
+        for name, actual in positions().items():
+            expected = layout[name]
+            assert abs(actual.x - expected.x) <= 1 and abs(actual.y - expected.y) <= 1, (name, expected, actual)
+            assert actual.width == expected.width and actual.height == expected.height
+
+    for name, expected in [("z.zip", "No preview for this selection"), ("image.png", "image/png"), ("Alpha", "No preview for this selection"), ("a.txt", "root preview")]:
+        strata.select_entry_with_keyboard(name)
+        strata.wait(lambda: strata.preview_shows(expected), f"the preview for {name}")
+        assert strata.pane().screen_bounds().width == width
+        assert_layout()
+        if name in ["z.zip", "Alpha"]:
+            assert not strata.preview_shows("root preview")
+            assert strata.preview().find(role="label", name="a.txt") is None
+            assert not strata.preview().find(role="button", name="Open in default application").has_state("sensitive")
+
+    strata.pointer.click(strata.pane(), at=strata.background_point())
+    strata.wait_for_selection([])
+    strata.wait(lambda: strata.preview_shows("No preview for this selection"), "empty selection without reflow")
+    assert_layout()
+    strata.open_directory("Alpha")
+    strata.wait(lambda: strata.preview_shows("No preview for this selection"), "the folder's preview slot")
+    assert strata.pane().screen_bounds().width == width
+    strata.select_entry("a.txt")
+    strata.wait(lambda: strata.preview_shows("alpha preview"), "a preview inside the folder")
+    assert strata.pane().screen_bounds().width == width
+    strata.keyboard.press("space")
+    strata.wait(lambda: strata.preview() is None and strata.pane().screen_bounds().width == full_width, "intentional toggle to restore the full grid")
+    for name in ["Beta", "a.txt"]:
+        strata.select_entry(name)
+        assert strata.preview() is None
+        assert strata.pane().screen_bounds().width == full_width
 
 
 @pytest.mark.preferences(browser_mode="columns", single_click_previews=False)

@@ -56,11 +56,13 @@ struct Geometry {
     start_minimum: i32,
     separator: i32,
     columns: bool,
+    icons: bool,
 }
 
 impl Geometry {
     fn can_show_preview(self) -> bool {
-        self.available > 0 && (!self.columns || self.maximum_width() >= COLUMN_WIDTH)
+        self.available > 0
+            && (!(self.columns || self.icons) || self.maximum_width() >= COLUMN_WIDTH)
     }
 
     fn maximum_width(self) -> i32 {
@@ -172,6 +174,17 @@ impl PreviewState {
         preview_target(self.current.borrow().clone())
     }
 
+    pub(super) fn reserves_empty_preview(&self) -> bool {
+        self.is_enabled()
+            && self
+                .sizing
+                .binding
+                .borrow()
+                .as_ref()
+                .and_then(|binding| binding.browser.upgrade())
+                .is_some_and(|browser| browser.view_mode() == BrowserMode::Icons)
+    }
+
     fn geometry(&self, split: &gtk::Paned) -> Geometry {
         let available = split.width();
         let mut geometry = Geometry {
@@ -182,6 +195,7 @@ impl PreviewState {
                 .map_or(0, |child| child.measure(gtk::Orientation::Horizontal, -1).0),
             separator: separator_width(split),
             columns: false,
+            icons: false,
         };
         if let Some(binding) = self.sizing.binding.borrow().as_ref()
             && let Some(content) = binding.content.upgrade()
@@ -189,6 +203,7 @@ impl PreviewState {
         {
             let sidebar = sidebar_width(&content);
             geometry.columns = browser.view_mode() == BrowserMode::Columns;
+            geometry.icons = browser.view_mode() == BrowserMode::Icons;
             geometry.occupied =
                 sidebar + browser.preview_occupied_width((available - sidebar).max(0));
             if geometry.columns {
@@ -197,6 +212,10 @@ impl PreviewState {
                         (available - sidebar - geometry.separator - COLUMN_WIDTH).max(0),
                     ),
                 ));
+            } else if geometry.icons {
+                geometry.start_minimum = geometry
+                    .start_minimum
+                    .max(sidebar.saturating_add(COLUMN_WIDTH));
             }
         }
         geometry
@@ -262,7 +281,13 @@ impl PreviewState {
 
     pub(super) fn sync_split(self: &Rc<Self>, split: &gtk::Paned) {
         if self.current.borrow().is_none() {
-            return;
+            if !self.reserves_empty_preview() {
+                if self.revealer.reveals_child() {
+                    self.hide_panel();
+                }
+                return;
+            }
+            self.show_placeholder();
         }
         let geometry = self.geometry(split);
         if !geometry.can_show_preview() {
@@ -273,7 +298,7 @@ impl PreviewState {
             return;
         }
         let restored = self.sizing.suspended.replace(false);
-        if restored {
+        if restored || !self.revealer.reveals_child() {
             self.show_panel();
         }
         let manual = self.sizing.manual_width.get();
