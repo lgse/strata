@@ -1915,6 +1915,32 @@ paned > separator {
   min-width: 1px;
 }
 
+.sidebar-split > .sidebar-shell {
+  border-right: none;
+}
+
+/* The resize handle supplies four surface pixels of the trailing inset. */
+.sidebar-split .sidebar {
+  padding-right: 3px;
+}
+
+.sidebar-split .sidebar-update {
+  margin-left: 4px;
+  padding-left: 9px;
+  padding-right: 9px;
+}
+
+.sidebar-split .sidebar-update-separator {
+  margin-right: 0;
+}
+
+.sidebar-split > separator {
+  padding: 0 2px;
+  border: none;
+  background: @theme_surface;
+  box-shadow: inset -1px 0 alpha(@theme_border, 0.6);
+}
+
 .preview-split > separator {
   background: alpha(@theme_accent, 0.34);
   min-width: 2px;
@@ -3546,7 +3572,8 @@ colorchooser colorswatch overlay {
 .keyboard-navigation .file-list row:hover:not(:selected),
 .keyboard-navigation .file-list-mode row:hover:not(:selected),
 .keyboard-navigation .file-icons > child:hover:not(:selected),
-.keyboard-navigation .file-icons > child:hover:not(:selected) .icons-card {
+.keyboard-navigation .file-icons > child:hover:not(:selected) .icons-card-icon-frame,
+.keyboard-navigation .file-icons > child:hover:not(:selected) .icons-card-label {
   background: transparent;
   color: @theme_text;
 }
@@ -4021,8 +4048,12 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   background: transparent;
 }
 
-.file-icons > child:hover .icons-card {
+.file-icons > child:hover .icons-card-icon-frame {
   background: alpha(@theme_accent, 0.15);
+}
+
+.file-icons > child:hover .icons-card-label {
+  background: alpha(@theme_accent, 0.10);
 }
 
 .file-icons > child:selected {
@@ -4031,21 +4062,21 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   outline: none;
 }
 
-.file-icons > child:selected .icons-card {
+.file-icons > child:selected .icons-card-icon-frame {
   background: alpha(@theme_accent, 0.22);
-  outline: 1px solid alpha(@theme_accent, 0.9);
+  outline: 1px solid alpha(@theme_accent, 0.6);
   outline-offset: -1px;
 }
 
-.file-icons > child:selected:hover .icons-card {
+.file-icons > child:selected:hover .icons-card-icon-frame {
   background: alpha(@theme_accent, 0.30);
 }
 
-.keyboard-navigation .file-icons > child:selected:hover .icons-card {
+.keyboard-navigation .file-icons > child:selected:hover .icons-card-icon-frame {
   background: alpha(@theme_accent, 0.22);
 }
 
-.file-icons > child:focus-visible .icons-card {
+.file-icons > child:focus-visible .icons-card-icon-frame {
   outline: 2px solid @theme_accent;
   outline-offset: -2px;
 }
@@ -4057,12 +4088,24 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   padding: 2px 4px;
 }
 
+.icons-card-icon-frame,
+.icons-card-caption {
+  margin: 0;
+  padding: 0;
+}
+
+.icons-card-icon-frame {
+  border-radius: 6px;
+}
+
 .icons-card-icon {
   color: @theme_accent;
 }
 
 .icons-card-label {
+  border-radius: 4px;
   color: @theme_text;
+  padding: 2px 4px;
 }
 
 .list-fast-scroll .list-row,
@@ -4070,11 +4113,11 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   transition: none;
 }
 
-.icons-card.drop-destination,
-.icons-card:drop(active) {
+.file-icons > child .icons-card.drop-destination .icons-card-icon-frame,
+.file-icons > child .icons-card:drop(active) .icons-card-icon-frame {
   background: alpha(@theme_highlight, 0.82);
-  color: @theme_accent;
-  outline-color: @theme_accent;
+  outline: 2px solid @theme_accent;
+  outline-offset: -2px;
 }
 
 .icons-card.dragging {
@@ -4086,8 +4129,11 @@ menubutton.icons-thumbnail-menu > button:focus-visible {
   opacity: 0.46;
 }
 
-.file-icons > child:selected .icons-card-label {
-  color: @theme_text;
+.file-icons > child:selected .icons-card-label,
+.file-icons > child .icons-card.drop-destination .icons-card-label,
+.file-icons > child .icons-card:drop(active) .icons-card-label {
+  background: @theme_accent;
+  color: @theme_bg;
 }
 
 .mode-icons.density-airy .file-icons {

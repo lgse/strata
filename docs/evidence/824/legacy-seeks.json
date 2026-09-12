@@ -1,0 +1,68 @@
+[
+  {
+    "fixture": "short",
+    "cold_file_hint_ms": 15.44,
+    "warm_median_ms": 5.05,
+    "runs_ms": [
+      15.44,
+      5.18,
+      5.05,
+      4.82
+    ]
+  },
+  {
+    "fixture": "landscape",
+    "cold_file_hint_ms": 17.41,
+    "warm_median_ms": 16.5,
+    "runs_ms": [
+      17.41,
+      16.5,
+      16.57,
+      16.09
+    ]
+  },
+  {
+    "fixture": "portrait",
+    "cold_file_hint_ms": 32.33,
+    "warm_median_ms": 22.58,
+    "runs_ms": [
+      32.33,
+      22.66,
+      22.58,
+      22.28
+    ]
+  },
+  {
+    "fixture": "high-resolution",
+    "cold_file_hint_ms": 22.53,
+    "warm_median_ms": 12.72,
+    "runs_ms": [
+      22.53,
+      12.72,
+      12.58,
+      12.85
+    ]
+  },
+  {
+    "fixture": "variable-rate",
+    "cold_file_hint_ms": 26.64,
+    "warm_median_ms": 16.51,
+    "runs_ms": [
+      26.64,
+      16.51,
+      16.51,
+      16.32
+    ]
+  },
+  {
+    "fixture": "hour",
+    "cold_file_hint_ms": 2.94,
+    "warm_median_ms": 1.74,
+    "runs_ms": [
+      2.94,
+      1.76,
+      1.74,
+      1.72
+    ]
+  }
+]

@@ -90,7 +90,7 @@ fn thumbnails_do_not_obscure_wrapped_names_or_rename_fields() {
                         label.set_text(Some(name));
                         pump_frames(&card);
                         let snapshot = gtk::Snapshot::new();
-                        card.snapshot_child(&icon, &snapshot);
+                        card.snapshot_child(&card.first_child().expect("icon frame"), &snapshot);
                         let drawn = snapshot.to_node().expect("rendered thumbnail").bounds();
                         let thumbnail_bottom = drawn.y() + drawn.height();
                         let snapshot = gtk::Snapshot::new();
@@ -119,6 +119,17 @@ fn thumbnails_do_not_obscure_wrapped_names_or_rename_fields() {
                     assert!(
                         field_bounds.y() >= thumbnail_bottom,
                         "rename field must remain below an opaque thumbnail: size={size}, texture={texture_width}x{texture_height}, thumbnail_bottom={thumbnail_bottom}, field={field_bounds:?}"
+                    );
+                    let hit = card
+                        .pick(
+                            field_bounds.center().x() as f64,
+                            field_bounds.center().y() as f64,
+                            gtk::PickFlags::DEFAULT,
+                        )
+                        .expect("rename hit target");
+                    assert!(
+                        hit == field || hit.is_ancestor(&field),
+                        "the visible rename field must receive pointer input"
                     );
                 }
                 field.set_visible(false);

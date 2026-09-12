@@ -158,7 +158,7 @@ On Arch Linux or Omarchy:
 
 ```bash
 sudo pacman -S --needed bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gst-libav gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
+  gstreamer gst-libav gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
 # Optional SMB and broader camera RAW support:
 sudo pacman -S --needed gvfs-smb imagemagick libraw dcraw
 ```
@@ -375,7 +375,7 @@ The deliberate tradeoff: this is fast **filename and path** search, not file-con
 
 Files shown while browsing are untrusted. Image, camera RAW, PDF, thumbnail, and media parsing therefore runs out of process through **Bubblewrap**, not inside the main Strata process. Each short-lived helper receives namespace isolation, a minimal read-only runtime, exactly one canonicalized input file, private output and temporary directories, no network, and no capabilities. Memory, CPU/wall time, input, file, and parent-side output limits bound the work.
 
-Only media helpers may receive allowlisted GPU render devices, and only for accelerated transcoding; image, PDF, and thumbnail helpers receive no device mounts. Outputs are normalized and bounded, then checked for expected PNG, MP4, or WebM signatures before use. Cancellation or timeout kills the process group and Bubblewrap PID namespace, tearing down descendants. Missing isolation, crashes, malformed output, timeouts, and permission failures all fail closed to a normal icon or **Preview unavailable**—Strata never silently retries an untrusted native parser without the sandbox.
+Only media helpers may receive allowlisted GPU render devices, and only for accelerated decoding; image, PDF, and thumbnail helpers receive no device mounts. Images are normalized to bounded PNG images. Media arrives incrementally as validated raw RGBA frames and fixed-format PCM: GTK presents textures and GStreamer outputs raw audio, without opening the original file or decoding a compressed clip. Four media sessions per process, bounded queues, and paused-worker cleanup limit concurrent work. Cancellation or timeout kills the process group and Bubblewrap PID namespace, tearing down descendants. Missing isolation, crashes, malformed output, timeouts, and permission failures all fail closed to a normal icon or **Preview unavailable**—Strata never silently retries an untrusted native parser without the sandbox.
 
 Plain-text and source previews are different: they stay in process because they do not invoke a native format parser, and reads are capped at 1 MiB. See [Preview sandbox](docs/preview-sandbox.md) for provider ordering, exact mounts, formats, and resource budgets.
 
@@ -389,17 +389,17 @@ Plain-text and source previews are different: they stay in process because they 
 | Filesystems | Native Linux paths (including non-UTF-8 names) and GIO/GVfs locations; remote protocol availability depends on installed GVfs backends |
 | Preview boundary | Bubblewrap is mandatory for native parser-backed previews; helpers have no network and fail closed. Plain text is read in process with a 1 MiB cap. |
 | Optional preview tools | `ffmpegthumbnailer`/`ffmpeg` for video; ImageMagick, classic `dcraw`, and LibRaw `simple_dcraw` expand camera RAW support |
-| Hardware acceleration | Media-only VA-API or Vulkan attempts with software VP8/WebM fallback; GPU and codec support depend on host drivers/plugins |
+| Hardware acceleration | Media-only VA-API or Vulkan decoding with software fallback; GPU and codec support depend on host drivers |
 | Scale targets | Virtualized browser models and bounded asynchronous updates are tested with deterministic directories up to 100,000 entries |
 | Packaging | Dynamically linked release archive with SHA-256 digest, GitHub build-provenance attestation, and `SOURCE_COMMIT` |
 
 ## Development and documentation
 
-Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-config`, GTK 4.12+, GtkSourceView 5, Poppler GLib, and Fontconfig. [mise](https://mise.jdx.dev) pins that toolchain locally (`mise install`). On Arch:
+Build requirements are the latest stable Rust toolchain, a C toolchain, `pkg-config`, GTK 4.12+, GtkSourceView 5, Poppler GLib, Fontconfig, and GStreamer 1.20+ (including its app/base development libraries). [mise](https://mise.jdx.dev) pins that toolchain locally (`mise install`). On Arch:
 
 ```bash
 sudo pacman -S --needed base-devel bubblewrap ffmpeg ffmpegthumbnailer fontconfig \
-  gst-libav gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
+  gstreamer gst-libav gst-plugins-base gst-plugins-good gtk4 gtksourceview5 gvfs poppler-glib
 mise run start-dev        # rebuild and restart as files change
 mise run dev              # build and launch the main app once
 mise run chooser-dev      # build and open an isolated Save chooser with choices

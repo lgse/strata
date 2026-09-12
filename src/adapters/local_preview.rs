@@ -14,8 +14,8 @@ use crate::{
     adapters::gio_file_for_location,
     sandbox::{Cancellation, MediaPreviewBackend, ParseOperation},
     services::{
-        LoadHandle, MediaPreviewSize, Preview, PreviewContent, PreviewEvent, PreviewProvider,
-        PreviewRequest, SandboxedMedia, content_family, has_plain_text_extension,
+        LoadHandle, Preview, PreviewContent, PreviewEvent, PreviewProvider, PreviewRequest,
+        SandboxedMedia, content_family, has_plain_text_extension,
         is_non_executable_extensionless_dotfile,
     },
 };
@@ -35,7 +35,6 @@ struct PreviewCacheKey {
     path: PathBuf,
     modified: i64,
     pdf_page: Option<i32>,
-    media: Option<(MediaPreviewSize, MediaPreviewBackend)>,
 }
 
 impl PreviewCache {
@@ -47,6 +46,9 @@ impl PreviewCache {
     }
 
     fn insert(&mut self, key: PreviewCacheKey, content: PreviewContent) {
+        if matches!(content, PreviewContent::SandboxedMedia { .. }) {
+            return;
+        }
         let bytes = preview_content_size(&content);
         self.recent.retain(|k| k != &key);
         if let Some(old) = self.entries.remove(&key) {
@@ -73,7 +75,7 @@ impl PreviewCache {
 fn preview_content_size(content: &PreviewContent) -> usize {
     match content {
         PreviewContent::Rasterized { png } | PreviewContent::Pdf { png, .. } => png.len(),
-        PreviewContent::SandboxedMedia { media } => media.byte_len(),
+        PreviewContent::SandboxedMedia { .. } => 0,
         PreviewContent::Text { content, .. } => content.len(),
         _ => 0,
     }
@@ -166,10 +168,34 @@ impl PreviewProvider for LocalPreviewProvider {
                 content_type = queried_type;
             }
 
+            if matches!(content, PreviewContent::Media) {
+                let Some(path) = entry.location.native_path().map(ToOwned::to_owned) else {
+                    emit(PreviewEvent::Failed {
+                        request_id,
+                        entry,
+                        message: "Only local files can be previewed safely".into(),
+                    });
+                    return;
+                };
+                emit(PreviewEvent::Ready(Preview {
+                    request_id,
+                    entry,
+                    content_type,
+                    content: PreviewContent::SandboxedMedia {
+                        media: SandboxedMedia {
+                            path,
+                            size: request.media_size,
+                            backend: media_preview_backend,
+                        },
+                    },
+                }));
+                return;
+            }
+
             let operation = match content {
                 PreviewContent::Pdf { .. } => Some(ParseOperation::PreviewPdf),
                 PreviewContent::Image => Some(ParseOperation::PreviewImage),
-                PreviewContent::Media => Some(ParseOperation::PreviewMedia(request.media_size)),
+                PreviewContent::Media => None,
                 PreviewContent::Text { .. }
                 | PreviewContent::Rasterized { .. }
                 | PreviewContent::SandboxedMedia { .. }
@@ -197,8 +223,6 @@ impl PreviewProvider for LocalPreviewProvider {
                     path: path.clone(),
                     modified,
                     pdf_page,
-                    media: matches!(operation, ParseOperation::PreviewMedia(_))
-                        .then_some((request.media_size, media_preview_backend)),
                 });
                 if let Some(cached) = cache_key
                     .as_ref()
@@ -267,19 +291,11 @@ impl PreviewProvider for LocalPreviewProvider {
                         media_preview_backend,
                         &cancellation,
                     )?;
-                    let media =
-                        if matches!(operation, ParseOperation::PreviewMedia(_)) {
-                            Some(SandboxedMedia::from_normalized(&output.data).map_err(
-                                |error| format!("Unable to prepare normalized media: {error}"),
-                            )?)
-                        } else {
-                            None
-                        };
-                    Ok::<_, String>((output, media))
+                    Ok::<_, String>(output)
                 })
                 .await
                 {
-                    Ok(Ok((output, _))) if operation == ParseOperation::PreviewPdf => {
+                    Ok(Ok(output)) if operation == ParseOperation::PreviewPdf => {
                         if let Some(mtime) = modified
                             && request.pdf_page == 0
                             && !placeholder_emitted
@@ -292,8 +308,7 @@ impl PreviewProvider for LocalPreviewProvider {
                             pages: output.pages,
                         }
                     }
-                    Ok(Ok((_, Some(media)))) => PreviewContent::SandboxedMedia { media },
-                    Ok(Ok((output, None))) => {
+                    Ok(Ok(output)) => {
                         if let Some(mtime) = modified
                             && !placeholder_emitted
                         {

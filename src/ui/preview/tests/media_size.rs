@@ -50,95 +50,75 @@ fn wait_until(condition: impl Fn() -> bool) {
 }
 
 #[test]
-fn normalized_software_h264_plays_in_the_production_preview_widget() {
+fn decoded_frames_play_in_the_browser_and_chooser_preview_widgets() {
     crate::test_support::gtk_test(
-        "ui::preview::tests::media_size::normalized_software_h264_plays_in_the_production_preview_widget",
+        "ui::preview::tests::media_size::decoded_frames_play_in_the_browser_and_chooser_preview_widgets",
         || {
-            let directory = tempfile::tempdir().expect("media fixture");
-            let input = directory.path().join("input.mkv");
-            let output = directory.path().join("preview.media");
-            let mut command = std::process::Command::new("ffmpeg");
-            command
-                .args([
-                    "-nostdin",
-                    "-v",
-                    "error",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "testsrc2=size=320x180:rate=30:duration=2",
-                    "-c:v",
-                    "ffv1",
-                    "-threads",
-                    "1",
-                ])
-                .arg(&input)
-                .stdin(std::process::Stdio::null());
-            assert!(
-                crate::sandbox_helper::run_command_with_timeout(
-                    &mut command,
-                    Duration::from_secs(10)
-                )
-                .expect("generate media")
-            );
-            crate::sandbox_helper::run(&[
-                "preview-media".into(),
-                input.to_string_lossy().into_owned(),
-                output.to_string_lossy().into_owned(),
-                "520x800".into(),
-                "software".into(),
-            ])
-            .expect("normalize media");
-            let data = std::fs::read(output).expect("normalized clip");
-            assert_eq!(data.get(4..8), Some(b"ftyp".as_slice()));
-            let source = SandboxedMedia::from_normalized(&data).expect("private media");
-            let media_path = source.path().to_path_buf();
-            let drawer = PreviewDrawer::new(
-                Rc::new(RecordingProvider(Rc::new(RefCell::new(Vec::new())))),
-                false,
-            );
-            let window = gtk::Window::builder()
-                .default_width(600)
-                .default_height(800)
-                .child(&drawer.widget())
-                .build();
-            drawer.state.revealer.set_reveal_child(true);
-            drawer.state.render(Preview {
-                request_id: PreviewRequestId(1),
-                entry: entry("clip.mp4"),
-                content_type: "video/mp4".into(),
-                content: PreviewContent::SandboxedMedia { media: source },
-            });
-            window.present();
-            let media = drawer
-                .state
-                .media
-                .borrow()
-                .as_ref()
-                .expect("media stream")
-                .clone();
-            wait_until(|| {
-                assert!(
-                    media.error().is_none(),
-                    "playback error: {:?}",
-                    media.error()
+            for browser in [true, false] {
+                let source = SandboxedMedia {
+                    path: "/synthetic-video.mp4".into(),
+                    size: MediaPreviewSize::new(320, 180),
+                    backend: crate::sandbox::MediaPreviewBackend::Software,
+                };
+                let drawer = PreviewDrawer::new(
+                    Rc::new(RecordingProvider(Rc::new(RefCell::new(Vec::new())))),
+                    browser,
                 );
-                media.is_prepared() && media.timestamp() > 0
-            });
-            assert!(media.has_video());
-            assert_ne!(media_path, input);
-            assert_eq!(
-                media
-                    .downcast_ref::<gtk::MediaFile>()
-                    .expect("media file")
-                    .file()
-                    .expect("normalized source")
-                    .path(),
-                Some(media_path.clone())
-            );
-            drawer.close();
-            assert!(!media_path.exists());
-            window.close();
+                let window = gtk::Window::builder()
+                    .default_width(600)
+                    .default_height(800)
+                    .child(&drawer.widget())
+                    .build();
+                drawer.state.revealer.set_reveal_child(true);
+                drawer.state.opened.set(true);
+                drawer.state.current_request.set(Some(PreviewRequestId(1)));
+                drawer.state.render(Preview {
+                    request_id: PreviewRequestId(1),
+                    entry: entry("clip.mp4"),
+                    content_type: "video/mp4".into(),
+                    content: PreviewContent::SandboxedMedia {
+                        media: source.clone(),
+                    },
+                });
+                let media = drawer
+                    .state
+                    .media
+                    .borrow()
+                    .as_ref()
+                    .expect("media stream")
+                    .clone();
+                let decoded = media
+                    .downcast_ref::<crate::ui::media::DecodedMedia>()
+                    .expect("raw texture player, not GtkMediaFile");
+                crate::ui::media::tests::use_test_decoder(decoded, true, 2_000_000);
+                window.present();
+                wait_until(|| {
+                    assert!(media.error().is_none(), "{:?}", media.error());
+                    media.is_prepared() && media.timestamp() > 0
+                });
+                assert!(media.has_video());
+                assert!(media.has_audio());
+                assert!(media.downcast_ref::<gtk::MediaFile>().is_none());
+                window.close();
+                wait_until(|| drawer.state.media.borrow().is_none());
+                assert_eq!(decoded.intrinsic_width(), 0);
+                assert!(!decoded.is_playing());
+                assert!(!drawer.is_open());
+                drawer.state.handle_event(
+                    PreviewRequestId(1),
+                    PreviewEvent::Ready(Preview {
+                        request_id: PreviewRequestId(1),
+                        entry: entry("late.mp4"),
+                        content_type: "video/mp4".into(),
+                        content: PreviewContent::SandboxedMedia { media: source },
+                    }),
+                );
+                assert!(
+                    drawer.state.media.borrow().is_none(),
+                    "destroyed windows reject late provider results"
+                );
+                drawer.close();
+            }
         },
     );
 }

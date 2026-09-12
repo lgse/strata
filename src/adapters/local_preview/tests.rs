@@ -3,7 +3,7 @@
 use std::fs;
 
 use super::*;
-use crate::services::PreviewContent;
+use crate::services::{MediaPreviewSize, PreviewContent};
 
 #[test]
 fn renders_requested_pdf_pages_within_the_pixel_budget() {
@@ -86,7 +86,6 @@ fn preview_cache_stores_and_retrieves_entries() {
         path: PathBuf::from("test1.png"),
         modified: 100,
         pdf_page: None,
-        media: None,
     };
     let content1 = PreviewContent::Rasterized {
         png: vec![1, 2, 3, 4],
@@ -99,7 +98,6 @@ fn preview_cache_stores_and_retrieves_entries() {
         path: PathBuf::from("test2.txt"),
         modified: 200,
         pdf_page: None,
-        media: None,
     };
     let content2 = PreviewContent::Text {
         content: "hello world".to_owned(),
@@ -113,13 +111,11 @@ fn preview_cache_stores_and_retrieves_entries() {
         path: PathBuf::from("doc.pdf"),
         modified: 300,
         pdf_page: Some(0),
-        media: None,
     };
     let pdf_page_1 = PreviewCacheKey {
         path: PathBuf::from("doc.pdf"),
         modified: 300,
         pdf_page: Some(1),
-        media: None,
     };
     let page0_content = PreviewContent::Pdf {
         png: vec![10, 20],
@@ -149,7 +145,6 @@ fn preview_cache_evicts_the_least_recent_entry() {
             path: PathBuf::from(format!("image-{index}.png")),
             modified: index as i64,
             pdf_page: None,
-            media: None,
         })
         .collect();
 
@@ -179,7 +174,6 @@ fn replacing_a_preview_cache_entry_updates_its_byte_count() {
         path: PathBuf::from("image.png"),
         modified: 1,
         pdf_page: None,
-        media: None,
     };
 
     cache.insert(key.clone(), PreviewContent::Rasterized { png: vec![0; 8] });
@@ -190,7 +184,7 @@ fn replacing_a_preview_cache_entry_updates_its_byte_count() {
 }
 
 #[test]
-fn media_preview_cache_separates_pane_sizes_and_backend_preferences() {
+fn active_media_requests_are_never_retained_by_the_preview_cache() {
     let mut cache = PreviewCache {
         entries: HashMap::new(),
         recent: VecDeque::new(),
@@ -200,34 +194,19 @@ fn media_preview_cache_separates_pane_sizes_and_backend_preferences() {
         path: PathBuf::from("clip.mp4"),
         modified: 1,
         pdf_page: None,
-        media: Some((
-            MediaPreviewSize::new(520, 800),
-            MediaPreviewBackend::Software,
-        )),
     };
     let content = PreviewContent::SandboxedMedia {
-        media: SandboxedMedia::from_normalized(&[1, 2]).expect("normalized fixture"),
+        media: SandboxedMedia {
+            path: "clip.mp4".into(),
+            size: MediaPreviewSize::new(520, 800),
+            backend: MediaPreviewBackend::Software,
+        },
     };
     cache.insert(key.clone(), content.clone());
 
-    for media in [
-        Some((
-            MediaPreviewSize::new(1040, 1280),
-            MediaPreviewBackend::Software,
-        )),
-        Some((MediaPreviewSize::new(520, 800), MediaPreviewBackend::Vulkan)),
-        None,
-    ] {
-        assert!(
-            cache
-                .get(&PreviewCacheKey {
-                    media,
-                    ..key.clone()
-                })
-                .is_none()
-        );
-    }
-    assert_eq!(cache.get(&key), Some(content));
+    assert_eq!(cache.get(&key), None);
+    assert!(cache.entries.is_empty());
+    assert_eq!(cache.byte_count, 0);
 }
 
 #[test]
@@ -246,9 +225,13 @@ fn preview_content_size_computes_accurately() {
     );
     assert_eq!(
         preview_content_size(&PreviewContent::SandboxedMedia {
-            media: SandboxedMedia::from_normalized(&[0; 50]).expect("normalized fixture"),
+            media: SandboxedMedia {
+                path: "clip.mp4".into(),
+                size: MediaPreviewSize::new(520, 800),
+                backend: MediaPreviewBackend::Software
+            },
         }),
-        50
+        0
     );
     assert_eq!(
         preview_content_size(&PreviewContent::Text {

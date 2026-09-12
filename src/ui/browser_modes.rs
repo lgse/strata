@@ -2632,6 +2632,11 @@ fn icons_loading_skeleton(thumbnail_size: i32, density: BrowserDensity) -> gtk::
         let slot = icons_card_icon_slot(thumbnail_size);
         let icon = block(slot, slot);
         icon.set_halign(gtk::Align::Center);
+        let padding = super::icons_cell::ICONS_CARD_ICON_PADDING;
+        icon.set_margin_top(padding);
+        icon.set_margin_bottom(padding);
+        icon.set_margin_start(padding);
+        icon.set_margin_end(padding);
         card.append(&icon);
         let label = block(96, 10);
         label.set_halign(gtk::Align::Center);
@@ -2807,7 +2812,7 @@ fn collection_with_marquee(
     view: &gtk::Widget,
     scroll: gtk::ScrolledWindow,
     targets: super::marquee::MarqueeTargets,
-    whole_row: bool,
+    list_rows: bool,
 ) -> (gtk::Overlay, super::marquee::Marquee) {
     let overlay = gtk::Overlay::new();
     overlay.set_child(Some(&scroll));
@@ -2815,8 +2820,11 @@ fn collection_with_marquee(
     overlay.set_vexpand(true);
     super::scrolling::install_autoscroll(&scroll, &overlay);
 
-    let is_item = if whole_row {
-        super::marquee::item_bounds_predicate(targets.clone())
+    let is_item = if list_rows {
+        super::marquee::item_content_predicate(
+            targets.clone(),
+            Rc::new(super::pointer::hits_list_item_content),
+        )
     } else {
         Rc::new(super::pointer::hits_item_content)
     };
@@ -2955,7 +2963,7 @@ fn install_list_drag_drop(
         bool,
     ),
 ) {
-    let (drag_icon, multi_drag_icon, content_click, whole_row) = drag_icon_and_content_click;
+    let (drag_icon, multi_drag_icon, content_click, list_rows) = drag_icon_and_content_click;
     if transfer_handler.borrow().is_none() {
         return;
     }
@@ -2972,10 +2980,11 @@ fn install_list_drag_drop(
     let prepare_row = row.downgrade();
     drag.connect_prepare(move |source, x, y| {
         let prepare_row = prepare_row.upgrade()?;
-        if whole_row {
-            if prepare_row
-                .pick(x, y, gtk::PickFlags::DEFAULT)
-                .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
+        if list_rows {
+            if !super::pointer::hits_list_item_content(&prepare_row, x, y)
+                || prepare_row
+                    .pick(x, y, gtk::PickFlags::DEFAULT)
+                    .is_some_and(|target| crate::ui::focus_navigation::editable(&target))
             {
                 return None;
             }

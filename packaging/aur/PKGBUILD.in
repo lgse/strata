@@ -13,6 +13,8 @@ depends=(
   'bubblewrap'
   'fontconfig'
   'glibc>=2.39'
+  'gstreamer>=1.20'
+  'gst-plugins-base'
   'gtk4>=4.12'
   'gtksourceview5'
   'gvfs'

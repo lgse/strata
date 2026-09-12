@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: MIT
 
-use std::{ffi::OsStr, io::Write, path::Path, rc::Rc, sync::Arc};
+use std::{
+    ffi::OsStr,
+    path::{Path, PathBuf},
+    rc::Rc,
+};
 
 use crate::model::FileEntry;
 
@@ -39,40 +43,13 @@ pub struct PreviewRequest {
     pub media_size: MediaPreviewSize,
 }
 
-#[derive(Clone, Debug)]
+/// A decode request, not a playable file. Only the sandbox may open `path`.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SandboxedMedia {
-    path: Arc<tempfile::TempPath>,
-    byte_len: usize,
+    pub(crate) path: PathBuf,
+    pub(crate) size: MediaPreviewSize,
+    pub(crate) backend: crate::sandbox::MediaPreviewBackend,
 }
-
-impl SandboxedMedia {
-    pub fn from_normalized(data: &[u8]) -> std::io::Result<Self> {
-        let mut file = tempfile::Builder::new()
-            .prefix("strata-media-")
-            .tempfile()?;
-        file.write_all(data)?;
-        Ok(Self {
-            path: Arc::new(file.into_temp_path()),
-            byte_len: data.len(),
-        })
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-
-    pub fn byte_len(&self) -> usize {
-        self.byte_len
-    }
-}
-
-impl PartialEq for SandboxedMedia {
-    fn eq(&self, other: &Self) -> bool {
-        self.path() == other.path() && self.byte_len == other.byte_len
-    }
-}
-
-impl Eq for SandboxedMedia {}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum PreviewContent {
