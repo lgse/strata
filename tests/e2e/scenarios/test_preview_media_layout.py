@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: MIT
-"""The real image renderer and shared cache must not bypass the preview's scale limit."""
-
 from hashlib import md5
 
 from PIL import Image, PngImagePlugin

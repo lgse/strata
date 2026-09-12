@@ -1,6 +1,4 @@
 # SPDX-License-Identifier: MIT
-"""Session preview controls and mouse-only access to clipped Miller columns."""
-
 import pytest
 from PIL import Image
 

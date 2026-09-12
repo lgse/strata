@@ -374,8 +374,7 @@ impl PreviewProvider for LocalPreviewProvider {
 }
 
 fn uses_shared_thumbnail(operation: ParseOperation, pdf_page: i32) -> bool {
-    // Shared thumbnails can be upscaled and do not retain reliable source dimensions.
-    // Image previews need a native-bounded render to enforce the UI's upscaling limit.
+    // Upscaled thumbnails lack the native dimensions needed to limit preview enlargement.
     operation == ParseOperation::PreviewPdf && pdf_page == 0
 }
 
