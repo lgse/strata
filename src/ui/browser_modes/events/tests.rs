@@ -365,6 +365,70 @@ fn mode_switching_reuses_existing_panes_and_reattaches_models() {
 }
 
 #[test]
+fn mode_switch_after_navigation_rebuilds_for_the_new_location() {
+    gtk_test(
+        "ui::browser_modes::events::tests::mode_switch_after_navigation_rebuilds_for_the_new_location",
+        || {
+            let mut fixture = Fixture::new(BrowserMode::Icons, false);
+            let icons_shell = fixture.pane().shell.clone();
+
+            // Switch to List, then navigate to a different folder.
+            fixture.views.prepare_mode(BrowserMode::List);
+            fixture.views.show_mode(BrowserMode::List);
+            fixture.views.clear_inactive_mode(BrowserMode::Icons);
+            fixture.browser.navigate(Location::local("/other"));
+            fixture
+                .views
+                .handle(&BrowserEvent::ColumnAdded {
+                    depth: 0,
+                    location: Location::local("/other"),
+                });
+            fixture
+                .views
+                .handle(&BrowserEvent::EntriesReplaced { depth: 0, count: 3 });
+            fixture
+                .views
+                .handle(&BrowserEvent::LoadFinished {
+                    depth: 0,
+                    truncated: false,
+                });
+
+            // Switch back to Icons: the stale Icons pane was built for /fixture,
+            // so it must be rebuilt for /other rather than reused.
+            fixture.views.prepare_mode(BrowserMode::Icons);
+            assert_ne!(fixture.pane().shell, icons_shell);
+            assert_eq!(
+                fixture.pane().location.as_ref(),
+                Some(&Location::local("/other"))
+            );
+        },
+    );
+}
+
+#[test]
+fn mode_switch_after_grouping_change_rebuilds_the_list_pane() {
+    gtk_test(
+        "ui::browser_modes::events::tests::mode_switch_after_grouping_change_rebuilds_the_list_pane",
+        || {
+            let mut fixture = Fixture::new(BrowserMode::List, false);
+            let list_shell = fixture.pane().shell.clone();
+
+            // Switch to Icons, then toggle grouping on while List is inactive.
+            fixture.views.prepare_mode(BrowserMode::Icons);
+            fixture.views.show_mode(BrowserMode::Icons);
+            fixture.views.clear_inactive_mode(BrowserMode::List);
+            fixture.views.set_group_by_type(true);
+
+            // Switch back to List: the stale List pane was built without grouping,
+            // so it must be rebuilt to match the new preference.
+            fixture.views.prepare_mode(BrowserMode::List);
+            assert_ne!(fixture.pane().shell, list_shell);
+            assert!(fixture.pane().group_by_type);
+        },
+    );
+}
+
+#[test]
 fn inactive_depths_and_cached_modes_do_not_receive_row_updates() {
     gtk_test(
         "ui::browser_modes::events::tests::inactive_depths_and_cached_modes_do_not_receive_row_updates",

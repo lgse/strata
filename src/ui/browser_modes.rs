@@ -211,6 +211,8 @@ struct PaneSection {
 #[derive(Clone)]
 struct Pane {
     depth: usize,
+    location: Option<Location>,
+    group_by_type: bool,
     shell: gtk::Box,
     header: gtk::Box,
     model: gtk::StringList,
@@ -859,7 +861,7 @@ impl ModeViews {
         };
         if let Some(pane) = self.icons_panes.first()
             && pane.depth == depth
-            && self.browser.location_at(depth).as_ref() == Some(&snapshot.location)
+            && pane.location.as_ref() == Some(&snapshot.location)
         {
             reconnect_pane_model(pane);
             apply_snapshot(pane, &snapshot, &self.browser);
@@ -878,7 +880,8 @@ impl ModeViews {
         };
         if let Some(pane) = self.list_pane.as_ref()
             && pane.depth == depth
-            && self.browser.location_at(depth).as_ref() == Some(&snapshot.location)
+            && pane.location.as_ref() == Some(&snapshot.location)
+            && pane.group_by_type == self.group_by_type
         {
             reconnect_pane_model(pane);
             apply_snapshot(pane, &snapshot, &self.browser);
@@ -1617,6 +1620,7 @@ fn build_icons_pane(
     depth: usize,
     title: &str,
 ) -> Pane {
+    let location = browser.location_at(depth);
     let controls = icons_controls(&browser, depth, options.thumbnail_size.get());
     if let Some(state) = options.new_folder_state {
         controls
@@ -1792,6 +1796,8 @@ fn build_icons_pane(
     marquee.add_origin_surface(&header);
     let pane = Pane {
         depth,
+        location,
+        group_by_type: false,
         shell,
         header,
         model,
@@ -2410,6 +2416,7 @@ fn build_list_pane(
     depth: usize,
     title: &str,
 ) -> Pane {
+    let location = browser.location_at(depth);
     let navigation = list_navigation(&browser);
     let actions = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     actions.add_css_class("icons-header-actions");
@@ -2620,6 +2627,8 @@ fn build_list_pane(
     content.append(&search.widget);
     let pane = Pane {
         depth,
+        location,
+        group_by_type: options.group_by_type,
         shell,
         header,
         model,
