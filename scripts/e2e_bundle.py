@@ -25,12 +25,13 @@ def image_key(repository=REPOSITORY):
 def dependency_key(repository=REPOSITORY):
     inputs = [image_key(repository)] + [digest(repository / name)
                                        for name in ("Cargo.toml", "Cargo.lock", ".dockerignore")]
+    inputs.extend(digest(path) for path in sorted((repository / "crates").glob("*/Cargo.toml")))
     return hashlib.sha256("".join(inputs).encode()).hexdigest()
 
 
 def source_key(repository=REPOSITORY):
     files = [repository / name for name in ("Cargo.toml", "Cargo.lock", "build.rs")]
-    for directory in ("src", "data"):
+    for directory in ("src", "data", "crates"):
         files.extend(path for path in (repository / directory).rglob("*") if path.is_file())
     inputs = [(str(path.relative_to(repository)), digest(path)) for path in sorted(files)]
     return hashlib.sha256(json.dumps(inputs).encode()).hexdigest()
@@ -41,7 +42,7 @@ def create(bundle, commit, repository=REPOSITORY):
         raise ValueError("a bundle must identify the tested commit")
     metadata = {"schema": 1, "commit": commit, "image_key": image_key(repository),
                 "source_key": source_key(repository),
-                "files": {name: digest(bundle / name) for name in ("strata", "plan.json")}}
+                "files": {name: digest(bundle / name) for name in ("strata", "strata-media-helper", "plan.json")}}
     (bundle / "metadata.json").write_text(json.dumps(metadata, indent=2) + "\n")
 
 
@@ -53,7 +54,7 @@ def verify(bundle, commit, repository=REPOSITORY):
         raise ValueError("bundle rendering/toolchain inputs differ from the checkout")
     if metadata.get("source_key") != source_key(repository):
         raise ValueError("bundle application source differs from the checkout (including local edits)")
-    for name in ("strata", "plan.json"):
+    for name in ("strata", "strata-media-helper", "plan.json"):
         if digest(bundle / name) != metadata["files"][name]:
             raise ValueError(f"bundle checksum mismatch: {name}")
 

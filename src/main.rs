@@ -5,12 +5,12 @@ mod app;
 mod assets;
 mod build_info;
 mod media;
+mod media_helper;
 mod metrics;
 mod model;
 mod portal;
 mod portal_setup;
 mod sandbox;
-mod sandbox_helper;
 mod services;
 mod storage;
 #[cfg(test)]
@@ -30,8 +30,8 @@ const GIO_FALLBACK_BACKENDS: [(&str, &str); 2] =
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LaunchMode {
-    PreviewHelper,
     GvfsProbe,
+    RepairMedia,
     Portal,
     InstallPortal,
     DismissPortalPrompt,
@@ -43,8 +43,8 @@ enum LaunchMode {
 /// not a reason to abort before GIO ever sees it.
 fn launch_mode(arguments: &[OsString]) -> LaunchMode {
     match arguments.get(1).and_then(|argument| argument.to_str()) {
-        Some("--preview-helper") => LaunchMode::PreviewHelper,
         Some(GVFS_PROBE_ARGUMENT) => LaunchMode::GvfsProbe,
+        Some("--repair-media-helper") => LaunchMode::RepairMedia,
         Some("--portal") => LaunchMode::Portal,
         Some("--install-portal") => LaunchMode::InstallPortal,
         Some("--dismiss-portal-prompt") => LaunchMode::DismissPortalPrompt,
@@ -54,14 +54,12 @@ fn launch_mode(arguments: &[OsString]) -> LaunchMode {
 }
 
 fn main() -> gtk::glib::ExitCode {
+    media_helper::initialize();
     let arguments: Vec<OsString> = std::env::args_os().collect();
     match launch_mode(&arguments) {
-        LaunchMode::PreviewHelper => {
-            if let Err(error) = run_preview_helper(&arguments[2..]) {
-                eprintln!("Preview helper failed: {error}");
-                return gtk::glib::ExitCode::FAILURE;
-            }
-            return gtk::glib::ExitCode::SUCCESS;
+        LaunchMode::RepairMedia => {
+            return finish_portal_setup(tempfile::tempdir().map_err(|e| e.to_string())
+                .and_then(|dir| media_helper::snapshot(dir.path()).map(|_| "The matching media helper is installed. Retry the preview.".to_owned())));
         }
         LaunchMode::GvfsProbe => {
             let _vfs = gio::Vfs::default();
@@ -125,17 +123,20 @@ fn main() -> gtk::glib::ExitCode {
     application.run()
 }
 
-fn run_preview_helper(arguments: &[OsString]) -> Result<(), String> {
-    let arguments = arguments
-        .iter()
-        .map(|argument| {
-            argument
-                .to_str()
-                .map(str::to_owned)
-                .ok_or_else(|| "Invalid UTF-8 in preview helper arguments".to_owned())
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    sandbox_helper::run(&arguments)
+fn run_command_with_timeout(command: &mut std::process::Command, timeout: Duration) -> std::io::Result<bool> {
+    let mut child = command.spawn()?;
+    let deadline = std::time::Instant::now() + timeout;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Ok(status.success()),
+            Ok(None) if std::time::Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
+            result => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return result.map(|_| false);
+            }
+        }
+    }
 }
 
 fn finish_portal_setup(result: Result<String, String>) -> gtk::glib::ExitCode {
@@ -179,7 +180,7 @@ fn restart_with_local_vfs_if_gvfs_is_unresponsive() {
     let Ok(executable) = std::env::current_exe() else {
         return;
     };
-    let responsive = sandbox_helper::run_command_with_timeout(
+    let responsive = run_command_with_timeout(
         std::process::Command::new(&executable)
             .arg(GVFS_PROBE_ARGUMENT)
             .stdin(Stdio::null())

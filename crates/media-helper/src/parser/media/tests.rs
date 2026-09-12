@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::*;
-use crate::media::{Decoder, LIMIT_US, Packet};
+use strata_media_protocol::{Decoder, LIMIT_US, Packet};
 use std::{io::Cursor, os::unix::net::UnixStream, thread};
 
 fn success(command: &mut Command) -> Vec<u8> {

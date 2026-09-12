@@ -29,7 +29,9 @@ if [[ "$group_id" != 0 ]]; then
 fi
 options=(--rm --platform=linux/amd64 --user "$user_id:$group_id" --shm-size=512m)
 if [[ "$(basename "$engine")" == podman ]]; then
-  options+=(--userns=keep-id --passwd=false)
+  options+=(--userns=keep-id --passwd=false --security-opt 'unmask=/proc/*')
+else
+  options+=(--security-opt systempaths=unconfined --security-opt seccomp=unconfined --security-opt apparmor=unconfined)
 fi
 if [[ -n "${STRATA_REQUIRE_DEVICE_TESTS:-}" ]]; then
   options+=(--env STRATA_REQUIRE_DEVICE_TESTS)
@@ -53,6 +55,7 @@ exec "$engine" run "${options[@]}" \
     case "$1" in all|fmt) cargo fmt --all --check ;; esac
     case "$1" in all|clippy) cargo clippy --locked --all-targets --all-features -- -D warnings ;; esac
     case "$1" in all|test)
+      cargo build --locked -p strata-media-helper
       case "${STRATA_QUALITY_TASK:-test}" in
         build) python3 scripts/quality_ci.py build ;;
         shard)

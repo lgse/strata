@@ -1,0 +1,11 @@
+[package]
+name = "strata-media-protocol"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[dependencies]
+rustix = { version = "1.1.4", features = ["event", "fs"] }
+
+[lints]
+workspace = true

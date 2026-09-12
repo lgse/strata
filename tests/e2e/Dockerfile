@@ -61,9 +61,14 @@ FROM toolchain AS dependencies
 WORKDIR /build
 ENV CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0
 COPY Cargo.toml Cargo.lock ./
-RUN mkdir src && printf 'fn main() {}\n' > src/main.rs \
+COPY crates/media-helper/Cargo.toml ./crates/media-helper/Cargo.toml
+COPY crates/media-protocol/Cargo.toml ./crates/media-protocol/Cargo.toml
+RUN mkdir -p src crates/media-helper/src crates/media-protocol/src \
+    && printf 'fn main() {}\n' > src/main.rs \
+    && printf 'fn main() {}\n' > crates/media-helper/src/main.rs \
+    && touch crates/media-protocol/src/lib.rs \
     && printf 'fn main() {}\n' > build.rs \
-    && cargo build --locked --bin strata \
+    && cargo build --locked --workspace --bins \
     && rm -rf src build.rs target/debug/strata target/debug/deps/strata* \
         target/debug/.fingerprint/strata-* target/debug/build/strata-*
 
@@ -74,15 +79,16 @@ COPY Cargo.toml Cargo.lock /tmp/strata-e2e-manifests/
 RUN cmp Cargo.toml /tmp/strata-e2e-manifests/Cargo.toml \
     && cmp Cargo.lock /tmp/strata-e2e-manifests/Cargo.lock
 COPY src ./src
+COPY crates ./crates
 COPY data ./data
 COPY build.rs ./
 ARG STRATA_BUILD_COMMIT
-RUN cargo build --locked --bin strata
+RUN cargo build --locked --workspace --bins
 COPY tests/e2e ./tests/e2e
 COPY scripts/e2e_bundle.py ./scripts/e2e_bundle.py
 RUN /opt/e2e-venv/bin/python -m pytest -c tests/e2e/pytest.ini --rootdir /build \
         --collect-only -q -p no:cacheprovider --e2e-write-plan=/bundle/plan.json \
-    && cp target/debug/strata /bundle/strata \
+    && cp target/debug/strata target/debug/strata-media-helper /bundle/ \
     && python3 scripts/e2e_bundle.py create /bundle --commit "$STRATA_BUILD_COMMIT"
 
 FROM scratch AS bundle

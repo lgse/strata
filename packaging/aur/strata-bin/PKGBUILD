@@ -13,8 +13,10 @@ depends=(
   'bubblewrap'
   'fontconfig'
   'glibc>=2.39'
+  # Media-helper capabilities (also required by older single-binary releases).
   'gstreamer>=1.20'
   'gst-plugins-base'
+  'gst-plugins-good'
   'gtk4>=4.12'
   'gtksourceview5'
   'gvfs'
@@ -24,7 +26,8 @@ optdepends=(
   'ffmpeg: video previews'
   'ffmpegthumbnailer: video thumbnails'
   'gst-libav: additional media format playback'
-  'gst-plugins-good: media playback in previews'
+  'pipewire-pulse: audio output when using PipeWire'
+  'pulseaudio: audio output when using PulseAudio'
   'gvfs-smb: SMB network locations'
   'imagemagick: RAW image previews'
   'libraw: RAW image previews when ImageMagick is unavailable'
@@ -42,6 +45,10 @@ package() {
   local dist="${srcdir}/strata-${_releasever}-${CARCH}-unknown-linux-gnu"
 
   install -Dm755 "${dist}/strata" "${pkgdir}/usr/bin/strata"
+  if [[ -f "${dist}/bundle.json" ]]; then
+    install -Dm755 "${dist}/strata-media-helper" "${pkgdir}/usr/bin/strata-media-helper"
+    install -Dm644 "${dist}/bundle.json" "${pkgdir}/usr/share/strata/bundle.json"
+  fi
   install -Dm644 "${dist}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
   # Older release archives predate bundled UnRAR.
   if [[ -f "${dist}/UnRAR.txt" ]]; then

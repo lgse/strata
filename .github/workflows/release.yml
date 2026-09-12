@@ -225,10 +225,25 @@ jobs:
         with:
           key: release-${{ matrix.target }}
 
-      - name: Build release binary
+      - name: Build release helper and offline-compatible application
         env:
           CARGO_PROFILE_RELEASE_DEBUG: line-tables-only
-        run: cargo build --release --locked --target "${{ matrix.target }}"
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          cargo build --release --locked -p strata-media-helper --target "$TARGET"
+          mkdir -p dist
+          helper="target/$TARGET/release/strata-media-helper"
+          symbols="dist/strata-media-helper-${VERSION}-${TARGET}.debug"
+          objcopy --only-keep-debug --compress-debug-sections=zlib "$helper" "$symbols"
+          strip --strip-unneeded "$helper"
+          objcopy --add-gnu-debuglink="$symbols" "$helper"
+          STRATA_RELEASE_BUILD=1 STRATA_MEDIA_HELPER_BUNDLE="$helper" \
+            cargo build --release --locked -p strata --target "$TARGET"
+          if readelf -d "target/$TARGET/release/strata" | grep -E 'NEEDED.*libgst'; then
+            echo 'Strata must not add GStreamer startup dependencies.' >&2
+            exit 1
+          fi
 
       - name: Package binary
         env:
@@ -239,6 +254,7 @@ jobs:
           package="strata-${VERSION}-${TARGET}"
           mkdir -p "dist/$package"
           install -m 755 "target/$TARGET/release/strata" "dist/$package/strata"
+          install -m 755 "target/$TARGET/release/strata-media-helper" "dist/$package/strata-media-helper"
           objcopy --only-keep-debug --compress-debug-sections=zlib "dist/$package/strata" "dist/$package.debug"
           strip --strip-unneeded "dist/$package/strata"
           objcopy --add-gnu-debuglink="dist/$package.debug" "dist/$package/strata"
@@ -250,9 +266,26 @@ jobs:
           install -m 644 data/io.github.lgse.Strata.desktop "dist/$package/"
           install -m 644 data/io.github.lgse.Strata.FileManager1.service "dist/$package/"
           install -m 644 data/icons/scalable/apps/io.github.lgse.Strata.svg "dist/$package/"
+          python3 scripts/release_bundle.py "dist/$package" --release-tag "v$VERSION" --target "$TARGET" --commit "$SOURCE_SHA"
           tar -C dist -czf "dist/$package.tar.gz" "$package"
           (cd dist && sha256sum "$package.tar.gz" > "$package.tar.gz.sha256")
           (cd dist && sha256sum "$package.debug" > "$package.debug.sha256")
+          (cd dist && sha256sum "strata-media-helper-${VERSION}-${TARGET}.debug" > "strata-media-helper-${VERSION}-${TARGET}.debug.sha256")
+
+      - name: Verify direct legacy upgrade without a sibling helper or network acquisition
+        env:
+          TARGET: ${{ matrix.target }}
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          root=$(mktemp -d)
+          mkdir -p "$root/bin" "$root/cache" "$root/home"
+          # This is the exact operation every published binary-only updater performs.
+          install -m 755 "dist/strata-${VERSION}-${TARGET}/strata" "$root/bin/strata"
+          env -i PATH=/usr/bin:/bin HOME="$root/home" XDG_CACHE_HOME="$root/cache" \
+            "$root/bin/strata" --repair-media-helper
+          recovered=$(find "$root/cache/strata-media-recovery" -name strata-media-helper -type f)
+          test -n "$recovered"
+          cmp "$recovered" "dist/strata-${VERSION}-${TARGET}/strata-media-helper"
 
       - name: Upload release artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

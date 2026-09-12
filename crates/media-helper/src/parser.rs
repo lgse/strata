@@ -11,12 +11,9 @@ use std::{
 };
 
 use gdk_pixbuf::prelude::*;
-use gtk::gio;
+use strata_media_protocol::{MediaPreviewBackend, MediaPreviewSize};
 
-use crate::{
-    sandbox::{MAX_OUTPUT_BYTES, MediaPreviewBackend},
-    services::MediaPreviewSize,
-};
+const MAX_OUTPUT_BYTES: u64 = 32 * 1024 * 1024;
 
 mod media;
 
@@ -358,28 +355,6 @@ fn bounded_output_with_timeout(
 fn stop_child(child: &mut Child) {
     let _killed = child.kill();
     let _waited = child.wait();
-}
-
-pub(crate) fn run_command_with_timeout(
-    command: &mut Command,
-    timeout: Duration,
-) -> io::Result<bool> {
-    if timeout.is_zero() {
-        return Ok(false);
-    }
-    let mut child = command.spawn()?;
-    let deadline = Instant::now() + timeout;
-    loop {
-        if let Some(status) = child.try_wait()? {
-            return Ok(status.success());
-        }
-        let remaining = deadline.saturating_duration_since(Instant::now());
-        if remaining.is_zero() {
-            stop_child(&mut child);
-            return Ok(false);
-        }
-        thread::sleep(PROCESS_POLL_INTERVAL.min(remaining));
-    }
 }
 
 fn render_media(path: &Path, size: i32) -> Result<Vec<u8>, String> {

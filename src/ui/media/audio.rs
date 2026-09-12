@@ -1,192 +1,180 @@
 // SPDX-License-Identifier: MIT
 
-use std::cell::{Cell, RefCell};
-use std::marker::PhantomData;
-use std::rc::Rc;
+use std::{
+    cell::RefCell, path::Path, process::{Command, Stdio},
+    sync::{Arc, Mutex, atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering}, mpsc},
+    thread, time::{Duration, Instant},
+};
+use crate::{media::{Cancellation, FRAME_TIMEOUT, TimedReader, TimedWriter, ipc::{self, Kind, Message, PcmSequence, u64_at}}, sandbox::media::WorkerSlot};
 
-use gst::prelude::*;
-use gstreamer as gst;
-use gstreamer_app::AppSrc;
+const QUEUED: usize = 3;
 
-const SAMPLE_RATE: u64 = 48_000;
-const FRAME_BYTES: usize = 4;
-const MAX_CHUNK_BYTES: usize = 6_400;
-const MAX_BYTES: u64 = 38_400;
-const MAX_TIME_NS: u64 = 200_000_000;
-const MAX_CHUNK_NS: u64 = 33_333_334;
-const MAX_FRAMES: u64 = SAMPLE_RATE * 30;
+struct State {
+    cancellation: Cancellation,
+    ready: AtomicBool,
+    playing: AtomicBool,
+    muted: AtomicBool,
+    volume: AtomicU64,
+    position: AtomicU64,
+    queued: AtomicUsize,
+    finish: AtomicBool,
+    error: Mutex<Option<String>>,
+}
 
 pub(super) struct PcmOutput {
-    pipeline: gst::Pipeline,
-    source: AppSrc,
-    sink: gst::Element,
-    volume: gst::Element,
-    frames: Cell<u64>,
-    finished: Cell<bool>,
-    failure: RefCell<Option<String>>,
-    _thread: PhantomData<Rc<()>>,
+    sender: mpsc::SyncSender<Message>,
+    sequence: RefCell<PcmSequence>,
+    state: Arc<State>,
 }
 
 impl PcmOutput {
-    pub(super) fn new(muted: bool, volume: f64) -> Result<Self, String> {
-        gst::init().map_err(|error| error.to_string())?;
-        #[cfg(test)]
-        let sink = gst::ElementFactory::make("fakesink")
-            .property("sync", true)
-            .build();
-        #[cfg(not(test))]
-        let sink = gst::ElementFactory::make("autoaudiosink").build();
-        Self::with_sink(sink.map_err(|error| error.to_string())?, muted, volume)
-    }
-
-    fn with_sink(sink: gst::Element, muted: bool, volume: f64) -> Result<Self, String> {
-        let pipeline = gst::Pipeline::new();
-        let source = AppSrc::builder().build();
-        source.set_caps(Some(
-            &gst::Caps::builder("audio/x-raw")
-                .field("format", "S16LE")
-                .field("layout", "interleaved")
-                .field("rate", SAMPLE_RATE as i32)
-                .field("channels", 2i32)
-                .build(),
-        ));
-        source.set_format(gst::Format::Time);
-        source.set_block(false);
-        source.set_max_bytes(MAX_BYTES);
-        source.set_max_time(gst::ClockTime::from_nseconds(MAX_TIME_NS));
-        source.set_property("do-timestamp", false);
-        let convert = gst::ElementFactory::make("audioconvert")
-            .build()
-            .map_err(|error| error.to_string())?;
-        let resample = gst::ElementFactory::make("audioresample")
-            .build()
-            .map_err(|error| error.to_string())?;
-        let gain = gst::ElementFactory::make("volume")
-            .build()
-            .map_err(|error| error.to_string())?;
-        let elements = [source.upcast_ref(), &convert, &resample, &gain, &sink];
-        pipeline
-            .add_many(elements)
-            .map_err(|error| error.to_string())?;
-        gst::Element::link_many(elements).map_err(|error| error.to_string())?;
-        let output = Self {
-            pipeline,
-            source,
-            sink,
-            volume: gain,
-            frames: Cell::new(0),
-            finished: Cell::new(false),
-            failure: RefCell::new(None),
-            _thread: PhantomData,
-        };
-        output.set_audio(muted, volume);
-        output.pause()?;
-        Ok(output)
-    }
-
-    pub(super) fn push(&self, data: Vec<u8>, timestamp_us: u64) -> Result<(), String> {
-        if data.is_empty()
-            || data.len() > MAX_CHUNK_BYTES
-            || !data.len().is_multiple_of(FRAME_BYTES)
-        {
-            return Err("Invalid PCM chunk length".into());
-        }
-        let frames = self.frames.get();
-        let end = frames
-            .checked_add((data.len() / FRAME_BYTES) as u64)
-            .filter(|end| *end <= MAX_FRAMES)
-            .ok_or("PCM exceeds the 30-second limit")?;
-        // Compare in the caller's microsecond precision, but retain sample-exact timing.
-        if timestamp_us != frames * 1_000_000 / SAMPLE_RATE {
-            return Err("PCM timestamps must start at zero and be contiguous".into());
-        }
-        if let Some(error) = self.error() {
-            return Err(error);
-        }
-        if !self.has_capacity() {
-            return Err("PCM output is full or finished".into());
-        }
-        let start_ns = frames * 1_000_000_000 / SAMPLE_RATE;
-        let end_ns = end * 1_000_000_000 / SAMPLE_RATE;
-        let duration = end_ns.checked_sub(start_ns).ok_or("Invalid PCM duration")?;
-        let mut buffer = gst::Buffer::from_mut_slice(data);
-        let writable = buffer.get_mut().ok_or("PCM buffer is not writable")?;
-        writable.set_pts(gst::ClockTime::from_nseconds(start_ns));
-        writable.set_duration(gst::ClockTime::from_nseconds(duration));
-        self.source
-            .push_buffer(buffer)
-            .map_err(|error| error.to_string())?;
-        self.frames.set(end);
-        Ok(())
+    pub(super) fn new(muted: bool, volume: f64, lease: Arc<WorkerSlot>) -> Result<Self, String> {
+        let state = Arc::new(State {
+            cancellation: Cancellation::default(), ready: AtomicBool::new(false), playing: AtomicBool::new(false),
+            muted: AtomicBool::new(muted), volume: AtomicU64::new(normalized_volume(volume).to_bits()),
+            position: AtomicU64::new(u64::MAX), queued: AtomicUsize::new(0), finish: AtomicBool::new(false), error: Mutex::new(None),
+        });
+        let (sender, receiver) = mpsc::sync_channel(QUEUED);
+        let worker = state.clone();
+        thread::Builder::new().name("media-pcm".into()).spawn(move || {
+            // A session includes parser and audio descendants, not one slot per process.
+            let _lease = lease;
+            if let Err(error) = run(&worker, receiver) {
+                worker.ready.store(false, Ordering::Release);
+                if let Ok(mut failure) = worker.error.lock() { *failure = Some(error); }
+            }
+        }).map_err(|_| "Cannot start the audio coordinator")?;
+        Ok(Self { sender, sequence: RefCell::new(PcmSequence::default()), state })
     }
 
     pub(super) fn has_capacity(&self) -> bool {
-        !self.finished.get()
-            && self.failure.borrow().is_none()
-            && self.source.current_level_bytes() <= MAX_BYTES - MAX_CHUNK_BYTES as u64
-            && self.source.current_level_time().nseconds() <= MAX_TIME_NS - MAX_CHUNK_NS
+        self.state.ready.load(Ordering::Acquire) && !self.state.finish.load(Ordering::Acquire) && self.state.queued.load(Ordering::Acquire) < QUEUED
     }
-
-    pub(super) fn play(&self) -> Result<(), String> {
-        self.pipeline
-            .set_state(gst::State::Playing)
-            .map(|_| ())
-            .map_err(|error| error.to_string())
-    }
-
-    pub(super) fn pause(&self) -> Result<(), String> {
-        self.pipeline
-            .set_state(gst::State::Paused)
-            .map(|_| ())
-            .map_err(|error| error.to_string())
-    }
-
-    pub(super) fn position_us(&self) -> Option<u64> {
-        // Query the sink, not appsrc's queued-buffer position: this follows playback's clock.
-        self.sink
-            .query_position::<gst::ClockTime>()
-            .map(|time| time.useconds())
-    }
-
-    pub(super) fn set_audio(&self, muted: bool, volume: f64) {
-        let volume = if volume.is_finite() {
-            volume.clamp(0.0, 1.0)
-        } else {
-            0.0
-        };
-        self.volume.set_property("mute", muted);
-        self.volume.set_property("volume", volume);
-    }
-
-    pub(super) fn finish(&self) -> Result<(), String> {
-        if !self.finished.get() {
-            self.source
-                .end_of_stream()
-                .map_err(|error| error.to_string())?;
-            self.finished.set(true);
+    pub(super) fn push(&self, data: Vec<u8>, time_us: u64) -> Result<(), String> {
+        if !self.has_capacity() { return Err("PCM output is full or finished".into()); }
+        self.sequence.borrow_mut().push(data.len(), time_us).map_err(|e| e.to_string())?;
+        self.state.queued.fetch_add(1, Ordering::AcqRel);
+        if self.sender.try_send(Message { kind: Kind::Samples, time_us, data }).is_err() {
+            self.state.queued.fetch_sub(1, Ordering::AcqRel);
+            return Err("Audio worker stopped or its bounded queue is full".into());
         }
         Ok(())
     }
+    pub(super) fn play(&self) -> Result<(), String> { self.state.playing.store(true, Ordering::Release); self.check() }
+    pub(super) fn pause(&self) -> Result<(), String> { self.state.playing.store(false, Ordering::Release); self.check() }
+    pub(super) fn position_us(&self) -> Option<u64> { let p = self.state.position.load(Ordering::Acquire); (p != u64::MAX).then_some(p) }
+    pub(super) fn set_audio(&self, muted: bool, volume: f64) {
+        self.state.muted.store(muted, Ordering::Release);
+        self.state.volume.store(normalized_volume(volume).to_bits(), Ordering::Release);
+    }
+    pub(super) fn finish(&self) -> Result<(), String> {
+        self.sequence.borrow_mut().finish().map_err(|e| e.to_string())?;
+        self.state.finish.store(true, Ordering::Release);
+        self.check()
+    }
+    fn check(&self) -> Result<(), String> { self.error().map_or(Ok(()), Err) }
+    pub(super) fn error(&self) -> Option<String> { self.state.error.lock().map_or_else(|_| Some("Audio coordinator failed".into()), |e| e.clone()) }
+}
 
-    pub(super) fn error(&self) -> Option<String> {
-        if let Some(bus) = self.pipeline.bus() {
-            while let Some(message) = bus.pop() {
-                if let gst::MessageView::Error(error) = message.view() {
-                    self.failure
-                        .borrow_mut()
-                        .get_or_insert_with(|| error.error().to_string());
-                }
+impl Drop for PcmOutput { fn drop(&mut self) { self.state.cancellation.cancel(); } }
+
+fn normalized_volume(volume: f64) -> f64 { if volume.is_finite() { volume.clamp(0.0, 1.0) } else { 0.0 } }
+
+fn command(executable: &Path, job: u64) -> Result<Command, String> {
+    let mut command = Command::new("/usr/bin/bwrap");
+    command.env_clear().env("PATH", "/usr/bin").env("LANG", "C").args([
+        "--unshare-all", "--die-with-parent", "--new-session", "--clearenv",
+        "--setenv", "PATH", "/usr/bin", "--setenv", "HOME", "/nonexistent",
+        "--setenv", "GST_REGISTRY_FORK", "no", "--setenv", "GST_REGISTRY", "/tmp/registry.bin",
+        "--proc", "/proc", "--dev", "/dev", "--size", "16777216", "--tmpfs", "/tmp", "--dir", "/app",
+        "--ro-bind", "/usr", "/usr", "--ro-bind-try", "/lib", "/lib", "--ro-bind-try", "/lib64", "/lib64",
+        "--ro-bind-try", "/etc/ld.so.cache", "/etc/ld.so.cache",
+    ]);
+    let test_sink = cfg!(test) || (cfg!(debug_assertions) && std::env::var("STRATA_MEDIA_TEST_SINK").is_ok_and(|v| v == "1"));
+    if !test_sink {
+        use std::os::unix::fs::FileTypeExt;
+        let runtime = std::env::var_os("XDG_RUNTIME_DIR").ok_or("Audio output is unavailable: no local audio runtime. Start PulseAudio or PipeWire with pipewire-pulse and retry.")?;
+        let socket = Path::new(&runtime).join("pulse/native");
+        if !std::fs::symlink_metadata(&socket).is_ok_and(|m| m.file_type().is_socket()) {
+            return Err("Audio output is unavailable: no local PulseAudio socket. Start PulseAudio or PipeWire with pipewire-pulse and retry.".into());
+        }
+        command.arg("--ro-bind").arg(socket).arg("/run/strata-audio/pulse/native").args(["--setenv", "PULSE_SERVER", "unix:/run/strata-audio/pulse/native"]);
+        if let Some(home) = std::env::var_os("HOME") {
+            let cookie = Path::new(&home).join(".config/pulse/cookie");
+            if std::fs::symlink_metadata(&cookie).is_ok_and(|m| m.is_file() && m.len() <= 4096) {
+                command.arg("--ro-bind").arg(cookie).arg("/run/strata-audio/pulse/cookie").args(["--setenv", "PULSE_COOKIE", "/run/strata-audio/pulse/cookie"]);
             }
         }
-        self.failure.borrow().clone()
     }
+    command.arg("--ro-bind").arg(executable).arg("/app/strata-media-helper").args([
+        "--", "/usr/bin/prlimit", "--core=0", "--as=2147483648", "--fsize=4194304", "--",
+        "/app/strata-media-helper", if test_sink { "--pcm-test-v1" } else { "--pcm-v1" }, crate::build_info::RELEASE_TAG, crate::build_info::COMMIT,
+    ]).arg(job.to_string()).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    Ok(command)
 }
 
-impl Drop for PcmOutput {
-    fn drop(&mut self) {
-        let _ = self.pipeline.set_state(gst::State::Null);
-    }
+fn run(state: &State, receiver: mpsc::Receiver<Message>) -> Result<(), String> {
+    let directory = tempfile::tempdir().map_err(|_| "Cannot stage the audio helper")?;
+    let executable = crate::media_helper::snapshot(directory.path())?;
+    let job = crate::media_helper::job();
+    let mut command = command(&executable, job)?;
+    let mut child = crate::sandbox::spawn_renderer(&mut command).map_err(crate::media_helper::spawn_error)?;
+    let result = communicate(state, receiver, &mut child, job);
+    crate::sandbox::terminate(&mut child);
+    result.map_err(|error| crate::media_helper::failure(&mut child, error))
 }
 
-#[cfg(test)]
-mod tests;
+fn communicate(state: &State, receiver: mpsc::Receiver<Message>, child: &mut std::process::Child, job: u64) -> Result<(), String> {
+    let stdin = child.stdin.take().ok_or("Missing audio input pipe")?;
+    let stdout = child.stdout.take().ok_or("Missing audio output pipe")?;
+    let mut reader = TimedReader { fd: &stdout, deadline: Instant::now() + FRAME_TIMEOUT, cancellation: &state.cancellation };
+    let mut writer = TimedWriter::new(&stdin, Instant::now() + FRAME_TIMEOUT, &state.cancellation).map_err(|e| e.to_string())?;
+    ipc::check_hello(&mut reader, ipc::PCM, job, crate::build_info::RELEASE_TAG, crate::build_info::COMMIT).map_err(|e| e.to_string())?;
+    let mut sequence = 0_u64;
+    let mut settings = None;
+    let mut playing = false;
+    let mut capacity = true;
+    let mut finished = false;
+    let mut pending = None;
+    state.ready.store(true, Ordering::Release);
+    loop {
+        if state.cancellation.is_cancelled() { return Ok(()); }
+        let desired = (state.muted.load(Ordering::Acquire), state.volume.load(Ordering::Acquire));
+        let desired_playing = state.playing.load(Ordering::Acquire);
+        let message = if settings != Some(desired) {
+            settings = Some(desired);
+            let mut data = u64::from(desired.0).to_le_bytes().to_vec();
+            data.extend_from_slice(&desired.1.to_le_bytes());
+            Message { kind: Kind::Settings, time_us: 0, data }
+        } else if playing != desired_playing {
+            playing = desired_playing;
+            Message::control(if playing { Kind::Play } else { Kind::Pause })
+        } else {
+            if pending.is_none() { pending = receiver.try_recv().ok(); }
+            if capacity && pending.is_some() {
+                pending.take().ok_or("Missing queued audio")?
+            } else if !finished && state.finish.load(Ordering::Acquire) && state.queued.load(Ordering::Acquire) == 0 {
+                finished = true;
+                Message::control(Kind::Finish)
+            } else { Message::control(Kind::Poll) }
+        };
+        writer.deadline = Instant::now() + FRAME_TIMEOUT;
+        message.write(&mut writer, job, sequence).map_err(|e| e.to_string())?;
+        reader.deadline = Instant::now() + FRAME_TIMEOUT;
+        let status = Message::read(&mut reader, job, sequence).map_err(|e| e.to_string())?;
+        if status.kind != Kind::Status || u64_at(&status.data, 0) > 1 || u64_at(&status.data, 16) > 1 {
+            return Err("Invalid audio worker response".into());
+        }
+        if u64_at(&status.data, 16) != 0 { return Err("Audio output failed. Check the PulseAudio or PipeWire audio service and retry.".into()); }
+        capacity = u64_at(&status.data, 0) == 1;
+        let position = u64_at(&status.data, 8);
+        let old = state.position.load(Ordering::Acquire);
+        if position != u64::MAX {
+            if position > 30_000_000 || (old != u64::MAX && position < old) { return Err("Invalid audio playback clock".into()); }
+            state.position.store(position, Ordering::Release);
+        }
+        if message.kind == Kind::Samples { state.queued.fetch_sub(1, Ordering::AcqRel); }
+        sequence = sequence.checked_add(1).ok_or("Audio sequence exhausted")?;
+        if message.kind == Kind::Poll { thread::sleep(Duration::from_millis(5)); }
+    }
+}

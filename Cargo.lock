@@ -2093,18 +2093,17 @@ dependencies = [
  "gio-unix",
  "glib",
  "glib-build-tools",
- "gstreamer",
- "gstreamer-app",
  "gtk4",
  "ignore",
  "pangocairo",
- "poppler-rs",
  "pulldown-cmark",
  "rustix",
  "serde",
  "serde_json",
  "sevenz-rust2",
+ "sha2",
  "sourceview5",
+ "strata-media-protocol",
  "tar",
  "tempfile",
  "toml",
@@ -2118,6 +2117,29 @@ dependencies = [
  "zbus",
  "zip",
  "zstd",
+]
+
+[[package]]
+name = "strata-media-helper"
+version = "0.1.0"
+dependencies = [
+ "cairo-rs",
+ "gdk-pixbuf",
+ "gio",
+ "gstreamer",
+ "gstreamer-app",
+ "poppler-rs",
+ "rustix",
+ "serde_json",
+ "strata-media-protocol",
+ "tempfile",
+]
+
+[[package]]
+name = "strata-media-protocol"
+version = "0.1.0"
+dependencies = [
+ "rustix",
 ]
 
 [[package]]

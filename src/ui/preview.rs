@@ -32,8 +32,6 @@ const TRANSITION: Duration = Duration::from_millis(260);
 const PDF_PAGE_GAP: i32 = 6;
 const PDF_MIN_ZOOM: f64 = 1.0;
 const PDF_MAX_ZOOM: f64 = 4.0;
-const MEDIA_PLUGIN_INSTALL_COMMAND: &str =
-    "sudo pacman -S --needed gst-plugins-base gst-plugins-good";
 
 pub(crate) fn preview_target(entry: Option<FileEntry>) -> Option<FileEntry> {
     entry.filter(entry_supports_quick_preview)
@@ -1829,24 +1827,6 @@ fn copyable_command(command: &str) -> gtk::Overlay {
 }
 
 fn media_error_feedback(message: &str) -> (&'static str, String, Option<&'static str>) {
-    let normalized = message.to_ascii_lowercase();
-    if [
-        "gstreamer",
-        "plug-in",
-        "plugin",
-        "missing decoder",
-        "no decoder",
-    ]
-    .iter()
-    .any(|marker| normalized.contains(marker))
-    {
-        return (
-            "Additional media support required",
-            "On Arch or Omarchy, install the required GStreamer plugins, then restart Strata."
-                .to_owned(),
-            Some(MEDIA_PLUGIN_INSTALL_COMMAND),
-        );
-    }
     (
         "Preview unavailable",
         format!("Unable to play this media preview: {message}"),

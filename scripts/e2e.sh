@@ -80,9 +80,10 @@ exec "$engine" run "${options[@]}" \
     if [[ -n "${STRATA_E2E_BUNDLE:-}" ]]; then
       export STRATA_BINARY="$STRATA_E2E_BUNDLE/strata"
       test -x "$STRATA_BINARY"
+      test -x "$STRATA_E2E_BUNDLE/strata-media-helper"
     else
       rustc --version
-      cargo build --locked --bin strata
+      cargo build --locked --workspace --bins
       export STRATA_BINARY="$CARGO_TARGET_DIR/debug/strata"
     fi
     exec ./scripts/e2e-native.sh "$@"

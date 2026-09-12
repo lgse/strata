@@ -4,7 +4,7 @@ use std::{ffi::OsString, os::unix::ffi::OsStringExt};
 
 use super::{
     GIO_FALLBACK_BACKENDS, LaunchMode, encode_daemon_pids, gvfs_daemon_pids,
-    gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, launch_mode, run_preview_helper,
+    gvfs_probe_marker_is_fresh_at, gvfs_probe_marker_path_in, launch_mode,
 };
 
 #[test]
@@ -26,7 +26,6 @@ fn launch_mode_treats_non_utf8_arguments_as_an_ordinary_launch() {
 #[test]
 fn launch_mode_recognizes_only_the_first_argument_as_a_mode() {
     for (flag, mode) in [
-        ("--preview-helper", LaunchMode::PreviewHelper),
         ("--gvfs-probe", LaunchMode::GvfsProbe),
         ("--portal", LaunchMode::Portal),
         ("--install-portal", LaunchMode::InstallPortal),
@@ -39,21 +38,6 @@ fn launch_mode_recognizes_only_the_first_argument_as_a_mode() {
             LaunchMode::Application
         );
     }
-}
-
-#[test]
-fn preview_helper_rejects_non_utf8_instead_of_changing_paths() {
-    let arguments = [
-        "thumbnail-image".into(),
-        OsString::from_vec(b"/tmp/\xff".to_vec()),
-        "/tmp/result.png".into(),
-        "128".into(),
-        "software".into(),
-    ];
-    assert_eq!(
-        run_preview_helper(&arguments),
-        Err("Invalid UTF-8 in preview helper arguments".to_owned())
-    );
 }
 
 fn fake_proc(label: &str, processes: &[(&str, &str)]) -> std::path::PathBuf {

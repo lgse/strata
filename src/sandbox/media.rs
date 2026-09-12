@@ -21,7 +21,7 @@ pub(crate) const MAX_WORKERS: usize = 4;
 const QUEUED_PACKETS: usize = 3;
 static ACTIVE_WORKERS: AtomicUsize = AtomicUsize::new(0);
 
-struct WorkerSlot;
+pub(crate) struct WorkerSlot;
 
 impl WorkerSlot {
     fn acquire() -> Option<Self> {
@@ -86,6 +86,8 @@ impl Session {
         })
     }
 
+    pub(crate) fn lease(&self) -> Arc<WorkerSlot> { self._slot.clone() }
+
     pub fn receive(&self) -> Option<Event> {
         match self.receiver.try_recv() {
             Ok(event) => Some(event),
@@ -143,9 +145,8 @@ fn render(
         return Err("Preview input is not a regular file".into());
     }
     let output = PrivateOutput::create().map_err(|error| error.to_string())?;
-    let current = std::env::current_exe().map_err(|error| error.to_string())?;
-    let running = PathBuf::from(format!("/proc/{}/exe", std::process::id()));
-    let executable = resolve_renderer_executable(&current, &running, output.path())?;
+    let executable = crate::media_helper::snapshot(output.path())?;
+    let job = crate::media_helper::job();
     let devices = gpu_devices(Path::new("/dev"), source.backend);
     let mut command = sandbox_command(
         &executable,
@@ -158,26 +159,27 @@ fn render(
     );
     command
         .arg(start_tick.to_string())
+        .arg(job.to_string())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        .stderr(Stdio::piped());
     if cancellation.is_cancelled() {
         return Err("Preview cancelled".into());
     }
-    let mut child = spawn_renderer(&mut command)
-        .map_err(|error| format!("Unable to start the preview sandbox: {error}"))?;
-    let result = consume(&mut child, source, start_tick, cancellation, sender);
-    // Also tear down descendants which keep a pipe open or outlive their leader.
-    if result.is_err() {
+    let mut child = spawn_renderer(&mut command).map_err(crate::media_helper::spawn_error)?;
+    let result = consume(&mut child, source, start_tick, job, cancellation, sender);
+    if let Err(error) = result {
         terminate(&mut child);
+        return Err(crate::media_helper::failure(&mut child, error.to_string()));
     }
-    result.map_err(|error| error.to_string())
+    Ok(())
 }
 
 fn consume(
     child: &mut Child,
     source: &SandboxedMedia,
     start_tick: u32,
+    job: u64,
     cancellation: &Cancellation,
     sender: &mpsc::SyncSender<Event>,
 ) -> io::Result<()> {
@@ -190,6 +192,7 @@ fn consume(
         deadline: Instant::now() + STARTUP_TIMEOUT,
         cancellation,
     };
+    crate::media::ipc::check_hello(&mut reader, crate::media::ipc::PARSER, job, crate::build_info::RELEASE_TAG, crate::build_info::COMMIT)?;
     let header = Header::read(&mut reader, source.size, start_tick)?;
     send(sender, Event::Prepared(header), cancellation).map_err(io::Error::other)?;
     let mut decoder = Decoder::new(header);

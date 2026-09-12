@@ -12,6 +12,7 @@ pkgbase = strata-bin
 	depends = glibc>=2.39
 	depends = gstreamer>=1.20
 	depends = gst-plugins-base
+	depends = gst-plugins-good
 	depends = gtk4>=4.12
 	depends = gtksourceview5
 	depends = gvfs
@@ -19,7 +20,8 @@ pkgbase = strata-bin
 	optdepends = ffmpeg: video previews
 	optdepends = ffmpegthumbnailer: video thumbnails
 	optdepends = gst-libav: additional media format playback
-	optdepends = gst-plugins-good: media playback in previews
+	optdepends = pipewire-pulse: audio output when using PipeWire
+	optdepends = pulseaudio: audio output when using PulseAudio
 	optdepends = gvfs-smb: SMB network locations
 	optdepends = imagemagick: RAW image previews
 	optdepends = libraw: RAW image previews when ImageMagick is unavailable
