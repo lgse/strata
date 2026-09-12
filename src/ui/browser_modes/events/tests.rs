@@ -255,6 +255,67 @@ fn busy_insertions_and_splices_preserve_distinct_presentation_rules() {
 }
 
 #[test]
+fn deferred_empty_state_stays_hidden_until_delete_animation_finishes() {
+    gtk_test(
+        "ui::browser_modes::events::tests::deferred_empty_state_stays_hidden_until_delete_animation_finishes",
+        || {
+            for (mode, grouped) in presentations() {
+                let mut fixture = Fixture::new(mode, grouped);
+                let pane = fixture.pane();
+
+                fixture.views.handle_with_deferred_empty(
+                    &BrowserEvent::EntriesSpliced {
+                        depth: 0,
+                        splices: vec![EntrySplice {
+                            position: 0,
+                            removed: 3,
+                            entries: Vec::new(),
+                        }],
+                    },
+                    true,
+                );
+
+                assert_eq!(pane.model.n_items(), 0);
+                assert_eq!(visible_page(&pane), "content");
+                fixture.views.show_empty_if_empty(0);
+                assert_eq!(visible_page(&pane), "status");
+                assert_eq!(pane.status.label(), "This directory is empty");
+            }
+        },
+    );
+}
+
+#[test]
+fn deferred_empty_state_survives_a_reload_finishing_during_delete_animation() {
+    gtk_test(
+        "ui::browser_modes::events::tests::deferred_empty_state_survives_a_reload_finishing_during_delete_animation",
+        || {
+            for (mode, grouped) in presentations() {
+                let mut fixture = Fixture::new(mode, grouped);
+                let pane = fixture.pane();
+
+                fixture
+                    .views
+                    .handle(&BrowserEvent::ColumnReloaded { depth: 0 });
+                fixture.views.handle_with_deferred_empty(
+                    &BrowserEvent::LoadFinished {
+                        depth: 0,
+                        truncated: false,
+                    },
+                    true,
+                );
+
+                assert_eq!(pane.model.n_items(), 0);
+                assert_ne!(visible_page(&pane), "status");
+                fixture.views.show_empty_if_empty(0);
+                assert_eq!(visible_page(&pane), "status");
+                assert_eq!(pane.status.label(), "This directory is empty");
+            }
+        },
+    );
+}
+
+#[test]
 fn failures_reconnect_without_losing_error_and_empty_transitions() {
     gtk_test(
         "ui::browser_modes::events::tests::failures_reconnect_without_losing_error_and_empty_transitions",
