@@ -572,6 +572,13 @@ impl ViewState {
                     }
                 }
             });
+            let task = Rc::new(task);
+            let closing_task = task.clone();
+            layer.connect_sensitive_notify(move |layer| {
+                if !layer.is_sensitive() {
+                    closing_task.abort();
+                }
+            });
             layer.connect_unrealize(move |_| task.abort());
         }
 
