@@ -138,7 +138,7 @@ installed direct/skip-transition upgrades, rollback, offline recovery and runnin
 old instances before stable promotion. Keep old links immutable. Publish package
 metadata only after matching release artifacts exist. Every later stable, RC and
 nightly UI must continue carrying the recovery payload while binary-only clients
-remain supported. The `current`/`previous` layout, repair command and common-helper
+remain supported (including alpha/beta preview builds). The `current`/`previous` layout, repair command and common-helper
 capability loss must be in release notes.
 
 Unit/synthetic-ELF tests are not proof of installed release behavior. Pinned GTK
@@ -151,6 +151,11 @@ It never mounts all of `/etc/alternatives`. Real sandbox/player regressions now
 exercise video/audio/A/V/GIF, worker crashes and parent death in pinned x86_64
 Ubuntu with fake audio. Other installations and real installed artifacts still
 need their own evidence.
+
+The non-publishing native x86_64/AArch64 CI gate uses the shared release producer
+and exercises real installed artifacts, historical extraction routines, rollback,
+offline recovery, a monitored private PulseAudio sink and dependency restoration.
+See the [commands, evidence and scope limits](evidence/850/README.md).
 
 Do not claim release readiness without final ELF closure, missing-library launch
 and repair evidence, real installed bundles on both architectures, real audio with

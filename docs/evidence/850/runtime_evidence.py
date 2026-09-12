@@ -4,7 +4,8 @@
 
 Use generated media only. The default is video-only without audio access.
 Speaker output requires --audio-runtime and explicit --allow-audible consent;
-the GUI still uses a private display and buses. No audio recording is performed.
+the GUI still uses a private display and buses. Private PulseAudio monitoring
+records only this test's generated null-sink stream, never desktop audio.
 """
 import argparse
 import json
@@ -61,12 +62,22 @@ def main():
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--expect-error")
+    parser.add_argument("--restore-ready", type=Path)
+    parser.add_argument("--restored", type=Path)
     parser.add_argument("--cycles", type=int, default=0)
+    parser.add_argument("--prepare-only", action="store_true")
     parser.add_argument("--pause-release", action="store_true")
+    parser.add_argument("--activate-archive", type=Path)
+    parser.add_argument("--launcher", type=Path)
     parser.add_argument("--audio-fixture", choices=("audio", "av"))
     parser.add_argument("--audio-runtime", type=Path)
+    parser.add_argument("--private-pulse", action="store_true")
     parser.add_argument("--allow-audible", action="store_true")
     args = parser.parse_args()
+    if args.private_pulse and (args.audio_runtime or not args.audio_fixture):
+        parser.error("private PulseAudio requires an audio fixture and cannot use an external runtime")
+    if args.audio_fixture and (args.cycles or args.pause_release):
+        parser.error("audio smoke and video ownership measurements are separate runs")
     if args.audio_runtime and (not args.allow_audible or not args.audio_fixture):
         parser.error("external audio runtime requires an audio fixture and explicit --allow-audible consent")
     if not 0 <= args.cycles <= 1000:
@@ -81,21 +92,24 @@ def main():
     clip = fixtures / ("clip.wav" if args.audio_fixture == "audio" else "clip.mkv")
     if not clip.exists():
         command = ["/usr/bin/ffmpeg", "-nostdin", "-v", "error"]
-        duration = 4 if args.audio_fixture else 30
+        duration = (8 if args.private_pulse else 4) if args.audio_fixture else 30
         if args.audio_fixture != "audio":
             command += ["-f", "lavfi", "-i", f"testsrc2=size=160x90:rate=30:duration={duration}"]
         if args.audio_fixture:
-            command += ["-f", "lavfi", "-i", "sine=frequency=660:sample_rate=48000:duration=4", "-c:a", "pcm_s16le"]
+            command += ["-f", "lavfi", "-i", f"sine=frequency=660:sample_rate=48000:duration={duration}", "-c:a", "pcm_s16le"]
         if args.audio_fixture != "audio":
             command += ["-c:v", "ffv1"]
         subprocess.run(command + ["-threads", "1", str(clip)], check=True, timeout=60)
     (fixtures / "notes.txt").write_text("Browsing and text previews remain usable.\n")
+    if args.prepare_only:
+        return
     sys.path.insert(0, str(ROOT / "tests/e2e"))
     from harness.display import HeadlessDisplay
     from harness.environment import TestEnvironment
     display, home = HeadlessDisplay(), TestEnvironment()
-    app = connection = None
-    results = dict(binary=str(binary), cycles=args.cycles, audio="not exercised: video-only fixture", completed=False)
+    app = connection = pulse = monitor = None
+    audio_logs = []
+    results = dict(binary=str(binary), cycles=args.cycles, fixture=args.audio_fixture or "video", audio="not exercised", completed=False)
     try:
         display.start()
         os.environ.update(home.variables())
@@ -107,7 +121,27 @@ def main():
         from harness.xtest import XTestConnection
         from harness import tree
         tree.connect()
-        home.write_preferences({"video_preview_backend": "software", "preview_muted": not bool(args.audio_runtime), "preview_volume": 0.15})
+        if args.private_pulse:
+            runtime = display.runtime_dir / "pulse"
+            runtime.mkdir(mode=0o700)
+            native = runtime / "native"
+            pulse_log = (output / "pulse.log").open("wb")
+            monitor_log = (output / "private-monitor.raw").open("wb")
+            audio_logs.extend([pulse_log, monitor_log])
+            pulse = subprocess.Popen(["/usr/bin/pulseaudio", "--daemonize=no", "--exit-idle-time=-1",
+                "--use-pid-file=no", "--realtime=no", "--high-priority=no", "--log-target=stderr", "-n",
+                f"--load=module-native-protocol-unix socket={native}",
+                "--load=module-null-sink sink_name=strata_test rate=48000 channels=2"],
+                env=dict(os.environ, PULSE_RUNTIME_PATH=str(runtime)), stdout=subprocess.DEVNULL, stderr=pulse_log)
+            deadline = time.monotonic() + 10
+            while not native.is_socket():
+                assert pulse.poll() is None and time.monotonic() < deadline, "private PulseAudio failed"
+                time.sleep(0.02)
+            monitor = subprocess.Popen(["/usr/bin/parec", f"--server=unix:{native}",
+                "--device=strata_test.monitor", "--format=s16le", "--rate=48000", "--channels=2", "--raw"],
+                env=os.environ, stdout=monitor_log, stderr=pulse_log)
+            results["audio_service"] = "private PulseAudio with only a null sink; no physical output or recording of other audio"
+        home.write_preferences({"video_preview_backend": "software", "preview_muted": not bool(args.audio_runtime or args.private_pulse), "preview_volume": 0.15})
         app_display = display
         if args.audio_runtime:
             # Redirect only the app's audio runtime, retaining its private GUI buses.
@@ -129,17 +163,72 @@ def main():
             browser.wait(lambda: browser.preview_shows("Browsing and text previews remain usable."), "unrelated text preview")
             browser.screenshot(output / "text-still-usable.png")
             results.update(expected_error=args.expect_error, text_preview_usable=True)
+            if args.restore_ready:
+                assert args.restored is not None
+                args.restore_ready.touch()
+                browser.wait(args.restored.exists, "dependency restoration", timeout=30)
+                browser.keyboard.press("Escape")
+                browser.wait(lambda: browser.preview() is None, "close text preview")
+                browser.select_entry(clip.name)
+                browser.keyboard.press("space")
+                browser.wait(lambda: browser.preview_shows("0:01/"), "recovered without restarting the application", timeout=25)
+                browser.screenshot(output / "restored.png")
+                results["recovered_without_restart"] = True
         elif args.audio_fixture:
-            browser.wait(lambda: browser.preview_shows("0:01/0:04"), "native audio clock progress", timeout=25)
+            duration = 8 if args.private_pulse else 4
+            browser.wait(lambda: browser.preview_shows(f"0:01/0:{duration:02d}"), "native audio clock progress", timeout=25)
             results.update(audio=args.audio_fixture, configured_volume=0.15, playing=resources(app.process.popen.pid))
             browser.screenshot(output / "audio-playing.png")
-            browser.wait(lambda: browser.preview_shows("0:04/0:04"), "native audio EOS", timeout=15)
+            if args.private_pulse:
+                import array
+                def peak():
+                    with (output / "private-monitor.raw").open("rb") as stream:
+                        length = stream.seek(0, 2)
+                        assert length > 48000 and length < 32 * 1024 * 1024
+                        stream.seek(length - 48000)
+                        samples = array.array("h", stream.read(48000))
+                    return max(map(abs, samples))
+                initial = peak()
+                assert 200 < initial < 700, ("startup volume", initial)
+                browser.keyboard.press("m")
+                time.sleep(0.7)
+                muted = peak()
+                assert muted <= 2, ("live mute", muted)
+                browser.keyboard.press("m")
+                browser.keyboard.press("Up")
+                time.sleep(0.7)
+                louder = peak()
+                assert 1.4 < louder / initial < 1.9, ("live volume", initial, louder)
+                results["private_monitor_peaks"] = dict(startup=initial, muted=muted, louder=louder)
+            browser.wait(lambda: browser.preview_shows(f"0:{duration:02d}/0:{duration:02d}"), "native audio EOS", timeout=15)
             browser.keyboard.press("Escape")
             browser.wait(lambda: browser.preview() is None, "close audio preview")
-            results["settled"] = resources(app.process.popen.pid)
+            pid = app.process.popen.pid
+            browser.wait(lambda: resources(pid)["media_helpers"] == 0 and resources(pid)["decoders"] == 0,
+                         "audio descendants reaped", timeout=5)
+            results["settled"] = resources(pid)
         else:
             browser.wait(lambda: browser.preview_shows("0:01/"), "one-second playback", timeout=25)
             results["one_second_label_wall_ms"] = round((time.monotonic() - start) * 1000, 2)
+            if args.activate_archive:
+                import tarfile
+                assert args.launcher is not None
+                with tarfile.open(args.activate_archive) as archive:
+                    member = next(member for member in archive if member.name.endswith("/bundle.json"))
+                    manifest = json.load(archive.extractfile(member))
+                old_path = args.launcher.resolve(strict=True)
+                subprocess.run(["/bin/bash", "-c", 'source "$1"; install_bundle "$2" "$3" "$4" "$5"', "activation",
+                    str(ROOT / "install.sh"), str(args.activate_archive), manifest["release_tag"][1:], manifest["target"], str(args.launcher)],
+                    env={"PATH": "/usr/bin:/bin", "STRATA_INSTALLER_TESTING": "1"}, check=True,
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=60)
+                assert args.launcher.resolve(strict=True) != old_path and old_path.is_file()
+                browser.keyboard.press("Escape")
+                browser.wait(lambda: browser.preview() is None, "close old generation")
+                browser.select_entry(clip.name)
+                browser.keyboard.press("space")
+                browser.wait(lambda: browser.preview_shows("0:01/"), "old process starts a matching helper after activation", timeout=25)
+                assert not app.process.exited()
+                results["old_process_reopened_after_activation"] = True
             browser.screenshot(output / "playing.png")
             pause = browser.preview().find(role="button", name="Play/Pause (Space)")
             assert pause is not None
@@ -192,6 +281,16 @@ def main():
             app.stop()
         if connection is not None:
             connection.close()
+        for process in (monitor, pulse):
+            if process is not None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+        for stream in audio_logs:
+            stream.close()
         home.cleanup()
         display.stop()
 

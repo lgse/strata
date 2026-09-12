@@ -29,7 +29,7 @@ RUN --mount=type=bind,from=package-indexes,source=/var/lib/apt/lists,target=/opt
     gir1.2-atspi-2.0 gir1.2-gtk-4.0 gstreamer1.0-libav gstreamer1.0-plugins-base \
     gstreamer1.0-plugins-good imagemagick libfontconfig1 libgtk-4-1 \
     libgtk-4-media-gstreamer libgtksourceview-5-0 libpoppler-glib8 librsvg2-common \
-    python3-gi python3-venv \
+    pulseaudio pulseaudio-utils python3-gi python3-venv \
     xauth xvfb \
     && rm -rf /var/lib/apt/lists/*
 

@@ -17,6 +17,63 @@ use super::{
     install_archive, sha256_file, verify_elf,
 };
 
+#[test]
+#[ignore = "requires locally built native release archives; scripts/release-gate.sh runs it"]
+fn native_release_archives_migrate_rollback_and_restore_the_matching_pair() {
+    let current =
+        std::path::PathBuf::from(std::env::var_os("STRATA_LEGACY_UI").expect("finalized UI"));
+    let previous =
+        std::path::PathBuf::from(std::env::var_os("STRATA_LEGACY_PREVIOUS").expect("previous UI"));
+    let bin = std::path::PathBuf::from(
+        std::env::var_os("STRATA_RUST_OUTPUT").expect("private installation directory"),
+    );
+    fs::create_dir_all(&bin).expect("create installation directory");
+    let launcher = bin.join("strata");
+    fs::copy(&previous, &launcher).expect("install legacy executable");
+    let mut running = launcher.clone();
+    let mut pinned_versions = Vec::new();
+    for executable in [&current, &previous, &current] {
+        let package = executable.parent().expect("package directory");
+        let manifest: serde_json::Value = serde_json::from_slice(
+            &fs::read(package.join("bundle.json")).expect("read release manifest"),
+        )
+        .expect("parse release manifest");
+        let tag = manifest["release_tag"].as_str().expect("release tag");
+        let package_name = package
+            .file_name()
+            .expect("package name")
+            .to_str()
+            .expect("UTF-8 package name");
+        let archive_name = format!("{package_name}.tar.gz");
+        let archive = package.with_file_name(&archive_name);
+        let expected = expected_bundle_from_url(&format!(
+            "https://github.com/LGSE/strata/releases/download/{tag}/{archive_name}",
+        ))
+        .expect("trusted release identity");
+        let installed = install_archive(
+            &archive,
+            &sha256_file(&archive).expect("archive digest"),
+            &expected,
+            &bin,
+            &running,
+        )
+        .expect("activate release");
+        for name in ["strata", "strata-media-helper"] {
+            assert_eq!(
+                sha256_file(&installed.join(name)).expect("installed digest"),
+                sha256_file(&package.join(name)).expect("packaged digest")
+            );
+        }
+        running = installed.join("strata");
+        assert_eq!(
+            fs::canonicalize(&launcher).expect("active launcher"),
+            running
+        );
+        pinned_versions.push(running.clone());
+        assert!(pinned_versions.iter().all(|path| path.is_file()));
+    }
+}
+
 fn expected() -> ExpectedBundle {
     let target = build_target().to_owned();
     ExpectedBundle {

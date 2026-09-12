@@ -385,7 +385,7 @@ configure_file_chooser() {
 }
 
 private_install_tempdir() {
-  python3 - <<'PY'
+  python3 -I - <<'PY'
 import os, pathlib, stat, tempfile
 root = pathlib.Path(tempfile.gettempdir()).resolve(strict=True)
 for path in (root, *root.parents):
@@ -397,7 +397,7 @@ PY
 }
 
 install_bundle() {
-  python3 - "$1" "$2" "$3" "$4" <<'PY'
+  python3 -I - "$1" "$2" "$3" "$4" <<'PY'
 import fcntl, gzip, hashlib, io, json, os, pathlib, re, shutil, stat, struct, sys, tarfile, tempfile, zlib
 archive_path, version, target, bin_path = sys.argv[1:]
 archive_path, launcher = pathlib.Path(archive_path), pathlib.Path(bin_path)

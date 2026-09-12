@@ -11,7 +11,7 @@ if command -v pacman >/dev/null 2>&1 && pacman --query --owns --quiet -- "$BIN_P
 fi
 TEMP_DIR=$(private_install_tempdir)
 trap 'rm -rf -- "$TEMP_DIR"' EXIT
-release_tag=${STRATA_RELEASE_TAG:-v$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')}
+release_tag=${STRATA_RELEASE_TAG:-v$(python3 -I -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["package"]["version"])')}
 version=${release_tag#v}
 case "$(uname -m)" in
   x86_64) target=x86_64-unknown-linux-gnu ;;
@@ -28,7 +28,7 @@ cp data/io.github.lgse.Strata.desktop data/io.github.lgse.Strata.FileManager1.se
 cp data/portal/* "$staging/portal/"
 commit=$(git rev-parse HEAD)
 printf '%s\n' "$commit" > "$staging/SOURCE_COMMIT"
-python3 scripts/release_bundle.py "$staging" --release-tag "$release_tag" --target "$target" --commit "$commit"
+python3 -I scripts/release_bundle.py "$staging" --release-tag "$release_tag" --target "$target" --commit "$commit"
 tar -C "$TEMP_DIR" --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf - "$package" | gzip -n > "$TEMP_DIR/bundle.tar.gz"
 installed=$(install_bundle "$TEMP_DIR/bundle.tar.gz" "$version" "$target" "$BIN_PATH")
 install_desktop_entry "$installed" no

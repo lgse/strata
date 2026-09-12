@@ -7,7 +7,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 : "${VERSION:?Set the release version without v}"
 : "${SOURCE_SHA:?Set the full source commit}"
 [[ "$TARGET" == x86_64-unknown-linux-gnu || "$TARGET" == aarch64-unknown-linux-gnu ]]
-[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(rc|nightly)\.[0-9.]+)?$ ]]
+[[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-(alpha|beta|rc|nightly)\.[0-9.]+)?$ ]]
 [[ "$SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
 out=${STRATA_RELEASE_OUTPUT:-dist}
 mkdir -p "$out"
@@ -16,6 +16,8 @@ package="strata-${VERSION}-${TARGET}"
 [[ ! -e "$out/$package" ]] || { echo 'Use a fresh release output directory.' >&2; exit 1; }
 export STRATA_BUILD_COMMIT="$SOURCE_SHA" STRATA_RELEASE_TAG="v$VERSION"
 case "$VERSION" in
+    *-alpha.*) export STRATA_BUILD_KIND=alpha ;;
+    *-beta.*) export STRATA_BUILD_KIND=beta ;;
     *-rc.*) export STRATA_BUILD_KIND=rc ;;
     *-nightly.*) export STRATA_BUILD_KIND=nightly ;;
     *) export STRATA_BUILD_KIND=stable ;;
@@ -31,8 +33,8 @@ strip --strip-unneeded "$helper"
 objcopy --add-gnu-debuglink="$symbols" "$helper"
 STRATA_RELEASE_BUILD=1 STRATA_MEDIA_HELPER_BUNDLE="$helper" \
     cargo build --release --locked -p strata --target "$TARGET"
-if readelf -d "$binaries/strata" | grep -E 'NEEDED.*libgst'; then
-    echo 'Strata must not add GStreamer startup dependencies.' >&2
+if readelf -d "$binaries/strata" | grep -E 'NEEDED.*lib(gst|poppler)'; then
+    echo 'The UI must not add GStreamer or Poppler startup dependencies.' >&2
     exit 1
 fi
 mkdir "$out/$package"
@@ -48,7 +50,7 @@ cp docs/portal-file-chooser.md docs/preview-sandbox.md docs/media-helper-bundles
 cp data/portal/* "$out/$package/portal/"
 install -m 644 data/io.github.lgse.Strata.desktop data/io.github.lgse.Strata.FileManager1.service \
     data/icons/scalable/apps/io.github.lgse.Strata.svg "$out/$package/"
-python3 scripts/release_bundle.py "$out/$package" --release-tag "v$VERSION" --target "$TARGET" --commit "$SOURCE_SHA"
+python3 -I scripts/release_bundle.py "$out/$package" --release-tag "v$VERSION" --target "$TARGET" --commit "$SOURCE_SHA"
 for executable in strata strata-media-helper; do
     ldd "$out/$package/$executable" > "$out/${executable}-${VERSION}-${TARGET}.closure.txt"
     if grep -q 'not found' "$out/${executable}-${VERSION}-${TARGET}.closure.txt"; then

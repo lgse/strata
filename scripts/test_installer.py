@@ -75,6 +75,24 @@ class BundleInstallerTests(unittest.TestCase):
         return bash('install_bundle "$ARCHIVE" "$VERSION" "$TARGET" "$LAUNCHER"', env={
             "ARCHIVE": str(archive), "VERSION": version, "TARGET": target, "LAUNCHER": str(launcher)})
 
+    def test_installer_ignores_python_modules_in_cwd_and_environment(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            imports = root / "untrusted imports"
+            imports.mkdir()
+            marker = root / "executed"
+            for module in ("sitecustomize", "tarfile", "hashlib", "json"):
+                (imports / f"{module}.py").write_text(f"open({str(marker)!r}, 'w').write('ran')\nraise RuntimeError('untrusted module')\n")
+            archive = bundle_archive(root)
+            launcher = root / "bin/strata"
+            result = subprocess.run([BASH, "-c", 'source "$1"; install_bundle "$2" 1.2.3 x86_64-unknown-linux-gnu "$3"',
+                "fixture", str(INSTALLER), str(archive), str(launcher)], cwd=imports,
+                env={"PATH": "/usr/bin:/bin", "STRATA_INSTALLER_TESTING": "1", "PYTHONPATH": str(imports)},
+                capture_output=True, text=True, check=False)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(marker.exists())
+            self.assertTrue(launcher.is_symlink())
+
     def test_both_architectures_install_without_executing_binaries_or_loading_media_libraries(self):
         for target in ("x86_64-unknown-linux-gnu", "aarch64-unknown-linux-gnu"):
             with self.subTest(target=target), tempfile.TemporaryDirectory() as directory:
