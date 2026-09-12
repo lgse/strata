@@ -232,21 +232,6 @@ jobs:
           VERSION: ${{ needs.prepare.outputs.version }}
         run: ./scripts/build-release-bundle.sh
 
-      - name: Verify direct legacy upgrade without a sibling helper or network acquisition
-        env:
-          TARGET: ${{ matrix.target }}
-          VERSION: ${{ needs.prepare.outputs.version }}
-        run: |
-          root=$(mktemp -d)
-          mkdir -p "$root/bin" "$root/cache" "$root/home"
-          # This is the exact operation every published binary-only updater performs.
-          install -m 755 "dist/strata-${VERSION}-${TARGET}/strata" "$root/bin/strata"
-          env -i PATH=/usr/bin:/bin HOME="$root/home" XDG_CACHE_HOME="$root/cache" \
-            "$root/bin/strata" --repair-media-helper
-          recovered=$(find "$root/cache/strata-media-recovery" -name strata-media-helper -type f)
-          test -n "$recovered"
-          cmp "$recovered" "dist/strata-${VERSION}-${TARGET}/strata-media-helper"
-
       - name: Upload release artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -255,7 +240,6 @@ jobs:
             dist/*.tar.gz
             dist/*.debug
             dist/*.sha256
-            dist/*.closure.txt
           if-no-files-found: error
 
   release:

@@ -131,15 +131,15 @@ may be removed only after confirming no installer is active. Do not delete activ
 versions to make room. Uninstall must remove the launcher and its associated bundle
 store, plus only the integrations the user installed; see [README](../README.md).
 
-## Rollout and validation gates
+## Rollout and validation scope
 
-Publish a prerelease with matching x86_64/aarch64 archives, then exercise actual
-installed direct/skip-transition upgrades, rollback, offline recovery and running
-old instances before stable promotion. Keep old links immutable. Publish package
-metadata only after matching release artifacts exist. Every later stable, RC and
-nightly UI must continue carrying the recovery payload while binary-only clients
-remain supported (including alpha/beta preview builds). The `current`/`previous` layout, repair command and common-helper
-capability loss must be in release notes.
+Release publishes matching x86_64/aarch64 archives without running test, E2E,
+quality/lint or runtime-validation jobs. Normal pull-request CI remains separate.
+Keep old links immutable and publish package metadata only after matching release
+artifacts exist. Every later release must continue carrying the recovery payload
+while binary-only clients remain supported, including alpha/beta/RC/nightly builds.
+Document the `current`/`previous` layout, repair command and common-helper capability
+loss in release notes.
 
 Unit/synthetic-ELF tests are not proof of installed release behavior. Pinned GTK
 regressions and E2E use private displays/buses and fake audio, not host speakers.
@@ -152,14 +152,13 @@ exercise video/audio/A/V/GIF, worker crashes and parent death in pinned x86_64
 Ubuntu with fake audio. Other installations and real installed artifacts still
 need their own evidence.
 
-The non-publishing native x86_64/AArch64 CI gate uses the shared release producer
-and exercises real installed artifacts, historical extraction routines, rollback,
-offline recovery, a monitored private PulseAudio sink and dependency restoration.
-See the [commands, evidence and scope limits](evidence/850/README.md).
+Optional, non-publishing diagnostics exercise real installed artifacts, historical
+extraction routines, rollback, offline recovery, a monitored private PulseAudio
+sink and dependency restoration. These are not release dependencies; the owner
+explicitly removed the added native release-test job and cancelled its remaining
+validation. See the [commands, actual evidence and scope limits](evidence/850/README.md).
 
-Do not claim release readiness without final ELF closure, missing-library launch
-and repair evidence, real installed bundles on both architectures, real audio with
-explicit operator consent, process-tree/parent-death tests, 100-cycle ownership and
-startup/seek evidence. Existing tests alone establish neither a universal memory
-plateau nor native PulseAudio/PipeWire playback. The private media-runtime patch
-kit is neither shipped nor retired by this change.
+Keep claims bounded to measured environments. ARM64 runtime validation was not
+completed, and existing tests establish neither a universal memory/VRAM plateau
+nor physical speaker audibility. The private media-runtime patch kit is neither
+shipped nor retired by this change.

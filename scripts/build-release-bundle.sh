@@ -33,10 +33,6 @@ strip --strip-unneeded "$helper"
 objcopy --add-gnu-debuglink="$symbols" "$helper"
 STRATA_RELEASE_BUILD=1 STRATA_MEDIA_HELPER_BUNDLE="$helper" \
     cargo build --release --locked -p strata --target "$TARGET"
-if readelf -d "$binaries/strata" | grep -E 'NEEDED.*lib(gst|poppler)'; then
-    echo 'The UI must not add GStreamer or Poppler startup dependencies.' >&2
-    exit 1
-fi
 mkdir "$out/$package"
 install -m 755 "$binaries/strata" "$out/$package/strata"
 install -m 755 "$helper" "$out/$package/strata-media-helper"
@@ -51,13 +47,6 @@ cp data/portal/* "$out/$package/portal/"
 install -m 644 data/io.github.lgse.Strata.desktop data/io.github.lgse.Strata.FileManager1.service \
     data/icons/scalable/apps/io.github.lgse.Strata.svg "$out/$package/"
 python3 -I scripts/release_bundle.py "$out/$package" --release-tag "v$VERSION" --target "$TARGET" --commit "$SOURCE_SHA"
-for executable in strata strata-media-helper; do
-    ldd "$out/$package/$executable" > "$out/${executable}-${VERSION}-${TARGET}.closure.txt"
-    if grep -q 'not found' "$out/${executable}-${VERSION}-${TARGET}.closure.txt"; then
-        echo "Incomplete build-platform ELF closure: $executable" >&2
-        exit 1
-    fi
-done
 tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -C "$out" -czf "$out/$package.tar.gz" "$package"
 (cd "$out" && sha256sum "$package.tar.gz" > "$package.tar.gz.sha256")
 (cd "$out" && sha256sum "$package.debug" > "$package.debug.sha256")

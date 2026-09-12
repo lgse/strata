@@ -1,6 +1,6 @@
 # #850 release-boundary evidence
 
-## Repeatable, non-publishing gate
+## Optional local diagnostics
 
 ```sh
 STRATA_CONTAINER_ENGINE=podman ./scripts/release-gate.sh --build-environment
@@ -10,8 +10,11 @@ The explicit build flag bootstraps an unpublished environment from the pinned E2
 recipe. Subsequent runs reuse its input/architecture/UID-keyed image. The runner
 uses native x86_64 or AArch64, isolated container storage supplied by the caller,
 private Xvfb/D-Bus, and no network during installed-artifact checks. It never
-publishes a tag, release, package, or artifact to a release channel. CI runs both
-native architectures. The normal canonical E2E runner remains `scripts/e2e.sh`.
+publishes a tag, release, package, or artifact to a release channel. This is an
+explicitly opt-in manual tool, not called by CI or the Release workflow. At the
+owner's request, the added native release-test job was removed and its active
+validation run cancelled; Release performs build/package/publish only. Normal
+pull-request CI remains separate; its canonical E2E runner is `scripts/e2e.sh`.
 Use a fresh `STRATA_RELEASE_GATE_OUTPUT` directory for each run; Cargo caches stay
 under `target/release-gate`.
 
@@ -26,8 +29,8 @@ The previous architecture-specific pin failed on ARM64 before compilation with
 the x86_64 filesystem nor the authenticated Ubuntu package snapshot. It does not
 update toolkit versions or apply/remove any private-runtime patch.
 
-The gate builds two real release generations through the same producer as the
-release workflow, then checks:
+When explicitly invoked, the diagnostic tool builds two real release generations
+through the same producer as the release workflow, then checks:
 
 - Manifest hashes, static ELF architecture, useful separate debug line tables,
   exact debug-link CRCs, and distributed license bytes.
@@ -51,10 +54,15 @@ release workflow, then checks:
   absent audio server has a separate unavailable-capability case.
 
 The two native-archive Rust tests are explicitly ignored in ordinary unit runs
-because they need freshly produced archives. The release gate selects and runs
-both; an ordinary suite's ignore count is not evidence that they passed.
+because they need freshly produced archives. The optional diagnostic tool selects
+and runs both; an ordinary suite's ignore count is not evidence that they passed.
 
 ## Local observations
+
+The full x86_64 installed-artifact diagnostic run passed at `ef81ea29f1c2fbf83fc116e7841b90fa7f6b03d0`.
+ARM64 runtime validation was not completed before the owner-directed cancellation;
+architecture-specific release builds remain configured, not runtime proof. No
+additional release-validation run is required or dispatched by the release workflow.
 
 Native x86_64 Ubuntu release artifacts at source `a26f165b1555470a6a92832d421c915d2525c93f`
 passed installed shell upgrade/rollback, live-old-instance playback, ENOSPC,

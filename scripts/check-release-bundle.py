@@ -62,6 +62,13 @@ def verify(directory):
     for name in ("strata", "strata-media-helper"):
         inspect_elf(directory / name, manifest["target"])
         assert os.access(directory / name, os.X_OK)
+        environment = {"PATH": "/usr/bin:/bin", "LC_ALL": "C"}
+        if name == "strata":
+            dynamic = subprocess.check_output(["readelf", "-d", str(directory / name)], env=environment, text=True)
+            assert not any("NEEDED" in line and ("libgst" in line or "libpoppler" in line) for line in dynamic.splitlines())
+        closure = subprocess.check_output(["ldd", str(directory / name)], env=environment, text=True)
+        assert "not found" not in closure
+        directory.with_name(f"{directory.name}-{name}.closure.txt").write_text(closure)
         symbols = directory.with_name((directory.name if name == "strata" else directory.name.replace("strata-", "strata-media-helper-", 1)) + ".debug")
         verify_debug(directory / name, symbols)
     return manifest

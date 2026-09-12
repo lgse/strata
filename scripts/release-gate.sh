@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
-# Non-publishing, native-architecture release-artifact validation.
+# Manual opt-in diagnostics only; never called by CI or the Release workflow.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 repo=$PWD
