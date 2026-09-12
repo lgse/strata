@@ -376,8 +376,12 @@ impl PreviewDrawer {
         self.is_open() && !self.state.sizing.is_suspended() && self.state.media.borrow().is_some()
     }
 
-    pub fn handle_video_key(&self, key: gtk::gdk::Key) -> bool {
-        if self.state.sizing.is_suspended() {
+    pub fn handle_video_key(&self, key: gtk::gdk::Key, modifiers: gtk::gdk::ModifierType) -> bool {
+        use gtk::gdk::ModifierType as Modifiers;
+        if !modifiers.contains(Modifiers::CONTROL_MASK | Modifiers::ALT_MASK)
+            || modifiers.intersects(Modifiers::SHIFT_MASK | Modifiers::SUPER_MASK)
+            || !self.has_video()
+        {
             return false;
         }
         let media = match self.state.media.borrow().as_ref() {
@@ -1316,7 +1320,7 @@ impl PreviewState {
         let pause_icon = crate::assets::primary_icon(crate::assets::icons::PAUSE, 18);
         let play_button = gtk::Button::new();
         play_button.add_css_class("preview-media-button");
-        play_button.set_tooltip_text(Some("Play/Pause (Space)"));
+        play_button.set_tooltip_text(Some("Play/Pause (Ctrl+Alt+Space)"));
         play_button.set_child(Some(if media.is_playing() {
             &pause_icon
         } else {
@@ -1369,7 +1373,7 @@ impl PreviewState {
 
         let volume_toggle = gtk::Button::new();
         volume_toggle.add_css_class("preview-media-button");
-        volume_toggle.set_tooltip_text(Some("Mute/unmute (M)"));
+        volume_toggle.set_tooltip_text(Some("Mute/unmute (Ctrl+Alt+M)"));
         let muted = preferences.preview_muted();
         let volume_icon = crate::assets::primary_icon(
             if muted {

@@ -71,6 +71,53 @@ fn closing_preserves_column_positions_without_locking_horizontal_scrolling() {
     );
 }
 
+#[test]
+fn horizontal_scrollbar_thumb_stays_clear_of_the_preview_resize_handle() {
+    crate::test_support::gtk_test(
+        "ui::preview::layout::tests::visibility::horizontal_scrollbar_thumb_stays_clear_of_the_preview_resize_handle",
+        || {
+            let preferences = ThemeManager::shared();
+            preferences.set_browser_mode(BrowserMode::Columns);
+            preferences.set_reduce_motion(true);
+            for chooser in [false, true] {
+                let fixture = Fixture::new(chooser);
+                fixture.enter_children();
+                fixture.preview.show(entry("notes.txt"), None);
+                for width in [1200, 900] {
+                    fixture.resize(width);
+                    fixture.wait_adjacent();
+                    let scroller = find(&fixture.browser.widget(), "columns-scroll")
+                        .expect("column scroller")
+                        .downcast::<gtk::ScrolledWindow>()
+                        .expect("scrolled window");
+                    let scrollbar = scroller.hscrollbar();
+                    wait_until(|| scrollbar.is_mapped());
+                    let adjustment = scroller.hadjustment();
+                    adjustment.set_value(adjustment.upper() - adjustment.page_size());
+                    fixture.settle();
+                    let thumb = find(&scrollbar, "slider").expect("scrollbar thumb");
+                    let thumb = thumb.compute_bounds(&fixture.split).expect("thumb bounds");
+                    let handle = separator(&fixture.split).expect("preview resize handle");
+                    let bounds = handle
+                        .compute_bounds(&fixture.split)
+                        .expect("handle bounds");
+                    assert!(thumb.x() + thumb.width() < bounds.x());
+                    assert_eq!(
+                        fixture.split.pick(
+                            f64::from(bounds.x() + bounds.width() / 2.0),
+                            f64::from(thumb.y() + thumb.height() / 2.0),
+                            gtk::PickFlags::DEFAULT,
+                        ),
+                        Some(handle),
+                        "the scrollbar must not intercept preview resizing",
+                    );
+                }
+                fixture.close();
+            }
+        },
+    );
+}
+
 fn assert_last_column_visible(fixture: &Fixture) {
     let column = fixture
         .last_column()
@@ -259,7 +306,10 @@ fn a_hidden_media_preview_pauses_and_restores_only_the_same_players_playing_stat
                 let paused_at = media.timestamp();
                 assert!(!media.is_playing());
                 assert!(!fixture.preview.has_video());
-                assert!(!fixture.preview.handle_video_key(gtk::gdk::Key::space));
+                assert!(!fixture.preview.handle_video_key(
+                    gtk::gdk::Key::space,
+                    gtk::gdk::ModifierType::CONTROL_MASK | gtk::gdk::ModifierType::ALT_MASK,
+                ));
                 fixture.resize(1800);
                 wait_until(|| !fixture.preview.state.sizing.is_suspended());
                 assert_eq!(media.is_playing(), playing);

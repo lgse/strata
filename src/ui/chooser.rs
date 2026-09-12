@@ -1328,6 +1328,17 @@ fn install_shortcuts(
         {
             return glib::Propagation::Stop;
         }
+        if state.view.item_view_has_focus()
+            && !state.view.new_entry_is_active()
+            && !state.view.rename_is_active()
+            && !focused.as_ref().is_some_and(|widget| {
+                super::focus_navigation::editable(widget)
+                    || super::focus_navigation::in_popover(widget)
+            })
+            && preview.handle_video_key(key, modifiers)
+        {
+            return glib::Propagation::Stop;
+        }
         // Filtered rows own navigation, not the hidden directory selection.
         if matches!(key, gtk::gdk::Key::Up | gtk::gdk::Key::Down)
             && state.view.selected_search_results().is_some()
@@ -1571,25 +1582,6 @@ fn install_shortcuts(
             if super::focus_navigation::editable(focused) {
                 return glib::Propagation::Proceed;
             }
-        }
-        if preview.has_video()
-            && state.view.item_view_has_focus()
-            && !alt
-            && !control
-            && !shift
-            && matches!(
-                key,
-                gtk::gdk::Key::space
-                    | gtk::gdk::Key::Up
-                    | gtk::gdk::Key::Down
-                    | gtk::gdk::Key::Left
-                    | gtk::gdk::Key::Right
-                    | gtk::gdk::Key::m
-                    | gtk::gdk::Key::M
-            )
-        {
-            preview.handle_video_key(key);
-            return glib::Propagation::Stop;
         }
         let mut header_left_boundary = false;
         if state.view.header_actions_have_focus() && !control && !alt {

@@ -29,6 +29,13 @@ const FILES: &[Shortcut] = &[
     ("y / p", "Copy path / pin a folder (type-to-search off)"),
 ];
 
+const MEDIA: &[Shortcut] = &[
+    ("Ctrl+Alt+Space", "Play / pause"),
+    ("Ctrl+Alt+← / →", "Seek −5 / +5 seconds"),
+    ("Ctrl+Alt+↑ / ↓", "Volume up / down"),
+    ("Ctrl+Alt+M", "Mute / unmute"),
+];
+
 const TOOLS: &[Shortcut] = &[
     ("Ctrl+F", "Filter the current pane"),
     ("Ctrl+K", "Open global search"),
@@ -108,7 +115,7 @@ impl ShortcutFooter {
         header.append(&close);
         content.append(&header);
         let note = gtk::Label::builder()
-            .label("File-view shortcuts. Text fields, dialogs, and media previews use their own controls.")
+            .label("Media controls use Ctrl+Alt. Plain keys keep browsing; text fields and dialogs keep native controls.")
             .xalign(0.0).wrap(true).build();
         note.add_css_class("shortcut-reference-note");
         content.append(&note);
@@ -265,6 +272,7 @@ impl ShortcutFooter {
         );
         append_section(&self.reference, "Files and selection", FILES);
         append_section(&self.reference, "Search and tools", TOOLS);
+        append_section(&self.reference, "Preview media", MEDIA);
     }
 
     pub fn handle_key(

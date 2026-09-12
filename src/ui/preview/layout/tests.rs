@@ -53,7 +53,7 @@ fn automatic_and_manual_widths_reserve_space_without_losing_the_session_choice()
 
 fn find(root: &impl IsA<gtk::Widget>, class: &str) -> Option<gtk::Widget> {
     let root = root.as_ref();
-    if root.has_css_class(class) {
+    if root.has_css_class(class) || root.css_name() == class {
         return Some(root.clone());
     }
     let mut child = root.first_child();
@@ -100,6 +100,7 @@ impl Fixture {
         content.set_resize_start_child(false);
         content.set_shrink_start_child(false);
         let split = gtk::Paned::new(gtk::Orientation::Horizontal);
+        split.add_css_class("preview-split");
         split.set_start_child(Some(&content));
         split.set_resize_start_child(true);
         split.set_resize_end_child(false);

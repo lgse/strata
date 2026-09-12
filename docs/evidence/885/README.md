@@ -30,8 +30,11 @@ Folders, ZIP files, empty selections, and directory navigation clear unsupported
 content without turning the mode off. In Icons view the preview space stays
 reserved with a quiet placeholder; Columns and List hide the panel. The next
 supported selection returns automatically. Space can enable the mode even on an
-unsupported selection; explicit close/toggle actions disable it. Existing media playback shortcuts are
-unchanged. This state is local to each window and is not saved to preferences.
+unsupported selection; explicit close/toggle actions disable it. Media controls
+require **Ctrl+Alt**: Space plays/pauses, Left/Right seeks five seconds, Up/Down
+changes volume, and M toggles mute. Plain keys keep their normal browsing behavior,
+including Space to close the preview. These controls are listed in **F1 Shortcuts**.
+This state is local to each window and is not saved to preferences.
 
 Column navigation adapts the 48-logical-pixel peek idea from
 [PR #876 by JoeJoeflyn](https://github.com/lgse/strata/pull/876). Real neighboring
@@ -109,6 +112,23 @@ using synthetic files only.
 | Appearance-opened preview | After deleting the file | Next selection |
 | --- | --- | --- |
 | ![Displayed file](review/appearance-preview.png) | ![Reserved empty preview](review/deleted-preview-placeholder.png) | ![Session restores preview](review/next-selection-preview.png) |
+
+## Keyboard controls and resize-border follow-up
+
+Media controls require Ctrl+Alt so plain arrows, Space, and typing retain their
+browsing behavior. The F1 reference lists playback, seeking, volume, and mute.
+The preview divider shares one normal column-colored edge, highlights on hover,
+and uses the column-resize cursor. The horizontal scrollbar thumb stays inset
+from that edge so it cannot intercept divider dragging.
+
+| Before | Normal border | Hover highlight |
+| --- | --- | --- |
+| ![Accent divider and scrollbar against its edge](review/divider-before.png) | ![Single normal divider and inset scrollbar](review/divider-after.png) | ![Hovered preview divider](review/divider-hover.png) |
+
+![F1 media keyboard reference](review/media-modified-shortcuts.png)
+
+These captures use synthetic fixtures, private Xvfb/D-Bus, and the pinned GTK
+4.14.5 environment. The before capture predates the resize-border changes.
 
 ## Tuning and scope
 

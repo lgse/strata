@@ -1795,6 +1795,10 @@ scrollbar slider:active {
   background: @theme_bg;
 }
 
+.columns-scroll scrollbar.horizontal > range > trough > slider {
+  margin: 4px;
+}
+
 .autoscroll-anchor {
   background: alpha(@theme_surface, 0.92);
   border: 1px solid alpha(@theme_border, 0.9);
@@ -1992,9 +1996,19 @@ paned > separator {
   box-shadow: inset -1px 0 alpha(@theme_border, 0.6);
 }
 
+/* Share the column's edge without GTK's wider default handle overhang. */
 .preview-split > separator {
-  background: alpha(@theme_accent, 0.34);
-  min-width: 2px;
+  background: mix(@theme_bg, @theme_border, 0.6);
+  background-image: none;
+  border: none;
+  box-shadow: none;
+  margin: 0 0 0 -1px;
+  padding: 0;
+  min-width: 1px;
+}
+
+.preview-split > separator:hover {
+  background: @theme_accent;
 }
 
 .preview-pane {

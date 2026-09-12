@@ -156,6 +156,9 @@ impl PreviewDrawer {
                 state.stop();
             }
         });
+        if let Some(handle) = separator(split) {
+            handle.set_cursor_from_name(Some("col-resize"));
+        }
         install_resize(split, &self.state);
     }
 }

@@ -223,6 +223,44 @@ fn decoded_frames_play_in_the_browser_and_chooser_preview_widgets() {
                 assert!(!media.is_playing());
                 play.emit_clicked();
                 assert!(media.is_playing());
+                use gtk::gdk::{Key, ModifierType as Modifiers};
+                let shortcut = Modifiers::CONTROL_MASK | Modifiers::ALT_MASK;
+                ThemeManager::shared().set_preview_volume(0.5);
+                ThemeManager::shared().set_preview_muted(false);
+                for modifiers in [
+                    Modifiers::empty(),
+                    Modifiers::CONTROL_MASK,
+                    Modifiers::ALT_MASK,
+                    Modifiers::SHIFT_MASK,
+                    shortcut | Modifiers::SHIFT_MASK,
+                    shortcut | Modifiers::SUPER_MASK,
+                ] {
+                    for key in [
+                        Key::space,
+                        Key::Up,
+                        Key::Down,
+                        Key::Left,
+                        Key::Right,
+                        Key::m,
+                    ] {
+                        assert!(!drawer.handle_video_key(key, modifiers));
+                    }
+                    assert!(media.is_playing());
+                    assert_eq!(ThemeManager::shared().preview_volume(), 0.5);
+                    assert!(!ThemeManager::shared().preview_muted());
+                }
+                assert!(drawer.handle_video_key(Key::space, shortcut));
+                assert!(!media.is_playing());
+                assert!(drawer.handle_video_key(Key::Up, shortcut));
+                assert!((ThemeManager::shared().preview_volume() - 0.6).abs() < 0.001);
+                assert!(drawer.handle_video_key(Key::Down, shortcut));
+                assert!((ThemeManager::shared().preview_volume() - 0.5).abs() < 0.001);
+                assert!(drawer.handle_video_key(Key::m, shortcut));
+                assert!(ThemeManager::shared().preview_muted());
+                assert!(drawer.handle_video_key(Key::m, shortcut));
+                assert!(!ThemeManager::shared().preview_muted());
+                assert!(drawer.handle_video_key(Key::space, shortcut));
+                assert!(media.is_playing());
                 window.close();
                 wait_until(|| drawer.state.media.borrow().is_none());
                 assert_eq!(decoded.intrinsic_width(), 0);

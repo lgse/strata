@@ -105,19 +105,11 @@ impl Dispatcher {
     }
 
     pub(super) fn video_controls(&self, event: &KeyEvent) -> KeyResult {
-        if !matches!(
-            event.key,
-            Key::space | Key::Up | Key::Down | Key::Left | Key::Right | Key::m | Key::M
-        ) {
-            return None;
-        }
-        if self.preview.has_video()
-            && !self.sidebar.contains(&event.focused)
+        if !self.sidebar.contains(&event.focused)
             && !self.top_bar.has_focus()
             && !event.text_has_focus()
-            && event.without(Modifiers::ALT_MASK | Modifiers::CONTROL_MASK | Modifiers::SHIFT_MASK)
+            && self.preview.handle_video_key(event.key, event.modifiers)
         {
-            self.preview.handle_video_key(event.key);
             return Some(Propagation::Stop);
         }
         None

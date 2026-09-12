@@ -279,6 +279,8 @@ def test_the_shortcut_reference_opens_and_closes(strata):
         lambda: strata.window.find(role="label", name="Keyboard shortcuts"),
         "the shortcut reference to open",
     )
+    for chord in ["Ctrl+Alt+Space", "Ctrl+Alt+← / →", "Ctrl+Alt+↑ / ↓", "Ctrl+Alt+M"]:
+        assert strata.window.find(role="label", name=chord, rendered=False) is not None
 
     strata.keyboard.press("Escape")
     strata.wait(
