@@ -33,7 +33,7 @@ run = "python3 -m unittest discover -s scripts -p 'test_*.py'"
 
 [tasks.deny]
 description = "Check advisories, licenses, bans, and sources"
-run = "cargo deny check"
+run = "cargo deny --workspace --all-features check"
 
 [tasks.typos]
 description = "Check spelling"

@@ -5,7 +5,7 @@ edition = "2024"
 license = "MIT"
 
 [dependencies]
-strata-media-protocol = { path = "../media-protocol" }
+strata-media-protocol = { version = "=0.1.0", path = "../media-protocol" }
 cairo-rs = { version = "0.22.9", features = ["pdf", "png"] }
 gdk-pixbuf = "0.22.0"
 gio = { version = "0.22.9", features = ["v2_72"] }
